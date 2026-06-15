@@ -7,6 +7,8 @@ import { dateKeySchema } from '@/lib/validations/date-key';
 import { z } from 'zod';
 import type {
   ReportDraftRow,
+  ReportOpenIssue,
+  ReportCreatedRow,
   ReportResolvedToday,
   ReportsTodayWorkspaceResponse,
   ReportWaitingReply,
@@ -24,6 +26,8 @@ import type {
 
 const WAITING_LIMIT = 5;
 const RESOLVED_LIMIT = 3;
+const CREATED_REPORT_LIMIT = 12;
+const OPEN_ISSUE_LIMIT = 12;
 
 const dateQuerySchema = z.object({
   date: dateKeySchema('日付はYYYY-MM-DD形式で指定してください').optional(),
@@ -37,6 +41,14 @@ const REPORT_TYPE_FALLBACK_TITLES: Record<string, string> = {
   nurse_share: '看護師への共有',
   family_share: 'ご家族への共有',
   internal_record: '社内記録',
+};
+
+const REPORT_STATUS_LABELS: Record<string, string> = {
+  draft: '下書き',
+  confirmed: '確認済',
+  sent: '送付済',
+  failed: '送付失敗',
+  response_waiting: '返信待ち',
 };
 
 /** 「山本 健」→「山本」。空白を含まない名前はそのまま。 */
@@ -80,6 +92,97 @@ function buildRecipientLabel(links: CareTeamLinkRow[]): string {
 
 function readPatientIdsLength(value: unknown): number {
   return Array.isArray(value) ? value.length : 0;
+}
+
+function buildReportTitle(reportType: string, content: unknown): string {
+  return (
+    readJsonObjectString(readJsonObject(content), 'title') ??
+    REPORT_TYPE_FALLBACK_TITLES[reportType] ??
+    '報告書'
+  );
+}
+
+function buildReportOpenIssues(args: {
+  report: {
+    id: string;
+    status: string;
+    report_type: string;
+    content: unknown;
+    delivery_records: Array<{ status: string; sent_at: Date | null }>;
+  };
+  patientLabel: string;
+}): ReportOpenIssue[] {
+  const content = readJsonObject(args.report.content) ?? {};
+  const sourceProvenance = readJsonObject(content.source_provenance);
+  const billingContext = readJsonObject(content.billing_context);
+  const issues: ReportOpenIssue[] = [];
+  const href = `/reports/${args.report.id}`;
+
+  if (args.report.status === 'draft') {
+    issues.push({
+      id: `${args.report.id}-draft-confirmation`,
+      report_id: args.report.id,
+      severity: 'critical',
+      title: `${args.patientLabel} — 薬剤師確認待ち`,
+      description: '下書きのため、他職種への送付とPDF出力はできません。',
+      action: { label: '確認する', href },
+    });
+  }
+
+  const hasDelivered = args.report.delivery_records.some(
+    (delivery) => delivery.sent_at && ['sent', 'response_waiting'].includes(delivery.status),
+  );
+  if (args.report.status === 'confirmed' && !hasDelivered) {
+    issues.push({
+      id: `${args.report.id}-not-reported`,
+      report_id: args.report.id,
+      severity: 'warning',
+      title: `${args.patientLabel} — 他職種へ未報告`,
+      description: '薬剤師確認済みですが、送信日時のある送付記録がありません。',
+      action: { label: '送付へ', href },
+    });
+  }
+
+  const hasFailedDelivery = args.report.delivery_records.some(
+    (delivery) => delivery.status === 'failed',
+  );
+  if (args.report.status === 'failed' || hasFailedDelivery) {
+    issues.push({
+      id: `${args.report.id}-delivery-failed`,
+      report_id: args.report.id,
+      severity: 'critical',
+      title: `${args.patientLabel} — 送付失敗`,
+      description: '送付失敗の記録があります。宛先とチャネルを確認して再送してください。',
+      action: { label: '再送確認', href },
+    });
+  }
+
+  const prescriptionLineIds = Array.isArray(sourceProvenance?.prescription_line_ids)
+    ? sourceProvenance.prescription_line_ids
+    : [];
+  if (!sourceProvenance?.medication_cycle_id || prescriptionLineIds.length === 0) {
+    issues.push({
+      id: `${args.report.id}-prescription-link`,
+      report_id: args.report.id,
+      severity: 'warning',
+      title: `${args.patientLabel} — 処方リンク未確定`,
+      description: '報告書の根拠に処方サイクルまたは処方行IDが不足しています。',
+      action: { label: '根拠を確認', href },
+    });
+  }
+
+  if (!billingContext?.payer_basis) {
+    issues.push({
+      id: `${args.report.id}-billing-context`,
+      report_id: args.report.id,
+      severity: 'warning',
+      title: `${args.patientLabel} — 保険・請求根拠未確定`,
+      description: '保険種別と算定根拠が報告書contentに記録されていません。',
+      action: { label: '根拠を確認', href },
+    });
+  }
+
+  return issues;
 }
 
 export const GET = withAuthContext(
@@ -278,12 +381,39 @@ export const GET = withAuthContext(
           }),
         ];
 
+        const recentReports = await tx.careReport.findMany({
+          where: { org_id: ctx.orgId },
+          orderBy: { updated_at: 'desc' },
+          take: CREATED_REPORT_LIMIT,
+          select: {
+            id: true,
+            patient_id: true,
+            report_type: true,
+            status: true,
+            content: true,
+            created_at: true,
+            updated_at: true,
+            delivery_records: {
+              orderBy: [{ sent_at: 'desc' }, { updated_at: 'desc' }],
+              take: 3,
+              select: {
+                id: true,
+                channel: true,
+                recipient_name: true,
+                status: true,
+                sent_at: true,
+              },
+            },
+          },
+        });
+
         const waitingPatientIds = [
           ...new Set(
             [
               ...waitingDeliveries.map((delivery) => delivery.report.patient_id),
               ...waitingRequests.map((request) => request.patient_id),
               ...resolvedResponses.map((response) => response.request.patient_id),
+              ...recentReports.map((report) => report.patient_id),
             ].filter((id): id is string => Boolean(id)),
           ),
         ];
@@ -363,6 +493,41 @@ export const GET = withAuthContext(
           };
         });
 
+        const createdReports: ReportCreatedRow[] = recentReports.map((report) => {
+          const deliveredRecords = report.delivery_records.filter(
+            (delivery) =>
+              delivery.sent_at && ['sent', 'response_waiting'].includes(delivery.status),
+          );
+          const lastDelivery = deliveredRecords[0] ?? null;
+          const patient = patientLabel(report.patient_id) ?? '患者未設定';
+          return {
+            id: report.id,
+            patient_label: patient,
+            report_type: report.report_type,
+            report_type_label:
+              REPORT_TYPE_FALLBACK_TITLES[report.report_type] ?? report.report_type,
+            status: report.status,
+            status_label: REPORT_STATUS_LABELS[report.status] ?? report.status,
+            title: buildReportTitle(report.report_type, report.content),
+            created_at: report.created_at.toISOString(),
+            updated_at: report.updated_at.toISOString(),
+            reported_to_professional: Boolean(lastDelivery),
+            last_sent_at: lastDelivery?.sent_at?.toISOString() ?? null,
+            last_recipient_label: lastDelivery?.recipient_name ?? null,
+            last_channel: lastDelivery?.channel ?? null,
+            action: { label: '→ 詳細へ', href: `/reports/${report.id}` },
+          };
+        });
+
+        const openIssues = recentReports
+          .flatMap((report) =>
+            buildReportOpenIssues({
+              report,
+              patientLabel: patientLabel(report.patient_id) ?? '患者未設定',
+            }),
+          )
+          .slice(0, OPEN_ISSUE_LIMIT);
+
         const [templateCount, monthlyDeliveryCount] = [
           await tx.template.count({
             where: { org_id: ctx.orgId, template_type: 'care_report' },
@@ -380,10 +545,14 @@ export const GET = withAuthContext(
           draft_rows: draftRows,
           waiting_replies: waitingReplies,
           resolved_today: resolvedToday,
+          created_reports: createdReports,
+          open_issues: openIssues,
           counts: {
             to_write: draftRows.length,
             waiting: waitingReplies.length,
             resolved: resolvedToday.length,
+            created: createdReports.length,
+            open_issues: openIssues.length,
           },
           evidence: {
             template_count: templateCount,

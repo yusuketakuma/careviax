@@ -11,11 +11,7 @@ import {
   specialProcedureLabels,
 } from '@/lib/patient/home-visit-intake';
 import type { VisitScheduleAccessContext } from '@/lib/auth/visit-schedule-access';
-import {
-  flattenPdfJson,
-  readPdfJsonObject,
-  readPdfJsonObjectField,
-} from '@/server/services/pdf-document-json';
+import { flattenPdfJson, readPdfJsonObject } from '@/server/services/pdf-document-json';
 import {
   MEDICATION_CALENDAR_SLOT_KEYS,
   MEDICATION_CALENDAR_SLOT_LABELS,
@@ -72,6 +68,30 @@ type KeyValueRow = {
 
 type MedicationCalendarRecord = MedicationHistoryRecord & {
   month: Date;
+};
+
+type AudienceReportPdfContent = {
+  report_audience: 'visiting_nurse' | 'facility';
+  patient: { name: string; birth_date: string };
+  report_date: string;
+  visit_date: string;
+  pharmacist_name: string;
+  summary: string;
+  medication: string;
+  residual: string;
+  evaluation: string;
+  requests: string;
+  warnings: string[];
+  baseline_context?: BaselineContext;
+};
+
+type PhysicianReportPdfContent = Omit<
+  PhysicianReportContent,
+  'adverse_events' | 'functional_assessment' | 'physician_communication'
+> & {
+  adverse_events?: PhysicianReportContent['adverse_events'];
+  functional_assessment?: Partial<PhysicianReportContent['functional_assessment']>;
+  physician_communication?: string;
 };
 
 const CONFERENCE_NOTE_TYPE_LABELS: Record<string, string> = {
@@ -503,11 +523,26 @@ function isResidualMedication(
   );
 }
 
-function isPhysicianReportContent(value: unknown): value is PhysicianReportContent {
+function isPhysicianReportContent(value: unknown): value is PhysicianReportPdfContent {
   const object = readPdfJsonObject(value);
   const patient = readPdfJsonObject(object.patient);
   const prescriber = readPdfJsonObject(object.prescriber);
   const medicationManagement = readPdfJsonObject(object.medication_management);
+  const adverseEvents = readPdfJsonObject(object.adverse_events);
+  const functionalAssessment = readPdfJsonObject(object.functional_assessment);
+  const hasAdverseEvents =
+    object.adverse_events === undefined ||
+    (typeof adverseEvents.has_events === 'boolean' &&
+      isStringArray(adverseEvents.events) &&
+      isOptionalString(adverseEvents.details));
+  const hasFunctionalAssessment =
+    object.functional_assessment === undefined ||
+    (isOptionalString(functionalAssessment.lab_values) &&
+      isOptionalString(functionalAssessment.sleep) &&
+      isOptionalString(functionalAssessment.cognition) &&
+      isOptionalString(functionalAssessment.diet_oral) &&
+      isOptionalString(functionalAssessment.mobility) &&
+      isOptionalString(functionalAssessment.excretion));
 
   return (
     typeof patient.name === 'string' &&
@@ -524,9 +559,12 @@ function isPhysicianReportContent(value: unknown): value is PhysicianReportConte
     typeof medicationManagement.adherence_score === 'number' &&
     typeof medicationManagement.self_management === 'string' &&
     typeof medicationManagement.calendar_used === 'boolean' &&
+    hasAdverseEvents &&
+    hasFunctionalAssessment &&
     typeof object.assessment === 'string' &&
     typeof object.plan === 'string' &&
     isOptionalString(object.prescription_proposals) &&
+    isOptionalString(object.physician_communication) &&
     Array.isArray(object.residual_medications) &&
     object.residual_medications.every(isResidualMedication) &&
     isStringArray(object.warnings) &&
@@ -574,11 +612,39 @@ function isCareManagerReportContent(value: unknown): value is CareManagerReportC
   );
 }
 
+function isAudienceReportPdfContent(value: unknown): value is AudienceReportPdfContent {
+  const object = readPdfJsonObject(value);
+  const patient = readPdfJsonObject(object.patient);
+  return (
+    (object.report_audience === 'visiting_nurse' || object.report_audience === 'facility') &&
+    typeof patient.name === 'string' &&
+    typeof patient.birth_date === 'string' &&
+    typeof object.report_date === 'string' &&
+    typeof object.visit_date === 'string' &&
+    typeof object.pharmacist_name === 'string' &&
+    typeof object.summary === 'string' &&
+    typeof object.medication === 'string' &&
+    typeof object.residual === 'string' &&
+    typeof object.evaluation === 'string' &&
+    typeof object.requests === 'string' &&
+    isStringArray(object.warnings) &&
+    isBaselineContext(object.baseline_context)
+  );
+}
+
 function renderCareReportContent(report: CareReportRecord) {
-  const billingContext = readPdfJsonObjectField(report.content, 'billing_context');
   if (report.report_type === 'physician_report') {
     const content = readPdfJsonObject(report.content);
     if (isPhysicianReportContent(content)) {
+      const adverseEvents = content.adverse_events ?? { has_events: false, events: [] };
+      const functionalAssessment = {
+        lab_values: content.functional_assessment?.lab_values,
+        sleep: content.functional_assessment?.sleep ?? '記載なし',
+        cognition: content.functional_assessment?.cognition ?? '記載なし',
+        diet_oral: content.functional_assessment?.diet_oral ?? '記載なし',
+        mobility: content.functional_assessment?.mobility ?? '記載なし',
+        excretion: content.functional_assessment?.excretion ?? '記載なし',
+      };
       return (
         <>
           <Section title="基本情報">
@@ -589,55 +655,17 @@ function renderCareReportContent(report: CareReportRecord) {
                 { label: '性別', value: content.patient.gender },
                 { label: '訪問日', value: content.visit_date },
                 { label: '報告日', value: content.report_date },
+                { label: '報告書種別', value: '訪問薬剤管理指導報告書' },
+                {
+                  label: '確認状態',
+                  value: report.status === 'confirmed' ? '薬剤師確認済み' : report.status,
+                },
                 { label: '担当薬剤師', value: content.pharmacist_name },
                 { label: '主治医', value: content.prescriber.name },
                 { label: '所属', value: content.prescriber.institution },
               ]}
             />
           </Section>
-          {billingContext ? (
-            <Section title="請求コンテキスト">
-              <KeyValueCards
-                rows={[
-                  {
-                    label: '保険種別',
-                    value:
-                      typeof billingContext.payer_basis === 'string'
-                        ? billingContext.payer_basis
-                        : '—',
-                  },
-                  {
-                    label: '適用改定',
-                    value:
-                      typeof billingContext.effective_revision_code === 'string'
-                        ? billingContext.effective_revision_code
-                        : '—',
-                  },
-                  {
-                    label: '薬局設定',
-                    value:
-                      typeof billingContext.site_config_status === 'string'
-                        ? billingContext.site_config_status
-                        : '—',
-                  },
-                  {
-                    label: 'JAHIS補足',
-                    value:
-                      typeof billingContext.jahis_supplemental_record_count === 'number'
-                        ? `${billingContext.jahis_supplemental_record_count}件`
-                        : '—',
-                  },
-                  {
-                    label: 'JAHIS残薬確認',
-                    value:
-                      typeof billingContext.jahis_residual_confirmation_count === 'number'
-                        ? `${billingContext.jahis_residual_confirmation_count}件`
-                        : '—',
-                  },
-                ]}
-              />
-            </Section>
-          ) : null}
           {content.baseline_context ? renderBaselineContextSection(content.baseline_context) : null}
 
           <Section title="処方内容">
@@ -670,6 +698,32 @@ function renderCareReportContent(report: CareReportRecord) {
             />
           </Section>
 
+          <Section title="薬物有害事象">
+            <KeyValueCards
+              rows={[
+                { label: '有害事象', value: adverseEvents.has_events ? 'あり' : 'なし' },
+                {
+                  label: '内容',
+                  value: adverseEvents.events.length > 0 ? adverseEvents.events.join('、') : '—',
+                },
+                { label: '詳細', value: adverseEvents.details ?? '—' },
+              ]}
+            />
+          </Section>
+
+          <Section title="検査値・機能評価">
+            <BulletList
+              items={[
+                `検査値: ${functionalAssessment.lab_values ?? '記載なし'}`,
+                `睡眠: ${functionalAssessment.sleep}`,
+                `認知・感覚: ${functionalAssessment.cognition}`,
+                `食事・口腔: ${functionalAssessment.diet_oral}`,
+                `歩行・運動: ${functionalAssessment.mobility}`,
+                `排泄: ${functionalAssessment.excretion}`,
+              ]}
+            />
+          </Section>
+
           <Section title="薬学的評価と対応">
             <Text style={styles.paragraph}>{content.assessment}</Text>
             <Text style={[styles.paragraph, { marginTop: 6 }]}>{content.plan}</Text>
@@ -678,6 +732,10 @@ function renderCareReportContent(report: CareReportRecord) {
                 処方提案: {content.prescription_proposals}
               </Text>
             ) : null}
+          </Section>
+
+          <Section title="処方医への連絡事項">
+            <Text style={styles.paragraph}>{content.physician_communication ?? '特になし'}</Text>
           </Section>
 
           <Section title="残薬・注意事項">
@@ -708,55 +766,17 @@ function renderCareReportContent(report: CareReportRecord) {
                 { label: '生年月日', value: content.patient.birth_date },
                 { label: '報告日', value: content.report_date },
                 { label: '訪問日', value: content.visit_date },
+                { label: '報告書種別', value: '居宅療養管理指導情報提供書' },
+                {
+                  label: '確認状態',
+                  value: report.status === 'confirmed' ? '薬剤師確認済み' : report.status,
+                },
                 { label: '担当薬剤師', value: content.pharmacist_name },
                 { label: 'ケアマネ', value: content.care_manager.name },
                 { label: '所属', value: content.care_manager.organization },
               ]}
             />
           </Section>
-          {billingContext ? (
-            <Section title="請求コンテキスト">
-              <KeyValueCards
-                rows={[
-                  {
-                    label: '保険種別',
-                    value:
-                      typeof billingContext.payer_basis === 'string'
-                        ? billingContext.payer_basis
-                        : '—',
-                  },
-                  {
-                    label: '適用改定',
-                    value:
-                      typeof billingContext.effective_revision_code === 'string'
-                        ? billingContext.effective_revision_code
-                        : '—',
-                  },
-                  {
-                    label: '薬局設定',
-                    value:
-                      typeof billingContext.site_config_status === 'string'
-                        ? billingContext.site_config_status
-                        : '—',
-                  },
-                  {
-                    label: 'JAHIS補足',
-                    value:
-                      typeof billingContext.jahis_supplemental_record_count === 'number'
-                        ? `${billingContext.jahis_supplemental_record_count}件`
-                        : '—',
-                  },
-                  {
-                    label: 'JAHIS残薬確認',
-                    value:
-                      typeof billingContext.jahis_residual_confirmation_count === 'number'
-                        ? `${billingContext.jahis_residual_confirmation_count}件`
-                        : '—',
-                  },
-                ]}
-              />
-            </Section>
-          ) : null}
           {content.baseline_context ? renderBaselineContextSection(content.baseline_context) : null}
 
           <Section title="服薬管理サマリー">
@@ -800,6 +820,7 @@ function renderCareReportContent(report: CareReportRecord) {
             <BulletList
               items={[
                 `残薬状況: ${content.residual_status.summary}`,
+                ...content.residual_status.reduction_proposals.map((item) => `減数提案: ${item}`),
                 `服薬支援: ${content.care_service_coordination.medication_assistance}`,
                 `一包化: ${content.care_service_coordination.unit_dose_packaging ? 'あり' : 'なし'}`,
                 `服薬カレンダー提案: ${content.care_service_coordination.calendar_recommendation ? 'あり' : 'なし'}`,
@@ -814,11 +835,65 @@ function renderCareReportContent(report: CareReportRecord) {
     }
   }
 
+  if (report.report_type === 'nurse_share' || report.report_type === 'facility_handoff') {
+    const content = readPdfJsonObject(report.content);
+    const expectedAudience = report.report_type === 'nurse_share' ? 'visiting_nurse' : 'facility';
+    if (isAudienceReportPdfContent(content) && content.report_audience === expectedAudience) {
+      return (
+        <>
+          <Section title="基本情報">
+            <KeyValueCards
+              rows={[
+                { label: '患者名', value: content.patient.name },
+                { label: '生年月日', value: content.patient.birth_date },
+                { label: '訪問日', value: content.visit_date },
+                { label: '報告日', value: content.report_date },
+                {
+                  label: '報告書種別',
+                  value:
+                    content.report_audience === 'visiting_nurse'
+                      ? '訪問看護向け服薬情報共有'
+                      : '施設向け服薬介助申し送り',
+                },
+                {
+                  label: '確認状態',
+                  value: report.status === 'confirmed' ? '薬剤師確認済み' : report.status,
+                },
+                { label: '担当薬剤師', value: content.pharmacist_name },
+              ]}
+            />
+          </Section>
+          {content.baseline_context ? renderBaselineContextSection(content.baseline_context) : null}
+          <Section title="今日の要点">
+            <Text style={styles.paragraph}>{content.summary}</Text>
+          </Section>
+          <Section title="服薬状況">
+            <Text style={styles.paragraph}>{content.medication}</Text>
+          </Section>
+          <Section title="残薬">
+            <Text style={styles.paragraph}>{content.residual}</Text>
+          </Section>
+          <Section title="薬剤師の評価">
+            <Text style={styles.paragraph}>{content.evaluation}</Text>
+          </Section>
+          <Section title="お願いしたいこと">
+            <Text style={styles.paragraph}>{content.requests}</Text>
+          </Section>
+          {content.warnings.length > 0 ? (
+            <Section title="提出前確認">
+              <BulletList items={content.warnings} />
+            </Section>
+          ) : null}
+        </>
+      );
+    }
+  }
+
   return (
     <Section title="内容">
-      <BulletList
-        items={flattenPdfJson(report.content).map((row) => `${row.label}: ${row.value}`)}
-      />
+      <Text style={styles.paragraph}>
+        この報告書形式は外部提出用PDFとして表示できません。薬剤師が内容を確認し、専用形式で再出力してください。
+      </Text>
     </Section>
   );
 }

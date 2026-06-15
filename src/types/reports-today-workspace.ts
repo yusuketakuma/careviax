@@ -52,15 +52,47 @@ export type ReportResolvedToday = {
   action: { label: string; href: string };
 };
 
+export type ReportCreatedRow = {
+  id: string;
+  patient_label: string;
+  report_type: string;
+  report_type_label: string;
+  status: string;
+  status_label: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  reported_to_professional: boolean;
+  last_sent_at: string | null;
+  last_recipient_label: string | null;
+  last_channel: string | null;
+  action: { label: string; href: string };
+};
+
+export type ReportOpenIssueSeverity = 'critical' | 'warning' | 'info';
+
+export type ReportOpenIssue = {
+  id: string;
+  report_id: string;
+  severity: ReportOpenIssueSeverity;
+  title: string;
+  description: string;
+  action: { label: string; href: string };
+};
+
 export type ReportsTodayWorkspaceResponse = {
   generated_at: string;
   draft_rows: ReportDraftRow[];
   waiting_replies: ReportWaitingReply[];
   resolved_today: ReportResolvedToday[];
+  created_reports: ReportCreatedRow[];
+  open_issues: ReportOpenIssue[];
   counts: {
     to_write: number;
     waiting: number;
     resolved: number;
+    created: number;
+    open_issues: number;
   };
   evidence: {
     /** 宛先別テンプレート種数(送付テンプレート N種) */

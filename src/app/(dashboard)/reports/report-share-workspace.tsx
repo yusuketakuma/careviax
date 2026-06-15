@@ -21,6 +21,8 @@ import { cn } from '@/lib/utils';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type {
   ReportsTodayWorkspaceResponse,
+  ReportCreatedRow,
+  ReportOpenIssue,
   ReportWaitingReply,
 } from '@/types/reports-today-workspace';
 import {
@@ -45,10 +47,33 @@ const DRAFT_STATUS_LABELS: Record<string, string> = {
   draft_ready: '下書きあり',
 };
 
+const ISSUE_TONE_CLASSES: Record<ReportOpenIssue['severity'], string> = {
+  critical: 'border-red-200 bg-red-50 text-red-800',
+  warning: 'border-amber-200 bg-amber-50 text-amber-800',
+  info: 'border-sky-200 bg-sky-50 text-sky-800',
+};
+
+const DELIVERY_CHANNEL_LABELS: Record<string, string> = {
+  email: 'メール',
+  ses: 'メール',
+  fax: 'FAX',
+  phone: '電話',
+  in_person: '対面',
+  postal: '郵送',
+  ph_os_share: 'PH-OS共有',
+};
+
 type GeneratedCareReport = {
   id: string;
   report_type: string;
 };
+
+function formatDateTime(iso: string): string {
+  const date = new Date(iso);
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${month}/${day} ${formatTimeOfDay(iso)}`;
+}
 
 async function fetchReportsTodayWorkspace(orgId: string): Promise<ReportsTodayWorkspaceResponse> {
   const res = await fetch('/api/care-reports/today-workspace', {
@@ -290,6 +315,152 @@ function WaitingBoxesSection({ data }: { data: ReportsTodayWorkspaceResponse }) 
   );
 }
 
+function ReportOpenIssuesSection({ issues }: { issues: ReportOpenIssue[] }) {
+  return (
+    <section
+      className="rounded-lg border border-border/70 bg-card p-4"
+      aria-labelledby="report-open-issues-heading"
+      data-testid="report-open-issues"
+    >
+      <div className="flex items-baseline gap-2">
+        <h3 id="report-open-issues-heading" className="text-base font-bold text-foreground">
+          残課題
+        </h3>
+        <span className="text-xs text-muted-foreground">{issues.length}件</span>
+      </div>
+      {issues.length === 0 ? (
+        <p className="mt-3 text-sm text-muted-foreground">
+          報告書の確認・送付・根拠記録で止まっている課題はありません。
+        </p>
+      ) : (
+        <ul className="mt-3 divide-y divide-border/70" role="list">
+          {issues.map((issue) => (
+            <li key={issue.id} className="flex flex-wrap items-start gap-3 py-3">
+              <span
+                className={cn(
+                  'inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-bold',
+                  ISSUE_TONE_CLASSES[issue.severity],
+                )}
+              >
+                {issue.severity === 'critical'
+                  ? '要対応'
+                  : issue.severity === 'warning'
+                    ? '確認'
+                    : '情報'}
+              </span>
+              <span className="min-w-0 flex-1 space-y-1">
+                <span className="block text-sm font-bold text-foreground">{issue.title}</span>
+                <span className="block text-xs leading-5 text-muted-foreground">
+                  {issue.description}
+                </span>
+              </span>
+              <Link
+                href={issue.action.href}
+                className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'text-primary')}
+              >
+                {issue.action.label}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function CreatedReportStatusCell({ report }: { report: ReportCreatedRow }) {
+  if (!report.reported_to_professional) {
+    return (
+      <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+        他職種未報告
+      </span>
+    );
+  }
+
+  return (
+    <span className="space-y-1">
+      <span className="block text-sm font-semibold text-emerald-700">他職種へ報告済み</span>
+      <span className="block text-xs text-muted-foreground">
+        {report.last_sent_at ? formatDateTime(report.last_sent_at) : '送信日時未記録'}
+        {report.last_recipient_label ? ` / ${report.last_recipient_label}` : ''}
+        {report.last_channel
+          ? ` / ${DELIVERY_CHANNEL_LABELS[report.last_channel] ?? report.last_channel}`
+          : ''}
+      </span>
+    </span>
+  );
+}
+
+function CreatedReportsSection({ reports }: { reports: ReportCreatedRow[] }) {
+  return (
+    <section
+      className="rounded-lg border border-border/70 bg-card p-4"
+      aria-labelledby="created-reports-heading"
+      data-testid="report-created-list"
+    >
+      <div className="flex items-baseline gap-2">
+        <h3 id="created-reports-heading" className="text-base font-bold text-foreground">
+          作成済み報告書
+        </h3>
+        <span className="text-xs text-muted-foreground">{reports.length}件</span>
+      </div>
+      {reports.length === 0 ? (
+        <p className="mt-3 text-sm text-muted-foreground">作成済み報告書はありません。</p>
+      ) : (
+        <Table className="mt-3">
+          <TableHeader>
+            <TableRow>
+              <TableHead>患者・報告書</TableHead>
+              <TableHead className="w-28">状態</TableHead>
+              <TableHead className="w-56">他職種報告</TableHead>
+              <TableHead className="w-24">
+                <span className="sr-only">詳細</span>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {reports.map((report) => (
+              <TableRow key={report.id}>
+                <TableCell>
+                  <span className="block font-semibold text-foreground">
+                    {report.patient_label}
+                  </span>
+                  <span className="block text-xs leading-5 text-muted-foreground">
+                    {report.report_type_label} / {report.title}
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    作成 {formatDateTime(report.created_at)} / 更新{' '}
+                    {formatDateTime(report.updated_at)}
+                  </span>
+                </TableCell>
+                <TableCell>
+                  <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+                    {report.status_label}
+                  </span>
+                </TableCell>
+                <TableCell>
+                  <CreatedReportStatusCell report={report} />
+                </TableCell>
+                <TableCell>
+                  <Link
+                    href={report.action.href}
+                    className={cn(
+                      buttonVariants({ variant: 'outline', size: 'sm' }),
+                      'text-primary',
+                    )}
+                  >
+                    {report.action.label}
+                  </Link>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </section>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // 本体
 // ---------------------------------------------------------------------------
@@ -433,6 +604,8 @@ export function ReportShareWorkspace() {
                 }
                 isGeneratingDraft={generateDraftMutation.isPending}
               />
+              <ReportOpenIssuesSection issues={data.open_issues} />
+              <CreatedReportsSection reports={data.created_reports} />
               <WaitingBoxesSection data={data} />
               <p
                 className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm leading-6 text-sky-800"

@@ -96,7 +96,59 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
       action: { label: '→ 調剤へ', href: '/dispensing' },
     },
   ],
-  counts: { to_write: 3, waiting: 2, resolved: 1 },
+  created_reports: [
+    {
+      id: 'report_sent',
+      patient_label: '田中 一郎 様',
+      report_type: 'physician_report',
+      report_type_label: '医師への報告',
+      status: 'sent',
+      status_label: '送付済',
+      title: '主治医への服薬状況報告',
+      created_at: '2026-06-10T01:00:00.000Z',
+      updated_at: '2026-06-11T02:00:00.000Z',
+      reported_to_professional: true,
+      last_sent_at: '2026-06-11T02:10:00.000Z',
+      last_recipient_label: '山田 太郎',
+      last_channel: 'fax',
+      action: { label: '→ 詳細へ', href: '/reports/report_sent' },
+    },
+    {
+      id: 'report_draft',
+      patient_label: '加藤 ミサ 様',
+      report_type: 'care_manager_report',
+      report_type_label: 'ケアマネへの報告',
+      status: 'draft',
+      status_label: '下書き',
+      title: 'ケアマネへの共有',
+      created_at: '2026-06-11T03:00:00.000Z',
+      updated_at: '2026-06-11T03:30:00.000Z',
+      reported_to_professional: false,
+      last_sent_at: null,
+      last_recipient_label: null,
+      last_channel: null,
+      action: { label: '→ 詳細へ', href: '/reports/report_draft' },
+    },
+  ],
+  open_issues: [
+    {
+      id: 'report_draft-draft-confirmation',
+      report_id: 'report_draft',
+      severity: 'critical',
+      title: '加藤 ミサ 様 — 薬剤師確認待ち',
+      description: '下書きのため、他職種への送付とPDF出力はできません。',
+      action: { label: '確認する', href: '/reports/report_draft' },
+    },
+    {
+      id: 'report_draft-billing-context',
+      report_id: 'report_draft',
+      severity: 'warning',
+      title: '加藤 ミサ 様 — 保険・請求根拠未確定',
+      description: '保険種別と算定根拠が報告書contentに記録されていません。',
+      action: { label: '根拠を確認', href: '/reports/report_draft' },
+    },
+  ],
+  counts: { to_write: 3, waiting: 2, resolved: 1, created: 2, open_issues: 2 },
   evidence: { template_count: 3, monthly_delivery_count: 14 },
 };
 
@@ -202,7 +254,7 @@ describe('ReportShareWorkspace', () => {
     });
 
     // ヘッダーメタ(書く/待つ/解決の当日件数)
-    expect(screen.getByText(/書く3件・待つ2件・解決1件/)).toBeTruthy();
+    expect(screen.getByText(/書く3件・課題2件・作成済み2件・待つ2件・解決1件/)).toBeTruthy();
     // テンプレート編集はアウトライン副操作
     expect(screen.getByTestId('report-edit-templates').textContent).toContain('テンプレートを編集');
 
@@ -223,6 +275,19 @@ describe('ReportShareWorkspace', () => {
         name: '田中 一郎 様 医師(山本先生)+ケアマネ の下書きを自動作成',
       }),
     ).toBeTruthy();
+
+    // 残課題 / 作成済み報告書: 他職種報告済みかどうかと送信日時を表示する
+    expect(screen.getByTestId('report-open-issues')).toBeTruthy();
+    expect(screen.getByText('加藤 ミサ 様 — 薬剤師確認待ち')).toBeTruthy();
+    expect(screen.getByText('加藤 ミサ 様 — 保険・請求根拠未確定')).toBeTruthy();
+    expect(screen.getByTestId('report-created-list')).toBeTruthy();
+    expect(screen.getByText('作成済み報告書')).toBeTruthy();
+    expect(
+      screen.getByText((text) => text.includes('医師への報告 / 主治医への服薬状況報告')),
+    ).toBeTruthy();
+    expect(screen.getByText('他職種へ報告済み')).toBeTruthy();
+    expect(screen.getByText(/06\/11 11:10 \/ 山田 太郎 \/ FAX/)).toBeTruthy();
+    expect(screen.getByText('他職種未報告')).toBeTruthy();
 
     // 返信待ち / 今日解決した待ち
     expect(screen.getByText('返信待ち')).toBeTruthy();
@@ -300,7 +365,7 @@ describe('ReportShareWorkspace', () => {
 describe('report-share-workspace helpers', () => {
   it('builds header meta with counts', () => {
     expect(buildHeaderMeta(new Date(2026, 5, 11), TODAY_WORKSPACE.counts)).toMatch(
-      /^6\/11\(木\) — 書く3件・待つ2件・解決1件$/,
+      /^6\/11\(木\) — 書く3件・課題2件・作成済み2件・待つ2件・解決1件$/,
     );
   });
 

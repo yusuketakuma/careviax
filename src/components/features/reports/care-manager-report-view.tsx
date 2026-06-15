@@ -1,11 +1,10 @@
 'use client';
 
-import { format, parseISO } from 'date-fns';
-import { ja } from 'date-fns/locale';
 import { AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { CareManagerReportContent } from '@/types/care-report-content';
+import { formatReportDate } from './report-date-format';
 
 function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -23,9 +22,7 @@ function ImpactCard({ label, value }: { label: string; value: string }) {
   return (
     <div
       className={`rounded-md border p-3 ${
-        hasIssue
-          ? 'border-amber-300 bg-amber-50'
-          : 'border-border bg-muted/20'
+        hasIssue ? 'border-amber-300 bg-amber-50' : 'border-border bg-muted/20'
       }`}
     >
       <p className="mb-1 text-xs font-medium text-muted-foreground">{label}</p>
@@ -74,19 +71,11 @@ export function CareManagerReportView({ content }: { content: CareManagerReportC
         <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm md:grid-cols-3">
           <div>
             <dt className="text-xs text-muted-foreground">報告日</dt>
-            <dd className="mt-0.5 font-medium">
-              {content.report_date
-                ? format(parseISO(content.report_date), 'yyyy年M月d日', { locale: ja })
-                : '—'}
-            </dd>
+            <dd className="mt-0.5 font-medium">{formatReportDate(content.report_date)}</dd>
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">訪問日</dt>
-            <dd className="mt-0.5 font-medium">
-              {content.visit_date
-                ? format(parseISO(content.visit_date), 'yyyy年M月d日', { locale: ja })
-                : '—'}
-            </dd>
+            <dd className="mt-0.5 font-medium">{formatReportDate(content.visit_date)}</dd>
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">担当薬剤師</dt>
@@ -118,11 +107,7 @@ export function CareManagerReportView({ content }: { content: CareManagerReportC
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">生年月日</dt>
-            <dd className="mt-0.5">
-              {content.patient.birth_date
-                ? format(parseISO(content.patient.birth_date), 'yyyy年M月d日', { locale: ja })
-                : '—'}
-            </dd>
+            <dd className="mt-0.5">{formatReportDate(content.patient.birth_date)}</dd>
           </div>
         </dl>
       </SectionCard>
@@ -178,7 +163,10 @@ export function CareManagerReportView({ content }: { content: CareManagerReportC
               <ul className="space-y-1">
                 {content.residual_status.reduction_proposals.map((proposal, i) => (
                   <li key={i} className="flex items-start gap-1.5 text-sm">
-                    <span className="mt-1 size-1.5 shrink-0 rounded-full bg-amber-500" aria-hidden="true" />
+                    <span
+                      className="mt-1 size-1.5 shrink-0 rounded-full bg-amber-500"
+                      aria-hidden="true"
+                    />
                     {proposal}
                   </li>
                 ))}
@@ -224,9 +212,7 @@ export function CareManagerReportView({ content }: { content: CareManagerReportC
           {content.next_visit_plan.date && (
             <div>
               <p className="text-xs text-muted-foreground">次回訪問予定日</p>
-              <p className="mt-0.5 font-medium">
-                {format(parseISO(content.next_visit_plan.date), 'yyyy年M月d日', { locale: ja })}
-              </p>
+              <p className="mt-0.5 font-medium">{formatReportDate(content.next_visit_plan.date)}</p>
             </div>
           )}
           {content.next_visit_plan.followup_items.length > 0 && (
@@ -235,7 +221,10 @@ export function CareManagerReportView({ content }: { content: CareManagerReportC
               <ul className="space-y-1">
                 {content.next_visit_plan.followup_items.map((item, i) => (
                   <li key={i} className="flex items-start gap-1.5">
-                    <span className="mt-1 size-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+                    <span
+                      className="mt-1 size-1.5 shrink-0 rounded-full bg-primary"
+                      aria-hidden="true"
+                    />
                     {item}
                   </li>
                 ))}

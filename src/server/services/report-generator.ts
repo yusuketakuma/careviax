@@ -120,6 +120,12 @@ export async function generateReportsFromVisit(
   }
 
   const caseId = schedule.case_id;
+  if (!schedule.cycle_id) {
+    throw new Error('VISIT_SCHEDULE_CYCLE_REQUIRED_FOR_REPORT');
+  }
+  if (!visitRecord.structured_soap) {
+    throw new Error('STRUCTURED_SOAP_REQUIRED_FOR_REPORT');
+  }
   if (
     accessContext &&
     !(await canAccessCareReportSource(prisma, orgId, accessContext, {
@@ -164,9 +170,7 @@ export async function generateReportsFromVisit(
       select: { id: true, name: true, birth_date: true, gender: true },
     }),
     prisma.medicationCycle.findFirst({
-      where: schedule.cycle_id
-        ? { id: schedule.cycle_id, org_id: orgId }
-        : { case_id: caseId, org_id: orgId },
+      where: { id: schedule.cycle_id, org_id: orgId },
       orderBy: { created_at: 'desc' },
       select: { id: true },
     }),
@@ -235,36 +239,36 @@ export async function generateReportsFromVisit(
   if (!patient) {
     throw new Error(`Patient not found: ${visitRecord.patient_id}`);
   }
+  if (!medicationCycle) {
+    throw new Error('MEDICATION_CYCLE_NOT_FOUND_FOR_REPORT');
+  }
 
   // intake コンテキスト（required_visit_support.home_visit_intake）
   const intake = getHomeVisitIntake(careCase?.required_visit_support) ?? undefined;
 
   // ─── PrescriptionLines（medicationCycle に依存） ───────────────────────────
-  const prescriptionLines =
-    medicationCycle != null
-      ? await prisma.prescriptionLine.findMany({
-          where: { org_id: orgId, intake: { cycle_id: medicationCycle.id } },
-          select: {
-            id: true,
-            intake_id: true,
-            drug_name: true,
-            drug_code: true,
-            dose: true,
-            frequency: true,
-            days: true,
-            quantity: true,
-            unit: true,
-            route: true,
-            dispensing_method: true,
-            intake: {
-              select: {
-                prescribed_date: true,
-              },
-            },
-          },
-          orderBy: [{ intake: { prescribed_date: 'desc' } }, { line_number: 'asc' }],
-        })
-      : [];
+  const prescriptionLines = await prisma.prescriptionLine.findMany({
+    where: { org_id: orgId, intake: { cycle_id: medicationCycle.id } },
+    select: {
+      id: true,
+      intake_id: true,
+      drug_name: true,
+      drug_code: true,
+      dose: true,
+      frequency: true,
+      days: true,
+      quantity: true,
+      unit: true,
+      route: true,
+      dispensing_method: true,
+      intake: {
+        select: {
+          prescribed_date: true,
+        },
+      },
+    },
+    orderBy: [{ intake: { prescribed_date: 'desc' } }, { line_number: 'asc' }],
+  });
 
   const prescriptionLinesNormalized = prescriptionLines.map((l) => ({
     drug_name: l.drug_name,
@@ -344,18 +348,8 @@ export async function generateReportsFromVisit(
   const missingTypes = typesToGenerate.filter((type) => !existingByType.has(type));
 
   // ─── 9. structured_soap を型アサート ──────────────────────────────────────
-  // DB の Json フィールドから StructuredSoap を取得する。
-  // 未入力の場合はデフォルト値でフォールバック。
-  const structuredSoap = (visitRecord.structured_soap as StructuredSoap | null) ?? {
-    subjective: { symptom_checks: [] },
-    objective: {
-      medication_status: 'full_compliance',
-      adherence_score: 3 as const,
-      side_effect_checks: [],
-    },
-    assessment: { problem_checks: [] },
-    plan: { intervention_checks: [] },
-  };
+  // 提出用報告書は、訪問時に薬剤師が確認した構造化SOAPを根拠にする。
+  const structuredSoap = visitRecord.structured_soap as StructuredSoap;
 
   const billingContext = billingEvidence
     ? {

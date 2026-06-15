@@ -18,8 +18,17 @@ import { buildExternalConferenceReportLines } from '@/lib/conferences/conference
 // ─── 共通ヘルパー ──────────────────────────────────────────────────────────────
 
 function formatDate(date: Date | string): string {
+  if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return date;
+  }
   const d = typeof date === 'string' ? new Date(date) : date;
-  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+  if (Number.isNaN(d.getTime())) {
+    return '';
+  }
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function buildLabValuesText(

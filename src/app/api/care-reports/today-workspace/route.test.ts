@@ -32,6 +32,7 @@ function createRequest(url: string) {
 type TxOverrides = {
   schedules?: unknown[];
   draftReports?: unknown[];
+  recentReports?: unknown[];
   facilities?: unknown[];
   deliveries?: unknown[];
   requests?: unknown[];
@@ -48,7 +49,10 @@ function mockTx(overrides: TxOverrides = {}) {
         findMany: vi.fn().mockResolvedValue(overrides.schedules ?? []),
       },
       careReport: {
-        findMany: vi.fn().mockResolvedValue(overrides.draftReports ?? []),
+        findMany: vi.fn().mockImplementation((args?: { take?: number; orderBy?: unknown }) => {
+          if (args?.take) return Promise.resolve(overrides.recentReports ?? []);
+          return Promise.resolve(overrides.draftReports ?? []);
+        }),
       },
       facility: {
         findMany: vi.fn().mockResolvedValue(overrides.facilities ?? []),
@@ -87,7 +91,15 @@ describe('/api/care-reports/today-workspace', () => {
     expect(res!.status).toBe(200);
     const json = await res!.json();
     expect(json.data.draft_rows).toEqual([]);
-    expect(json.data.counts).toEqual({ to_write: 0, waiting: 0, resolved: 0 });
+    expect(json.data.created_reports).toEqual([]);
+    expect(json.data.open_issues).toEqual([]);
+    expect(json.data.counts).toEqual({
+      to_write: 0,
+      waiting: 0,
+      resolved: 0,
+      created: 0,
+      open_issues: 0,
+    });
   });
 
   it('builds draft rows with recipient labels, narcotic note and facility batching', async () => {
@@ -335,7 +347,101 @@ describe('/api/care-reports/today-workspace', () => {
     expect(json.data.resolved_today[0].action).toEqual({ label: '→ 調剤へ', href: '/dispensing' });
 
     expect(json.data.evidence).toEqual({ template_count: 3, monthly_delivery_count: 14 });
-    expect(json.data.counts).toEqual({ to_write: 0, waiting: 2, resolved: 1 });
+    expect(json.data.counts).toEqual({
+      to_write: 0,
+      waiting: 2,
+      resolved: 1,
+      created: 0,
+      open_issues: 0,
+    });
+  });
+
+  it('lists created reports with professional delivery status and open report issues', async () => {
+    mockTx({
+      recentReports: [
+        {
+          id: 'report_sent',
+          patient_id: 'p_tanaka',
+          report_type: 'physician_report',
+          status: 'sent',
+          content: {
+            title: '主治医への服薬状況報告',
+            source_provenance: {
+              medication_cycle_id: 'cycle_1',
+              prescription_line_ids: ['line_1'],
+            },
+            billing_context: { payer_basis: 'medical' },
+          },
+          created_at: new Date('2026-06-10T01:00:00.000Z'),
+          updated_at: new Date('2026-06-11T02:00:00.000Z'),
+          delivery_records: [
+            {
+              id: 'delivery_1',
+              channel: 'fax',
+              recipient_name: '山田 太郎',
+              status: 'sent',
+              sent_at: new Date('2026-06-11T02:10:00.000Z'),
+            },
+          ],
+        },
+        {
+          id: 'report_draft',
+          patient_id: 'p_kato',
+          report_type: 'care_manager_report',
+          status: 'draft',
+          content: { title: 'ケアマネへの共有' },
+          created_at: new Date('2026-06-11T03:00:00.000Z'),
+          updated_at: new Date('2026-06-11T03:30:00.000Z'),
+          delivery_records: [],
+        },
+      ],
+      patients: [
+        { id: 'p_tanaka', name: '田中 一郎' },
+        { id: 'p_kato', name: '加藤 ミサ' },
+      ],
+    });
+
+    const req = createRequest('http://localhost/api/care-reports/today-workspace');
+    const res = await GET(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(200);
+    const json = await res!.json();
+
+    expect(json.data.created_reports).toHaveLength(2);
+    expect(json.data.created_reports[0]).toMatchObject({
+      id: 'report_sent',
+      patient_label: '田中 一郎 様',
+      report_type_label: '医師への報告',
+      status_label: '送付済',
+      reported_to_professional: true,
+      last_sent_at: '2026-06-11T02:10:00.000Z',
+      last_recipient_label: '山田 太郎',
+      last_channel: 'fax',
+    });
+    expect(json.data.created_reports[1]).toMatchObject({
+      id: 'report_draft',
+      patient_label: '加藤 ミサ 様',
+      reported_to_professional: false,
+      last_sent_at: null,
+    });
+    expect(json.data.open_issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'report_draft-draft-confirmation',
+          severity: 'critical',
+          title: '加藤 ミサ 様 — 薬剤師確認待ち',
+        }),
+        expect.objectContaining({
+          id: 'report_draft-prescription-link',
+          severity: 'warning',
+        }),
+        expect.objectContaining({
+          id: 'report_draft-billing-context',
+          severity: 'warning',
+        }),
+      ]),
+    );
+    expect(json.data.counts.created).toBe(2);
+    expect(json.data.counts.open_issues).toBe(3);
   });
 
   it('returns 400 on invalid date param', async () => {

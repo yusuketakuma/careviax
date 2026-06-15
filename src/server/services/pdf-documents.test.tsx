@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { isValidElement } from 'react';
 
 const {
   renderToBufferMock,
@@ -66,12 +67,49 @@ import {
 } from './pdf-documents';
 import { PdfNotFoundError } from './pdf-errors';
 
+function collectPdfText(value: unknown): string[] {
+  if (value == null || typeof value === 'boolean') return [];
+  if (typeof value === 'string' || typeof value === 'number') return [String(value)];
+  if (Array.isArray(value)) return value.flatMap(collectPdfText);
+  if (!isValidElement(value)) return [];
+
+  const props = value.props as {
+    title?: unknown;
+    subtitle?: unknown;
+    pharmacyName?: unknown;
+    children?: unknown;
+    rows?: unknown;
+    items?: unknown;
+    headers?: unknown;
+  };
+  const rows = Array.isArray(props.rows)
+    ? props.rows.flatMap((row) => {
+        if (Array.isArray(row)) return row;
+        if (row && typeof row === 'object') {
+          const record = row as { label?: unknown; value?: unknown };
+          return [record.label, record.value];
+        }
+        return [];
+      })
+    : [];
+
+  return [
+    ...collectPdfText(props.title),
+    ...collectPdfText(props.subtitle),
+    ...collectPdfText(props.pharmacyName),
+    ...collectPdfText(props.headers),
+    ...collectPdfText(rows),
+    ...collectPdfText(props.items),
+    ...collectPdfText(props.children),
+  ];
+}
+
 const baseReport = {
   id: 'report_1',
   patient_id: 'patient_1',
   case_id: null,
   visit_record_id: null,
-  status: 'draft',
+  status: 'confirmed',
   created_at: new Date('2026-04-01T00:00:00.000Z'),
   updated_at: new Date('2026-04-01T00:00:00.000Z'),
 };
@@ -105,7 +143,7 @@ describe('buildCareReportPdf', () => {
 
     const result = await buildCareReportPdf('org_1', 'report_1');
 
-    expect(result.fileName).toBe('care-report-_-report_1.pdf');
+    expect(result.fileName).toBe('care-report-report_1.pdf');
     expect(result.buffer).toEqual(Buffer.from('pdf'));
     expect(renderToBufferMock).toHaveBeenCalledOnce();
   });
@@ -122,9 +160,174 @@ describe('buildCareReportPdf', () => {
 
     const result = await buildCareReportPdf('org_1', 'report_1');
 
-    expect(result.fileName).toBe('care-report-_-report_1.pdf');
+    expect(result.fileName).toBe('care-report-report_1.pdf');
     expect(result.buffer).toEqual(Buffer.from('pdf'));
     expect(renderToBufferMock).toHaveBeenCalledOnce();
+  });
+
+  it('renders physician report medication-safety sections without internal billing context', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      ...baseReport,
+      report_type: 'physician_report',
+      content: {
+        patient: { name: '山田 太郎', birth_date: '1940-01-01', gender: 'male' },
+        report_date: '2026-06-15',
+        visit_date: '2026-06-14',
+        pharmacist_name: '鈴木 薬剤師',
+        prescriber: { name: '佐藤 医師', institution: '在宅クリニック' },
+        prescriptions: [
+          { drug_name: 'アムロジピン錠5mg', dose: '1錠', frequency: '朝食後', days: 14 },
+        ],
+        medication_management: {
+          compliance_summary: '全量服用。',
+          adherence_score: 5,
+          self_management: '支援あり',
+          calendar_used: true,
+        },
+        adverse_events: {
+          has_events: true,
+          events: ['ふらつき'],
+          details: '降圧薬調整を相談。',
+        },
+        functional_assessment: {
+          lab_values: 'eGFR 42',
+          sleep: '問題なし',
+          cognition: '問題なし',
+          diet_oral: '問題なし',
+          mobility: 'ふらつきあり',
+          excretion: '問題なし',
+        },
+        residual_medications: [],
+        assessment: '薬剤性ふらつきの可能性。',
+        plan: '処方医へ共有。',
+        prescription_proposals: '降圧薬の減量検討。',
+        physician_communication: 'ふらつきについて処方調整をご検討ください。',
+        warnings: [],
+        billing_context: {
+          billing_evidence_id: 'billing-1',
+          payer_basis: 'medical',
+          jahis_supplemental_record_count: 2,
+        },
+      },
+    });
+
+    await buildCareReportPdf('org_1', 'report_1');
+
+    const text = collectPdfText(renderToBufferMock.mock.calls[0][0]).join('\n');
+    expect(text).toContain('薬物有害事象');
+    expect(text).toContain('検査値・機能評価');
+    expect(text).toContain('eGFR 42');
+    expect(text).toContain('処方医への連絡事項');
+    expect(text).not.toContain('請求コンテキスト');
+    expect(text).not.toContain('JAHIS');
+    expect(text).not.toContain('billing-1');
+  });
+
+  it('renders older physician report content safely without raw JSON fallback', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      ...baseReport,
+      report_type: 'physician_report',
+      content: {
+        patient: { name: '山田 太郎', birth_date: '1940-01-01', gender: 'male' },
+        report_date: '2026-06-15',
+        visit_date: '2026-06-14',
+        pharmacist_name: '鈴木 薬剤師',
+        prescriber: { name: '佐藤 医師', institution: '在宅クリニック' },
+        prescriptions: [
+          { drug_name: 'アムロジピン錠5mg', dose: '1錠', frequency: '朝食後', days: 14 },
+        ],
+        medication_management: {
+          compliance_summary: '全量服用。',
+          adherence_score: 5,
+          self_management: '支援あり',
+          calendar_used: true,
+        },
+        residual_medications: [],
+        assessment: '服薬管理は安定。',
+        plan: '服薬指導を継続。',
+        warnings: [],
+        source_provenance: { patient_id: 'patient_1' },
+      },
+    });
+
+    await buildCareReportPdf('org_1', 'report_1');
+
+    const text = collectPdfText(renderToBufferMock.mock.calls[0][0]).join('\n');
+    expect(text).toContain('アムロジピン錠5mg');
+    expect(text).toContain('服薬管理は安定。');
+    expect(text).toContain('記載なし');
+    expect(text).toContain('特になし');
+    expect(text).not.toContain('外部提出用PDFとして表示できません');
+    expect(text).not.toContain('source_provenance');
+    expect(text).not.toContain('patient_1');
+  });
+
+  it('renders nurse share PDFs from an external allowlist and hides provenance keys', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      ...baseReport,
+      report_type: 'nurse_share',
+      content: {
+        report_audience: 'visiting_nurse',
+        patient: { name: '山田 太郎', birth_date: '1940-01-01' },
+        report_date: '2026-06-15',
+        visit_date: '2026-06-14',
+        pharmacist_name: '鈴木 薬剤師',
+        summary: '眠気とふらつきを確認。',
+        medication: '服薬状況: 全量服用。',
+        residual: '残薬なし。',
+        evaluation: '転倒リスクに注意。',
+        requests: '症状変化の観察をお願いします。',
+        warnings: [],
+        billing_context: { billing_evidence_id: 'billing-1' },
+        source_provenance: {
+          patient_id: 'patient_1',
+          visit_record_id: 'visit_1',
+          prescription_line_ids: ['line-1'],
+          prescription_lines: [{ drug_code: '123456789', prescription_line_id: 'line-1' }],
+        },
+      },
+    });
+
+    await buildCareReportPdf('org_1', 'report_1');
+
+    const text = collectPdfText(renderToBufferMock.mock.calls[0][0]).join('\n');
+    expect(text).toContain('今日の要点');
+    expect(text).toContain('服薬状況');
+    expect(text).toContain('お願いしたいこと');
+    expect(text).toContain('症状変化の観察をお願いします。');
+    expect(text).not.toContain('source_provenance');
+    expect(text).not.toContain('patient_id');
+    expect(text).not.toContain('visit_1');
+    expect(text).not.toContain('line-1');
+    expect(text).not.toContain('123456789');
+    expect(text).not.toContain('billing-1');
+  });
+
+  it('does not render audience report PDFs when report type and audience disagree', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      ...baseReport,
+      report_type: 'nurse_share',
+      content: {
+        report_audience: 'facility',
+        patient: { name: '山田 太郎', birth_date: '1940-01-01' },
+        report_date: '2026-06-15',
+        visit_date: '2026-06-14',
+        pharmacist_name: '鈴木 薬剤師',
+        summary: '施設向け要点。',
+        medication: '施設向け服薬状況。',
+        residual: '残薬なし。',
+        evaluation: '施設向け評価。',
+        requests: '施設向け依頼。',
+        warnings: [],
+      },
+    });
+
+    await buildCareReportPdf('org_1', 'report_1');
+
+    const text = collectPdfText(renderToBufferMock.mock.calls[0][0]).join('\n');
+    expect(text).toContain('外部提出用PDFとして表示できません');
+    expect(text).not.toContain('施設向け服薬状況。');
+    expect(text).not.toContain('施設向け依頼。');
   });
 });
 

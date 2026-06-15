@@ -108,6 +108,63 @@ describe('/api/care-reports/generate-from-visit', () => {
     expect(response.status).toBe(403);
   });
 
+  it('returns a validation error when the visit is not linked to a medication cycle', async () => {
+    generateReportsFromVisitMock.mockRejectedValue(
+      new Error('VISIT_SCHEDULE_CYCLE_REQUIRED_FOR_REPORT'),
+    );
+
+    const response = (await POST(
+      createGenerateFromVisitRequest({
+        visit_record_id: 'visit_1',
+      }),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '報告書を生成するには訪問予定と処方サイクルの紐付けが必要です',
+    });
+  });
+
+  it('returns a validation error when structured SOAP is missing', async () => {
+    generateReportsFromVisitMock.mockRejectedValue(
+      new Error('STRUCTURED_SOAP_REQUIRED_FOR_REPORT'),
+    );
+
+    const response = (await POST(
+      createGenerateFromVisitRequest({
+        visit_record_id: 'visit_1',
+      }),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '報告書を生成するには訪問時の構造化SOAP記録が必要です',
+    });
+  });
+
+  it('returns a validation error when the linked medication cycle is missing', async () => {
+    generateReportsFromVisitMock.mockRejectedValue(
+      new Error('MEDICATION_CYCLE_NOT_FOUND_FOR_REPORT'),
+    );
+
+    const response = (await POST(
+      createGenerateFromVisitRequest({
+        visit_record_id: 'visit_1',
+      }),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '報告書を生成する処方サイクルが見つかりません',
+    });
+  });
+
   it('rejects non-object generation payloads before calling the generator', async () => {
     const response = (await POST(createGenerateFromVisitRequest([]), emptyRouteContext))!;
 

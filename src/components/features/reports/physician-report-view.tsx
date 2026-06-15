@@ -1,12 +1,11 @@
 'use client';
 
-import { format, parseISO } from 'date-fns';
-import { ja } from 'date-fns/locale';
 import { AlertTriangle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ADHERENCE_LABELS } from '@/lib/constants/soap-options';
 import type { PhysicianReportContent } from '@/types/care-report-content';
+import { formatReportDate } from './report-date-format';
 
 const GENDER_LABELS: Record<string, string> = {
   male: '男性',
@@ -25,13 +24,7 @@ function SectionCard({ title, children }: { title: string; children: React.React
   );
 }
 
-function FunctionalItem({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function FunctionalItem({ label, value }: { label: string; value: string }) {
   const hasIssue = value !== 'no_issues' && value !== '' && value !== '問題なし';
   return (
     <div
@@ -76,19 +69,11 @@ export function PhysicianReportView({ content }: { content: PhysicianReportConte
         <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm md:grid-cols-3">
           <div>
             <dt className="text-xs text-muted-foreground">報告日</dt>
-            <dd className="mt-0.5 font-medium">
-              {content.report_date
-                ? format(parseISO(content.report_date), 'yyyy年M月d日', { locale: ja })
-                : '—'}
-            </dd>
+            <dd className="mt-0.5 font-medium">{formatReportDate(content.report_date)}</dd>
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">訪問日</dt>
-            <dd className="mt-0.5 font-medium">
-              {content.visit_date
-                ? format(parseISO(content.visit_date), 'yyyy年M月d日', { locale: ja })
-                : '—'}
-            </dd>
+            <dd className="mt-0.5 font-medium">{formatReportDate(content.visit_date)}</dd>
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">担当薬剤師</dt>
@@ -106,11 +91,7 @@ export function PhysicianReportView({ content }: { content: PhysicianReportConte
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">生年月日</dt>
-            <dd className="mt-0.5">
-              {content.patient.birth_date
-                ? format(parseISO(content.patient.birth_date), 'yyyy年M月d日', { locale: ja })
-                : '—'}
-            </dd>
+            <dd className="mt-0.5">{formatReportDate(content.patient.birth_date)}</dd>
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">性別</dt>
@@ -143,10 +124,18 @@ export function PhysicianReportView({ content }: { content: PhysicianReportConte
               <caption className="sr-only">処方薬一覧</caption>
               <thead className="bg-muted/60">
                 <tr className="border-b border-border">
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">薬剤名</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">用量</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">用法</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">日数</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
+                    薬剤名
+                  </th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
+                    用量
+                  </th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
+                    用法
+                  </th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">
+                    日数
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -203,9 +192,7 @@ export function PhysicianReportView({ content }: { content: PhysicianReportConte
       <SectionCard title="薬物有害事象">
         <div className="space-y-2 text-sm">
           <div className="flex items-center gap-2">
-            <Badge
-              variant={content.adverse_events.has_events ? 'destructive' : 'secondary'}
-            >
+            <Badge variant={content.adverse_events.has_events ? 'destructive' : 'secondary'}>
               {content.adverse_events.has_events ? 'あり' : 'なし'}
             </Badge>
           </div>
@@ -219,7 +206,9 @@ export function PhysicianReportView({ content }: { content: PhysicianReportConte
             </div>
           )}
           {content.adverse_events.details && (
-            <p className="whitespace-pre-wrap text-muted-foreground">{content.adverse_events.details}</p>
+            <p className="whitespace-pre-wrap text-muted-foreground">
+              {content.adverse_events.details}
+            </p>
           )}
         </div>
       </SectionCard>
@@ -249,10 +238,18 @@ export function PhysicianReportView({ content }: { content: PhysicianReportConte
               <caption className="sr-only">残薬一覧</caption>
               <thead className="bg-muted/60">
                 <tr className="border-b border-border">
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">薬剤名</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">残数</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">余剰日数</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">減数提案</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
+                    薬剤名
+                  </th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">
+                    残数
+                  </th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">
+                    余剰日数
+                  </th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
+                    減数提案
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -298,7 +295,9 @@ export function PhysicianReportView({ content }: { content: PhysicianReportConte
       {/* Prescription proposals */}
       {content.prescription_proposals && (
         <SectionCard title="処方提案">
-          <p className="whitespace-pre-wrap text-sm leading-relaxed">{content.prescription_proposals}</p>
+          <p className="whitespace-pre-wrap text-sm leading-relaxed">
+            {content.prescription_proposals}
+          </p>
         </SectionCard>
       )}
 

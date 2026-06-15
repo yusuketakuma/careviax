@@ -73,6 +73,18 @@ vi.mock('@/lib/patient/home-visit-intake', () => ({
 
 import { generateReportsFromVisit } from './report-generator';
 
+const baseSoap = {
+  subjective: { symptom_checks: [], free_text: '変化なし' },
+  objective: {
+    medication_status: 'full_compliance',
+    adherence_score: 5,
+    side_effect_checks: [],
+    adverse_events: { has_events: false, events: [] },
+  },
+  assessment: { problem_checks: ['no_issues'] },
+  plan: { intervention_checks: [] },
+};
+
 describe('generateReportsFromVisit', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -94,7 +106,7 @@ describe('generateReportsFromVisit', () => {
       patient_id: 'p-1',
       pharmacist_id: 'pharm-1',
       visit_date: new Date(),
-      structured_soap: null,
+      structured_soap: baseSoap,
       schedule_id: 'vs-1',
     });
     visitScheduleFindUniqueMock.mockResolvedValue(null);
@@ -111,18 +123,99 @@ describe('generateReportsFromVisit', () => {
       patient_id: 'p-1',
       pharmacist_id: 'pharm-1',
       visit_date: new Date(),
-      structured_soap: null,
+      structured_soap: baseSoap,
       schedule_id: 'vs-1',
     });
     visitScheduleFindUniqueMock.mockResolvedValue({
       case_id: 'case-1',
-      cycle_id: null,
+      cycle_id: 'cycle-1',
       org_id: 'org-WRONG',
     });
 
     await expect(generateReportsFromVisit('org-1', 'user-1', 'vr-1')).rejects.toThrow(
       'VisitSchedule not found',
     );
+  });
+
+  it('blocks report generation when the visit schedule is not linked to a medication cycle', async () => {
+    visitRecordFindFirstMock.mockResolvedValue({
+      id: 'vr-1',
+      org_id: 'org-1',
+      patient_id: 'p-1',
+      pharmacist_id: 'pharm-1',
+      visit_date: new Date(),
+      structured_soap: baseSoap,
+      schedule_id: 'vs-1',
+    });
+    visitScheduleFindUniqueMock.mockResolvedValue({
+      case_id: 'case-1',
+      cycle_id: null,
+      org_id: 'org-1',
+    });
+
+    await expect(generateReportsFromVisit('org-1', 'user-1', 'vr-1')).rejects.toThrow(
+      'VISIT_SCHEDULE_CYCLE_REQUIRED_FOR_REPORT',
+    );
+    expect(medicationCycleFindFirstMock).not.toHaveBeenCalled();
+    expect(buildPhysicianReportMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks report generation when structured SOAP is missing', async () => {
+    visitRecordFindFirstMock.mockResolvedValue({
+      id: 'vr-1',
+      org_id: 'org-1',
+      patient_id: 'p-1',
+      pharmacist_id: 'pharm-1',
+      visit_date: new Date(),
+      structured_soap: null,
+      schedule_id: 'vs-1',
+    });
+    visitScheduleFindUniqueMock.mockResolvedValue({
+      case_id: 'case-1',
+      cycle_id: 'cycle-1',
+      org_id: 'org-1',
+    });
+
+    await expect(generateReportsFromVisit('org-1', 'user-1', 'vr-1')).rejects.toThrow(
+      'STRUCTURED_SOAP_REQUIRED_FOR_REPORT',
+    );
+    expect(medicationCycleFindFirstMock).not.toHaveBeenCalled();
+    expect(buildPhysicianReportMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks report generation when the linked medication cycle cannot be resolved', async () => {
+    visitRecordFindFirstMock.mockResolvedValue({
+      id: 'vr-1',
+      org_id: 'org-1',
+      patient_id: 'p-1',
+      pharmacist_id: 'pharm-1',
+      visit_date: new Date(),
+      structured_soap: baseSoap,
+      schedule_id: 'vs-1',
+    });
+    visitScheduleFindUniqueMock.mockResolvedValue({
+      case_id: 'case-1',
+      cycle_id: 'cycle-missing',
+      org_id: 'org-1',
+    });
+    patientFindFirstMock.mockResolvedValue({
+      id: 'p-1',
+      name: '田中太郎',
+      birth_date: new Date('1950-01-01'),
+      gender: 'male',
+    });
+    medicationCycleFindFirstMock.mockResolvedValue(null);
+    residualMedicationFindManyMock.mockResolvedValue([]);
+    careTeamLinkFindManyMock.mockResolvedValue([]);
+    userFindFirstMock.mockResolvedValue({ name: '薬剤師A' });
+    billingEvidenceFindFirstMock.mockResolvedValue(null);
+    careCaseFindFirstMock.mockResolvedValue({ required_visit_support: null });
+
+    await expect(generateReportsFromVisit('org-1', 'user-1', 'vr-1')).rejects.toThrow(
+      'MEDICATION_CYCLE_NOT_FOUND_FOR_REPORT',
+    );
+    expect(prescriptionLineFindManyMock).not.toHaveBeenCalled();
+    expect(buildPhysicianReportMock).not.toHaveBeenCalled();
   });
 
   it('allows org-wide roles to use any in-org visit assignment regardless of who is assigned', async () => {
@@ -134,12 +227,12 @@ describe('generateReportsFromVisit', () => {
       patient_id: 'p-1',
       pharmacist_id: 'pharm-other',
       visit_date: new Date(),
-      structured_soap: null,
+      structured_soap: baseSoap,
       schedule_id: 'vs-1',
     });
     visitScheduleFindUniqueMock.mockResolvedValue({
       case_id: 'case-1',
-      cycle_id: null,
+      cycle_id: 'cycle-1',
       org_id: 'org-1',
     });
     patientFindFirstMock.mockResolvedValue({
@@ -148,7 +241,7 @@ describe('generateReportsFromVisit', () => {
       birth_date: new Date('1950-01-01'),
       gender: 'male',
     });
-    medicationCycleFindFirstMock.mockResolvedValue(null);
+    medicationCycleFindFirstMock.mockResolvedValue({ id: 'cycle-1' });
     residualMedicationFindManyMock.mockResolvedValue([]);
     careTeamLinkFindManyMock.mockResolvedValue([]);
     userFindFirstMock.mockResolvedValue({ name: '薬剤師A' });
@@ -186,12 +279,12 @@ describe('generateReportsFromVisit', () => {
       patient_id: 'p-1',
       pharmacist_id: 'pharm-1',
       visit_date: new Date(),
-      structured_soap: null,
+      structured_soap: baseSoap,
       schedule_id: 'vs-1',
     });
     visitScheduleFindUniqueMock.mockResolvedValue({
       case_id: 'case-1',
-      cycle_id: null,
+      cycle_id: 'cycle-1',
       org_id: 'org-1',
     });
     patientFindFirstMock.mockResolvedValue({
@@ -200,7 +293,7 @@ describe('generateReportsFromVisit', () => {
       birth_date: new Date('1950-01-01'),
       gender: 'male',
     });
-    medicationCycleFindFirstMock.mockResolvedValue(null);
+    medicationCycleFindFirstMock.mockResolvedValue({ id: 'cycle-1' });
     residualMedicationFindManyMock.mockResolvedValue([]);
     careTeamLinkFindManyMock.mockResolvedValue([]);
     userFindFirstMock.mockResolvedValue({ name: '薬剤師A' });
@@ -240,12 +333,12 @@ describe('generateReportsFromVisit', () => {
       patient_id: 'p-1',
       pharmacist_id: 'pharm-1',
       visit_date: new Date(),
-      structured_soap: null,
+      structured_soap: baseSoap,
       schedule_id: 'vs-1',
     });
     visitScheduleFindUniqueMock.mockResolvedValue({
       case_id: 'case-1',
-      cycle_id: null,
+      cycle_id: 'cycle-1',
       org_id: 'org-1',
     });
     patientFindFirstMock.mockResolvedValue({
@@ -254,7 +347,7 @@ describe('generateReportsFromVisit', () => {
       birth_date: new Date('1950-01-01'),
       gender: 'male',
     });
-    medicationCycleFindFirstMock.mockResolvedValue(null);
+    medicationCycleFindFirstMock.mockResolvedValue({ id: 'cycle-1' });
     residualMedicationFindManyMock.mockResolvedValue([]);
     careTeamLinkFindManyMock.mockResolvedValue([]);
     userFindFirstMock.mockResolvedValue({ name: '薬剤師A' });
@@ -332,12 +425,12 @@ describe('generateReportsFromVisit', () => {
       patient_id: 'p-1',
       pharmacist_id: 'pharm-1',
       visit_date: new Date(),
-      structured_soap: null,
+      structured_soap: baseSoap,
       schedule_id: 'vs-1',
     });
     visitScheduleFindUniqueMock.mockResolvedValue({
       case_id: 'case-1',
-      cycle_id: null,
+      cycle_id: 'cycle-1',
       org_id: 'org-1',
     });
     patientFindFirstMock.mockResolvedValue({
@@ -346,7 +439,7 @@ describe('generateReportsFromVisit', () => {
       birth_date: new Date('1950-01-01'),
       gender: 'male',
     });
-    medicationCycleFindFirstMock.mockResolvedValue(null);
+    medicationCycleFindFirstMock.mockResolvedValue({ id: 'cycle-1' });
     residualMedicationFindManyMock.mockResolvedValue([]);
     careTeamLinkFindManyMock.mockResolvedValue([]);
     userFindFirstMock.mockResolvedValue({ name: '薬剤師A' });
@@ -406,7 +499,7 @@ describe('generateReportsFromVisit', () => {
       patient_id: 'p-1',
       pharmacist_id: 'pharm-1',
       visit_date: new Date('2026-03-10T01:00:00.000Z'),
-      structured_soap: null,
+      structured_soap: baseSoap,
       schedule_id: 'vs-1',
     });
     visitScheduleFindUniqueMock.mockResolvedValue({
@@ -537,12 +630,12 @@ describe('generateReportsFromVisit', () => {
       patient_id: 'p-1',
       pharmacist_id: 'pharm-1',
       visit_date: new Date(),
-      structured_soap: null,
+      structured_soap: baseSoap,
       schedule_id: 'vs-1',
     });
     visitScheduleFindUniqueMock.mockResolvedValue({
       case_id: 'case-1',
-      cycle_id: null,
+      cycle_id: 'cycle-1',
       org_id: 'org-1',
     });
     patientFindFirstMock.mockResolvedValue({
@@ -551,7 +644,7 @@ describe('generateReportsFromVisit', () => {
       birth_date: new Date('1950-01-01'),
       gender: 'male',
     });
-    medicationCycleFindFirstMock.mockResolvedValue(null);
+    medicationCycleFindFirstMock.mockResolvedValue({ id: 'cycle-1' });
     residualMedicationFindManyMock.mockResolvedValue([]);
     careTeamLinkFindManyMock.mockResolvedValue([]);
     userFindFirstMock.mockResolvedValue({ name: '薬剤師A' });
@@ -602,16 +695,16 @@ describe('generateReportsFromVisit', () => {
       patient_id: 'p-missing',
       pharmacist_id: 'pharm-1',
       visit_date: new Date(),
-      structured_soap: null,
+      structured_soap: baseSoap,
       schedule_id: 'vs-1',
     });
     visitScheduleFindUniqueMock.mockResolvedValue({
       case_id: 'case-1',
-      cycle_id: null,
+      cycle_id: 'cycle-1',
       org_id: 'org-1',
     });
     patientFindFirstMock.mockResolvedValue(null);
-    medicationCycleFindFirstMock.mockResolvedValue(null);
+    medicationCycleFindFirstMock.mockResolvedValue({ id: 'cycle-1' });
     residualMedicationFindManyMock.mockResolvedValue([]);
     careTeamLinkFindManyMock.mockResolvedValue([]);
     userFindFirstMock.mockResolvedValue(null);
@@ -630,7 +723,7 @@ describe('generateReportsFromVisit', () => {
       patient_id: 'p-1',
       pharmacist_id: 'pharm-1',
       visit_date: new Date(),
-      structured_soap: null,
+      structured_soap: baseSoap,
       schedule_id: 'vs-1',
     });
     visitScheduleFindUniqueMock.mockResolvedValue({
@@ -687,12 +780,12 @@ describe('generateReportsFromVisit', () => {
       patient_id: 'p-1',
       pharmacist_id: 'pharm-1',
       visit_date: new Date(),
-      structured_soap: null,
+      structured_soap: baseSoap,
       schedule_id: 'vs-1',
     });
     visitScheduleFindUniqueMock.mockResolvedValue({
       case_id: 'case-1',
-      cycle_id: null,
+      cycle_id: 'cycle-1',
       org_id: 'org-1',
     });
     patientFindFirstMock.mockResolvedValue({
@@ -701,7 +794,7 @@ describe('generateReportsFromVisit', () => {
       birth_date: new Date('1950-01-01'),
       gender: 'male',
     });
-    medicationCycleFindFirstMock.mockResolvedValue(null);
+    medicationCycleFindFirstMock.mockResolvedValue({ id: 'cycle-1' });
     residualMedicationFindManyMock.mockResolvedValue([]);
     careTeamLinkFindManyMock.mockResolvedValue([]);
     userFindFirstMock.mockResolvedValue({ name: '薬剤師A' });

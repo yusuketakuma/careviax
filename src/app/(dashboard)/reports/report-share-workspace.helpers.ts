@@ -41,7 +41,7 @@ export function buildHeaderMeta(
 ): string {
   const dateLabel = format(now, 'M/d(EEE)', { locale: ja });
   if (!counts) return dateLabel;
-  return `${dateLabel} — 書く${counts.to_write}件・待つ${counts.waiting}件・解決${counts.resolved}件`;
+  return `${dateLabel} — 書く${counts.to_write}件・課題${counts.open_issues}件・作成済み${counts.created}件・待つ${counts.waiting}件・解決${counts.resolved}件`;
 }
 
 /** 返信待ちの経過バッジ「3日経過」(送付当日は「本日送付」) */

@@ -39,6 +39,15 @@ export const POST = withAuthContext(
       if (message.includes('not accessible')) {
         return forbiddenResponse('この訪問記録から報告書を生成する権限がありません');
       }
+      if (message === 'VISIT_SCHEDULE_CYCLE_REQUIRED_FOR_REPORT') {
+        return validationError('報告書を生成するには訪問予定と処方サイクルの紐付けが必要です');
+      }
+      if (message === 'STRUCTURED_SOAP_REQUIRED_FOR_REPORT') {
+        return validationError('報告書を生成するには訪問時の構造化SOAP記録が必要です');
+      }
+      if (message === 'MEDICATION_CYCLE_NOT_FOUND_FOR_REPORT') {
+        return validationError('報告書を生成する処方サイクルが見つかりません');
+      }
       throw err;
     }
 
