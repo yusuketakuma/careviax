@@ -391,14 +391,14 @@ function ComparisonTable({ workbench }: { workbench: DispenseWorkbenchData }) {
     );
   }
   return (
-    <div className="mt-3 overflow-x-auto">
-      <Table className="min-w-[560px]" data-testid="dispense-comparison-table">
+    <div className="mt-3">
+      <Table className="w-full table-fixed text-sm" data-testid="dispense-comparison-table">
         <TableHeader>
           <TableRow>
-            <TableHead>薬剤</TableHead>
-            <TableHead className="w-28">前回</TableHead>
-            <TableHead className="w-28">今回</TableHead>
-            <TableHead className="w-36">差</TableHead>
+            <TableHead className="w-[38%]">薬剤</TableHead>
+            <TableHead className="w-[20%]">前回</TableHead>
+            <TableHead className="w-[20%]">今回</TableHead>
+            <TableHead className="w-[22%]">差</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -410,9 +410,13 @@ function ComparisonTable({ workbench }: { workbench: DispenseWorkbenchData }) {
                 key={row.key}
                 className={cn(isChanged && 'bg-amber-50/70 hover:bg-amber-50')}
               >
-                <TableCell className="font-medium text-foreground">{row.drug_name}</TableCell>
-                <TableCell className="text-muted-foreground">{row.previous_label ?? '—'}</TableCell>
-                <TableCell className={cn(isChanged && 'font-bold text-foreground')}>
+                <TableCell className="break-words pr-4 font-medium text-foreground">
+                  {row.drug_name}
+                </TableCell>
+                <TableCell className="break-words text-muted-foreground">
+                  {row.previous_label ?? '—'}
+                </TableCell>
+                <TableCell className={cn('break-words', isChanged && 'font-bold text-foreground')}>
                   {row.current_label ?? '—'}
                 </TableCell>
                 <TableCell>
