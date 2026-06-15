@@ -276,7 +276,7 @@ describe('DispenseWorkbench', () => {
     expect(screen.getByText('20mg 朝夕')).toBeTruthy();
     expect(screen.getByText('10mg 朝夕')).toBeTruthy();
     expect(screen.getByText('減量')).toBeTruthy();
-    expect(screen.getByText('照会回答による変更')).toBeTruthy();
+    expect(screen.getByText('照会回答')).toBeTruthy();
 
     // 確認チェックリスト
     expect(screen.getByText('変更薬剤を口頭読み上げで確認(減量: ファモチジン)')).toBeTruthy();

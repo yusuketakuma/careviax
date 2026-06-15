@@ -391,47 +391,52 @@ function ComparisonTable({ workbench }: { workbench: DispenseWorkbenchData }) {
     );
   }
   return (
-    <Table className="mt-3" data-testid="dispense-comparison-table">
-      <TableHeader>
-        <TableRow>
-          <TableHead>薬剤</TableHead>
-          <TableHead className="w-32">前回</TableHead>
-          <TableHead className="w-32">今回</TableHead>
-          <TableHead>差</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {workbench.comparison.map((row) => {
-          const badge = buildChangeBadge(row);
-          const isChanged = row.change_type != null;
-          return (
-            <TableRow key={row.key} className={cn(isChanged && 'bg-amber-50/70 hover:bg-amber-50')}>
-              <TableCell className="font-medium text-foreground">{row.drug_name}</TableCell>
-              <TableCell className="text-muted-foreground">{row.previous_label ?? '—'}</TableCell>
-              <TableCell className={cn(isChanged && 'font-bold text-foreground')}>
-                {row.current_label ?? '—'}
-              </TableCell>
-              <TableCell>
-                {badge ? (
-                  <span className="flex flex-wrap items-center gap-2">
-                    <span className={cn('text-sm font-bold', CHANGE_BADGE_TONES[badge.tone])}>
-                      {badge.label}
-                    </span>
-                    {row.inquiry_origin ? (
-                      <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
-                        照会回答による変更
+    <div className="mt-3 overflow-x-auto">
+      <Table className="min-w-[560px]" data-testid="dispense-comparison-table">
+        <TableHeader>
+          <TableRow>
+            <TableHead>薬剤</TableHead>
+            <TableHead className="w-28">前回</TableHead>
+            <TableHead className="w-28">今回</TableHead>
+            <TableHead className="w-36">差</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {workbench.comparison.map((row) => {
+            const badge = buildChangeBadge(row);
+            const isChanged = row.change_type != null;
+            return (
+              <TableRow
+                key={row.key}
+                className={cn(isChanged && 'bg-amber-50/70 hover:bg-amber-50')}
+              >
+                <TableCell className="font-medium text-foreground">{row.drug_name}</TableCell>
+                <TableCell className="text-muted-foreground">{row.previous_label ?? '—'}</TableCell>
+                <TableCell className={cn(isChanged && 'font-bold text-foreground')}>
+                  {row.current_label ?? '—'}
+                </TableCell>
+                <TableCell>
+                  {badge ? (
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className={cn('text-sm font-bold', CHANGE_BADGE_TONES[badge.tone])}>
+                        {badge.label}
                       </span>
-                    ) : null}
-                  </span>
-                ) : (
-                  <span className="text-muted-foreground">—</span>
-                )}
-              </TableCell>
-            </TableRow>
-          );
-        })}
-      </TableBody>
-    </Table>
+                      {row.inquiry_origin ? (
+                        <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
+                          照会回答
+                        </span>
+                      ) : null}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
   );
 }
 
