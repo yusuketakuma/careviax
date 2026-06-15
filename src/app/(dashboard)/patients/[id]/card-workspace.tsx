@@ -30,6 +30,7 @@ import {
 } from '@/components/features/workspace/safety-board';
 import { ProcessChips } from '@/components/features/workspace/process-chips';
 import { ListOpenCard } from '@/components/features/workspace/list-open-card';
+import { PatientFieldRevisionTimeline } from '@/components/features/patients/patient-field-revision-timeline';
 import {
   WorkspaceActionRail,
   type BlockedReason,
@@ -799,6 +800,14 @@ export function CardWorkspace({
             ) : (
               <p className="mt-3 text-sm text-muted-foreground">直近の動きはまだありません。</p>
             )}
+          </SectionCard>
+
+          {/* 変更履歴: 患者項目の業務差分(誰がいつ何を何から何へ・確認元) */}
+          <SectionCard aria-label="変更履歴" data-testid="card-field-revisions">
+            <h3 className="text-base font-semibold text-foreground">変更履歴</h3>
+            <div className="mt-3">
+              <PatientFieldRevisionTimeline patientId={patientId} />
+            </div>
           </SectionCard>
         </div>
 
