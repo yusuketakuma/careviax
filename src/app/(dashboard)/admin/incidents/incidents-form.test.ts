@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   EMPTY_INCIDENT_MEMO_FORM,
   INCIDENT_PROCESS_OPTIONS,
+  buildIncidentMemoCompletion,
   buildIncidentMemoPatchPayload,
   hasPreventionMemo,
   incidentCardSubtext,
@@ -112,6 +113,46 @@ describe('buildIncidentMemoPatchPayload', () => {
         relatedProcess: 'invalid-process',
       }).related_process,
     ).toBeNull();
+  });
+});
+
+describe('buildIncidentMemoCompletion', () => {
+  it('全項目未入力なら不足ラベルをすべて返す', () => {
+    expect(buildIncidentMemoCompletion(EMPTY_INCIDENT_MEMO_FORM)).toEqual({
+      completedCount: 0,
+      totalCount: 5,
+      missingLabels: ['起きたこと', '原因', 'すぐ行った対応', '次から変えること', '関係する工程'],
+      isComplete: false,
+    });
+  });
+
+  it('語彙内の工程と記入済みテキストだけを完了として数える', () => {
+    expect(
+      buildIncidentMemoCompletion({
+        whatHappened: 'セット日付を間違えた',
+        cause: '',
+        immediateAction: '訪問前に差し替えた',
+        preventionPlan: '',
+        relatedProcess: 'set',
+      }),
+    ).toEqual({
+      completedCount: 3,
+      totalCount: 5,
+      missingLabels: ['原因', '次から変えること'],
+      isComplete: false,
+    });
+  });
+
+  it('全項目が埋まると complete になる', () => {
+    expect(
+      buildIncidentMemoCompletion({
+        whatHappened: 'セット日付を間違えた',
+        cause: '曜日確認が抜けた',
+        immediateAction: '訪問前に差し替えた',
+        preventionPlan: 'セット後に曜日を二人で確認する',
+        relatedProcess: 'set',
+      }).isComplete,
+    ).toBe(true);
   });
 });
 

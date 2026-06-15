@@ -13,7 +13,8 @@ export const FACILITY_CRITERIA_ITEMS = [
   {
     key: 'home_visit_record',
     label: '在宅実績',
-    missingGuide: '在宅訪問の実績記録が不足しています。訪問記録の件数と対象期間を確認してください。',
+    missingGuide:
+      '在宅訪問の実績記録が不足しています。訪問記録の件数と対象期間を確認してください。',
   },
   {
     key: 'emergency_response',
@@ -47,6 +48,17 @@ export type FacilityCriteriaRow = {
   missingGuide: string;
 };
 
+export type FacilityCriteriaSummary = {
+  totalCount: number;
+  okCount: number;
+  missingCount: number;
+  checkingCount: number;
+  statusLabel: string;
+  statusTone: FacilityCriteriaStatus;
+  missingLabels: string[];
+  nextAction: string;
+};
+
 /**
  * 届出群の requirements_status をマージして項目別の判定にする。
  * true が1件でもあれば OK、false があれば不足、どの届出にも無ければ確認中。
@@ -62,6 +74,51 @@ export function buildFacilityCriteriaRows(
       values.length === 0 ? 'checking' : values.some((value) => value === false) ? 'missing' : 'ok';
     return { key: item.key, label: item.label, status, missingGuide: item.missingGuide };
   });
+}
+
+export function summarizeFacilityCriteriaRows(
+  rows: FacilityCriteriaRow[],
+): FacilityCriteriaSummary {
+  const missingRows = rows.filter((row) => row.status === 'missing');
+  const checkingRows = rows.filter((row) => row.status === 'checking');
+  const okCount = rows.filter((row) => row.status === 'ok').length;
+
+  if (missingRows.length > 0) {
+    return {
+      totalCount: rows.length,
+      okCount,
+      missingCount: missingRows.length,
+      checkingCount: checkingRows.length,
+      statusLabel: '算定不可',
+      statusTone: 'missing',
+      missingLabels: missingRows.map((row) => row.label),
+      nextAction: `${missingRows[0]?.label ?? '不足項目'}の資料を追加してから再確認します。`,
+    };
+  }
+
+  if (checkingRows.length > 0) {
+    return {
+      totalCount: rows.length,
+      okCount,
+      missingCount: 0,
+      checkingCount: checkingRows.length,
+      statusLabel: '確認中',
+      statusTone: 'checking',
+      missingLabels: [],
+      nextAction: `${checkingRows[0]?.label ?? '未確認項目'}の判定を完了すると算定可否が確定します。`,
+    };
+  }
+
+  return {
+    totalCount: rows.length,
+    okCount,
+    missingCount: 0,
+    checkingCount: 0,
+    statusLabel: '算定可',
+    statusTone: 'ok',
+    missingLabels: [],
+    nextAction: '現時点で不足はありません。期限アラートだけ継続確認します。',
+  };
 }
 
 const STATUS_BADGES: Record<FacilityCriteriaStatus, { label: string; className: string }> = {

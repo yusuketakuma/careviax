@@ -3,13 +3,7 @@
 import { useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
-import {
-  CheckCircle2,
-  XCircle,
-  ImagePlus,
-  Loader2,
-  X,
-} from 'lucide-react';
+import { CheckCircle2, XCircle, ImagePlus, Loader2, X } from 'lucide-react';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { toast } from 'sonner';
@@ -18,10 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
-import {
-  ReasonDialog,
-  type ReasonSubmission,
-} from '@/components/features/workflow/reason-dialog';
+import { ReasonDialog, type ReasonSubmission } from '@/components/features/workflow/reason-dialog';
 import {
   buildSetAuditPaneSubmission,
   buildSetInstructionLines,
@@ -456,6 +447,7 @@ export function SetAuditContent({ planId }: { planId: string }) {
         title="差し戻し理由を入力"
         options={REJECT_REASON_OPTIONS}
         warning="差戻し後は再計画が必要です。"
+        submitLabel="差し戻す"
         pending={auditMutation.isPending}
         onSubmit={handleRejectConfirm}
       />

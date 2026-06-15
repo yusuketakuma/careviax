@@ -13,6 +13,7 @@ import {
   formatCaptureTime,
   mergeEvidenceItems,
   sortEvidenceItems,
+  summarizeEvidenceGallery,
   type EvidenceCategoryId,
   type EvidenceGalleryItem,
   type VisitRecordDetailForEvidence,
@@ -109,6 +110,10 @@ export function EvidenceGalleryContent() {
     () => filterEvidenceItemsByCategory(items, selectedCategory),
     [items, selectedCategory],
   );
+  const summary = React.useMemo(
+    () => summarizeEvidenceGallery(items, selectedCategory),
+    [items, selectedCategory],
+  );
 
   const selectedCategoryLabel =
     EVIDENCE_CATEGORIES.find((category) => category.id === selectedCategory)?.label ?? '証跡';
@@ -116,6 +121,40 @@ export function EvidenceGalleryContent() {
   return (
     <div data-testid="evidence-gallery-page">
       <h1 className="sr-only">画像・証跡</h1>
+
+      <section
+        aria-label="証跡サマリー"
+        className="mb-4 rounded-xl border border-border/70 bg-card p-5 shadow-sm"
+      >
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="text-sm font-bold text-foreground">今日の証跡状況</h2>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">{summary.nextAction}</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:min-w-[520px]">
+            <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+              <p className="text-[11px] font-bold text-muted-foreground">合計</p>
+              <p className="mt-1 text-lg font-bold text-foreground">{summary.totalCount}枚</p>
+            </div>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+              <p className="text-[11px] font-bold text-amber-700">未同期</p>
+              <p className="mt-1 text-lg font-bold text-amber-800">{summary.pendingCount}枚</p>
+            </div>
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+              <p className="text-[11px] font-bold text-emerald-700">同期済み</p>
+              <p className="mt-1 text-lg font-bold text-emerald-800">{summary.syncedCount}枚</p>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+              <p className="text-[11px] font-bold text-muted-foreground">
+                {summary.selectedCategoryLabel}
+              </p>
+              <p className="mt-1 text-lg font-bold text-foreground">
+                {summary.selectedCategoryCount}枚
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <div className="grid items-start gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
         {/* 左: 証跡の種類(選択でフィルタ) */}

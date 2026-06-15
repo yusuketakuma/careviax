@@ -17,6 +17,7 @@ import type { EvidenceCategoryId } from '../../evidence/evidence-gallery.shared'
 import {
   CAPTURE_CATEGORY_OPTIONS,
   DEFAULT_CAPTURE_CATEGORY,
+  buildCaptureStatusSummary,
   buildEvidenceDraftFileName,
   resolveCapturePatientContext,
   type CaptureCategoryTone,
@@ -51,7 +52,13 @@ function readBlobAsDataUrl(blob: Blob): Promise<string> {
   });
 }
 
-export function EvidenceCaptureContent({ visitId }: { visitId: string }) {
+export function EvidenceCaptureContent({
+  visitId,
+  initialPatientContext = null,
+}: {
+  visitId: string;
+  initialPatientContext?: CapturePatientContext | null;
+}) {
   const orgId = useOrgId();
   const [selectedCategory, setSelectedCategory] =
     useState<EvidenceCategoryId>(DEFAULT_CAPTURE_CATEGORY);
@@ -67,6 +74,7 @@ export function EvidenceCaptureContent({ visitId }: { visitId: string }) {
   const patientQuery = useQuery<CapturePatientContext>({
     queryKey: ['visit-capture-patient', visitId, orgId],
     enabled: !!orgId && !!visitId,
+    initialData: initialPatientContext ?? undefined,
     queryFn: async () => {
       const headers = { 'x-org-id': orgId };
       const scheduleRes = await fetch(`/api/visit-schedules/${visitId}`, { headers });
@@ -215,6 +223,11 @@ export function EvidenceCaptureContent({ visitId }: { visitId: string }) {
   }
 
   const patientLoading = !orgId || patientQuery.isPending;
+  const captureSummary = buildCaptureStatusSummary({
+    categoryId: selectedCategory,
+    patientName: patientContext?.patientName,
+    savedCount,
+  });
 
   return (
     <div
@@ -286,6 +299,20 @@ export function EvidenceCaptureContent({ visitId }: { visitId: string }) {
         })}
       </div>
 
+      <section
+        aria-label="撮影内容の確認"
+        className="mt-3 flex flex-wrap items-center gap-2 text-xs font-bold text-muted-foreground"
+        data-testid="capture-status-summary"
+      >
+        <span className="rounded-full bg-primary/10 px-3 py-1 text-primary">
+          {captureSummary.categoryLabel}
+        </span>
+        <span className="rounded-full bg-muted px-3 py-1 text-foreground">
+          {captureSummary.savedDraftLabel}
+        </span>
+        <span className="text-[12px] font-medium">端末保存後、画像・証跡へ同期</span>
+      </section>
+
       {/* フォールバック用(モバイル実機ではネイティブカメラが開く) */}
       <input
         ref={fileInputRef}
@@ -301,12 +328,12 @@ export function EvidenceCaptureContent({ visitId }: { visitId: string }) {
       <Button
         type="button"
         size="lg"
-        className="mt-9 h-12 w-full text-[15px] font-bold"
-        disabled={saving}
+        className="mt-6 h-12 w-full text-[15px] font-bold"
+        disabled={saving || patientLoading}
         onClick={handleShutterClick}
         data-testid="capture-shutter"
       >
-        写真を撮る
+        {captureSummary.categoryLabel}を撮る
       </Button>
 
       {/* オフライン保存の説明(target どおりの文言) */}
@@ -315,9 +342,7 @@ export function EvidenceCaptureContent({ visitId }: { visitId: string }) {
         className="mt-5 rounded-xl border border-amber-300 bg-amber-50 px-5 py-4"
         data-testid="capture-offline-note"
       >
-        <h2 className="text-[15px] font-bold leading-6 text-amber-600">
-          通信がなくても保存します
-        </h2>
+        <h2 className="text-[15px] font-bold leading-6 text-amber-600">通信がなくても保存します</h2>
         <p className="mt-1 text-sm leading-6 text-muted-foreground">戻ったら自動で送信します。</p>
       </section>
 

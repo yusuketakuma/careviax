@@ -5,9 +5,10 @@ import { useQuery } from '@tanstack/react-query';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import type {
-  MonthlyVisitBucket,
-  ProcessDuration,
+import type { MonthlyVisitBucket, ProcessDuration } from '@/lib/analytics/operations-insights';
+import {
+  formatOperationDuration,
+  summarizeOperationsInsights,
 } from '@/lib/analytics/operations-insights';
 
 /**
@@ -34,7 +35,7 @@ function BarChart({
   items,
   ariaLabel,
 }: {
-  items: Array<{ label: string; value: number; colorClass: string }>;
+  items: Array<{ label: string; value: number; valueLabel?: string; colorClass: string }>;
   ariaLabel: string;
 }) {
   const max = Math.max(...items.map((item) => item.value), 1);
@@ -45,7 +46,9 @@ function BarChart({
           key={item.label}
           className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1"
         >
-          <span className="text-xs font-semibold text-foreground">{item.value}</span>
+          <span className="text-xs font-semibold text-foreground">
+            {item.valueLabel ?? item.value}
+          </span>
           <div
             className={`w-full rounded-md ${item.colorClass}`}
             style={{ height: `${Math.max((item.value / max) * 78, 2)}%` }}
@@ -53,6 +56,16 @@ function BarChart({
           <span className="text-[11px] text-muted-foreground">{item.label}</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+function MetricCard({ label, value, caption }: { label: string; value: string; caption: string }) {
+  return (
+    <div className="rounded-md border border-border/70 bg-background px-4 py-3">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <p className="mt-1 text-xl font-bold tracking-tight text-foreground">{value}</p>
+      <p className="mt-1 text-xs leading-5 text-muted-foreground">{caption}</p>
     </div>
   );
 }
@@ -97,32 +110,95 @@ export function OperationsInsightsContent() {
   }
 
   const insights = insightsQuery.data;
+  const summary = summarizeOperationsInsights({
+    monthlyVisits: insights.monthly_visits,
+    processes: insights.processes,
+  });
+  const deltaText =
+    summary.previousMonthDelta === null
+      ? '比較なし'
+      : summary.previousMonthDelta >= 0
+        ? `+${summary.previousMonthDelta}件`
+        : `${summary.previousMonthDelta}件`;
+  const slowestText = summary.slowestProcess
+    ? `${summary.slowestProcess.label} ${formatOperationDuration(
+        summary.slowestProcess.averageMinutes,
+      )}`
+    : '実績なし';
 
   return (
     <div className="space-y-5" data-testid="operations-insights-page">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">在宅業務の動きを見る</h1>
-        <div className="flex flex-wrap items-baseline gap-4">
-          <Link
-            href="/admin/capacity"
-            className="text-sm font-medium text-primary hover:underline"
-          >
-            キャパシティ →
-          </Link>
-          <Link
-            href="/admin/inventory-forecast"
-            className="text-sm font-medium text-primary hover:underline"
-          >
-            在庫と定期処方の予測 →
-          </Link>
-          <Link
-            href="/admin/incidents"
-            className="text-sm font-medium text-primary hover:underline"
-          >
-            ヒヤリハット →
-          </Link>
+      <section className="rounded-lg border border-border/70 bg-card p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">
+              在宅業務の動きを見る
+            </h1>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+              月ごとの訪問量と、直近30日の工程所要時間から、次に詰まりを確認する場所を絞ります。
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/admin/capacity"
+              className="rounded-md border border-border/70 px-3 py-2 text-sm font-medium text-primary hover:bg-muted"
+            >
+              キャパシティ
+            </Link>
+            <Link
+              href="/admin/inventory-forecast"
+              className="rounded-md border border-border/70 px-3 py-2 text-sm font-medium text-primary hover:bg-muted"
+            >
+              在庫予測
+            </Link>
+            <Link
+              href="/admin/incidents"
+              className="rounded-md border border-border/70 px-3 py-2 text-sm font-medium text-primary hover:bg-muted"
+            >
+              ヒヤリハット
+            </Link>
+          </div>
         </div>
-      </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <MetricCard
+            label={`${summary.currentMonthLabel}の訪問`}
+            value={`${summary.currentMonthVisits}件`}
+            caption="完了・再訪・配送のみを含む"
+          />
+          <MetricCard label="前月差" value={deltaText} caption="前月実績がある月だけ比較" />
+          <MetricCard
+            label="最も時間がかかる工程"
+            value={slowestText}
+            caption="直近30日の平均所要時間"
+          />
+          <MetricCard
+            label="次に見るところ"
+            value={summary.nextFocus}
+            caption={`${summary.activeProcessCount}工程に直近実績あり`}
+          />
+        </div>
+
+        <div className="mt-4 rounded-md border border-border/70 bg-muted/25 p-3">
+          <h2 className="text-sm font-bold text-foreground">改善のヒント</h2>
+          {insights.hints.length === 0 ? (
+            <p className="mt-2 text-sm text-muted-foreground">
+              直近の実績が少ないため、ヒントはまだありません。
+            </p>
+          ) : (
+            <ul className="mt-2 grid gap-2 md:grid-cols-2" role="list">
+              {insights.hints.map((hint) => (
+                <li
+                  key={hint}
+                  className="rounded-md bg-background px-3 py-2 text-sm text-foreground"
+                >
+                  {hint}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
 
       <div className="grid gap-4 xl:grid-cols-2">
         <section className="rounded-lg border border-border/70 bg-card p-4">
@@ -147,6 +223,8 @@ export function OperationsInsightsContent() {
               items={insights.processes.map((process, index) => ({
                 label: process.label,
                 value: process.averageMinutes,
+                valueLabel:
+                  process.sampleCount > 0 ? formatOperationDuration(process.averageMinutes) : '0分',
                 colorClass: PROCESS_COLORS[index % PROCESS_COLORS.length],
               }))}
             />
@@ -156,23 +234,6 @@ export function OperationsInsightsContent() {
           </p>
         </section>
       </div>
-
-      <section className="rounded-lg border border-border/70 bg-card p-4">
-        <h2 className="text-sm font-bold text-foreground">改善のヒント</h2>
-        {insights.hints.length === 0 ? (
-          <p className="mt-3 text-sm text-muted-foreground">
-            直近の実績が少ないため、ヒントはまだありません。
-          </p>
-        ) : (
-          <ul className="mt-3 space-y-2.5" role="list">
-            {insights.hints.map((hint) => (
-              <li key={hint} className="text-sm leading-6 text-foreground">
-                ・{hint}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
     </div>
   );
 }

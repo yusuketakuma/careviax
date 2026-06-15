@@ -107,6 +107,25 @@ export function ReasonDialog({
               );
             })}
           </div>
+          <div
+            className={cn(
+              'rounded-lg border px-3 py-2 text-sm',
+              selectedOption
+                ? 'border-primary/30 bg-primary/5 text-foreground'
+                : 'border-border bg-muted/30 text-muted-foreground',
+            )}
+            data-testid="reason-selection-summary"
+            aria-live="polite"
+          >
+            <p className="font-medium">
+              {selectedOption ? `選択中: ${selectedOption.label}` : '理由を選択してください'}
+            </p>
+            <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+              {selectedOption
+                ? 'この理由とメモが履歴に残り、後続担当者が見返せます。'
+                : '理由を選ぶまで実行ボタンは押せません。'}
+            </p>
+          </div>
           <Textarea
             value={note}
             onChange={(event) => setNote(event.target.value)}

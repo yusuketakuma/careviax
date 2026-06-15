@@ -52,9 +52,7 @@ export function buildEvidenceDraftFileName(
   capturedAt: Date,
   mimeType = 'image/jpeg',
 ): string {
-  const option =
-    CAPTURE_CATEGORY_OPTIONS.find((candidate) => candidate.id === categoryId) ??
-    CAPTURE_CATEGORY_OPTIONS[0];
+  const option = findCaptureCategoryOption(categoryId);
   return `${option.label}_${format(capturedAt, 'yyyyMMdd-HHmmss')}.${mimeTypeToExtension(mimeType)}`;
 }
 
@@ -63,6 +61,39 @@ export type CapturePatientContext = {
   patientName: string | null;
   visitRecordId: string | null;
 };
+
+export type CaptureStatusSummary = {
+  categoryLabel: string;
+  patientLabel: string;
+  savedDraftLabel: string;
+  description: string;
+};
+
+export function findCaptureCategoryOption(categoryId: EvidenceCategoryId): CaptureCategoryOption {
+  return (
+    CAPTURE_CATEGORY_OPTIONS.find((candidate) => candidate.id === categoryId) ??
+    CAPTURE_CATEGORY_OPTIONS[0]
+  );
+}
+
+export function buildCaptureStatusSummary({
+  categoryId,
+  patientName,
+  savedCount,
+}: {
+  categoryId: EvidenceCategoryId;
+  patientName?: string | null;
+  savedCount: number;
+}): CaptureStatusSummary {
+  const categoryLabel = findCaptureCategoryOption(categoryId).label;
+
+  return {
+    categoryLabel,
+    patientLabel: patientName ? `${patientName} 様` : '患者未確定',
+    savedDraftLabel: savedCount > 0 ? `この訪問で端末保存 ${savedCount}枚` : '撮影前',
+    description: `${categoryLabel}として端末に保存し、画像・証跡では未同期として確認できます。`,
+  };
+}
 
 /**
  * 訪問予定詳細 API レスポンスから患者表示名・患者 ID・紐づく訪問記録 ID を
@@ -82,7 +113,8 @@ export function resolveCapturePatientContext(payload: unknown): CapturePatientCo
     visit_record?: { id?: unknown } | null;
   };
 
-  const patientId = typeof source.patient_id === 'string' && source.patient_id ? source.patient_id : null;
+  const patientId =
+    typeof source.patient_id === 'string' && source.patient_id ? source.patient_id : null;
 
   const rawName = source.case_?.patient?.name;
   const patientName = typeof rawName === 'string' && rawName.trim() ? rawName.trim() : null;

@@ -18,6 +18,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import {
   INCIDENT_PROCESS_OPTIONS,
+  buildIncidentMemoCompletion,
   buildIncidentMemoPatchPayload,
   incidentCardSubtext,
   toIncidentMemoForm,
@@ -37,6 +38,13 @@ const MEMO_TEXT_FIELDS = [
   { key: 'immediateAction', label: 'すぐ行った対応' },
   { key: 'preventionPlan', label: '次から変えること' },
 ] as const;
+
+function formatIncidentDate(value: string | null): string {
+  if (!value) return '日時未設定';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '日時未設定';
+  return `${date.getMonth() + 1}/${date.getDate()}`;
+}
 
 export function IncidentsContent() {
   const orgId = useOrgId();
@@ -115,6 +123,9 @@ export function IncidentsContent() {
     );
   }
 
+  const completion = buildIncidentMemoCompletion(form);
+  const selectedDate = formatIncidentDate(selected?.occurred_at ?? selected?.created_at ?? null);
+
   return (
     <div
       className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]"
@@ -127,9 +138,7 @@ export function IncidentsContent() {
       >
         <h2 className="text-base font-bold text-foreground">記録一覧</h2>
         {reports.length === 0 ? (
-          <p className="mt-5 text-sm text-muted-foreground">
-            ヒヤリハット記録はまだありません。
-          </p>
+          <p className="mt-5 text-sm text-muted-foreground">ヒヤリハット記録はまだありません。</p>
         ) : (
           <ul className="mt-5 space-y-5" role="list" data-testid="incident-record-list">
             {reports.map((report) => {
@@ -167,10 +176,36 @@ export function IncidentsContent() {
         aria-label="再発防止メモ"
         className="rounded-xl border border-border/70 bg-card p-5 shadow-sm lg:min-h-[640px]"
       >
-        <h2 className="text-base font-bold text-foreground">再発防止メモ</h2>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-bold text-foreground">再発防止メモ</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {selected ? `${selected.title} / ${selectedDate}` : '記録を選択してください'}
+            </p>
+          </div>
+          <div className="rounded-md border border-border/70 bg-muted/30 px-3 py-2 text-right">
+            <p className="text-xs text-muted-foreground">記入状況</p>
+            <p className="mt-0.5 text-sm font-bold text-foreground">
+              {completion.completedCount}/{completion.totalCount} 項目
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-md border border-border/70 bg-muted/20 p-3">
+          <p className="text-sm font-medium text-foreground">
+            保存前に「何が起きたか」「なぜ起きたか」「次から変えること」を揃えます。
+          </p>
+          {completion.isComplete ? (
+            <p className="mt-2 text-sm text-emerald-700">必要項目は埋まっています。</p>
+          ) : (
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              未入力: {completion.missingLabels.join('、')}
+            </p>
+          )}
+        </div>
         <form
           data-testid="incident-memo-form"
-          className="mt-5 space-y-7"
+          className="mt-5 space-y-5"
           onSubmit={(event) => {
             event.preventDefault();
             saveMutation.mutate();
@@ -187,6 +222,7 @@ export function IncidentsContent() {
               <Input
                 id={`incident-${field.key}`}
                 value={form[field.key]}
+                placeholder={`${field.label}を1行で記録`}
                 onChange={(event) =>
                   setForm((prev) => ({ ...prev, [field.key]: event.target.value }))
                 }
@@ -226,10 +262,14 @@ export function IncidentsContent() {
 
           <Button
             type="submit"
-            className="mt-10 h-11 w-[200px]"
+            className="mt-8 h-11 w-[220px]"
             disabled={!selected || saveMutation.isPending}
           >
-            {saveMutation.isPending ? '保存中...' : '保存する'}
+            {saveMutation.isPending
+              ? '保存中...'
+              : completion.isComplete
+                ? '再発防止メモを保存'
+                : '不足ありで保存'}
           </Button>
         </form>
       </section>

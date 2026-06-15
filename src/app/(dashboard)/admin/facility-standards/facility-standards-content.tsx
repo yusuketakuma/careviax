@@ -1,7 +1,11 @@
 'use client';
 
 import { useMemo } from 'react';
-import { FacilityCriteriaChecklist } from './facility-criteria-checklist';
+import {
+  buildFacilityCriteriaRows,
+  FacilityCriteriaChecklist,
+  summarizeFacilityCriteriaRows,
+} from './facility-criteria-checklist';
 import { useQuery } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { format, differenceInDays, parseISO } from 'date-fns';
@@ -9,6 +13,7 @@ import { ja } from 'date-fns/locale';
 import { AlertTriangle, CheckCircle2, XCircle, Bell } from 'lucide-react';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
@@ -29,7 +34,11 @@ type FacilityStandard = {
 
 function getRequirementBadge(status: Record<string, boolean> | null) {
   if (!status) {
-    return <Badge variant="outline" className="text-xs text-muted-foreground">未確認</Badge>;
+    return (
+      <Badge variant="outline" className="text-xs text-muted-foreground">
+        未確認
+      </Badge>
+    );
   }
   const values = Object.values(status);
   const allMet = values.every(Boolean);
@@ -37,20 +46,29 @@ function getRequirementBadge(status: Record<string, boolean> | null) {
 
   if (allMet) {
     return (
-      <Badge variant="outline" className="flex w-fit items-center gap-1 text-xs text-green-700 border-green-300 bg-green-50">
+      <Badge
+        variant="outline"
+        className="flex w-fit items-center gap-1 text-xs text-green-700 border-green-300 bg-green-50"
+      >
         <CheckCircle2 className="size-3" aria-hidden="true" /> 充足
       </Badge>
     );
   }
   if (noneMet) {
     return (
-      <Badge variant="outline" className="flex w-fit items-center gap-1 text-xs text-red-700 border-red-300 bg-red-50">
+      <Badge
+        variant="outline"
+        className="flex w-fit items-center gap-1 text-xs text-red-700 border-red-300 bg-red-50"
+      >
         <XCircle className="size-3" aria-hidden="true" /> 不足
       </Badge>
     );
   }
   return (
-    <Badge variant="outline" className="flex w-fit items-center gap-1 text-xs text-orange-700 border-orange-300 bg-orange-50">
+    <Badge
+      variant="outline"
+      className="flex w-fit items-center gap-1 text-xs text-orange-700 border-orange-300 bg-orange-50"
+    >
       <AlertTriangle className="size-3" aria-hidden="true" /> 一部不足
     </Badge>
   );
@@ -116,7 +134,12 @@ export function FacilityStandardsContent() {
     enabled: !!orgId,
   });
 
-  const standards = data?.data ?? [];
+  const standards = useMemo(() => data?.data ?? [], [data?.data]);
+  const criteriaRows = useMemo(() => buildFacilityCriteriaRows(standards), [standards]);
+  const criteriaSummary = useMemo(
+    () => summarizeFacilityCriteriaRows(criteriaRows),
+    [criteriaRows],
+  );
 
   // Alerts: expiry within 90 days
   const alertItems = standards.filter((s) => {
@@ -159,11 +182,83 @@ export function FacilityStandardsContent() {
         cell: ({ row }) => <ClaimStatusBadge status={row.original.claim_status} />,
       },
     ],
-    []
+    [],
   );
 
   return (
     <div className="space-y-4">
+      <section
+        aria-label="施設基準の判定サマリー"
+        className="rounded-lg border border-border/70 bg-card p-4"
+      >
+        <div className="flex flex-col gap-2 border-b border-border/60 pb-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-base font-bold text-foreground">今日の判定</h2>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              届出一覧を開いた時点で、算定可否と足りない証跡を先に確認します。
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="min-h-11 w-full sm:w-auto"
+            onClick={() => {
+              document
+                .querySelector('[data-testid="facility-criteria-checklist"]')
+                ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
+          >
+            不足項目へ移動
+          </Button>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <div className="rounded-lg border border-border/70 bg-background px-4 py-3">
+            <p className="text-xs font-medium text-muted-foreground">算定可否</p>
+            <div className="mt-2 flex items-center gap-2">
+              <ClaimStatusBadge
+                status={
+                  criteriaSummary.statusTone === 'ok'
+                    ? 'claimable'
+                    : criteriaSummary.statusTone === 'missing'
+                      ? 'blocked'
+                      : 'unknown'
+                }
+              />
+              <span className="text-lg font-bold text-foreground">
+                {isLoading ? '読込中' : criteriaSummary.statusLabel}
+              </span>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-border/70 bg-background px-4 py-3">
+            <p className="text-xs font-medium text-muted-foreground">不足・確認中</p>
+            <p className="mt-2 text-lg font-bold text-foreground">
+              {isLoading
+                ? '確認しています'
+                : criteriaSummary.missingCount > 0
+                  ? `${criteriaSummary.missingCount}件不足`
+                  : criteriaSummary.checkingCount > 0
+                    ? `${criteriaSummary.checkingCount}件確認中`
+                    : '不足なし'}
+            </p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              OK {criteriaSummary.okCount}/{criteriaSummary.totalCount}
+              {criteriaSummary.missingLabels.length > 0
+                ? ` / ${criteriaSummary.missingLabels.join('、')}`
+                : ''}
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-border/70 bg-background px-4 py-3">
+            <p className="text-xs font-medium text-muted-foreground">次にすること</p>
+            <p className="mt-2 text-sm leading-6 text-foreground">
+              {isLoading ? '施設基準の届出を取得しています。' : criteriaSummary.nextAction}
+            </p>
+          </div>
+        </div>
+      </section>
+
       {/* Alert banner */}
       {(alertItems.length > 0 || standards.some((item) => item.claim_status === 'blocked')) && (
         <div className="flex items-start gap-3 rounded-md border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-800">

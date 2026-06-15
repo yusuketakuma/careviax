@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
@@ -46,23 +47,23 @@ export function SignalTuningPanel() {
     [rulesQuery.data],
   );
 
-  const [desired, setDesired] = React.useState<Record<SignalTuningAlertType, boolean> | null>(
-    null,
-  );
-  // ルール読込ごとに希望状態を現状へ同期(未編集時のみ)
-  const [syncedAt, setSyncedAt] = React.useState<unknown>(null);
-  if (rulesQuery.data && syncedAt !== rulesQuery.data) {
-    setSyncedAt(rulesQuery.data);
-    setDesired(
+  const baseDesired = React.useMemo(
+    () =>
       Object.fromEntries(
         SIGNAL_TUNING_ITEMS.map((item) => [item.alertType, currentState[item.alertType].strong]),
       ) as Record<SignalTuningAlertType, boolean>,
-    );
-  }
+    [currentState],
+  );
+  const [desiredOverrides, setDesiredOverrides] = React.useState<
+    Partial<Record<SignalTuningAlertType, boolean>>
+  >({});
+  const desired = React.useMemo(
+    () => ({ ...baseDesired, ...desiredOverrides }),
+    [baseDesired, desiredOverrides],
+  );
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (!desired) return;
       const diff = diffSignalTuning(currentState, desired);
       const headers = { 'Content-Type': 'application/json', 'x-org-id': orgId };
 
@@ -100,14 +101,15 @@ export function SignalTuningPanel() {
     },
     onSuccess: async () => {
       toast.success('表示設定を保存しました');
+      setDesiredOverrides({});
       await queryClient.invalidateQueries({ queryKey: ['drug-alert-rules', orgId] });
     },
     onError: (error: Error) => toast.error(error.message),
   });
 
-  if (!desired) return null;
-
   const strongItems = SIGNAL_TUNING_ITEMS.filter((item) => desired[item.alertType]);
+  const diff = diffSignalTuning(currentState, desired);
+  const changedCount = diff.create.length + diff.activate.length + diff.deactivate.length;
 
   return (
     <section
@@ -116,24 +118,49 @@ export function SignalTuningPanel() {
       className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
     >
       <div className="rounded-lg border border-border/70 bg-card p-4">
-        <h2 className="text-sm font-bold text-foreground">表示を強める項目</h2>
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/70 pb-4">
+          <div>
+            <h2 className="text-sm font-bold text-foreground">表示を強める項目</h2>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              患者カードで先に目に入れる安全シグナルを選びます。
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="secondary">強調 {strongItems.length}件</Badge>
+            {changedCount > 0 ? (
+              <Badge variant="outline">未保存 {changedCount}件</Badge>
+            ) : (
+              <Badge variant="outline">保存済み</Badge>
+            )}
+          </div>
+        </div>
         <ul className="mt-3 space-y-2.5" role="list">
           {SIGNAL_TUNING_ITEMS.map((item) => {
             const strong = desired[item.alertType];
+            const changed = currentState[item.alertType].strong !== strong;
             return (
               <li
                 key={item.alertType}
                 data-testid="signal-tuning-item"
-                className="flex min-h-14 items-center justify-between gap-3 rounded-lg border border-border/70 bg-background px-4 py-2.5"
+                className={cn(
+                  'flex min-h-14 items-center justify-between gap-3 rounded-lg border px-4 py-2.5',
+                  changed ? 'border-primary/40 bg-primary/5' : 'border-border/70 bg-background',
+                )}
               >
-                <span className="text-sm font-medium text-foreground">{item.label}</span>
+                <span>
+                  <span className="block text-sm font-medium text-foreground">{item.label}</span>
+                  {changed ? (
+                    <span className="mt-0.5 block text-xs text-primary">変更あり</span>
+                  ) : null}
+                </span>
                 <button
                   type="button"
                   aria-pressed={strong}
                   onClick={() =>
-                    setDesired((prev) =>
-                      prev ? { ...prev, [item.alertType]: !prev[item.alertType] } : prev,
-                    )
+                    setDesiredOverrides((prev) => ({
+                      ...prev,
+                      [item.alertType]: !desired[item.alertType],
+                    }))
                   }
                   className={cn(
                     'inline-flex min-h-9 items-center rounded-full border px-3 py-1 text-xs font-semibold',
@@ -151,7 +178,17 @@ export function SignalTuningPanel() {
       </div>
 
       <div className="rounded-lg border border-border/70 bg-card p-4">
-        <h2 className="text-sm font-bold text-foreground">カードでの見え方</h2>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-bold text-foreground">カードでの見え方</h2>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              保存後、患者カードにはこの順で安全タグが表示されます。
+            </p>
+          </div>
+          <Badge variant={changedCount > 0 ? 'default' : 'outline'}>
+            {changedCount > 0 ? '保存待ち' : '反映済み'}
+          </Badge>
+        </div>
         <div className="mt-3 rounded-lg border border-border/70 bg-background p-4">
           <p className="text-base font-bold text-foreground">田中 一郎 様</p>
           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -177,10 +214,14 @@ export function SignalTuningPanel() {
         <Button
           type="button"
           className="mt-5 min-h-11 w-full sm:w-48"
-          disabled={saveMutation.isPending || rulesQuery.isLoading}
+          disabled={saveMutation.isPending || rulesQuery.isLoading || changedCount === 0}
           onClick={() => saveMutation.mutate()}
         >
-          {saveMutation.isPending ? '保存中...' : '保存する'}
+          {saveMutation.isPending
+            ? '保存中...'
+            : changedCount > 0
+              ? `${changedCount}件の変更を保存`
+              : '変更はありません'}
         </Button>
       </div>
     </section>

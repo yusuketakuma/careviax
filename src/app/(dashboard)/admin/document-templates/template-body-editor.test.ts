@@ -3,6 +3,7 @@ import {
   insertMergeField,
   MERGE_FIELDS,
   readTemplateBodyText,
+  summarizeMergeFieldUsage,
 } from './template-body-editor';
 
 describe('insertMergeField', () => {
@@ -27,6 +28,21 @@ describe('readTemplateBodyText', () => {
     expect(readTemplateBodyText({ body_text: '本文', sections: [] })).toBe('本文');
     expect(readTemplateBodyText({ sections: ['summary'] })).toBe('');
     expect(readTemplateBodyText(null)).toBe('');
+  });
+});
+
+describe('summarizeMergeFieldUsage', () => {
+  it('counts used merge fields and lists missing fields', () => {
+    expect(summarizeMergeFieldUsage('本文 {服薬状況} と {残薬}')).toEqual({
+      usedCount: 2,
+      totalCount: MERGE_FIELDS.length,
+      missingFields: ['副作用', '薬剤師評価', 'お願いしたいこと', '次回確認'],
+    });
+  });
+
+  it('reports no missing fields when every merge token is present', () => {
+    const text = MERGE_FIELDS.map((field) => `{${field}}`).join(' ');
+    expect(summarizeMergeFieldUsage(text).missingFields).toEqual([]);
   });
 });
 

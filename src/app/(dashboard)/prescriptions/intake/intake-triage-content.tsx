@@ -100,10 +100,10 @@ function QueueRow({
 
   return (
     <TableRow className={cn(statusPresentation.rowClassName)} data-testid="intake-triage-row">
-      <TableCell className="whitespace-nowrap text-sm tabular-nums text-foreground">
+      <TableCell className="w-20 whitespace-nowrap text-sm tabular-nums text-foreground">
         {formatReceivedAt(row.received_at, now)}
       </TableCell>
-      <TableCell>
+      <TableCell className="w-20">
         <span
           className={cn(
             'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold',
@@ -113,18 +113,23 @@ function QueueRow({
           {INTAKE_LANE_LABELS[row.lane]}
         </span>
       </TableCell>
-      <TableCell className="whitespace-nowrap text-sm text-foreground">
+      <TableCell className="w-32 max-w-32 truncate whitespace-nowrap text-sm text-foreground">
         {row.issuer ?? '—'}
       </TableCell>
-      <TableCell className="text-sm font-medium text-foreground">{contentLabel}</TableCell>
-      <TableCell className="whitespace-nowrap">
+      <TableCell
+        className="max-w-[360px] truncate text-sm font-medium text-foreground"
+        title={contentLabel}
+      >
+        {contentLabel}
+      </TableCell>
+      <TableCell className="w-20 whitespace-nowrap">
         {row.auto_read_percent != null ? (
           <span className="text-sm font-bold text-emerald-700">{row.auto_read_percent}%</span>
         ) : (
           <span className="text-sm text-muted-foreground">—</span>
         )}
       </TableCell>
-      <TableCell>
+      <TableCell className="w-36">
         <span
           className={cn(
             'inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold',
@@ -134,7 +139,7 @@ function QueueRow({
           {buildStatusLabel(row)}
         </span>
       </TableCell>
-      <TableCell className="text-right">
+      <TableCell className="w-28 text-right">
         <Link
           href={action.href(row)}
           className={buttonVariants({
@@ -338,31 +343,33 @@ export function IntakeTriageContent() {
                   />
                 </div>
                 {visibleRows.length > 0 ? (
-                  <Table className="mt-3">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-24">受信</TableHead>
-                        <TableHead className="w-24">経路</TableHead>
-                        <TableHead className="w-40">発行元</TableHead>
-                        <TableHead>内容</TableHead>
-                        <TableHead className="w-20">自動読取</TableHead>
-                        <TableHead className="w-44">状態</TableHead>
-                        <TableHead className="w-36">
-                          <span className="sr-only">アクション</span>
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {visibleRows.map((row) => (
-                        <QueueRow
-                          key={row.intake_id}
-                          row={row}
-                          isPrimaryAction={row.intake_id === primaryRowId}
-                          now={now}
-                        />
-                      ))}
-                    </TableBody>
-                  </Table>
+                  <div className="mt-3 max-h-[360px] overflow-y-auto rounded-md border border-border/70">
+                    <Table className="table-fixed">
+                      <TableHeader className="sticky top-0 z-10 bg-card">
+                        <TableRow>
+                          <TableHead className="w-20">受信</TableHead>
+                          <TableHead className="w-20">経路</TableHead>
+                          <TableHead className="w-32">発行元</TableHead>
+                          <TableHead>内容</TableHead>
+                          <TableHead className="w-20">自動読取</TableHead>
+                          <TableHead className="w-36">状態</TableHead>
+                          <TableHead className="w-28">
+                            <span className="sr-only">アクション</span>
+                          </TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {visibleRows.map((row) => (
+                          <QueueRow
+                            key={row.intake_id}
+                            row={row}
+                            isPrimaryAction={row.intake_id === primaryRowId}
+                            now={now}
+                          />
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 ) : (
                   <p className="mt-3 text-sm text-muted-foreground">
                     この経路の取込はいまありません。受信すると新着が上に並びます。

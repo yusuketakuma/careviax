@@ -22,12 +22,10 @@ export const VOICE_MEMO_DEMO_DURATION_SECONDS = 83;
 export const VOICE_MEMO_DEMO_TRANSCRIPT =
   '夕食後の薬は家族が声をかけると飲めている。便秘は続いているが、腹痛はなし。次回も便通を確認する。';
 
+const TRANSCRIPT_HIGHLIGHT_LABELS = ['服薬', '症状', '次回確認'] as const;
+
 /** MediaRecorder へ渡す候補 mime(対応順。全滅ならブラウザ既定 = undefined) */
-const PREFERRED_AUDIO_MIME_TYPES = [
-  'audio/webm;codecs=opus',
-  'audio/webm',
-  'audio/mp4',
-] as const;
+const PREFERRED_AUDIO_MIME_TYPES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'] as const;
 
 /** 秒数 → 「mm:ss」(負値は 00:00、99:59 で飽和) */
 export function formatVoiceMemoDuration(totalSeconds: number): string {
@@ -42,6 +40,27 @@ export function formatVoiceMemoDuration(totalSeconds: number): string {
 export function buildVoiceMemoTitle(durationSeconds: number | null): string {
   if (durationSeconds === null) return '訪問中メモ';
   return `訪問中メモ ${formatVoiceMemoDuration(durationSeconds)}`;
+}
+
+export type VoiceMemoTranscriptHighlight = {
+  label: (typeof TRANSCRIPT_HIGHLIGHT_LABELS)[number] | 'メモ';
+  text: string;
+};
+
+/** 転写文を訪問記録へ入れる前に確認しやすい短い要点へ分ける。 */
+export function buildVoiceMemoTranscriptHighlights(
+  transcript: string | null,
+): VoiceMemoTranscriptHighlight[] {
+  const sentences = (transcript ?? '')
+    .split(/(?<=[。！？!?])\s*/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean)
+    .slice(0, 3);
+
+  return sentences.map((text, index) => ({
+    label: TRANSCRIPT_HIGHLIGHT_LABELS[index] ?? 'メモ',
+    text,
+  }));
 }
 
 /** MediaRecorder の isTypeSupported から優先 mime を選ぶ(未対応のみなら undefined) */

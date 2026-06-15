@@ -9,6 +9,7 @@ interface UsePresenceHeartbeatOptions {
   /** いまいる場所(タブ等)。/api/presence の active_field にそのまま渡す */
   activeField?: string | null;
   enabled?: boolean;
+  initialDelayMs?: number;
 }
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -22,6 +23,7 @@ export function usePresenceHeartbeat({
   entityId,
   activeField = null,
   enabled = true,
+  initialDelayMs = 0,
 }: UsePresenceHeartbeatOptions) {
   const orgId = useOrgId();
 
@@ -42,8 +44,12 @@ export function usePresenceHeartbeat({
       });
     };
 
-    postPresence();
-    const timer = setInterval(postPresence, HEARTBEAT_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [enabled, orgId, entityType, entityId, activeField]);
+    const initialTimer =
+      initialDelayMs > 0 ? setTimeout(postPresence, initialDelayMs) : setTimeout(postPresence, 0);
+    const heartbeatTimer = setInterval(postPresence, HEARTBEAT_INTERVAL_MS);
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(heartbeatTimer);
+    };
+  }, [enabled, orgId, entityType, entityId, activeField, initialDelayMs]);
 }

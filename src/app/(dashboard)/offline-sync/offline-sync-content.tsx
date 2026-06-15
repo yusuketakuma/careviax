@@ -79,19 +79,29 @@ export function OfflineSyncContent() {
   const [confirmingChoice, setConfirmingChoice] = React.useState<'server' | 'local' | null>(null);
 
   React.useEffect(() => {
+    let active = true;
     void refreshSyncState();
-    void loadPatientNameMap().then(setPatientNames);
+    void loadPatientNameMap().then((names) => {
+      if (active) setPatientNames(names);
+    });
+
+    return () => {
+      active = false;
+    };
   }, [refreshSyncState]);
 
   // 撮影・動作確認用のデモ注入(dev 限定)
   React.useEffect(() => {
     if (process.env.NODE_ENV === 'production') return;
+    let active = true;
     const target = window as unknown as Record<string, unknown>;
-    target.__phosSeedOfflineSyncDemo = async () => {
-      await seedOfflineSyncDemoData();
+    target.__phosSeedOfflineSyncDemo = async (mode?: 'queue' | 'conflict') => {
+      await seedOfflineSyncDemoData(mode);
+      if (!active) return;
       await refreshSyncState();
     };
     return () => {
+      active = false;
       delete target.__phosSeedOfflineSyncDemo;
     };
   }, [refreshSyncState]);
@@ -178,7 +188,8 @@ export function OfflineSyncContent() {
             </p>
             {selectedConflict.localOutcome ? (
               <p className="mt-1 text-sm text-foreground">
-                結果:{OUTCOME_LABELS[selectedConflict.localOutcome] ?? selectedConflict.localOutcome}
+                結果:
+                {OUTCOME_LABELS[selectedConflict.localOutcome] ?? selectedConflict.localOutcome}
               </p>
             ) : null}
             <p className="mt-4 text-xs text-muted-foreground">更新前の内容です。</p>
@@ -197,7 +208,9 @@ export function OfflineSyncContent() {
             ) : null}
             <p className="mt-4 text-xs text-muted-foreground">
               サーバーに保存済みの最新記録です
-              {selectedConflict.serverVisitDate ? `(訪問日 ${selectedConflict.serverVisitDate})` : ''}
+              {selectedConflict.serverVisitDate
+                ? `(訪問日 ${selectedConflict.serverVisitDate})`
+                : ''}
               。
             </p>
           </section>
@@ -299,7 +312,10 @@ export function OfflineSyncContent() {
             <TableBody>
               {rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="py-10 text-center text-sm text-muted-foreground">
+                  <TableCell
+                    colSpan={4}
+                    className="py-10 text-center text-sm text-muted-foreground"
+                  >
                     未同期のデータはありません。すべて同期済みです。
                   </TableCell>
                 </TableRow>

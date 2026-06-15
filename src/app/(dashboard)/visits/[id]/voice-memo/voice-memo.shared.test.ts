@@ -8,6 +8,7 @@ import {
   buildVoiceMemoFileName,
   buildVoiceMemoRecordPatchBody,
   buildVoiceMemoTitle,
+  buildVoiceMemoTranscriptHighlights,
   buildVoiceMemoWaveformHeights,
   deriveVoiceMemoView,
   formatVoiceMemoDuration,
@@ -117,6 +118,21 @@ describe('buildVoiceMemoRecordPatchBody', () => {
     expect(buildVoiceMemoRecordPatchBody({ version: 0 }, '転写')).toBeNull();
     expect(buildVoiceMemoRecordPatchBody(null, '転写')).toBeNull();
     expect(buildVoiceMemoRecordPatchBody({ version: 3 }, '   ')).toBeNull();
+  });
+});
+
+describe('buildVoiceMemoTranscriptHighlights', () => {
+  it('転写文を訪問記録へ入れる前の要点へ分ける', () => {
+    expect(buildVoiceMemoTranscriptHighlights(VOICE_MEMO_DEMO_TRANSCRIPT)).toEqual([
+      { label: '服薬', text: '夕食後の薬は家族が声をかけると飲めている。' },
+      { label: '症状', text: '便秘は続いているが、腹痛はなし。' },
+      { label: '次回確認', text: '次回も便通を確認する。' },
+    ]);
+  });
+
+  it('空の転写は要点なし、長文は先頭3文だけを表示する', () => {
+    expect(buildVoiceMemoTranscriptHighlights(null)).toEqual([]);
+    expect(buildVoiceMemoTranscriptHighlights('一文目。二文目。三文目。四文目。')).toHaveLength(3);
   });
 });
 

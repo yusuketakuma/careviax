@@ -109,20 +109,17 @@ function queueRowTitle(row: AuditQueueRow): string {
 }
 
 const REJECT_OPTIONS = [
-  { code: 'drug_name_mismatch', label: '薬剤間違い' },
-  { code: 'quantity_error', label: '数量間違い(計数不一致)' },
-  { code: 'packaging_error', label: '包装指示違反' },
-  { code: 'carry_type_error', label: '持参区分誤り' },
-  { code: 'labeling_error', label: 'ラベル不備' },
+  { code: 'quantity_error', label: '数量が違う' },
+  { code: 'discontinued_drug_left', label: '中止薬が残っている' },
+  { code: 'missing_photo', label: '写真が足りない' },
+  { code: 'patient_reason', label: '患者都合' },
+  { code: 'input_error', label: '入力間違い' },
   { code: 'other', label: 'その他' },
 ] as const;
 
 function WorkbenchCard({ children, className, ...props }: React.ComponentProps<'section'>) {
   return (
-    <section
-      className={cn('rounded-lg border border-border/70 bg-card p-4', className)}
-      {...props}
-    >
+    <section className={cn('rounded-lg border border-border/70 bg-card p-4', className)} {...props}>
       {children}
     </section>
   );
@@ -203,9 +200,7 @@ function AuditQueuePanel({
                       {queueRowTitle(row)}
                     </span>
                     {dueTime ? (
-                      <span className="shrink-0 text-xs font-bold text-red-600">
-                        期限{dueTime}
-                      </span>
+                      <span className="shrink-0 text-xs font-bold text-red-600">期限{dueTime}</span>
                     ) : null}
                   </span>
                   {isSelected && selectedSubline ? (
@@ -275,8 +270,7 @@ function CountTable({
         {rows.map((row) => {
           const entry = counts[row.line_id] ?? { first: null, second: null };
           const judgement = judgeCountRow(row.dispensed_quantity, entry.first, entry.second);
-          const judgementBadge =
-            judgement === 'pending' ? null : JUDGEMENT_BADGES[judgement];
+          const judgementBadge = judgement === 'pending' ? null : JUDGEMENT_BADGES[judgement];
           return (
             <TableRow
               key={row.line_id}
@@ -557,12 +551,19 @@ export function AuditWorkbench() {
   // ── 中央ヘッダーの組み立て ──
   const rxNumber =
     workbench?.intake != null
-      ? formatPrescriptionCardNumber(workbench.intake.id, workbench.intake.prescribed_date, 'rx_year')
+      ? formatPrescriptionCardNumber(
+          workbench.intake.id,
+          workbench.intake.prescribed_date,
+          'rx_year',
+        )
       : null;
   const dueTime = formatDueTime(workbench?.task.due_date ?? null);
   const remainingLabel = formatRemainingLabel(workbench?.task.due_date ?? null);
   const selectedSubline = workbench?.dispenser
-    ? `調剤: ${familyName(workbench.dispenser.name)} ${workbench.dispenser.time_label ?? ''} 完了`.replace(/\s+/g, ' ')
+    ? `調剤: ${familyName(workbench.dispenser.name)} ${workbench.dispenser.time_label ?? ''} 完了`.replace(
+        /\s+/g,
+        ' ',
+      )
     : null;
 
   const dateLabel = format(new Date(), 'M/d(EEE)', { locale: ja });
@@ -757,6 +758,7 @@ export function AuditWorkbench() {
         title="差し戻し理由を入力"
         options={REJECT_OPTIONS}
         warning="差戻すと調剤工程へ戻り、担当者に通知されます。"
+        submitLabel="差し戻す"
         pending={auditMutation.isPending}
         onSubmit={({ code, label, note }) =>
           auditMutation.mutate({

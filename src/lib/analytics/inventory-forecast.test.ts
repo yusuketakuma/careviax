@@ -3,10 +3,12 @@ import {
   buildInventoryForecast,
   classifyStockStatus,
   countFacilityPatients,
+  coveragePercent,
   drugBaseName,
   estimateDailyDose,
   nextWeekUtcRange,
   selectLatestLinesByPatient,
+  summarizeInventoryForecast,
   type ForecastIntakeInput,
   type ForecastLineInput,
 } from './inventory-forecast';
@@ -140,6 +142,72 @@ describe('classifyStockStatus', () => {
   });
 });
 
+describe('coveragePercent / summarizeInventoryForecast', () => {
+  it('computes stock coverage and chooses the highest priority shortage', () => {
+    const drugs = [
+      {
+        drugKey: 'アムロジピン',
+        requiredQty: 35,
+        stockQty: 20,
+        unit: '錠',
+        status: 'order_candidate' as const,
+      },
+      {
+        drugKey: 'トラセミド',
+        requiredQty: 21,
+        stockQty: 3,
+        unit: '錠',
+        status: 'order_required' as const,
+      },
+      {
+        drugKey: '酸化Mg',
+        requiredQty: 84,
+        stockQty: 112,
+        unit: '錠',
+        status: 'sufficient' as const,
+      },
+    ];
+
+    expect(coveragePercent(drugs[0])).toBe(57);
+    const summary = summarizeInventoryForecast({
+      drugs,
+      patients: [
+        {
+          key: 'patient:p1',
+          label: '田中 一郎',
+          firstVisitDateKey: '2026-06-22',
+          isFacilityBatch: false,
+        },
+      ],
+    });
+
+    expect(summary.orderRequiredCount).toBe(1);
+    expect(summary.orderCandidateCount).toBe(1);
+    expect(summary.shortageDrugCount).toBe(2);
+    expect(summary.affectedPatientCount).toBe(1);
+    expect(summary.priorityDrug?.drugKey).toBe('トラセミド');
+    expect(summary.nextAction).toBe('トラセミドを発注確認');
+  });
+
+  it('falls back to recheck guidance when there is no shortage', () => {
+    const summary = summarizeInventoryForecast({
+      drugs: [
+        {
+          drugKey: '酸化Mg',
+          requiredQty: 84,
+          stockQty: 112,
+          unit: '錠',
+          status: 'sufficient',
+        },
+      ],
+      patients: [],
+    });
+
+    expect(summary.priorityDrug).toBeNull();
+    expect(summary.nextAction).toBe('定期処方更新後に再確認');
+  });
+});
+
 describe('buildInventoryForecast', () => {
   const monday = new Date('2026-06-15T00:00:00.000Z');
   const tuesday = new Date('2026-06-16T00:00:00.000Z');
@@ -147,8 +215,18 @@ describe('buildInventoryForecast', () => {
 
   const baseInput = () => ({
     visits: [
-      { patientId: 'p-tanaka', patientName: '田中 一郎', scheduledDate: monday, facilityBatch: null },
-      { patientId: 'p-sato', patientName: '佐藤 花子', scheduledDate: tuesday, facilityBatch: null },
+      {
+        patientId: 'p-tanaka',
+        patientName: '田中 一郎',
+        scheduledDate: monday,
+        facilityBatch: null,
+      },
+      {
+        patientId: 'p-sato',
+        patientName: '佐藤 花子',
+        scheduledDate: tuesday,
+        facilityBatch: null,
+      },
       {
         patientId: 'p-res1',
         patientName: '山田 ウメ',

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useMutation } from '@tanstack/react-query';
 import { Mic, Square } from 'lucide-react';
 import { toast } from 'sonner';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { resolveScheduleVisitRecordId } from '@/lib/offline/evidence-drafts.shared';
@@ -16,6 +17,7 @@ import {
   VOICE_MEMO_DEMO_TRANSCRIPT,
   buildVoiceMemoFileName,
   buildVoiceMemoRecordPatchBody,
+  buildVoiceMemoTranscriptHighlights,
   buildVoiceMemoTitle,
   buildVoiceMemoWaveformHeights,
   deriveVoiceMemoView,
@@ -67,6 +69,10 @@ export function VoiceMemoContent({ visitId }: { visitId: string }) {
 
   const waveformHeights = useMemo(() => buildVoiceMemoWaveformHeights(), []);
   const view = deriveVoiceMemoView({ phase, transcript });
+  const transcriptHighlights = useMemo(
+    () => buildVoiceMemoTranscriptHighlights(transcript),
+    [transcript],
+  );
 
   // 端末に残っている転写待ちドラフト(最新 1 件)を復元する
   useEffect(() => {
@@ -339,6 +345,12 @@ export function VoiceMemoContent({ visitId }: { visitId: string }) {
         <h2 id="voice-memo-recorder-heading" className="text-base font-bold text-foreground">
           録音メモ
         </h2>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Badge variant={phase === 'recorded' ? 'default' : 'outline'}>
+            {phase === 'recorded' ? '録音済み' : phase === 'recording' ? '録音中' : '未録音'}
+          </Badge>
+          {audioUrl || phase === 'recorded' ? <Badge variant="secondary">端末保存</Badge> : null}
+        </div>
 
         {/* 経過時間は毎秒変わるため live region にしない(状態変化はトーストが通知する) */}
         <p
@@ -462,16 +474,36 @@ export function VoiceMemoContent({ visitId }: { visitId: string }) {
         <h2 id="voice-memo-transcript-heading" className="text-base font-bold text-foreground">
           文字起こし
         </h2>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Badge variant={view.transcriptReady ? 'default' : 'outline'}>
+            {view.transcriptReady ? '転写済み' : '転写待ち'}
+          </Badge>
+          {appendedRecordId ? <Badge variant="secondary">記録へ反映済み</Badge> : null}
+        </div>
 
         {view.transcriptReady ? (
           <>
             <p
-              className="mt-8 text-sm leading-7 text-foreground"
+              className="mt-6 rounded-lg border border-border/70 bg-background p-4 text-sm leading-7 text-foreground"
               data-testid="voice-memo-transcript-text"
             >
               {transcript}
             </p>
-            <div className="mt-24">
+            <div className="mt-4 rounded-lg border border-border/70 bg-muted/30 p-4">
+              <h3 className="text-sm font-bold text-foreground">記録に入れる要点</h3>
+              <ul className="mt-3 grid gap-2" data-testid="voice-memo-transcript-highlights">
+                {transcriptHighlights.map((highlight) => (
+                  <li
+                    key={`${highlight.label}-${highlight.text}`}
+                    className="rounded-md bg-card p-3"
+                  >
+                    <p className="text-xs font-bold text-primary">{highlight.label}</p>
+                    <p className="mt-1 text-sm leading-6 text-foreground">{highlight.text}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="mt-5">
               <Button
                 type="button"
                 className="min-h-11 min-w-56 bg-emerald-600 text-[15px] font-bold text-white hover:bg-emerald-700"
@@ -481,6 +513,9 @@ export function VoiceMemoContent({ visitId }: { visitId: string }) {
               >
                 {appendMutation.isPending ? '追記中...' : '訪問記録へ入れる'}
               </Button>
+              <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                S: 患者の訴えの下書きメモへ追記します。反映前に要点と原文を確認してください。
+              </p>
               {appendedRecordId ? (
                 <p className="mt-3 text-sm leading-6 text-muted-foreground">
                   訪問記録のメモへ追記しました。

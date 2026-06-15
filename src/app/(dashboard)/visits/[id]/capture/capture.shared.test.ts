@@ -6,7 +6,9 @@ import {
 import {
   CAPTURE_CATEGORY_OPTIONS,
   DEFAULT_CAPTURE_CATEGORY,
+  buildCaptureStatusSummary,
   buildEvidenceDraftFileName,
+  findCaptureCategoryOption,
   mimeTypeToExtension,
   resolveCapturePatientContext,
 } from './capture.shared';
@@ -50,9 +52,9 @@ describe('buildEvidenceDraftFileName', () => {
   it('生成名は同期後の p0_33 ファイル名射影でも同じ区分へ戻る(往復一致)', () => {
     for (const option of CAPTURE_CATEGORY_OPTIONS) {
       const fileName = buildEvidenceDraftFileName(option.id, CAPTURED_AT);
-      expect(
-        projectEvidenceCategory({ purpose: 'visit-photo', kind: 'photo', fileName }),
-      ).toBe(option.id);
+      expect(projectEvidenceCategory({ purpose: 'visit-photo', kind: 'photo', fileName })).toBe(
+        option.id,
+      );
     }
   });
 
@@ -60,6 +62,43 @@ describe('buildEvidenceDraftFileName', () => {
     expect(buildEvidenceDraftFileName('report_copy', CAPTURED_AT)).toBe(
       '残薬写真_20260613-103045.jpg',
     );
+  });
+});
+
+describe('findCaptureCategoryOption', () => {
+  it('選択区分のチップ定義を返し、対象外なら既定チップに寄せる', () => {
+    expect(findCaptureCategoryOption('set_photo').label).toBe('セット設置');
+    expect(findCaptureCategoryOption('report_copy').label).toBe('残薬写真');
+  });
+});
+
+describe('buildCaptureStatusSummary', () => {
+  it('撮影前の患者・区分・保存先説明を組み立てる', () => {
+    expect(
+      buildCaptureStatusSummary({
+        categoryId: 'document_delivery',
+        patientName: '田中 一郎',
+        savedCount: 0,
+      }),
+    ).toEqual({
+      categoryLabel: '説明資料',
+      patientLabel: '田中 一郎 様',
+      savedDraftLabel: '撮影前',
+      description: '説明資料として端末に保存し、画像・証跡では未同期として確認できます。',
+    });
+  });
+
+  it('保存済み枚数と患者未確定を表示できる', () => {
+    expect(
+      buildCaptureStatusSummary({
+        categoryId: 'residual_photo',
+        patientName: null,
+        savedCount: 2,
+      }),
+    ).toMatchObject({
+      patientLabel: '患者未確定',
+      savedDraftLabel: 'この訪問で端末保存 2枚',
+    });
   });
 });
 

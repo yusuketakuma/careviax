@@ -57,16 +57,21 @@ export function buildOfflineSyncRows(
 
     return {
       id: typeof item.id === 'number' ? item.id : null,
-      kindLabel: ENTITY_KIND_LABELS[item.entityType] ?? item.entityType,
+      kindLabel:
+        readString(item.payload.display_kind) ??
+        ENTITY_KIND_LABELS[item.entityType] ??
+        item.entityType,
       patientLabel: resolveSyncRowPatientLabel(item, patientNameByScheduleId),
       scopeId: readString(item.scope_id),
       statusKey,
       statusLabel:
-        statusKey === 'conflict' ? '競合' : statusKey === 'failed' ? '失敗' : '同期待ち',
+        readString(item.payload.display_status) ??
+        (statusKey === 'conflict' ? '競合' : statusKey === 'failed' ? '失敗' : '同期待ち'),
       nextActionKey:
         statusKey === 'conflict' ? 'resolve_conflict' : statusKey === 'failed' ? 'retry' : 'keep',
       nextActionLabel:
-        statusKey === 'conflict' ? '内容を確認' : statusKey === 'failed' ? '再試行' : 'そのまま',
+        readString(item.payload.display_next_action) ??
+        (statusKey === 'conflict' ? '内容を確認' : statusKey === 'failed' ? '再試行' : 'そのまま'),
       lastError: readString(item.lastError),
     };
   });

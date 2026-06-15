@@ -32,6 +32,8 @@ describe('ReasonDialog', () => {
     expect(screen.getByText('差し戻し理由を入力')).toBeTruthy();
     expect(screen.getByText('理由を選ぶと、あとで見返しやすくなります。')).toBeTruthy();
     expect(screen.getAllByTestId('reason-option')).toHaveLength(6);
+    expect(screen.getByText('理由を選択してください')).toBeTruthy();
+    expect(screen.getByText('理由を選ぶまで実行ボタンは押せません。')).toBeTruthy();
     expect(screen.getByPlaceholderText('メモ(必要な時だけ)')).toBeTruthy();
     expect(screen.getByRole('button', { name: '戻る' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '保存する' })).toBeTruthy();
@@ -55,6 +57,8 @@ describe('ReasonDialog', () => {
     fireEvent.click(chip);
 
     expect(chip.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByText('選択中: 数量が違う')).toBeTruthy();
+    expect(screen.getByText('この理由とメモが履歴に残り、後続担当者が見返せます。')).toBeTruthy();
     expect(submit.disabled).toBe(false);
   });
 
@@ -67,6 +71,7 @@ describe('ReasonDialog', () => {
         title="取消・再開の理由を入力"
         options={OPTIONS}
         onSubmit={onSubmit}
+        submitLabel="訪問予定を取り消す"
       />,
     );
 
@@ -74,7 +79,7 @@ describe('ReasonDialog', () => {
     fireEvent.change(screen.getByPlaceholderText('メモ(必要な時だけ)'), {
       target: { value: '  家族から延期の連絡 ' },
     });
-    fireEvent.click(screen.getByRole('button', { name: '保存する' }));
+    fireEvent.click(screen.getByRole('button', { name: '訪問予定を取り消す' }));
 
     expect(onSubmit).toHaveBeenCalledWith({
       code: 'patient_reason',
@@ -139,9 +144,9 @@ describe('ReasonDialog', () => {
 
     const submit = screen.getByRole('button', { name: '保存する' }) as HTMLButtonElement;
     expect(submit.disabled).toBe(true);
-    expect(
-      (screen.getByPlaceholderText('メモ(必要な時だけ)') as HTMLTextAreaElement).value,
-    ).toBe('');
+    expect((screen.getByPlaceholderText('メモ(必要な時だけ)') as HTMLTextAreaElement).value).toBe(
+      '',
+    );
   });
 
   it('shows the optional warning note when provided', () => {

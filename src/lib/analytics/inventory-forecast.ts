@@ -1,8 +1,4 @@
-import {
-  addUtcDays,
-  localDateKey,
-  utcDateFromLocalKey,
-} from '@/lib/utils/date-boundary';
+import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { formatUtcDateKey } from '@/lib/date-key';
 
 /**
@@ -88,6 +84,52 @@ export type InventoryForecastSummary = {
   patients: AffectedPatientCard[];
 };
 
+export type InventoryForecastDecisionSummary = {
+  orderRequiredCount: number;
+  orderCandidateCount: number;
+  shortageDrugCount: number;
+  affectedPatientCount: number;
+  priorityDrug: DrugForecastRow | null;
+  nextAction: string;
+};
+
+export function coveragePercent(row: DrugForecastRow): number {
+  if (row.requiredQty <= 0) return 100;
+  return Math.round((row.stockQty / row.requiredQty) * 100);
+}
+
+export function summarizeInventoryForecast(args: {
+  drugs: DrugForecastRow[];
+  patients: AffectedPatientCard[];
+}): InventoryForecastDecisionSummary {
+  const orderRequired = args.drugs.filter((drug) => drug.status === 'order_required');
+  const orderCandidate = args.drugs.filter((drug) => drug.status === 'order_candidate');
+  const shortageDrugs = [...orderRequired, ...orderCandidate];
+  const priorityDrug =
+    shortageDrugs.sort((left, right) => {
+      const statusPriority =
+        Number(right.status === 'order_required') - Number(left.status === 'order_required');
+      if (statusPriority !== 0) return statusPriority;
+      return coveragePercent(left) - coveragePercent(right);
+    })[0] ?? null;
+
+  let nextAction = '定期処方更新後に再確認';
+  if (priorityDrug?.status === 'order_required') {
+    nextAction = `${priorityDrug.drugKey}を発注確認`;
+  } else if (priorityDrug) {
+    nextAction = `${priorityDrug.drugKey}の在庫確認`;
+  }
+
+  return {
+    orderRequiredCount: orderRequired.length,
+    orderCandidateCount: orderCandidate.length,
+    shortageDrugCount: shortageDrugs.length,
+    affectedPatientCount: args.patients.length,
+    priorityDrug,
+    nextAction,
+  };
+}
+
 /**
  * 「来週」= ローカル日付基準の翌週月曜〜日曜。
  * @db.Date カラム比較用に UTC 深夜の半開区間 { gte, lt } で返す。
@@ -101,7 +143,7 @@ export function nextWeekUtcRange(now: Date = new Date()): {
   const todayUtc = utcDateFromLocalKey(localDateKey(now));
   const dayOfWeek = todayUtc.getUTCDay(); // 0=日〜6=土
   // 今日が月曜でも「翌週」の月曜まで進める(必ず 1〜7 日先)
-  const daysToNextMonday = ((8 - dayOfWeek) % 7) || 7;
+  const daysToNextMonday = (8 - dayOfWeek) % 7 || 7;
   const gte = addUtcDays(todayUtc, daysToNextMonday);
   const lt = addUtcDays(gte, FORECAST_DAYS);
   return {
@@ -128,7 +170,9 @@ export function drugBaseName(drugName: string): string {
 function frequencyPerDay(frequency: string): number {
   const explicit = frequency.match(/([0-9０-９]+)\s*回/u);
   if (explicit) {
-    const count = Number(explicit[1].replace(/[０-９]/gu, (c) => String('０１２３４５６７８９'.indexOf(c))));
+    const count = Number(
+      explicit[1].replace(/[０-９]/gu, (c) => String('０１２３４５６７８９'.indexOf(c))),
+    );
     if (Number.isFinite(count) && count > 0) return count;
   }
   if (/毎食|朝昼夕|朝・昼・夕/u.test(frequency)) return 3;

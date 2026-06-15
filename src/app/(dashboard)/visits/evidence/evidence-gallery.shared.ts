@@ -31,6 +31,19 @@ export type EvidenceGalleryItem = {
 
 const CATEGORY_ID_SET = new Set<string>(EVIDENCE_CATEGORIES.map((category) => category.id));
 
+export type EvidenceGallerySummary = {
+  totalCount: number;
+  pendingCount: number;
+  syncedCount: number;
+  selectedCategoryLabel: string;
+  selectedCategoryCount: number;
+  nextAction: string;
+};
+
+function findEvidenceCategoryLabel(categoryId: EvidenceCategoryId): string {
+  return EVIDENCE_CATEGORIES.find((category) => category.id === categoryId)?.label ?? '証跡';
+}
+
 export type EvidenceCategorySource = {
   /** FileAsset.purpose('visit-photo' | 'report' | 'prescription') */
   purpose?: string | null;
@@ -42,15 +55,17 @@ export type EvidenceCategorySource = {
 };
 
 /** ファイル名キーワード → 区分(上から順に評価) */
-const FILE_NAME_RULES: ReadonlyArray<{ keywords: readonly string[]; category: EvidenceCategoryId }> =
-  [
-    { keywords: ['同意'], category: 'consent_document' },
-    { keywords: ['残薬'], category: 'residual_photo' },
-    { keywords: ['セット', 'カレンダー'], category: 'set_photo' },
-    { keywords: ['設置'], category: 'placement_photo' },
-    { keywords: ['報告書', '控え'], category: 'report_copy' },
-    { keywords: ['交付', '文書', '説明書', '説明資料'], category: 'document_delivery' },
-  ];
+const FILE_NAME_RULES: ReadonlyArray<{
+  keywords: readonly string[];
+  category: EvidenceCategoryId;
+}> = [
+  { keywords: ['同意'], category: 'consent_document' },
+  { keywords: ['残薬'], category: 'residual_photo' },
+  { keywords: ['セット', 'カレンダー'], category: 'set_photo' },
+  { keywords: ['設置'], category: 'placement_photo' },
+  { keywords: ['報告書', '控え'], category: 'report_copy' },
+  { keywords: ['交付', '文書', '説明書', '説明資料'], category: 'document_delivery' },
+];
 
 /**
  * 既存の purpose / kind / ファイル名から表示用 6 区分へ射影する。
@@ -127,6 +142,27 @@ export function filterEvidenceItemsByCategory(
   category: EvidenceCategoryId,
 ): EvidenceGalleryItem[] {
   return items.filter((item) => item.category === category);
+}
+
+export function summarizeEvidenceGallery(
+  items: EvidenceGalleryItem[],
+  selectedCategory: EvidenceCategoryId,
+): EvidenceGallerySummary {
+  const selectedCategoryCount = items.filter((item) => item.category === selectedCategory).length;
+  const pendingCount = items.filter((item) => item.syncState === 'pending').length;
+  const syncedCount = items.filter((item) => item.syncState === 'synced').length;
+
+  return {
+    totalCount: items.length,
+    pendingCount,
+    syncedCount,
+    selectedCategoryLabel: findEvidenceCategoryLabel(selectedCategory),
+    selectedCategoryCount,
+    nextAction:
+      pendingCount > 0
+        ? '未同期の写真は通信回復後に自動送信されます。必要な証跡を確認してください。'
+        : '必要な証跡が不足している場合は、スマホ撮影で追加してください。',
+  };
 }
 
 /** p0_48 で端末に保存されたオフライン写真ドラフト(メタデータのみ、payload は扱わない) */

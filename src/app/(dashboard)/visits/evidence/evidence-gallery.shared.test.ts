@@ -8,6 +8,7 @@ import {
   mergeEvidenceItems,
   projectEvidenceCategory,
   sortEvidenceItems,
+  summarizeEvidenceGallery,
   type EvidenceGalleryItem,
 } from './evidence-gallery.shared';
 import { buildEvidenceDemoItems } from './evidence-gallery.demo';
@@ -166,6 +167,35 @@ describe('filterEvidenceItemsByCategory', () => {
   });
 });
 
+describe('summarizeEvidenceGallery', () => {
+  it('全体・同期状態・選択区分の件数と次アクションを返す', () => {
+    const summary = summarizeEvidenceGallery(
+      [
+        buildItem({ id: 'pending-1', category: 'residual_photo', syncState: 'pending' }),
+        buildItem({ id: 'synced-1', category: 'residual_photo', syncState: 'synced' }),
+        buildItem({ id: 'synced-2', category: 'set_photo', syncState: 'synced' }),
+      ],
+      'residual_photo',
+    );
+
+    expect(summary).toEqual({
+      totalCount: 3,
+      pendingCount: 1,
+      syncedCount: 2,
+      selectedCategoryLabel: '残薬写真',
+      selectedCategoryCount: 2,
+      nextAction: '未同期の写真は通信回復後に自動送信されます。必要な証跡を確認してください。',
+    });
+  });
+
+  it('未同期がなければ撮影追加を促す', () => {
+    expect(
+      summarizeEvidenceGallery([buildItem({ id: 'synced-1', syncState: 'synced' })], 'set_photo')
+        .nextAction,
+    ).toBe('必要な証跡が不足している場合は、スマホ撮影で追加してください。');
+  });
+});
+
 describe('formatCaptureTime', () => {
   it('ローカル時刻の HH:mm を返す', () => {
     expect(formatCaptureTime(localIso(10, 5))).toBe('10:05');
@@ -252,7 +282,12 @@ describe('mergeEvidenceItems', () => {
       buildItem({ id: 'server-2', capturedAt: localIso(10, 4) }),
     ];
     const draftItems = buildEvidenceItemsFromOfflineDrafts([
-      { id: 1, category: 'residual_photo', fileName: '残薬写真_a.jpg', capturedAt: localIso(10, 2) },
+      {
+        id: 1,
+        category: 'residual_photo',
+        fileName: '残薬写真_a.jpg',
+        capturedAt: localIso(10, 2),
+      },
     ]);
 
     expect(mergeEvidenceItems(serverItems, draftItems).map((item) => item.id)).toEqual([

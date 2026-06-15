@@ -3,12 +3,68 @@
 import { offlineDb } from '@/lib/stores/offline-db';
 import { enqueueForSync, registerVisitRecordConflict } from '@/lib/stores/sync-engine';
 
+type OfflineSyncDemoMode = 'queue' | 'conflict';
+
 /**
  * p0_34/p0_35 撮影・動作確認用のデモデータ注入(dev 限定で window に公開)。
- * 同期待ち / 失敗 / 競合の3状態を同期キューに作る。
+ * p0_34 は一覧4行、p0_35 は競合解決ビュー用の409行に分けて作る。
  */
-export async function seedOfflineSyncDemoData() {
+export async function seedOfflineSyncDemoData(mode: OfflineSyncDemoMode = 'conflict') {
   await offlineDb.syncQueue.clear();
+
+  if (mode === 'queue') {
+    await enqueueForSync('visit_record', {
+      display_kind: '一時保存',
+      display_status: '同期済み',
+      display_next_action: '完了',
+      schedule_id: 'demo-sync-temp-1',
+      patient_id: '鈴木次郎',
+      visit_date: '2026-06-12',
+      outcome_status: 'completed',
+      soap_subjective: '一時保存済み。',
+    });
+
+    await enqueueForSync('visit_record', {
+      display_kind: '写真',
+      display_status: '失敗',
+      display_next_action: '再試行',
+      schedule_id: 'demo-sync-photo-2',
+      patient_id: '佐藤花子',
+      visit_date: '2026-06-12',
+      outcome_status: 'completed',
+      soap_subjective: '残薬写真を保存。',
+    });
+    const failedPhoto = await offlineDb.syncQueue.orderBy('createdAt').reverse().first();
+    if (failedPhoto?.id) {
+      await offlineDb.syncQueue.update(failedPhoto.id, {
+        retryCount: 3,
+        lastError: 'HTTP 500',
+      });
+    }
+
+    await enqueueForSync('visit_record', {
+      display_kind: '訪問メモ',
+      display_status: '同期待ち',
+      display_next_action: 'そのまま',
+      schedule_id: 'demo-sync-note-1',
+      patient_id: '田中一郎',
+      visit_date: '2026-06-12',
+      outcome_status: 'completed',
+      soap_subjective: '夕食後薬は家族声かけで服用。',
+    });
+
+    await enqueueForSync('visit_record', {
+      display_kind: '写真',
+      display_status: '未同期',
+      display_next_action: '再試行',
+      schedule_id: 'demo-sync-photo-1',
+      patient_id: '田中一郎',
+      visit_date: '2026-06-12',
+      outcome_status: 'completed',
+      soap_subjective: '残薬写真を保存。',
+    });
+    return;
+  }
 
   // 同期待ち(訪問メモ)
   await enqueueForSync('visit_record', {

@@ -42,6 +42,23 @@ export type IncidentMemoForm = {
   relatedProcess: string; // '' = 未選択
 };
 
+export const INCIDENT_MEMO_FIELD_LABELS = {
+  whatHappened: '起きたこと',
+  cause: '原因',
+  immediateAction: 'すぐ行った対応',
+  preventionPlan: '次から変えること',
+  relatedProcess: '関係する工程',
+} as const satisfies Record<keyof IncidentMemoForm, string>;
+
+export type IncidentMemoFieldKey = keyof IncidentMemoForm;
+
+export type IncidentMemoCompletion = {
+  completedCount: number;
+  totalCount: number;
+  missingLabels: string[];
+  isComplete: boolean;
+};
+
 export const EMPTY_INCIDENT_MEMO_FORM: IncidentMemoForm = {
   whatHappened: '',
   cause: '',
@@ -90,6 +107,24 @@ export function buildIncidentMemoPatchPayload(form: IncidentMemoForm): IncidentM
     immediate_action: normalize(form.immediateAction),
     prevention_plan: normalize(form.preventionPlan),
     related_process: isKnownProcess(form.relatedProcess) ? form.relatedProcess : null,
+  };
+}
+
+export function buildIncidentMemoCompletion(form: IncidentMemoForm): IncidentMemoCompletion {
+  const completed = (key: IncidentMemoFieldKey): boolean => {
+    const value = form[key];
+    if (key === 'relatedProcess') return isKnownProcess(value);
+    return value.trim().length > 0;
+  };
+  const keys = Object.keys(INCIDENT_MEMO_FIELD_LABELS) as IncidentMemoFieldKey[];
+  const missingLabels = keys
+    .filter((key) => !completed(key))
+    .map((key) => INCIDENT_MEMO_FIELD_LABELS[key]);
+  return {
+    completedCount: keys.length - missingLabels.length,
+    totalCount: keys.length,
+    missingLabels,
+    isComplete: missingLabels.length === 0,
   };
 }
 
