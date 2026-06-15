@@ -941,7 +941,7 @@ export function ScheduleProposalsContent({
           headers: { 'x-org-id': orgId },
         },
       );
-      if (!response.ok) throw new Error('訪問候補詳細の取得に失敗しました');
+      if (!response.ok) throw new Error('確定フローの取得に失敗しました');
       return response.json() as Promise<ScheduleProposalDetailResponse>;
     },
     enabled: !!orgId && !!activeDetailId,
@@ -2119,9 +2119,9 @@ export function ScheduleProposalsContent({
                         size="sm"
                         className={PROPOSAL_TOUCH_TARGET_CLASS}
                         onClick={() => openDetail(proposal.id)}
-                        aria-label={`${proposalTargetLabel} の候補詳細を開く`}
+                        aria-label={`${proposalTargetLabel} の確定フローを開く`}
                       >
-                        詳細
+                        確定フロー
                       </Button>
                       {canApprove ? (
                         <Button
@@ -2446,7 +2446,7 @@ export function ScheduleProposalsContent({
           <AlertDialogHeader>
             <AlertDialogTitle>候補群の route_order を反映しますか</AlertDialogTitle>
             <AlertDialogDescription>
-              候補詳細で確認した対象日、薬剤師、移動手段、候補順序を反映します。
+              確定フローで確認した対象日、薬剤師、移動手段、候補順序を反映します。
             </AlertDialogDescription>
           </AlertDialogHeader>
 
@@ -2537,7 +2537,9 @@ export function ScheduleProposalsContent({
         <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-3xl">
           <SheetHeader>
             <SheetTitle>
-              {detailTargetLabel ? `${detailTargetLabel} の訪問候補詳細` : '訪問候補の詳細'}
+              {detailTargetLabel
+                ? `${detailTargetLabel} の訪問日時確定フロー`
+                : '訪問日時の確定フロー'}
             </SheetTitle>
             <SheetDescription>
               {detail
@@ -2547,7 +2549,7 @@ export function ScheduleProposalsContent({
           </SheetHeader>
 
           {!detail || detailQuery.isLoading ? (
-            <div className="py-10 text-sm text-muted-foreground">詳細を読み込み中...</div>
+            <div className="py-10 text-sm text-muted-foreground">確定フローを読み込み中...</div>
           ) : (
             <div className="mt-6 space-y-6">
               <Card>

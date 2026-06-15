@@ -394,8 +394,8 @@ describe('ScheduleProposalsContent', () => {
     });
     expect(screen.getByRole('checkbox', { name: `${firstTarget} の候補を選択` })).toBeTruthy();
     expect(screen.getByRole('checkbox', { name: `${secondTarget} の候補を選択` })).toBeTruthy();
-    expect(screen.getByRole('button', { name: `${firstTarget} の候補詳細を開く` })).toBeTruthy();
-    expect(screen.getByRole('button', { name: `${secondTarget} の候補詳細を開く` })).toBeTruthy();
+    expect(screen.getByRole('button', { name: `${firstTarget} の確定フローを開く` })).toBeTruthy();
+    expect(screen.getByRole('button', { name: `${secondTarget} の確定フローを開く` })).toBeTruthy();
     expect(
       screen.getByRole('button', { name: `${firstTarget} を承認して患者連絡へ進める` }),
     ).toBeTruthy();
@@ -470,7 +470,9 @@ describe('ScheduleProposalsContent', () => {
     expectPersistentTouchTarget(
       screen.getByRole('button', { name: '却下できる訪問候補を選択して一括却下' }),
     );
-    expectPersistentTouchTarget(screen.getByRole('button', { name: `${target} の候補詳細を開く` }));
+    expectPersistentTouchTarget(
+      screen.getByRole('button', { name: `${target} の確定フローを開く` }),
+    );
     expectPersistentTouchTarget(
       screen.getByRole('button', { name: `${target} を承認して患者連絡へ進める` }),
     );
@@ -616,7 +618,7 @@ describe('ScheduleProposalsContent', () => {
     );
 
     expect(screen.queryByTestId('schedule-proposal-active-row')).toBeNull();
-    expect(screen.queryByRole('dialog', { name: /訪問候補詳細/ })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: /訪問日時確定フロー/ })).toBeNull();
     expect(screen.getByText(/ケース固定中/).textContent).toContain('ケース same_2');
     expect(
       useRealtimeQueryMock.mock.calls.some(([arg]) => {
@@ -668,7 +670,7 @@ describe('ScheduleProposalsContent', () => {
       caseId: 'case_2',
       proposalId: 'proposal_2',
     });
-    const detailDialog = screen.getByRole('dialog', { name: `${target} の訪問候補詳細` });
+    const detailDialog = screen.getByRole('dialog', { name: `${target} の訪問日時確定フロー` });
     expect(detailDialog).toBeTruthy();
     expectPersistentTouchTarget(
       within(detailDialog).getByRole('button', { name: `${target} を承認して患者連絡へ進める` }),
@@ -704,7 +706,7 @@ describe('ScheduleProposalsContent', () => {
 
     render(<ScheduleProposalsContent initialDetailId="proposal_without_vehicle" />);
 
-    expect(screen.getByRole('dialog', { name: /訪問候補詳細/ })).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: /訪問日時確定フロー/ })).toBeTruthy();
     expect(screen.getByText('未割当')).toBeTruthy();
   });
 
@@ -905,7 +907,7 @@ describe('ScheduleProposalsContent', () => {
       caseId: 'case_2',
       proposalId: 'proposal_2',
     });
-    const detailDialog = screen.getByRole('dialog', { name: `${target} の訪問候補詳細` });
+    const detailDialog = screen.getByRole('dialog', { name: `${target} の訪問日時確定フロー` });
     expectPersistentTouchTarget(
       within(detailDialog).getByRole('button', { name: `${target} を日時確定する` }),
     );
@@ -1514,7 +1516,7 @@ describe('ScheduleProposalsContent', () => {
     expect(
       within(screen.getByTestId('schedule-proposal-active-row')).getByText('佐藤太郎'),
     ).toBeTruthy();
-    expect(screen.getByRole('dialog', { name: '訪問候補の詳細' })).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: '訪問日時の確定フロー' })).toBeTruthy();
     expectRouterReplacedWithSearchParam('detail', 'proposal_2');
     expectRouterReplacedWithSearchParam('focus', 'detail');
   });

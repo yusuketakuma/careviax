@@ -374,17 +374,20 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p0_17_schedule_confirmation_flow',
     targetImage: 'images/P0/p0_17_schedule_confirmation_flow.png',
-    route: '/schedules/proposals',
+    route: '/schedules/proposals?workspace=dashboard',
     setup: async (page) => {
-      // 先頭候補の詳細シートを開き、「正式決定までの流れ」の描画まで待つ
+      // 先頭の確定フローを開き、詳細データが描画された状態だけを撮影する。
       await page
-        .getByRole('button', { name: /候補詳細を開く/ })
+        .getByRole('button', { name: /確定フローを開く/ })
         .first()
-        .click()
-        .catch(() => {});
+        .click();
+      await page.waitForSelector('[data-testid="proposal-flow-steps"]', { timeout: 120_000 });
+      await page.waitForSelector('[data-testid="proposal-medication-workflow"]', {
+        timeout: 120_000,
+      });
       await page
-        .waitForSelector('[data-testid="proposal-flow-steps"]', { timeout: 20_000 })
-        .catch(() => {});
+        .getByText('確定フローを読み込み中...')
+        .waitFor({ state: 'detached', timeout: 120_000 });
       await page.waitForTimeout(400);
     },
   },
