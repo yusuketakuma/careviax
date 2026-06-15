@@ -33,6 +33,7 @@ export {
   refreshAllFreeDrugMasters,
   checkDrugMasterFreshness,
 } from './drug-master';
+export { refreshMedicalInstitutionMaster } from './medical-institution-master';
 export {
   cleanupExpiredBulkExportArtifacts,
   drainMedicationHistoryBulkExportJobs,

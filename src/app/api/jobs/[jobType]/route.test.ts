@@ -25,6 +25,7 @@ const {
   refreshSskDrugMasterMock,
   refreshAllFreeDrugMastersMock,
   checkDrugMasterFreshnessMock,
+  refreshMedicalInstitutionMasterMock,
   drainMedicationHistoryBulkExportJobsMock,
   cleanupExpiredBulkExportArtifactsMock,
   retryWebhookDeliveriesMock,
@@ -59,6 +60,7 @@ const {
   refreshSskDrugMasterMock: vi.fn(),
   refreshAllFreeDrugMastersMock: vi.fn(),
   checkDrugMasterFreshnessMock: vi.fn(),
+  refreshMedicalInstitutionMasterMock: vi.fn(),
   drainMedicationHistoryBulkExportJobsMock: vi.fn(),
   cleanupExpiredBulkExportArtifactsMock: vi.fn(),
   retryWebhookDeliveriesMock: vi.fn(),
@@ -105,6 +107,7 @@ vi.mock('@/server/jobs', () => ({
   refreshSskDrugMaster: refreshSskDrugMasterMock,
   refreshAllFreeDrugMasters: refreshAllFreeDrugMastersMock,
   checkDrugMasterFreshness: checkDrugMasterFreshnessMock,
+  refreshMedicalInstitutionMaster: refreshMedicalInstitutionMasterMock,
   drainMedicationHistoryBulkExportJobs: drainMedicationHistoryBulkExportJobsMock,
   cleanupExpiredBulkExportArtifacts: cleanupExpiredBulkExportArtifactsMock,
   retryWebhookDeliveries: retryWebhookDeliveriesMock,
@@ -145,6 +148,16 @@ describe('/api/jobs/[jobType] POST', () => {
     refreshMhlwDrugReferencesMock.mockResolvedValue({ processedCount: 120 });
     refreshPmdaPackageInsertsDeltaMock.mockResolvedValue({ processedCount: 42 });
     refreshSskDrugMasterMock.mockResolvedValue({ processedCount: 12 });
+    refreshAllFreeDrugMastersMock.mockResolvedValue({
+      processedCount: 132,
+      details: { ssk: 12, mhlw: 120 },
+    });
+    refreshMedicalInstitutionMasterMock.mockResolvedValue({
+      processedCount: 2,
+      scannedCount: 20,
+      createdCount: 1,
+      updatedCount: 1,
+    });
     drainMedicationHistoryBulkExportJobsMock.mockResolvedValue({ processedCount: 25 });
     retryWebhookDeliveriesMock.mockResolvedValue({
       processedCount: 2,
@@ -283,6 +296,52 @@ describe('/api/jobs/[jobType] POST', () => {
       jobType: 'drug-reference-refresh',
       processedCount: 120,
     });
+  });
+
+  it('returns 200 when api key executes all free drug master refresh', async () => {
+    authMock.mockResolvedValue(null);
+
+    const response = await POST(createRequest({ 'x-api-key': 'job-secret' }), {
+      params: Promise.resolve({ jobType: 'drug-master-auto-refresh' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(refreshAllFreeDrugMastersMock).toHaveBeenCalledOnce();
+    await expect(response.json()).resolves.toMatchObject({
+      jobType: 'drug-master-auto-refresh',
+      processedCount: 132,
+      details: { ssk: 12, mhlw: 120 },
+    });
+  });
+
+  it('scopes medical institution master refresh to the authenticated admin org', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await POST(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ jobType: 'medical-institution-master-auto-refresh' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(refreshMedicalInstitutionMasterMock).toHaveBeenCalledWith({
+      targetOrgIds: ['org_1'],
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      jobType: 'medical-institution-master-auto-refresh',
+      processedCount: 2,
+      scannedCount: 20,
+    });
+  });
+
+  it('runs medical institution master refresh for all orgs from the job api key', async () => {
+    authMock.mockResolvedValue(null);
+
+    const response = await POST(createRequest({ 'x-api-key': 'job-secret' }), {
+      params: Promise.resolve({ jobType: 'medical-institution-master-auto-refresh' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(refreshMedicalInstitutionMasterMock).toHaveBeenCalledWith(undefined);
   });
 
   it('returns 200 when api key executes pmda delta refresh', async () => {

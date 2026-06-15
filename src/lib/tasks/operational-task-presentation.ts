@@ -14,6 +14,24 @@ export function describeOperationalTask(
   task: OperationalTaskPresentationInput,
 ): OperationalTaskPresentation {
   switch (task.task_type) {
+    case 'staff_work_request_visit':
+      return {
+        actionHref: '/schedules',
+        actionLabel: '訪問依頼を確認',
+        queueLabel: '訪問依頼',
+      };
+    case 'staff_work_request_audit':
+      return {
+        actionHref: '/auditing',
+        actionLabel: '監査依頼を確認',
+        queueLabel: '監査依頼',
+      };
+    case 'staff_work_request_general':
+      return {
+        actionHref: '/tasks',
+        actionLabel: '依頼内容を確認',
+        queueLabel: '業務依頼',
+      };
     case 'visit_demand':
       return {
         actionHref: '/schedules',

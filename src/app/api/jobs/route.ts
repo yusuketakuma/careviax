@@ -88,6 +88,11 @@ const JOB_DEFINITIONS = [
     endpoint: '/api/jobs/drug-master-refresh',
   },
   {
+    job_type: 'drug-master-auto-refresh',
+    schedule_hint: '毎月 + 要求時',
+    endpoint: '/api/jobs/drug-master-auto-refresh',
+  },
+  {
     job_type: 'drug-reference-refresh',
     schedule_hint: '毎月',
     endpoint: '/api/jobs/drug-reference-refresh',
@@ -96,6 +101,11 @@ const JOB_DEFINITIONS = [
     job_type: 'pmda-package-insert-refresh',
     schedule_hint: '毎日',
     endpoint: '/api/jobs/pmda-package-insert-refresh',
+  },
+  {
+    job_type: 'medical-institution-master-auto-refresh',
+    schedule_hint: '毎月 + 要求時',
+    endpoint: '/api/jobs/medical-institution-master-auto-refresh',
   },
   {
     job_type: 'medication-history-bulk-export-drain',
