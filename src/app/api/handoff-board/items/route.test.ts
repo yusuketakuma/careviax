@@ -53,17 +53,24 @@ describe('/api/handoff-board/items', () => {
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
   });
 
-  it('returns 201 on valid item creation', async () => {
+  it('returns 201 on valid transfer creation', async () => {
     handoffBoardFindFirstMock.mockResolvedValue({ id: 'board_1' });
     const created = { id: 'item_1', board_id: 'board_1', content: 'Test item' };
     withOrgContextMock.mockImplementation(async (_orgId: string, fn: (tx: unknown) => unknown) =>
-      fn({ handoffItem: { create: vi.fn().mockResolvedValue(created) } }),
+      fn({
+        handoffItem: { create: vi.fn().mockResolvedValue(created) },
+        auditLog: { create: vi.fn().mockResolvedValue({ id: 'audit_1' }) },
+      }),
     );
 
     const req = createRequest('http://localhost/api/handoff-board/items', {
       board_id: 'board_1',
       content: 'Test item',
       priority: 'normal',
+      recipient_label: '鈴木さん(事務)',
+      scope: '数量セットまで',
+      rationale: '判断WIPが目安超過のため',
+      deadline: '2026-06-11T08:00:00.000Z',
     });
     const res = await POST(req, { params: Promise.resolve({}) });
     expect(res!.status).toBe(201);
@@ -77,6 +84,10 @@ describe('/api/handoff-board/items', () => {
     const req = createRequest('http://localhost/api/handoff-board/items', {
       board_id: 'missing_board',
       content: 'Test item',
+      recipient_label: '鈴木さん(事務)',
+      scope: '数量セットまで',
+      rationale: '判断WIPが目安超過のため',
+      deadline: '2026-06-11T08:00:00.000Z',
     });
     const res = await POST(req, { params: Promise.resolve({}) });
     expect(res!.status).toBe(404);
@@ -189,26 +200,19 @@ describe('/api/handoff-board/items', () => {
     );
   });
 
-  it('keeps accepting legacy notes (content + priority only) without audit logging', async () => {
-    handoffBoardFindFirstMock.mockResolvedValue({ id: 'board_1' });
-    const itemCreateMock = vi
-      .fn()
-      .mockResolvedValue({ id: 'item_legacy', board_id: 'board_1', content: '引き継ぎメモ' });
-    const auditCreateMock = vi.fn();
-    withOrgContextMock.mockImplementation(async (_orgId: string, fn: (tx: unknown) => unknown) =>
-      fn({
-        handoffItem: { create: itemCreateMock },
-        auditLog: { create: auditCreateMock },
-      }),
-    );
-
+  it('rejects content-only handoff notes instead of creating legacy items', async () => {
     const req = createRequest('http://localhost/api/handoff-board/items', {
       board_id: 'board_1',
       content: '引き継ぎメモ',
       priority: 'high',
     });
     const res = await POST(req, { params: Promise.resolve({}) });
-    expect(res!.status).toBe(201);
-    expect(auditCreateMock).not.toHaveBeenCalled();
+    expect(res!.status).toBe(400);
+    const json = await res!.json();
+    expect(json.details).toMatchObject({
+      recipient_label: expect.arrayContaining([expect.stringContaining('責任移転')]),
+    });
+    expect(handoffBoardFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 });

@@ -10,8 +10,7 @@ import { z } from 'zod';
  * ハンドオフ項目の作成。
  * new_12_handoff: 宛先(recipient)付きの「仕事を渡す」は責任の移転として扱い、
  * 3点セット ①何を(scope) ②なぜ(rationale) ③いつまで(deadline) が
- * 揃わないと送信できない。宛先なしの legacy 申し送り(content + priority のみ)は
- * 従来どおり受け付ける(後方互換)。
+ * 揃わないと送信できない。p0_27 の薬剤師相談は consult_status 付き item として扱う。
  */
 
 const lifecycleStatusSchema = z.enum(['proposed', 'in_progress', 'confirming', 'completed']);
@@ -40,7 +39,24 @@ const createHandoffItemSchema = z
   })
   .superRefine((value, refinementCtx) => {
     const isTransfer = Boolean(value.recipient_label || value.recipient_user_id);
-    if (!isTransfer) return;
+    const isConsult = Boolean(value.consult_status);
+    if (!isTransfer && !isConsult) {
+      refinementCtx.addIssue({
+        code: 'custom',
+        path: ['recipient_label'],
+        message: '宛先付きの責任移転または薬剤師相談として作成してください',
+      });
+      return;
+    }
+    if (isConsult && !isTransfer) {
+      refinementCtx.addIssue({
+        code: 'custom',
+        path: ['recipient_label'],
+        message: '薬剤師相談の宛先が指定されていません',
+      });
+      return;
+    }
+    if (isConsult) return;
     // ハンドオフの3点セット: 3つ揃わないと送信できません(12_handoff ルール帯)
     if (!value.scope) {
       refinementCtx.addIssue({
@@ -101,9 +117,9 @@ export const POST = withAuthContext(
           entity_id: parsed.data.entity_id ?? null,
           recipient_user_id: parsed.data.recipient_user_id ?? null,
           recipient_label: parsed.data.recipient_label ?? null,
-          lifecycle_status: isTransfer
-            ? (parsed.data.lifecycle_status ?? 'proposed')
-            : (parsed.data.lifecycle_status ?? null),
+          lifecycle_status: parsed.data.consult_status
+            ? null
+            : (parsed.data.lifecycle_status ?? 'proposed'),
           scope: parsed.data.scope ?? null,
           rationale: parsed.data.rationale ?? null,
           deadline: parsed.data.deadline ? new Date(parsed.data.deadline) : null,
@@ -115,7 +131,7 @@ export const POST = withAuthContext(
         },
       });
 
-      if (isTransfer) {
+      if (isTransfer && !parsed.data.consult_status) {
         // 責任の移転は「受領確認と根拠が必ず記録されます」(12_handoff)。
         await createAuditLogEntry(tx, ctx, {
           action: 'handoff_transfer_created',

@@ -665,11 +665,7 @@ function WorkspaceSkeleton() {
   );
 }
 
-type HandoffWorkspaceProps = {
-  focus?: 'handoff' | 'consult';
-};
-
-export function HandoffWorkspace({ focus = 'handoff' }: HandoffWorkspaceProps = {}) {
+export function HandoffWorkspace() {
   const orgId = useOrgId();
   const userId = useAuthStore((state) => state.currentUser.id);
   const queryClient = useQueryClient();
@@ -726,35 +722,28 @@ export function HandoffWorkspace({ focus = 'handoff' }: HandoffWorkspaceProps = 
     void queryClient.invalidateQueries({ queryKey: ['nav-badges', 'handoff'] });
   };
 
-  const showConsultOnly = focus === 'consult';
-
   return (
-    <section
-      aria-label={showConsultOnly ? '相談対応ワークスペース' : 'ハンドオフボード'}
-      data-testid="handoff-workspace"
-    >
-      {!showConsultOnly ? (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <h2 className="text-xl font-bold text-foreground">ハンドオフ</h2>
-            <p className="text-sm text-muted-foreground">
-              {buildHeaderMeta(now, board?.summary ?? null)}
-            </p>
-          </div>
-          {/* 主操作(青)はこの 1 つだけ */}
-          <Button
-            type="button"
-            className="min-h-[44px]"
-            onClick={() => setTransferDialogOpen(true)}
-            data-testid="handoff-open-transfer"
-          >
-            <Plus className="size-4" aria-hidden="true" />
-            仕事を渡す
-          </Button>
+    <section aria-label="ハンドオフボード" data-testid="handoff-workspace">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h1 className="text-xl font-bold text-foreground">ハンドオフ</h1>
+          <p className="text-sm text-muted-foreground">
+            {buildHeaderMeta(now, board?.summary ?? null)}
+          </p>
         </div>
-      ) : null}
+        {/* 主操作(青)はこの 1 つだけ */}
+        <Button
+          type="button"
+          className="min-h-[44px]"
+          onClick={() => setTransferDialogOpen(true)}
+          data-testid="handoff-open-transfer"
+        >
+          <Plus className="size-4" aria-hidden="true" />
+          仕事を渡す
+        </Button>
+      </div>
 
-      <div className={showConsultOnly ? '' : 'mt-4'}>
+      <div className="mt-4">
         {isBootstrappingOrg || boardQuery.isLoading ? (
           <WorkspaceSkeleton />
         ) : boardQuery.isError || !board ? (
@@ -768,110 +757,87 @@ export function HandoffWorkspace({ focus = 'handoff' }: HandoffWorkspaceProps = 
             />
           </div>
         ) : (
-          <div
-            className={
-              showConsultOnly
-                ? 'min-h-[calc(100vh-6rem)]'
-                : 'grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]'
-            }
-          >
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]">
             <div className="min-w-0 space-y-4">
               <ConsultWorkspace items={board.items} orgId={orgId} onResolved={invalidateBoard} />
-              {!showConsultOnly ? (
-                <>
-                  <section
-                    className="rounded-lg border border-border/70 bg-card p-4"
-                    aria-labelledby="handoff-outgoing-heading"
-                    data-testid="handoff-outgoing-section"
-                  >
-                    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                      <h3
-                        id="handoff-outgoing-heading"
-                        className="text-base font-bold text-foreground"
-                      >
-                        私が渡した
-                      </h3>
-                      <p className="text-xs text-muted-foreground">
-                        {outgoingItems.length}件 — 渡す=責任の移動。受領確認と根拠が必ず記録されます
-                      </p>
-                    </div>
-                    {outgoingItems.length === 0 ? (
-                      <p className="mt-3 text-sm text-muted-foreground">
-                        今日渡した仕事はありません。「+ 仕事を渡す」から3点セット付きで渡せます。
-                      </p>
-                    ) : (
-                      <div className="mt-3 space-y-2">
-                        {outgoingItems.map((item) => (
-                          <HandoffItemCard
-                            key={item.id}
-                            item={item}
-                            now={now}
-                            viewerUserId={userId}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </section>
-
-                  <section
-                    className="rounded-lg border border-border/70 bg-card p-4"
-                    aria-labelledby="handoff-incoming-heading"
-                    data-testid="handoff-incoming-section"
-                  >
-                    <h3
-                      id="handoff-incoming-heading"
-                      className="text-base font-bold text-foreground"
-                    >
-                      私に来た
-                    </h3>
-                    {incomingItems.length === 0 ? (
-                      <p
-                        className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-semibold text-emerald-700"
-                        data-testid="handoff-incoming-empty"
-                      >
-                        なし — 受け取り待ちはありません
-                      </p>
-                    ) : (
-                      <div className="mt-3 space-y-2">
-                        {incomingItems.map((item) => (
-                          <HandoffItemCard
-                            key={item.id}
-                            item={item}
-                            now={now}
-                            viewerUserId={userId}
-                            onConfirmReceipt={(itemId) => confirmReceiptMutation.mutate(itemId)}
-                            confirmPending={confirmReceiptMutation.isPending}
-                          />
-                        ))}
-                      </div>
-                    )}
-                    <p className="mt-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm leading-6 text-blue-800">
-                      事務から薬剤師への依頼(疑義・判断・確認)もここに届きます。口頭やメモではなくハンドオフで渡すのがチームのルールです。
-                    </p>
-                  </section>
-
-                  <p
-                    className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-800"
-                    data-testid="handoff-rule-bar"
-                  >
-                    <strong className="font-bold">ハンドオフの3点セット:</strong> ①何を(作業の範囲)
-                    ②なぜ(根拠) ③いつまで(期限) —
-                    3つ揃わないと送信できません。「言った/聞いてない」をシステムで起こさない設計です。
+              <section
+                className="rounded-lg border border-border/70 bg-card p-4"
+                aria-labelledby="handoff-outgoing-heading"
+                data-testid="handoff-outgoing-section"
+              >
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <h2 id="handoff-outgoing-heading" className="text-base font-bold text-foreground">
+                    私が渡した
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    {outgoingItems.length}件 — 渡す=責任の移動。受領確認と根拠が必ず記録されます
                   </p>
-                </>
-              ) : null}
+                </div>
+                {outgoingItems.length === 0 ? (
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    今日渡した仕事はありません。「+ 仕事を渡す」から3点セット付きで渡せます。
+                  </p>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    {outgoingItems.map((item) => (
+                      <HandoffItemCard key={item.id} item={item} now={now} viewerUserId={userId} />
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section
+                className="rounded-lg border border-border/70 bg-card p-4"
+                aria-labelledby="handoff-incoming-heading"
+                data-testid="handoff-incoming-section"
+              >
+                <h2 id="handoff-incoming-heading" className="text-base font-bold text-foreground">
+                  私に来た
+                </h2>
+                {incomingItems.length === 0 ? (
+                  <p
+                    className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm font-semibold text-emerald-700"
+                    data-testid="handoff-incoming-empty"
+                  >
+                    なし — 受け取り待ちはありません
+                  </p>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    {incomingItems.map((item) => (
+                      <HandoffItemCard
+                        key={item.id}
+                        item={item}
+                        now={now}
+                        viewerUserId={userId}
+                        onConfirmReceipt={(itemId) => confirmReceiptMutation.mutate(itemId)}
+                        confirmPending={confirmReceiptMutation.isPending}
+                      />
+                    ))}
+                  </div>
+                )}
+                <p className="mt-3 rounded-md border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm leading-6 text-blue-800">
+                  事務から薬剤師への依頼(疑義・判断・確認)もここに届きます。口頭やメモではなくハンドオフで渡すのがチームのルールです。
+                </p>
+              </section>
+
+              <p
+                className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-800"
+                data-testid="handoff-rule-bar"
+              >
+                <strong className="font-bold">ハンドオフの3点セット:</strong> ①何を(作業の範囲)
+                ②なぜ(根拠) ③いつまで(期限) —
+                3つ揃わないと送信できません。「言った/聞いてない」をシステムで起こさない設計です。
+              </p>
             </div>
-            {!showConsultOnly ? (
-              <div className="space-y-4">
-                <WorkspaceActionRail
-                  nextAction={buildWorkspaceNextAction(cockpit)}
-                  blockedReasons={buildWorkspaceBlockedReasons(cockpit)}
-                  blockedReasonsEmptyLabel="止まっている作業はありません"
-                  evidence={buildHandoffEvidence(board)}
-                  evidenceOpenLabel="開く"
-                />
-              </div>
-            ) : null}
+            <div className="space-y-4">
+              <WorkspaceActionRail
+                nextAction={buildWorkspaceNextAction(cockpit)}
+                blockedReasons={buildWorkspaceBlockedReasons(cockpit)}
+                blockedReasonsEmptyLabel="止まっている作業はありません"
+                evidence={buildHandoffEvidence(board)}
+                evidenceOpenLabel="開く"
+              />
+            </div>
           </div>
         )}
       </div>

@@ -27,9 +27,13 @@ describe('CoordinationNavigation', () => {
     const links = cluster.querySelectorAll('a');
 
     expect(links).toHaveLength(4);
-    expect(links[0]?.getAttribute('href')).toBe('/communications/requests?status=sent&context=dashboard_home');
-    expect(links[1]?.getAttribute('href')).toBe('/notifications?type=urgent&context=dashboard_home');
-    expect(links[2]?.getAttribute('href')).toBe('/handoff?filter=unread&context=dashboard_home');
+    expect(links[0]?.getAttribute('href')).toBe(
+      '/communications/requests?status=sent&context=dashboard_home',
+    );
+    expect(links[1]?.getAttribute('href')).toBe(
+      '/notifications?type=urgent&context=dashboard_home',
+    );
+    expect(links[2]?.getAttribute('href')).toBe('/handoff');
   });
 
   it('prioritizes pharmacist coordination around handoff and alerts', () => {
@@ -39,8 +43,12 @@ describe('CoordinationNavigation', () => {
     const links = cluster.querySelectorAll('a');
 
     expect(links).toHaveLength(4);
-    expect(links[0]?.getAttribute('href')).toBe('/handoff?filter=unread&context=dashboard_home');
-    expect(links[1]?.getAttribute('href')).toBe('/notifications?type=urgent&context=dashboard_home');
-    expect(links[2]?.getAttribute('href')).toBe('/communications/requests?status=sent&context=dashboard_home');
+    expect(links[0]?.getAttribute('href')).toBe('/handoff');
+    expect(links[1]?.getAttribute('href')).toBe(
+      '/notifications?type=urgent&context=dashboard_home',
+    );
+    expect(links[2]?.getAttribute('href')).toBe(
+      '/communications/requests?status=sent&context=dashboard_home',
+    );
   });
 });

@@ -111,6 +111,7 @@ const MOBILE_CROSS_SCREEN_ROUTES = [
   { name: 'schedule-proposals-cross-screen', path: '/schedules/proposals' },
   { name: 'visits-cross-screen', path: '/visits' },
   { name: 'reports-cross-screen', path: '/reports' },
+  { name: 'handoff-cross-screen', path: '/handoff' },
   { name: 'conferences-cross-screen', path: '/conferences' },
   { name: 'billing-cross-screen', path: '/billing' },
   { name: 'billing-candidates-cross-screen', path: '/billing/candidates' },

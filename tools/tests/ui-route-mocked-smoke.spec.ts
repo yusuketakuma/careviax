@@ -867,7 +867,15 @@ async function installFormularyRouteMocks(page: Page) {
   });
 
   await page.route(apiPathPattern('/api/handoff-board'), async (route) => {
-    await fulfillJson(route, { board: null, items: [] });
+    await fulfillJson(route, {
+      data: {
+        id: 'mock_handoff_board',
+        shift_date: '2026-06-11',
+        items: [],
+        month_item_count: 0,
+        summary: { outgoing_count: 0, incoming_count: 0 },
+      },
+    });
   });
 
   await page.route(apiPathPattern('/api/dispense-audits'), async (route) => {
@@ -1260,7 +1268,15 @@ async function installScheduleDayGanttRouteMocks(page: Page) {
   });
 
   await page.route(apiPathPattern('/api/handoff-board'), async (route) => {
-    await fulfillJson(route, { board: null, items: [] });
+    await fulfillJson(route, {
+      data: {
+        id: 'mock_handoff_board',
+        shift_date: GANTT_DATE,
+        items: [],
+        month_item_count: 0,
+        summary: { outgoing_count: 0, incoming_count: 0 },
+      },
+    });
   });
 
   await page.route(apiPathPattern('/api/dispense-audits'), async (route) => {

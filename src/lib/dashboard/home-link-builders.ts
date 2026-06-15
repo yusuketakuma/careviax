@@ -47,10 +47,7 @@ export function buildTasksHref(args?: {
 
 export type WorkflowFocus = 'control_center' | 'communication' | 'workbench' | 'exceptions';
 
-export function buildWorkflowHref(args?: {
-  focus?: WorkflowFocus;
-  context?: HomeLinkContext;
-}) {
+export function buildWorkflowHref(args?: { focus?: WorkflowFocus; context?: HomeLinkContext }) {
   const params = new URLSearchParams();
   if (args?.focus) params.set('focus', args.focus);
   if (args?.context) params.set('context', args.context);
@@ -78,18 +75,13 @@ export function buildNotificationsHref(args?: {
 
 export type HandoffFilter = 'all' | 'unread';
 
-export function buildHandoffHref(args?: {
+export function buildHandoffHref(_args?: {
   date?: string;
   filter?: HandoffFilter;
   context?: HomeLinkContext;
 }) {
-  const params = new URLSearchParams();
-  if (args?.date) params.set('date', args.date);
-  if (args?.filter && args.filter !== 'all') params.set('filter', args.filter);
-  if (args?.context) params.set('context', args.context);
-
-  const query = params.toString();
-  return query ? `/handoff?${query}` : '/handoff';
+  void _args;
+  return '/handoff';
 }
 
 export type ReportsFocus = 'reports' | 'tracing' | 'delivery';
@@ -110,10 +102,7 @@ export function buildReportsHref(args?: {
 
 export type ExternalFocus = 'shares' | 'self_reports' | 'activities';
 
-export function buildExternalHref(args?: {
-  focus?: ExternalFocus;
-  context?: HomeLinkContext;
-}) {
+export function buildExternalHref(args?: { focus?: ExternalFocus; context?: HomeLinkContext }) {
   const params = new URLSearchParams();
   if (args?.focus) params.set('focus', args.focus);
   if (args?.context) params.set('context', args.context);

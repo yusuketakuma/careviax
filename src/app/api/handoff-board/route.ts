@@ -7,12 +7,9 @@ import { z } from 'zod';
 /**
  * ハンドオフボード取得 BFF。
  * new_12_handoff(docs/design-gap-analysis-new.md)の責任移転モデル対応:
- * 旧レスポンス(board + items + created_by_name)は維持しつつ、
  * - 各 item に direction(outgoing=私が渡した / incoming=私に来た)と
  *   recipient_name(宛先ユーザー名)を追加
  * - data.summary(渡した/来た件数)と data.month_item_count(今月のハンドオフ件数)を追加
- * する後方互換拡張。legacy item(宛先なしの申し送り)は
- * 「自分が書いた=渡した / 他人が書いた=来た」として扱う。
  */
 
 const dateQuerySchema = z.object({
@@ -39,16 +36,24 @@ type HandoffDirection = 'outgoing' | 'incoming';
 type HandoffBadgeItemSummary = {
   created_by: string;
   read_by?: string[] | null;
+  lifecycle_status?: string | null;
+  consult_status?: string | null;
 };
 
-/** 渡した/来たの判定。recipient 未設定の legacy 項目は作成者基準で振り分ける。 */
+function isCurrentHandoffItem(item: {
+  lifecycle_status?: string | null;
+  consult_status?: string | null;
+}): boolean {
+  return item.lifecycle_status != null || item.consult_status != null;
+}
+
+/** 渡した/来たの判定。現行 item は作成者または宛先を必ず持つ。 */
 function resolveHandoffDirection(
   item: { created_by: string; recipient_user_id?: string | null },
   viewerUserId: string,
 ): HandoffDirection {
   if (item.created_by === viewerUserId) return 'outgoing';
   if (item.recipient_user_id === viewerUserId) return 'incoming';
-  if (!item.recipient_user_id) return 'incoming';
   // 他人同士のハンドオフ(自分は作成者でも宛先でもない)はボード閲覧用に
   // 「渡した」側の列に出さず、来た側にも出さない … が、ボードは org 全員向け
   // 表示のため従来どおり閲覧可能にする。集計上は outgoing(他人が渡した)扱い。
@@ -56,9 +61,11 @@ function resolveHandoffDirection(
 }
 
 function countMyHandoffBadgeItems(items: HandoffBadgeItemSummary[], viewerUserId: string): number {
-  return items.filter(
-    (item) => item.created_by === viewerUserId || !(item.read_by ?? []).includes(viewerUserId),
-  ).length;
+  return items
+    .filter(isCurrentHandoffItem)
+    .filter(
+      (item) => item.created_by === viewerUserId || !(item.read_by ?? []).includes(viewerUserId),
+    ).length;
 }
 
 export const GET = withAuthContext(
@@ -91,6 +98,8 @@ export const GET = withAuthContext(
                 select: {
                   created_by: true,
                   read_by: true,
+                  lifecycle_status: true,
+                  consult_status: true,
                 },
               },
             },
@@ -165,7 +174,7 @@ export const GET = withAuthContext(
           });
     const userNameMap = new Map(users.map((user) => [user.id, user.name]));
 
-    const items = board.items.map((item) => ({
+    const items = board.items.filter(isCurrentHandoffItem).map((item) => ({
       ...item,
       created_by_name: userNameMap.get(item.created_by) ?? '不明',
       recipient_name: item.recipient_user_id
@@ -176,9 +185,7 @@ export const GET = withAuthContext(
 
     const outgoingCount = items.filter((item) => item.created_by === ctx.userId).length;
     const incomingCount = items.filter(
-      (item) =>
-        item.direction === 'incoming' &&
-        (item.recipient_user_id === ctx.userId || !item.recipient_user_id),
+      (item) => item.direction === 'incoming' && item.recipient_user_id === ctx.userId,
     ).length;
 
     const data = {

@@ -59,10 +59,22 @@ describe('/api/handoff-board', () => {
       id: 'board_1',
       org_id: 'org_1',
       shift_date: '2026-04-01',
-      items: [{ id: 'item_1', content: 'test', created_by: 'user_1', recipient_user_id: null }],
+      items: [
+        {
+          id: 'item_1',
+          content: 'test',
+          created_by: 'user_1',
+          recipient_user_id: 'user_2',
+          lifecycle_status: 'proposed',
+          consult_status: null,
+        },
+      ],
     };
     mockBoardTx(board, 5);
-    userFindManyMock.mockResolvedValue([{ id: 'user_1', name: 'Taro' }]);
+    userFindManyMock.mockResolvedValue([
+      { id: 'user_1', name: 'Taro' },
+      { id: 'user_2', name: 'Hanako' },
+    ]);
 
     const req = createRequest('http://localhost/api/handoff-board?date=2026-04-01');
     const res = await GET(req, { params: Promise.resolve({}) });
@@ -104,9 +116,10 @@ describe('/api/handoff-board', () => {
   it('returns a lightweight badge count without creating a missing board', async () => {
     const findUnique = vi.fn().mockResolvedValue({
       items: [
-        { created_by: 'user_1', read_by: ['user_2'] },
-        { created_by: 'user_2', read_by: [] },
-        { created_by: 'user_2', read_by: ['user_1'] },
+        { created_by: 'user_1', read_by: ['user_2'], lifecycle_status: 'proposed' },
+        { created_by: 'user_2', read_by: [], lifecycle_status: 'proposed' },
+        { created_by: 'user_2', read_by: ['user_1'], lifecycle_status: 'proposed' },
+        { created_by: 'user_2', read_by: [], lifecycle_status: null, consult_status: null },
       ],
     });
     const create = vi.fn();
@@ -131,6 +144,8 @@ describe('/api/handoff-board', () => {
             select: {
               created_by: true,
               read_by: true,
+              lifecycle_status: true,
+              consult_status: true,
             },
           },
         },
@@ -140,7 +155,7 @@ describe('/api/handoff-board', () => {
     expect(userFindManyMock).not.toHaveBeenCalled();
   });
 
-  it('splits items into outgoing/incoming for the viewer (responsibility transfer)', async () => {
+  it('splits current items into outgoing/incoming and omits legacy content-only rows', async () => {
     const board = {
       id: 'board_1',
       org_id: 'org_1',
@@ -166,12 +181,14 @@ describe('/api/handoff-board', () => {
           lifecycle_status: 'proposed',
           read_by: [],
         },
-        // legacy 申し送り(宛先なし・他人作成)→ 来た扱い
+        // 宛先/lifecycle/consult がない旧申し送りは現行ボードには出さない
         {
           id: 'item_legacy',
           content: '冷蔵庫の温度ログ確認お願いします',
           created_by: 'user_2',
           recipient_user_id: null,
+          lifecycle_status: null,
+          consult_status: null,
           read_by: [],
         },
       ],
@@ -193,9 +210,9 @@ describe('/api/handoff-board', () => {
     expect(directions).toEqual({
       item_out: 'outgoing',
       item_in: 'incoming',
-      item_legacy: 'incoming',
     });
-    expect(json.data.summary).toEqual({ outgoing_count: 1, incoming_count: 2 });
+    expect(json.data.items.some((item: { id: string }) => item.id === 'item_legacy')).toBe(false);
+    expect(json.data.summary).toEqual({ outgoing_count: 1, incoming_count: 1 });
     expect(json.data.month_item_count).toBe(31);
     const outgoing = json.data.items.find((item: { id: string }) => item.id === 'item_out');
     expect(outgoing.recipient_name).toBe('鈴木 一郎');

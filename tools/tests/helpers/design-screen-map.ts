@@ -493,9 +493,10 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p0_27_handoff_bidirectional',
     targetImage: 'images/P0/p0_27_handoff_bidirectional.png',
-    route: '/handoff?view=consult',
+    route: '/handoff',
     setup: async (page) => {
       await page.waitForSelector('[data-testid="handoff-consult-workspace"]', { timeout: 60_000 });
+      await page.waitForSelector('[data-testid="handoff-outgoing-section"]', { timeout: 60_000 });
       await page.waitForTimeout(400);
     },
   },

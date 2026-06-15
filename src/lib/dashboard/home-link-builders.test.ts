@@ -52,7 +52,7 @@ describe('home-link-builders', () => {
         filter: 'unread',
         context: 'dashboard_home',
       }),
-    ).toBe('/handoff?filter=unread&context=dashboard_home');
+    ).toBe('/handoff');
 
     expect(
       buildReportsHref({

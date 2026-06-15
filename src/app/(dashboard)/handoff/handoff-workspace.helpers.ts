@@ -5,7 +5,6 @@ import type {
   EvidenceItem,
   NextActionPanelProps,
 } from '@/components/features/workspace/action-rail';
-import { resolveHandoffEntityAction } from '@/components/features/handoff/handoff-board.helpers';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 
 /**
@@ -46,7 +45,7 @@ export type HandoffBoardItem = {
   progress_done: number | null;
   progress_total: number | null;
   direction: 'outgoing' | 'incoming';
-  // --- 相談解決フロー(p0_27)。consult_status が null の行は従来の引き継ぎ項目。---
+  // --- 相談解決フロー(p0_27)。consult_status がある行は薬剤師相談として扱う。---
   consult_status: string | null;
   resolution_action: string | null;
   resolution_note: string | null;
@@ -172,10 +171,7 @@ export type HandoffStatusBadge = {
   className: string;
 };
 
-/**
- * 状態バッジ。承諾待ち=紫 / 作業中 N/M=青 / 確認中 残時間=橙 / 完了=灰。
- * lifecycle_status を持たない legacy 項目は優先度バッジにフォールバックする。
- */
+/** 状態バッジ。承諾待ち=紫 / 作業中 N/M=青 / 確認中 残時間=橙 / 完了=灰。 */
 export function buildStatusBadge(item: HandoffBoardItem, now: Date): HandoffStatusBadge {
   switch (item.lifecycle_status) {
     case 'proposed':
@@ -196,13 +192,10 @@ export function buildStatusBadge(item: HandoffBoardItem, now: Date): HandoffStat
     default:
       break;
   }
-  if (item.priority === 'urgent') {
-    return { label: '緊急', className: 'bg-red-100 text-red-700' };
+  if (item.consult_status) {
+    return { label: '薬剤師相談', className: 'bg-amber-100 text-amber-700' };
   }
-  if (item.priority === 'high') {
-    return { label: '高', className: 'bg-amber-100 text-amber-700' };
-  }
-  return { label: '申し送り', className: 'bg-slate-100 text-slate-600' };
+  return { label: '要確認', className: 'bg-slate-100 text-slate-600' };
 }
 
 /** 進捗率(0-100)。作業中以外・進捗未設定は null。 */
@@ -247,8 +240,7 @@ export function buildItemEntityAction(
   if (item.entity_type && WORKSPACE_ENTITY_ACTIONS[item.entity_type]) {
     return WORKSPACE_ENTITY_ACTIONS[item.entity_type];
   }
-  const legacyAction = resolveHandoffEntityAction(item);
-  return legacyAction ? { href: legacyAction.href, label: `→ ${legacyAction.label}` } : null;
+  return null;
 }
 
 /**

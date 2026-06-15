@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 
-import { type ComponentProps } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -144,13 +143,13 @@ function stubFetch(board: HandoffBoardResponse = BOARD) {
   return fetchMock;
 }
 
-function renderWorkspace(props?: ComponentProps<typeof HandoffWorkspace>) {
+function renderWorkspace() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <HandoffWorkspace {...props} />
+      <HandoffWorkspace />
     </QueryClientProvider>,
   );
 }
@@ -284,7 +283,7 @@ describe('HandoffWorkspace', () => {
     expect(screen.queryByTestId('handoff-incoming-empty')).toBeNull();
   });
 
-  it('can focus the pharmacist consultation workspace without the handoff board chrome', async () => {
+  it('renders the pharmacist consultation workspace inside the canonical handoff board', async () => {
     useAuthStore.getState().setCurrentUser({ id: 'user_1' });
     const board: HandoffBoardResponse = {
       ...BOARD,
@@ -304,7 +303,7 @@ describe('HandoffWorkspace', () => {
       summary: { outgoing_count: 0, incoming_count: 1 },
     };
     stubFetch(board);
-    renderWorkspace({ focus: 'consult' });
+    renderWorkspace();
 
     await waitFor(() => {
       expect(screen.getByTestId('handoff-consult-workspace')).toBeTruthy();
@@ -312,8 +311,9 @@ describe('HandoffWorkspace', () => {
     expect(screen.getByText('相談一覧')).toBeTruthy();
     expect(screen.getByText('相談内容')).toBeTruthy();
     expect(screen.getByText('薬剤師の対応')).toBeTruthy();
-    expect(screen.queryByTestId('handoff-open-transfer')).toBeNull();
-    expect(screen.queryByTestId('handoff-outgoing-section')).toBeNull();
+    expect(screen.getByTestId('handoff-open-transfer')).toBeTruthy();
+    expect(screen.getByTestId('handoff-outgoing-section')).toBeTruthy();
+    expect(screen.getByTestId('handoff-incoming-section')).toBeTruthy();
   });
 });
 
@@ -344,8 +344,8 @@ describe('handoff-workspace helpers', () => {
     );
     expect(confirming.label).toBe('確認中 30分');
     expect(confirming.className).toContain('amber');
-    // legacy 項目は優先度バッジへフォールバック
-    expect(buildStatusBadge(buildItem({ priority: 'urgent' }), now).label).toBe('緊急');
+    expect(buildStatusBadge(buildItem({ consult_status: 'open' }), now).label).toBe('薬剤師相談');
+    expect(buildStatusBadge(buildItem({}), now).label).toBe('要確認');
   });
 
   it('computes remaining deadline labels including overdue', () => {

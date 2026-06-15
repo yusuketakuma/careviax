@@ -5,6 +5,7 @@ const ROUTES = [
   { path: '/dashboard', readyTestId: 'dashboard-priority-actions' },
   { path: '/patients', readyTestId: 'patients-board' },
   { path: '/reports', readyTestId: 'report-share-workspace' },
+  { path: '/handoff', readyTestId: 'handoff-workspace' },
   { path: '/workflow', readyTestId: 'workflow-control-center' },
   { path: '/billing', readyTestId: 'billing-check' },
 ] as const;
