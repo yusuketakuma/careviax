@@ -41,7 +41,7 @@ const createSetAuditSchema = z.object({
 });
 
 // 監査OK(approved)に必須の6チェック項目。
-// SSOT: set-audit-content.helpers.ts SET_AUDIT_CHECKLIST_ITEMS（client 専用のため値を複製）。
+// Set-audit API validation checklist. Keep server-side so UI route removal cannot weaken audit validation.
 // クライアント側 gate だけでは要求改竄でバイパス可能なので、サーバでも完了を必須にする。
 const SET_AUDIT_REQUIRED_CHECKLIST_KEYS = [
   'date_match',

@@ -196,14 +196,10 @@ export function buildWorkflowPhaseAccess(
   const proposals = workbench.filter((item) => item.item_type === 'proposal');
   const dispensing = workbench.filter((item) => item.action_href.startsWith('/dispensing'));
   const auditing = workbench.filter((item) => item.action_href.startsWith('/auditing'));
-  const medicationSets = workbench.filter(
-    (item) =>
-      item.action_href.startsWith('/medication-sets') &&
-      !item.action_href.startsWith('/medication-sets/audit'),
+  const medicationSets = workbench.filter((item) =>
+    item.action_href.startsWith('/medication-sets'),
   );
-  const setAudits = workbench.filter((item) =>
-    item.action_href.startsWith('/medication-sets/audit'),
-  );
+  const setAudits: WorkflowWorkbenchItem[] = [];
   const schedules = workbench.filter((item) => item.action_href.startsWith('/schedules'));
   const visits = workbench.filter(
     (item) => item.item_type === 'visit' || item.action_href.startsWith('/visits'),

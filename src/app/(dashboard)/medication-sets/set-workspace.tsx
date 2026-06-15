@@ -130,8 +130,7 @@ export function aggregateSetRows(rows: SetWorkspaceRow[]): AggregatedSetRows {
     if (marks.every((mark) => mark === 'set')) slots[slot] = 'set';
     else if (marks.some((mark) => mark !== 'none')) slots[slot] = 'partial';
   }
-  const assignee =
-    suffix.map((row) => row.assignee_label).find((label) => label != null) ?? null;
+  const assignee = suffix.map((row) => row.assignee_label).find((label) => label != null) ?? null;
 
   return {
     detailed: rows.slice(0, suffixStart),
@@ -222,7 +221,10 @@ function FacilityGroupCard({ group }: { group: SetWorkspaceFacilityGroup }) {
           aria-valuemax={100}
           className="ml-auto h-1.5 w-32 shrink-0 overflow-hidden rounded-full bg-muted"
         >
-          <div className="h-full rounded-full bg-primary" style={{ width: `${progressPercent}%` }} />
+          <div
+            className="h-full rounded-full bg-primary"
+            style={{ width: `${progressPercent}%` }}
+          />
         </div>
       </div>
 
@@ -322,9 +324,7 @@ function FacilityGroupCard({ group }: { group: SetWorkspaceFacilityGroup }) {
           ) : null}
           <TableRow data-testid="set-workspace-final-check-row">
             <TableCell className="text-sm text-muted-foreground">—</TableCell>
-            <TableCell className="text-sm font-medium text-foreground">
-              薬剤師の最終確認
-            </TableCell>
+            <TableCell className="text-sm font-medium text-foreground">薬剤師の最終確認</TableCell>
             <TableCell className="text-sm text-muted-foreground">—</TableCell>
             <TableCell>
               <span className="inline-flex items-center whitespace-nowrap rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
@@ -477,12 +477,12 @@ export function SetWorkspace() {
       id: 'cart-map',
       label: '配薬カート対応表',
       meta: `${data?.evidence.cart_map_count ?? 0}件`,
-      href: '/medication-sets/full',
+      href: '/medication-sets',
     },
     {
       id: 'set-photos',
       label: 'セット写真',
-      href: '/medication-sets/full',
+      href: '/medication-sets',
     },
     {
       id: 'cold-storage-log',
@@ -496,7 +496,7 @@ export function SetWorkspace() {
     <section aria-label="セット準備ワークスペース" data-testid="set-workspace">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h2 className="text-xl font-bold text-foreground">セット</h2>
+          <h1 className="text-xl font-bold text-foreground">セット</h1>
           <p className="text-sm text-muted-foreground">{dateLabel}</p>
         </div>
         <FilterChipBar

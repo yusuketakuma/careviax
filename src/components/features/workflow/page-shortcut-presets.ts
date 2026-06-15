@@ -98,26 +98,6 @@ export function getPatientMedicationCalendarShortcutLinks(patientId: string): Pa
   ];
 }
 
-export function getSetPlanEditShortcutLinks(planId: string): PageShortcutLink[] {
-  return [
-    { href: `/medication-sets/full?plan_id=${planId}`, label: '計画詳細' },
-    { href: `/medication-sets/audit/${planId}`, label: 'セット監査' },
-    { href: '/workflow', label: 'ワークフロー' },
-  ];
-}
-
-export function getMedicationSetFullShortcutLinks(planId: string | null): PageShortcutLink[] {
-  return [
-    ...(planId
-      ? [
-          { href: `/medication-sets/${planId}/edit`, label: 'セット編集' },
-          { href: `/medication-sets/audit/${planId}`, label: 'セット監査' },
-        ]
-      : []),
-    { href: '/workflow', label: 'ワークフロー' },
-  ];
-}
-
 export function getReferralShortcutLinks(): PageShortcutLink[] {
   return [
     { href: '/patients', label: '患者一覧' },

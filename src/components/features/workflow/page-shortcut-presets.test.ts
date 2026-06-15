@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   getDispenseConfirmShortcutLinks,
   getManagementPlanPrintShortcutLinks,
-  getMedicationSetFullShortcutLinks,
   getMyDayShortcutLinks,
   getPatientConsentShortcutLinks,
   getPatientEditShortcutLinks,
@@ -22,7 +21,6 @@ import {
   getReportPrintShortcutLinks,
   getScheduleProposalShortcutLinks,
   getSettingsShortcutLinks,
-  getSetPlanEditShortcutLinks,
   getVisitDetailShortcutLinks,
 } from './page-shortcut-presets';
 
@@ -86,7 +84,7 @@ describe('page shortcut presets', () => {
     ]);
   });
 
-  it('builds visit, dispensing, set-plan, and referral shortcuts with stable targets', () => {
+  it('builds visit, dispensing, and referral shortcuts with stable targets', () => {
     expect(getDispenseConfirmShortcutLinks('task-1')).toEqual([
       { href: '/dispensing/task-1', label: '調剤入力' },
       { href: '/auditing/task-1', label: '鑑査確認' },
@@ -97,22 +95,6 @@ describe('page shortcut presets', () => {
       { href: '/reports', label: '報告書' },
       { href: '/handoff', label: '申し送り確認' },
       { href: '/schedules', label: 'スケジュール' },
-    ]);
-
-    expect(getSetPlanEditShortcutLinks('plan-1')).toEqual([
-      { href: '/medication-sets/full?plan_id=plan-1', label: '計画詳細' },
-      { href: '/medication-sets/audit/plan-1', label: 'セット監査' },
-      { href: '/workflow', label: 'ワークフロー' },
-    ]);
-
-    expect(getMedicationSetFullShortcutLinks('plan-1')).toEqual([
-      { href: '/medication-sets/plan-1/edit', label: 'セット編集' },
-      { href: '/medication-sets/audit/plan-1', label: 'セット監査' },
-      { href: '/workflow', label: 'ワークフロー' },
-    ]);
-
-    expect(getMedicationSetFullShortcutLinks(null)).toEqual([
-      { href: '/workflow', label: 'ワークフロー' },
     ]);
 
     expect(getReferralShortcutLinks()).toEqual([
