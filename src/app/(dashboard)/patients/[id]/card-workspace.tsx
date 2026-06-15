@@ -31,6 +31,7 @@ import {
 import { ProcessChips } from '@/components/features/workspace/process-chips';
 import { ListOpenCard } from '@/components/features/workspace/list-open-card';
 import { PatientFieldRevisionTimeline } from '@/components/features/patients/patient-field-revision-timeline';
+import { PatientStructuredCarePanel } from '@/components/features/patients/patient-structured-care-panel';
 import {
   WorkspaceActionRail,
   type BlockedReason,
@@ -809,6 +810,9 @@ export function CardWorkspace({
               <PatientFieldRevisionTimeline patientId={patientId} />
             </div>
           </SectionCard>
+
+          {/* 在宅医療処置・麻薬: 構造化レイヤ(開始日・確認元の時系列。実施中行が無ければ非表示) */}
+          <PatientStructuredCarePanel patientId={patientId} />
         </div>
 
         {/* 右側(xl: 縦積みの 1 カラム / 2xl: contents 化して「紐づく今日」が中央・3点セットが右の独立カラム) */}

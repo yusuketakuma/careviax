@@ -655,6 +655,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/patients/:id/qualification-check',
   '/api/patients/:id/readiness',
   '/api/patients/:id/restore',
+  '/api/patients/:id/structured-care',
   '/api/patients/:id/timeline',
   '/api/patients/:id/visit-brief',
   '/api/patients/:id/visit-constraints',
