@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { BellOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -54,7 +54,6 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
   const orgId = useOrgId();
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const [category, setCategory] = useState<NotificationCategoryFilter>(initialCategory);
   const pendingSyncCount = useOfflineStore((state) => state.pendingSyncCount);
@@ -126,9 +125,7 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
 
   const handleCategoryChange = (next: NotificationCategoryFilter) => {
     setCategory(next);
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete('type');
-    params.delete('tab');
+    const params = new URLSearchParams();
     if (next === 'all') {
       params.delete('category');
     } else {

@@ -10,7 +10,6 @@ const useMutationMock = vi.hoisted(() => vi.fn());
 const useQueryClientMock = vi.hoisted(() => vi.fn());
 const useRouterMock = vi.hoisted(() => vi.fn());
 const usePathnameMock = vi.hoisted(() => vi.fn());
-const useSearchParamsMock = vi.hoisted(() => vi.fn());
 const useOfflineStoreMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
@@ -26,7 +25,6 @@ vi.mock('@tanstack/react-query', () => ({
 vi.mock('next/navigation', () => ({
   useRouter: useRouterMock,
   usePathname: usePathnameMock,
-  useSearchParams: useSearchParamsMock,
 }));
 
 vi.mock('@/lib/stores/offline-store', () => ({
@@ -76,7 +74,6 @@ describe('NotificationsContent', () => {
     useOrgIdMock.mockReturnValue('org_1');
     useRouterMock.mockReturnValue({ replace: vi.fn(), push: vi.fn() });
     usePathnameMock.mockReturnValue('/notifications');
-    useSearchParamsMock.mockReturnValue(new URLSearchParams());
     useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
     useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
     useOfflineStoreMock.mockImplementation(
