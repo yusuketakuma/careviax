@@ -43,7 +43,7 @@ describe('workflow history widgets', () => {
     render(<PreviousStageSummary cycleId="cycle_1" />);
 
     expect(screen.getByText('調剤済')).toBeTruthy();
-    expect(screen.getByText('鑑査待ち')).toBeTruthy();
+    expect(screen.getByText('監査待ち')).toBeTruthy();
     expect(screen.getByText('薬剤師A')).toBeTruthy();
     expect(useRealtimeQueryMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -81,8 +81,8 @@ describe('workflow history widgets', () => {
 
     render(<StageTimeline cycleId="cycle_1" />);
 
-    expect(screen.getByText('鑑査待ち')).toBeTruthy();
-    expect(screen.getByText('鑑査済')).toBeTruthy();
+    expect(screen.getByText('監査待ち')).toBeTruthy();
+    expect(screen.getByText('監査済')).toBeTruthy();
     expect(screen.getByText('監査メモ')).toBeTruthy();
   });
 });

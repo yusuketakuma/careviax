@@ -161,7 +161,7 @@ export function AdvancedFilterModal({
                 }
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="セット監査待ち" />
+                  <SelectValue placeholder="セット監査待ち / セット監査済み" />
                 </SelectTrigger>
                 <SelectContent>
                   {CYCLE_STATUS_OPTIONS.map((opt) => (
@@ -178,7 +178,9 @@ export function AdvancedFilterModal({
               第一版は UI のみ提供。結果への反映は TODO(p0_06) 参照。
               disabled にはしない(仕様どおり)。 */}
           <div className="flex items-start gap-4">
-            <span className="w-28 shrink-0 pt-1 text-sm font-medium text-foreground">注意ポイント</span>
+            <span className="w-28 shrink-0 pt-1 text-sm font-medium text-foreground">
+              注意ポイント
+            </span>
             <div className="flex flex-1 flex-wrap gap-2">
               {CARE_TAG_OPTIONS.map((opt) => {
                 const isActive = filter.careTags.includes(opt.value);
@@ -231,7 +233,11 @@ export function AdvancedFilterModal({
             <span className="w-28 shrink-0 text-sm font-medium text-foreground">薬切れ</span>
             <div className="flex-1">
               <Select
-                value={filter.medicationDeadlineWithinDays != null ? String(filter.medicationDeadlineWithinDays) : ''}
+                value={
+                  filter.medicationDeadlineWithinDays != null
+                    ? String(filter.medicationDeadlineWithinDays)
+                    : ''
+                }
                 onValueChange={(value) =>
                   setField(
                     'medicationDeadlineWithinDays',

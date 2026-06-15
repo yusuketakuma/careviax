@@ -8,7 +8,7 @@ export const medicationCycleStatusLabels: Record<string, string> = {
   dispensed: '調剤済み',
   auditing: '監査中',
   audited: '監査済み',
-  setting: 'セット中',
+  setting: 'セット監査待ち',
   set_complete: 'セット完了',
   set_audited: 'セット監査済み',
   visit_ready: '訪問準備完了',

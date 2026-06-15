@@ -52,13 +52,13 @@ const CYCLE_STATUS_LABELS: Record<string, { label: string; color: string }> = {
   dispensing: { label: '調剤中', color: 'bg-green-100 text-green-800' },
   dispensed: { label: '調剤完了', color: 'bg-green-100 text-green-800' },
   audit_pending: {
-    label: '鑑査待ち',
+    label: '監査待ち',
     color: 'bg-orange-100 text-orange-800',
   },
-  audited: { label: '鑑査済み', color: 'bg-green-100 text-green-800' },
-  setting: { label: 'セット中', color: 'bg-blue-100 text-blue-800' },
+  audited: { label: '監査済み', color: 'bg-green-100 text-green-800' },
+  setting: { label: 'セット監査待ち', color: 'bg-blue-100 text-blue-800' },
   set_audited: {
-    label: 'セット鑑査済',
+    label: 'セット監査済み',
     color: 'bg-green-100 text-green-800',
   },
   visit_ready: { label: '訪問準備完了', color: 'bg-green-100 text-green-800' },

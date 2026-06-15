@@ -158,6 +158,24 @@ describe('SearchContent', () => {
     expect(screen.getByRole('heading', { name: '詳しく絞り込む' })).toBeTruthy();
   });
 
+  it('shows current set-audit status wording in the advanced filter modal', async () => {
+    render(<SearchContent />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '詳しく絞り込む' }));
+    });
+
+    expect(screen.getByText('セット監査待ち / セット監査済み')).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('combobox')[2]);
+    });
+
+    expect(screen.getByRole('option', { name: 'セット監査待ち' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'セット監査済み' })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: 'セット中' })).toBeNull();
+  });
+
   it('modal リセット does not close modal', async () => {
     render(<SearchContent />);
 

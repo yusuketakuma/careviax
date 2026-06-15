@@ -2,6 +2,8 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  CYCLE_STATUS_LABELS,
+  CYCLE_STATUS_SHORT_LABELS,
   CYCLE_WORKSPACE_ACTIONS,
   PROCESS_STEPS_9,
   getProcessStepIndex,
@@ -83,5 +85,14 @@ describe('PROCESS_STEPS_9', () => {
     expect(getProcessStepIndex('intake')).toBe(0);
     expect(getProcessStepIndex('audit')).toBe(4);
     expect(getProcessStepIndex('billing')).toBe(8);
+  });
+
+  it('uses current audit and set-audit labels without legacy wording', () => {
+    expect(CYCLE_STATUS_LABELS.audit_pending).toBe('監査待ち');
+    expect(CYCLE_STATUS_LABELS.audited).toBe('監査済');
+    expect(CYCLE_STATUS_LABELS.setting).toBe('セット監査待ち');
+    expect(CYCLE_STATUS_LABELS.set_audited).toBe('セット監査済み');
+    expect(CYCLE_STATUS_SHORT_LABELS.setting).toBe('監査待');
+    expect(CYCLE_STATUS_SHORT_LABELS.set_audited).toBe('監査済');
   });
 });

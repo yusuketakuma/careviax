@@ -55,8 +55,8 @@ describe('workflow history widgets', () => {
 
     render(<PreviousStageSummary cycleId="cycle_1" />);
 
-    expect(screen.getByText('鑑査待ち')).toBeTruthy();
-    expect(screen.getByText('鑑査済')).toBeTruthy();
+    expect(screen.getByText('監査待ち')).toBeTruthy();
+    expect(screen.getByText('監査済')).toBeTruthy();
     expect(screen.getByText('佐藤薬剤師')).toBeTruthy();
   });
 
