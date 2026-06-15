@@ -187,6 +187,18 @@ describe('OperationalPolicyContent', () => {
     expect(screen.getByText('今月3件')).toBeTruthy();
     expect(screen.getByText('権限')).toBeTruthy();
     expect(screen.getByText('管理者のみ変更可の項目あり')).toBeTruthy();
+
+    const inventory = screen.getByTestId('settings-candidate-inventory');
+    expect(within(inventory).getByRole('heading', { name: '設定に寄せる候補' })).toBeTruthy();
+    expect(within(inventory).getByText('6ジャンル / 23項目')).toBeTruthy();
+    expect(within(inventory).getByRole('heading', { name: '安全・工程' })).toBeTruthy();
+    expect(within(inventory).getByRole('heading', { name: '通知・割り込み' })).toBeTruthy();
+    expect(within(inventory).getByRole('heading', { name: 'スケジュール・余力' })).toBeTruthy();
+    expect(within(inventory).getByRole('heading', { name: '薬局・マスター' })).toBeTruthy();
+    expect(within(inventory).getByRole('heading', { name: 'セキュリティ・権限' })).toBeTruthy();
+    expect(within(inventory).getByRole('heading', { name: 'オフライン・連携' })).toBeTruthy();
+    expect(within(inventory).getByText('セッションタイムアウト・警告時刻')).toBeTruthy();
+    expect(within(inventory).getByText('Webhook 再送・同時実行・タイムアウト')).toBeTruthy();
   });
 
   it('confirms the impact scope before saving a toggle change', () => {
@@ -198,6 +210,17 @@ describe('OperationalPolicyContent', () => {
     // 保存前に影響範囲を確認するダイアログ
     expect(screen.getByText('余白の計算を変更')).toBeTruthy();
     expect(screen.getByText(/対象: チーム全員のスケジュール画面とダッシュボード/)).toBeTruthy();
+    const summary = screen.getByTestId('policy-change-summary');
+    expect(within(summary).getByText('変更前')).toBeTruthy();
+    expect(within(summary).getByText('変更後')).toBeTruthy();
+    expect(within(summary).getAllByText('ON')).toHaveLength(1);
+    expect(within(summary).getAllByText('OFF')).toHaveLength(1);
+    expect(within(summary).getByRole('list', { name: '影響する画面' })).toBeTruthy();
+    expect(within(summary).getByText('スケジュール')).toBeTruthy();
+    expect(within(summary).getByText('ダッシュボード')).toBeTruthy();
+    expect(
+      within(summary).getByText(/ロック項目\(安全タグの表示・二人制監査・緊急\(赤\)の通知\)/),
+    ).toBeTruthy();
     expect(mutateMock).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: '保存して反映' }));

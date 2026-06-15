@@ -26,6 +26,11 @@ import {
 } from '@/components/features/workspace/action-rail';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
+import {
+  groupSystemSettingCandidates,
+  SYSTEM_SETTING_STATUS_LABELS,
+  SYSTEM_SETTING_STATUS_TONE,
+} from '@/lib/settings/system-settings-inventory';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 
 /**
@@ -124,6 +129,10 @@ const SENSITIVITY_OPTIONS: Array<{ value: SensitivityLevel; label: string }> = [
   { value: 'standard', label: '標準' },
   { value: 'high', label: '高' },
 ];
+
+function sensitivityLabel(value: SensitivityLevel) {
+  return SENSITIVITY_OPTIONS.find((option) => option.value === value)?.label ?? value;
+}
 
 function SensitivitySegment({
   value,
@@ -260,7 +269,121 @@ type PendingChange = {
   values: Partial<OperationalPolicy>;
   title: string;
   impact: string;
+  currentLabel: string;
+  nextLabel: string;
+  affectedScreens: string[];
 };
+
+function ConfirmSummary({
+  change,
+  lockedItemLabels,
+}: {
+  change: PendingChange;
+  lockedItemLabels: string[];
+}) {
+  return (
+    <div className="space-y-3" data-testid="policy-change-summary">
+      <p className="text-sm leading-6 text-muted-foreground">{change.impact}</p>
+      <div className="grid gap-2 rounded-md border border-border/70 bg-muted/30 p-3 text-sm sm:grid-cols-2">
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground">変更前</p>
+          <p className="mt-1 font-bold text-foreground">{change.currentLabel}</p>
+        </div>
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground">変更後</p>
+          <p className="mt-1 font-bold text-foreground">{change.nextLabel}</p>
+        </div>
+      </div>
+      <div>
+        <p className="text-xs font-semibold text-muted-foreground">影響する画面</p>
+        <ul className="mt-2 flex flex-wrap gap-2" aria-label="影響する画面">
+          {change.affectedScreens.map((screen) => (
+            <li
+              key={screen}
+              className="rounded-full border border-border/70 bg-card px-2.5 py-1 text-xs font-semibold text-foreground"
+            >
+              {screen}
+            </li>
+          ))}
+        </ul>
+      </div>
+      <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-700">
+        ロック項目({lockedItemLabels.join('・')})はこの変更では動きません。
+      </p>
+    </div>
+  );
+}
+
+const SETTING_CANDIDATE_GROUPS = groupSystemSettingCandidates();
+
+function SettingsCandidateInventory() {
+  const totalCount = SETTING_CANDIDATE_GROUPS.reduce((sum, group) => sum + group.items.length, 0);
+
+  return (
+    <section
+      className="rounded-lg border border-border/70 bg-card p-4"
+      aria-labelledby="settings-candidate-inventory-heading"
+      data-testid="settings-candidate-inventory"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 id="settings-candidate-inventory-heading" className="text-base font-bold">
+            設定に寄せる候補
+          </h2>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            コード全体の設定値・端末保存・環境変数・固定値をスキャンし、運用画面へ集約すべき項目をジャンル別に整理しています。
+          </p>
+        </div>
+        <span className="rounded-full border border-border/70 bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
+          {SETTING_CANDIDATE_GROUPS.length}ジャンル / {totalCount}項目
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        {SETTING_CANDIDATE_GROUPS.map((group) => (
+          <section
+            key={group.genre}
+            className="rounded-md border border-border/70 bg-background p-3"
+            aria-label={group.label}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-bold text-foreground">{group.label}</h3>
+              <span className="text-xs font-semibold text-muted-foreground">
+                {group.items.length}項目
+              </span>
+            </div>
+            <ul className="mt-3 space-y-2">
+              {group.items.map((item) => (
+                <li key={item.id} className="rounded-md border border-border/60 bg-card p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-foreground">{item.label}</p>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                        現在: {item.currentSurface}
+                      </p>
+                    </div>
+                    <span
+                      className={cn(
+                        'shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold',
+                        SYSTEM_SETTING_STATUS_TONE[item.status],
+                      )}
+                    >
+                      {SYSTEM_SETTING_STATUS_LABELS[item.status]}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-foreground">{item.recommendation}</p>
+                  <p className="mt-2 text-[11px] leading-5 text-muted-foreground">
+                    根拠: {item.evidence.join(' / ')}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // 本体
@@ -420,6 +543,9 @@ export function OperationalPolicyContent() {
                         requestChange({
                           values: { safety_sign_sensitivity: next },
                           title: '安全サインの感度を変更',
+                          currentLabel: sensitivityLabel(data.policy.safety_sign_sensitivity),
+                          nextLabel: sensitivityLabel(next),
+                          affectedScreens: ['通知', 'ダッシュボード', '患者カード'],
                           impact:
                             '「気になるサイン」の通知頻度が変わります。対象: チーム全員の通知とダッシュボード表示。安全タグの常時表示は変わりません。',
                         })
@@ -461,6 +587,9 @@ export function OperationalPolicyContent() {
                         requestChange({
                           values: { slack_auto_calc: !data.policy.slack_auto_calc },
                           title: '余白の計算を変更',
+                          currentLabel: data.policy.slack_auto_calc ? 'ON' : 'OFF',
+                          nextLabel: data.policy.slack_auto_calc ? 'OFF' : 'ON',
+                          affectedScreens: ['スケジュール', 'ダッシュボード'],
                           impact:
                             'スケジュールの「余白」表示の計算方法が変わります。対象: チーム全員のスケジュール画面とダッシュボード。',
                         })
@@ -480,6 +609,9 @@ export function OperationalPolicyContent() {
                         requestChange({
                           values: { interrupt_guard: !data.policy.interrupt_guard },
                           title: '割り込み防護を変更',
+                          currentLabel: data.policy.interrupt_guard ? 'ON' : 'OFF',
+                          nextLabel: data.policy.interrupt_guard ? 'OFF' : 'ON',
+                          affectedScreens: ['調剤', '監査', '通知'],
                           impact:
                             '調剤・監査中の通知の出方が変わります。対象: チーム全員の調剤・監査画面。緊急(赤)の通知は常に表示されます。',
                         })
@@ -512,6 +644,9 @@ export function OperationalPolicyContent() {
                             wait_release_notification: !data.policy.wait_release_notification,
                           },
                           title: '待ち解除の通知を変更',
+                          currentLabel: data.policy.wait_release_notification ? 'ON' : 'OFF',
+                          nextLabel: data.policy.wait_release_notification ? 'OFF' : 'ON',
+                          affectedScreens: ['通知', '工程の今', 'ハンドオフ'],
                           impact:
                             '止まっていた仕事が再開できるようになったときの通知が変わります。対象: チーム全員の通知。',
                         })
@@ -531,6 +666,9 @@ export function OperationalPolicyContent() {
                         requestChange({
                           values: { quiet_hours: !data.policy.quiet_hours },
                           title: '静かな時間を変更',
+                          currentLabel: data.policy.quiet_hours ? 'ON' : 'OFF',
+                          nextLabel: data.policy.quiet_hours ? 'OFF' : 'ON',
+                          affectedScreens: ['訪問', '通知', 'モード表示'],
                           impact:
                             '訪問モード中の通知の出方が変わります。対象: 訪問担当者の画面。緊急(赤)の通知は常に表示されます。',
                         })
@@ -563,6 +701,10 @@ export function OperationalPolicyContent() {
         )}
       </div>
 
+      <div className="mt-6">
+        <SettingsCandidateInventory />
+      </div>
+
       {/* 保存前の影響範囲確認(バナーの約束と挙動を一致させる) */}
       <AlertDialog
         open={pendingChange != null}
@@ -573,11 +715,21 @@ export function OperationalPolicyContent() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{pendingChange?.title ?? '設定を変更'}</AlertDialogTitle>
-            <AlertDialogDescription>{pendingChange?.impact}</AlertDialogDescription>
+            <AlertDialogDescription>
+              変更内容、影響する画面、動かないロック項目を確認してください。
+            </AlertDialogDescription>
           </AlertDialogHeader>
+          {pendingChange ? (
+            <ConfirmSummary
+              change={pendingChange}
+              lockedItemLabels={(data?.locked_items ?? []).map((item) => item.label)}
+            />
+          ) : null}
           <AlertDialogFooter>
             <AlertDialogCancel>キャンセル</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmPendingChange}>保存して反映</AlertDialogAction>
+            <AlertDialogAction disabled={updateMutation.isPending} onClick={confirmPendingChange}>
+              {updateMutation.isPending ? '反映中' : '保存して反映'}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
