@@ -4,7 +4,11 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
-import type { IntakeTriageResponse, IntakeTriageRow } from './intake-triage.shared';
+import {
+  buildStatusLabel,
+  type IntakeTriageResponse,
+  type IntakeTriageRow,
+} from './intake-triage.shared';
 
 setupDomTestEnv();
 
@@ -270,6 +274,18 @@ describe('IntakeTriageContent', () => {
     fireEvent.click(screen.getByRole('button', { name: /オンライン/ }));
     expect(screen.getAllByTestId('intake-triage-row')).toHaveLength(1);
     expect(screen.getByText('受入判断待ち')).toBeTruthy();
+  });
+
+  it('uses the current set audit label for entered prescriptions moving to set work', () => {
+    expect(
+      buildStatusLabel(
+        buildRow({
+          intake_id: 'intake_set',
+          status: 'entered_in_progress',
+          action: 'to_set',
+        }),
+      ),
+    ).toBe('入力済 → セット監査待ち');
   });
 
   it('キューが空のレーンでは空状態メッセージを出す', () => {

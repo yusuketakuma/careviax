@@ -179,7 +179,7 @@ export function buildStatusLabel(row: IntakeTriageRow): string {
         : row.action === 'to_dispensing'
           ? '調剤中'
           : row.action === 'to_set'
-            ? 'セット中'
+            ? 'セット監査待ち'
             : '進行中';
     return `入力済 → ${stageLabel}`;
   }
