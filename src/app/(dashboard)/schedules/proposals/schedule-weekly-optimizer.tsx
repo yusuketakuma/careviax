@@ -1489,7 +1489,7 @@ export function ScheduleWeeklyOptimizer({
                             <Button
                               size="sm"
                               variant="outline"
-                              className="w-full"
+                              className="min-h-[44px] w-full sm:h-11 sm:min-h-[44px]"
                               onClick={() => handleGenerateForCell(pharmacist.id, dayKey)}
                               disabled={
                                 !shift?.available ||

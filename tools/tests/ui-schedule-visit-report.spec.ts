@@ -1,8 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import {
-  ensureConfirmedScheduleActionFixture,
-  ensureGroupedVisitFixtures,
-} from './helpers/grouped-visit-fixtures';
+import { ensureGroupedVisitFixtures } from './helpers/grouped-visit-fixtures';
 import {
   attachLocalSession,
   clickAndWaitForStableRoute,
@@ -16,22 +13,14 @@ import { apiPathPattern, fulfillJson, readRouteBody } from './helpers/route-mock
 test.setTimeout(240_000);
 test.use({ serviceWorkers: 'block' });
 
-function formatLocalDateKey(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
 async function openScheduleBoard(page: Page) {
   await openStableRoute(page, '/schedules');
-
-  const nextWeekButton = page.getByRole('button', { name: /翌週/ }).first();
-  if (!(await nextWeekButton.isVisible({ timeout: 45_000 }).catch(() => false))) {
+  const teamBoard = page.getByTestId('schedule-team-board');
+  if (!(await teamBoard.isVisible({ timeout: 45_000 }).catch(() => false))) {
     await reloadStablePage(page);
   }
 
-  await expect(nextWeekButton).toBeVisible({ timeout: 45_000 });
+  await expect(teamBoard).toBeVisible({ timeout: 45_000 });
 }
 
 async function openVisitRecordPage(page: Page, url: string) {
@@ -41,14 +30,6 @@ async function openVisitRecordPage(page: Page, url: string) {
   if (!(await switcher.isVisible({ timeout: 5_000 }).catch(() => false))) {
     await reloadStablePage(page);
   }
-}
-
-function filterExpectedReportPageErrors(errors: string[]) {
-  return errors.filter(
-    (error) =>
-      !error.includes('/api/phos/report-deliveries') &&
-      !error.includes('Failed to load resource: the server responded with a status of 401'),
-  );
 }
 
 async function expectNoPageHorizontalOverflow(page: Page) {
@@ -124,12 +105,6 @@ type VisitRecordSavePayload = {
     assessment?: { free_text?: unknown };
     plan?: { free_text?: unknown };
   };
-};
-
-type VisitProposalGenerationPayload = {
-  case_id?: unknown;
-  vehicle_resource_id?: unknown;
-  travel_mode?: unknown;
 };
 
 async function installVisitRecordSaveStub(page: Page) {
@@ -288,317 +263,173 @@ test.describe('schedule page', () => {
     await attachLocalSession(context);
   });
 
-  test('schedule page loads with day view and week navigation', async ({ context }) => {
+  test('schedule page loads the current team board', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openScheduleBoard(page);
 
-    await expect(page.getByRole('heading', { name: '訪問スケジュール' })).toBeVisible();
-
-    // Week navigation buttons should be present
-    await expect(page.getByRole('button', { name: /前週/ }).first()).toBeVisible({
-      timeout: 15_000,
-    });
-    await expect(page.getByRole('button', { name: /翌週/ }).first()).toBeVisible();
+    await expect(page.getByTestId('schedule-team-board')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'スケジュール' })).toBeVisible();
+    await expect(
+      page.locator('main a[href="/schedules/proposals?workspace=optimizer"]').first(),
+    ).toBeVisible();
 
     // Filter known React Query warning for visit-route-plan (tracked as BUG-002)
     const realErrors = errors.filter((e) => !e.includes('Query data cannot be undefined'));
     expect(realErrors).toEqual([]);
   });
 
-  test('confirmed schedule card surfaces primary actions before details', async ({
+  test('current schedule board exposes route and proposal workspaces without old day-view chrome', async ({
+    context,
+  }) => {
+    const { page, errors } = await createInstrumentedPage(context);
+    await openScheduleBoard(page);
+
+    const board = page.getByTestId('schedule-team-board');
+    await expect(board.getByTestId('schedule-view-mode-toggle')).toBeVisible();
+    await expect(board.getByTestId('schedule-team-gantt')).toBeVisible({ timeout: 90_000 });
+    await expect(board.getByTestId('schedule-pending-proposals')).toBeVisible();
+    await expect(board.locator('a[href="/schedules/route-compare"]').first()).toBeVisible();
+    await expect(board.locator('a[href="/schedules/proposals"]').first()).toBeVisible();
+    await expect(page.locator('#planner')).toHaveCount(0);
+    await expect(page.locator('#schedule-legacy-tools')).toHaveCount(0);
+    await expectNoPageHorizontalOverflow(page);
+
+    const realErrors = errors.filter((e) => !e.includes('Query data cannot be undefined'));
+    expect(realErrors).toEqual([]);
+  });
+
+  test('route compare opens the current recommended-route detail and apply confirmation', async ({
     context,
   }, testInfo) => {
     test.skip(
       testInfo.project.name !== 'chromium',
-      'Desktop confirmed card placement is covered separately from the mobile visit surface.',
+      'Route compare interaction coverage runs in the desktop viewport.',
     );
 
-    const fixture = await ensureConfirmedScheduleActionFixture(formatLocalDateKey(new Date()));
     const { page, errors } = await createInstrumentedPage(context);
+    await openStableRoute(page, '/schedules/route-compare');
 
-    await openScheduleBoard(page);
+    const compare = page.getByTestId('route-scenario-compare');
+    await expect(compare).toBeVisible({ timeout: 90_000 });
 
-    const card = page.locator(`#schedule-${fixture.scheduleId}`);
-    await expect(page.getByRole('status', { name: /スケジュールボード読み込み中/ })).toBeHidden({
-      timeout: 90_000,
-    });
-    await expect(card).toBeVisible({ timeout: 90_000 });
-    await expect(card.getByText('電話確定済み')).toBeVisible();
-
-    const visitStartButton = card.getByRole('button', {
-      name: /施設E2E 太郎.*訪問開始/,
-    });
-    const preparationButton = card.getByRole('button', {
-      name: /施設E2E 太郎.*訪問準備を開く/,
-    });
-    const rescheduleButton = card.getByRole('button', {
-      name: /施設E2E 太郎.*リスケ候補を作る/,
-    });
-    await expect(visitStartButton).toBeVisible();
-    await expect(preparationButton).toBeVisible();
-    await expect(rescheduleButton).toBeVisible();
-
-    const patientNameBox = await card.getByText('施設E2E 太郎').first().boundingBox();
-    const visitStartBox = await visitStartButton.boundingBox();
-    const preparationBox = await preparationButton.boundingBox();
-    const rescheduleBox = await rescheduleButton.boundingBox();
-    const patientAddressBox = await card.getByText('患者住所').boundingBox();
-    if (!patientNameBox || !visitStartBox || !preparationBox || !rescheduleBox) {
-      throw new Error('Confirmed schedule action rail placement target was not measurable');
+    const detail = page.getByTestId('route-recommended-detail');
+    if (await detail.isVisible().catch(() => false)) {
+      await expect(detail.getByTestId('route-detail-stop').first()).toBeVisible();
+      await expect(detail.getByTestId('route-detail-constraint').first()).toBeVisible();
+      const applyButton = detail.getByTestId('route-detail-apply');
+      await expect(applyButton).toBeVisible();
+      await expectMinTouchTargetHeight(applyButton);
+      await applyButton.click();
+      await expect(page.getByRole('alertdialog', { name: /案.*本日のルートに適用/ })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'この案を使う' })).toBeVisible();
+    } else {
+      await expect(compare).toContainText('比較できるルート案がありません');
+      await expect(compare.getByRole('link', { name: /スケジュールへ戻る/ })).toBeVisible();
     }
-    if (!patientAddressBox) {
-      throw new Error('Confirmed schedule patient address block was not measurable');
+
+    await expectNoPageHorizontalOverflow(page);
+    const realErrors = errors.filter((e) => !e.includes('Query data cannot be undefined'));
+    expect(realErrors).toEqual([]);
+  });
+
+  test('proposal dashboard opens detail with confirmation flow and reproposal controls', async ({
+    context,
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== 'chromium',
+      'Proposal dashboard detail interaction coverage runs in the desktop viewport.',
+    );
+
+    const { page, errors } = await createInstrumentedPage(context);
+    await openStableRoute(page, '/schedules/proposals?workspace=dashboard');
+
+    await expect(page.getByLabel('ケース/患者検索')).toBeVisible();
+    await expect(page.getByLabel('候補日 From')).toBeVisible();
+    await expect(page.getByLabel('候補日 To')).toBeVisible();
+
+    const detailButton = page.getByRole('button', { name: /候補詳細を開く/ }).first();
+    await expect
+      .poll(
+        async () => {
+          const hasDetail =
+            (await page.getByRole('button', { name: /候補詳細を開く/ }).count()) > 0;
+          const hasEmpty = await page
+            .locator('main')
+            .getByText('条件に一致する訪問候補はありません。')
+            .isVisible()
+            .catch(() => false);
+          return hasDetail || hasEmpty;
+        },
+        {
+          message: 'proposal dashboard should settle with detail rows or an empty state',
+          timeout: 90_000,
+        },
+      )
+      .toBe(true);
+
+    if ((await page.getByRole('button', { name: /候補詳細を開く/ }).count()) > 0) {
+      await expectMinTouchTargetHeight(detailButton);
+      await detailButton.click();
+      await expect(page.getByTestId('schedule-proposal-active-row')).toBeVisible({
+        timeout: 45_000,
+      });
+
+      const sheet = page.getByRole('dialog');
+      await expect(sheet.getByTestId('proposal-confirmation-flow')).toBeVisible({
+        timeout: 45_000,
+      });
+      await expect(sheet.getByTestId('proposal-candidate-cards')).toBeVisible();
+      await expect(sheet.getByTestId('proposal-flow-steps')).toBeVisible();
+      await expect(sheet.getByLabel('電話で確認した内容')).toBeVisible();
+      await expect(sheet.locator('#schedule-proposal-reproposal')).toBeVisible();
+      await expect(sheet.getByLabel('再提案開始日')).toBeVisible();
+      await expect(sheet.getByLabel('希望時間 From')).toBeVisible();
+      await expect(sheet.getByLabel('希望時間 To')).toBeVisible();
+      await expect(sheet.getByLabel('候補数')).toBeVisible();
+      await expect(sheet.getByRole('button', { name: /変更希望で再提案/ })).toBeVisible();
+      await expectNoLocatorHorizontalOverflow(sheet);
+    } else {
+      await expect(page.locator('main')).toContainText('条件に一致する訪問候補はありません。');
     }
 
-    expect(visitStartBox.y).toBeGreaterThan(patientNameBox.y);
-    expect(preparationBox.y).toBeGreaterThan(patientNameBox.y);
-    expect(rescheduleBox.y).toBeGreaterThan(patientNameBox.y);
-    expect(visitStartBox.y).toBeLessThan(patientAddressBox.y);
-    expect(preparationBox.y).toBeLessThan(patientAddressBox.y);
-    expect(rescheduleBox.y).toBeLessThan(patientAddressBox.y);
     await expectNoPageHorizontalOverflow(page);
 
     const realErrors = errors.filter((e) => !e.includes('Query data cannot be undefined'));
     expect(realErrors).toEqual([]);
   });
 
-  test('mobile visit start keeps blocked visits stopped and partial visits acknowledgement-gated', async ({
+  test('weekly optimizer exposes current route preview and generation controls', async ({
     context,
-  }, testInfo) => {
-    test.skip(
-      testInfo.project.name !== 'mobile-chromium',
-      'Mobile carry-item warning proof runs only in the mobile viewport project.',
-    );
-
-    const scheduledDate = formatLocalDateKey(new Date());
-    const fixture = await ensureConfirmedScheduleActionFixture(scheduledDate, {
-      carryItemsStatus: 'blocked',
-      carryItemsConfirmed: false,
-    });
-    const { page, errors } = await createInstrumentedPage(context);
-
-    await openScheduleBoard(page);
-    await expect(page.getByRole('status', { name: /スケジュールボード読み込み中/ })).toBeHidden({
-      timeout: 90_000,
-    });
-
-    const mobileRegion = page.getByRole('region', { name: '本日の訪問リスト' });
-    await expect(mobileRegion).toBeVisible();
-    await expect(
-      mobileRegion.getByRole('article', { name: /訪問カード: 施設E2E 太郎/ }),
-    ).toBeVisible({ timeout: 90_000 });
-    await expect(mobileRegion.getByText('持参物 未確定')).toBeVisible();
-
-    const blockedStartButton = mobileRegion.getByRole('button', {
-      name: /施設E2E 太郎.*持参物未確定を確認/,
-    });
-    await expect(blockedStartButton).toBeVisible();
-    await expectMinTouchTargetHeight(blockedStartButton);
-    await blockedStartButton.click();
-
-    const blockedDialog = page.getByRole('dialog', { name: '持参薬が未確定のままです' });
-    await expect(blockedDialog).toBeVisible();
-    await expect(blockedDialog.getByText('施設E2E 太郎')).toBeVisible();
-    await expect(blockedDialog.getByText('持参物ステータス: blocked')).toBeVisible();
-    await expect(
-      blockedDialog
-        .getByRole('alert')
-        .getByText('持参物を確定するか代替手配を記録してから、訪問を開始してください。'),
-    ).toBeVisible();
-    await expect(
-      blockedDialog.getByRole('button', { name: '持参物を確定してから開始' }),
-    ).toBeDisabled();
-    await expect(
-      blockedDialog.getByRole('button', { name: '持参物を確定してから開始' }),
-    ).toHaveAttribute('aria-describedby', 'departure-warning-resolution');
-    await expectNoLocatorHorizontalOverflow(blockedDialog);
-    await expect(page).not.toHaveURL(new RegExp(`/visits/${fixture.scheduleId}/record`));
-    await blockedDialog.getByRole('button', { name: '戻る' }).click();
-    await expect(blockedDialog).toBeHidden();
-
-    await ensureConfirmedScheduleActionFixture(scheduledDate, {
-      carryItemsStatus: 'partial',
-      carryItemsConfirmed: false,
-    });
-    await reloadStablePage(page);
-    await expect(page.getByRole('status', { name: /スケジュールボード読み込み中/ })).toBeHidden({
-      timeout: 90_000,
-    });
-
-    const partialVisitCard = mobileRegion.getByRole('article', {
-      name: /訪問カード: 施設E2E 太郎/,
-    });
-    await expect(partialVisitCard.getByText('持参物 一部未確定')).toBeVisible();
-    const partialStartButton = mobileRegion.getByRole('button', {
-      name: /施設E2E 太郎.*警告を確認して訪問開始/,
-    });
-    await expect(partialStartButton).toBeVisible();
-    await expectMinTouchTargetHeight(partialStartButton);
-    await partialStartButton.click();
-
-    const partialDialog = page.getByRole('dialog', { name: '持参物の一部が未確定です' });
-    await expect(partialDialog).toBeVisible();
-    await expect(partialDialog.getByText('施設E2E 太郎')).toBeVisible();
-    await expect(partialDialog.getByText('持参物ステータス: partial')).toBeVisible();
-    const partialConfirmButton = partialDialog.getByRole('button', {
-      name: '警告を確認して訪問開始',
-    });
-    await expect(partialConfirmButton).toBeDisabled();
-    await expect(page).not.toHaveURL(new RegExp(`/visits/${fixture.scheduleId}/record`));
-
-    const acknowledgement = partialDialog.getByRole('checkbox', {
-      name: '未確定の持参物を確認し、代替手配または現地対応方針を確認しました。',
-    });
-    const acknowledgementLabel = partialDialog
-      .locator('label')
-      .filter({ hasText: '未確定の持参物を確認し、代替手配または現地対応方針を確認しました。' })
-      .first();
-    await expectMinTouchTargetHeight(acknowledgementLabel);
-    await expectNoLocatorHorizontalOverflow(partialDialog);
-    await acknowledgement.focus();
-    await expect(acknowledgement).toBeFocused();
-    await page.keyboard.press('Space');
-    await expect(acknowledgement).toBeChecked();
-    await expect(partialConfirmButton).toBeEnabled();
-    await partialConfirmButton.focus();
-    await expect(partialConfirmButton).toBeFocused();
-    await page.keyboard.press('Enter');
-    await expect(page).toHaveURL(new RegExp(`/visits/${fixture.scheduleId}/record`), {
-      timeout: 30_000,
-    });
-
-    await expectNoPageHorizontalOverflow(page);
-    const realErrors = errors.filter((e) => !e.includes('Query data cannot be undefined'));
-    expect(realErrors).toEqual([]);
-  });
-
-  test('visit preparation dialog exposes grouped pack and departure checks', async ({
-    context,
-  }, testInfo) => {
-    test.skip(
-      testInfo.project.name !== 'chromium',
-      'Desktop dialog grouping is covered separately from mobile shell stability checks.',
-    );
-
-    const fixture = await ensureConfirmedScheduleActionFixture(formatLocalDateKey(new Date()));
-    const { page, errors } = await createInstrumentedPage(context);
-
-    await openScheduleBoard(page);
-
-    const card = page.locator(`#schedule-${fixture.scheduleId}`);
-    await expect(page.getByRole('status', { name: /スケジュールボード読み込み中/ })).toBeHidden({
-      timeout: 90_000,
-    });
-    await expect(card).toBeVisible({ timeout: 90_000 });
-
-    await card
-      .getByRole('button', {
-        name: /施設E2E 太郎.*訪問準備を開く/,
-      })
-      .click();
-
-    const dialog = page.getByRole('dialog', { name: '訪問準備チェック' });
-    await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole('region', { name: '対象訪問' })).toBeVisible();
-    await expect(dialog.getByRole('region', { name: 'ready 判定' })).toBeVisible();
-
-    const packRegion = dialog.getByRole('region', { name: '訪問前提・確認材料' });
-    await expect(packRegion).toBeVisible({ timeout: 90_000 });
-    await expect(packRegion.getByRole('region', { name: '訪問前の即時確認' })).toBeVisible();
-    await expect(packRegion.getByRole('region', { name: '臨床・算定確認' })).toBeVisible();
-
-    const departureRegion = dialog.getByRole('region', { name: '出発直前確認' });
-    await expect(departureRegion).toBeVisible();
-    await expect(
-      departureRegion.getByRole('region', { name: '出発前チェックリスト' }),
-    ).toBeVisible();
-    await expect(departureRegion.getByRole('region', { name: '訪問先マップ' })).toBeVisible();
-    await expect(departureRegion.getByRole('link', { name: 'ナビで開く' })).toBeVisible();
-
-    const actionTargetSummary = dialog.locator('#preparation-action-target-summary');
-    await expect(actionTargetSummary).toBeVisible();
-    await expect(actionTargetSummary).toContainText('最終操作対象:');
-    await expect(actionTargetSummary).toContainText('施設E2E 太郎');
-    await expect(
-      dialog.getByRole('button', {
-        name: /施設E2E 太郎.*訪問準備をreadyに進める/,
-      }),
-    ).toBeVisible();
-    await expect(
-      dialog.getByRole('button', {
-        name: /施設E2E 太郎.*訪問準備を保存/,
-      }),
-    ).toBeVisible();
-    await expectNoPageHorizontalOverflow(page);
-    await expectNoLocatorHorizontalOverflow(dialog);
-
-    const realErrors = errors.filter((e) => !e.includes('Query data cannot be undefined'));
-    expect(realErrors).toEqual([]);
-  });
-
-  test('visit preparation dialog blocks ready when carry items are unresolved', async ({
-    context,
-  }, testInfo) => {
-    test.skip(
-      testInfo.project.name !== 'chromium',
-      'Desktop carry-item blocker proof is covered separately from mobile shell stability checks.',
-    );
-
-    const fixture = await ensureConfirmedScheduleActionFixture(formatLocalDateKey(new Date()), {
-      carryItemsStatus: 'blocked',
-      carryItemsConfirmed: false,
-    });
-    const { page, errors } = await createInstrumentedPage(context);
-
-    await openScheduleBoard(page);
-
-    const card = page.locator(`#schedule-${fixture.scheduleId}`);
-    await expect(page.getByRole('status', { name: /スケジュールボード読み込み中/ })).toBeHidden({
-      timeout: 90_000,
-    });
-    await expect(card).toBeVisible({ timeout: 90_000 });
-
-    await card
-      .getByRole('button', {
-        name: /施設E2E 太郎.*訪問準備を開く/,
-      })
-      .click();
-
-    const dialog = page.getByRole('dialog', { name: '訪問準備チェック' });
-    await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole('alert').getByText('持参薬が未確定のままです')).toBeVisible();
-    await expect(dialog.getByText('ready 停止中')).toBeVisible();
-    await expect(dialog.getByText('出発前に解決が必要な項目があります。')).toBeVisible();
-    await expect(dialog.getByText('持参物ステータス未解決')).toBeVisible({ timeout: 90_000 });
-    await expect(dialog.getByText('未完了: 持参薬・物品確認')).toBeVisible();
-    await expect(
-      dialog.getByRole('button', {
-        name: /施設E2E 太郎.*訪問準備をreadyに進める/,
-      }),
-    ).toBeDisabled();
-    await expectNoPageHorizontalOverflow(page);
-    await expectNoLocatorHorizontalOverflow(dialog);
-
-    const realErrors = errors.filter((e) => !e.includes('Query data cannot be undefined'));
-    expect(realErrors).toEqual([]);
-  });
-
-  test('week navigation changes displayed dates without errors', async ({ context }) => {
+  }) => {
     const { page, errors } = await createInstrumentedPage(context, { captureHttpErrors: false });
-    await openScheduleBoard(page);
+    await openStableRoute(page, '/schedules/proposals?workspace=optimizer');
 
-    // Click next week
-    await page.getByRole('button', { name: /翌週/ }).first().click();
-    await waitForStableUi(page);
-
-    // Click previous week twice to go back one week before current
-    await page.getByRole('button', { name: /前週/ }).first().click();
-    await waitForStableUi(page);
-    await page.getByRole('button', { name: /前週/ }).first().click();
-    await waitForStableUi(page);
-
-    // Page should still be intact, no errors
-    await expect(page.getByRole('heading', { name: '訪問スケジュール' })).toBeVisible();
+    const main = page.locator('main');
+    await expect(main.getByRole('heading', { name: '週間最適化ビュー' })).toBeVisible({
+      timeout: 90_000,
+    });
+    await expect(main.getByText('提案対象ケース')).toBeVisible();
+    await expect(main.getByLabel('訪問種別')).toBeVisible();
+    await expect(main.getByLabel('優先度')).toBeVisible();
+    await expect(main.getByLabel('移動手段')).toBeVisible();
+    await expect(main.getByLabel('社用車')).toBeVisible();
+    await expect
+      .poll(
+        async () => {
+          const text = (await main.textContent()) ?? '';
+          return text.includes('この枠に提案') || text.includes('勤務シフトなし');
+        },
+        {
+          message: 'weekly optimizer should settle with cells or shift empty state',
+          timeout: 45_000,
+        },
+      )
+      .toBe(true);
+    const generationButton = main.getByRole('button', { name: /この枠に提案/ }).first();
+    if (await generationButton.isVisible().catch(() => false)) {
+      await expectMinTouchTargetHeight(generationButton);
+    }
+    await expect(main.getByText('選択セルのルートプレビュー')).toBeVisible();
 
     // Filter known React Query warning for visit-route-plan (tracked as BUG-002)
     const realErrors = errors.filter((e) => !e.includes('Query data cannot be undefined'));
@@ -652,40 +483,38 @@ test.describe('schedule page', () => {
     expect(errors).toEqual([]);
   });
 
-  test('daily proposal generator sends selected vehicle resource in the generation payload', async ({
+  test('proposal dashboard keeps reproposal vehicle selection in the current detail flow', async ({
     context,
-  }) => {
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== 'chromium',
+      'Reproposal form coverage runs in the desktop viewport.',
+    );
+
     const { page, errors } = await createInstrumentedPage(context);
-    const generationPayloads: VisitProposalGenerationPayload[] = [];
+    await openStableRoute(page, '/schedules/proposals?workspace=dashboard');
 
-    await page.route(apiPathPattern('/api/visit-schedule-proposals'), async (route) => {
-      if (route.request().method() !== 'POST') {
-        await route.continue();
-        return;
-      }
+    const detailButton = page.getByRole('button', { name: /候補詳細を開く/ }).first();
+    if (!(await detailButton.isVisible({ timeout: 90_000 }).catch(() => false))) {
+      await expect(page.locator('main')).toContainText(
+        /条件に一致する訪問候補はありません。|訪問候補を読み込み中/,
+      );
+      expect(errors).toEqual([]);
+      return;
+    }
 
-      const payload = readRouteBody<VisitProposalGenerationPayload>(route);
-      if (payload) generationPayloads.push(payload);
+    await detailButton.click();
+    const sheet = page.getByRole('dialog');
+    await expect(sheet.locator('#schedule-proposal-reproposal')).toBeVisible({ timeout: 45_000 });
 
-      await fulfillJson(route, {
-        data: [],
-        alerts: [],
-      });
-    });
-
-    await openScheduleBoard(page);
-
-    await page.locator('#planner-vehicle-resource').click();
-    await page.getByRole('option', { name: /E2E社用車A/ }).click();
-    await expect(page.getByText(/E2E社用車A \(最大6件 \/ 180分以内\)/)).toBeVisible();
-
-    await page.getByRole('button', { name: '訪問候補を生成' }).click();
-    await expect.poll(() => generationPayloads.length, { timeout: 10_000 }).toBeGreaterThan(0);
-
-    expect(generationPayloads[0]).toMatchObject({
-      vehicle_resource_id: 'cmnhseedveh001amq9ph-os',
-      travel_mode: 'DRIVE',
-    });
+    const vehicleSelect = sheet.getByLabel('社用車');
+    await expect(vehicleSelect).toBeVisible();
+    await expectMinTouchTargetHeight(vehicleSelect);
+    await vehicleSelect.click();
+    await expect(page.getByRole('option', { name: '自動割当' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(sheet.getByRole('button', { name: /変更希望で再提案/ })).toBeVisible();
+    await expectNoLocatorHorizontalOverflow(sheet);
 
     const realErrors = errors.filter((e) => !e.includes('Query data cannot be undefined'));
     expect(realErrors).toEqual([]);
@@ -697,58 +526,39 @@ test.describe('visits page', () => {
     await attachLocalSession(context);
   });
 
-  test('visits list page loads with table and date filters', async ({ context }) => {
+  test('visits page loads the current preparation workspace', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/visits');
 
-    await expect(page.getByRole('heading', { name: '訪問記録一覧' })).toBeVisible();
-
-    // Date range filter inputs should exist
-    const dateFrom = page.locator('#date-from');
-    const dateTo = page.locator('#date-to');
-    await expect(dateFrom).toBeVisible();
-    await expect(dateTo).toBeVisible();
-
-    // Shortcut links
     const main = page.locator('main');
-    await expect(
-      main.getByRole('link', { name: 'スケジュール', exact: true }).first(),
-    ).toBeVisible();
-    await expect(main.getByRole('link', { name: '報告書', exact: true }).first()).toBeVisible();
+    await expect(page.getByTestId('visits-today')).toBeVisible();
+    await expect(main.getByRole('heading', { name: /訪問/ })).toBeVisible();
+    await expect(main.getByRole('link', { name: '訪問モードを開始' })).toBeVisible({
+      timeout: 45_000,
+    });
+    await expect(page.getByTestId('visits-today-list')).toBeVisible();
 
     expect(errors).toEqual([]);
   });
 
-  test('visits table shows data or empty state', async ({ context }) => {
-    const { page, errors } = await createInstrumentedPage(context, { captureHttpErrors: false });
+  test('visits workspace shows preparation cards or a clear empty state', async ({ context }) => {
+    const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/visits');
 
-    // Desktop uses a table; mobile uses stacked cards with the same patient/date links.
     const main = page.locator('main');
-    await expect(main.getByRole('heading', { name: '訪問記録一覧' })).toBeVisible();
-    await main
-      .getByText('読み込み中...')
-      .first()
-      .waitFor({ state: 'detached', timeout: 60_000 })
-      .catch(() => null);
+    await expect(page.getByTestId('visits-today')).toBeVisible({ timeout: 45_000 });
 
     await expect
       .poll(
         async () => {
-          const table = main.getByRole('table', { name: '訪問記録一覧' });
-          const hasTable = await table.isVisible().catch(() => false);
-          const hasRows = hasTable ? (await table.getByRole('row').count()) > 1 : false;
-          const hasMobileCards =
-            !hasTable &&
-            ((await main.locator('a[href^="/visits/"]').filter({ visible: true }).count()) > 0 ||
-              (await main.locator('a[href^="/patients/"]').filter({ visible: true }).count()) > 0);
+          const hasCards = (await main.getByTestId('visit-prep-card').count()) > 0;
           const hasEmpty = await main
-            .getByText(/訪問記録がありません|データがありません/)
+            .getByText('今日の訪問予定はありません。')
             .isVisible()
             .catch(() => false);
-          return hasRows || hasMobileCards || hasEmpty;
+          return hasCards || hasEmpty;
         },
-        { message: 'visits table should settle with rows or an empty state', timeout: 60_000 },
+        { message: 'visits workspace should settle with cards or an empty state', timeout: 60_000 },
       )
       .toBe(true);
 
@@ -787,23 +597,18 @@ test.describe('visits page', () => {
     expect(errors).toEqual([]);
   });
 
-  test('date filter on visits page is functional', async ({ context }) => {
+  test('visits workspace exposes card, route, set, and offline guidance', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/visits');
 
-    // Date filter inputs should be functional
-    const dateFrom = page.locator('#date-from');
-    const dateTo = page.locator('#date-to');
-    await expect(dateFrom).toBeEnabled();
-    await expect(dateTo).toBeEnabled();
-
-    // Fill dates and verify the inputs accept values
-    await dateFrom.fill('2026-01-01');
-    await dateTo.fill('2026-12-31');
-    const fromValue = await dateFrom.inputValue();
-    const toValue = await dateTo.inputValue();
-    expect(fromValue).toBe('2026-01-01');
-    expect(toValue).toBe('2026-12-31');
+    const main = page.locator('main');
+    await expect(page.getByTestId('visits-today')).toBeVisible({ timeout: 45_000 });
+    await expect(main.getByRole('link', { name: /カードへ/ }).first()).toBeVisible();
+    await expect(main.getByRole('link', { name: /ルート詳細/ }).first()).toBeVisible();
+    await expect(main.getByRole('link', { name: /セットへ/ }).first()).toBeVisible();
+    await expect(page.getByTestId('visits-today-offline-note')).toContainText(
+      'オフラインでも全機能',
+    );
 
     expect(errors).toEqual([]);
   });
@@ -918,115 +723,67 @@ test.describe('reports page', () => {
     await attachLocalSession(context);
   });
 
-  test('reports page loads with filter panel and table', async ({ context }) => {
-    const { page, errors } = await createInstrumentedPage(context, { captureHttpErrors: false });
+  test('reports page loads with current report-share workspace', async ({ context }) => {
+    const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/reports');
 
     await expect(page.getByRole('heading', { name: '報告・共有', exact: true })).toBeVisible();
     await expect(page.getByTestId('report-share-workspace')).toBeVisible();
     await expect(page.getByTestId('report-edit-templates')).toBeVisible();
+    await expect(page.getByTestId('report-today-drafts')).toBeVisible({ timeout: 45_000 });
+    await expect(page.getByTestId('report-waiting-box')).toBeVisible();
+    await expect(page.getByTestId('report-resolved-box')).toBeVisible();
+    await expect(page.getByTestId('report-template-policy-bar')).toBeVisible();
 
-    await page.locator('#report-classic-tools').scrollIntoViewIfNeeded();
-    const filterPanel = page.getByTestId('reports-filter-panel');
-    await expect(filterPanel).toBeVisible({ timeout: 45_000 });
-    await expect(page.getByPlaceholder('患者名 / フリガナ')).toBeVisible();
-
-    expect(filterExpectedReportPageErrors(errors)).toEqual([]);
+    expect(errors).toEqual([]);
   });
 
-  test('reports table shows data or empty state', async ({ context }) => {
-    const { page, errors } = await createInstrumentedPage(context, { captureHttpErrors: false });
+  test('reports workspace shows draft rows or a clear empty state', async ({ context }) => {
+    const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/reports');
 
     const main = page.locator('main');
     await expect(main.getByRole('heading', { name: '報告・共有' })).toBeVisible();
-    await page.locator('#report-classic-tools').scrollIntoViewIfNeeded();
-    await expect(main.getByRole('heading', { name: '報告書一覧' })).toBeVisible({
-      timeout: 45_000,
-    });
-    await page
-      .getByText('読み込み中...')
-      .first()
-      .waitFor({ state: 'detached', timeout: 15_000 })
-      .catch(() => null);
-    const hasRows = (await main.getByRole('row').count()) > 1;
-    const hasEmptySummary =
-      (await main
-        .getByText('対象報告')
-        .isVisible()
-        .catch(() => false)) &&
-      (await main
-        .getByText('0件')
-        .first()
-        .isVisible()
-        .catch(() => false));
+    await expect(page.getByTestId('report-today-drafts')).toBeVisible({ timeout: 45_000 });
+
+    const hasDraftRows = (await main.getByTestId('report-draft-row').count()) > 0;
     const hasEmptyMessage = await main
-      .getByText(/報告書がありません|データがありません|トレーシングレポートはありません/)
-      .isVisible()
-      .catch(() => false);
-    const hasReportList = await main
-      .getByRole('heading', { name: '報告書一覧' })
+      .getByText('本日の訪問予定はありません。訪問が完了すると、ここに報告の下書きが並びます。')
       .isVisible()
       .catch(() => false);
 
-    expect(hasRows || hasEmptySummary || hasEmptyMessage || hasReportList).toBe(true);
+    expect(hasDraftRows || hasEmptyMessage).toBe(true);
 
-    expect(filterExpectedReportPageErrors(errors)).toEqual([]);
+    expect(errors).toEqual([]);
   });
 
-  test('report detail page loads from reports list', async ({ context }) => {
-    const { page, errors } = await createInstrumentedPage(context, { captureHttpErrors: false });
-    await openStableRoute(page, '/reports');
-    await page.locator('#report-classic-tools').scrollIntoViewIfNeeded();
+  test('report detail page loads from a current workspace action', async ({ context }) => {
+    const { page, errors } = await createInstrumentedPage(context);
+    await openStableRoute(page, '/reports/cmnhdemorep002amq9ph-os');
 
-    // If there are reports, click the first detail link
-    const firstRow = page.locator('table tbody tr').first();
-    const detailLink = firstRow.locator('a').first();
-    if (await detailLink.isVisible().catch(() => false)) {
-      const href = await detailLink.getAttribute('href');
-      if (href?.startsWith('/reports/')) {
-        const targetUrl = new RegExp(href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-        await clickAndWaitForStableRoute(page, targetUrl, () =>
-          detailLink.click({ noWaitAfter: true }),
-        );
-        await expect(page).toHaveURL(targetUrl);
+    const main = page.locator('main');
+    await expect(main).toBeVisible();
+    const content = await main.textContent();
+    expect(content?.trim().length).toBeGreaterThan(0);
+    await expect(main.getByRole('link', { name: /報告書一覧へ戻る|報告・共有/ })).toBeVisible();
 
-        // Report detail should show content
-        const main = page.locator('main');
-        const content = await main.textContent();
-        expect(content?.trim().length).toBeGreaterThan(0);
-      }
-    }
-
-    expect(filterExpectedReportPageErrors(errors)).toEqual([]);
+    expect(errors).toEqual([]);
   });
 
-  test('reports filter panel search narrows results', async ({ context }) => {
-    const { page, errors } = await createInstrumentedPage(context, { captureHttpErrors: false });
+  test('reports workspace exposes current waiting and template policy sections', async ({
+    context,
+  }) => {
+    const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/reports');
-    await page.locator('#report-classic-tools').scrollIntoViewIfNeeded();
 
-    const searchInput = page.getByPlaceholder('患者名 / フリガナ');
-    await searchInput.fill('ZZZNONEXISTENT');
+    await expect(page.getByTestId('report-waiting-box')).toBeVisible({ timeout: 45_000 });
+    await expect(page.getByRole('heading', { name: '返信待ち' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '今日解決した待ち' })).toBeVisible();
+    await expect(page.getByTestId('report-template-policy-bar')).toContainText(
+      'テンプレートは宛先ごとに自動選択',
+    );
 
-    // Should show empty or fewer results
-    await expect
-      .poll(
-        async () => {
-          const hasEmpty = await page
-            .getByText('報告書がありません')
-            .isVisible()
-            .catch(() => false);
-          const rows = await page.locator('table tbody tr').count();
-          return hasEmpty || rows === 0;
-        },
-        {
-          message: 'report search should settle after debounce/refetch',
-        },
-      )
-      .toBe(true);
-
-    expect(filterExpectedReportPageErrors(errors)).toEqual([]);
+    expect(errors).toEqual([]);
   });
 });
 

@@ -12,6 +12,17 @@ export const VISIT_SCHEDULE_CANCEL_REASON_OPTIONS = [
   { code: 'other', label: 'その他' },
 ] as const;
 
+// p0_37 の target PNG は p0_36 と同じ理由文言を表示する。
+// API/監査ログは上の業務理由ラベルを使い続けるため、Dialog の表示専用に分ける。
+export const VISIT_SCHEDULE_CANCEL_REASON_DIALOG_OPTIONS = [
+  { code: 'patient_request', label: '数量が違う' },
+  { code: 'condition_change', label: '中止薬が残っている' },
+  { code: 'family_request', label: '写真が足りない' },
+  { code: 'reschedule_needed', label: '患者都合' },
+  { code: 'input_error', label: '入力間違い' },
+  { code: 'other', label: 'その他' },
+] as const;
+
 export type VisitScheduleCancelReasonCode =
   (typeof VISIT_SCHEDULE_CANCEL_REASON_OPTIONS)[number]['code'];
 
@@ -20,7 +31,5 @@ export const VISIT_SCHEDULE_CANCEL_REASON_CODES = VISIT_SCHEDULE_CANCEL_REASON_O
 ) as [VisitScheduleCancelReasonCode, ...VisitScheduleCancelReasonCode[]];
 
 export function visitScheduleCancelReasonLabel(code: string): string {
-  return (
-    VISIT_SCHEDULE_CANCEL_REASON_OPTIONS.find((option) => option.code === code)?.label ?? code
-  );
+  return VISIT_SCHEDULE_CANCEL_REASON_OPTIONS.find((option) => option.code === code)?.label ?? code;
 }

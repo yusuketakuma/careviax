@@ -35,7 +35,6 @@ import {
  * 見出し帯(日/週トグル) → 今日のスケジュール — 全員(薬剤師/事務の横型ガント+余白)
  * → リスク警告 → 未確定、右レールに 次にやること/止まっている理由/根拠・記録。
  * 文言ルール: ブロッカー→「止まっている理由」/ Next Action→「次にやること」。
- * 旧 day-view の操作群はページ下部(#schedule-legacy-tools)へ温存する。
  */
 
 async function fetchScheduleDayBoard(
@@ -245,7 +244,7 @@ function TeamGanttCard({
           {dateLabel}
         </span>
         <Link
-          href="#planner"
+          href="/schedules/proposals?workspace=optimizer"
           className={buttonVariants({ variant: 'outline', size: 'sm', className: 'ml-auto' })}
         >
           <Plus className="size-3.5" aria-hidden="true" />
@@ -449,8 +448,8 @@ function buildNextAction(
   }
   return {
     actionLabel: '訪問準備を確認する',
-    description: 'いま期限で止まっている監査はありません。今日の訪問準備を確認します。',
-    actionHref: '#schedule-legacy-tools',
+    description: 'いま期限で止まっている監査はありません。今日の訪問一覧を確認します。',
+    actionHref: '/visits',
   };
 }
 
@@ -522,7 +521,7 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
       id: 'travel-evidence',
       label: '移動時間の根拠',
       meta: board ? `ルート計算 ${formatTimeOfDayIso(board.generated_at)}` : undefined,
-      href: '#schedule-legacy-tools',
+      href: '/schedules/route-compare',
     },
     {
       id: 'confirm-rule',

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildRecommendedRouteDetail,
   buildRouteScenarios,
+  buildRouteScenarioComparisonRows,
   buildScenarioChartPoints,
   buildScenarioRouteOrderUpdates,
   computeSpareVisitCapacity,
@@ -112,6 +113,37 @@ describe('buildRouteScenarios', () => {
       expect(scenario.stops).toEqual([]);
       expect(scenario.travelMinutes).toBe(0);
     }
+  });
+
+  it('比較行は推奨案との差分と訪問件数を返す', () => {
+    const rows = buildRouteScenarioComparisonRows(buildRouteScenarios(buildSeedLikeVisits()));
+
+    expect(rows).toEqual([
+      {
+        scenarioId: 'min_travel',
+        travelMinutes: 92,
+        travelDeltaMinutes: 0,
+        stopCount: 4,
+        summaryDetail: '余力3件',
+        decisionLabel: '推奨案',
+      },
+      {
+        scenarioId: 'time_preference',
+        travelMinutes: 104,
+        travelDeltaMinutes: 12,
+        stopCount: 4,
+        summaryDetail: '患者希望一致',
+        decisionLabel: '推奨案より+12分',
+      },
+      {
+        scenarioId: 'emergency_slack',
+        travelMinutes: 128,
+        travelDeltaMinutes: 36,
+        stopCount: 4,
+        summaryDetail: '午後余力大',
+        decisionLabel: '推奨案より+36分',
+      },
+    ]);
   });
 });
 

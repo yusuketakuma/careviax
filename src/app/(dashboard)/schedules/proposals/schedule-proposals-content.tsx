@@ -589,6 +589,9 @@ export function ScheduleProposalsContent({
   );
   const [lastGenerationDiagnostics, setLastGenerationDiagnostics] =
     useState<ProposalGenerationDiagnostics | null>(null);
+  const [loadedDashboardEnhancementKey, setLoadedDashboardEnhancementKey] = useState<string | null>(
+    null,
+  );
   const deferredCaseSearchInput = useDeferredValue(caseSearchInput.trim());
 
   function clearSelectedProposals() {
@@ -649,6 +652,21 @@ export function ScheduleProposalsContent({
     enabled: !!orgId && deferredCaseSearchInput.length >= 2,
   });
 
+  const activeDetailId = detailId;
+  const dashboardEnhancementKey = !activeDetailId && proposalsQuery.data ? queryParams : null;
+  const shouldLoadDashboardEnhancements =
+    dashboardEnhancementKey !== null && loadedDashboardEnhancementKey === dashboardEnhancementKey;
+
+  useEffect(() => {
+    if (!dashboardEnhancementKey) return;
+
+    const timeout = window.setTimeout(
+      () => setLoadedDashboardEnhancementKey(dashboardEnhancementKey),
+      1200,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [dashboardEnhancementKey]);
+
   const vehicleResourcesQuery = useQuery({
     queryKey: ['visit-vehicle-resources', orgId, 'available'],
     queryFn: async () => {
@@ -658,7 +676,7 @@ export function ScheduleProposalsContent({
       if (!response.ok) throw new Error('社用車リソースの取得に失敗しました');
       return response.json() as Promise<VisitVehicleResourcesResponse>;
     },
-    enabled: !!orgId,
+    enabled: !!orgId && shouldLoadDashboardEnhancements,
   });
 
   const tabCounts = useMemo(
@@ -732,7 +750,7 @@ export function ScheduleProposalsContent({
       };
       return new Map(Object.entries(payload.data));
     },
-    enabled: !!orgId && proposalPreviewRequests.length > 0,
+    enabled: !!orgId && shouldLoadDashboardEnhancements && proposalPreviewRequests.length > 0,
   });
 
   const selectedProposals = useMemo(
@@ -776,9 +794,6 @@ export function ScheduleProposalsContent({
       },
     } satisfies CaseOption;
   }, [caseId, patientId, proposals, selectedCaseSummary]);
-
-  const activeDetailId =
-    detailId && proposals.some((proposal) => proposal.id === detailId) ? detailId : null;
 
   useEffect(() => {
     if (!activeDetailId) return;
@@ -2537,7 +2552,7 @@ export function ScheduleProposalsContent({
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
+                  <div className="grid gap-5">
                     {/* 候補日時 */}
                     <section aria-label="候補日時" className="space-y-3">
                       <h4 className="text-sm font-semibold text-foreground">候補日時</h4>
@@ -2563,7 +2578,10 @@ export function ScheduleProposalsContent({
                                 >
                                   {proposalCandidateRankLabel(index + 1)}：
                                   {formatNullableDateLabel(candidate.proposed_date)}{' '}
-                                  {timeLabel(candidate.time_window_start, candidate.time_window_end)}
+                                  {timeLabel(
+                                    candidate.time_window_start,
+                                    candidate.time_window_end,
+                                  )}
                                 </p>
                                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
                                   {proposalCandidateRankReason(candidate)}
@@ -2584,7 +2602,7 @@ export function ScheduleProposalsContent({
                             key={step.label}
                             data-state={step.state}
                             className={cn(
-                              'flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm',
+                              'flex items-start justify-between gap-3 rounded-md border px-3 py-2 text-sm',
                               step.state === 'current'
                                 ? 'border-primary/40 bg-primary/5 font-medium text-foreground'
                                 : step.state === 'done'
@@ -2592,7 +2610,7 @@ export function ScheduleProposalsContent({
                                   : 'border-border bg-muted/30 text-muted-foreground',
                             )}
                           >
-                            <span>
+                            <span className="min-w-0 leading-5">
                               {index + 1} {step.label}
                             </span>
                             <span className="shrink-0 text-xs">
@@ -2650,9 +2668,7 @@ export function ScheduleProposalsContent({
                             detail.proposal_status !== 'patient_contact_pending'
                           }
                           aria-label={
-                            detailTargetLabel
-                              ? `${detailTargetLabel} を了承済みにする`
-                              : undefined
+                            detailTargetLabel ? `${detailTargetLabel} を了承済みにする` : undefined
                           }
                         >
                           <CheckCircle2 className="mr-1 size-4" aria-hidden="true" />

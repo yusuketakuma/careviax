@@ -17,6 +17,7 @@ import { applyVisitScheduleRouteUpdates } from '../visit-route-client';
 import {
   buildRecommendedRouteDetail,
   buildRouteScenarios,
+  buildRouteScenarioComparisonRows,
   buildScenarioChartPoints,
   buildScenarioRouteOrderUpdates,
   describeScenarioOrder,
@@ -287,7 +288,7 @@ function RecommendedRouteDetail({
         <Button
           type="button"
           size="lg"
-          className="w-full sm:h-10"
+          className="min-h-[44px] w-full sm:h-11 sm:min-h-[44px]"
           disabled={disabled}
           onClick={onApply}
           data-testid="route-detail-apply"
@@ -335,6 +336,16 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
     [schedules],
   );
   const scenarios = useMemo(() => buildRouteScenarios(compareVisits), [compareVisits]);
+  const scenarioComparisonById = useMemo(
+    () =>
+      new Map(
+        buildRouteScenarioComparisonRows(scenarios).map((comparison) => [
+          comparison.scenarioId,
+          comparison,
+        ]),
+      ),
+    [scenarios],
+  );
 
   // p0_21 詳細ビュー: 推奨案 1 本を主役にした「守る条件」判定用の付帯情報を本日の予定から集計する
   const detailMeta = useMemo<RouteDetailVisitMeta>(() => {
@@ -459,6 +470,7 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
           {scenarios.map((scenario) => {
             const isApplied = appliedScenarioId === scenario.id;
             const isApplying = pendingScenarioId === scenario.id;
+            const comparison = scenarioComparisonById.get(scenario.id);
             return (
               <section
                 key={scenario.id}
@@ -468,12 +480,45 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
               >
                 <div className="flex items-center justify-between gap-2">
                   <h2 className="text-[15px] font-bold text-foreground">{scenario.label}</h2>
-                  {isApplied ? (
-                    <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">
-                      適用済み
-                    </Badge>
-                  ) : null}
+                  <div className="flex flex-wrap justify-end gap-1.5">
+                    {scenario.recommended ? (
+                      <Badge className="border-blue-200 bg-blue-50 text-blue-700">推奨</Badge>
+                    ) : null}
+                    {isApplied ? (
+                      <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700">
+                        適用済み
+                      </Badge>
+                    ) : null}
+                  </div>
                 </div>
+
+                {comparison ? (
+                  <div className="rounded-lg border border-border/70 bg-background px-3 py-2.5">
+                    <p className="text-sm font-semibold text-foreground">
+                      {comparison.decisionLabel} / {comparison.summaryDetail}
+                    </p>
+                    <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+                      <div className="rounded-md bg-muted/50 px-2 py-1.5">
+                        <p className="text-muted-foreground">移動</p>
+                        <p className="font-semibold text-foreground">
+                          {comparison.travelMinutes}分
+                        </p>
+                      </div>
+                      <div className="rounded-md bg-muted/50 px-2 py-1.5">
+                        <p className="text-muted-foreground">推奨比</p>
+                        <p className="font-semibold text-foreground">
+                          {comparison.travelDeltaMinutes === 0
+                            ? '±0分'
+                            : `+${comparison.travelDeltaMinutes}分`}
+                        </p>
+                      </div>
+                      <div className="rounded-md bg-muted/50 px-2 py-1.5">
+                        <p className="text-muted-foreground">訪問</p>
+                        <p className="font-semibold text-foreground">{comparison.stopCount}件</p>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
 
                 <ScenarioRouteChart scenario={scenario} />
 

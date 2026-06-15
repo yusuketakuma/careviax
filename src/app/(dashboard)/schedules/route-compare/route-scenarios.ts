@@ -71,6 +71,15 @@ export type RouteScenario = {
   description: string;
 };
 
+export type RouteScenarioComparisonRow = {
+  scenarioId: RouteScenarioId;
+  travelMinutes: number;
+  travelDeltaMinutes: number;
+  stopCount: number;
+  summaryDetail: string;
+  decisionLabel: string;
+};
+
 const PRIORITY_WEIGHT: Record<VisitPriority, number> = {
   emergency: 2,
   urgent: 1,
@@ -300,6 +309,29 @@ export function buildRouteScenarios(visits: RouteCompareVisitInput[]): RouteScen
         '優先度の高い訪問から前倒しで回り、訪問の合間は薬局近くへ戻って緊急対応の余力を最大化する案です。',
     },
   ];
+}
+
+export function buildRouteScenarioComparisonRows(
+  scenarios: RouteScenario[],
+): RouteScenarioComparisonRow[] {
+  const recommended = scenarios.find((scenario) => scenario.recommended) ?? scenarios[0] ?? null;
+  const baselineTravelMinutes = recommended?.travelMinutes ?? 0;
+
+  return scenarios.map((scenario) => {
+    const travelDeltaMinutes = Math.max(0, scenario.travelMinutes - baselineTravelMinutes);
+    return {
+      scenarioId: scenario.id,
+      travelMinutes: scenario.travelMinutes,
+      travelDeltaMinutes,
+      stopCount: scenario.stops.length,
+      summaryDetail: scenario.summaryDetail,
+      decisionLabel: scenario.recommended
+        ? '推奨案'
+        : travelDeltaMinutes > 0
+          ? `推奨案より+${travelDeltaMinutes}分`
+          : '推奨案と同等',
+    };
+  });
 }
 
 /** route_order 更新対象(比較対象外の施設一括訪問も含む本日の有効な訪問予定) */
