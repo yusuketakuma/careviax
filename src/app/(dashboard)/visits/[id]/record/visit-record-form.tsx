@@ -124,7 +124,9 @@ import {
 import {
   buildAttachmentId,
   classifyVisitAttachment,
+  getVisitReceiptReadiness,
   getVisitAttachmentConstraints,
+  normalizeVisitReceiptPayload,
   validateVisitAttachment,
 } from './visit-record-form.shared';
 import { VisitCompletionReadinessWarning } from './visit-completion-readiness-warning';
@@ -170,21 +172,48 @@ const relationOptions = [
   { value: 'other', label: 'その他' },
 ];
 
-const formSchema = visitRecordBaseSchema.extend({
-  carry_item_warning_acknowledged: z.boolean().optional(),
-  residual_medications: z
-    .array(
-      z.object({
-        drug_name: z.string().min(1, '薬剤名は必須です'),
-        drug_code: z.string().optional(),
-        prescribed_quantity: z.number().optional(),
-        prescribed_daily_dose: z.number().optional(),
-        remaining_quantity: z.number().min(0),
-        is_prohibited_reduction: z.boolean(),
-      }),
-    )
-    .optional(),
-});
+const formSchema = visitRecordBaseSchema
+  .extend({
+    carry_item_warning_acknowledged: z.boolean().optional(),
+    residual_medications: z
+      .array(
+        z.object({
+          drug_name: z.string().min(1, '薬剤名は必須です'),
+          drug_code: z.string().optional(),
+          prescribed_quantity: z.number().optional(),
+          prescribed_daily_dose: z.number().optional(),
+          remaining_quantity: z.number().min(0),
+          is_prohibited_reduction: z.boolean(),
+        }),
+      )
+      .optional(),
+  })
+  .superRefine((data, ctx) => {
+    const readiness = getVisitReceiptReadiness(data);
+    if (!readiness.hasIdentityInput || readiness.hasCompleteIdentity) return;
+
+    if (!data.receipt_person_name?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['receipt_person_name'],
+        message: '受領者名を入力してください',
+      });
+    }
+    if (!data.receipt_person_relation?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['receipt_person_relation'],
+        message: '受領者の続柄を選択してください',
+      });
+    }
+    if (!data.receipt_at?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['receipt_at'],
+        message: '受領日時を入力してください',
+      });
+    }
+  });
 
 type FormValues = z.infer<typeof formSchema>;
 
@@ -866,11 +895,11 @@ export function VisitRecordForm({
   // Create visit record mutation
   const createRecord = useMutation({
     mutationFn: async (values: FormValues) => {
-      const payload = {
+      const payload = normalizeVisitReceiptPayload({
         ...values,
         patient_id: schedule?.patient_id ?? values.patient_id,
         structured_soap: buildStructuredSoap(values),
-      };
+      });
 
       const res = await fetch('/api/visit-records', {
         method: 'POST',
@@ -1091,7 +1120,7 @@ export function VisitRecordForm({
       setVisitGeoLog(nextVisitGeoLog);
     }
 
-    const payload = {
+    const payload = normalizeVisitReceiptPayload({
       ...values,
       patient_id: schedule?.patient_id ?? values.patient_id,
       structured_soap: buildStructuredSoap(values),
@@ -1099,7 +1128,7 @@ export function VisitRecordForm({
         ? values.carry_item_warning_acknowledged
         : undefined,
       visit_geo_log: locationTrackingEnabled ? (nextVisitGeoLog ?? undefined) : undefined,
-    };
+    });
 
     if (typeof window !== 'undefined' && !window.navigator.onLine) {
       if (selectedAttachments.length > 0) {
@@ -1133,6 +1162,8 @@ export function VisitRecordForm({
     outcome_status: '訪問結果',
     carry_item_warning_acknowledged: '持参物一部未確定の確認',
     structured_soap: '訪問薬剤管理の必須確認',
+    receipt_person_name: '受領者名',
+    receipt_person_relation: '受領者の続柄',
     receipt_at: '受領日時',
     'residual_medications.*.drug_name': '残薬の薬剤名',
     'residual_medications.*.remaining_quantity': '残薬数',
@@ -1258,6 +1289,7 @@ export function VisitRecordForm({
     onTranscript: handleAppendTranscript,
   });
   const residualMedicationCount = watchedValues.residual_medications?.length ?? 0;
+  const visitReceiptReadiness = getVisitReceiptReadiness(watchedValues);
   const homeVisit2026ReadinessItems = buildHomeVisit2026ReadinessItems({
     structuredSoap: structuredSoapDraft,
     visitType: schedule?.visit_type,
@@ -1321,9 +1353,13 @@ export function VisitRecordForm({
     {
       key: 'receipt',
       label: '受領・現地証跡',
-      description: '受領者、位置情報、添付で訪問時の証跡を補強します。',
+      description: visitReceiptReadiness.hasIdentityInput
+        ? visitReceiptReadiness.hasCompleteIdentity
+          ? '受領者、続柄、受領日時が揃っています。'
+          : `不足: ${visitReceiptReadiness.missingLabels.join(' / ')}`
+        : '受領者、位置情報、添付で訪問時の証跡を補強します。',
       done: Boolean(
-        watchedValues.receipt_person_name?.trim() || visitGeoLog?.start || visitGeoLog?.end,
+        visitReceiptReadiness.hasCompleteIdentity || visitGeoLog?.start || visitGeoLog?.end,
       ),
       required: false,
     },
@@ -1781,11 +1817,13 @@ export function VisitRecordForm({
 
               <VoiceSoapAssist
                 activeField={voiceRecognition.activeField}
+                disabled={createRecord.isPending}
                 error={voiceRecognition.error}
                 interimTranscript={voiceRecognition.interimTranscript}
                 isOffline={isOffline}
                 isSupported={voiceRecognition.isSupported}
                 lastTranscript={voiceRecognition.transcript}
+                onToggle={voiceRecognition.toggleListening}
               />
 
               {/* SOAP — mobile 1-column / tablet 2-column */}
@@ -1945,8 +1983,14 @@ export function VisitRecordForm({
                       <Input
                         id="receipt_person_name"
                         placeholder="例: 山田 花子"
+                        aria-invalid={Boolean(form.formState.errors.receipt_person_name)}
                         {...form.register('receipt_person_name')}
                       />
+                      {form.formState.errors.receipt_person_name && (
+                        <p className="text-xs text-destructive" role="alert">
+                          {form.formState.errors.receipt_person_name.message}
+                        </p>
+                      )}
                     </div>
 
                     <div className="space-y-1.5">
@@ -1954,7 +1998,10 @@ export function VisitRecordForm({
                       <Select
                         value={receiptPersonRelation}
                         onValueChange={(v) =>
-                          form.setValue('receipt_person_relation', v ?? undefined)
+                          form.setValue('receipt_person_relation', v ?? undefined, {
+                            shouldDirty: true,
+                            shouldValidate: true,
+                          })
                         }
                       >
                         <SelectTrigger id="receipt_person_relation" className="w-full">
@@ -1968,6 +2015,11 @@ export function VisitRecordForm({
                           ))}
                         </SelectContent>
                       </Select>
+                      {form.formState.errors.receipt_person_relation && (
+                        <p className="text-xs text-destructive" role="alert">
+                          {form.formState.errors.receipt_person_relation.message}
+                        </p>
+                      )}
                     </div>
 
                     <div className="space-y-1.5">
@@ -1975,6 +2027,7 @@ export function VisitRecordForm({
                       <Input
                         id="receipt_at"
                         type="datetime-local"
+                        aria-invalid={Boolean(form.formState.errors.receipt_at)}
                         {...form.register('receipt_at')}
                         defaultValue={`${visitDate}T00:00`}
                       />

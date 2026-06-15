@@ -10,6 +10,7 @@ import { VisitRecordForm } from './visit-record-form';
 const {
   routerBackMock,
   routerPushMock,
+  visitRecordPostBodies,
   loadDraftMock,
   saveDraftMock,
   clearDraftMock,
@@ -23,6 +24,7 @@ const {
 } = vi.hoisted(() => ({
   routerBackMock: vi.fn(),
   routerPushMock: vi.fn(),
+  visitRecordPostBodies: [] as unknown[],
   loadDraftMock: vi.fn(),
   saveDraftMock: vi.fn(),
   clearDraftMock: vi.fn(),
@@ -218,6 +220,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     clearDraftMock.mockResolvedValue(undefined);
     setupAutoSyncMock.mockReturnValue(vi.fn());
     refreshSyncStateMock.mockResolvedValue(undefined);
+    visitRecordPostBodies.length = 0;
 
     Object.defineProperty(window, 'requestAnimationFrame', {
       configurable: true,
@@ -229,7 +232,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
 
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (input: RequestInfo | URL) => {
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
         if (url === '/api/visit-schedules/schedule_partial') {
           return new Response(
@@ -266,9 +269,17 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
           );
         }
         if (url === '/api/visit-records') {
-          return new Response(JSON.stringify({ id: 'record_1', patient_id: 'patient_1' }), {
-            status: 201,
-          });
+          visitRecordPostBodies.push(JSON.parse(String(init?.body ?? '{}')));
+          return new Response(
+            JSON.stringify({
+              record: {
+                id: 'record_1',
+                version: 1,
+                patient_id: 'patient_1',
+              },
+            }),
+            { status: 201 },
+          );
         }
         throw new Error(`Unexpected fetch: ${url}`);
       }),
@@ -343,5 +354,49 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
         name: '未確定の持参物を確認し、代替手配または現地対応方針を確認しました。',
       }),
     ).toBeNull();
+  });
+
+  it('requires a relation when the receipt receiver name is entered', async () => {
+    renderVisitRecordForm();
+
+    await waitFor(() => {
+      expect((document.querySelector('input[name="patient_id"]') as HTMLInputElement)?.value).toBe(
+        'patient_1',
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '延期' }));
+    fireEvent.change(screen.getByLabelText('受領者名'), {
+      target: { value: '山田 花子' },
+    });
+    fireEvent.submit(document.querySelector('form')!);
+
+    await waitFor(() => {
+      expect(document.body.textContent).toContain('受領者の続柄：受領者の続柄を選択してください');
+    });
+    expect(visitRecordPostBodies).toHaveLength(0);
+  });
+
+  it('omits the default receipt timestamp when no receiver identity was entered', async () => {
+    renderVisitRecordForm();
+
+    await waitFor(() => {
+      expect((document.querySelector('input[name="patient_id"]') as HTMLInputElement)?.value).toBe(
+        'patient_1',
+      );
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '延期' }));
+    fireEvent.submit(document.querySelector('form')!);
+
+    await waitFor(() => {
+      expect(visitRecordPostBodies).toHaveLength(1);
+    });
+    expect(visitRecordPostBodies[0]).toMatchObject({
+      outcome_status: 'postponed',
+    });
+    expect(visitRecordPostBodies[0]).not.toHaveProperty('receipt_person_name');
+    expect(visitRecordPostBodies[0]).not.toHaveProperty('receipt_person_relation');
+    expect(visitRecordPostBodies[0]).not.toHaveProperty('receipt_at');
   });
 });
