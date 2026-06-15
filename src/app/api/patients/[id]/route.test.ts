@@ -944,6 +944,35 @@ describe('/api/patients/[id]', () => {
     expect(nameCreate).toBeUndefined();
   });
 
+  it('records revisions with visit_record provenance when source_visit_record_id is supplied', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '山田 太郎',
+      phone: '090-0000-0000',
+      cases: [],
+    });
+
+    const response = await PATCH(
+      createRequest(
+        { phone: '080-1111-2222', source_visit_record_id: 'visit_1' },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+
+    const phoneCreate = patientFieldRevisionCreateMock.mock.calls.find(
+      (call) => call[0]?.data?.field_key === 'phone',
+    );
+    expect(phoneCreate?.[0]?.data).toMatchObject({
+      field_key: 'phone',
+      source: 'visit_record',
+      source_visit_record_id: 'visit_1',
+    });
+  });
+
   it('snapshots contacts into a field revision when contacts are replaced on PATCH', async () => {
     const response = await PATCH(
       createRequest(

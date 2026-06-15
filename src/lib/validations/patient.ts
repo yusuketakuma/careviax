@@ -311,7 +311,10 @@ export const createPatientSchema = z.object({
   intake: patientIntakeSchema.optional(),
 });
 
-export const updatePatientSchema = createPatientSchema.partial();
+export const updatePatientSchema = createPatientSchema.partial().extend({
+  // 反映導線(訪問記録→患者詳細)の出所。指定時は変更履歴の source を visit_record にする。
+  source_visit_record_id: z.string().optional(),
+});
 
 export const updatePatientConditionsSchema = z.object({
   conditions: z.array(patientConditionSchema),

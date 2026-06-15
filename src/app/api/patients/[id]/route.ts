@@ -1953,6 +1953,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     intake,
     medical_insurance_number,
     care_insurance_number,
+    source_visit_record_id,
     ...rest
   } = parsed.data;
 
@@ -2569,6 +2570,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             patientId: id,
             actorId: ctx.userId,
             validFrom: revisionDate,
+            // 反映導線(訪問記録→患者詳細)経由の更新は出所を visit_record として記録する
+            source: source_visit_record_id ? 'visit_record' : undefined,
+            sourceVisitRecordId: source_visit_record_id ?? undefined,
             entries: revisionEntries,
           });
 
