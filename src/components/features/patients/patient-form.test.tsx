@@ -74,5 +74,16 @@ describe('PatientForm', () => {
 
     expect(screen.getByText('連絡先・保険情報')).toBeTruthy();
     expect(screen.getByLabelText('電話番号')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('tab', { name: '生活・薬学' }));
+
+    expect(screen.getByText('生活背景')).toBeTruthy();
+    expect(screen.getByText('算定前提')).toBeTruthy();
+    expect(screen.getByText('服薬支援')).toBeTruthy();
+    expect(screen.getByText('医療処置')).toBeTruthy();
+    expect(screen.getByLabelText('単一建物の医療患者数')).toBeTruthy();
+    expect(screen.queryByText('在宅薬学総合体制加算2 関連確認')).toBeNull();
+    expect(screen.queryByText('根拠確認日')).toBeNull();
+    expect(screen.queryByText('レセプト摘要・確認メモ')).toBeNull();
   });
 });

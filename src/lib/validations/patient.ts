@@ -90,6 +90,55 @@ export const intakeVisitingNurseSchema = z.object({
   fax: optionalFaxNumberSchema,
 });
 
+export const homePharmacyAddOn2Schema = z.object({
+  candidate: z
+    .enum([
+      'unknown',
+      'not_applicable',
+      'add_on_2_ro_candidate',
+      'add_on_2_i_single_building_candidate',
+      'add_on_2_i_severe_patient_candidate',
+    ])
+    .optional(),
+  single_building_medical_patient_count: z
+    .enum(['one', 'two_to_nine', 'ten_or_more', 'unknown'])
+    .optional(),
+  single_building_resident_count: z
+    .enum(['one', 'two_to_nine', 'ten_or_more', 'unknown'])
+    .optional(),
+  home_care_billing_category: z
+    .enum([
+      'medical_home_visit',
+      'emergency_home_visit',
+      'emergency_joint_guidance',
+      'care_home_management',
+      'preventive_care_home_management',
+      'unknown',
+    ])
+    .optional(),
+  medical_home_management_type: z
+    .enum(['home_medical_management', 'facility_medical_management', 'unknown'])
+    .optional(),
+  medical_home_management_section: z
+    .enum(['one_i_1', 'one_ro_1', 'two_i', 'three_i', 'other', 'unknown'])
+    .optional(),
+  comprehensive_support_add_on: z.enum(['yes', 'no', 'unknown']).optional(),
+  table_8_2_applicable: z.enum(['yes', 'no', 'unknown']).optional(),
+  table_8_3_applicable: z.enum(['yes', 'no', 'unknown']).optional(),
+  narcotic_use_categories: z.array(z.string()).optional(),
+  aseptic_preparation_need: z.enum(['unnecessary', 'necessary', 'unknown']).optional(),
+  pediatric_home_care: z.enum(['yes', 'no', 'unknown']).optional(),
+  infant_add_on_candidate: z.enum(['yes', 'no', 'unknown']).optional(),
+  medical_care_child: z.enum(['yes', 'no', 'unknown']).optional(),
+  visiting_nurse_frequency: z
+    .enum(['none', 'less_than_monthly', 'monthly', 'weekly', 'multiple_weekly', 'unknown'])
+    .optional(),
+  weekly_visiting_nurse: z.enum(['yes', 'no', 'unknown']).optional(),
+  nursing_or_family_procedure: z.enum(['yes', 'no', 'unknown']).optional(),
+  medical_material_supply: z.enum(['yes', 'no', 'unknown']).optional(),
+  advanced_medical_device: z.enum(['yes', 'no', 'unknown']).optional(),
+});
+
 export const patientIntakeSchema = z
   .object({
     age: z.number().int().min(0).max(150).optional(),
@@ -131,6 +180,75 @@ export const patientIntakeSchema = z
     other_clinical_notes: z.string().optional(),
     special_medical_procedures: z.array(z.string()).optional(),
     special_medical_notes: z.string().optional(),
+    home_care_status: z
+      .enum(['preparing', 'active', 'hospitalized', 'paused', 'ended', 'deceased', 'unknown'])
+      .optional(),
+    home_start_date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
+      .optional(),
+    home_end_date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
+      .optional(),
+    home_end_reason: z.string().optional(),
+    emergency_response: z
+      .enum(['normal', 'twenty_four_hour', 'partner_pharmacy', 'unavailable', 'unknown'])
+      .optional(),
+    after_hours_explanation_date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
+      .optional(),
+    patient_tags: z.array(z.string()).optional(),
+    visit_frequency: z.enum(['weekly', 'biweekly', 'monthly', 'ad_hoc', 'unknown']).optional(),
+    regular_visit_slot: z.string().optional(),
+    visit_available_time_note: z.string().optional(),
+    access_key_info: z.string().optional(),
+    medication_handover_place: z.string().optional(),
+    medication_storage_location: z.string().optional(),
+    collection_method: z.string().optional(),
+    payer: z.string().optional(),
+    medication_manager: z
+      .enum(['self', 'family', 'visiting_nurse', 'facility', 'pharmacist', 'unknown'])
+      .optional(),
+    medication_ability: z.string().optional(),
+    missed_dose_pattern: z.string().optional(),
+    residual_medication_pattern: z.string().optional(),
+    residual_medication_checked_on: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
+      .optional(),
+    residual_adjustment_status: z
+      .enum(['none', 'pending', 'proposed', 'reflected', 'rejected', 'unknown'])
+      .optional(),
+    crushing_check_status: z.enum(['yes', 'no', 'unknown']).optional(),
+    simple_suspension_check_status: z.enum(['yes', 'no', 'unknown']).optional(),
+    egfr_value: z.string().optional(),
+    egfr_measured_on: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
+      .optional(),
+    weight_kg: z.string().optional(),
+    weight_measured_on: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
+      .optional(),
+    high_risk_drug_flags: z.array(z.string()).optional(),
+    adverse_monitoring_items: z.array(z.string()).optional(),
+    pain_score: z.string().optional(),
+    rescue_use_count_recent: z.string().optional(),
+    constipation_status: z.string().optional(),
+    drowsiness_delirium_status: z.string().optional(),
+    fall_risk: z.enum(['none', 'low', 'medium', 'high', 'unknown']).optional(),
+    pressure_ulcer_status: z.string().optional(),
+    medical_material_supplier: z.string().optional(),
+    material_exchange_due_note: z.string().optional(),
+    device_vendor_contact: z.string().optional(),
+    document_status_note: z.string().optional(),
+    report_destination_note: z.string().optional(),
+    emergency_policy_note: z.string().optional(),
+    interprofessional_action_note: z.string().optional(),
+    home_pharmacy_add_on_2: homePharmacyAddOn2Schema.optional(),
     intake_note: z.string().optional(),
     care_manager: intakeCareManagerSchema.optional(),
     visiting_nurse: intakeVisitingNurseSchema.optional(),

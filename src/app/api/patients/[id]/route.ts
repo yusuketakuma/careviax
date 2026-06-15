@@ -545,6 +545,361 @@ function mergeHomeVisitIntake(args: {
     );
     assignTextField(
       next,
+      'home_care_status',
+      args.intake.home_care_status,
+      hasOwnKey(args.intake, 'home_care_status'),
+    );
+    assignTextField(
+      next,
+      'home_start_date',
+      args.intake.home_start_date,
+      hasOwnKey(args.intake, 'home_start_date'),
+    );
+    assignTextField(
+      next,
+      'home_end_date',
+      args.intake.home_end_date,
+      hasOwnKey(args.intake, 'home_end_date'),
+    );
+    assignTextField(
+      next,
+      'home_end_reason',
+      args.intake.home_end_reason,
+      hasOwnKey(args.intake, 'home_end_reason'),
+    );
+    assignTextField(
+      next,
+      'emergency_response',
+      args.intake.emergency_response,
+      hasOwnKey(args.intake, 'emergency_response'),
+    );
+    assignTextField(
+      next,
+      'after_hours_explanation_date',
+      args.intake.after_hours_explanation_date,
+      hasOwnKey(args.intake, 'after_hours_explanation_date'),
+    );
+    assignArrayField(
+      next,
+      'patient_tags',
+      args.intake.patient_tags,
+      hasOwnKey(args.intake, 'patient_tags'),
+    );
+    assignTextField(
+      next,
+      'visit_frequency',
+      args.intake.visit_frequency,
+      hasOwnKey(args.intake, 'visit_frequency'),
+    );
+    assignTextField(
+      next,
+      'regular_visit_slot',
+      args.intake.regular_visit_slot,
+      hasOwnKey(args.intake, 'regular_visit_slot'),
+    );
+    assignTextField(
+      next,
+      'visit_available_time_note',
+      args.intake.visit_available_time_note,
+      hasOwnKey(args.intake, 'visit_available_time_note'),
+    );
+    assignTextField(
+      next,
+      'access_key_info',
+      args.intake.access_key_info,
+      hasOwnKey(args.intake, 'access_key_info'),
+    );
+    assignTextField(
+      next,
+      'medication_handover_place',
+      args.intake.medication_handover_place,
+      hasOwnKey(args.intake, 'medication_handover_place'),
+    );
+    assignTextField(
+      next,
+      'medication_storage_location',
+      args.intake.medication_storage_location,
+      hasOwnKey(args.intake, 'medication_storage_location'),
+    );
+    assignTextField(
+      next,
+      'collection_method',
+      args.intake.collection_method,
+      hasOwnKey(args.intake, 'collection_method'),
+    );
+    assignTextField(next, 'payer', args.intake.payer, hasOwnKey(args.intake, 'payer'));
+    assignTextField(
+      next,
+      'medication_manager',
+      args.intake.medication_manager,
+      hasOwnKey(args.intake, 'medication_manager'),
+    );
+    assignTextField(
+      next,
+      'medication_ability',
+      args.intake.medication_ability,
+      hasOwnKey(args.intake, 'medication_ability'),
+    );
+    assignTextField(
+      next,
+      'missed_dose_pattern',
+      args.intake.missed_dose_pattern,
+      hasOwnKey(args.intake, 'missed_dose_pattern'),
+    );
+    assignTextField(
+      next,
+      'residual_medication_pattern',
+      args.intake.residual_medication_pattern,
+      hasOwnKey(args.intake, 'residual_medication_pattern'),
+    );
+    assignTextField(
+      next,
+      'residual_medication_checked_on',
+      args.intake.residual_medication_checked_on,
+      hasOwnKey(args.intake, 'residual_medication_checked_on'),
+    );
+    assignTextField(
+      next,
+      'residual_adjustment_status',
+      args.intake.residual_adjustment_status,
+      hasOwnKey(args.intake, 'residual_adjustment_status'),
+    );
+    assignTextField(
+      next,
+      'crushing_check_status',
+      args.intake.crushing_check_status,
+      hasOwnKey(args.intake, 'crushing_check_status'),
+    );
+    assignTextField(
+      next,
+      'simple_suspension_check_status',
+      args.intake.simple_suspension_check_status,
+      hasOwnKey(args.intake, 'simple_suspension_check_status'),
+    );
+    assignTextField(
+      next,
+      'egfr_value',
+      args.intake.egfr_value,
+      hasOwnKey(args.intake, 'egfr_value'),
+    );
+    assignTextField(
+      next,
+      'egfr_measured_on',
+      args.intake.egfr_measured_on,
+      hasOwnKey(args.intake, 'egfr_measured_on'),
+    );
+    assignTextField(next, 'weight_kg', args.intake.weight_kg, hasOwnKey(args.intake, 'weight_kg'));
+    assignTextField(
+      next,
+      'weight_measured_on',
+      args.intake.weight_measured_on,
+      hasOwnKey(args.intake, 'weight_measured_on'),
+    );
+    assignArrayField(
+      next,
+      'high_risk_drug_flags',
+      args.intake.high_risk_drug_flags,
+      hasOwnKey(args.intake, 'high_risk_drug_flags'),
+    );
+    assignArrayField(
+      next,
+      'adverse_monitoring_items',
+      args.intake.adverse_monitoring_items,
+      hasOwnKey(args.intake, 'adverse_monitoring_items'),
+    );
+    assignTextField(
+      next,
+      'pain_score',
+      args.intake.pain_score,
+      hasOwnKey(args.intake, 'pain_score'),
+    );
+    assignTextField(
+      next,
+      'rescue_use_count_recent',
+      args.intake.rescue_use_count_recent,
+      hasOwnKey(args.intake, 'rescue_use_count_recent'),
+    );
+    assignTextField(
+      next,
+      'constipation_status',
+      args.intake.constipation_status,
+      hasOwnKey(args.intake, 'constipation_status'),
+    );
+    assignTextField(
+      next,
+      'drowsiness_delirium_status',
+      args.intake.drowsiness_delirium_status,
+      hasOwnKey(args.intake, 'drowsiness_delirium_status'),
+    );
+    assignTextField(next, 'fall_risk', args.intake.fall_risk, hasOwnKey(args.intake, 'fall_risk'));
+    assignTextField(
+      next,
+      'pressure_ulcer_status',
+      args.intake.pressure_ulcer_status,
+      hasOwnKey(args.intake, 'pressure_ulcer_status'),
+    );
+    assignTextField(
+      next,
+      'medical_material_supplier',
+      args.intake.medical_material_supplier,
+      hasOwnKey(args.intake, 'medical_material_supplier'),
+    );
+    assignTextField(
+      next,
+      'material_exchange_due_note',
+      args.intake.material_exchange_due_note,
+      hasOwnKey(args.intake, 'material_exchange_due_note'),
+    );
+    assignTextField(
+      next,
+      'device_vendor_contact',
+      args.intake.device_vendor_contact,
+      hasOwnKey(args.intake, 'device_vendor_contact'),
+    );
+    assignTextField(
+      next,
+      'document_status_note',
+      args.intake.document_status_note,
+      hasOwnKey(args.intake, 'document_status_note'),
+    );
+    assignTextField(
+      next,
+      'report_destination_note',
+      args.intake.report_destination_note,
+      hasOwnKey(args.intake, 'report_destination_note'),
+    );
+    assignTextField(
+      next,
+      'emergency_policy_note',
+      args.intake.emergency_policy_note,
+      hasOwnKey(args.intake, 'emergency_policy_note'),
+    );
+    assignTextField(
+      next,
+      'interprofessional_action_note',
+      args.intake.interprofessional_action_note,
+      hasOwnKey(args.intake, 'interprofessional_action_note'),
+    );
+    if (hasOwnKey(args.intake, 'home_pharmacy_add_on_2')) {
+      const value = args.intake.home_pharmacy_add_on_2;
+      if (value) {
+        const addOn2 = { ...(next.home_pharmacy_add_on_2 ?? {}) };
+        assignTextField(addOn2, 'candidate', value.candidate, hasOwnKey(value, 'candidate'));
+        assignTextField(
+          addOn2,
+          'single_building_medical_patient_count',
+          value.single_building_medical_patient_count,
+          hasOwnKey(value, 'single_building_medical_patient_count'),
+        );
+        assignTextField(
+          addOn2,
+          'single_building_resident_count',
+          value.single_building_resident_count,
+          hasOwnKey(value, 'single_building_resident_count'),
+        );
+        assignTextField(
+          addOn2,
+          'home_care_billing_category',
+          value.home_care_billing_category,
+          hasOwnKey(value, 'home_care_billing_category'),
+        );
+        assignTextField(
+          addOn2,
+          'medical_home_management_type',
+          value.medical_home_management_type,
+          hasOwnKey(value, 'medical_home_management_type'),
+        );
+        assignTextField(
+          addOn2,
+          'medical_home_management_section',
+          value.medical_home_management_section,
+          hasOwnKey(value, 'medical_home_management_section'),
+        );
+        assignTextField(
+          addOn2,
+          'comprehensive_support_add_on',
+          value.comprehensive_support_add_on,
+          hasOwnKey(value, 'comprehensive_support_add_on'),
+        );
+        assignTextField(
+          addOn2,
+          'table_8_2_applicable',
+          value.table_8_2_applicable,
+          hasOwnKey(value, 'table_8_2_applicable'),
+        );
+        assignTextField(
+          addOn2,
+          'table_8_3_applicable',
+          value.table_8_3_applicable,
+          hasOwnKey(value, 'table_8_3_applicable'),
+        );
+        assignArrayField(
+          addOn2,
+          'narcotic_use_categories',
+          value.narcotic_use_categories,
+          hasOwnKey(value, 'narcotic_use_categories'),
+        );
+        assignTextField(
+          addOn2,
+          'aseptic_preparation_need',
+          value.aseptic_preparation_need,
+          hasOwnKey(value, 'aseptic_preparation_need'),
+        );
+        assignTextField(
+          addOn2,
+          'pediatric_home_care',
+          value.pediatric_home_care,
+          hasOwnKey(value, 'pediatric_home_care'),
+        );
+        assignTextField(
+          addOn2,
+          'infant_add_on_candidate',
+          value.infant_add_on_candidate,
+          hasOwnKey(value, 'infant_add_on_candidate'),
+        );
+        assignTextField(
+          addOn2,
+          'medical_care_child',
+          value.medical_care_child,
+          hasOwnKey(value, 'medical_care_child'),
+        );
+        assignTextField(
+          addOn2,
+          'visiting_nurse_frequency',
+          value.visiting_nurse_frequency,
+          hasOwnKey(value, 'visiting_nurse_frequency'),
+        );
+        assignTextField(
+          addOn2,
+          'weekly_visiting_nurse',
+          value.weekly_visiting_nurse,
+          hasOwnKey(value, 'weekly_visiting_nurse'),
+        );
+        assignTextField(
+          addOn2,
+          'nursing_or_family_procedure',
+          value.nursing_or_family_procedure,
+          hasOwnKey(value, 'nursing_or_family_procedure'),
+        );
+        assignTextField(
+          addOn2,
+          'medical_material_supply',
+          value.medical_material_supply,
+          hasOwnKey(value, 'medical_material_supply'),
+        );
+        assignTextField(
+          addOn2,
+          'advanced_medical_device',
+          value.advanced_medical_device,
+          hasOwnKey(value, 'advanced_medical_device'),
+        );
+        next.home_pharmacy_add_on_2 = compactNestedObject(addOn2);
+      } else {
+        delete next.home_pharmacy_add_on_2;
+      }
+    }
+    assignTextField(
+      next,
       'intake_note',
       args.intake.intake_note,
       hasOwnKey(args.intake, 'intake_note'),

@@ -22,15 +22,30 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import {
   adlLabels,
+  asepticPreparationNeedLabels,
   careLevelLabels,
+  confirmationStatusLabels,
   contactMethodLabels,
   dementiaLabels,
   firstVisitSlotLabels,
+  homeCareStatusLabels,
+  homeCareBillingCategoryLabels,
+  homePharmacyAddOn2CandidateLabels,
+  emergencyResponseLabels,
   housingTypeLabels,
   medicationSupportLabels,
+  medicationManagerLabels,
+  medicalHomeManagementSectionLabels,
+  medicalHomeManagementTypeLabels,
   moneyManagementLabels,
+  narcoticUseCategoryLabels,
   requesterProfessionLabels,
+  singleBuildingCountLabels,
   specialProcedureLabels,
+  supportStatusLabels,
+  triageRiskLabels,
+  visitFrequencyLabels,
+  visitingNurseFrequencyLabels,
 } from '@/lib/patient/home-visit-intake';
 import { evaluateServiceAreaWarning, type ServiceAreaRecord } from '@/lib/patient/service-area';
 
@@ -104,8 +119,25 @@ const careLevelOptions = formatOptionLabelMap(careLevelLabels);
 const adlOptions = formatOptionLabelMap(adlLabels);
 const dementiaOptions = formatOptionLabelMap(dementiaLabels);
 const moneyManagementOptions = formatOptionLabelMap(moneyManagementLabels);
+const homeCareStatusOptions = formatOptionLabelMap(homeCareStatusLabels);
+const emergencyResponseOptions = formatOptionLabelMap(emergencyResponseLabels);
+const visitFrequencyOptions = formatOptionLabelMap(visitFrequencyLabels);
+const medicationManagerOptions = formatOptionLabelMap(medicationManagerLabels);
+const supportStatusOptions = formatOptionLabelMap(supportStatusLabels);
+const triageRiskOptions = formatOptionLabelMap(triageRiskLabels);
 const medicationSupportOptions = formatOptionLabelMap(medicationSupportLabels);
 const specialProcedureOptions = formatOptionLabelMap(specialProcedureLabels);
+const addOn2CandidateOptions = formatOptionLabelMap(homePharmacyAddOn2CandidateLabels);
+const singleBuildingCountOptions = formatOptionLabelMap(singleBuildingCountLabels);
+const homeCareBillingCategoryOptions = formatOptionLabelMap(homeCareBillingCategoryLabels);
+const medicalHomeManagementTypeOptions = formatOptionLabelMap(medicalHomeManagementTypeLabels);
+const medicalHomeManagementSectionOptions = formatOptionLabelMap(
+  medicalHomeManagementSectionLabels,
+);
+const confirmationStatusOptions = formatOptionLabelMap(confirmationStatusLabels);
+const narcoticUseCategoryOptions = formatOptionLabelMap(narcoticUseCategoryLabels);
+const asepticPreparationNeedOptions = formatOptionLabelMap(asepticPreparationNeedLabels);
+const visitingNurseFrequencyOptions = formatOptionLabelMap(visitingNurseFrequencyLabels);
 
 const PATIENT_FORM_TABS = [
   { value: 'basic', label: '基本' },
@@ -162,6 +194,7 @@ function findFirstErrorTab(errors: FieldErrors<CreatePatientInput>): PatientForm
       'allergy_history' in intakeErrors ||
       'special_medical_procedures' in intakeErrors ||
       'special_medical_notes' in intakeErrors ||
+      'home_pharmacy_add_on_2' in intakeErrors ||
       'other_clinical_notes' in intakeErrors ||
       'intake_note' in intakeErrors
     ) {
@@ -218,6 +251,11 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
       control,
       name: 'intake.special_medical_procedures',
     }) ?? [];
+  const watchedNarcoticUseCategories =
+    useWatch({
+      control,
+      name: 'intake.home_pharmacy_add_on_2.narcotic_use_categories',
+    }) ?? [];
   const watchedBillingSupportFlag =
     useWatch({
       control,
@@ -262,7 +300,10 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
 
   const toggleStringArrayField = useCallback(
     (
-      field: 'intake.medication_support_methods' | 'intake.special_medical_procedures',
+      field:
+        | 'intake.medication_support_methods'
+        | 'intake.special_medical_procedures'
+        | 'intake.home_pharmacy_add_on_2.narcotic_use_categories',
       currentValues: string[],
       value: string,
       checked: boolean,
@@ -864,6 +905,145 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
               </div>
 
               <div className="space-y-3">
+                <p className="text-sm font-medium text-foreground">在宅管理・現地情報</p>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.home_care_status">在宅状態</Label>
+                    <select
+                      id="intake.home_care_status"
+                      {...register('intake.home_care_status', optionalTextFieldOptions)}
+                      className="min-h-[44px] w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-9 sm:min-h-0"
+                    >
+                      <option value="">未設定</option>
+                      {homeCareStatusOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.home_start_date">在宅開始日</Label>
+                    <Input
+                      id="intake.home_start_date"
+                      type="date"
+                      {...register('intake.home_start_date', optionalTextFieldOptions)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.home_end_date">在宅終了日</Label>
+                    <Input
+                      id="intake.home_end_date"
+                      type="date"
+                      {...register('intake.home_end_date', optionalTextFieldOptions)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.home_end_reason">終了理由</Label>
+                    <Input
+                      id="intake.home_end_reason"
+                      {...register('intake.home_end_reason')}
+                      placeholder="入院 / 施設入所 / 他薬局変更 など"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.emergency_response">緊急対応</Label>
+                    <select
+                      id="intake.emergency_response"
+                      {...register('intake.emergency_response', optionalTextFieldOptions)}
+                      className="min-h-[44px] w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-9 sm:min-h-0"
+                    >
+                      <option value="">未設定</option>
+                      {emergencyResponseOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.after_hours_explanation_date">時間外説明日</Label>
+                    <Input
+                      id="intake.after_hours_explanation_date"
+                      type="date"
+                      {...register('intake.after_hours_explanation_date', optionalTextFieldOptions)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.visit_frequency">訪問頻度</Label>
+                    <select
+                      id="intake.visit_frequency"
+                      {...register('intake.visit_frequency', optionalTextFieldOptions)}
+                      className="min-h-[44px] w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-9 sm:min-h-0"
+                    >
+                      <option value="">未設定</option>
+                      {visitFrequencyOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.regular_visit_slot">定期訪問枠</Label>
+                    <Input
+                      id="intake.regular_visit_slot"
+                      {...register('intake.regular_visit_slot')}
+                      placeholder="月曜午前 / 第2木曜午後 など"
+                    />
+                  </div>
+                  <div className="space-y-1.5 md:col-span-2">
+                    <Label htmlFor="intake.visit_available_time_note">訪問可能時間・不在時間</Label>
+                    <Input
+                      id="intake.visit_available_time_note"
+                      {...register('intake.visit_available_time_note')}
+                      placeholder="デイ帰宅後 / 午前不在 など"
+                    />
+                  </div>
+                  <div className="space-y-1.5 md:col-span-2">
+                    <Label htmlFor="intake.access_key_info">玄関・鍵・現地注意</Label>
+                    <Input
+                      id="intake.access_key_info"
+                      {...register('intake.access_key_info')}
+                      placeholder="オートロック / キーボックス / ペット注意 など"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.medication_handover_place">受け渡し場所</Label>
+                    <Input
+                      id="intake.medication_handover_place"
+                      {...register('intake.medication_handover_place')}
+                      placeholder="玄関 / 居室 / ナース室"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.medication_storage_location">薬剤保管場所</Label>
+                    <Input
+                      id="intake.medication_storage_location"
+                      {...register('intake.medication_storage_location')}
+                      placeholder="居室 / 冷蔵庫 / 金庫"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.collection_method">集金方法</Label>
+                    <Input
+                      id="intake.collection_method"
+                      {...register('intake.collection_method')}
+                      placeholder="現金 / 口座振替 / 施設請求"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.payer">支払者</Label>
+                    <Input
+                      id="intake.payer"
+                      {...register('intake.payer')}
+                      placeholder="本人 / 家族 / 施設"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
                 <p className="text-sm font-medium text-foreground">患者連絡・訪問条件</p>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="space-y-1.5">
@@ -1013,81 +1193,366 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
             <CardHeader className="py-4">
               <CardTitle className="text-base">生活背景・薬学的管理</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="intake.care_level">介護認定</Label>
-                  <select
-                    id="intake.care_level"
-                    {...register('intake.care_level')}
-                    className="min-h-[44px] w-full rounded-lg border sm:h-9 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-                  >
-                    <option value="">未設定</option>
-                    {careLevelOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="intake.money_management">金銭管理</Label>
-                  <select
-                    id="intake.money_management"
-                    {...register('intake.money_management')}
-                    className="min-h-[44px] w-full rounded-lg border sm:h-9 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-                  >
-                    <option value="">未設定</option>
-                    {moneyManagementOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="intake.adl_level">ADL</Label>
-                  <select
-                    id="intake.adl_level"
-                    {...register('intake.adl_level')}
-                    className="min-h-[44px] w-full rounded-lg border sm:h-9 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-                  >
-                    <option value="">未設定</option>
-                    {adlOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="intake.dementia_level">認知症自立度</Label>
-                  <select
-                    id="intake.dementia_level"
-                    {...register('intake.dementia_level')}
-                    className="min-h-[44px] w-full rounded-lg border sm:h-9 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-                  >
-                    <option value="">未設定</option>
-                    {dementiaOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-1.5 md:col-span-2">
-                  <Label htmlFor="intake.family_key_person">家族構成・キーパーソン</Label>
-                  <Textarea
-                    id="intake.family_key_person"
-                    {...register('intake.family_key_person')}
-                    rows={2}
-                    placeholder="長女が服薬管理を支援 / 長男が主連絡先 など"
-                  />
+            <CardContent className="space-y-6">
+              <div className="space-y-3">
+                <p className="text-sm font-medium text-foreground">生活背景</p>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.care_level">介護認定</Label>
+                    <select
+                      id="intake.care_level"
+                      {...register('intake.care_level')}
+                      className="min-h-[44px] w-full rounded-lg border sm:h-9 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                    >
+                      <option value="">未設定</option>
+                      {careLevelOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.money_management">金銭管理</Label>
+                    <select
+                      id="intake.money_management"
+                      {...register('intake.money_management')}
+                      className="min-h-[44px] w-full rounded-lg border sm:h-9 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                    >
+                      <option value="">未設定</option>
+                      {moneyManagementOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.adl_level">ADL</Label>
+                    <select
+                      id="intake.adl_level"
+                      {...register('intake.adl_level')}
+                      className="min-h-[44px] w-full rounded-lg border sm:h-9 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                    >
+                      <option value="">未設定</option>
+                      {adlOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.dementia_level">認知症自立度</Label>
+                    <select
+                      id="intake.dementia_level"
+                      {...register('intake.dementia_level')}
+                      className="min-h-[44px] w-full rounded-lg border sm:h-9 sm:min-h-0 border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+                    >
+                      <option value="">未設定</option>
+                      {dementiaOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5 md:col-span-2">
+                    <Label htmlFor="intake.family_key_person">家族構成・キーパーソン</Label>
+                    <Textarea
+                      id="intake.family_key_person"
+                      {...register('intake.family_key_person')}
+                      rows={2}
+                      placeholder="長女が服薬管理を支援 / 長男が主連絡先 など"
+                    />
+                  </div>
+                  {[
+                    ['pediatric_home_care', '小児在宅'] as const,
+                    ['infant_add_on_candidate', '乳幼児加算候補'] as const,
+                    ['medical_care_child', '医療的ケア児'] as const,
+                    ['weekly_visiting_nurse', '訪問看護週1以上'] as const,
+                  ].map(([field, label]) => (
+                    <div key={field} className="space-y-1.5">
+                      <Label htmlFor={`intake.home_pharmacy_add_on_2.${field}`}>{label}</Label>
+                      <select
+                        id={`intake.home_pharmacy_add_on_2.${field}`}
+                        {...register(
+                          `intake.home_pharmacy_add_on_2.${field}`,
+                          optionalTextFieldOptions,
+                        )}
+                        className="min-h-[44px] w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-9 sm:min-h-0"
+                      >
+                        <option value="">未設定</option>
+                        {confirmationStatusOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.home_pharmacy_add_on_2.visiting_nurse_frequency">
+                      訪問看護頻度
+                    </Label>
+                    <select
+                      id="intake.home_pharmacy_add_on_2.visiting_nurse_frequency"
+                      {...register(
+                        'intake.home_pharmacy_add_on_2.visiting_nurse_frequency',
+                        optionalTextFieldOptions,
+                      )}
+                      className="min-h-[44px] w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-9 sm:min-h-0"
+                    >
+                      <option value="">未設定</option>
+                      {visitingNurseFrequencyOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.home_pharmacy_add_on_2.nursing_or_family_procedure">
+                      看護・家族処置
+                    </Label>
+                    <select
+                      id="intake.home_pharmacy_add_on_2.nursing_or_family_procedure"
+                      {...register(
+                        'intake.home_pharmacy_add_on_2.nursing_or_family_procedure',
+                        optionalTextFieldOptions,
+                      )}
+                      className="min-h-[44px] w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-9 sm:min-h-0"
+                    >
+                      <option value="">未設定</option>
+                      {confirmationStatusOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
 
               <div className="space-y-3">
-                <p className="text-sm font-medium text-foreground">服薬支援・特別処置</p>
+                <p className="text-sm font-medium text-foreground">算定前提</p>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.home_pharmacy_add_on_2.candidate">候補区分</Label>
+                    <select
+                      id="intake.home_pharmacy_add_on_2.candidate"
+                      {...register(
+                        'intake.home_pharmacy_add_on_2.candidate',
+                        optionalTextFieldOptions,
+                      )}
+                      className="min-h-[44px] w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-9 sm:min-h-0"
+                    >
+                      <option value="">未設定</option>
+                      {addOn2CandidateOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.home_pharmacy_add_on_2.home_care_billing_category">
+                      算定対象
+                    </Label>
+                    <select
+                      id="intake.home_pharmacy_add_on_2.home_care_billing_category"
+                      {...register(
+                        'intake.home_pharmacy_add_on_2.home_care_billing_category',
+                        optionalTextFieldOptions,
+                      )}
+                      className="min-h-[44px] w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-9 sm:min-h-0"
+                    >
+                      <option value="">未設定</option>
+                      {homeCareBillingCategoryOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.home_pharmacy_add_on_2.comprehensive_support_add_on">
+                      包括的支援加算
+                    </Label>
+                    <select
+                      id="intake.home_pharmacy_add_on_2.comprehensive_support_add_on"
+                      {...register(
+                        'intake.home_pharmacy_add_on_2.comprehensive_support_add_on',
+                        optionalTextFieldOptions,
+                      )}
+                      className="min-h-[44px] w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-9 sm:min-h-0"
+                    >
+                      <option value="">未設定</option>
+                      {confirmationStatusOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.home_pharmacy_add_on_2.single_building_medical_patient_count">
+                      単一建物の医療患者数
+                    </Label>
+                    <select
+                      id="intake.home_pharmacy_add_on_2.single_building_medical_patient_count"
+                      {...register(
+                        'intake.home_pharmacy_add_on_2.single_building_medical_patient_count',
+                        optionalTextFieldOptions,
+                      )}
+                      className="min-h-[44px] w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-9 sm:min-h-0"
+                    >
+                      <option value="">未設定</option>
+                      {singleBuildingCountOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.home_pharmacy_add_on_2.single_building_resident_count">
+                      単一建物の居住者数
+                    </Label>
+                    <select
+                      id="intake.home_pharmacy_add_on_2.single_building_resident_count"
+                      {...register(
+                        'intake.home_pharmacy_add_on_2.single_building_resident_count',
+                        optionalTextFieldOptions,
+                      )}
+                      className="min-h-[44px] w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-9 sm:min-h-0"
+                    >
+                      <option value="">未設定</option>
+                      {singleBuildingCountOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.home_pharmacy_add_on_2.medical_home_management_type">
+                      医学管理
+                    </Label>
+                    <select
+                      id="intake.home_pharmacy_add_on_2.medical_home_management_type"
+                      {...register(
+                        'intake.home_pharmacy_add_on_2.medical_home_management_type',
+                        optionalTextFieldOptions,
+                      )}
+                      className="min-h-[44px] w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-9 sm:min-h-0"
+                    >
+                      <option value="">未設定</option>
+                      {medicalHomeManagementTypeOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.home_pharmacy_add_on_2.medical_home_management_section">
+                      医学管理区分
+                    </Label>
+                    <select
+                      id="intake.home_pharmacy_add_on_2.medical_home_management_section"
+                      {...register(
+                        'intake.home_pharmacy_add_on_2.medical_home_management_section',
+                        optionalTextFieldOptions,
+                      )}
+                      className="min-h-[44px] w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-9 sm:min-h-0"
+                    >
+                      <option value="">未設定</option>
+                      {medicalHomeManagementSectionOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.home_pharmacy_add_on_2.table_8_2_applicable">
+                      別表8の2
+                    </Label>
+                    <select
+                      id="intake.home_pharmacy_add_on_2.table_8_2_applicable"
+                      {...register(
+                        'intake.home_pharmacy_add_on_2.table_8_2_applicable',
+                        optionalTextFieldOptions,
+                      )}
+                      className="min-h-[44px] w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-9 sm:min-h-0"
+                    >
+                      <option value="">未設定</option>
+                      {confirmationStatusOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.home_pharmacy_add_on_2.table_8_3_applicable">
+                      別表8の3
+                    </Label>
+                    <select
+                      id="intake.home_pharmacy_add_on_2.table_8_3_applicable"
+                      {...register(
+                        'intake.home_pharmacy_add_on_2.table_8_3_applicable',
+                        optionalTextFieldOptions,
+                      )}
+                      className="min-h-[44px] w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-9 sm:min-h-0"
+                    >
+                      <option value="">未設定</option>
+                      {confirmationStatusOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <p className="text-sm font-medium text-foreground">服薬支援</p>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.medication_manager">服薬管理者</Label>
+                    <select
+                      id="intake.medication_manager"
+                      {...register('intake.medication_manager', optionalTextFieldOptions)}
+                      className="min-h-[44px] w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-9 sm:min-h-0"
+                    >
+                      <option value="">未設定</option>
+                      {medicationManagerOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.medication_ability">服薬能力</Label>
+                    <Input
+                      id="intake.medication_ability"
+                      {...register('intake.medication_ability')}
+                      placeholder="自立 / 一部介助 / 全介助"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.missed_dose_pattern">飲み忘れ傾向</Label>
+                    <Input
+                      id="intake.missed_dose_pattern"
+                      {...register('intake.missed_dose_pattern')}
+                      placeholder="朝 / 夕 / 眠前 / 頓服 など"
+                    />
+                  </div>
+                </div>
                 <div className="grid gap-3 md:grid-cols-2">
                   {medicationSupportOptions.map((option) => (
                     <label
@@ -1118,8 +1583,103 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
                     placeholder="自己管理困難時は家族同席 など"
                   />
                 </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="intake.residual_medication_status">残薬状況</Label>
+                  <Input
+                    id="intake.residual_medication_status"
+                    {...register('intake.residual_medication_status')}
+                    placeholder="残薬多い / 整理済み など"
+                  />
+                </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.residual_medication_pattern">残薬パターン</Label>
+                    <Input
+                      id="intake.residual_medication_pattern"
+                      {...register('intake.residual_medication_pattern')}
+                      placeholder="全体 / 特定薬剤 / 頓服 / 外用"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.residual_medication_checked_on">残薬確認日</Label>
+                    <Input
+                      id="intake.residual_medication_checked_on"
+                      type="date"
+                      {...register(
+                        'intake.residual_medication_checked_on',
+                        optionalTextFieldOptions,
+                      )}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.residual_adjustment_status">残薬調整提案</Label>
+                    <select
+                      id="intake.residual_adjustment_status"
+                      {...register('intake.residual_adjustment_status', optionalTextFieldOptions)}
+                      className="min-h-[44px] w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-9 sm:min-h-0"
+                    >
+                      <option value="">未設定</option>
+                      {supportStatusOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.crushing_check_status">粉砕可否</Label>
+                    <select
+                      id="intake.crushing_check_status"
+                      {...register('intake.crushing_check_status', optionalTextFieldOptions)}
+                      className="min-h-[44px] w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-9 sm:min-h-0"
+                    >
+                      <option value="">未設定</option>
+                      {confirmationStatusOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.simple_suspension_check_status">簡易懸濁可否</Label>
+                    <select
+                      id="intake.simple_suspension_check_status"
+                      {...register(
+                        'intake.simple_suspension_check_status',
+                        optionalTextFieldOptions,
+                      )}
+                      className="min-h-[44px] w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-9 sm:min-h-0"
+                    >
+                      <option value="">未設定</option>
+                      {confirmationStatusOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.fall_risk">転倒リスク</Label>
+                    <select
+                      id="intake.fall_risk"
+                      {...register('intake.fall_risk', optionalTextFieldOptions)}
+                      className="min-h-[44px] w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-9 sm:min-h-0"
+                    >
+                      <option value="">未設定</option>
+                      {triageRiskOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
 
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-3">
+                <p className="text-sm font-medium text-foreground">医療処置</p>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                   <div className="space-y-1.5">
                     <Label htmlFor="intake.ent_prescription">ENT処方</Label>
                     <select
@@ -1189,11 +1749,195 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="intake.residual_medication_status">残薬状況</Label>
+                    <Label htmlFor="intake.home_pharmacy_add_on_2.aseptic_preparation_need">
+                      無菌調製の要否
+                    </Label>
+                    <select
+                      id="intake.home_pharmacy_add_on_2.aseptic_preparation_need"
+                      {...register(
+                        'intake.home_pharmacy_add_on_2.aseptic_preparation_need',
+                        optionalTextFieldOptions,
+                      )}
+                      className="min-h-[44px] w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-9 sm:min-h-0"
+                    >
+                      <option value="">未設定</option>
+                      {asepticPreparationNeedOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.home_pharmacy_add_on_2.medical_material_supply">
+                      医療材料供給
+                    </Label>
+                    <select
+                      id="intake.home_pharmacy_add_on_2.medical_material_supply"
+                      {...register(
+                        'intake.home_pharmacy_add_on_2.medical_material_supply',
+                        optionalTextFieldOptions,
+                      )}
+                      className="min-h-[44px] w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-9 sm:min-h-0"
+                    >
+                      <option value="">未設定</option>
+                      {confirmationStatusOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.home_pharmacy_add_on_2.advanced_medical_device">
+                      高度医療機器
+                    </Label>
+                    <select
+                      id="intake.home_pharmacy_add_on_2.advanced_medical_device"
+                      {...register(
+                        'intake.home_pharmacy_add_on_2.advanced_medical_device',
+                        optionalTextFieldOptions,
+                      )}
+                      className="min-h-[44px] w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 sm:h-9 sm:min-h-0"
+                    >
+                      <option value="">未設定</option>
+                      {confirmationStatusOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <p className="text-sm font-medium text-foreground">麻薬区分</p>
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                    {narcoticUseCategoryOptions.map((option) => (
+                      <label
+                        key={option.value}
+                        className="flex items-start gap-2 rounded-lg border border-border/70 px-3 py-2 text-sm"
+                      >
+                        <Checkbox
+                          checked={watchedNarcoticUseCategories.includes(option.value)}
+                          onCheckedChange={(checked) =>
+                            toggleStringArrayField(
+                              'intake.home_pharmacy_add_on_2.narcotic_use_categories',
+                              watchedNarcoticUseCategories,
+                              option.value,
+                              checked === true,
+                            )
+                          }
+                        />
+                        <span>{option.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.pain_score">疼痛スコア</Label>
                     <Input
-                      id="intake.residual_medication_status"
-                      {...register('intake.residual_medication_status')}
-                      placeholder="残薬多い / 整理済み など"
+                      id="intake.pain_score"
+                      {...register('intake.pain_score')}
+                      placeholder="NRS 0-10"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.rescue_use_count_recent">レスキュー使用</Label>
+                    <Input
+                      id="intake.rescue_use_count_recent"
+                      {...register('intake.rescue_use_count_recent')}
+                      placeholder="直近24h 2回 / 3日で5回"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.constipation_status">便秘対策</Label>
+                    <Input
+                      id="intake.constipation_status"
+                      {...register('intake.constipation_status')}
+                      placeholder="下剤あり / 最終排便 など"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.drowsiness_delirium_status">眠気・せん妄</Label>
+                    <Input
+                      id="intake.drowsiness_delirium_status"
+                      {...register('intake.drowsiness_delirium_status')}
+                      placeholder="なし / 軽度 / 要観察"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.egfr_value">eGFR</Label>
+                    <Input
+                      id="intake.egfr_value"
+                      {...register('intake.egfr_value')}
+                      placeholder="38"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.egfr_measured_on">eGFR測定日</Label>
+                    <Input
+                      id="intake.egfr_measured_on"
+                      type="date"
+                      {...register('intake.egfr_measured_on', optionalTextFieldOptions)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.weight_kg">体重</Label>
+                    <Input
+                      id="intake.weight_kg"
+                      {...register('intake.weight_kg')}
+                      placeholder="45.2kg"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.weight_measured_on">体重測定日</Label>
+                    <Input
+                      id="intake.weight_measured_on"
+                      type="date"
+                      {...register('intake.weight_measured_on', optionalTextFieldOptions)}
+                    />
+                  </div>
+                  <div className="space-y-1.5 md:col-span-2">
+                    <Label htmlFor="intake.medical_material_supplier">医療材料供給担当</Label>
+                    <Input
+                      id="intake.medical_material_supplier"
+                      {...register('intake.medical_material_supplier')}
+                      placeholder="薬局 / 訪看 / 医療機関 / 業者"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.material_exchange_due_note">交換期限</Label>
+                    <Input
+                      id="intake.material_exchange_due_note"
+                      {...register('intake.material_exchange_due_note')}
+                      placeholder="ルート交換 6/20 など"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.device_vendor_contact">業者連絡先</Label>
+                    <Input
+                      id="intake.device_vendor_contact"
+                      {...register('intake.device_vendor_contact')}
+                      placeholder="酸素業者 / ポンプ業者"
+                    />
+                  </div>
+                  <div className="space-y-1.5 md:col-span-2">
+                    <Label htmlFor="intake.pressure_ulcer_status">褥瘡・創傷</Label>
+                    <Input
+                      id="intake.pressure_ulcer_status"
+                      {...register('intake.pressure_ulcer_status')}
+                      placeholder="仙骨 / DESIGN-R / 処置材料 など"
+                    />
+                  </div>
+                  <div className="space-y-1.5 md:col-span-2">
+                    <Label htmlFor="intake.emergency_policy_note">緊急時方針</Label>
+                    <Input
+                      id="intake.emergency_policy_note"
+                      {...register('intake.emergency_policy_note')}
+                      placeholder="まず主治医 / 訪看へ連絡 / 搬送希望 など"
                     />
                   </div>
                 </div>
@@ -1362,6 +2106,41 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
                       id="intake.visiting_nurse.fax"
                       {...register('intake.visiting_nurse.fax')}
                       placeholder="03-8888-7778"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <p className="text-sm font-medium text-foreground">連携ルール・書類</p>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.report_destination_note">報告書送付先・頻度</Label>
+                    <Textarea
+                      id="intake.report_destination_note"
+                      {...register('intake.report_destination_note')}
+                      rows={2}
+                      placeholder="医師・CMへ毎回 / 訪看へ変化時のみ など"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="intake.document_status_note">書類・期限メモ</Label>
+                    <Textarea
+                      id="intake.document_status_note"
+                      {...register('intake.document_status_note')}
+                      rows={2}
+                      placeholder="同意書未取得 / 計画書更新 6/30 / 報告書送付済 など"
+                    />
+                  </div>
+                  <div className="space-y-1.5 md:col-span-2">
+                    <Label htmlFor="intake.interprofessional_action_note">
+                      連携ログ・次アクション
+                    </Label>
+                    <Textarea
+                      id="intake.interprofessional_action_note"
+                      {...register('intake.interprofessional_action_note')}
+                      rows={2}
+                      placeholder="訪看へ残薬共有 / 主治医へ便秘対策相談 / CMへ集金方法確認 など"
                     />
                   </div>
                 </div>

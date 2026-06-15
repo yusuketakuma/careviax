@@ -45,6 +45,21 @@ import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { usePresenceHeartbeat } from '@/lib/hooks/use-presence-heartbeat';
 import { cn } from '@/lib/utils';
+import {
+  asepticPreparationNeedLabels,
+  emergencyResponseLabels,
+  formatOptionalDate,
+  getHomeVisitIntake,
+  homeCareStatusLabels,
+  homePharmacyAddOn2CandidateLabels,
+  joinLabeledValues,
+  labelOf,
+  narcoticUseCategoryLabels,
+  specialProcedureLabels,
+  supportStatusLabels,
+  triageRiskLabels,
+  visitFrequencyLabels,
+} from '@/lib/patient/home-visit-intake';
 import type {
   PatientOverview,
   PatientWorkspaceActivity,
@@ -170,14 +185,84 @@ function formatPreferredContact(patient: PatientOverview): string {
   return '未設定';
 }
 
+function getPrimaryHomeVisitIntake(patient: PatientOverview) {
+  const intakeCase =
+    patient.cases.find((careCase) => getHomeVisitIntake(careCase.required_visit_support)) ?? null;
+  return intakeCase ? getHomeVisitIntake(intakeCase.required_visit_support) : null;
+}
+
+function formatVisitDate(value: string | null | undefined) {
+  if (!value) return '未設定';
+  return formatOptionalDate(value.slice(0, 10));
+}
+
+function buildVisitScheduleLabel(patient: PatientOverview) {
+  const now = new Date();
+  const schedules = patient.visit_schedules
+    .map((schedule) => ({
+      ...schedule,
+      date: parseISO(schedule.scheduled_date),
+    }))
+    .filter((schedule) => !Number.isNaN(schedule.date.getTime()));
+  const latest = schedules.find((schedule) => schedule.visit_record) ?? schedules[0] ?? null;
+  const next =
+    [...schedules].reverse().find((schedule) => schedule.date >= now && !schedule.visit_record) ??
+    null;
+  return {
+    latest: latest ? format(latest.date, 'M/d', { locale: ja }) : '未設定',
+    next: next
+      ? `${format(next.date, 'M/d', { locale: ja })}${
+          next.time_window_start ? ` ${next.time_window_start.slice(0, 5)}` : ''
+        }`
+      : '未設定',
+  };
+}
+
+function SummaryTile({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: 'warn' | 'risk';
+}) {
+  return (
+    <div
+      className={cn(
+        'rounded-md border border-border/60 bg-muted/30 p-3',
+        tone === 'warn' && 'border-amber-200 bg-amber-50 text-amber-950',
+        tone === 'risk' && 'border-red-200 bg-red-50 text-red-950',
+      )}
+    >
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-1 font-semibold text-foreground">{value}</dd>
+    </div>
+  );
+}
+
+function VisitPrepRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid gap-1 border-b border-border/60 py-2.5 text-sm last:border-b-0 sm:grid-cols-[120px_minmax(0,1fr)]">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 break-words font-medium text-foreground">{value || '未設定'}</dd>
+    </div>
+  );
+}
+
 function PatientProfilePanel({ patient }: { patient: PatientOverview }) {
   const age = differenceInYears(new Date(), new Date(patient.birth_date));
   const genderLabel = formatGenderLabel(patient.gender);
   const residenceLabel = formatResidenceLabel(patient);
   const preference = patient.scheduling_preference;
+  const intake = getPrimaryHomeVisitIntake(patient);
+  const addOn2 = intake?.home_pharmacy_add_on_2;
+  const visitSchedule = buildVisitScheduleLabel(patient);
   const swallowing =
     preference?.swallowing_route ?? patient.workspace?.safety.swallowing ?? '未確認';
-  const careLevel = preference?.care_level ?? '未設定';
+  const homeStatus = labelOf(intake?.home_care_status, homeCareStatusLabels);
+  const emergencyResponse = labelOf(intake?.emergency_response, emergencyResponseLabels);
+  const careLevel = preference?.care_level ?? intake?.care_level ?? '未設定';
   const notes = patient.notes?.trim();
   const latestCondition =
     patient.conditions.find((condition) => condition.is_primary && condition.is_active) ??
@@ -205,36 +290,153 @@ function PatientProfilePanel({ patient }: { patient: PatientOverview }) {
         </Link>
       </div>
       <dl className="mt-4 grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-3">
-        <div className="rounded-md border border-border/60 bg-muted/30 p-3">
-          <dt className="text-xs text-muted-foreground">本人</dt>
-          <dd className="mt-1 font-semibold text-foreground">
-            {age}歳 / {genderLabel} / {residenceLabel}
-          </dd>
-        </div>
-        <div className="rounded-md border border-border/60 bg-muted/30 p-3">
-          <dt className="text-xs text-muted-foreground">連絡先</dt>
-          <dd className="mt-1 font-semibold text-foreground">{formatPreferredContact(patient)}</dd>
-        </div>
-        <div className="rounded-md border border-border/60 bg-muted/30 p-3">
-          <dt className="text-xs text-muted-foreground">駐車場</dt>
-          <dd className="mt-1 font-semibold text-foreground">{formatParkingLabel(patient)}</dd>
-        </div>
-        <div className="rounded-md border border-border/60 bg-muted/30 p-3">
-          <dt className="text-xs text-muted-foreground">嚥下・服薬経路</dt>
-          <dd className="mt-1 font-semibold text-foreground">{swallowing}</dd>
-        </div>
-        <div className="rounded-md border border-border/60 bg-muted/30 p-3">
-          <dt className="text-xs text-muted-foreground">介護度</dt>
-          <dd className="mt-1 font-semibold text-foreground">{careLevel}</dd>
-        </div>
-        <div className="rounded-md border border-border/60 bg-muted/30 p-3">
-          <dt className="text-xs text-muted-foreground">主な病名・課題</dt>
-          <dd className="mt-1 font-semibold text-foreground">
-            {latestCondition?.name ?? '未設定'}
-          </dd>
-        </div>
+        <SummaryTile label="状態" value={homeStatus === '—' ? '未設定' : homeStatus} />
+        <SummaryTile
+          label="次回 / 最終"
+          value={`${visitSchedule.next} / ${visitSchedule.latest}`}
+        />
+        <SummaryTile
+          label="緊急"
+          value={emergencyResponse === '—' ? '未確認' : emergencyResponse}
+          tone={
+            intake?.emergency_response === 'unavailable'
+              ? 'risk'
+              : intake?.emergency_response
+                ? undefined
+                : 'warn'
+          }
+        />
+        <SummaryTile label="主連絡" value={formatPreferredContact(patient)} />
+        <SummaryTile label="現地" value={`${residenceLabel} / ${formatParkingLabel(patient)}`} />
+        <SummaryTile
+          label="薬学リスク"
+          value={[
+            addOn2?.candidate ? labelOf(addOn2.candidate, homePharmacyAddOn2CandidateLabels) : null,
+            swallowing,
+            careLevel,
+          ]
+            .filter(Boolean)
+            .join(' / ')}
+        />
       </dl>
+      <p className="mt-2 text-xs text-muted-foreground">
+        {age}歳 / {genderLabel} / {latestCondition?.name ?? '主病名未設定'}
+      </p>
       {notes ? <p className="mt-3 text-sm leading-6 text-muted-foreground">{notes}</p> : null}
+    </SectionCard>
+  );
+}
+
+function PatientVisitPreparationPanel({ patient }: { patient: PatientOverview }) {
+  const intake = getPrimaryHomeVisitIntake(patient);
+  if (!intake) return null;
+  const addOn2 = intake.home_pharmacy_add_on_2;
+  const specialProcedures = joinLabeledValues(
+    intake.special_medical_procedures,
+    specialProcedureLabels,
+  );
+  const narcotics = joinLabeledValues(addOn2?.narcotic_use_categories, narcoticUseCategoryLabels);
+  const openTaskLabels = patient.summary_metrics.open_tasks_count
+    ? `${patient.summary_metrics.open_tasks_count}件`
+    : 'なし';
+
+  return (
+    <SectionCard aria-label="訪問前確認" data-testid="patient-visit-prep-panel">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-base font-semibold text-foreground">訪問前確認</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            緊急、書類、調製・材料、次回確認、連携の迷いをここで潰します。
+          </p>
+        </div>
+        <Link
+          href={`/patients/${patient.id}/edit`}
+          className={buttonVariants({ variant: 'outline', size: 'sm', className: 'min-h-11' })}
+        >
+          訪問情報を編集
+        </Link>
+      </div>
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <dl className="rounded-lg border border-border/70 bg-muted/10 px-3">
+          <VisitPrepRow
+            label="緊急・初動"
+            value={[
+              labelOf(intake.emergency_response, emergencyResponseLabels),
+              intake.emergency_policy_note,
+            ]
+              .filter((value) => value && value !== '—')
+              .join(' / ')}
+          />
+          <VisitPrepRow label="書類・期限" value={intake.document_status_note ?? '未設定'} />
+          <VisitPrepRow label="報告先" value={intake.report_destination_note ?? '未設定'} />
+          <VisitPrepRow
+            label="現地・受渡"
+            value={[
+              labelOf(intake.visit_frequency, visitFrequencyLabels),
+              intake.regular_visit_slot,
+              intake.medication_handover_place,
+            ]
+              .filter(Boolean)
+              .join(' / ')}
+          />
+          <VisitPrepRow
+            label="薬剤保管"
+            value={[intake.medication_storage_location, intake.collection_method]
+              .filter(Boolean)
+              .join(' / ')}
+          />
+        </dl>
+        <dl className="rounded-lg border border-border/70 bg-muted/10 px-3">
+          <VisitPrepRow
+            label="調製・材料"
+            value={[
+              specialProcedures.join(' / '),
+              labelOf(addOn2?.aseptic_preparation_need, asepticPreparationNeedLabels),
+              intake.medical_material_supplier,
+              intake.material_exchange_due_note,
+            ]
+              .filter((value) => value && value !== '—')
+              .join(' / ')}
+          />
+          <VisitPrepRow
+            label="麻薬・疼痛"
+            value={[
+              narcotics.join(' / '),
+              intake.pain_score ? `NRS ${intake.pain_score}` : null,
+              intake.rescue_use_count_recent,
+            ]
+              .filter(Boolean)
+              .join(' / ')}
+          />
+          <VisitPrepRow
+            label="残薬・副作用"
+            value={[
+              intake.residual_medication_pattern,
+              formatVisitDate(intake.residual_medication_checked_on),
+              labelOf(intake.residual_adjustment_status, supportStatusLabels),
+              intake.adverse_monitoring_items?.join(' / '),
+            ]
+              .filter((value) => value && value !== '—')
+              .join(' / ')}
+          />
+          <VisitPrepRow
+            label="検査・転倒"
+            value={[
+              intake.egfr_value ? `eGFR ${intake.egfr_value}` : null,
+              intake.weight_kg,
+              labelOf(intake.fall_risk, triageRiskLabels),
+            ]
+              .filter((value) => value && value !== '—')
+              .join(' / ')}
+          />
+          <VisitPrepRow
+            label="連携タスク"
+            value={[openTaskLabels, intake.interprofessional_action_note]
+              .filter(Boolean)
+              .join(' / ')}
+          />
+        </dl>
+      </div>
     </SectionCard>
   );
 }
@@ -377,6 +579,7 @@ export function CardWorkspace({
       <div className="space-y-6" data-testid="card-workspace">
         {headerRow}
         <PatientProfilePanel patient={patient} />
+        <PatientVisitPreparationPanel patient={patient} />
         <EmptyState
           icon={FileQuestion}
           title="進行中のカードがありません"
@@ -483,6 +686,7 @@ export function CardWorkspace({
       <div className="space-y-4 xl:grid xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start xl:gap-6 xl:space-y-0 2xl:grid-cols-[minmax(0,1fr)_300px_320px]">
         <div className="min-w-0 space-y-4">
           <PatientProfilePanel patient={patient} />
+          <PatientVisitPreparationPanel patient={patient} />
 
           {/* セーフティボード: どの工程でも常時表示。危険タグは絶対に隠さない */}
           <SafetyBoard
