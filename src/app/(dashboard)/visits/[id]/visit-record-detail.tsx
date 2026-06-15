@@ -43,6 +43,7 @@ import {
   type HomeVisit2026BillingBlocker,
 } from '@/lib/visits/home-visit-2026-evidence';
 import type { VisitConferenceContext } from '@/components/features/visits/visit-medication-management-section';
+import { VisitReflectedFieldsCard } from './visit-reflected-fields-card';
 import type { StructuredSoap } from '@/types/structured-soap';
 import {
   buildPostVisitWorkflowActions,
@@ -973,6 +974,9 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
           </CardContent>
         </Card>
       )}
+
+      {/* ⑤ 反映 provenance(訪問側): この訪問から患者詳細へ反映した項目。反映が無ければ非表示 */}
+      <VisitReflectedFieldsCard recordId={recordId} />
 
       <Card>
         <CardHeader className="pb-2">

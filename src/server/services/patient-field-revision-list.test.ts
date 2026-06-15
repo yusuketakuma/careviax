@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { listPatientFieldRevisions } from './patient-field-revision-list';
+import {
+  listFieldRevisionsBySourceVisitRecord,
+  listPatientFieldRevisions,
+} from './patient-field-revision-list';
 
 function createDb(rows: unknown[], users: Array<{ id: string; name: string }>) {
   const findMany = vi.fn().mockResolvedValue(rows);
@@ -76,5 +79,31 @@ describe('listPatientFieldRevisions', () => {
     const result = await listPatientFieldRevisions(db, { orgId: 'org_1', patientId: 'p1' });
     expect(result[0].confirmed_by_name).toBeNull();
     expect(result[0].confirmed_at).toBeNull();
+  });
+});
+
+describe('listFieldRevisionsBySourceVisitRecord', () => {
+  it('source_visit_record_id でフィルタし、整形・氏名解決して返す', async () => {
+    const { db, findMany } = createDb(
+      [{ ...baseRow, source: 'visit_record', source_visit_record_id: 'vr_1' }],
+      [{ id: 'user_u', name: '田中' }]
+    );
+
+    const result = await listFieldRevisionsBySourceVisitRecord(db, {
+      orgId: 'org_1',
+      sourceVisitRecordId: 'vr_1',
+    });
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ org_id: 'org_1', source_visit_record_id: 'vr_1' }),
+      })
+    );
+    expect(result[0]).toMatchObject({
+      field_key: 'care_level',
+      source: 'visit_record',
+      source_visit_record_id: 'vr_1',
+      updated_by_name: '田中',
+    });
   });
 });

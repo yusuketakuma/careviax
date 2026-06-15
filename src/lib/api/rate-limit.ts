@@ -740,6 +740,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/visit-records/:id/handoff',
   '/api/visit-records/:id/handoff/extract',
   '/api/visit-records/:id/pdf',
+  '/api/visit-records/:id/reflected-fields',
   '/api/visit-routes',
   '/api/visit-routes/reorder',
   '/api/visit-vehicle-resources',
