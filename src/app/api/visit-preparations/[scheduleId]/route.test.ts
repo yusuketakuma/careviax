@@ -277,6 +277,45 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
       visit_date: new Date('2026-03-20T00:00:00Z'),
       outcome_status: 'completed',
       soap_plan: '残薬確認を強化する',
+      structured_soap: {
+        subjective: {
+          symptom_checks: ['便秘が続く'],
+          free_text: '昼分の飲み忘れあり',
+        },
+        objective: {
+          medication_status: '一包化で管理',
+          adherence_score: 3,
+          side_effect_checks: ['眠気'],
+          adverse_events: {
+            has_events: true,
+            events: ['ふらつき'],
+            details: '夜間トイレ時にふらつく',
+          },
+        },
+        assessment: {
+          problem_checks: ['服薬タイミングのずれ'],
+          free_text: '残薬と眠気を次回も確認',
+        },
+        plan: {
+          intervention_checks: ['残薬調整'],
+          physician_report_items: '眠気とふらつきを共有',
+          care_manager_report_items: '夜間転倒リスクを共有',
+          free_text: '次回も残薬確認',
+        },
+        residual_medications: [
+          {
+            drug_name: 'アムロジピンOD錠5mg',
+            remaining_quantity: 6,
+            excess_days: 3,
+            is_reduction_target: true,
+          },
+        ],
+        handoff: {
+          next_check_items: ['眠気とふらつきの継続確認'],
+          ongoing_monitoring: ['昼分の飲み忘れ'],
+          decision_rationale: '前回残薬と副作用訴えあり',
+        },
+      },
       next_visit_suggestion_date: new Date('2026-04-03T00:00:00Z'),
     });
     visitRecordFindManyMock.mockResolvedValue([{ id: 'record_1' }]);
@@ -591,6 +630,18 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
           ],
           previous_visit: expect.objectContaining({
             summary: expect.stringContaining('残薬確認を強化する'),
+            structured_reuse: expect.objectContaining({
+              carry_forward_items: expect.arrayContaining([
+                '眠気とふらつきの継続確認',
+                expect.stringContaining('前回残薬'),
+                '副作用再確認: 眠気',
+              ]),
+              handoff: expect.objectContaining({
+                next_check_items: ['眠気とふらつきの継続確認'],
+                ongoing_monitoring: ['昼分の飲み忘れ'],
+                decision_rationale: '前回残薬と副作用訴えあり',
+              }),
+            }),
           }),
           medication_period: {
             schedule_start_date: '2026-03-27',
@@ -710,6 +761,7 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
       visit_date: new Date('2026-03-19T15:30:00.000Z'),
       outcome_status: 'completed',
       soap_plan: '残薬確認を強化する',
+      structured_soap: null,
       next_visit_suggestion_date: new Date('2026-04-02T15:30:00.000Z'),
     });
 

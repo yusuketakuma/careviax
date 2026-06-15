@@ -45,6 +45,20 @@ type IntakeLineSummary = {
   end_date: Date | null;
 };
 
+type PreviousStructuredVisitReuse = {
+  source_visit_record_id: string;
+  subjective: string[];
+  objective: string[];
+  assessment: string[];
+  plan: string[];
+  handoff: {
+    next_check_items: string[];
+    ongoing_monitoring: string[];
+    decision_rationale: string | null;
+  };
+  carry_forward_items: string[];
+};
+
 function isInputJsonObject(
   value: Prisma.InputJsonValue | null | undefined,
 ): value is Prisma.InputJsonObject {
@@ -300,6 +314,151 @@ function buildPreviousVisitSummary(
       : null,
   ].filter((value): value is string => Boolean(value));
   return parts.join(' / ');
+}
+
+function readStringArray(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => (typeof item === 'string' ? item.trim() : ''))
+    .filter((item) => item.length > 0);
+}
+
+function readTrimmedString(value: unknown) {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function buildPreviousStructuredVisitReuse(
+  previousVisit: {
+    id: string;
+    structured_soap: Prisma.JsonValue | null;
+  } | null,
+): PreviousStructuredVisitReuse | null {
+  if (!previousVisit) return null;
+  const structuredSoap = readJsonObject(previousVisit.structured_soap);
+  if (!structuredSoap) return null;
+
+  const subjective = readJsonObject(structuredSoap.subjective);
+  const objective = readJsonObject(structuredSoap.objective);
+  const assessment = readJsonObject(structuredSoap.assessment);
+  const plan = readJsonObject(structuredSoap.plan);
+  const handoff = readJsonObject(structuredSoap.handoff);
+  const homeVisit2026 = readJsonObject(structuredSoap.home_visit_2026);
+  const adverseEvents = readJsonObject(objective?.adverse_events);
+  const residualMedications = Array.isArray(structuredSoap.residual_medications)
+    ? structuredSoap.residual_medications
+        .map((item) => readJsonObject(item))
+        .filter((item): item is Record<string, unknown> => item != null)
+    : [];
+
+  const residualLines = residualMedications
+    .map((item) => {
+      const drugName = readTrimmedString(item.drug_name);
+      if (!drugName) return null;
+      const remainingQuantity =
+        typeof item.remaining_quantity === 'number' ? item.remaining_quantity : null;
+      const excessDays = typeof item.excess_days === 'number' ? item.excess_days : null;
+      const amount = [
+        remainingQuantity != null ? `${remainingQuantity}錠` : null,
+        excessDays != null ? `${excessDays}日分過多` : null,
+      ].filter(Boolean);
+      return amount.length > 0 ? `${drugName} ${amount.join(' / ')}` : drugName;
+    })
+    .filter((item): item is string => item != null);
+
+  const subjectiveLines = [
+    ...readStringArray(subjective?.symptom_checks).map((item) => `症状: ${item}`),
+    readTrimmedString(subjective?.free_text),
+  ].filter((item): item is string => item != null);
+
+  const objectiveLines = [
+    readTrimmedString(objective?.medication_status)
+      ? `服薬状況: ${readTrimmedString(objective?.medication_status)}`
+      : null,
+    typeof objective?.adherence_score === 'number'
+      ? `アドヒアランス: ${objective.adherence_score}/5`
+      : null,
+    ...readStringArray(objective?.side_effect_checks).map((item) => `副作用確認: ${item}`),
+    ...readStringArray(adverseEvents?.events).map((item) => `有害事象: ${item}`),
+    readTrimmedString(adverseEvents?.details)
+      ? `有害事象詳細: ${readTrimmedString(adverseEvents?.details)}`
+      : null,
+    residualLines.length > 0 ? `残薬: ${residualLines.slice(0, 3).join('、')}` : null,
+    readTrimmedString(objective?.free_text),
+  ].filter((item): item is string => item != null);
+
+  const assessmentLines = [
+    ...readStringArray(assessment?.problem_checks).map((item) => `課題: ${item}`),
+    ...readStringArray(assessment?.drug_related_problems).map((item) => `薬学的問題: ${item}`),
+    readTrimmedString(assessment?.severity)
+      ? `重症度: ${readTrimmedString(assessment?.severity)}`
+      : null,
+    readTrimmedString(assessment?.free_text),
+  ].filter((item): item is string => item != null);
+
+  const planLines = [
+    ...readStringArray(plan?.intervention_checks).map((item) => `介入: ${item}`),
+    readTrimmedString(plan?.next_visit_date)
+      ? `次回目安: ${readTrimmedString(plan?.next_visit_date)}`
+      : null,
+    readTrimmedString(plan?.prescription_proposal)
+      ? `処方提案: ${readTrimmedString(plan?.prescription_proposal)}`
+      : null,
+    readTrimmedString(plan?.physician_report_items)
+      ? `医師へ: ${readTrimmedString(plan?.physician_report_items)}`
+      : null,
+    readTrimmedString(plan?.care_manager_report_items)
+      ? `ケアマネへ: ${readTrimmedString(plan?.care_manager_report_items)}`
+      : null,
+    readTrimmedString(plan?.care_service_coordination)
+      ? `介護サービスへ: ${readTrimmedString(plan?.care_service_coordination)}`
+      : null,
+    readTrimmedString(plan?.free_text),
+  ].filter((item): item is string => item != null);
+
+  const handoffNextCheckItems = readStringArray(handoff?.next_check_items);
+  const handoffOngoingMonitoring = readStringArray(handoff?.ongoing_monitoring);
+  const decisionRationale = readTrimmedString(handoff?.decision_rationale);
+  const carryForwardItems = [
+    ...handoffNextCheckItems,
+    residualLines.length > 0 ? `前回残薬: ${residualLines.slice(0, 2).join('、')}` : null,
+    ...readStringArray(objective?.side_effect_checks).map((item) => `副作用再確認: ${item}`),
+    ...readStringArray(adverseEvents?.events).map((item) => `有害事象フォロー: ${item}`),
+    homeVisit2026?.residual_medication_checked === false ? '前回未確認: 残薬' : null,
+    readTrimmedString(plan?.physician_report_items)
+      ? `医師共有後の変化: ${readTrimmedString(plan?.physician_report_items)}`
+      : null,
+    readTrimmedString(plan?.care_manager_report_items)
+      ? `ケアマネ共有後の変化: ${readTrimmedString(plan?.care_manager_report_items)}`
+      : null,
+    readTrimmedString(plan?.free_text),
+  ].filter((item): item is string => item != null);
+
+  const uniqueCarryForwardItems = Array.from(new Set(carryForwardItems)).slice(0, 8);
+  const hasReusableData =
+    subjectiveLines.length > 0 ||
+    objectiveLines.length > 0 ||
+    assessmentLines.length > 0 ||
+    planLines.length > 0 ||
+    handoffNextCheckItems.length > 0 ||
+    handoffOngoingMonitoring.length > 0 ||
+    decisionRationale != null ||
+    uniqueCarryForwardItems.length > 0;
+
+  if (!hasReusableData) return null;
+
+  return {
+    source_visit_record_id: previousVisit.id,
+    subjective: subjectiveLines.slice(0, 5),
+    objective: objectiveLines.slice(0, 6),
+    assessment: assessmentLines.slice(0, 5),
+    plan: planLines.slice(0, 6),
+    handoff: {
+      next_check_items: handoffNextCheckItems.slice(0, 6),
+      ongoing_monitoring: handoffOngoingMonitoring.slice(0, 6),
+      decision_rationale: decisionRationale,
+    },
+    carry_forward_items: uniqueCarryForwardItems,
+  };
 }
 
 function buildPreparationTaskKey(scheduleId: string) {
@@ -684,6 +843,7 @@ export async function GET(
         visit_date: true,
         outcome_status: true,
         soap_plan: true,
+        structured_soap: true,
         next_visit_suggestion_date: true,
       },
     }),
@@ -1051,6 +1211,7 @@ export async function GET(
               next_visit_suggestion_date:
                 previousVisit.next_visit_suggestion_date?.toISOString() ?? null,
               summary: buildPreviousVisitSummary(previousVisit),
+              structured_reuse: buildPreviousStructuredVisitReuse(previousVisit),
             }
           : null,
         open_tasks: openTasks.map((task) => {

@@ -232,6 +232,20 @@ export type VisitPreparation = {
   checklist: Record<string, unknown>;
 };
 
+export type VisitPreviousStructuredReuse = {
+  source_visit_record_id: string;
+  subjective: string[];
+  objective: string[];
+  assessment: string[];
+  plan: string[];
+  handoff: {
+    next_check_items: string[];
+    ongoing_monitoring: string[];
+    decision_rationale: string | null;
+  };
+  carry_forward_items: string[];
+};
+
 export type VisitPreparationPack = {
   patient: {
     id: string;
@@ -265,6 +279,7 @@ export type VisitPreparationPack = {
     soap_plan: string | null;
     next_visit_suggestion_date: string | null;
     summary?: string | null;
+    structured_reuse?: VisitPreviousStructuredReuse | null;
   } | null;
   open_tasks: Array<{
     id: string;

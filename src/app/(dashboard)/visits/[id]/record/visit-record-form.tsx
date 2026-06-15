@@ -84,6 +84,7 @@ import {
   type VisitConferenceContext,
   type VisitMedicationPeriod,
   type VisitPrescriptionChanges,
+  type VisitPreviousStructuredReuse,
 } from '@/components/features/visits/visit-medication-management-section';
 import {
   PatientCareTeamSourcePanel,
@@ -236,6 +237,7 @@ type VisitPreparationSnapshot = {
       prescription_changes?: VisitPrescriptionChanges | null;
       previous_visit?: {
         summary?: string | null;
+        structured_reuse?: VisitPreviousStructuredReuse | null;
       } | null;
       facility_parallel_context?: {
         batch_id: string | null;
@@ -863,6 +865,8 @@ export function VisitRecordForm({
   const medicationPeriod = visitPreparationPack?.medication_period ?? null;
   const prescriptionChanges = visitPreparationPack?.prescription_changes ?? null;
   const previousVisitSummary = visitPreparationPack?.previous_visit?.summary ?? null;
+  const previousVisitStructuredReuse =
+    visitPreparationPack?.previous_visit?.structured_reuse ?? null;
   const facilityParallelContext = visitPreparationPack?.facility_parallel_context ?? null;
   const effectiveFacilityVisitContext: FacilityVisitContext | null =
     facilityParallelContext && facilityParallelContext.patients.length > 1
@@ -1396,6 +1400,7 @@ export function VisitRecordForm({
       medicationPeriod={medicationPeriod}
       prescriptionChanges={prescriptionChanges}
       previousVisitSummary={previousVisitSummary}
+      previousVisitStructuredReuse={previousVisitStructuredReuse}
       onChange={handleStructuredSoapChange}
     />
   );

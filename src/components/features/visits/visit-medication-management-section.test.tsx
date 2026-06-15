@@ -43,6 +43,22 @@ describe('VisitMedicationManagementSection', () => {
           removed: [],
         }}
         previousVisitSummary="前回はふらつきと昼分の飲み忘れを確認。"
+        previousVisitStructuredReuse={{
+          source_visit_record_id: 'record_prev',
+          subjective: ['昼分の飲み忘れあり'],
+          objective: ['残薬: アムロジピン錠 6錠 / 3日分過多', '副作用確認: 眠気'],
+          assessment: ['残薬と眠気を次回も確認'],
+          plan: ['医師へ: 眠気とふらつきを共有'],
+          handoff: {
+            next_check_items: ['眠気とふらつきの継続確認'],
+            ongoing_monitoring: ['昼分の飲み忘れ'],
+            decision_rationale: '前回残薬と副作用訴えあり',
+          },
+          carry_forward_items: [
+            '眠気とふらつきの継続確認',
+            '前回残薬: アムロジピン錠 6錠 / 3日分過多',
+          ],
+        }}
         conferenceContext={[
           {
             id: 'conf_1',
@@ -80,6 +96,18 @@ describe('VisitMedicationManagementSection', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: /前回記録/ }));
     expect(screen.getByText('前回はふらつきと昼分の飲み忘れを確認。')).toBeTruthy();
+    expect(screen.getByText('前回から引き継ぐ確認')).toBeTruthy();
+    expect(screen.getAllByText(/眠気とふらつきの継続確認/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/アムロジピン錠 6錠/).length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', { name: /前回確認をSへ/ }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        subjective: expect.objectContaining({
+          free_text: expect.stringContaining('前回からの引き継ぎ確認'),
+        }),
+      }),
+    );
 
     fireEvent.click(screen.getByRole('tab', { name: /他職種/ }));
     expect(screen.getAllByText('担当者会議').length).toBeGreaterThan(0);

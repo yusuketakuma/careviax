@@ -45,6 +45,7 @@ type VisitMedicationManagementSectionProps = {
   medicationPeriod?: VisitMedicationPeriod | null;
   prescriptionChanges?: VisitPrescriptionChanges | null;
   previousVisitSummary?: string | null;
+  previousVisitStructuredReuse?: VisitPreviousStructuredReuse | null;
   onChange: (next: StructuredSoap) => void;
 };
 
@@ -93,6 +94,20 @@ export type VisitPrescriptionChanges = {
     reasons: string[];
   }>;
   removed: string[];
+};
+
+export type VisitPreviousStructuredReuse = {
+  source_visit_record_id: string;
+  subjective: string[];
+  objective: string[];
+  assessment: string[];
+  plan: string[];
+  handoff: {
+    next_check_items: string[];
+    ongoing_monitoring: string[];
+    decision_rationale: string | null;
+  };
+  carry_forward_items: string[];
 };
 
 const safetyReasonOptions = [
@@ -274,11 +289,75 @@ function buildSoapHandoffLines(structuredSoap: StructuredSoap) {
   ].filter((value): value is string => value != null && value.trim().length > 0);
 }
 
+function hasPreviousStructuredReuse(
+  value: VisitPreviousStructuredReuse | null | undefined,
+): value is VisitPreviousStructuredReuse {
+  if (!value) return false;
+  return (
+    value.carry_forward_items.length > 0 ||
+    value.subjective.length > 0 ||
+    value.objective.length > 0 ||
+    value.assessment.length > 0 ||
+    value.plan.length > 0 ||
+    value.handoff.next_check_items.length > 0 ||
+    value.handoff.ongoing_monitoring.length > 0 ||
+    Boolean(value.handoff.decision_rationale)
+  );
+}
+
+function PreviousStructuredReusePanel({
+  value,
+}: {
+  value: VisitPreviousStructuredReuse | null | undefined;
+}) {
+  if (!hasPreviousStructuredReuse(value)) return null;
+  const reuse = value;
+  const groups = [
+    { label: '聞き取り', items: reuse.subjective },
+    { label: '観察', items: reuse.objective },
+    { label: '評価', items: reuse.assessment },
+    { label: '計画', items: reuse.plan },
+    {
+      label: '申し送り',
+      items: [
+        ...reuse.handoff.next_check_items.map((item) => `次回確認: ${item}`),
+        ...reuse.handoff.ongoing_monitoring.map((item) => `継続観察: ${item}`),
+        ...(reuse.handoff.decision_rationale ? [`根拠: ${reuse.handoff.decision_rationale}`] : []),
+      ],
+    },
+  ].filter((group) => group.items.length > 0);
+
+  return (
+    <div className="space-y-3">
+      <SourceSection label="前回から引き継ぐ確認">
+        <div className="flex flex-wrap gap-2">
+          {reuse.carry_forward_items.slice(0, 6).map((item) => (
+            <span
+              key={item}
+              className="inline-flex min-h-7 items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-950"
+            >
+              {item}
+            </span>
+          ))}
+        </div>
+      </SourceSection>
+      <div className="grid gap-3 lg:grid-cols-2">
+        {groups.slice(0, 4).map((group) => (
+          <SourceSection key={group.label} label={group.label}>
+            <SourceList items={group.items.slice(0, 4)} />
+          </SourceSection>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function VisitInformationSourceTabs({
   structuredSoap,
   medicationPeriod,
   prescriptionChanges,
   previousVisitSummary,
+  previousVisitStructuredReuse,
   conferenceContext,
   onQuickCapture,
 }: {
@@ -286,6 +365,7 @@ function VisitInformationSourceTabs({
   medicationPeriod?: VisitMedicationPeriod | null;
   prescriptionChanges?: VisitPrescriptionChanges | null;
   previousVisitSummary?: string | null;
+  previousVisitStructuredReuse?: VisitPreviousStructuredReuse | null;
   conferenceContext: VisitConferenceContext[];
   onQuickCapture?: (action: QuickCaptureAction) => void;
 }) {
@@ -301,6 +381,24 @@ function VisitInformationSourceTabs({
   const conferenceHighlightLines = conferenceContext.flatMap((note) =>
     note.highlights.map((highlight) => `${conferenceLabel(note.note_type)}: ${highlight}`),
   );
+  const previousStructuredAvailable = hasPreviousStructuredReuse(previousVisitStructuredReuse);
+  const previousCarryForwardItems = previousVisitStructuredReuse?.carry_forward_items ?? [];
+  const previousPrompts =
+    previousCarryForwardItems.length > 0
+      ? previousCarryForwardItems.slice(0, 3)
+      : ['前回の困りごとが続いているか確認する', '飲み忘れ、副作用、生活変化を短く聞く'];
+  const previousActionText =
+    previousCarryForwardItems.length > 0
+      ? `前回からの引き継ぎ確認: ${previousCarryForwardItems.slice(0, 3).join(' / ')}`
+      : '前回課題の継続有無、服薬上の困りごと、生活変化を確認。';
+  const previousAssessmentText =
+    (previousVisitStructuredReuse?.assessment[0] ?? previousVisitStructuredReuse?.plan[0])
+      ? `前回評価・計画を踏まえ、今日の変化と継続確認事項を整理。${
+          previousVisitStructuredReuse?.assessment[0]
+            ? ` 前回評価: ${previousVisitStructuredReuse.assessment[0]}`
+            : ''
+        }`
+      : '前回課題を踏まえ、次回までの確認事項と連携先への共有要否を整理。';
 
   const tabs = [
     {
@@ -313,7 +411,9 @@ function VisitInformationSourceTabs({
       value: 'previous',
       label: '前回記録',
       icon: History,
-      count: previousVisitSummary ? 1 : 0,
+      count:
+        (previousVisitSummary ? 1 : 0) +
+        (previousStructuredAvailable ? previousCarryForwardItems.length || 1 : 0),
     },
     {
       value: 'team',
@@ -329,7 +429,7 @@ function VisitInformationSourceTabs({
     },
   ] as const;
   const hasPrescriptionAttention = changeLines.length > 0 || Boolean(medicationPeriod);
-  const hasPreviousAttention = Boolean(previousVisitSummary);
+  const hasPreviousAttention = Boolean(previousVisitSummary) || previousStructuredAvailable;
   const hasTeamAttention = conferenceContext.length > 0;
   const hasHandoffAttention = handoffLines.length > 0 || conferenceActionLines.length > 0;
 
@@ -357,7 +457,11 @@ function VisitInformationSourceTabs({
         <div className="rounded-lg border border-cyan-200 bg-white/70 px-3 py-2">
           <p className="text-[11px] font-semibold text-cyan-950">前回</p>
           <p className="mt-1 text-xs text-cyan-900">
-            {hasPreviousAttention ? '要約あり' : '記録なし'}
+            {previousStructuredAvailable
+              ? `構造化 ${previousCarryForwardItems.length || 1}件`
+              : hasPreviousAttention
+                ? '要約あり'
+                : '記録なし'}
           </p>
         </div>
         <div className="rounded-lg border border-cyan-200 bg-white/70 px-3 py-2">
@@ -446,29 +550,31 @@ function VisitInformationSourceTabs({
         <TabsContent value="previous" className="space-y-3">
           <QuickCapturePanel
             title="次に聞く"
-            prompts={[
-              '前回の困りごとが続いているか確認する',
-              '飲み忘れ、副作用、生活変化を短く聞く',
-            ]}
+            prompts={previousPrompts}
             actions={[
               {
-                label: '前回課題をSへ',
+                label: previousStructuredAvailable ? '前回確認をSへ' : '前回課題をSへ',
                 target: 'subjective',
-                text: '前回課題の継続有無、服薬上の困りごと、生活変化を確認。',
+                text: previousActionText,
               },
               {
                 label: '評価観点をAへ',
                 target: 'assessment',
-                text: '前回課題を踏まえ、次回までの確認事項と連携先への共有要否を整理。',
+                text: previousAssessmentText,
               },
             ]}
             onQuickCapture={onQuickCapture}
           />
           <SourcePanel empty="前回記録の要約はまだありません。">
-            {previousVisitSummary ? (
-              <SourceSection label="前回までの要約">
-                <p className="text-sm leading-6 text-foreground">{previousVisitSummary}</p>
-              </SourceSection>
+            {previousVisitSummary || previousStructuredAvailable ? (
+              <div className="space-y-4">
+                {previousVisitSummary ? (
+                  <SourceSection label="前回までの要約">
+                    <p className="text-sm leading-6 text-foreground">{previousVisitSummary}</p>
+                  </SourceSection>
+                ) : null}
+                <PreviousStructuredReusePanel value={previousVisitStructuredReuse} />
+              </div>
             ) : null}
           </SourcePanel>
         </TabsContent>
@@ -698,6 +804,7 @@ export function VisitMedicationManagementSection({
   medicationPeriod,
   prescriptionChanges,
   previousVisitSummary,
+  previousVisitStructuredReuse,
   onChange,
 }: VisitMedicationManagementSectionProps) {
   const evidence = readHomeVisit2026Evidence(structuredSoap);
@@ -881,6 +988,7 @@ export function VisitMedicationManagementSection({
           medicationPeriod={medicationPeriod}
           prescriptionChanges={prescriptionChanges}
           previousVisitSummary={previousVisitSummary}
+          previousVisitStructuredReuse={previousVisitStructuredReuse}
           conferenceContext={conferenceContext}
           onQuickCapture={handleQuickCapture}
         />
