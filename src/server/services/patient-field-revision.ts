@@ -11,9 +11,9 @@ import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
  *   ContactParty/Residence/PatientCondition は audit トリガ対象外のため、本層が唯一の変更履歴となる。
  */
 export interface PatientFieldRevisionEntry {
-  /** 項目カテゴリ: 現状 basic/residence/contacts/conditions（pharmaceutical/medical_care/narcotic は後続スライス） */
+  /** 項目カテゴリ: 現状 basic/residence/contacts/conditions/clinical（医療処置/麻薬は後続スライス） */
   category: string;
-  /** 項目キー: 現状 name/phone/address/contacts/conditions 等（介護度等の臨床項目は後続スライス） */
+  /** 項目キー: 現状 基本情報/住所/contacts/conditions + 臨床(care_level/adl_level 等)。医療処置/麻薬は後続スライス */
   field_key: string;
   /** 表示名(例: 介護度) */
   field_label?: string | null;

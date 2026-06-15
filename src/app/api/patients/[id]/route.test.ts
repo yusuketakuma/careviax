@@ -31,6 +31,7 @@ const {
   withOrgContextMock,
   patientSchedulePreferenceUpsertMock,
   patientSchedulePreferenceUpdateManyMock,
+  patientSchedulePreferenceFindUniqueMock,
   patientInsuranceFindFirstMock,
   patientInsuranceUpdateMock,
   patientInsuranceCreateMock,
@@ -74,6 +75,7 @@ const {
   withOrgContextMock: vi.fn(),
   patientSchedulePreferenceUpsertMock: vi.fn(),
   patientSchedulePreferenceUpdateManyMock: vi.fn(),
+  patientSchedulePreferenceFindUniqueMock: vi.fn(),
   patientInsuranceFindFirstMock: vi.fn(),
   patientInsuranceUpdateMock: vi.fn(),
   patientInsuranceCreateMock: vi.fn(),
@@ -238,6 +240,7 @@ describe('/api/patients/[id]', () => {
     residenceUpdateMock.mockResolvedValue({ id: 'residence_1' });
     patientSchedulePreferenceUpsertMock.mockResolvedValue({ id: 'schedule_pref_1' });
     patientSchedulePreferenceUpdateManyMock.mockResolvedValue({ count: 1 });
+    patientSchedulePreferenceFindUniqueMock.mockResolvedValue(null);
     patientInsuranceFindFirstMock.mockResolvedValue(null);
     patientInsuranceUpdateMock.mockResolvedValue({ id: 'insurance_1' });
     patientInsuranceCreateMock.mockResolvedValue({ id: 'insurance_1' });
@@ -373,6 +376,7 @@ describe('/api/patients/[id]', () => {
         patientSchedulePreference: {
           upsert: patientSchedulePreferenceUpsertMock,
           updateMany: patientSchedulePreferenceUpdateManyMock,
+          findUnique: patientSchedulePreferenceFindUniqueMock,
         },
         careCase: {
           findFirst: careCaseFindFirstMock,
@@ -958,6 +962,37 @@ describe('/api/patients/[id]', () => {
       field_key: 'contacts',
     });
     expect((contactsCreate?.[0]?.data?.new_value as unknown[]).length).toBe(1);
+  });
+
+  it('records a clinical field revision when care_level changes via intake', async () => {
+    patientSchedulePreferenceFindUniqueMock.mockResolvedValue({
+      care_level: 'care_2',
+      adl_level: null,
+      dementia_level: null,
+      swallowing_route: null,
+      infection_isolation: false,
+    });
+
+    const response = await PATCH(
+      createRequest(
+        { intake: { care_level: 'care_4' } },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+
+    const careLevelCreate = patientFieldRevisionCreateMock.mock.calls.find(
+      (call) => call[0]?.data?.field_key === 'care_level',
+    );
+    expect(careLevelCreate?.[0]?.data).toMatchObject({
+      category: 'clinical',
+      field_key: 'care_level',
+      old_value: 'care_2',
+      new_value: 'care_4',
+    });
   });
 
   it('syncs facility acceptance window into patient schedule preferences on PATCH', async () => {

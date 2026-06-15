@@ -527,8 +527,8 @@ model PatientFieldRevision {
   org_id                 String
   patient_id             String
   case_id                String? // ケースに紐づく項目(intake/home_visit_intake)用
-  category               String // 現状: basic/residence/contacts/conditions（pharmaceutical/medical_care/narcotic は後続スライスで追加）
-  field_key              String // 現状: name/phone/name_kana/gender/birth_date/allergy_info/notes/address/building_id/facility_id/facility_unit_id/unit_name/contacts/conditions（介護度等の臨床項目は後続スライス）
+  category               String // 現状: basic/residence/contacts/conditions/clinical（pharmaceutical/medical_care/narcotic は後続スライスで追加）
+  field_key              String // 現状: 基本情報/住所/contacts/conditions + 臨床(care_level/adl_level/dementia_level/swallowing_route/infection_isolation)。医療処置/麻薬は後続スライス
   field_label            String? // 表示名(例: 介護度)
   old_value              Json? // 変更前
   new_value              Json? // 変更後

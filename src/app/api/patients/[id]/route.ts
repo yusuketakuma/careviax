@@ -2386,6 +2386,45 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }
 
         if (Object.keys(schedulePreferencePatchData).length > 0) {
+          // (臨床項目) 介護度/ADL/認知症度/嚥下/感染隔離 の差分を履歴化する。
+          // PatientSchedulePreference は audit トリガ対象外のため本履歴が唯一の変更痕跡。
+          // 値は期間で変わるため writePatientFieldRevisions の valid_from/valid_to で時点管理される。
+          const clinicalFieldLabels: Record<string, string> = {
+            care_level: '介護度',
+            adl_level: 'ADL',
+            dementia_level: '認知症度',
+            swallowing_route: '嚥下',
+            infection_isolation: '感染隔離',
+          };
+          const patchRecord = schedulePreferencePatchData as Record<string, unknown>;
+          const hasClinicalChange = Object.keys(clinicalFieldLabels).some(
+            (key) => key in schedulePreferencePatchData
+          );
+          // upsert が上書きする前に旧値を取得する
+          const existingPreference = hasClinicalChange
+            ? await tx.patientSchedulePreference.findUnique({
+                where: { patient_id: id },
+                select: {
+                  care_level: true,
+                  adl_level: true,
+                  dementia_level: true,
+                  swallowing_route: true,
+                  infection_isolation: true,
+                },
+              })
+            : null;
+          const existingRecord = existingPreference as Record<string, unknown> | null;
+          for (const [fieldKey, fieldLabel] of Object.entries(clinicalFieldLabels)) {
+            if (!(fieldKey in schedulePreferencePatchData)) continue;
+            revisionEntries.push({
+              category: 'clinical',
+              field_key: fieldKey,
+              field_label: fieldLabel,
+              old_value: existingRecord?.[fieldKey] ?? null,
+              new_value: patchRecord[fieldKey] ?? null,
+            });
+          }
+
           await tx.patientSchedulePreference.upsert({
             where: {
               patient_id: id,
