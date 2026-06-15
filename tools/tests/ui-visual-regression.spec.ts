@@ -1,15 +1,9 @@
-import { expect, test, type Locator } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { attachLocalSession, openStableRoute } from './helpers/local-auth';
 
 test.beforeEach(async ({ context }) => {
   await attachLocalSession(context);
 });
-
-async function waitForReportsDeliveryDashboardReady(deliveryDashboard: Locator) {
-  await expect(deliveryDashboard.getByText(/集計中|集計しています/)).toHaveCount(0, {
-    timeout: 60_000,
-  });
-}
 
 test.describe('limited visual comparison', () => {
   test('dashboard workflow rail layout stays stable', async ({ page }, testInfo) => {
@@ -20,64 +14,51 @@ test.describe('limited visual comparison', () => {
     const rail = page.getByTestId('dashboard-phase-rail');
     await expect(rail).toBeVisible({ timeout: 20_000 });
 
-    await expect(rail).toHaveScreenshot(
-      'dashboard-phase-rail.png',
-      {
-        animations: 'disabled',
-        caret: 'hide',
-      }
-    );
+    await expect(rail).toHaveScreenshot('dashboard-phase-rail.png', {
+      animations: 'disabled',
+      caret: 'hide',
+    });
   });
 
-  test('patients filter panel layout stays stable', async ({ page }, testInfo) => {
+  test('patients board layout stays stable', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'chromium');
 
     await openStableRoute(page, '/patients');
 
-    const filterPanel = page.getByTestId('patients-filter-panel');
-    await expect(filterPanel).toBeVisible({ timeout: 20_000 });
+    const board = page.getByTestId('patients-board');
+    await expect(board).toBeVisible({ timeout: 20_000 });
 
-    await expect(filterPanel).toHaveScreenshot(
-      'patients-filter-panel.png',
-      {
-        animations: 'disabled',
-        caret: 'hide',
-      }
-    );
+    await expect(board).toHaveScreenshot('patients-board.png', {
+      animations: 'disabled',
+      caret: 'hide',
+    });
   });
 
-  test('reports handoff rail layout stays stable', async ({ page }, testInfo) => {
+  test('reports workspace layout stays stable', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'chromium');
 
     await openStableRoute(page, '/reports');
 
-    const deliveryDashboard = page.getByTestId('reports-delivery-dashboard');
-    await expect(deliveryDashboard).toBeVisible({ timeout: 20_000 });
-    await waitForReportsDeliveryDashboardReady(deliveryDashboard);
+    const workspace = page.getByTestId('report-share-workspace');
+    await expect(workspace).toBeVisible({ timeout: 20_000 });
 
-    await expect(deliveryDashboard).toHaveScreenshot(
-      'reports-delivery-dashboard.png',
-      {
-        animations: 'disabled',
-        caret: 'hide',
-      }
-    );
+    await expect(workspace).toHaveScreenshot('report-share-workspace.png', {
+      animations: 'disabled',
+      caret: 'hide',
+    });
   });
 
-  test('reports filter panel layout stays stable', async ({ page }, testInfo) => {
+  test('reports waiting section layout stays stable', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== 'chromium');
 
     await openStableRoute(page, '/reports');
 
-    const filterPanel = page.getByTestId('reports-filter-panel');
-    await expect(filterPanel).toBeVisible({ timeout: 20_000 });
+    const waitingBox = page.getByTestId('report-waiting-box');
+    await expect(waitingBox).toBeVisible({ timeout: 20_000 });
 
-    await expect(filterPanel).toHaveScreenshot(
-      'reports-filter-panel.png',
-      {
-        animations: 'disabled',
-        caret: 'hide',
-      }
-    );
+    await expect(waitingBox).toHaveScreenshot('report-waiting-box.png', {
+      animations: 'disabled',
+      caret: 'hide',
+    });
   });
 });
