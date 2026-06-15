@@ -109,18 +109,21 @@ function TodayDraftsCard({ data }: { data: ReportsTodayWorkspaceResponse }) {
                     {DRAFT_STATUS_LABELS[row.status] ?? row.status}
                   </span>
                 </TableCell>
-                <TableCell className="text-right">
-                  {row.note ? (
-                    // 危険区分メモ(麻薬使用状況を含む 等)は隠さず常時表示する
-                    <span className="text-xs text-muted-foreground">{row.note}</span>
-                  ) : row.action ? (
-                    <Link
-                      href={row.action.href}
-                      className="inline-flex min-h-[44px] items-center rounded-md border border-primary/30 bg-primary/5 px-3 text-sm font-medium text-primary hover:bg-primary/10 sm:min-h-8"
-                    >
-                      {row.action.label}
-                    </Link>
-                  ) : null}
+                <TableCell>
+                  <div className="flex flex-col items-start gap-2 sm:items-end">
+                    {row.note ? (
+                      // 危険区分メモ(麻薬使用状況を含む 等)は隠さず常時表示する
+                      <span className="text-xs text-muted-foreground">{row.note}</span>
+                    ) : null}
+                    {row.action ? (
+                      <Link
+                        href={row.action.href}
+                        className="inline-flex min-h-[44px] items-center rounded-md border border-primary/30 bg-primary/5 px-3 text-sm font-medium text-primary hover:bg-primary/10 sm:min-h-8"
+                      >
+                        {row.action.label}
+                      </Link>
+                    ) : null}
+                  </div>
                 </TableCell>
               </TableRow>
             ))}

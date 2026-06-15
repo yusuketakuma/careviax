@@ -866,14 +866,10 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p1_04_ai_report_draft',
     targetImage: 'images/P1/p1_04_ai_report_draft.png',
-    route: '/reports',
+    // 伊藤キヨのケアマネ向け下書き(seed-design-demo 固定 ID)を直接開く。
+    // /reports からの「→ 下書きへ」クリックに依存すると、メモ付き行や当日データ差分で撮影が不安定になる。
+    route: '/reports/cmnhdemorep002amq9ph-os',
     setup: async (page) => {
-      // 今日書く報告の「→ 下書きへ」から draft 報告書の AI 下書きレビューを開く
-      await page
-        .getByRole('link', { name: /下書きへ/ })
-        .first()
-        .click()
-        .catch(() => {});
       await page
         .waitForSelector('[data-testid="report-ai-draft-review"]', { timeout: 30_000 })
         .catch(() => {});

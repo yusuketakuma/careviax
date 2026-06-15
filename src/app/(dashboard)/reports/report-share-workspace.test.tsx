@@ -182,14 +182,10 @@ describe('ReportShareWorkspace', () => {
     // ヘッダーメタ(書く/待つ/解決の当日件数)
     expect(screen.getByText(/書く3件・待つ2件・解決1件/)).toBeTruthy();
     // テンプレート編集はアウトライン副操作
-    expect(screen.getByTestId('report-edit-templates').textContent).toContain(
-      'テンプレートを編集',
-    );
+    expect(screen.getByTestId('report-edit-templates').textContent).toContain('テンプレートを編集');
 
     // 今日書く報告: 宛先と状態
-    expect(
-      screen.getByText('今日書く報告 — 訪問完了で下書きが開きます'),
-    ).toBeTruthy();
+    expect(screen.getByText('今日書く報告 — 訪問完了で下書きが開きます')).toBeTruthy();
     expect(screen.getByText('伊藤 キヨ 様')).toBeTruthy();
     expect(screen.getByText('ケアマネ(中島様)')).toBeTruthy();
     expect(screen.getByText('医師(山本先生)+ケアマネ')).toBeTruthy();
@@ -197,6 +193,8 @@ describe('ReportShareWorkspace', () => {
     // 危険区分メモは隠さない
     expect(screen.getByText('麻薬使用状況を含む')).toBeTruthy();
     expect(screen.getByText('12名分を1通に集約')).toBeTruthy();
+    // メモがある行でも下書き/訪問導線を隠さない
+    expect(screen.getAllByRole('link', { name: '→ 訪問へ' })).toHaveLength(2);
 
     // 返信待ち / 今日解決した待ち
     expect(screen.getByText('返信待ち')).toBeTruthy();

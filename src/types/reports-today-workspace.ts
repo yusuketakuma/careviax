@@ -18,7 +18,7 @@ export type ReportDraftRow = {
   status: ReportDraftRowStatus;
   /** 「麻薬使用状況を含む」「12名分を1通に集約」等の常時表示メモ。無ければ null。 */
   note: string | null;
-  /** 行アクション(note が無い行に表示)。 */
+  /** 行アクション。note がある行でも導線を隠さず併記する。 */
   action: { label: string; href: string } | null;
 };
 
