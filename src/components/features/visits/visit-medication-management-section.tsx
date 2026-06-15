@@ -7,11 +7,13 @@ import {
   ClipboardList,
   History,
   MessageSquareText,
+  PenLine,
   Pill,
   Stethoscope,
   UsersRound,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -44,6 +46,14 @@ type VisitMedicationManagementSectionProps = {
   prescriptionChanges?: VisitPrescriptionChanges | null;
   previousVisitSummary?: string | null;
   onChange: (next: StructuredSoap) => void;
+};
+
+type QuickCaptureTarget = 'subjective' | 'objective' | 'assessment' | 'plan';
+
+type QuickCaptureAction = {
+  label: string;
+  target: QuickCaptureTarget;
+  text: string;
 };
 
 export type VisitConferenceContext = {
@@ -188,6 +198,54 @@ function SourceSection({ label, children }: { label: string; children: ReactNode
   );
 }
 
+function QuickCapturePanel({
+  title,
+  prompts,
+  actions,
+  onQuickCapture,
+}: {
+  title: string;
+  prompts: string[];
+  actions: QuickCaptureAction[];
+  onQuickCapture?: (action: QuickCaptureAction) => void;
+}) {
+  return (
+    <div className="space-y-3 rounded-lg border border-cyan-200 bg-cyan-50/70 p-3">
+      <div className="flex items-center gap-2 text-xs font-semibold text-cyan-950">
+        <MessageSquareText className="size-3.5 text-cyan-800" aria-hidden="true" />
+        {title}
+      </div>
+      <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
+        <ul className="space-y-1 text-xs leading-5 text-cyan-950">
+          {prompts.map((prompt) => (
+            <li key={prompt} className="flex gap-2">
+              <span className="mt-2 size-1 shrink-0 rounded-full bg-cyan-700" aria-hidden="true" />
+              <span>{prompt}</span>
+            </li>
+          ))}
+        </ul>
+        {onQuickCapture ? (
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:min-w-48 md:grid-cols-1">
+            {actions.map((action) => (
+              <Button
+                key={`${action.target}-${action.label}`}
+                type="button"
+                variant="outline"
+                size="sm"
+                className="justify-start bg-white text-xs"
+                onClick={() => onQuickCapture(action)}
+              >
+                <PenLine className="size-3.5" aria-hidden="true" />
+                {action.label}
+              </Button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function buildMedicationChangeLines(
   prescriptionChanges: VisitPrescriptionChanges | null | undefined,
 ) {
@@ -222,12 +280,14 @@ function VisitInformationSourceTabs({
   prescriptionChanges,
   previousVisitSummary,
   conferenceContext,
+  onQuickCapture,
 }: {
   structuredSoap: StructuredSoap;
   medicationPeriod?: VisitMedicationPeriod | null;
   prescriptionChanges?: VisitPrescriptionChanges | null;
   previousVisitSummary?: string | null;
   conferenceContext: VisitConferenceContext[];
+  onQuickCapture?: (action: QuickCaptureAction) => void;
 }) {
   const startDate =
     medicationPeriod?.schedule_start_date ?? medicationPeriod?.prescription_start_date ?? null;
@@ -268,6 +328,10 @@ function VisitInformationSourceTabs({
       count: handoffLines.length + conferenceActionLines.length,
     },
   ] as const;
+  const hasPrescriptionAttention = changeLines.length > 0 || Boolean(medicationPeriod);
+  const hasPreviousAttention = Boolean(previousVisitSummary);
+  const hasTeamAttention = conferenceContext.length > 0;
+  const hasHandoffAttention = handoffLines.length > 0 || conferenceActionLines.length > 0;
 
   return (
     <section className="space-y-3 rounded-xl border border-cyan-200 bg-cyan-50/50 p-4">
@@ -283,10 +347,39 @@ function VisitInformationSourceTabs({
         </Badge>
       </div>
 
+      <div className="grid gap-2 sm:grid-cols-4">
+        <div className="rounded-lg border border-cyan-200 bg-white/70 px-3 py-2">
+          <p className="text-[11px] font-semibold text-cyan-950">処方</p>
+          <p className="mt-1 text-xs text-cyan-900">
+            {hasPrescriptionAttention ? prescriptionChangeSummary(prescriptionChanges) : '変化なし'}
+          </p>
+        </div>
+        <div className="rounded-lg border border-cyan-200 bg-white/70 px-3 py-2">
+          <p className="text-[11px] font-semibold text-cyan-950">前回</p>
+          <p className="mt-1 text-xs text-cyan-900">
+            {hasPreviousAttention ? '要約あり' : '記録なし'}
+          </p>
+        </div>
+        <div className="rounded-lg border border-cyan-200 bg-white/70 px-3 py-2">
+          <p className="text-[11px] font-semibold text-cyan-950">他職種</p>
+          <p className="mt-1 text-xs text-cyan-900">
+            {hasTeamAttention ? `${conferenceContext.length}件` : '共有なし'}
+          </p>
+        </div>
+        <div className="rounded-lg border border-cyan-200 bg-white/70 px-3 py-2">
+          <p className="text-[11px] font-semibold text-cyan-950">申し送り</p>
+          <p className="mt-1 text-xs text-cyan-900">
+            {hasHandoffAttention
+              ? `${handoffLines.length + conferenceActionLines.length}件`
+              : 'なし'}
+          </p>
+        </div>
+      </div>
+
       <Tabs defaultValue="prescription" className="gap-3">
         <TabsList
           variant="line"
-          className="flex min-h-11 w-full justify-start gap-2 overflow-x-auto border-b border-cyan-200 p-0"
+          className="grid min-h-11 w-full grid-cols-2 justify-start gap-1 border-b border-cyan-200 p-0 sm:flex sm:gap-2"
           aria-label="訪問時に確認する情報ソース"
         >
           {tabs.map((tab) => {
@@ -295,7 +388,7 @@ function VisitInformationSourceTabs({
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}
-                className="min-w-fit flex-none gap-2 rounded-none px-3 py-2 text-xs"
+                className="min-w-0 flex-none gap-1.5 rounded-none px-2 py-2 text-xs sm:min-w-fit sm:gap-2 sm:px-3"
               >
                 <Icon className="size-4" aria-hidden="true" />
                 {tab.label}
@@ -308,6 +401,26 @@ function VisitInformationSourceTabs({
         </TabsList>
 
         <TabsContent value="prescription" className="space-y-3">
+          <QuickCapturePanel
+            title="次に聞く"
+            prompts={[
+              '追加・中止薬を本人の言葉で確認する',
+              '飲み始め、飲み終わり、残薬とのずれを確認する',
+            ]}
+            actions={[
+              {
+                label: '変更理解をSへ',
+                target: 'subjective',
+                text: '処方変更の理解、飲み始め・中止タイミングを本人へ確認。',
+              },
+              {
+                label: '残薬確認をOへ',
+                target: 'objective',
+                text: '処方変更に伴う残薬、服用期間、手元薬とのずれを確認。',
+              },
+            ]}
+            onQuickCapture={onQuickCapture}
+          />
           <SourcePanel>
             <div className="grid gap-3 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.4fr)]">
               <SourceSection label="服用期間">
@@ -331,6 +444,26 @@ function VisitInformationSourceTabs({
         </TabsContent>
 
         <TabsContent value="previous" className="space-y-3">
+          <QuickCapturePanel
+            title="次に聞く"
+            prompts={[
+              '前回の困りごとが続いているか確認する',
+              '飲み忘れ、副作用、生活変化を短く聞く',
+            ]}
+            actions={[
+              {
+                label: '前回課題をSへ',
+                target: 'subjective',
+                text: '前回課題の継続有無、服薬上の困りごと、生活変化を確認。',
+              },
+              {
+                label: '評価観点をAへ',
+                target: 'assessment',
+                text: '前回課題を踏まえ、次回までの確認事項と連携先への共有要否を整理。',
+              },
+            ]}
+            onQuickCapture={onQuickCapture}
+          />
           <SourcePanel empty="前回記録の要約はまだありません。">
             {previousVisitSummary ? (
               <SourceSection label="前回までの要約">
@@ -341,6 +474,26 @@ function VisitInformationSourceTabs({
         </TabsContent>
 
         <TabsContent value="team" className="space-y-3">
+          <QuickCapturePanel
+            title="次に聞く"
+            prompts={[
+              '他職種からの心配ごとを本人に確認する',
+              '共有すべき返答や追加観察をその場で拾う',
+            ]}
+            actions={[
+              {
+                label: '本人確認をSへ',
+                target: 'subjective',
+                text: '他職種からの共有事項について、本人・家族へ確認。',
+              },
+              {
+                label: '共有方針をPへ',
+                target: 'plan',
+                text: '他職種へ共有する観察事項、返答、次回確認事項を整理。',
+              },
+            ]}
+            onQuickCapture={onQuickCapture}
+          />
           <SourcePanel empty="会議・他職種共有からの表示対象はありません。">
             {conferenceContext.length > 0 ? (
               <div className="grid gap-3 lg:grid-cols-2">
@@ -383,6 +536,26 @@ function VisitInformationSourceTabs({
         </TabsContent>
 
         <TabsContent value="handoff" className="space-y-3">
+          <QuickCapturePanel
+            title="次に聞く"
+            prompts={[
+              '医師、ケアマネ、介護サービスへ渡す事項を分ける',
+              '今日中に返すべき確認事項だけ先に確定する',
+            ]}
+            actions={[
+              {
+                label: '申し送りをPへ',
+                target: 'plan',
+                text: '医師・ケアマネ・介護サービスへ申し送る事項を整理。',
+              },
+              {
+                label: '本人返答をSへ',
+                target: 'subjective',
+                text: '申し送り事項に対する本人・家族の返答を確認。',
+              },
+            ]}
+            onQuickCapture={onQuickCapture}
+          />
           <SourcePanel empty="申し送り事項はまだありません。">
             {handoffLines.length > 0 || conferenceActionLines.length > 0 ? (
               <div className="grid gap-3 lg:grid-cols-2">
@@ -581,6 +754,55 @@ export function VisitMedicationManagementSection({
     });
   }
 
+  function appendSoapFreeText(currentValue: string | undefined, nextLine: string) {
+    const current = currentValue?.trim();
+    if (current?.includes(nextLine)) return current;
+    return [current, nextLine].filter((value): value is string => Boolean(value)).join('\n');
+  }
+
+  function handleQuickCapture(action: QuickCaptureAction) {
+    if (action.target === 'subjective') {
+      onChange({
+        ...structuredSoap,
+        subjective: {
+          ...structuredSoap.subjective,
+          free_text: appendSoapFreeText(structuredSoap.subjective.free_text, action.text),
+        },
+      });
+      return;
+    }
+
+    if (action.target === 'objective') {
+      onChange({
+        ...structuredSoap,
+        objective: {
+          ...structuredSoap.objective,
+          free_text: appendSoapFreeText(structuredSoap.objective.free_text, action.text),
+        },
+      });
+      return;
+    }
+
+    if (action.target === 'assessment') {
+      onChange({
+        ...structuredSoap,
+        assessment: {
+          ...structuredSoap.assessment,
+          free_text: appendSoapFreeText(structuredSoap.assessment.free_text, action.text),
+        },
+      });
+      return;
+    }
+
+    onChange({
+      ...structuredSoap,
+      plan: {
+        ...structuredSoap.plan,
+        free_text: appendSoapFreeText(structuredSoap.plan.free_text, action.text),
+      },
+    });
+  }
+
   const initialTransitionSuggested =
     visitType === 'initial' || intakeInitialTransitionExpected === true;
   const initialTransitionChecked =
@@ -660,6 +882,7 @@ export function VisitMedicationManagementSection({
           prescriptionChanges={prescriptionChanges}
           previousVisitSummary={previousVisitSummary}
           conferenceContext={conferenceContext}
+          onQuickCapture={handleQuickCapture}
         />
       </div>
 

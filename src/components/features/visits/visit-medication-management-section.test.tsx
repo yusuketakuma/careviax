@@ -23,6 +23,8 @@ function buildSoap(): StructuredSoap {
 
 describe('VisitMedicationManagementSection', () => {
   it('surfaces previous visit and cross-professional context as an onsite listening brief', () => {
+    const onChange = vi.fn();
+
     render(
       <VisitMedicationManagementSection
         structuredSoap={buildSoap()}
@@ -52,17 +54,29 @@ describe('VisitMedicationManagementSection', () => {
             action_items: ['眠気と便秘を本人に確認'],
           },
         ]}
-        onChange={vi.fn()}
+        onChange={onChange}
       />,
     );
 
     expect(screen.getByText('今日の聞き取りブリーフ')).toBeTruthy();
+    expect(screen.getByText('情報ソース別')).toBeTruthy();
     expect(screen.getByRole('tab', { name: /処方内容/ })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /前回記録/ })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /他職種/ })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /申し送り/ })).toBeTruthy();
-    expect(screen.getByText('追加 1 / 変更 1')).toBeTruthy();
+    expect(screen.getAllByText('次に聞く').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('追加 1 / 変更 1').length).toBeGreaterThan(0);
     expect(screen.getByText(/アムロジピン錠: 夕食後へ変更/)).toBeTruthy();
+    expect(screen.getByText('変更理解をSへ')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /変更理解をSへ/ }));
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subjective: expect.objectContaining({
+          free_text: expect.stringContaining('処方変更の理解'),
+        }),
+      }),
+    );
 
     fireEvent.click(screen.getByRole('tab', { name: /前回記録/ }));
     expect(screen.getByText('前回はふらつきと昼分の飲み忘れを確認。')).toBeTruthy();
