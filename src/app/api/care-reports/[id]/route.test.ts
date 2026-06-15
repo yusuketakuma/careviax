@@ -10,6 +10,7 @@ const {
   visitRecordFindFirstMock,
   withOrgContextMock,
   findLatestPrescriberInstitutionSuggestionMock,
+  findExternalProfessionalSuggestionsMock,
   getChannelStatsByNameMock,
   getRecommendedChannelsMock,
 } = vi.hoisted(() => ({
@@ -21,6 +22,7 @@ const {
   visitRecordFindFirstMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   findLatestPrescriberInstitutionSuggestionMock: vi.fn(),
+  findExternalProfessionalSuggestionsMock: vi.fn(),
   getChannelStatsByNameMock: vi.fn(),
   getRecommendedChannelsMock: vi.fn(),
 }));
@@ -52,6 +54,7 @@ vi.mock('@/lib/prescriptions/prescriber-institutions', () => ({
 }));
 
 vi.mock('@/lib/contact-profiles', () => ({
+  findExternalProfessionalSuggestions: findExternalProfessionalSuggestionsMock,
   getChannelStatsByName: getChannelStatsByNameMock,
   getRecommendedChannels: getRecommendedChannelsMock,
 }));
@@ -157,6 +160,7 @@ describe('care-reports/[id] route', () => {
       prescribed_date: new Date('2026-03-28T00:00:00.000Z'),
       prescriber_name: '田中 一郎',
     });
+    findExternalProfessionalSuggestionsMock.mockResolvedValue([]);
     getChannelStatsByNameMock.mockResolvedValue(
       new Map([
         [
@@ -322,6 +326,60 @@ describe('care-reports/[id] route', () => {
         content: { summary: '更新後メモ' },
       },
     });
+  });
+
+  it('preserves server-managed content keys when editing report content', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      status: 'draft',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      visit_record_id: 'visit_record_1',
+      content: {
+        billing_context: { billing_evidence_id: 'billing_1' },
+        source_provenance: { visit_record_id: 'visit_record_1' },
+        report_delivery_targets: [{ delivery_record_id: 'delivery_1' }],
+        warnings: ['処方内容が登録されていません。'],
+      },
+    });
+
+    const response = await PATCH(
+      createRequest({
+        content: {
+          summary: '更新後メモ',
+          billing_context: null,
+          source_provenance: { forged: true },
+          report_delivery_targets: [],
+          warnings: [],
+        },
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(careReportUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'report_1' },
+      data: {
+        content: {
+          summary: '更新後メモ',
+          billing_context: { billing_evidence_id: 'billing_1' },
+          source_provenance: { visit_record_id: 'visit_record_1' },
+          report_delivery_targets: [{ delivery_record_id: 'delivery_1' }],
+          warnings: ['処方内容が登録されていません。'],
+        },
+      },
+    });
+  });
+
+  it('rejects report type changes because content and provenance are generated per type', async () => {
+    const response = await PATCH(createRequest({ report_type: 'care_manager_report' }), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(careReportUpdateMock).not.toHaveBeenCalled();
   });
 
   it('rejects reverting a sent report back to draft', async () => {

@@ -32,6 +32,32 @@ function toDateOnlyString(value: Date | null | undefined) {
   return formatNullableDateKey(value);
 }
 
+const SERVER_MANAGED_CONTENT_KEYS = [
+  'billing_context',
+  'source_provenance',
+  'report_delivery_targets',
+  'warnings',
+] as const;
+
+function mergeEditableReportContent(args: {
+  existingContent: unknown;
+  incomingContent: Record<string, unknown>;
+}) {
+  if (typeof args.existingContent !== 'object' || args.existingContent === null) {
+    return args.incomingContent;
+  }
+  if (Array.isArray(args.existingContent)) return args.incomingContent;
+
+  const merged: Record<string, unknown> = { ...args.incomingContent };
+  const existing = args.existingContent as Record<string, unknown>;
+  for (const key of SERVER_MANAGED_CONTENT_KEYS) {
+    if (key in existing) {
+      merged[key] = existing[key];
+    }
+  }
+  return merged;
+}
+
 const updateCareReportSchema = z.object({
   report_type: z
     .enum([
@@ -229,9 +255,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       patient_id: true,
       case_id: true,
       visit_record_id: true,
+      content: true,
     },
   });
   if (!existing) return notFound('報告書が見つかりません');
+  if (updateData.report_type) {
+    return conflict('報告書種別は生成元と本文構造に紐づくため変更できません');
+  }
   if (
     !(await canAccessCareReportSource(prisma, ctx.orgId, ctx, {
       patientId: existing.patient_id,
@@ -261,7 +291,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         where: { id },
         data: {
           ...updateData,
-          ...(content !== undefined ? { content: toPrismaJsonInput(content) } : {}),
+          ...(content !== undefined
+            ? {
+                content: toPrismaJsonInput(
+                  mergeEditableReportContent({
+                    existingContent: existing.content,
+                    incomingContent: content,
+                  }),
+                ),
+              }
+            : {}),
         },
       });
 

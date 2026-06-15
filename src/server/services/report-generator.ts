@@ -73,6 +73,10 @@ function readGeneratedReportContent(value: unknown): Record<string, unknown> {
   return readJsonObject(value) ?? {};
 }
 
+function toIsoStringOrNull(value: unknown): string | null {
+  return value instanceof Date ? value.toISOString() : null;
+}
+
 export async function generateReportsFromVisit(
   orgId: string,
   userId: string,
@@ -187,6 +191,13 @@ export async function generateReportsFromVisit(
     prisma.billingEvidence.findFirst({
       where: { visit_record_id: visitRecordId, org_id: orgId },
       select: {
+        id: true,
+        cycle_id: true,
+        patient_id: true,
+        claimable: true,
+        exclusion_reason: true,
+        report_delivery_ref: true,
+        updated_at: true,
         payer_basis: true,
         applied_rule_keys: true,
         recommended_rule_keys: true,
@@ -234,12 +245,22 @@ export async function generateReportsFromVisit(
       ? await prisma.prescriptionLine.findMany({
           where: { org_id: orgId, intake: { cycle_id: medicationCycle.id } },
           select: {
+            id: true,
+            intake_id: true,
             drug_name: true,
+            drug_code: true,
             dose: true,
             frequency: true,
             days: true,
+            quantity: true,
+            unit: true,
             route: true,
             dispensing_method: true,
+            intake: {
+              select: {
+                prescribed_date: true,
+              },
+            },
           },
           orderBy: [{ intake: { prescribed_date: 'desc' } }, { line_number: 'asc' }],
         })
@@ -338,10 +359,15 @@ export async function generateReportsFromVisit(
 
   const billingContext = billingEvidence
     ? {
+        billing_evidence_id: billingEvidence.id,
         payer_basis: billingEvidence.payer_basis,
+        claimable: billingEvidence.claimable,
+        exclusion_reason: billingEvidence.exclusion_reason,
+        report_delivery_ref: billingEvidence.report_delivery_ref,
         applied_rule_keys: billingEvidence.applied_rule_keys ?? [],
         recommended_rule_keys: billingEvidence.recommended_rule_keys ?? [],
         validation_notes: billingEvidence.validation_notes ?? null,
+        updated_at: toIsoStringOrNull(billingEvidence.updated_at),
         effective_revision_code: readJsonObjectString(
           billingEvidence.calculation_context,
           'effective_revision_code',
@@ -364,6 +390,37 @@ export async function generateReportsFromVisit(
         ),
       }
     : null;
+  const sourceProvenance = {
+    schema_version: 1,
+    visit_record_id: visitRecord.id,
+    schedule_id: visitRecord.schedule_id,
+    patient_id: visitRecord.patient_id,
+    case_id: caseId,
+    medication_cycle_id: medicationCycle?.id ?? null,
+    prescription_intake_ids: Array.from(new Set(prescriptionLines.map((line) => line.intake_id))),
+    prescription_line_ids: prescriptionLines.map((line) => line.id),
+    prescription_lines: prescriptionLines.map((line) => ({
+      prescription_line_id: line.id,
+      prescription_intake_id: line.intake_id,
+      prescribed_date: line.intake.prescribed_date.toISOString(),
+      drug_code: line.drug_code,
+      drug_name: line.drug_name,
+      quantity: line.quantity,
+      unit: line.unit,
+    })),
+    billing_evidence_id: billingEvidence?.id ?? null,
+    billing_evidence_updated_at: toIsoStringOrNull(billingEvidence?.updated_at),
+    patient_insurance_basis: billingEvidence
+      ? {
+          payer_basis: billingEvidence.payer_basis,
+          patient_id: billingEvidence.patient_id,
+          cycle_id: billingEvidence.cycle_id,
+          claimable: billingEvidence.claimable,
+          exclusion_reason: billingEvidence.exclusion_reason,
+        }
+      : null,
+    generated_at: new Date().toISOString(),
+  };
 
   // ─── 10. 各 type でテンプレート呼び出し → CareReport 作成 ─────────────────
   const visitRecordInput = { visited_at: visitRecord.visit_date };
@@ -392,6 +449,7 @@ export async function generateReportsFromVisit(
           }),
         ),
         billing_context: billingContext,
+        source_provenance: sourceProvenance,
       });
     } else if (type === 'care_manager_report') {
       contentByType.set(type, {
@@ -412,6 +470,7 @@ export async function generateReportsFromVisit(
           }),
         ),
         billing_context: billingContext,
+        source_provenance: sourceProvenance,
       });
     } else {
       // 訪問看護向け / 施設向け: design 準拠の決定論的 5見出し射影（LLM 不使用）
@@ -432,6 +491,7 @@ export async function generateReportsFromVisit(
       contentByType.set(type, {
         ...readGeneratedReportContent(audienceContent),
         billing_context: billingContext,
+        source_provenance: sourceProvenance,
       });
     }
   }

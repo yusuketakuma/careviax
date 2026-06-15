@@ -195,6 +195,7 @@ describe('/api/care-reports/[id]/send POST', () => {
         channel: 'email',
         recipient_name: '山田 太郎',
         recipient_contact: '03-1234-5678',
+        recipient_role: 'physician',
         safety_ack: true,
       }),
       { params: Promise.resolve({ id: 'report_1' }) },
@@ -218,6 +219,7 @@ describe('/api/care-reports/[id]/send POST', () => {
         channel: 'fax',
         recipient_name: '山田 太郎',
         recipient_contact: '03-1234-5678',
+        recipient_role: 'physician',
         safety_ack: true,
       }),
       { params: Promise.resolve({ id: '   ' }) },
@@ -244,6 +246,7 @@ describe('/api/care-reports/[id]/send POST', () => {
         channel: 'fax',
         recipient_name: '   ',
         recipient_contact: '   ',
+        recipient_role: 'physician',
         safety_ack: true,
       }),
       { params: Promise.resolve({ id: 'report_1' }) },
@@ -303,6 +306,7 @@ describe('/api/care-reports/[id]/send POST', () => {
         channel: 'fax',
         recipient_name: '山田 太郎',
         recipient_contact: '03-1234-5678',
+        recipient_role: 'physician',
       }),
       { params: Promise.resolve({ id: 'report_1' }) },
     );
@@ -315,12 +319,89 @@ describe('/api/care-reports/[id]/send POST', () => {
     });
   });
 
+  it('returns 400 before side effects when recipient role is missing', async () => {
+    const response = await POST(
+      createRequest({
+        channel: 'fax',
+        recipient_name: '山田 太郎',
+        recipient_contact: '03-1234-5678',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+    });
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(txMock.auditLog.create).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects report-recipient role mismatches before delivery side effects', async () => {
+    const response = await POST(
+      createRequest({
+        channel: 'fax',
+        recipient_name: '担当ケアマネ',
+        recipient_contact: '03-1234-5678',
+        recipient_role: 'care_manager',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '報告書タイプと送付先区分が一致していません',
+    });
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(txMock.auditLog.create).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects bulk sends when any recipient role does not match the report type', async () => {
+    const response = await POST(
+      createRequest({
+        recipients: [
+          {
+            channel: 'fax',
+            recipient_name: '主治医',
+            recipient_contact: '03-1111-2222',
+            recipient_role: 'physician',
+          },
+          {
+            channel: 'fax',
+            recipient_name: '担当ケアマネ',
+            recipient_contact: '03-3333-4444',
+            recipient_role: 'care_manager',
+          },
+        ],
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(txMock.auditLog.create).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+  });
+
   it('sends report email through SES-backed delivery and records the delivery', async () => {
     const response = await POST(
       createRequest({
         channel: 'email',
         recipient_name: '山田 太郎',
         recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
         safety_ack: true,
       }),
       { params: Promise.resolve({ id: 'report_1' }) },
@@ -357,6 +438,7 @@ describe('/api/care-reports/[id]/send POST', () => {
             report_type: 'physician_report',
             recipient: {
               name: '山田 太郎',
+              role: 'physician',
               contact_masked: 'd***@example.com',
             },
           }),
@@ -396,6 +478,83 @@ describe('/api/care-reports/[id]/send POST', () => {
       occurredAt: expect.any(Date),
       markSuccess: true,
     });
+    expect(txMock.careReport.update).toHaveBeenCalledWith({
+      where: { id: 'report_1' },
+      data: expect.objectContaining({
+        status: 'sent',
+        content: expect.objectContaining({
+          report_delivery_targets: [
+            expect.objectContaining({
+              delivery_record_id: 'delivery_1',
+              recipient_name: '山田 太郎',
+              recipient_role: 'physician',
+              channel: 'email',
+              status: 'sent',
+              delivered_at: expect.any(String),
+            }),
+          ],
+        }),
+      }),
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        deliveries: [
+          {
+            delivery_record_id: 'delivery_1',
+            recipient_role: 'physician',
+            status: 'sent',
+          },
+        ],
+      },
+    });
+  });
+
+  it('appends delivery target provenance without dropping existing report content metadata', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'draft',
+      visit_record_id: null,
+      content: {
+        source_provenance: { visit_record_id: 'visit_record_1' },
+        report_delivery_targets: [{ delivery_record_id: 'delivery_previous' }],
+      },
+      report_type: 'physician_report',
+      pdf_url: 'https://example.com/report.pdf',
+    });
+
+    const response = await POST(
+      createRequest({
+        channel: 'fax',
+        recipient_name: '主治医',
+        recipient_contact: '03-1234-5678',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(txMock.careReport.update).toHaveBeenCalledWith({
+      where: { id: 'report_1' },
+      data: expect.objectContaining({
+        status: 'sent',
+        content: {
+          source_provenance: { visit_record_id: 'visit_record_1' },
+          report_delivery_targets: [
+            { delivery_record_id: 'delivery_previous' },
+            expect.objectContaining({
+              delivery_record_id: 'delivery_1',
+              recipient_role: 'physician',
+              channel: 'fax',
+              status: 'sent',
+            }),
+          ],
+        },
+      }),
+    });
   });
 
   it('lets an org-wide pharmacist send a report for a case assigned to other pharmacists', async () => {
@@ -426,6 +585,7 @@ describe('/api/care-reports/[id]/send POST', () => {
         channel: 'email',
         recipient_name: '山田 太郎',
         recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
         safety_ack: true,
       }),
       { params: Promise.resolve({ id: 'report_1' }) },
@@ -469,6 +629,7 @@ describe('/api/care-reports/[id]/send POST', () => {
         channel: 'email',
         recipient_name: '山田 太郎',
         recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
         safety_ack: true,
       }),
       { params: Promise.resolve({ id: 'report_1' }) },
@@ -502,6 +663,7 @@ describe('/api/care-reports/[id]/send POST', () => {
         channel: 'email',
         recipient_name: '山田 太郎',
         recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
         safety_ack: true,
       }),
       { params: Promise.resolve({ id: 'report_1' }) },
@@ -569,6 +731,7 @@ describe('/api/care-reports/[id]/send POST', () => {
         channel: 'fax',
         recipient_name: '担当ケアマネ',
         recipient_contact: '03-1234-5678',
+        recipient_role: 'care_manager',
         safety_ack: true,
       }),
       { params: Promise.resolve({ id: 'report_1' }) },
@@ -604,6 +767,7 @@ describe('/api/care-reports/[id]/send POST', () => {
         channel: 'fax',
         recipient_name: '施設連携先',
         recipient_contact: '03-0000-0000',
+        recipient_role: 'facility_staff',
         safety_ack: true,
       }),
       { params: Promise.resolve({ id: 'report_1' }) },
@@ -638,6 +802,7 @@ describe('/api/care-reports/[id]/send POST', () => {
         channel: 'fax',
         recipient_name: '主治医',
         recipient_contact: '03-1234-5678',
+        recipient_role: 'physician',
         safety_ack: true,
       }),
       { params: Promise.resolve({ id: 'report_1' }) },

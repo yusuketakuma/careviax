@@ -213,6 +213,7 @@ describe('ReportDetailPage send safety dialog', () => {
       channel: 'email',
       recipient_name: '山田 太郎',
       recipient_contact: 'doctor@example.com',
+      recipient_role: 'physician',
       safety_ack: true,
     });
   });
@@ -226,10 +227,10 @@ describe('ReportDetailPage send safety dialog', () => {
             data: [
               {
                 id: 'professional_1',
-                name: '鈴木 ケアマネ',
-                profession_type: 'care_manager',
-                organization_name: '青葉ケアプラン',
-                email: 'care@example.com',
+                name: '鈴木 医師',
+                profession_type: 'physician',
+                organization_name: '青葉内科',
+                email: 'doctor2@example.com',
                 fax: null,
                 phone: '03-0000-0000',
               },
@@ -337,10 +338,10 @@ describe('ReportDetailPage send safety dialog', () => {
     externalSuggestions = [
       {
         id: 'professional_1',
-        name: '鈴木 ケアマネ',
-        profession_type: 'care_manager',
-        organization_name: '青葉ケアプラン',
-        email: 'care@example.com',
+        name: '鈴木 医師',
+        profession_type: 'physician',
+        organization_name: '青葉内科',
+        email: 'doctor2@example.com',
         fax: null,
         phone: '03-0000-0000',
         department: null,

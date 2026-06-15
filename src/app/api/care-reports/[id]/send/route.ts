@@ -17,6 +17,8 @@ import { resolveOperationalTasks } from '@/server/services/operational-tasks';
 import { sendCareReportEmail } from '@/server/services/report-delivery';
 import { learnContactProfileFromCommunication } from '@/lib/contact-profiles';
 import { transitionCycleStatus } from '@/lib/db/cycle-transition';
+import { inferCareReportTargetRole } from '@/lib/reports/document-delivery-rules';
+import { toPrismaJsonInput } from '@/lib/db/json';
 
 function toPrimaryCommunicationEventType(reportType: string) {
   switch (reportType) {
@@ -45,7 +47,28 @@ type SendRecipient = {
   channel: 'email' | 'fax' | 'phone' | 'in_person' | 'postal' | 'ses' | 'ph_os_share';
   recipient_name: string;
   recipient_contact: string;
+  recipient_role: string;
 };
+
+const RECIPIENT_ROLE_ALIASES: Record<string, string> = {
+  doctor: 'physician',
+  prescriber: 'physician',
+  visiting_nurse: 'nurse',
+  facility: 'facility_staff',
+};
+
+const ALLOWED_RECIPIENT_ROLES = new Set([
+  'physician',
+  'care_manager',
+  'nurse',
+  'facility_staff',
+  'family',
+]);
+
+function normalizeRecipientRole(value: string) {
+  const normalized = value.trim();
+  return RECIPIENT_ROLE_ALIASES[normalized] ?? normalized;
+}
 
 function buildDeliveryAttemptAuditChanges(args: {
   deliveryRecordId: string;
@@ -66,6 +89,7 @@ function buildDeliveryAttemptAuditChanges(args: {
     safety_ack: args.request.safety_ack,
     recipient: {
       name: args.request.recipient_name,
+      role: args.request.recipient_role,
       contact_masked: maskRecipientContact(args.request.channel, args.request.recipient_contact),
     },
     source_scope: {
@@ -80,6 +104,12 @@ const recipientSchema = z
     channel: z.enum(['email', 'fax', 'phone', 'in_person', 'postal', 'ses', 'ph_os_share']),
     recipient_name: z.string().trim().min(1, '送付先氏名は必須です'),
     recipient_contact: z.string().trim().min(1, '送付先連絡先は必須です'),
+    recipient_role: z
+      .string()
+      .trim()
+      .min(1, '送付先区分は必須です')
+      .transform(normalizeRecipientRole)
+      .refine((value) => ALLOWED_RECIPIENT_ROLES.has(value), '送付先区分が不正です'),
   })
   .superRefine((value, ctx) => {
     if (
@@ -125,8 +155,63 @@ function normalizeSendPayload(
     channel: parsed.data.channel,
     recipient_name: parsed.data.recipient_name,
     recipient_contact: parsed.data.recipient_contact,
+    recipient_role: parsed.data.recipient_role,
   };
   return { ok: true, recipients: [recipient] };
+}
+
+function validateRecipientRoles(reportType: string, recipients: SendRecipient[]) {
+  const expectedRole = inferCareReportTargetRole(reportType);
+  if (expectedRole === 'other') {
+    return {
+      expectedRole,
+      recipientName: recipients[0]?.recipient_name ?? '',
+      recipientRole: recipients[0]?.recipient_role ?? '',
+    };
+  }
+
+  const mismatchedRecipient = recipients.find(
+    (recipient) => recipient.recipient_role !== expectedRole,
+  );
+  if (!mismatchedRecipient) return null;
+
+  return {
+    expectedRole,
+    recipientName: mismatchedRecipient.recipient_name,
+    recipientRole: mismatchedRecipient.recipient_role,
+  };
+}
+
+function readJsonObject(value: Prisma.JsonValue): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function mergeReportDeliveryTargets(args: {
+  content: Prisma.JsonValue;
+  outcomes: DeliveryOutcome[];
+}): Record<string, unknown> {
+  const content = readJsonObject(args.content);
+  const existingTargets = Array.isArray(content.report_delivery_targets)
+    ? content.report_delivery_targets
+    : [];
+  const deliveredAt = new Date().toISOString();
+  return {
+    ...content,
+    report_delivery_targets: [
+      ...existingTargets,
+      ...args.outcomes.map((outcome) => ({
+        delivery_record_id: outcome.deliveryRecordId,
+        recipient_name: outcome.recipient.recipient_name,
+        recipient_role: outcome.recipient.recipient_role,
+        channel: outcome.recipient.channel,
+        status: outcome.failureReason ? 'failed' : 'sent',
+        delivered_at: outcome.failureReason ? null : deliveredAt,
+        failure_reason: outcome.failureReason,
+      })),
+    ],
+  };
 }
 
 async function canAccessCareReport(args: {
@@ -392,15 +477,21 @@ async function finalizeReportDelivery(args: {
   ctx: AuthContext;
   reportId: string;
   report: ReportRecord;
+  outcomes: DeliveryOutcome[];
 }) {
-  const { ctx, reportId, report } = args;
+  const { ctx, reportId, report, outcomes } = args;
 
   return withOrgContext(
     ctx.orgId,
     async (tx) => {
       const updatedReport = await tx.careReport.update({
         where: { id: reportId },
-        data: { status: 'sent' },
+        data: {
+          status: 'sent',
+          content: toPrismaJsonInput(
+            mergeReportDeliveryTargets({ content: report.content, outcomes }),
+          ),
+        },
       });
 
       if (report.visit_record_id) {
@@ -584,6 +675,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const recipients = normalized.recipients;
+  const roleMismatch = validateRecipientRoles(existing.report_type, recipients);
+  if (roleMismatch) {
+    return validationError('報告書タイプと送付先区分が一致していません', {
+      recipient_role: [
+        `${roleMismatch.recipientName} は ${roleMismatch.recipientRole} ですが、この報告書の送付先区分は ${roleMismatch.expectedRole} です`,
+      ],
+    });
+  }
 
   // 各送付先を順次処理(監査・送達は送付先単位)。
   const outcomes: DeliveryOutcome[] = [];
@@ -619,12 +718,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
   }
 
-  const report = await finalizeReportDelivery({ ctx, reportId: id, report: existing });
+  const report = await finalizeReportDelivery({ ctx, reportId: id, report: existing, outcomes });
 
   const deliveries = outcomes.map((outcome) => ({
     delivery_record_id: outcome.deliveryRecordId,
     channel: outcome.recipient.channel,
     recipient_name: outcome.recipient.recipient_name,
+    recipient_role: outcome.recipient.recipient_role,
     status: outcome.failureReason ? 'failed' : 'sent',
     failure_reason: outcome.failureReason,
   }));

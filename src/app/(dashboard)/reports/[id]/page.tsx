@@ -118,6 +118,7 @@ type SendFormData = {
   channel: string;
   recipient_name: string;
   recipient_contact: string;
+  recipient_role: string;
 };
 
 type SendRequestData = SendFormData & {
@@ -138,6 +139,7 @@ type ShareTarget = {
   channel: string;
   recipient_name: string;
   recipient_contact: string;
+  recipient_role: string;
 };
 
 // 送付前チェックの4ガバナンス項目(design p0_28: 薬剤師確認済み / 宛先が設定済み /
@@ -177,6 +179,42 @@ const PROFESSION_AUDIENCE_LABELS: Record<string, string> = {
   facility: '施設',
   family: '家族',
 };
+
+function inferReportTargetRole(reportType: string) {
+  switch (reportType) {
+    case 'physician_report':
+      return 'physician';
+    case 'care_manager_report':
+      return 'care_manager';
+    case 'facility_handoff':
+      return 'facility_staff';
+    case 'nurse_share':
+      return 'nurse';
+    case 'family_share':
+      return 'family';
+    default:
+      return 'other';
+  }
+}
+
+function normalizeProfessionRole(professionType: string) {
+  switch (professionType) {
+    case 'physician':
+    case 'doctor':
+      return 'physician';
+    case 'care_manager':
+      return 'care_manager';
+    case 'visiting_nurse':
+    case 'nurse':
+      return 'nurse';
+    case 'facility':
+      return 'facility_staff';
+    case 'family':
+      return 'family';
+    default:
+      return professionType;
+  }
+}
 
 type SendFormErrors = Partial<Record<keyof SendFormData | 'safety_ack', string>>;
 
@@ -303,6 +341,7 @@ function resolveSuggestionDelivery(
     preferred_contact_method?: string | null;
   },
   deliveryRule: { channel: string; fallback_channels: string[] } | null,
+  recipientRole: string,
 ): SendFormData {
   const suggestedChannels = [
     deliveryRule?.channel,
@@ -339,6 +378,7 @@ function resolveSuggestionDelivery(
     channel: resolvedChannel,
     recipient_name: (type === 'institution' ? suggestion.prescriber_name : null) ?? suggestion.name,
     recipient_contact: resolvedContact,
+    recipient_role: recipientRole,
   };
 }
 
@@ -356,6 +396,7 @@ export default function ReportDetailPage() {
     channel: 'email',
     recipient_name: '',
     recipient_contact: '',
+    recipient_role: 'physician',
   });
   const [sendSafetyAck, setSendSafetyAck] = useState(false);
   const [sendFormErrors, setSendFormErrors] = useState<SendFormErrors>({});
@@ -448,7 +489,12 @@ export default function ReportDetailPage() {
     onSuccess: () => {
       toast.success('報告書を送付しました');
       setSendDialogOpen(false);
-      setSendForm({ channel: 'email', recipient_name: '', recipient_contact: '' });
+      setSendForm({
+        channel: 'email',
+        recipient_name: '',
+        recipient_contact: '',
+        recipient_role: inferReportTargetRole(data?.data?.report_type ?? 'physician_report'),
+      });
       setSendSafetyAck(false);
       setSendFormErrors({});
       queryClient.invalidateQueries({ queryKey: ['care-report', id, orgId] });
@@ -487,6 +533,7 @@ export default function ReportDetailPage() {
       channel: sendForm.channel,
       recipient_name: sendForm.recipient_name.trim(),
       recipient_contact: sendForm.recipient_contact.trim(),
+      recipient_role: sendForm.recipient_role,
     };
     const nextErrors: SendFormErrors = {};
 
@@ -532,6 +579,7 @@ export default function ReportDetailPage() {
         channel: target.channel,
         recipient_name: target.recipient_name,
         recipient_contact: target.recipient_contact,
+        recipient_role: target.recipient_role,
       })),
       safety_ack: true,
     });
@@ -630,6 +678,7 @@ export default function ReportDetailPage() {
         fallback_channels: deliveryRuleSuggestion.fallback_channels,
       }
     : null;
+  const expectedRecipientRole = inferReportTargetRole(report.report_type);
 
   function applyInstitutionSuggestion() {
     if (!prescriberInstitutionSuggestion) return;
@@ -638,12 +687,20 @@ export default function ReportDetailPage() {
         'institution',
         prescriberInstitutionSuggestion,
         deliveryRuleForResolve,
+        'physician',
       ),
     );
   }
 
   function applyExternalProfessionalSuggestion(suggestion: ExternalProfessionalSuggestion) {
-    setSendForm(resolveSuggestionDelivery('professional', suggestion, deliveryRuleForResolve));
+    setSendForm(
+      resolveSuggestionDelivery(
+        'professional',
+        suggestion,
+        deliveryRuleForResolve,
+        normalizeProfessionRole(suggestion.profession_type),
+      ),
+    );
   }
 
   // p0_28: 共有先候補(処方元医療機関 + ケアチーム/他職種)を送付ターゲットに正規化する。
@@ -660,6 +717,7 @@ export default function ReportDetailPage() {
               'institution',
               prescriberInstitutionSuggestion,
               deliveryRuleForResolve,
+              'physician',
             ),
           },
         ]
@@ -668,9 +726,18 @@ export default function ReportDetailPage() {
       id: `professional:${suggestion.id}`,
       label: suggestion.name,
       audience: PROFESSION_AUDIENCE_LABELS[suggestion.profession_type] ?? '他職種',
-      ...resolveSuggestionDelivery('professional', suggestion, deliveryRuleForResolve),
+      ...resolveSuggestionDelivery(
+        'professional',
+        suggestion,
+        deliveryRuleForResolve,
+        normalizeProfessionRole(suggestion.profession_type),
+      ),
     })),
-  ].filter((target) => target.recipient_contact.trim().length > 0);
+  ].filter(
+    (target) =>
+      target.recipient_contact.trim().length > 0 &&
+      (expectedRecipientRole === 'other' || target.recipient_role === expectedRecipientRole),
+  );
 
   const effectiveSelectedTargetIds = selectedTargetIds;
   const shareTargetIds = shareTargets.map((target) => target.id);
