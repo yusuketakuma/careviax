@@ -745,8 +745,10 @@ export default function ReportDetailPage() {
     effectiveSelectedTargetIds.includes(target.id),
   );
   const allPreSendChecksDone = PRE_SEND_CHECK_ITEMS.every((item) => preSendChecks[item.key]);
+  const isConfirmedReport = report.status === 'confirmed';
   const canBulkSend =
     hasContentView &&
+    isConfirmedReport &&
     selectedShareTargets.length > 0 &&
     allPreSendChecksDone &&
     !bulkSendMutation.isPending;
@@ -754,47 +756,48 @@ export default function ReportDetailPage() {
     externalProfessionalSuggestionsQuery.isLoading ||
     externalProfessionalSuggestionsQuery.isFetching;
 
-  const sendReportAction = hasContentView ? (
-    <div className="flex flex-wrap gap-2">
-      {shareTargets.length > 0 ? (
+  const sendReportAction =
+    hasContentView && isConfirmedReport ? (
+      <div className="flex flex-wrap gap-2">
+        {shareTargets.length > 0 ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-h-[44px] sm:min-h-0"
+            disabled={shareTargetsLoading}
+            onClick={() => {
+              // 既定で全候補を選択し、共有先の取りこぼしを防ぐ。
+              setSelectedTargetIds(shareTargetIds);
+              setPreSendChecks({
+                recipient: false,
+                content: false,
+                consent: false,
+                channel: false,
+              });
+              setComposerOpen(true);
+            }}
+          >
+            <Share2 className="mr-1.5 size-3.5" aria-hidden="true" />
+            {shareTargetsLoading ? '共有先を確認中...' : '共有を作成'}
+          </Button>
+        ) : null}
         <Button
-          variant="outline"
           size="sm"
           className="min-h-[44px] sm:min-h-0"
-          disabled={shareTargetsLoading}
           onClick={() => {
-            // 既定で全候補を選択し、共有先の取りこぼしを防ぐ。
-            setSelectedTargetIds(shareTargetIds);
-            setPreSendChecks({
-              recipient: false,
-              content: false,
-              consent: false,
-              channel: false,
-            });
-            setComposerOpen(true);
+            if (prescriberInstitutionSuggestion) {
+              applyInstitutionSuggestion();
+            }
+            setSendSafetyAck(false);
+            setSendFormErrors({});
+            setSendDialogOpen(true);
           }}
         >
-          <Share2 className="mr-1.5 size-3.5" aria-hidden="true" />
-          {shareTargetsLoading ? '共有先を確認中...' : '共有を作成'}
+          <Send className="mr-1.5 size-3.5" aria-hidden="true" />
+          送付
         </Button>
-      ) : null}
-      <Button
-        size="sm"
-        className="min-h-[44px] sm:min-h-0"
-        onClick={() => {
-          if (prescriberInstitutionSuggestion) {
-            applyInstitutionSuggestion();
-          }
-          setSendSafetyAck(false);
-          setSendFormErrors({});
-          setSendDialogOpen(true);
-        }}
-      >
-        <Send className="mr-1.5 size-3.5" aria-hidden="true" />
-        送付
-      </Button>
-    </div>
-  ) : null;
+      </div>
+    ) : null;
 
   return (
     <PageScaffold variant="card">
@@ -822,18 +825,20 @@ export default function ReportDetailPage() {
                   {editMode ? '表示に戻る' : '編集'}
                 </Button>
               )}
-              <a
-                href={`/api/care-reports/${id}/pdf`}
-                target="_blank"
-                rel="noreferrer"
-                className={cn(
-                  buttonVariants({ variant: 'outline', size: 'sm' }),
-                  'min-h-[44px] sm:min-h-0',
-                )}
-              >
-                <FileText className="mr-1.5 size-3.5" aria-hidden="true" />
-                PDFを開く
-              </a>
+              {isConfirmedReport ? (
+                <a
+                  href={`/api/care-reports/${id}/pdf`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={cn(
+                    buttonVariants({ variant: 'outline', size: 'sm' }),
+                    'min-h-[44px] sm:min-h-0',
+                  )}
+                >
+                  <FileText className="mr-1.5 size-3.5" aria-hidden="true" />
+                  PDFを開く
+                </a>
+              ) : null}
               <Link href={`/reports/${id}/print`}>
                 <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0">
                   <Printer className="mr-1.5 size-3.5" aria-hidden="true" />

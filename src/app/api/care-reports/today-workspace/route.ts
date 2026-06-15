@@ -3,6 +3,7 @@ import { success, validationError } from '@/lib/api/response';
 import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObject, readJsonObjectString } from '@/lib/db/json';
+import { dateKeySchema } from '@/lib/validations/date-key';
 import { z } from 'zod';
 import type {
   ReportDraftRow,
@@ -25,10 +26,7 @@ const WAITING_LIMIT = 5;
 const RESOLVED_LIMIT = 3;
 
 const dateQuerySchema = z.object({
-  date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, '日付はYYYY-MM-DD形式で指定してください')
-    .optional(),
+  date: dateKeySchema('日付はYYYY-MM-DD形式で指定してください').optional(),
 });
 
 /** 報告種別 → 宛先を含む既定タイトル(content.title が無いときのフォールバック) */
@@ -119,6 +117,7 @@ export const GET = withAuthContext(
           orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }],
           select: {
             id: true,
+            schedule_status: true,
             time_window_start: true,
             facility_batch_id: true,
             facility_batch: {
@@ -157,7 +156,6 @@ export const GET = withAuthContext(
                 where: {
                   org_id: ctx.orgId,
                   visit_record_id: { in: visitRecordIds },
-                  status: 'draft',
                 },
                 select: { id: true, visit_record_id: true },
               });
@@ -216,6 +214,8 @@ export const GET = withAuthContext(
             ? (draftReportByRecordId.get(schedule.visit_record.id) ?? null)
             : null;
           const visitRecordId = schedule.visit_record?.id ?? null;
+          const canGenerateDraft =
+            schedule.schedule_status === 'completed' && Boolean(visitRecordId);
           draftRows.push({
             id: schedule.id,
             time_start: schedule.time_window_start?.toISOString() ?? null,
@@ -223,14 +223,14 @@ export const GET = withAuthContext(
             recipient_label: buildRecipientLabel(schedule.case_.care_team_links),
             status: draftReportId
               ? 'draft_ready'
-              : visitRecordId
+              : canGenerateDraft
                 ? 'ready_to_generate'
                 : 'before_visit',
             visit_record_id: visitRecordId,
             note: hasNarcotic ? '麻薬使用状況を含む' : null,
             action: draftReportId
               ? { label: '→ 下書きへ', href: `/reports/${draftReportId}` }
-              : visitRecordId
+              : canGenerateDraft
                 ? null
                 : { label: '→ 訪問へ', href: '/visits' },
           });

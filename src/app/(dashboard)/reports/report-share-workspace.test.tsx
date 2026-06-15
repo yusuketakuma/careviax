@@ -218,7 +218,11 @@ describe('ReportShareWorkspace', () => {
     expect(screen.getByText('12名分を1通に集約')).toBeTruthy();
     // メモがある行でも下書き/訪問導線を隠さない
     expect(screen.getAllByRole('link', { name: '→ 訪問へ' })).toHaveLength(1);
-    expect(screen.getByRole('button', { name: '下書きを自動作成' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', {
+        name: '田中 一郎 様 医師(山本先生)+ケアマネ の下書きを自動作成',
+      }),
+    ).toBeTruthy();
 
     // 返信待ち / 今日解決した待ち
     expect(screen.getByText('返信待ち')).toBeTruthy();
@@ -239,7 +243,9 @@ describe('ReportShareWorkspace', () => {
     const fetchMock = stubFetch();
     renderWorkspace();
 
-    const generateButton = await screen.findByRole('button', { name: '下書きを自動作成' });
+    const generateButton = await screen.findByRole('button', {
+      name: '田中 一郎 様 医師(山本先生)+ケアマネ の下書きを自動作成',
+    });
     fireEvent.click(generateButton);
 
     await waitFor(() => {

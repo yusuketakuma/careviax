@@ -99,4 +99,20 @@ describe('/api/care-reports/[id]/pdf', () => {
     expect(pdfResponseMock).not.toHaveBeenCalled();
     expect(recordDataExportAuditMock).not.toHaveBeenCalled();
   });
+
+  it('rejects PDF export for unconfirmed reports without auditing an export', async () => {
+    buildCareReportPdfMock.mockRejectedValue(new Error('CARE_REPORT_NOT_CONFIRMED'));
+
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    }))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '薬剤師確認済みの報告書のみPDF出力できます',
+    });
+    expect(pdfResponseMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+  });
 });

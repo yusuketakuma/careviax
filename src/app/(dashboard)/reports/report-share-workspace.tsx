@@ -93,10 +93,12 @@ function TodayDraftsCard({
   data,
   onGenerateDraft,
   generatingVisitRecordId,
+  isGeneratingDraft,
 }: {
   data: ReportsTodayWorkspaceResponse;
   onGenerateDraft: (visitRecordId: string) => void;
   generatingVisitRecordId: string | null;
+  isGeneratingDraft: boolean;
 }) {
   return (
     <section
@@ -161,7 +163,8 @@ function TodayDraftsCard({
                         type="button"
                         size="sm"
                         onClick={() => onGenerateDraft(row.visit_record_id!)}
-                        disabled={generatingVisitRecordId === row.visit_record_id}
+                        disabled={isGeneratingDraft}
+                        aria-label={`${row.patient_label} ${row.recipient_label} の下書きを自動作成`}
                         className="px-3"
                       >
                         {generatingVisitRecordId === row.visit_record_id
@@ -352,6 +355,39 @@ export function ReportShareWorkspace() {
   const now = new Date();
   const data = workspaceQuery.data ?? null;
   const cockpit = cockpitQuery.data ?? null;
+  const actionRail =
+    cockpitQuery.isLoading || cockpitQuery.isError ? (
+      <div className="rounded-lg border border-border/70 bg-card p-4">
+        {cockpitQuery.isLoading ? (
+          <div
+            className="space-y-3"
+            role="status"
+            aria-label="オペレーション情報を読み込み中"
+            data-testid="workspace-action-rail-loading"
+          >
+            <Skeleton className="h-5 w-28" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-20 w-full" />
+          </div>
+        ) : (
+          <ErrorState
+            variant="server"
+            title="オペレーション情報を表示できません"
+            description="止まっている理由の取得に失敗しました。再試行してください。"
+            detail={cockpitQuery.error instanceof Error ? cockpitQuery.error.message : undefined}
+            action={{ label: '再試行', onClick: () => void cockpitQuery.refetch() }}
+          />
+        )}
+      </div>
+    ) : (
+      <WorkspaceActionRail
+        nextAction={buildWorkspaceNextAction(cockpit)}
+        blockedReasons={buildWorkspaceBlockedReasons(cockpit)}
+        blockedReasonsEmptyLabel="止まっている作業はありません"
+        evidence={buildReportEvidence(data)}
+        evidenceOpenLabel="開く"
+      />
+    );
 
   return (
     <section aria-label="報告・共有ワークスペース" data-testid="report-share-workspace">
@@ -395,6 +431,7 @@ export function ReportShareWorkspace() {
                 generatingVisitRecordId={
                   generateDraftMutation.isPending ? generateDraftMutation.variables : null
                 }
+                isGeneratingDraft={generateDraftMutation.isPending}
               />
               <WaitingBoxesSection data={data} />
               <p
@@ -405,15 +442,7 @@ export function ReportShareWorkspace() {
                 実施したこと → 観察したこと → 提案。
               </p>
             </div>
-            <div className="space-y-4">
-              <WorkspaceActionRail
-                nextAction={buildWorkspaceNextAction(cockpit)}
-                blockedReasons={buildWorkspaceBlockedReasons(cockpit)}
-                blockedReasonsEmptyLabel="止まっている作業はありません"
-                evidence={buildReportEvidence(data)}
-                evidenceOpenLabel="開く"
-              />
-            </div>
+            <div className="space-y-4">{actionRail}</div>
           </div>
         )}
       </div>

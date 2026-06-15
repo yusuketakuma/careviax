@@ -138,7 +138,7 @@ function mockReport() {
       visit_date: '2026-03-29T09:00:00.000Z',
     },
     report_type: 'physician_report',
-    status: 'draft',
+    status: 'confirmed',
     content: structuredPhysicianContent,
     pdf_url: null,
     created_by: 'user_1',
@@ -289,6 +289,30 @@ describe('ReportDetailPage send safety dialog', () => {
     expect(screen.queryByText('訪問記録から生成された報告内容')).toBeNull();
     expect(screen.queryByRole('button', { name: '送付' })).toBeNull();
     expect(screen.queryByRole('button', { name: '共有を作成' })).toBeNull();
+  });
+
+  it('hides sending and PDF output actions until the pharmacist confirms the draft', () => {
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return {
+          data: { data: [] },
+          isLoading: false,
+        };
+      }
+
+      return {
+        data: { data: { ...mockReport(), status: 'draft' } },
+        isLoading: false,
+      };
+    });
+
+    render(<ReportDetailPage />);
+
+    expect(screen.getByRole('button', { name: '編集' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '送付' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '共有を作成' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'PDFを開く' })).toBeNull();
   });
 
   it('waits for share target suggestions before opening the auto-selected composer', () => {

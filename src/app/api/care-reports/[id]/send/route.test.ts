@@ -137,7 +137,7 @@ describe('/api/care-reports/[id]/send POST', () => {
       id: 'report_1',
       patient_id: 'patient_1',
       case_id: 'case_1',
-      status: 'draft',
+      status: 'confirmed',
       visit_record_id: null,
       content: {},
       report_type: 'physician_report',
@@ -187,6 +187,35 @@ describe('/api/care-reports/[id]/send POST', () => {
     resolveOperationalTasksMock.mockResolvedValue(undefined);
     learnContactProfileFromCommunicationMock.mockResolvedValue(undefined);
     withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(txMock));
+  });
+
+  it('rejects unconfirmed draft reports before creating delivery side effects', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'draft',
+      visit_record_id: null,
+      content: {},
+      report_type: 'physician_report',
+      pdf_url: 'https://example.com/report.pdf',
+    });
+
+    const response = await POST(
+      createRequest({
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
   });
 
   it('returns 400 when email channel is used with a non-email contact', async () => {
@@ -514,7 +543,7 @@ describe('/api/care-reports/[id]/send POST', () => {
       id: 'report_1',
       patient_id: 'patient_1',
       case_id: 'case_1',
-      status: 'draft',
+      status: 'confirmed',
       visit_record_id: null,
       content: {
         source_provenance: { visit_record_id: 'visit_record_1' },
@@ -569,7 +598,7 @@ describe('/api/care-reports/[id]/send POST', () => {
       id: 'report_1',
       patient_id: 'patient_1',
       case_id: 'case_1',
-      status: 'draft',
+      status: 'confirmed',
       visit_record_id: null,
       content: {},
       report_type: 'physician_report',
@@ -602,7 +631,7 @@ describe('/api/care-reports/[id]/send POST', () => {
       id: 'report_1',
       patient_id: 'patient_1',
       case_id: 'case_1',
-      status: 'draft',
+      status: 'confirmed',
       visit_record_id: 'visit_record_1',
       content: {},
       report_type: 'physician_report',
@@ -714,12 +743,12 @@ describe('/api/care-reports/[id]/send POST', () => {
     });
   });
 
-  it('records resend communication events when an already-sent report is sent again', async () => {
+  it('records primary communication events for confirmed care-manager reports', async () => {
     careReportFindFirstMock.mockResolvedValue({
       id: 'report_1',
       patient_id: 'patient_1',
       case_id: 'case_1',
-      status: 'failed',
+      status: 'confirmed',
       visit_record_id: null,
       content: {},
       report_type: 'care_manager_report',
@@ -742,7 +771,7 @@ describe('/api/care-reports/[id]/send POST', () => {
     expect(communicationEventCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          event_type: 'resend',
+          event_type: 'care_manager_report',
           channel: 'fax',
           subject: 'care_manager_report',
         }),
@@ -755,7 +784,7 @@ describe('/api/care-reports/[id]/send POST', () => {
       id: 'report_1',
       patient_id: 'patient_1',
       case_id: 'case_1',
-      status: 'draft',
+      status: 'confirmed',
       visit_record_id: null,
       content: {},
       report_type: 'facility_handoff',
@@ -783,7 +812,7 @@ describe('/api/care-reports/[id]/send POST', () => {
       id: 'report_1',
       patient_id: 'patient_1',
       case_id: 'case_1',
-      status: 'draft',
+      status: 'confirmed',
       visit_record_id: null,
       content: {
         conference_note_id: 'note_conf_1',

@@ -115,6 +115,16 @@ describe('/api/care-reports/generate-from-visit', () => {
     expect(generateReportsFromVisitMock).not.toHaveBeenCalled();
   });
 
+  it('rejects blank visit record ids before calling the generator', async () => {
+    const response = (await POST(
+      createGenerateFromVisitRequest({ visit_record_id: '   ' }),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(generateReportsFromVisitMock).not.toHaveBeenCalled();
+  });
+
   it('rejects malformed JSON before calling the generator', async () => {
     const response = (await POST(createMalformedGenerateFromVisitRequest(), emptyRouteContext))!;
 

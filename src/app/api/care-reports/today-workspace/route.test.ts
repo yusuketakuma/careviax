@@ -95,6 +95,7 @@ describe('/api/care-reports/today-workspace', () => {
       schedules: [
         {
           id: 'sched_1',
+          schedule_status: 'planned',
           time_window_start: new Date('2026-06-11T01:30:00.000Z'),
           facility_batch_id: null,
           facility_batch: null,
@@ -107,6 +108,7 @@ describe('/api/care-reports/today-workspace', () => {
         },
         {
           id: 'sched_2',
+          schedule_status: 'planned',
           time_window_start: new Date('2026-06-11T05:00:00.000Z'),
           facility_batch_id: null,
           facility_batch: null,
@@ -127,6 +129,7 @@ describe('/api/care-reports/today-workspace', () => {
         // 施設一括(同一 batch の 2 行 → 1 行に集約)
         {
           id: 'sched_3',
+          schedule_status: 'planned',
           time_window_start: new Date('2026-06-11T06:30:00.000Z'),
           facility_batch_id: 'batch_1',
           facility_batch: { id: 'batch_1', facility_id: 'fac_1', patient_ids: Array(12).fill('p') },
@@ -136,6 +139,7 @@ describe('/api/care-reports/today-workspace', () => {
         },
         {
           id: 'sched_4',
+          schedule_status: 'planned',
           time_window_start: new Date('2026-06-11T06:40:00.000Z'),
           facility_batch_id: 'batch_1',
           facility_batch: { id: 'batch_1', facility_id: 'fac_1', patient_ids: Array(12).fill('p') },
@@ -178,6 +182,7 @@ describe('/api/care-reports/today-workspace', () => {
       schedules: [
         {
           id: 'sched_ready',
+          schedule_status: 'completed',
           time_window_start: new Date('2026-06-11T05:00:00.000Z'),
           facility_batch_id: null,
           facility_batch: null,
@@ -202,6 +207,68 @@ describe('/api/care-reports/today-workspace', () => {
       status: 'ready_to_generate',
       visit_record_id: 'visit_record_1',
       action: null,
+    });
+  });
+
+  it('does not offer report generation for unfinished visit records', async () => {
+    mockTx({
+      schedules: [
+        {
+          id: 'sched_in_progress',
+          schedule_status: 'in_progress',
+          time_window_start: new Date('2026-06-11T05:00:00.000Z'),
+          facility_batch_id: null,
+          facility_batch: null,
+          case_: {
+            patient: { id: 'p2', name: '田中 一郎' },
+            care_team_links: [{ role: 'care_manager', name: '中島 桜', is_primary: true }],
+          },
+          cycle: { prescription_intakes: [{ lines: [] }] },
+          visit_record: { id: 'visit_record_1' },
+        },
+      ],
+      draftReports: [],
+    });
+
+    const req = createRequest('http://localhost/api/care-reports/today-workspace');
+    const res = await GET(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(200);
+    const json = await res!.json();
+    expect(json.data.draft_rows[0]).toMatchObject({
+      status: 'before_visit',
+      visit_record_id: 'visit_record_1',
+      action: { label: '→ 訪問へ', href: '/visits' },
+    });
+  });
+
+  it('treats any existing report for the visit as an existing draft/detail target', async () => {
+    mockTx({
+      schedules: [
+        {
+          id: 'sched_sent',
+          schedule_status: 'completed',
+          time_window_start: new Date('2026-06-11T05:00:00.000Z'),
+          facility_batch_id: null,
+          facility_batch: null,
+          case_: {
+            patient: { id: 'p2', name: '田中 一郎' },
+            care_team_links: [{ role: 'care_manager', name: '中島 桜', is_primary: true }],
+          },
+          cycle: { prescription_intakes: [{ lines: [] }] },
+          visit_record: { id: 'visit_record_1' },
+        },
+      ],
+      draftReports: [{ id: 'report_sent', visit_record_id: 'visit_record_1', status: 'sent' }],
+    });
+
+    const req = createRequest('http://localhost/api/care-reports/today-workspace');
+    const res = await GET(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(200);
+    const json = await res!.json();
+    expect(json.data.draft_rows[0]).toMatchObject({
+      status: 'draft_ready',
+      visit_record_id: 'visit_record_1',
+      action: { label: '→ 下書きへ', href: '/reports/report_sent' },
     });
   });
 
@@ -275,5 +342,12 @@ describe('/api/care-reports/today-workspace', () => {
     const req = createRequest('http://localhost/api/care-reports/today-workspace?date=2026-6-11');
     const res = await GET(req, { params: Promise.resolve({}) });
     expect(res!.status).toBe(400);
+  });
+
+  it('returns 400 on impossible date params', async () => {
+    const req = createRequest('http://localhost/api/care-reports/today-workspace?date=2026-02-31');
+    const res = await GET(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 });

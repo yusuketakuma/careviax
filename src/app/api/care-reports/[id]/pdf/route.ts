@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
-import { error, notFound, validationError } from '@/lib/api/response';
+import { conflict, error, notFound, validationError } from '@/lib/api/response';
 import { pdfResponse } from '@/lib/api/pdf-response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
@@ -39,6 +39,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   } catch (cause) {
     if (cause instanceof Error && cause.message.includes('見つかりません')) {
       return notFound(cause.message);
+    }
+    if (cause instanceof Error && cause.message === 'CARE_REPORT_NOT_CONFIRMED') {
+      return conflict('薬剤師確認済みの報告書のみPDF出力できます');
     }
 
     return error('EXTERNAL_PDF_RENDER_FAILED', '報告書 PDF を生成できませんでした', 500);

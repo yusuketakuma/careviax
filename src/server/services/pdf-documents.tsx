@@ -1264,7 +1264,10 @@ export async function buildCareReportPdf(
     getPdfBranding(orgId),
     getCareReportRecord(orgId, reportId, accessContext),
   ]);
-  const fileName = sanitizePdfFileName(`care-report-${report.patient.name}-${report.id}.pdf`);
+  if (report.status !== 'confirmed') {
+    throw new Error('CARE_REPORT_NOT_CONFIRMED');
+  }
+  const fileName = sanitizePdfFileName(`care-report-${report.id}.pdf`);
 
   return renderPdf(
     <PdfShell

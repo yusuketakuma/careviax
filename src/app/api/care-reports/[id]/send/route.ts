@@ -3,7 +3,14 @@ import type { MemberRole, Prisma } from '@prisma/client';
 import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
-import { error, forbiddenResponse, success, validationError, notFound } from '@/lib/api/response';
+import {
+  conflict,
+  error,
+  forbiddenResponse,
+  success,
+  validationError,
+  notFound,
+} from '@/lib/api/response';
 import {
   canAccessVisitScheduleAssignment,
   canBypassVisitScheduleAssignmentAccess,
@@ -433,14 +440,13 @@ async function processRecipient(args: {
         },
       });
 
-      const eventType = report.status === 'draft' ? primaryEventType : 'resend';
-      if (eventType) {
+      if (primaryEventType) {
         await tx.communicationEvent.create({
           data: {
             org_id: ctx.orgId,
             patient_id: report.patient_id,
             case_id: report.case_id,
-            event_type: eventType,
+            event_type: primaryEventType,
             channel: recipient.channel,
             direction: 'outbound',
             counterpart_name: recipient.recipient_name,
@@ -672,6 +678,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }))
   ) {
     return forbiddenResponse('この報告書を送信する権限がありません');
+  }
+  if (existing.status === 'draft') {
+    return conflict('薬剤師確認済みの報告書のみ送付できます', {
+      status: existing.status,
+    });
   }
 
   const recipients = normalized.recipients;
