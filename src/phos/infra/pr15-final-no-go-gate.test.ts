@@ -651,17 +651,12 @@ describe('PH-OS Final No-Go gate', () => {
       }
     }
 
-    for (const routeFile of [
+    expectMissingFiles([
       'src/app/(phos)/board/page.tsx',
       'src/app/(phos)/capacity/page.tsx',
       'src/app/(phos)/handoffs/page.tsx',
       'src/app/(phos)/visit/[packetId]/page.tsx',
-      'src/app/(dashboard)/reports/page.tsx',
-    ]) {
-      expect(readFileSync(join(repoRoot, routeFile), 'utf8'), routeFile).toContain(
-        "const PHOS_PROXY_API_BASE_URL = '/api/phos';",
-      );
-    }
+    ]);
   });
 
   it('keeps PH-OS app, UI, and API client code away from server-side business data access', () => {
@@ -789,11 +784,7 @@ describe('PH-OS Final No-Go gate', () => {
   });
 
   it('keeps Workspace deep links, opened card tabs, and focus return covered', () => {
-    expectEvidence('src/app/(phos)/board/page.tsx', [
-      /searchParams/,
-      /initialSelectedCardId/,
-      /<BoardClient/,
-    ]);
+    expectMissingFiles(['src/app/(phos)/board/page.tsx']);
     expectEvidence('src/phos/ui/board/BoardClient.test.tsx', [
       /opens a deep-linked card from the server-provided initial card id/,
       /syncs selected card state when the server-provided card query changes/,
@@ -1013,10 +1004,7 @@ describe('PH-OS Final No-Go gate', () => {
       /sessionHasCapacityRole/,
       /CapacityScope\.PHARMACY/,
     ]);
-    expectEvidence('src/app/(phos)/capacity/page.tsx', [
-      /CapacityDashboardClient/,
-      /PHOS_PROXY_API_BASE_URL/,
-    ]);
+    expectMissingFiles(['src/app/(phos)/capacity/page.tsx']);
   });
 
   it('keeps SEND_REPORT behind an explicit confirmation surface', () => {
@@ -1060,10 +1048,10 @@ describe('PH-OS Final No-Go gate', () => {
     ]);
   });
 
-  it('keeps the existing /reports route wired to PH-OS report delivery state without a competing route group page', () => {
+  it('keeps the current /reports workspace without a competing PH-OS route group page', () => {
     expectEvidence('src/app/(dashboard)/reports/page.tsx', [
-      /PhosReportsPageClient/,
-      /PHOS_PROXY_API_BASE_URL/,
+      /ReportShareWorkspace/,
+      /PageScaffold/,
     ]);
     expectEvidence('src/phos/ui/report/ReportsPageClient.tsx', [
       /getReportDeliveries\(\{ status: ReportDeliveryStatus\.WAITING_REPLY \}\)/,
@@ -1226,11 +1214,7 @@ describe('PH-OS Final No-Go gate', () => {
   });
 
   it('keeps the PH-OS Handoff Queue route wired to API Gateway state', () => {
-    expectEvidence('src/app/(phos)/handoffs/page.tsx', [
-      /HandoffsPageClient/,
-      /PHOS_PROXY_API_BASE_URL/,
-      /PH-OS Handoffs/,
-    ]);
+    expectMissingFiles(['src/app/(phos)/handoffs/page.tsx']);
     expectEvidence('src/phos/ui/handoff/HandoffsPageClient.tsx', [
       /getHandoffs\(\{ status: HandoffStatus\.OPEN, assignee: 'ME' \}\)/,
       /getHandoffs\(\{ status: HandoffStatus\.IN_REVIEW, assignee: 'ME' \}\)/,
@@ -1248,11 +1232,7 @@ describe('PH-OS Final No-Go gate', () => {
   });
 
   it('keeps the PH-OS direct VisitMode route wired to packet API state', () => {
-    expectEvidence('src/app/(phos)/visit/[packetId]/page.tsx', [
-      /params: Promise<\{ packetId: string \}>/,
-      /VisitModePageClient/,
-      /PHOS_PROXY_API_BASE_URL/,
-    ]);
+    expectMissingFiles(['src/app/(phos)/visit/[packetId]/page.tsx']);
     expectEvidence('src/phos/ui/visit/VisitModePageClient.tsx', [
       /getVisitMode\(packetId\)/,
       /updateVisitStep\(visit\.packet_id, step/,

@@ -33,7 +33,7 @@ function buildCards(): VisitPreparationCard[] {
   return [
     {
       schedule_id: 'sch_ito',
-      visit_mode_href: '/visit/sch_ito',
+      visit_mode_href: '/visits/sch_ito/record',
       time_label: '10:30',
       title: '伊藤 キヨ',
       is_facility: false,
@@ -58,7 +58,7 @@ function buildCards(): VisitPreparationCard[] {
     },
     {
       schedule_id: 'sch_tanaka',
-      visit_mode_href: '/visit/sch_tanaka',
+      visit_mode_href: '/visits/sch_tanaka/record',
       time_label: '14:00',
       title: '田中 一郎',
       is_facility: false,
@@ -83,7 +83,7 @@ function buildCards(): VisitPreparationCard[] {
     },
     {
       schedule_id: 'sch_gh',
-      visit_mode_href: '/visit/sch_gh',
+      visit_mode_href: '/visits/sch_gh/record',
       time_label: '15:30',
       title: '施設グリーンヒル',
       is_facility: true,
@@ -175,7 +175,7 @@ describe('VisitsToday', () => {
 
     // 主操作(青)は先頭訪問の訪問モードへ
     const primary = screen.getByRole('link', { name: '訪問モードを開始' });
-    expect(primary.getAttribute('href')).toBe('/visit/sch_ito');
+    expect(primary.getAttribute('href')).toBe('/visits/sch_ito/record');
   });
 
   it('renders the preparation list with counts, progress and check chips', () => {

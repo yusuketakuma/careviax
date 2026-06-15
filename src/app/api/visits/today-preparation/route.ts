@@ -222,7 +222,7 @@ function deriveHomeVisitCard(schedule: ScheduleQueryRow): VisitPreparationCard {
 
   return {
     schedule_id: schedule.id,
-    visit_mode_href: `/visit/${schedule.id}`,
+    visit_mode_href: `/visits/${schedule.id}/record`,
     time_label: schedule.time_window_start ? formatTimeOfDay(schedule.time_window_start) : null,
     title: patient.name,
     is_facility: false,
@@ -262,8 +262,7 @@ function deriveFacilityVisitCard(
   const safetyTags = SAFETY_TAG_ORDER.filter((tag) => tagSet.has(tag));
 
   const setDoneCount = schedules.filter(
-    (schedule) =>
-      schedule.cycle && SET_DONE_STATUSES.includes(schedule.cycle.overall_status),
+    (schedule) => schedule.cycle && SET_DONE_STATUSES.includes(schedule.cycle.overall_status),
   ).length;
   const setTotal = schedules.length;
   const roomOrderReady = schedules.every((schedule) => schedule.route_order != null);
@@ -296,7 +295,7 @@ function deriveFacilityVisitCard(
 
   return {
     schedule_id: lead.id,
-    visit_mode_href: `/visit/${lead.id}`,
+    visit_mode_href: `/visits/${lead.id}/record`,
     time_label: lead.time_window_start ? formatTimeOfDay(lead.time_window_start) : null,
     title: name.startsWith('施設') ? name : `施設${name}`,
     is_facility: true,
@@ -481,7 +480,9 @@ export const GET = withAuthContext(
             : null,
         ),
       ),
-    ].sort((left, right) => (left.time_label ?? '99:99').localeCompare(right.time_label ?? '99:99'));
+    ].sort((left, right) =>
+      (left.time_label ?? '99:99').localeCompare(right.time_label ?? '99:99'),
+    );
 
     // 根拠・記録: ルート計算時刻 / 車両 / 前回訪問記録件数
     const routeCalculatedAt = rows
