@@ -41,7 +41,7 @@ function jsonb(value: unknown) {
   return JSON.stringify(value);
 }
 
-async function openFirstPatientProfile(page: Page) {
+async function openFirstPatientCard(page: Page) {
   await openStableRoute(page, '/patients');
   const firstLink = page
     .locator('a[href^="/patients/"]:not([href="/patients/new"])')
@@ -50,12 +50,11 @@ async function openFirstPatientProfile(page: Page) {
   await expect(firstLink).toBeVisible({ timeout: 30_000 });
   const href = await firstLink.getAttribute('href');
   expect(href).toBeTruthy();
-  // Default /patients/[id] is the card workspace; the legacy tab UI lives at ?view=profile.
-  await openStableRoute(page, `${href}?view=profile`);
+  await openStableRoute(page, href!);
 
-  const tablist = page.getByTestId('patient-detail-tablist');
+  const cardWorkspace = page.getByTestId('card-workspace');
   const loading = page.locator('main').getByText('読み込み中...');
-  if (await tablist.isVisible({ timeout: 60_000 }).catch(() => false)) {
+  if (await cardWorkspace.isVisible({ timeout: 60_000 }).catch(() => false)) {
     return;
   }
 
@@ -63,7 +62,7 @@ async function openFirstPatientProfile(page: Page) {
     await reloadStablePage(page);
   }
 
-  await expect(tablist).toBeVisible({ timeout: 60_000 });
+  await expect(cardWorkspace).toBeVisible({ timeout: 60_000 });
 }
 
 async function openVisitDetailPage(page: Page, visitRecordId: string) {
@@ -448,14 +447,16 @@ test.describe('detail page layout', () => {
     await attachLocalSession(context);
   });
 
-  test('patient profile view keeps grouped layout and visible tab navigation', async ({
+  test('patient card workspace keeps grouped layout and integrated profile summary', async ({
     context,
   }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await openFirstPatientProfile(page);
+    await openFirstPatientCard(page);
 
     await expect(page.getByTestId('page-scaffold')).toBeVisible();
-    await expect(page.getByTestId('patient-detail-tablist')).toBeVisible();
+    await expect(page.getByTestId('card-workspace')).toBeVisible();
+    await expect(page.getByTestId('patient-profile-summary')).toBeVisible();
+    await expect(page.getByTestId('patient-detail-tablist')).toHaveCount(0);
 
     const metrics = await page.evaluate(() => ({
       clientWidth: document.documentElement.clientWidth,

@@ -6,7 +6,6 @@ import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import {
@@ -50,7 +49,22 @@ type PatientPrescriptionsResponse = {
 };
 type CareReportsResponse = { data: CareReportForPrint[] };
 
-function usePrintHubData(orgId: string) {
+function documentTypeNeedsSetPlan(documentType: PrintDocumentTypeKey) {
+  return (
+    documentType === 'set_instruction' ||
+    documentType === 'medication_calendar' ||
+    documentType === 'medication_label'
+  );
+}
+
+function documentTypeNeedsCareReports(documentType: PrintDocumentTypeKey) {
+  return documentType === 'visit_report' || documentType === 'document_receipt';
+}
+
+function usePrintHubData(orgId: string, documentType: PrintDocumentTypeKey) {
+  const needsSetPlan = documentTypeNeedsSetPlan(documentType);
+  const needsCareReports = documentTypeNeedsCareReports(documentType);
+
   const setPlansQuery = useQuery({
     queryKey: ['print-hub-set-plans', orgId],
     queryFn: async () => {
@@ -58,7 +72,7 @@ function usePrintHubData(orgId: string) {
       if (!res.ok) throw new Error('セットプランの取得に失敗しました');
       return res.json() as Promise<SetPlansResponse>;
     },
-    enabled: !!orgId,
+    enabled: !!orgId && needsSetPlan,
     staleTime: 60_000,
   });
 
@@ -90,7 +104,7 @@ function usePrintHubData(orgId: string) {
       if (!res.ok) throw new Error('報告書の取得に失敗しました');
       return res.json() as Promise<CareReportsResponse>;
     },
-    enabled: !!orgId,
+    enabled: !!orgId && needsCareReports,
     staleTime: 60_000,
   });
 
@@ -105,12 +119,16 @@ function usePrintHubData(orgId: string) {
     intake,
     reports,
     // disabled クエリは isLoading=false になるため isPending で判定する。
-    // 処方明細はプラン確定後にだけ待つ(プラン 0 件で待ち続けない)。
+    // 選択中の帳票で不要な API 取得は待たない。既定のセット指示書で
+    // care-reports 取得に引きずられてプレビューが空になるのを避ける。
     isLoading:
-      setPlansQuery.isPending ||
-      careReportsQuery.isPending ||
+      (needsSetPlan && setPlansQuery.isPending) ||
+      (needsCareReports && careReportsQuery.isPending) ||
       (!!patientId && prescriptionsQuery.isPending),
-    isError: setPlansQuery.isError || careReportsQuery.isError || prescriptionsQuery.isError,
+    isError:
+      (needsSetPlan && setPlansQuery.isError) ||
+      (needsCareReports && careReportsQuery.isError) ||
+      prescriptionsQuery.isError,
   };
 }
 
@@ -169,6 +187,17 @@ function EmptySheetBody({ note }: { note: string }) {
         ))}
       </div>
       <p className="mt-3 text-xs text-muted-foreground">データなし(サンプル枠): {note}</p>
+    </div>
+  );
+}
+
+function LoadingSheetBody({ title, settings }: { title: string; settings: PrintOutputSettings }) {
+  return (
+    <div>
+      <SheetHeader title={title} settings={settings} />
+      <div className="mt-4 rounded border border-dashed border-slate-300 px-4 py-10 text-center text-xs leading-6 text-muted-foreground">
+        帳票の明細を確認しています。完了するとこのプレビューに反映されます。
+      </div>
     </div>
   );
 }
@@ -439,7 +468,7 @@ export function PrintHubContent() {
   const documentType = parsePrintDocumentType(searchParams.get('type'));
   const [settings, setSettings] = useState<PrintOutputSettings>(DEFAULT_PRINT_OUTPUT_SETTINGS);
 
-  const { plan, intake, reports, isLoading, isError } = usePrintHubData(orgId);
+  const { plan, intake, reports, isLoading, isError } = usePrintHubData(orgId, documentType);
 
   const setInstruction = useMemo(() => buildSetInstructionDocument(plan, intake), [plan, intake]);
   const calendar = useMemo(() => buildMedicationCalendarDocument(plan, intake), [plan, intake]);
@@ -460,11 +489,7 @@ export function PrintHubContent() {
 
   const renderSheetBody = () => {
     if (isLoading) {
-      return (
-        <div className="flex h-full items-center justify-center">
-          <Loading label="帳票データを読み込み中..." />
-        </div>
-      );
+      return <LoadingSheetBody title={printDocumentTypeLabel(documentType)} settings={settings} />;
     }
     if (isError) {
       return (

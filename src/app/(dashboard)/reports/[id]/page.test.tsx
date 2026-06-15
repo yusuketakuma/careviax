@@ -6,6 +6,7 @@ import { setupDomTestEnv } from '@/test/dom-test-utils';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useParamsMock = vi.hoisted(() => vi.fn());
+const useSearchParamsMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
 const useMutationMock = vi.hoisted(() => vi.fn());
 const useQueryClientMock = vi.hoisted(() => vi.fn());
@@ -17,6 +18,7 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 
 vi.mock('next/navigation', () => ({
   useParams: useParamsMock,
+  useSearchParams: useSearchParamsMock,
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -116,6 +118,7 @@ describe('ReportDetailPage send safety dialog', () => {
     vi.clearAllMocks();
     useOrgIdMock.mockReturnValue('org_1');
     useParamsMock.mockReturnValue({ id: 'report_1' });
+    useSearchParamsMock.mockReturnValue(new URLSearchParams(''));
     useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
     useMutationMock.mockReturnValue({
       mutate: sendMutateMock,
@@ -176,5 +179,44 @@ describe('ReportDetailPage send safety dialog', () => {
       recipient_contact: 'doctor@example.com',
       safety_ack: true,
     });
+  });
+
+  it('opens only the report composer for the p0_28 composer view', () => {
+    useSearchParamsMock.mockReturnValue(new URLSearchParams('view=composer'));
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return {
+          data: {
+            data: [
+              {
+                id: 'professional_1',
+                name: '鈴木 ケアマネ',
+                profession_type: 'care_manager',
+                organization_name: '青葉ケアプラン',
+                email: 'care@example.com',
+                fax: null,
+                phone: '03-0000-0000',
+              },
+            ],
+          },
+          isLoading: false,
+        };
+      }
+
+      return {
+        data: { data: mockReport() },
+        isLoading: false,
+      };
+    });
+
+    render(<ReportDetailPage />);
+
+    expect(screen.getByTestId('report-composer')).toBeTruthy();
+    expect(screen.queryByTestId('readiness-panel')).toBeNull();
+    expect(screen.getByText('共有先')).toBeTruthy();
+    expect(screen.getByText('報告内容')).toBeTruthy();
+    expect(screen.getByText('送付前チェック')).toBeTruthy();
+    expect(screen.getByText('一括送付（1件）')).toBeTruthy();
   });
 });

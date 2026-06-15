@@ -146,42 +146,40 @@ export type EvidenceLink = {
 
 /**
  * 「根拠になる情報」カードのリンク先。
- * 患者詳細(?view=profile)の実在タブのみへ解決し、患者未解決時はリンク無しにする。
- * 検査値は基本情報タブ(PatientLabsCard)、残薬写真はセットタブ(残薬)に対応する。
+ * 現行の患者カード作業台または専用 route へ解決し、患者未解決時はリンク無しにする。
  */
 export function resolveEvidenceLinks(patientId: string | null): EvidenceLink[] {
-  const profileHref = (tab: string) =>
-    patientId ? `/patients/${patientId}?view=profile&tab=${tab}` : null;
+  const patientHref = (anchor = '') => (patientId ? `/patients/${patientId}${anchor}` : null);
   return [
     {
       key: 'prescription',
       label: '処方せん',
-      description: '処方・監査タブで前回比較を開く',
-      href: profileHref('prescriptions'),
+      description: '患者カードの処方セクションで前回比較を開く',
+      href: patientHref('#card-prescription-section'),
     },
     {
       key: 'last_visit_note',
       label: '前回訪問メモ',
-      description: '訪問タブで前回の記録を開く',
-      href: profileHref('visits'),
+      description: '患者カードの直近の動きを開く',
+      href: patientHref('#card-recent-activities'),
     },
     {
       key: 'nursing_note',
       label: '訪看メモ',
-      description: '報告タブで多職種の共有を開く',
-      href: profileHref('communications'),
+      description: '多職種共有を開く',
+      href: patientId ? `/patients/${patientId}/collaboration` : null,
     },
     {
       key: 'labs',
       label: '検査値',
-      description: '基本情報タブの検査値を開く',
-      href: profileHref('basic'),
+      description: '患者プロフィールの基本条件を開く',
+      href: patientHref('#patient-profile-summary'),
     },
     {
       key: 'residual_photo',
       label: '残薬写真',
-      description: 'セットタブで残薬の状況を開く',
-      href: profileHref('medications'),
+      description: '患者カードの根拠・記録を開く',
+      href: patientHref('#patient-profile-summary'),
     },
   ];
 }

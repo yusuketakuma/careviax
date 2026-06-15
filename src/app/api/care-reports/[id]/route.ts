@@ -16,7 +16,11 @@ import { formatNullableDateKey } from '@/lib/date-key';
 import { z } from 'zod';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import { findLatestPrescriberInstitutionSuggestion } from '@/lib/prescriptions/prescriber-institutions';
-import { getChannelStatsByName, getRecommendedChannels } from '@/lib/contact-profiles';
+import {
+  findExternalProfessionalSuggestions,
+  getChannelStatsByName,
+  getRecommendedChannels,
+} from '@/lib/contact-profiles';
 import {
   inferCareReportTargetRole,
   resolveDocumentDeliveryRule,
@@ -134,6 +138,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       patientId: report.patient_id,
     },
   );
+  const externalProfessionalSuggestions = await findExternalProfessionalSuggestions(
+    prisma,
+    ctx.orgId,
+    {
+      caseId: report.case_id,
+      patientId: report.patient_id,
+    },
+  );
   const prescriberInstitutionStats =
     prescriberInstitutionSuggestion != null
       ? await getChannelStatsByName(prisma, ctx.orgId, [prescriberInstitutionSuggestion.name])
@@ -167,6 +179,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         : null,
       intake_baseline_context: intakeBaselineContext,
       delivery_rule_suggestion: deliveryRuleSuggestion,
+      external_professional_suggestions: externalProfessionalSuggestions.map((item) => ({
+        ...item,
+        last_contacted_at: item.last_contacted_at?.toISOString() ?? null,
+      })),
       prescriber_institution_suggestion: prescriberInstitutionSuggestion
         ? {
             ...prescriberInstitutionSuggestion,
@@ -229,8 +245,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // p1_04: 薬剤師確認(draft → confirmed)のみステータス遷移を許可する。
   // confirmed は薬学的判断のトレースなので AuditLog に記録する。
   // 送信系ステータス(sent/failed/response_waiting)は送信APIの責務。
-  const isDraftConfirmTransition =
-    updateData.status === 'confirmed' && existing.status === 'draft';
+  const isDraftConfirmTransition = updateData.status === 'confirmed' && existing.status === 'draft';
   if (updateData.status && updateData.status !== 'draft' && !isDraftConfirmTransition) {
     return conflict('報告書の送信状態は送信APIからのみ更新できます');
   }

@@ -289,7 +289,7 @@ export function VisitsToday() {
           id: 'prior-records',
           label: '前回訪問記録',
           meta: `${data.evidence.prior_record_count}件`,
-          href: '#visits-classic',
+          href: firstVisitHref ?? '/visits',
         },
       ]
     : [];

@@ -80,7 +80,10 @@ describe('composeBriefParagraph', () => {
   it('headline と bullets を「。」で補完して 1 段落に合成する', () => {
     const paragraph = composeBriefParagraph({
       headline: '前回から利尿薬が追加されています',
-      bullets: ['ふらつき・脱水・食事量の変化を確認してください', '・服薬カレンダーの場所も確認します。'],
+      bullets: [
+        'ふらつき・脱水・食事量の変化を確認してください',
+        '・服薬カレンダーの場所も確認します。',
+      ],
     });
     expect(paragraph).toBe(
       '前回から利尿薬が追加されています。ふらつき・脱水・食事量の変化を確認してください。服薬カレンダーの場所も確認します。',
@@ -192,11 +195,11 @@ describe('resolveEvidenceLinks', () => {
       '残薬写真',
     ]);
     expect(links.map((link) => link.href)).toEqual([
-      '/patients/patient_1?view=profile&tab=prescriptions',
-      '/patients/patient_1?view=profile&tab=visits',
-      '/patients/patient_1?view=profile&tab=communications',
-      '/patients/patient_1?view=profile&tab=basic',
-      '/patients/patient_1?view=profile&tab=medications',
+      '/patients/patient_1#card-prescription-section',
+      '/patients/patient_1#card-recent-activities',
+      '/patients/patient_1/collaboration',
+      '/patients/patient_1#patient-profile-summary',
+      '/patients/patient_1#patient-profile-summary',
     ]);
   });
 
