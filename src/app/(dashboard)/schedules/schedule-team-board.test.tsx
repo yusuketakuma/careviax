@@ -294,6 +294,10 @@ describe('ScheduleTeamBoard', () => {
     expect(
       within(pending).getByText(/確定すると佐藤さんの明日の余白は 70分 → 25分 になります/),
     ).toBeTruthy();
+    const proposalDetailLink = within(pending).getByRole('link', { name: '→ 候補詳細へ' });
+    expect(proposalDetailLink.getAttribute('href')).toBe(
+      '/schedules/proposals?workspace=dashboard&status=patient_contact_pending&preset=contact&detail=proposal_1',
+    );
 
     // 右レール: 次にやること(青主操作はこの1つ)/止まっている理由/根拠・記録
     expect(screen.getByRole('heading', { name: '次にやること' })).toBeTruthy();

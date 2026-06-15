@@ -368,14 +368,14 @@ function PendingProposalRow({
           </span>
         ) : null}
         <Link
-          href="/dashboard"
+          href={`/schedules/proposals?workspace=dashboard&status=patient_contact_pending&preset=contact&detail=${encodeURIComponent(proposal.id)}`}
           className={buttonVariants({
             variant: 'outline',
             size: 'sm',
             className: 'shrink-0 bg-card',
           })}
         >
-          → ダッシュボードへ
+          → 候補詳細へ
         </Link>
       </div>
       {showImpact ? (

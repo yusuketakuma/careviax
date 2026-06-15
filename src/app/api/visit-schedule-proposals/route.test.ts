@@ -109,11 +109,12 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
   notifyWorkflowMutation: notifyWorkflowMutationMock,
 }));
 
-import { GET as rawGET, POST as rawPOST } from './route';
+import { GET as rawGET, POST as rawPOST, PUT as rawPUT } from './route';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
 const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
+const PUT = (req: NextRequest) => rawPUT(req, emptyRouteContext);
 
 function createRequest(url: string, body?: unknown) {
   if (body === undefined) {
@@ -135,6 +136,17 @@ function createMalformedJsonPostRequest() {
   return new NextRequest('http://localhost/api/visit-schedule-proposals', {
     method: 'POST',
     body: '{"case_id":',
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': 'org_1',
+    },
+  });
+}
+
+function createPutRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/visit-schedule-proposals', {
+    method: 'PUT',
+    body: JSON.stringify(body),
     headers: {
       'content-type': 'application/json',
       'x-org-id': 'org_1',
@@ -661,6 +673,37 @@ describe('/api/visit-schedule-proposals', () => {
     expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects direct confirmed contact status from the draft drawer before write side effects', async () => {
+    const response = (await PUT(
+      createPutRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        priority: 'normal',
+        proposed_date: '2026-04-03',
+        time_window_start: '09:00',
+        proposed_pharmacist_id: 'user_2',
+        travel_mode: 'DRIVE',
+        patient_contact_status: 'confirmed',
+        submit_for_contact: true,
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        patient_contact_status: ['確認済みは患者連絡ワークフローで連絡結果として記録してください'],
+      },
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();

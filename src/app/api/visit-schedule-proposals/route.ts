@@ -697,6 +697,13 @@ const upsertDraftProposalSchema = z
         });
       }
     }
+    if (data.patient_contact_status === 'confirmed') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['patient_contact_status'],
+        message: '確認済みは患者連絡ワークフローで連絡結果として記録してください',
+      });
+    }
   });
 
 function toProposalTimeDate(value: string | undefined): Date | null {

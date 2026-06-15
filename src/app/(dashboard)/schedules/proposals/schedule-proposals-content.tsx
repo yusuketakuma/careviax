@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import {
+  AlertTriangle,
   CalendarClock,
   Car,
   CheckCircle2,
@@ -488,6 +489,130 @@ function ProposalOperationalFacts({ proposal }: { proposal: Proposal }) {
             : '主担当薬剤師を優先'}
         </span>
       </div>
+    </div>
+  );
+}
+
+function buildMedicationWorkflowChecks(proposal: Proposal) {
+  const proposedDateKey = toDateKey(proposal.proposed_date);
+  const deadlineKey = proposal.visit_deadline_date ? toDateKey(proposal.visit_deadline_date) : null;
+  const deadlineSatisfied = deadlineKey ? proposedDateKey <= deadlineKey : null;
+  const reasonParts = splitProposalReason(proposal.proposal_reason ?? '');
+  const medicationReason =
+    reasonParts.find((reason) => /変更|新規|開始/.test(reason)) ??
+    reasonParts.find((reason) => /服薬|算定|患者条件/.test(reason)) ??
+    '薬剤変更指示・新規開始薬は調剤側の確認内容を優先';
+  const routeLabel = `${timeLabel(proposal.time_window_start, proposal.time_window_end)} / ${proposalRouteDecisionLabel(proposal)}`;
+
+  return [
+    {
+      key: 'last-dose',
+      label: '前回最終服用日',
+      detail: proposal.medication_end_date
+        ? `${formatNullableDateLabel(proposal.medication_end_date)}を起点に期限を確認`
+        : '服薬最終日の根拠が未設定',
+      status: proposal.medication_end_date ? 'ok' : 'warning',
+    },
+    {
+      key: 'change-instruction',
+      label: '薬剤変更指示',
+      detail: medicationReason,
+      status: 'info',
+    },
+    {
+      key: 'delivery-deadline',
+      label: '開始日前配薬',
+      detail:
+        deadlineSatisfied === null
+          ? '配薬期限が未設定。薬剤師が開始日を確認'
+          : deadlineSatisfied
+            ? `${formatNullableDateLabel(proposal.visit_deadline_date)}までの候補`
+            : `${formatNullableDateLabel(proposal.visit_deadline_date)}を超過。再提案が必要`,
+      status: deadlineSatisfied === true ? 'ok' : 'warning',
+    },
+    {
+      key: 'route-time',
+      label: 'ルート・時間仮提案',
+      detail: `${routeLabel} / 移動 ${formatDistanceScoreLabel(proposal.route_distance_score)}`,
+      status: 'info',
+    },
+    {
+      key: 'patient-confirmation',
+      label: '患者連絡で確定',
+      detail:
+        proposal.proposal_status === 'confirmed'
+          ? '患者確認と日時確定が完了'
+          : proposal.proposal_status === 'patient_contact_pending'
+            ? proposal.patient_contact_status === 'confirmed'
+              ? '連絡結果を記録済み。日時確定へ進めます'
+              : '電話結果を記録してから日時確定'
+            : '承認後に患者へ候補日時を連絡',
+      status:
+        proposal.proposal_status === 'confirmed' || proposal.patient_contact_status === 'confirmed'
+          ? 'ok'
+          : 'info',
+    },
+  ];
+}
+
+function ProposalMedicationWorkflowCard({
+  proposal,
+  compact = false,
+}: {
+  proposal: Proposal;
+  compact?: boolean;
+}) {
+  const checks = buildMedicationWorkflowChecks(proposal);
+
+  return (
+    <div
+      className={cn(
+        'rounded-2xl border border-border/70 bg-card p-4 text-sm',
+        compact ? 'space-y-3' : 'space-y-4',
+      )}
+      data-testid="proposal-medication-workflow"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className="font-semibold text-foreground">服用開始・配薬判断</h3>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            薬剤根拠、仮ルート、患者連絡をこの順で確認します。
+          </p>
+        </div>
+        <Badge variant="outline">現場確認順</Badge>
+      </div>
+      <ol className={cn('grid gap-2', compact ? 'sm:grid-cols-1' : 'sm:grid-cols-2')}>
+        {checks.map((check, index) => {
+          const Icon = check.status === 'warning' ? AlertTriangle : CheckCircle2;
+          return (
+            <li
+              key={check.key}
+              className={cn(
+                'rounded-xl border px-3 py-2.5',
+                check.status === 'warning'
+                  ? 'border-amber-200 bg-amber-50 text-amber-950'
+                  : 'border-border/70 bg-muted/20 text-foreground',
+              )}
+            >
+              <div className="flex items-start gap-2">
+                <Icon
+                  className={cn(
+                    'mt-0.5 size-4 shrink-0',
+                    check.status === 'warning' ? 'text-amber-700' : 'text-emerald-700',
+                  )}
+                  aria-hidden="true"
+                />
+                <div className="min-w-0">
+                  <p className="font-medium">
+                    {index + 1}. {check.label}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{check.detail}</p>
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }
@@ -2027,6 +2152,7 @@ export function ScheduleProposalsContent({
                     <div className="space-y-3">
                       <ProposalHumanDecisionFlow proposal={proposal} compact />
 
+                      <ProposalMedicationWorkflowCard proposal={proposal} compact />
                       <ProposalReasonChips proposal={proposal} />
                       <p className="text-sm text-muted-foreground">
                         {proposalListVisitPlaceLabel(proposal)}
@@ -2538,6 +2664,7 @@ export function ScheduleProposalsContent({
                       </p>
                     </div>
                   ) : null}
+                  <ProposalMedicationWorkflowCard proposal={detail} />
                 </CardContent>
               </Card>
 
@@ -2717,7 +2844,7 @@ export function ScheduleProposalsContent({
               <VisitRoutePreviewPanel
                 controlId="proposal-detail-route"
                 title="ルートプレビュー"
-                description="候補を含めた当日ルートの並びを確認します。"
+                description="電話で提示する訪問順・到着目安を確認します。"
                 selectionLabel={detailRouteSelectionLabel}
                 travelMode={routeTravelMode}
                 onTravelModeChange={(value) => {
@@ -2756,9 +2883,13 @@ export function ScheduleProposalsContent({
                 actionPending={reorderProposalMutation.isPending}
                 onAction={() => setProposalRouteConfirmOpen(true)}
                 extraSummary={
-                  detailRouteDraft.diffCount > 0 ? (
-                    <Badge variant="outline">差分 {detailRouteDraft.diffCount} 件</Badge>
-                  ) : null
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="outline">電話前確認</Badge>
+                    <Badge variant="outline">候補含む</Badge>
+                    {detailRouteDraft.diffCount > 0 ? (
+                      <Badge variant="outline">差分 {detailRouteDraft.diffCount} 件</Badge>
+                    ) : null}
+                  </div>
                 }
               />
 

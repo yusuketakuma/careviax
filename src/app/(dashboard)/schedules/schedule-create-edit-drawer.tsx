@@ -47,6 +47,9 @@ const PRIORITY_OPTIONS = Object.entries(PRIORITY_LABELS) as Array<[VisitPriority
 const CONTACT_STATUS_OPTIONS = Object.entries(CONTACT_STATUS_LABELS) as Array<
   [PatientContactStatus, string]
 >;
+const DRAFT_CONTACT_STATUS_OPTIONS = CONTACT_STATUS_OPTIONS.filter(
+  ([value]) => value !== 'confirmed',
+);
 const TRAVEL_MODE_OPTIONS = Object.entries(TRAVEL_MODE_LABELS) as Array<[TravelMode, string]>;
 
 export type ScheduleCreateEditDrawerForm = {
@@ -80,8 +83,7 @@ export function buildScheduleCreateEditDrawerForm(args: {
     };
   }
   const firstCase = cases[0];
-  const defaultPharmacistId =
-    firstCase?.primary_pharmacist_id ?? pharmacists[0]?.id ?? '';
+  const defaultPharmacistId = firstCase?.primary_pharmacist_id ?? pharmacists[0]?.id ?? '';
   return {
     case_id: firstCase?.id ?? '',
     visit_type: 'regular',
@@ -369,13 +371,16 @@ export function ScheduleCreateEditDrawer({
                 <SelectValue placeholder="患者確認の状態を選択" />
               </SelectTrigger>
               <SelectContent>
-                {CONTACT_STATUS_OPTIONS.map(([value, label]) => (
+                {DRAFT_CONTACT_STATUS_OPTIONS.map(([value, label]) => (
                   <SelectItem key={value} value={value}>
                     {label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-xs leading-5 text-muted-foreground">
+              確認済みは候補詳細の患者連絡ワークフローで連絡結果として記録します。
+            </p>
           </div>
 
           <div

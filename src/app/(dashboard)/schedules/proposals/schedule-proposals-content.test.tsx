@@ -708,6 +708,31 @@ describe('ScheduleProposalsContent', () => {
     expect(screen.getByText('未割当')).toBeTruthy();
   });
 
+  it('surfaces medication, delivery, route, and phone confirmation checks on proposal cards', () => {
+    mockDashboardProposals([
+      buildProposal({
+        medication_end_date: '2026-04-10',
+        visit_deadline_date: '2026-04-09',
+        proposal_reason:
+          '服薬最終日 2026-04-10 より前に配置 / 薬剤変更指示あり / ルート順 1 を提案',
+      }),
+    ]);
+
+    render(<ScheduleProposalsContent />);
+
+    const workflow = screen.getByTestId('proposal-medication-workflow');
+    expect(within(workflow).getByText('服用開始・配薬判断')).toBeTruthy();
+    expect(within(workflow).getByText('現場確認順')).toBeTruthy();
+    expect(within(workflow).getByText(/1\. 前回最終服用日/)).toBeTruthy();
+    expect(within(workflow).getByText(/2026\/04\/10を起点に期限を確認/)).toBeTruthy();
+    expect(within(workflow).getByText(/2\. 薬剤変更指示/)).toBeTruthy();
+    expect(within(workflow).getByText('薬剤変更指示あり')).toBeTruthy();
+    expect(within(workflow).getByText(/3\. 開始日前配薬/)).toBeTruthy();
+    expect(within(workflow).getByText(/2026\/04\/09までの候補/)).toBeTruthy();
+    expect(within(workflow).getByText(/4\. ルート・時間仮提案/)).toBeTruthy();
+    expect(within(workflow).getByText('承認後に患者へ候補日時を連絡')).toBeTruthy();
+  });
+
   it('requires confirmation before a single proposal card approval is submitted', async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ data: {} }));
     vi.stubGlobal('fetch', fetchMock);
