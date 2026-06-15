@@ -10,6 +10,7 @@ import {
   Pill,
   Send,
   Sparkles,
+  UserCog,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
@@ -17,7 +18,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
-import type { VisitBrief, VisitBriefSeverity } from '@/types/visit-brief';
+import type {
+  VisitBrief,
+  VisitBriefPatientChangeType,
+  VisitBriefSeverity,
+} from '@/types/visit-brief';
 
 function severityClass(severity: VisitBriefSeverity) {
   switch (severity) {
@@ -31,6 +36,16 @@ function severityClass(severity: VisitBriefSeverity) {
       return 'border-sky-200 bg-sky-50 text-sky-700';
   }
 }
+
+// 前回訪問差分のバッジ(色のみ依存せずラベル併用)
+const PATIENT_CHANGE_TYPE_META: Record<
+  VisitBriefPatientChangeType,
+  { label: string; className: string }
+> = {
+  added: { label: '追加', className: 'border-sky-200 bg-sky-50 text-sky-700' },
+  removed: { label: '解除', className: 'border-slate-200 bg-slate-50 text-slate-600' },
+  changed: { label: '変更', className: 'border-amber-200 bg-amber-50 text-amber-700' },
+};
 
 export function VisitBriefCard({
   brief,
@@ -52,6 +67,7 @@ export function VisitBriefCard({
     rule?: 'helpful' | 'needs_review';
   }>({});
   const medicationChanges = brief.medication_changes.slice(0, compact ? 3 : 5);
+  const patientChanges = brief.patient_changes.slice(0, compact ? 3 : 6);
   const dispensingItems = brief.dispensing_items.slice(0, compact ? 3 : 5);
   const deliveryItems = brief.delivery_status.slice(0, compact ? 3 : 4);
   const dosageSupport = brief.dosage_form_support.slice(0, compact ? 3 : 4);
@@ -296,6 +312,41 @@ export function VisitBriefCard({
                     </p>
                   </li>
                 ))}
+              </ul>
+            )}
+          </Section>
+
+          <Section title="前回訪問からの変更" icon={UserCog}>
+            {patientChanges.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                前回訪問以降の患者情報変更はありません。
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {patientChanges.map((item, index) => {
+                  const meta = PATIENT_CHANGE_TYPE_META[item.change_type];
+                  const detail =
+                    item.previous && item.current
+                      ? `${item.previous} → ${item.current}`
+                      : (item.previous ?? item.current ?? '');
+                  return (
+                    <li
+                      key={`${item.category}:${item.field_label}:${item.change_type}:${index}`}
+                      className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-medium text-foreground">{item.field_label}</p>
+                        <Badge
+                          variant="outline"
+                          className={cn('shrink-0 text-xs', meta.className)}
+                        >
+                          {meta.label}
+                        </Badge>
+                      </div>
+                      {detail && <p className="mt-1 text-xs text-muted-foreground">{detail}</p>}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </Section>

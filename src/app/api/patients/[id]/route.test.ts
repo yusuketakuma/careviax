@@ -474,6 +474,8 @@ describe('/api/patients/[id]', () => {
       patientId: 'patient_1',
       context: 'patient',
       caseIds: [],
+      role: 'pharmacist',
+      userId: 'user_1',
     });
   });
 

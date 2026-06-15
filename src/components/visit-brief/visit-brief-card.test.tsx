@@ -26,6 +26,7 @@ function buildBrief(): VisitBrief {
     last_prescribed_date: '2026-04-08T00:00:00.000Z',
     baseline_context: null,
     medication_changes: [],
+    patient_changes: [],
     medications: [],
     dispensing_items: [],
     delivery_status: [],
@@ -86,5 +87,71 @@ describe('VisitBriefCard', () => {
     expect(screen.getByText('退院後初回訪問。持参薬の確認と生活指導が優先。')).toBeTruthy();
     expect(screen.getByText('服薬アドヒアランス低下')).toBeTruthy();
     expect(screen.getByText('転倒リスク')).toBeTruthy();
+  });
+
+  it('renders the empty state when there are no patient changes', () => {
+    const queryClient = new QueryClient();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VisitBriefCard brief={buildBrief()} />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByText('前回訪問以降の患者情報変更はありません。')).toBeTruthy();
+  });
+
+  it('renders patient changes with a change-type badge and previous→current detail', () => {
+    const queryClient = new QueryClient();
+    const brief: VisitBrief = {
+      ...buildBrief(),
+      patient_changes: [
+        {
+          category: 'care_level',
+          field_label: '介護度',
+          previous: '要介護2',
+          current: '要介護4',
+          change_type: 'changed',
+        },
+      ],
+    };
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VisitBriefCard brief={brief} />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByText('介護度')).toBeTruthy();
+    expect(screen.getByText('変更')).toBeTruthy();
+    expect(screen.getByText('要介護2 → 要介護4')).toBeTruthy();
+  });
+
+  it('renders a removed change without a trailing arrow', () => {
+    const queryClient = new QueryClient();
+    const brief: VisitBrief = {
+      ...buildBrief(),
+      patient_changes: [
+        {
+          category: 'care_team',
+          field_label: '多職種（主治医）',
+          previous: '佐藤医師',
+          current: null,
+          change_type: 'removed',
+        },
+      ],
+    };
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <VisitBriefCard brief={brief} />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByText('多職種（主治医）')).toBeTruthy();
+    expect(screen.getByText('解除')).toBeTruthy();
+    expect(screen.getByText('佐藤医師')).toBeTruthy();
+    // 末尾矢印で途切れないこと
+    expect(screen.queryByText('佐藤医師 →')).toBeNull();
   });
 });

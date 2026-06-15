@@ -18,6 +18,28 @@ export type VisitBriefMedicationChange = {
   prescriber_name: string | null;
 };
 
+// ─── 前回訪問以降の患者属性変更 (patient_changes) ───────────────────────────────
+// 直近 VisitRecord.patient_state_snapshot(凍結) と現在の患者詳細スナップショットの差分。
+export type VisitBriefPatientChangeType = 'added' | 'removed' | 'changed';
+
+export type VisitBriefPatientChangeCategory =
+  | 'primary_condition' // 主病名
+  | 'medical_procedure' // 医療処置(TPN/経管/在宅酸素 等)
+  | 'narcotic' // 麻薬(ベース/レスキュー)
+  | 'care_level' // 介護度/ADL/認知症度/嚥下/感染隔離
+  | 'care_team' // 多職種(主治医/訪問看護 等)
+  | 'contact' // 連絡先
+  | 'residence' // 居住
+  | 'insurance'; // 保険
+
+export type VisitBriefPatientChange = {
+  category: VisitBriefPatientChangeCategory;
+  field_label: string;
+  previous: string | null;
+  current: string | null;
+  change_type: VisitBriefPatientChangeType;
+};
+
 export type VisitBriefMedicationItem = {
   drug_name: string;
   dose: string;
@@ -162,6 +184,7 @@ export type VisitBrief = {
   last_prescribed_date: string | null;
   baseline_context: VisitBriefBaselineContext | null;
   medication_changes: VisitBriefMedicationChange[];
+  patient_changes: VisitBriefPatientChange[];
   medications: VisitBriefMedicationItem[];
   dispensing_items: VisitBriefDispensingItem[];
   delivery_status: VisitBriefDeliveryItem[];

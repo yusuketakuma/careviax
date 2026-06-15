@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildPatientStateSnapshot } from './patient-state-snapshot';
+import { diffPatientStateSnapshots } from './visit-brief-patient-diff';
 
 type SnapshotDb = Parameters<typeof buildPatientStateSnapshot>[0];
 
@@ -106,5 +107,25 @@ describe('buildPatientStateSnapshot', () => {
     expect(result.primary_residence).toBeNull();
     expect(result.care_team_links).toEqual([]);
     expect(result.conditions).toEqual([]);
+  });
+});
+
+describe('buildPatientStateSnapshot × diffPatientStateSnapshots の構造契約', () => {
+  it('実スナップショット出力同士を diff に通すと構造整合して差分が検出される', async () => {
+    const { db: prevDb } = createDb(basePatient);
+    const previous = await buildPatientStateSnapshot(prevDb, baseArgs);
+
+    const curPatient = {
+      ...basePatient,
+      scheduling_preference: { ...basePatient.scheduling_preference, care_level: '要介護4' },
+    };
+    const { db: curDb } = createDb(curPatient);
+    const current = await buildPatientStateSnapshot(curDb, baseArgs);
+
+    const changes = diffPatientStateSnapshots(previous, current);
+    // snapshot の scheduling_preference キー配置と diff の読み取りキーが整合していることの担保
+    expect(
+      changes.some((change) => change.category === 'care_level' && change.field_label === '介護度'),
+    ).toBe(true);
   });
 });

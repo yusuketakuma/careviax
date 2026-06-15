@@ -904,16 +904,22 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
 
     // 訪問時点の患者詳細を凍結する(過去訪問の不変参照 / 前回訪問差分の基準点)。
     // findPatientOverviewBase の生現在値読み出しを再利用し、二重実装しない。
-    // 訪問時点の患者詳細を凍結する(過去訪問の不変参照 / 前回訪問差分の基準点)。
-    const patientStateSnapshot = await buildPatientStateSnapshot(tx, {
-      orgId: ctx.orgId,
-      patientId: careCase.patient_id,
-      caseId: schedule.case_id,
-      role: ctx.role,
-      userId: ctx.userId,
-      source: 'visit_record',
-      capturedAt: visitRecordedAt,
-    });
+    // captured_at は凍結した実時刻(=保存時点)。snapshot は「記録作成時点の現在値」であり
+    // visit_date 時点の状態ではない(遡及入力では両者がずれるため意図的に分離)。visit_date は VisitRecord 本体が保持。
+    // スナップショットはベストエフォート: 構築に失敗しても訪問記録(臨床データ)の保存は継続する。
+    let patientStateSnapshot: Prisma.InputJsonValue | null = null;
+    try {
+      patientStateSnapshot = await buildPatientStateSnapshot(tx, {
+        orgId: ctx.orgId,
+        patientId: careCase.patient_id,
+        caseId: schedule.case_id,
+        role: ctx.role,
+        userId: ctx.userId,
+        source: 'visit_record',
+      });
+    } catch (snapshotError) {
+      console.warn('[visit-records] patient_state_snapshot build failed', snapshotError);
+    }
 
     const record =
       existingRecord && conflict_resolution === 'overwrite'

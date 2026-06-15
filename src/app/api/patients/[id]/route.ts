@@ -1481,6 +1481,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       patientId: id,
       context: 'patient',
       caseIds,
+      role: ctx.role,
+      userId: ctx.userId,
     }),
     caseIds.length === 0
       ? Promise.resolve([])

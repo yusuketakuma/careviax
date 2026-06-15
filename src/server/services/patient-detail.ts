@@ -154,6 +154,8 @@ export async function getPatientOverview(db: DbClient, args: DetailArgs) {
       patientId: args.patientId,
       context: 'patient',
       caseIds,
+      role: args.role,
+      userId: args.userId,
     }),
     listPatientLabSummary(db, args),
     db.jahisSupplementalRecord.findMany({

@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import type { Prisma, MemberRole } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { isoOrNull } from '@/lib/utils/date';
 import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
@@ -12,6 +12,8 @@ import {
 } from '@/lib/inquiries/presentation';
 import { listCommunicationQueue } from '@/server/services/communication-queue';
 import { generateVisitBriefAiSummary } from '@/server/services/visit-brief-ai';
+import { buildPatientStateSnapshot } from '@/server/services/patient-state-snapshot';
+import { diffPatientStateSnapshots } from '@/server/services/visit-brief-patient-diff';
 import { getHomeVisitIntake, buildBaselineContext } from '@/lib/patient/home-visit-intake';
 import { SET_METHOD_LABELS } from '@/lib/prescription/set-methods';
 import { readJahisSupplementalDetails } from '@/lib/pharmacy/jahis-supplemental-records-view';
@@ -154,6 +156,7 @@ type VisitBriefDataReader = BillingEvidenceBlockersReader & {
   }>;
   visitRecord: FindFirstDelegate<{
     soap_plan: string | null;
+    patient_state_snapshot?: Prisma.JsonValue;
   }> & {
     findMany?(args: unknown): Promise<Array<{ id: string }>>;
   };
@@ -230,6 +233,9 @@ type BuildVisitBriefArgs = {
   limit?: number;
   actorId?: string;
   caseIds?: string[];
+  // patient_changes(前回訪問差分)算出に必要。揃わない経路(schedule バッチ等)は差分を出さない。
+  role?: MemberRole;
+  userId?: string;
 };
 
 type ScheduleBriefRequest = Omit<BuildVisitBriefArgs, 'context' | 'patientId' | 'caseIds'> & {
@@ -1079,6 +1085,9 @@ export async function getPatientVisitBrief(
         org_id: args.orgId,
         patient_id: args.patientId,
       },
+      // 現在側 snapshot は caseIds[0] で構築するため、先頭選択を決定的にする。
+      // 複数ケースで前回訪問の case と食い違っても diff の caseComparable ガードが安全側にスキップする。
+      orderBy: [{ created_at: 'desc' }],
       select: { id: true },
     })
   ).map((item) => item.id);
@@ -1112,6 +1121,7 @@ export async function getPatientVisitBrief(
     recentConferenceNotes,
     facilityResidence,
     jahisSupplementalRows,
+    currentPatientSnapshot,
   ] = await Promise.all([
     db.patient.findFirst({
       where: {
@@ -1363,6 +1373,7 @@ export async function getPatientVisitBrief(
       orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }],
       select: {
         soap_plan: true,
+        patient_state_snapshot: true,
       },
     }),
     typeof db.careCase.findFirst === 'function'
@@ -1434,6 +1445,19 @@ export async function getPatientVisitBrief(
       orgId: args.orgId,
       patientId: args.patientId,
     }),
+    // patient_changes 用の現在側スナップショット。context==='patient' かつ role/userId が揃う経路のみ。
+    // schedule バッチ(role/userId 未指定)は null=差分なしで perf 退行を避ける。snapshot 構築は
+    // 既存 Promise.all に同居させ直列レイテンシ増を避ける。
+    args.context === 'patient' && args.role && args.userId && caseIds.length > 0
+      ? buildPatientStateSnapshot(db as Parameters<typeof buildPatientStateSnapshot>[0], {
+          orgId: args.orgId,
+          patientId: args.patientId,
+          role: args.role,
+          userId: args.userId,
+          caseId: caseIds[0],
+          source: 'visit_brief_current',
+        })
+      : Promise.resolve(null),
   ]);
 
   if (!patient) {
@@ -1643,6 +1667,10 @@ export async function getPatientVisitBrief(
     last_prescribed_date: currentIntake?.prescribed_date.toISOString() ?? null,
     baseline_context: baselineContext,
     medication_changes: medicationChanges.slice(0, 8),
+    patient_changes:
+      currentPatientSnapshot && previousVisit?.patient_state_snapshot
+        ? diffPatientStateSnapshots(previousVisit.patient_state_snapshot, currentPatientSnapshot)
+        : [],
     medications,
     dispensing_items: dispensingItems,
     delivery_status: deliveryItems,

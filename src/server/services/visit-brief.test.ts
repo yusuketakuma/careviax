@@ -4,14 +4,20 @@ const {
   generateVisitBriefAiSummaryMock,
   listCommunicationQueueMock,
   listBillingEvidenceBlockersMock,
+  buildPatientStateSnapshotMock,
 } = vi.hoisted(() => ({
   generateVisitBriefAiSummaryMock: vi.fn(),
   listCommunicationQueueMock: vi.fn(),
   listBillingEvidenceBlockersMock: vi.fn(),
+  buildPatientStateSnapshotMock: vi.fn(),
 }));
 
 vi.mock('./visit-brief-ai', () => ({
   generateVisitBriefAiSummary: generateVisitBriefAiSummaryMock,
+}));
+
+vi.mock('./patient-state-snapshot', () => ({
+  buildPatientStateSnapshot: buildPatientStateSnapshotMock,
 }));
 
 vi.mock('./communication-queue', () => ({
@@ -41,6 +47,57 @@ afterAll(() => {
     process.env.TZ = originalTimezone;
   }
 });
+
+// patient_changes 結線テスト用の最小 db(全 delegate を空返しで満たす)
+function buildMinimalBriefDb() {
+  return {
+    careCase: {
+      findMany: vi.fn().mockResolvedValue([{ id: 'case_1' }]),
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
+    patient: {
+      findFirst: vi.fn().mockResolvedValue({ id: 'patient_1', name: '患者A' }),
+    },
+    prescriptionIntake: { findMany: vi.fn().mockResolvedValue([]) },
+    medicationProfile: { findMany: vi.fn().mockResolvedValue([]) },
+    setPlan: { findFirst: vi.fn().mockResolvedValue(null) },
+    patientSelfReport: { findMany: vi.fn().mockResolvedValue([]) },
+    communicationEvent: { findMany: vi.fn().mockResolvedValue([]) },
+    communicationRequest: { findMany: vi.fn().mockResolvedValue([]) },
+    visitScheduleContactLog: { findMany: vi.fn().mockResolvedValue([]) },
+    task: { findMany: vi.fn().mockResolvedValue([]) },
+    medicationIssue: { findMany: vi.fn().mockResolvedValue([]) },
+    inquiryRecord: { findMany: vi.fn().mockResolvedValue([]) },
+    billingEvidence: { findMany: vi.fn().mockResolvedValue([]) },
+    visitRecord: {
+      findMany: vi.fn().mockResolvedValue([]),
+      findFirst: vi.fn().mockResolvedValue({ soap_plan: null }),
+    },
+    medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
+    drugMaster: { findMany: vi.fn().mockResolvedValue([]) },
+    drugPackageInsert: { findMany: vi.fn().mockResolvedValue([]) },
+    conferenceNote: { findMany: vi.fn().mockResolvedValue([]) },
+    residence: { findFirst: vi.fn().mockResolvedValue(null) },
+    jahisSupplementalRecord: { findMany: vi.fn().mockResolvedValue([]) },
+    auditLog: { create: vi.fn().mockResolvedValue({ id: 'audit_1' }) },
+  };
+}
+
+const previousPatientSnapshot = {
+  case_id: 'case_1',
+  patient: { name: '患者A', phone: '090-0000-0000' },
+  primary_residence: null,
+  scheduling_preference: { care_level: '要介護2', infection_isolation: false },
+  conditions: [],
+  contacts: [],
+  care_team_links: [],
+  home_visit_intake: { special_medical_procedures: [], narcotics_base: false, narcotics_rescue: false },
+  insurances: [],
+};
+const currentPatientSnapshot = {
+  ...previousPatientSnapshot,
+  scheduling_preference: { care_level: '要介護4', infection_isolation: false },
+};
 
 describe('getPatientVisitBrief', () => {
   beforeEach(() => {
@@ -355,6 +412,8 @@ describe('getPatientVisitBrief', () => {
     });
 
     expect(result.patient).toEqual({ id: 'patient_1', name: '患者A' });
+    // role/userId 未指定経路では前回訪問差分は算出されない(perf/後方互換のピン)
+    expect(result.patient_changes).toEqual([]);
     expect(db.prescriptionIntake.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -543,6 +602,49 @@ describe('getPatientVisitBrief', () => {
         highlighted_risks: ['転倒', '飲み忘れ'],
       }),
     );
+  });
+
+  it('computes patient_changes when context=patient with role/userId and a previous snapshot', async () => {
+    buildPatientStateSnapshotMock.mockResolvedValue(currentPatientSnapshot);
+    const db = buildMinimalBriefDb();
+    db.visitRecord.findFirst = vi.fn().mockResolvedValue({
+      soap_plan: null,
+      patient_state_snapshot: previousPatientSnapshot,
+    });
+
+    const result = await getPatientVisitBrief(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      context: 'patient',
+      caseIds: ['case_1'],
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    expect(buildPatientStateSnapshotMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ caseId: 'case_1', role: 'pharmacist', userId: 'user_1' }),
+    );
+    expect(result.patient_changes.length).toBeGreaterThan(0);
+    expect(result.patient_changes.some((change) => change.category === 'care_level')).toBe(true);
+  });
+
+  it('returns empty patient_changes when role/userId are absent (no snapshot built)', async () => {
+    const db = buildMinimalBriefDb();
+    db.visitRecord.findFirst = vi.fn().mockResolvedValue({
+      soap_plan: null,
+      patient_state_snapshot: previousPatientSnapshot,
+    });
+
+    const result = await getPatientVisitBrief(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      context: 'patient',
+      caseIds: ['case_1'],
+    });
+
+    expect(result.patient_changes).toEqual([]);
+    expect(buildPatientStateSnapshotMock).not.toHaveBeenCalled();
   });
 });
 

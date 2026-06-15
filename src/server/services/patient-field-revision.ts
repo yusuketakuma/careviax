@@ -122,7 +122,7 @@ export function formatRevisionValueLabel(oldValue: unknown, newValue: unknown): 
   return `${describeRevisionValue(oldValue)} → ${describeRevisionValue(newValue)}`;
 }
 
-function describeRevisionValue(value: unknown): string {
+export function describeRevisionValue(value: unknown): string {
   if (value == null || value === '') return '(未設定)';
   if (typeof value === 'boolean') return value ? 'あり' : 'なし';
   if (Array.isArray(value)) return `${value.length}件`;

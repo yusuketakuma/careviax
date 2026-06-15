@@ -118,6 +118,7 @@ function buildPatient(overrides: Partial<PatientOverview> = {}): PatientOverview
       last_prescribed_date: null,
       baseline_context: null,
       medication_changes: [],
+      patient_changes: [],
       medications: [],
       dispensing_items: [],
       delivery_status: [],

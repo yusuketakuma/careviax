@@ -92,6 +92,8 @@ describe('/api/patients/[id]/visit-brief', () => {
       patientId: 'patient_1',
       context: 'patient',
       caseIds: ['case_1'],
+      role: 'pharmacist',
+      userId: 'user_1',
     });
     if (!response) throw new Error('response is required');
     await expect(response.json()).resolves.toMatchObject({
