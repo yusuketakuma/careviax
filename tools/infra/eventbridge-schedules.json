@@ -192,6 +192,27 @@
       "state": "ENABLED"
     },
     {
+      "name": "ph-os-care-service-office-master-refresh",
+      "description": "Monthly MHLW long-term-care service office open-data refresh for external professionals",
+      "scheduleExpression": "cron(30 7 1 * ? *)",
+      "scheduleExpressionTimezone": "Asia/Tokyo",
+      "comment": "Run on the 1st of every month at 07:30 JST; auto-create is limited by CARE_SERVICE_MASTER_AUTO_CREATE_PREFECTURE_CODES",
+      "target": {
+        "type": "HTTP",
+        "method": "POST",
+        "url": "${APP_URL}/api/jobs/care-service-office-master-auto-refresh",
+        "headers": {
+          "x-api-key": "${JOB_API_KEY}",
+          "Content-Type": "application/json"
+        }
+      },
+      "retryPolicy": {
+        "maximumRetryAttempts": 2,
+        "maximumEventAgeInSeconds": 21600
+      },
+      "state": "ENABLED"
+    },
+    {
       "name": "ph-os-medication-history-bulk-export-drain",
       "description": "Drain queued medication-history ZIP exports for inspection-ready bundles",
       "scheduleExpression": "cron(0/15 * * * ? *)",

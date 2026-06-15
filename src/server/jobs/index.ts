@@ -34,6 +34,7 @@ export {
   checkDrugMasterFreshness,
 } from './drug-master';
 export { refreshMedicalInstitutionMaster } from './medical-institution-master';
+export { refreshCareServiceOfficeMaster } from './care-service-office-master';
 export {
   cleanupExpiredBulkExportArtifacts,
   drainMedicationHistoryBulkExportJobs,

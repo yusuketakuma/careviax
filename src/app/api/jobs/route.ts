@@ -108,6 +108,11 @@ const JOB_DEFINITIONS = [
     endpoint: '/api/jobs/medical-institution-master-auto-refresh',
   },
   {
+    job_type: 'care-service-office-master-auto-refresh',
+    schedule_hint: '毎月 + 要求時',
+    endpoint: '/api/jobs/care-service-office-master-auto-refresh',
+  },
+  {
     job_type: 'medication-history-bulk-export-drain',
     schedule_hint: '15分毎 + 要求時',
     endpoint: '/api/jobs/medication-history-bulk-export-drain',

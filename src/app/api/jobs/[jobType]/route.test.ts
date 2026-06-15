@@ -26,6 +26,7 @@ const {
   refreshAllFreeDrugMastersMock,
   checkDrugMasterFreshnessMock,
   refreshMedicalInstitutionMasterMock,
+  refreshCareServiceOfficeMasterMock,
   drainMedicationHistoryBulkExportJobsMock,
   cleanupExpiredBulkExportArtifactsMock,
   retryWebhookDeliveriesMock,
@@ -61,6 +62,7 @@ const {
   refreshAllFreeDrugMastersMock: vi.fn(),
   checkDrugMasterFreshnessMock: vi.fn(),
   refreshMedicalInstitutionMasterMock: vi.fn(),
+  refreshCareServiceOfficeMasterMock: vi.fn(),
   drainMedicationHistoryBulkExportJobsMock: vi.fn(),
   cleanupExpiredBulkExportArtifactsMock: vi.fn(),
   retryWebhookDeliveriesMock: vi.fn(),
@@ -108,6 +110,7 @@ vi.mock('@/server/jobs', () => ({
   refreshAllFreeDrugMasters: refreshAllFreeDrugMastersMock,
   checkDrugMasterFreshness: checkDrugMasterFreshnessMock,
   refreshMedicalInstitutionMaster: refreshMedicalInstitutionMasterMock,
+  refreshCareServiceOfficeMaster: refreshCareServiceOfficeMasterMock,
   drainMedicationHistoryBulkExportJobs: drainMedicationHistoryBulkExportJobsMock,
   cleanupExpiredBulkExportArtifacts: cleanupExpiredBulkExportArtifactsMock,
   retryWebhookDeliveries: retryWebhookDeliveriesMock,
@@ -156,6 +159,12 @@ describe('/api/jobs/[jobType] POST', () => {
       processedCount: 2,
       scannedCount: 20,
       createdCount: 1,
+      updatedCount: 1,
+    });
+    refreshCareServiceOfficeMasterMock.mockResolvedValue({
+      processedCount: 3,
+      scannedCount: 30,
+      createdCount: 2,
       updatedCount: 1,
     });
     drainMedicationHistoryBulkExportJobsMock.mockResolvedValue({ processedCount: 25 });
@@ -342,6 +351,36 @@ describe('/api/jobs/[jobType] POST', () => {
 
     expect(response.status).toBe(200);
     expect(refreshMedicalInstitutionMasterMock).toHaveBeenCalledWith(undefined);
+  });
+
+  it('scopes care service office master refresh to the authenticated admin org', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await POST(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ jobType: 'care-service-office-master-auto-refresh' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(refreshCareServiceOfficeMasterMock).toHaveBeenCalledWith({
+      targetOrgIds: ['org_1'],
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      jobType: 'care-service-office-master-auto-refresh',
+      processedCount: 3,
+      scannedCount: 30,
+    });
+  });
+
+  it('runs care service office master refresh for all orgs from the job api key', async () => {
+    authMock.mockResolvedValue(null);
+
+    const response = await POST(createRequest({ 'x-api-key': 'job-secret' }), {
+      params: Promise.resolve({ jobType: 'care-service-office-master-auto-refresh' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(refreshCareServiceOfficeMasterMock).toHaveBeenCalledWith(undefined);
   });
 
   it('returns 200 when api key executes pmda delta refresh', async () => {

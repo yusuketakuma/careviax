@@ -32,6 +32,7 @@ import {
   refreshAllFreeDrugMasters,
   checkDrugMasterFreshness,
   refreshMedicalInstitutionMaster,
+  refreshCareServiceOfficeMaster,
   drainMedicationHistoryBulkExportJobs,
   cleanupExpiredBulkExportArtifacts,
   retryWebhookDeliveries,
@@ -71,6 +72,10 @@ const JOB_HANDLERS: Record<string, JobHandler> = {
   'drug-master-freshness-check': checkDrugMasterFreshness,
   'medical-institution-master-auto-refresh': (context) =>
     refreshMedicalInstitutionMaster(
+      context.authType === 'auth' && context.orgId ? { targetOrgIds: [context.orgId] } : undefined,
+    ),
+  'care-service-office-master-auto-refresh': (context) =>
+    refreshCareServiceOfficeMaster(
       context.authType === 'auth' && context.orgId ? { targetOrgIds: [context.orgId] } : undefined,
     ),
   'pmda-package-insert-refresh': refreshPmdaPackageInsertsDelta,
