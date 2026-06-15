@@ -161,7 +161,7 @@ export const SIDEBAR_ADMIN_NAV_GROUPS: readonly LayoutNavGroup[] = [
   {
     label: '運営',
     items: [
-      { label: '管理ダッシュボード', href: '/admin', icon: Home },
+      { label: 'マスター', href: '/admin', icon: Home },
       { label: '管理設定', href: '/admin/settings', icon: Settings },
       { label: '薬局情報', href: '/admin/pharmacy-sites', icon: Building2 },
       { label: '休日カレンダー', href: '/admin/business-holidays', icon: CalendarOff },

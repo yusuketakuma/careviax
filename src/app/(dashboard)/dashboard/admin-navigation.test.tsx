@@ -20,10 +20,10 @@ vi.mock('next/link', () => ({
 }));
 
 describe('AdminNavigation', () => {
-  it('exposes admin dashboard entry points from the home screen', () => {
+  it('exposes admin master entry points from the home screen', () => {
     render(<AdminNavigation />);
 
-    expect(screen.getByText('管理ダッシュボード').closest('a')?.getAttribute('href')).toBe('/admin');
+    expect(screen.getByText('マスター').closest('a')?.getAttribute('href')).toBe('/admin');
     expect(screen.getByText('データ探索').closest('a')?.getAttribute('href')).toBe(
       '/admin/data-explorer',
     );

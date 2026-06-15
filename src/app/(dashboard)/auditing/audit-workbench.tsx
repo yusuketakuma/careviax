@@ -561,7 +561,7 @@ export function AuditWorkbench() {
                 id: 'narcotic-ledger',
                 label: '麻薬管理簿',
                 meta: '残数照合済',
-                href: '/admin/drug-stock',
+                href: '/admin/drug-masters',
               },
             ]
           : []),
@@ -571,7 +571,7 @@ export function AuditWorkbench() {
                 id: 'stocktake',
                 label: '棚卸し',
                 meta: workbench.stock_check_date_label,
-                href: '/admin/drug-stock',
+                href: '/admin/drug-masters',
               },
             ]
           : []),

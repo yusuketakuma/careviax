@@ -332,8 +332,8 @@ export const DASHBOARD_COORDINATION_LINKS: readonly DashboardNavigationLink[] = 
 export const DASHBOARD_ADMIN_LINKS: readonly DashboardNavigationLink[] = [
   {
     key: 'admin_dashboard',
-    title: '管理ダッシュボード',
-    description: '運営状況、滞留、例外残件を管理者視点で横断確認します。',
+    title: 'マスター',
+    description: '薬剤、施設、医療者、スタッフ、車両の鮮度と次の確認作業を横断確認します。',
     href: '/admin',
   },
   {

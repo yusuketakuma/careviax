@@ -213,7 +213,7 @@ export function DashboardContent({ focusRole = 'common' }: { focusRole?: Dashboa
               </NavigationCluster>
               <NavigationCluster
                 title="運営・管理"
-                description="管理ダッシュボード、監視、分析、探索。"
+                description="マスター、監視、分析、探索。"
                 tone="neutral"
               >
                 <AdminNavigation />
