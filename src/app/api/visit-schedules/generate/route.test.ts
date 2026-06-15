@@ -13,6 +13,7 @@ const {
   visitScheduleFindManyMock,
   visitScheduleCreateMock,
   visitScheduleProposalFindManyMock,
+  patientInsuranceFindFirstMock,
   evaluateVisitWorkflowGateMock,
   notifyWorkflowMutationMock,
   authRoleRef,
@@ -27,6 +28,7 @@ const {
   visitScheduleFindManyMock: vi.fn(),
   visitScheduleCreateMock: vi.fn(),
   visitScheduleProposalFindManyMock: vi.fn(),
+  patientInsuranceFindFirstMock: vi.fn(),
   evaluateVisitWorkflowGateMock: vi.fn(),
   notifyWorkflowMutationMock: vi.fn(),
   authRoleRef: { current: 'pharmacist' },
@@ -53,6 +55,9 @@ vi.mock('@/lib/db/client', () => ({
     },
     visitSchedule: {
       count: visitScheduleCountMock,
+    },
+    patientInsurance: {
+      findFirst: patientInsuranceFindFirstMock,
     },
     membership: {
       findFirst: membershipFindFirstMock,
@@ -133,6 +138,27 @@ function buildShift(
   };
 }
 
+function buildInsuranceRecord(insuranceType: 'medical' | 'care', number = `${insuranceType}_1`) {
+  return {
+    id: `insurance_${insuranceType}`,
+    number,
+    insurance_type: insuranceType,
+    application_status: 'confirmed',
+    public_program_code: null,
+    previous_care_level: null,
+    provisional_care_level: null,
+    confirmed_care_level: null,
+    is_active: true,
+  };
+}
+
+function mockPatientInsuranceTypes(types: Array<'medical' | 'care'>) {
+  patientInsuranceFindFirstMock.mockImplementation(async ({ where }) => {
+    const insuranceType = where?.insurance_type;
+    return types.includes(insuranceType) ? buildInsuranceRecord(insuranceType) : null;
+  });
+}
+
 describe('/api/visit-schedules/generate POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -161,6 +187,7 @@ describe('/api/visit-schedules/generate POST', () => {
       id: `schedule_${String(data.scheduled_date)}`,
       ...data,
     }));
+    patientInsuranceFindFirstMock.mockResolvedValue(null);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         visitSchedule: {
@@ -427,7 +454,80 @@ describe('/api/visit-schedules/generate POST', () => {
     expect(visitScheduleCreateMock).not.toHaveBeenCalled();
   });
 
-  it('rejects recurrence rules that exceed the weekly insurance limit', async () => {
+  it('rejects recurrence rules that exceed the weekly limit resolved from patient insurance', async () => {
+    careCaseFindFirstMock.mockResolvedValue(
+      buildCareCase({
+        patient: {
+          scheduling_preference: {
+            preferred_weekdays: [1, 3],
+            preferred_time_from: null,
+            preferred_time_to: null,
+            facility_time_from: null,
+            facility_time_to: null,
+          },
+        },
+      }),
+    );
+    mockPatientInsuranceTypes(['medical']);
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,WE',
+        start_date: '2026-03-30',
+        end_date: '2026-04-05',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '週次訪問回数の上限を超えています（医療保険: 週1回まで）',
+    });
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('ignores client-supplied insurance_type when applying server-resolved visit limits', async () => {
+    careCaseFindFirstMock.mockResolvedValue(
+      buildCareCase({
+        patient: {
+          scheduling_preference: {
+            preferred_weekdays: [1, 3],
+            preferred_time_from: null,
+            preferred_time_to: null,
+            facility_time_from: null,
+            facility_time_to: null,
+          },
+        },
+      }),
+    );
+    mockPatientInsuranceTypes(['medical']);
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,WE',
+        insurance_type: 'care',
+        start_date: '2026-03-30',
+        end_date: '2026-04-05',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '週次訪問回数の上限を超えています（医療保険: 週1回まで）',
+    });
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('does not apply insurance visit limits when no effective patient insurance exists', async () => {
     careCaseFindFirstMock.mockResolvedValue(
       buildCareCase({
         patient: {
@@ -455,12 +555,8 @@ describe('/api/visit-schedules/generate POST', () => {
     );
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      message: '週次訪問回数の上限を超えています（医療保険: 週1回まで）',
-    });
-    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(201);
+    expect(visitScheduleCreateMock).toHaveBeenCalledTimes(2);
   });
 
   it('allows org-wide pharmacist generation even when not assigned to the case', async () => {

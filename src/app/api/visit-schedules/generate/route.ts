@@ -14,6 +14,8 @@ import {
   evaluateVisitWorkflowGate,
   formatVisitWorkflowGateIssues,
 } from '@/server/services/management-plans';
+import { resolveBillingPayerBasis } from '@/server/services/billing-payer-basis';
+import { resolvePatientInsurance } from '@/server/services/patient-insurance';
 import { validateScheduleTimeStringsFitShift } from '@/server/services/visit-schedule-shift';
 import { validateVisitVehicleResourceForSchedule } from '@/server/services/visit-schedule-service';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
@@ -68,6 +70,46 @@ function buildDateKey(value: Date) {
   return format(value, 'yyyy-MM-dd');
 }
 
+type LimitInsuranceType = keyof typeof MONTHLY_LIMITS;
+
+function isLimitInsuranceType(value: string): value is LimitInsuranceType {
+  return Object.prototype.hasOwnProperty.call(MONTHLY_LIMITS, value);
+}
+
+function formatInsuranceLimitLabel(value: LimitInsuranceType) {
+  return value === 'medical' ? '医療' : '介護';
+}
+
+async function resolveScheduleLimitInsuranceType(args: {
+  orgId: string;
+  patientId: string;
+  visitType: string;
+  asOf: Date;
+}) {
+  const [medicalInsurance, careInsurance] = await Promise.all([
+    resolvePatientInsurance(prisma, {
+      orgId: args.orgId,
+      patientId: args.patientId,
+      type: 'medical',
+      asOf: args.asOf,
+    }),
+    resolvePatientInsurance(prisma, {
+      orgId: args.orgId,
+      patientId: args.patientId,
+      type: 'care',
+      asOf: args.asOf,
+    }),
+  ]);
+
+  const payerBasis = resolveBillingPayerBasis({
+    medicalInsuranceNumber: medicalInsurance?.number ?? null,
+    careInsuranceNumber: careInsurance?.number ?? null,
+    visitType: args.visitType,
+  });
+
+  return isLimitInsuranceType(payerBasis) ? payerBasis : null;
+}
+
 export const POST = withAuthContext(
   async (req: NextRequest, ctx: AuthContext) => {
     const payload = await readJsonObjectRequestBody(req);
@@ -83,7 +125,6 @@ export const POST = withAuthContext(
       visit_type,
       pharmacist_id,
       recurrence_rule,
-      insurance_type,
       start_date,
       end_date,
       time_window_start,
@@ -213,32 +254,39 @@ export const POST = withAuthContext(
       }
     }
 
-    // Check monthly visit count limits
-    if (insurance_type && MONTHLY_LIMITS[insurance_type] !== undefined) {
-      const limit = MONTHLY_LIMITS[insurance_type];
-      const monthCounts: Record<string, number> = {};
-      for (const d of candidateDates) {
-        const key = `${d.getFullYear()}-${d.getMonth()}`;
-        monthCounts[key] = (monthCounts[key] ?? 0) + 1;
-        if (monthCounts[key] > limit) {
-          return validationError(
-            `月間訪問回数の上限を超えています（${insurance_type === 'medical' ? '医療' : '介護'}保険: 月${limit}回まで）`,
-          );
-        }
-      }
-    }
+    const scheduleLimitTypes = await Promise.all(
+      candidateDates.map((date) =>
+        resolveScheduleLimitInsuranceType({
+          orgId: ctx.orgId,
+          patientId: careCase.patient_id,
+          visitType: visit_type,
+          asOf: date,
+        }),
+      ),
+    );
 
-    if (insurance_type && WEEKLY_LIMITS[insurance_type] !== undefined) {
-      const limit = WEEKLY_LIMITS[insurance_type];
-      const weekCounts: Record<string, number> = {};
-      for (const d of candidateDates) {
-        const key = buildWeekKey(d);
-        weekCounts[key] = (weekCounts[key] ?? 0) + 1;
-        if (weekCounts[key] > limit) {
-          return validationError(
-            `週次訪問回数の上限を超えています（${insurance_type === 'medical' ? '医療' : '介護'}保険: 週${limit}回まで）`,
-          );
-        }
+    const monthCounts: Record<string, number> = {};
+    const weekCounts: Record<string, number> = {};
+    for (const [index, candidateDate] of candidateDates.entries()) {
+      const insuranceType = scheduleLimitTypes[index];
+      if (!insuranceType) continue;
+
+      const monthKey = `${insuranceType}:${candidateDate.getFullYear()}-${candidateDate.getMonth()}`;
+      monthCounts[monthKey] = (monthCounts[monthKey] ?? 0) + 1;
+      const monthlyLimit = MONTHLY_LIMITS[insuranceType];
+      if (monthCounts[monthKey] > monthlyLimit) {
+        return validationError(
+          `月間訪問回数の上限を超えています（${formatInsuranceLimitLabel(insuranceType)}保険: 月${monthlyLimit}回まで）`,
+        );
+      }
+
+      const weekKey = `${insuranceType}:${buildWeekKey(candidateDate)}`;
+      weekCounts[weekKey] = (weekCounts[weekKey] ?? 0) + 1;
+      const weeklyLimit = WEEKLY_LIMITS[insuranceType];
+      if (weekCounts[weekKey] > weeklyLimit) {
+        return validationError(
+          `週次訪問回数の上限を超えています（${formatInsuranceLimitLabel(insuranceType)}保険: 週${weeklyLimit}回まで）`,
+        );
       }
     }
 

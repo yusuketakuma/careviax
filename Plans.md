@@ -2934,7 +2934,7 @@ P-00 (現況調査)     │
 - [ ] `billing-evidence/core.ts` の参照切替
 - [ ] `visit-schedule-billing-preview.ts` の参照切替
 - [ ] `visit-schedule-proposals` の参照切替
-- [ ] `visit-schedules/generate` から `insurance_type` クライアント入力依存を撤廃
+- [x] `visit-schedules/generate` から `insurance_type` クライアント入力依存を撤廃 `cc:完了` (2026-06-15: 候補日ごとに PatientInsurance から payer basis を解決して上限判定)
   - サーバー側で patient insurance を解決して上限判定
 - [ ] `patient-service.ts` の `payer_basis` フィルタ切替
 - [ ] `patient-service.ts` の create/update で旧列ではなく `PatientInsurance` を書き込む
