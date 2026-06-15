@@ -894,6 +894,7 @@ async function main() {
     siteId: site.id,
     userId: user.id,
     dispenserUserId: userSato.id,
+    clerkUserId: SEED_IDS.userSuzukiClerk,
   });
 
   await prisma.visitSchedule.updateMany({

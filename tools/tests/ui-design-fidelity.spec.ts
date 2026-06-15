@@ -95,12 +95,18 @@ test.describe('design fidelity captures', () => {
             { timeout: 20_000 },
           )
           .catch(() => {});
+        await page.addStyleTag({
+          content: `
+            nextjs-portal,
+            [data-nextjs-toast],
+            [data-nextjs-dev-tools-button] {
+              display: none !important;
+            }
+          `,
+        });
         await page.waitForTimeout(500);
 
-        const actualImage = path.join(
-          DESIGN_FIDELITY_OUTPUT_DIR,
-          `${entry.screenId}.actual.png`
-        );
+        const actualImage = path.join(DESIGN_FIDELITY_OUTPUT_DIR, `${entry.screenId}.actual.png`);
         await page.screenshot({ path: actualImage, animations: 'disabled' });
         captureRecords.push({
           screenId: entry.screenId,

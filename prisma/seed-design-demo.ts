@@ -112,6 +112,13 @@ export const DEMO_SEED_IDS = {
     'cmnhdemohand002amq9ph-os',
     'cmnhdemohand003amq9ph-os',
   ],
+  /** p0_27: 薬剤師に相談 / 事務へ戻す 相談解決フロー */
+  handoffConsultItems: [
+    'cmnhdemocons001amq9ph-os',
+    'cmnhdemocons002amq9ph-os',
+    'cmnhdemocons003amq9ph-os',
+    'cmnhdemocons004amq9ph-os',
+  ],
 
   /* ── Phase2b: 全 14 画面撮影用の拡張(02/03/04/05/07/08/09/10/12)──── */
 
@@ -232,6 +239,10 @@ export const DEMO_SEED_IDS = {
   /** p1_05: 報告書共有へのケアマネ返信(昨日受領)→「次回タスクにする」 */
   commRequestKatoShare: 'cmnhdemocreq003amq9ph-os',
   commResponseKatoShare: 'cmnhdemocres002amq9ph-os',
+  /** p0_29: 返信待ち・フォロー専用の未解決依頼 */
+  commRequestKatoPhysicianFollowup: 'cmnhdemocreq006amq9ph-os',
+  commRequestKatoCareManagerFollowup: 'cmnhdemocreq004amq9ph-os',
+  commRequestKatoNurseFollowup: 'cmnhdemocreq005amq9ph-os',
 
   /** 02: 吉田進 — 入院中(休止チップ) */
   patientYoshida: 'cmnhdemopt010amq9ph-os',
@@ -514,6 +525,8 @@ type DemoSeedContext = {
   userId: string;
   /** 第2薬剤師「佐藤」(prisma/seed.ts の SEED_IDS.userSato)。二人制監査の調剤者。 */
   dispenserUserId: string;
+  /** 事務「鈴木」(prisma/seed.ts の SEED_IDS.userSuzukiClerk)。相談起票者。 */
+  clerkUserId: string;
 };
 
 /** PrescriptionLine.packaging_instruction_tags に投入する値(PackagingInstructionTag のサブセット) */
@@ -2657,12 +2670,16 @@ export async function seedDesignFidelityDemo(
       role: 'physician',
       name: '山本 健',
       organization_name: 'やまもと内科',
+      phone: '093-111-0001',
+      fax: '093-111-0002',
       is_primary: true,
     },
     update: {
       role: 'physician',
       name: '山本 健',
       organization_name: 'やまもと内科',
+      phone: '093-111-0001',
+      fax: '093-111-0002',
       is_primary: true,
     },
   });
@@ -2675,12 +2692,18 @@ export async function seedDesignFidelityDemo(
       role: 'care_manager',
       name: '中島 桜',
       organization_name: 'きたきゅうケアプラン',
+      phone: '093-222-0001',
+      fax: '093-222-0002',
+      email: 'nakajima-care@example.test',
       is_primary: true,
     },
     update: {
       role: 'care_manager',
       name: '中島 桜',
       organization_name: 'きたきゅうケアプラン',
+      phone: '093-222-0001',
+      fax: '093-222-0002',
+      email: 'nakajima-care@example.test',
       is_primary: true,
     },
   });
@@ -2693,12 +2716,16 @@ export async function seedDesignFidelityDemo(
       role: 'nurse',
       name: '三浦 恵',
       organization_name: '訪問看護ステーションあおぞら',
+      phone: '093-333-0001',
+      fax: '093-333-0002',
       is_primary: true,
     },
     update: {
       role: 'nurse',
       name: '三浦 恵',
       organization_name: '訪問看護ステーションあおぞら',
+      phone: '093-333-0001',
+      fax: '093-333-0002',
       is_primary: true,
     },
   });
@@ -2765,6 +2792,93 @@ export async function seedDesignFidelityDemo(
       responder_name: '中島 桜(ケアマネ)',
       content: 'ヘルパーへ声かけ依頼済み。次回確認をお願いします。',
       responded_at: addDays(atLocalTimeToday(16, 40), -1),
+    },
+  });
+
+  await prisma.communicationRequest.upsert({
+    where: { id: DEMO_SEED_IDS.commRequestKatoPhysicianFollowup },
+    create: {
+      id: DEMO_SEED_IDS.commRequestKatoPhysicianFollowup,
+      org_id: ctx.orgId,
+      patient_id: DEMO_SEED_IDS.patientKato,
+      case_id: DEMO_SEED_IDS.caseKato,
+      request_type: 'inquiry',
+      recipient_name: '山本 健',
+      recipient_role: 'physician',
+      related_entity_type: 'care_report',
+      related_entity_id: DEMO_SEED_IDS.reportKato,
+      status: 'sent',
+      subject: '主治医への残薬確認',
+      content: 'マグミット錠の残薬調整について返信待ち',
+      requested_by: ctx.userId,
+      requested_at: addDays(atLocalTimeToday(10, 20), -2),
+      due_date: addDays(today, -1),
+    },
+    update: {
+      recipient_name: '山本 健',
+      recipient_role: 'physician',
+      status: 'sent',
+      subject: '主治医への残薬確認',
+      requested_at: addDays(atLocalTimeToday(10, 20), -2),
+      due_date: addDays(today, -1),
+    },
+  });
+
+  await prisma.communicationRequest.upsert({
+    where: { id: DEMO_SEED_IDS.commRequestKatoCareManagerFollowup },
+    create: {
+      id: DEMO_SEED_IDS.commRequestKatoCareManagerFollowup,
+      org_id: ctx.orgId,
+      patient_id: DEMO_SEED_IDS.patientKato,
+      case_id: DEMO_SEED_IDS.caseKato,
+      request_type: 'report_share',
+      recipient_name: '中島 桜',
+      recipient_role: 'care_manager',
+      related_entity_type: 'care_report',
+      related_entity_id: DEMO_SEED_IDS.reportKato,
+      status: 'sent',
+      subject: 'ケアマネへの服薬状況報告',
+      content: '昼分の服薬声かけについて返信待ち',
+      requested_by: ctx.userId,
+      requested_at: addDays(atLocalTimeToday(11, 30), -3),
+      due_date: addDays(today, -1),
+    },
+    update: {
+      recipient_name: '中島 桜',
+      recipient_role: 'care_manager',
+      status: 'sent',
+      subject: 'ケアマネへの服薬状況報告',
+      requested_at: addDays(atLocalTimeToday(11, 30), -3),
+      due_date: addDays(today, -1),
+    },
+  });
+
+  await prisma.communicationRequest.upsert({
+    where: { id: DEMO_SEED_IDS.commRequestKatoNurseFollowup },
+    create: {
+      id: DEMO_SEED_IDS.commRequestKatoNurseFollowup,
+      org_id: ctx.orgId,
+      patient_id: DEMO_SEED_IDS.patientKato,
+      case_id: DEMO_SEED_IDS.caseKato,
+      request_type: 'inquiry',
+      recipient_name: '三浦 恵',
+      recipient_role: 'visiting_nurse',
+      related_entity_type: 'care_report',
+      related_entity_id: DEMO_SEED_IDS.reportKato,
+      status: 'sent',
+      subject: '訪問看護への確認事項',
+      content: '服薬カレンダーの残量確認について返信待ち',
+      requested_by: ctx.userId,
+      requested_at: addDays(atLocalTimeToday(14, 10), -1),
+      due_date: today,
+    },
+    update: {
+      recipient_name: '三浦 恵',
+      recipient_role: 'visiting_nurse',
+      status: 'sent',
+      subject: '訪問看護への確認事項',
+      requested_at: addDays(atLocalTimeToday(14, 10), -1),
+      due_date: today,
     },
   });
 
@@ -3650,6 +3764,83 @@ export async function seedDesignFidelityDemo(
     });
   }
 
+  const handoffConsultItems = [
+    {
+      id: DEMO_SEED_IDS.handoffConsultItems[0],
+      content: '用法・用量の確認をお願いします。以前の処方と異なるため、薬剤師判断が必要です。',
+      priority: 'high',
+      consult_status: 'open',
+      resolution_action: null as string | null,
+      resolution_note: null as string | null,
+      resolved_by: null as string | null,
+      resolved_at: null as Date | null,
+      created_at: addMinutes(now, -20),
+    },
+    {
+      id: DEMO_SEED_IDS.handoffConsultItems[1],
+      content: '報告書に入れるべき確認事項か判断をお願いします。',
+      priority: 'normal',
+      consult_status: 'checking',
+      resolution_action: 'acknowledged',
+      resolution_note: '報告内容を確認中。医師確認は不要の見込みです。',
+      resolved_by: ctx.userId,
+      resolved_at: addMinutes(now, -12),
+      created_at: addMinutes(now, -45),
+    },
+    {
+      id: DEMO_SEED_IDS.handoffConsultItems[2],
+      content: 'FAX番号の確証が弱いため、送付前に判断してください。',
+      priority: 'high',
+      consult_status: 'returned_to_clerk',
+      resolution_action: 'returned_to_clerk',
+      resolution_note: '送付先へ電話確認してから再度回してください。',
+      resolved_by: ctx.userId,
+      resolved_at: addMinutes(now, -35),
+      created_at: addHours(now, -1),
+    },
+    {
+      id: DEMO_SEED_IDS.handoffConsultItems[3],
+      content: '同成分薬の重複疑いについて確認をお願いします。',
+      priority: 'normal',
+      consult_status: 'resolved',
+      resolution_action: 'escalated_to_physician',
+      resolution_note: '医師へ確認済み。今回は処方通りで問題ありません。',
+      resolved_by: ctx.userId,
+      resolved_at: addHours(now, -2),
+      created_at: addHours(now, -3),
+    },
+  ];
+  for (const item of handoffConsultItems) {
+    const itemData = {
+      board_id: handoffBoard.id,
+      content: item.content,
+      priority: item.priority,
+      recipient_user_id: ctx.userId,
+      recipient_label: '山田さん(薬剤師)',
+      lifecycle_status: null as string | null,
+      scope: null as string | null,
+      rationale: '確認してほしいこと\n・用法が妥当か\n・医師へ確認が必要か\n・報告書に入れる内容か',
+      deadline: null as Date | null,
+      progress_done: null as number | null,
+      progress_total: null as number | null,
+      entity_type: 'consult',
+      entity_id: item.id,
+      consult_status: item.consult_status,
+      resolution_action: item.resolution_action,
+      resolution_note: item.resolution_note,
+      resolved_by: item.resolved_by,
+      resolved_at: item.resolved_at,
+      read_by: [],
+      created_by: ctx.clerkUserId,
+      created_at: item.created_at,
+    };
+    await prisma.handoffItem.upsert({
+      where: { id: item.id },
+      create: { id: item.id, ...itemData },
+      update: itemData,
+    });
+  }
+
   // ── 通知: 未読 6 件(ヘッダー「通知 6」)───────────────────────────
   const notifications = [
     {
@@ -3745,6 +3936,7 @@ export async function seedDesignFidelityDemo(
     billingEvidencePassed: passedEvidenceSpecs.length,
     billingReviewCandidates: 1,
     handoffItems: handoffItems.length,
+    handoffConsultItems: handoffConsultItems.length,
     workflowExceptions: 2,
     notifications: notifications.length,
   });
@@ -3752,7 +3944,7 @@ export async function seedDesignFidelityDemo(
   // ── p1_07 在庫と定期処方の予測: 来週(翌週月〜日)の定期訪問 × 在庫 ────
   // 「来週」の規約は /api/admin/inventory-forecast の nextWeekUtcRange と同じ
   // (翌週月曜〜日曜。today は UTC 深夜の @db.Date 値なので getUTCDay で曜日を取る)。
-  const daysToNextMonday = ((8 - today.getUTCDay()) % 7) || 7;
+  const daysToNextMonday = (8 - today.getUTCDay()) % 7 || 7;
   const nextMonday = addDays(today, daysToNextMonday);
 
   // 在庫突合用の医薬品マスタ(グローバル: org_id なし)。YJ コードはデモ用の固定値
@@ -4117,9 +4309,27 @@ export async function seedDesignFidelityDemo(
 
   // 名簿のみ入居者 3 名(patient_ids の頭数。ケース/サイクルなしで患者一覧は不変)
   const facilityARosterProfiles = [
-    { name: '河野 ツル', nameKana: 'コウノ ツル', age: 89, gender: 'female' as const, unitName: '203' },
-    { name: '岡本 茂', nameKana: 'オカモト シゲル', age: 84, gender: 'male' as const, unitName: '204' },
-    { name: '永井 ミツ', nameKana: 'ナガイ ミツ', age: 92, gender: 'female' as const, unitName: '205' },
+    {
+      name: '河野 ツル',
+      nameKana: 'コウノ ツル',
+      age: 89,
+      gender: 'female' as const,
+      unitName: '203',
+    },
+    {
+      name: '岡本 茂',
+      nameKana: 'オカモト シゲル',
+      age: 84,
+      gender: 'male' as const,
+      unitName: '204',
+    },
+    {
+      name: '永井 ミツ',
+      nameKana: 'ナガイ ミツ',
+      age: 92,
+      gender: 'female' as const,
+      unitName: '205',
+    },
   ];
   for (const [index, profile] of facilityARosterProfiles.entries()) {
     const rosterPatientId = DEMO_SEED_IDS.facilityARosterPatients[index];
