@@ -11,8 +11,10 @@ const {
   withOrgContextMock,
   scheduleFindManyMock,
   scheduleFindFirstMock,
+  scheduleCountMock,
   scheduleUpdateManyMock,
   proposalFindFirstMock,
+  vehicleFindManyMock,
   membershipFindManyMock,
   pharmacistShiftFindManyMock,
   auditLogCreateMock,
@@ -27,8 +29,10 @@ const {
     withOrgContextMock: vi.fn(),
     scheduleFindManyMock: vi.fn(),
     scheduleFindFirstMock: vi.fn(),
+    scheduleCountMock: vi.fn(),
     scheduleUpdateManyMock: vi.fn(),
     proposalFindFirstMock: vi.fn(),
+    vehicleFindManyMock: vi.fn(),
     membershipFindManyMock: vi.fn(),
     pharmacistShiftFindManyMock: vi.fn(),
     auditLogCreateMock: vi.fn(),
@@ -113,6 +117,10 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         time_window_start: new Date('1970-01-01T09:00:00'),
         time_window_end: new Date('1970-01-01T10:00:00'),
         confirmed_at: null,
+        route_order: 1,
+        site_id: 'site_1',
+        schedule_status: 'planned',
+        vehicle_resource_id: null,
         version: 1,
       },
       {
@@ -123,6 +131,10 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         time_window_start: new Date('1970-01-01T10:00:00'),
         time_window_end: new Date('1970-01-01T11:00:00'),
         confirmed_at: null,
+        route_order: 2,
+        site_id: 'site_1',
+        schedule_status: 'planned',
+        vehicle_resource_id: null,
         version: 1,
       },
       {
@@ -133,6 +145,10 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         time_window_start: new Date('1970-01-01T09:00:00'),
         time_window_end: new Date('1970-01-01T10:00:00'),
         confirmed_at: null,
+        route_order: 1,
+        site_id: 'site_2',
+        schedule_status: 'planned',
+        vehicle_resource_id: null,
         version: 1,
       },
     ];
@@ -141,7 +157,16 @@ describe('/api/visit-schedules/reorder PATCH', () => {
       return Promise.resolve(schedules.filter((schedule) => ids.includes(schedule.id)));
     });
     scheduleFindFirstMock.mockResolvedValue(null);
+    scheduleCountMock.mockResolvedValue(0);
     proposalFindFirstMock.mockResolvedValue(null);
+    const vehicles = [
+      { id: 'vehicle_1', site_id: 'site_1', label: '軽バン1号', max_stops: 4 },
+      { id: 'vehicle_2', site_id: 'site_2', label: '軽バン2号', max_stops: 4 },
+    ];
+    vehicleFindManyMock.mockImplementation(({ where }: { where: { id?: { in?: string[] } } }) => {
+      const ids = where.id?.in ?? vehicles.map((vehicle) => vehicle.id);
+      return Promise.resolve(vehicles.filter((vehicle) => ids.includes(vehicle.id)));
+    });
     membershipFindManyMock.mockResolvedValue([{ user_id: 'pharmacist_2' }]);
     pharmacistShiftFindManyMock.mockResolvedValue([
       {
@@ -161,7 +186,11 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         visitSchedule: {
           findMany: scheduleFindManyMock,
           findFirst: scheduleFindFirstMock,
+          count: scheduleCountMock,
           updateMany: scheduleUpdateManyMock,
+        },
+        visitVehicleResource: {
+          findMany: vehicleFindManyMock,
         },
         visitScheduleProposal: {
           findFirst: proposalFindFirstMock,
@@ -232,6 +261,10 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         time_window_start: new Date('1970-01-01T09:00:00'),
         time_window_end: new Date('1970-01-01T10:00:00'),
         confirmed_at: null,
+        route_order: 1,
+        site_id: 'site_1',
+        schedule_status: 'planned',
+        vehicle_resource_id: null,
         version: 1,
       },
       {
@@ -242,6 +275,10 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         time_window_start: new Date('1970-01-01T13:00:00'),
         time_window_end: new Date('1970-01-01T14:00:00'),
         confirmed_at: null,
+        route_order: 1,
+        site_id: 'site_1',
+        schedule_status: 'planned',
+        vehicle_resource_id: null,
         version: 1,
       },
     ]);
@@ -278,6 +315,10 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         time_window_start: new Date('1970-01-01T09:00:00'),
         time_window_end: new Date('1970-01-01T10:00:00'),
         confirmed_at: null,
+        route_order: 1,
+        site_id: 'site_1',
+        schedule_status: 'planned',
+        vehicle_resource_id: null,
         version: 1,
       },
     ]);
@@ -314,6 +355,10 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         time_window_start: true,
         time_window_end: true,
         confirmed_at: true,
+        route_order: true,
+        site_id: true,
+        schedule_status: true,
+        vehicle_resource_id: true,
         version: true,
       },
     });
@@ -606,6 +651,10 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         time_window_start: new Date('1970-01-01T09:00:00'),
         time_window_end: new Date('1970-01-01T10:00:00'),
         confirmed_at: null,
+        route_order: 1,
+        site_id: 'site_1',
+        schedule_status: 'planned',
+        vehicle_resource_id: null,
         version: 1,
       },
     ]);
@@ -691,6 +740,180 @@ describe('/api/visit-schedules/reorder PATCH', () => {
     );
   });
 
+  it('applies a recommended vehicle assignment in the same guarded route transaction', async () => {
+    const response = (await PATCH(
+      createRequest({
+        updates: [
+          { schedule_id: 'schedule_1', route_order: 1 },
+          { schedule_id: 'schedule_2', route_order: 2 },
+        ],
+        vehicle_assignment: {
+          mode: 'assign_if_unassigned',
+          vehicle_resource_id: 'vehicle_1',
+          schedule_ids: ['schedule_1', 'schedule_2'],
+        },
+        confirmation_context: {
+          source: 'route_compare_adoption',
+          date: '2026-04-09',
+          pharmacist_id: 'pharmacist_1',
+          target_count: 2,
+          route_order_diff_count: 2,
+          vehicle_assignment_count: 2,
+        },
+      }),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(vehicleFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        id: { in: ['vehicle_1'] },
+        available: true,
+      },
+      select: {
+        id: true,
+        site_id: true,
+        label: true,
+        max_stops: true,
+      },
+    });
+    expect(scheduleCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        vehicle_resource_id: 'vehicle_1',
+        scheduled_date: new Date('2026-04-09'),
+        schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+        id: { notIn: ['schedule_1', 'schedule_2'] },
+      },
+    });
+    expect(scheduleUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'schedule_1',
+          vehicle_resource_id: null,
+        }),
+        data: expect.objectContaining({
+          route_order: 1,
+          vehicle_resource_id: 'vehicle_1',
+        }),
+      }),
+    );
+    expect(auditLogCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'visit_schedules_reordered',
+          changes: expect.objectContaining({
+            vehicle_assignment: {
+              mode: 'assign_if_unassigned',
+              vehicle_resource_id: 'vehicle_1',
+              schedule_ids: ['schedule_1', 'schedule_2'],
+            },
+            confirmation_context: expect.objectContaining({
+              source: 'route_compare_adoption',
+              vehicle_assignment_count: 2,
+            }),
+            updates: expect.arrayContaining([
+              expect.objectContaining({
+                schedule_id: 'schedule_1',
+                route_order: 1,
+                vehicle_resource_id: 'vehicle_1',
+              }),
+            ]),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('rejects route adoption when recommended vehicle capacity would be exceeded', async () => {
+    vehicleFindManyMock.mockResolvedValueOnce([
+      { id: 'vehicle_1', site_id: 'site_1', label: '軽バン1号', max_stops: 2 },
+    ]);
+    scheduleCountMock.mockResolvedValueOnce(1);
+
+    const response = (await PATCH(
+      createRequest({
+        updates: [
+          { schedule_id: 'schedule_1', route_order: 1 },
+          { schedule_id: 'schedule_2', route_order: 2 },
+        ],
+        vehicle_assignment: {
+          mode: 'assign_if_unassigned',
+          vehicle_resource_id: 'vehicle_1',
+          schedule_ids: ['schedule_1', 'schedule_2'],
+        },
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '軽バン1号 で訪問できる件数は最大 2 件です',
+    });
+    expectNoWriteAuditOrNotify();
+  });
+
+  it('rejects route order changes for confirmed visits', async () => {
+    scheduleFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'schedule_1',
+        case_id: 'case_1',
+        pharmacist_id: 'pharmacist_1',
+        scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+        time_window_start: new Date('1970-01-01T09:00:00'),
+        time_window_end: new Date('1970-01-01T10:00:00'),
+        confirmed_at: new Date('2026-04-08T12:00:00.000Z'),
+        route_order: 1,
+        site_id: 'site_1',
+        schedule_status: 'planned',
+        vehicle_resource_id: null,
+        version: 1,
+      },
+    ]);
+
+    const response = (await PATCH(
+      createRequest({
+        updates: [{ schedule_id: 'schedule_1', route_order: 2 }],
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '電話確定済みの訪問予定は順路を変更できません',
+    });
+    expectNoWriteAuditOrNotify();
+  });
+
+  it('rejects route order changes for terminal visit statuses', async () => {
+    scheduleFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'schedule_1',
+        case_id: 'case_1',
+        pharmacist_id: 'pharmacist_1',
+        scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+        time_window_start: new Date('1970-01-01T09:00:00'),
+        time_window_end: new Date('1970-01-01T10:00:00'),
+        confirmed_at: null,
+        route_order: 1,
+        site_id: 'site_1',
+        schedule_status: 'completed',
+        vehicle_resource_id: null,
+        version: 1,
+      },
+    ]);
+
+    const response = (await PATCH(
+      createRequest({
+        updates: [{ schedule_id: 'schedule_1', route_order: 2 }],
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '完了済みまたは中止済みの訪問予定は順路を変更できません',
+    });
+    expectNoWriteAuditOrNotify();
+  });
+
   it('rejects moving a schedule outside the target pharmacist shift', async () => {
     authRoleRef.current = 'admin';
 
@@ -703,6 +926,11 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         time_window_start: new Date('1970-01-01T09:00:00'),
         time_window_end: new Date('1970-01-01T10:00:00'),
         confirmed_at: null,
+        route_order: 1,
+        site_id: 'site_1',
+        schedule_status: 'planned',
+        vehicle_resource_id: null,
+        version: 1,
       },
     ]);
     pharmacistShiftFindManyMock.mockResolvedValueOnce([
@@ -746,6 +974,11 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         time_window_start: null,
         time_window_end: null,
         confirmed_at: new Date('2026-04-08T12:00:00.000Z'),
+        route_order: 1,
+        site_id: 'site_1',
+        schedule_status: 'planned',
+        vehicle_resource_id: null,
+        version: 1,
       },
     ]);
 

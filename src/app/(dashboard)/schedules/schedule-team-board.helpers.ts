@@ -36,6 +36,8 @@ export type BoardBlock = {
   label: string;
   startMinutes: number;
   endMinutes: number;
+  /** 訪問ステータス。訪問以外の仮置きブロックは null */
+  status: DayBoardVisit['schedule_status'] | null;
   /** 確定訪問(🔒 変更は理由必須) */
   locked: boolean;
   /** 麻薬監査未完などのリスク(⚠) */
@@ -192,6 +194,7 @@ export function buildStaffLane({
       label: visitBlockLabel(window.visit),
       startMinutes: window.start,
       endMinutes: window.end,
+      status: window.visit.schedule_status,
       locked: window.visit.confirmed,
       risk: riskPatientNames?.has(window.visit.patient_name) ?? false,
     });
@@ -209,6 +212,7 @@ export function buildStaffLane({
         label: '移動',
         startMinutes: travelStart,
         endMinutes: window.start,
+        status: null,
         locked: false,
         risk: false,
       });
@@ -227,6 +231,7 @@ export function buildStaffLane({
       label: '昼',
       startMinutes: LUNCH_START_MINUTES,
       endMinutes: LUNCH_END_MINUTES,
+      status: null,
       locked: false,
       risk: false,
     });
@@ -243,7 +248,9 @@ export function buildStaffLane({
       const firstOccupied = [...occupied].sort((left, right) => left.start - right.start)[0];
       const end = Math.min(
         BOARD_START_MINUTES + duration,
-        firstOccupied ? Math.max(firstOccupied.start, BOARD_START_MINUTES + AUDIT_BLOCK_MIN_MINUTES) : BOARD_END_MINUTES,
+        firstOccupied
+          ? Math.max(firstOccupied.start, BOARD_START_MINUTES + AUDIT_BLOCK_MIN_MINUTES)
+          : BOARD_END_MINUTES,
         BOARD_END_MINUTES,
       );
       if (end > BOARD_START_MINUTES) {
@@ -253,6 +260,7 @@ export function buildStaffLane({
           label: `監査${staff.audit_task_count}件`,
           startMinutes: BOARD_START_MINUTES,
           endMinutes: end,
+          status: null,
           locked: false,
           risk: false,
         });
@@ -274,6 +282,7 @@ export function buildStaffLane({
           label: '報告',
           startMinutes: start,
           endMinutes: BOARD_END_MINUTES,
+          status: null,
           locked: false,
           risk: false,
         });
@@ -282,7 +291,13 @@ export function buildStaffLane({
     }
   } else {
     // 事務行: 窓口・取込 / 送付先確認 / 入力・庶務(定常業務の仮置き)
-    const clerkBlocks: Array<{ id: string; label: string; start: number; end: number; kind: BoardBlockKind }> = [
+    const clerkBlocks: Array<{
+      id: string;
+      label: string;
+      start: number;
+      end: number;
+      kind: BoardBlockKind;
+    }> = [
       { id: 'desk:reception', label: '窓口・取込', start: 9 * 60, end: 11 * 60 + 45, kind: 'desk' },
       ...(clericalBlockedCount > 0
         ? [
@@ -314,6 +329,7 @@ export function buildStaffLane({
         label: clerkBlock.label,
         startMinutes: clerkBlock.start,
         endMinutes: clerkBlock.end,
+        status: null,
         locked: false,
         risk: false,
       });
@@ -332,6 +348,7 @@ export function buildStaffLane({
       label: `余白${gapMinutes}分`,
       startMinutes: gap.start,
       endMinutes: gap.end,
+      status: null,
       locked: false,
       risk: false,
     });

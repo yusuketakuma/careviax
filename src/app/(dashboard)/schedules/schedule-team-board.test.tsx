@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { render, screen, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type { DayBoardStaff, ScheduleDayBoardResponse } from '@/types/schedule-day-board';
@@ -13,9 +13,15 @@ import {
 } from './schedule-team-board.helpers';
 
 const useQueryMock = vi.hoisted(() => vi.fn());
+const useMutationMock = vi.hoisted(() => vi.fn());
+const invalidateQueriesMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@tanstack/react-query', () => ({
   useQuery: useQueryMock,
+  useMutation: useMutationMock,
+  useQueryClient: () => ({
+    invalidateQueries: invalidateQueriesMock,
+  }),
 }));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
@@ -52,8 +58,12 @@ function buildPharmacist(overrides: Partial<DayBoardStaff> = {}): DayBoardStaff 
         visit_type: 'regular',
         schedule_status: 'planned',
         priority: 'normal',
+        route_order: 1,
         time_start: localIso(10, 30),
         time_end: localIso(11, 15),
+        vehicle_resource_id: 'vehicle_1',
+        vehicle_label: '軽バン1号',
+        vehicle_travel_mode: 'DRIVE',
         confirmed: true,
         facility_label: null,
         facility_patient_count: 1,
@@ -62,10 +72,14 @@ function buildPharmacist(overrides: Partial<DayBoardStaff> = {}): DayBoardStaff 
         id: 'visit_2',
         patient_name: '田中 一郎',
         visit_type: 'regular',
-        schedule_status: 'planned',
+        schedule_status: 'ready',
         priority: 'normal',
+        route_order: 2,
         time_start: localIso(14, 0),
         time_end: localIso(14, 45),
+        vehicle_resource_id: 'vehicle_1',
+        vehicle_label: '軽バン1号',
+        vehicle_travel_mode: 'DRIVE',
         confirmed: true,
         facility_label: null,
         facility_patient_count: 1,
@@ -74,10 +88,14 @@ function buildPharmacist(overrides: Partial<DayBoardStaff> = {}): DayBoardStaff 
         id: 'visit_3',
         patient_name: '中村 ヨシ',
         visit_type: 'regular',
-        schedule_status: 'planned',
+        schedule_status: 'completed',
         priority: 'normal',
+        route_order: 3,
         time_start: localIso(15, 30),
         time_end: localIso(17, 0),
+        vehicle_resource_id: null,
+        vehicle_label: null,
+        vehicle_travel_mode: null,
         confirmed: true,
         facility_label: 'グリーンヒル',
         facility_patient_count: 12,
@@ -102,12 +120,63 @@ function buildClerk(): DayBoardStaff {
 }
 
 function buildBoardFixture(): ScheduleDayBoardResponse {
+  const pharmacist = buildPharmacist();
   return {
     generated_at: localIso(9, 40),
     date: TODAY_KEY,
-    staff: [buildPharmacist(), buildClerk()],
+    staff: [
+      {
+        ...pharmacist,
+        visits: [
+          ...pharmacist.visits,
+          {
+            id: 'visit_4',
+            patient_name: '岡田 健',
+            visit_type: 'temporary',
+            schedule_status: 'planned',
+            priority: 'normal',
+            route_order: null,
+            time_start: localIso(17, 15),
+            time_end: localIso(17, 45),
+            vehicle_resource_id: null,
+            vehicle_label: null,
+            vehicle_travel_mode: null,
+            confirmed: false,
+            facility_label: null,
+            facility_patient_count: 1,
+          },
+        ],
+      },
+      buildClerk(),
+    ],
     audit_pending_count: 6,
     report_pending_count: 2,
+    vehicle_resources: [
+      {
+        id: 'vehicle_1',
+        label: '軽バン1号',
+        vehicle_code: 'VEH-DEMO-001',
+        travel_mode: 'DRIVE',
+        available: true,
+        max_stops: 8,
+        assigned_visit_count: 2,
+        remaining_stops: 6,
+        recommended: true,
+        recommendation_reason: '未割当 1件を受けられます',
+      },
+      {
+        id: 'vehicle_2',
+        label: '軽バン2号',
+        vehicle_code: 'VEH-DEMO-002',
+        travel_mode: 'DRIVE',
+        available: true,
+        max_stops: 4,
+        assigned_visit_count: 0,
+        remaining_stops: 4,
+        recommended: false,
+        recommendation_reason: '空き 4件',
+      },
+    ],
     pending_proposals: [
       {
         id: 'proposal_1',
@@ -262,6 +331,16 @@ describe('pendingProposalDateLabel / staffRowLabel', () => {
 });
 
 describe('ScheduleTeamBoard', () => {
+  beforeEach(() => {
+    invalidateQueriesMock.mockReset();
+    useMutationMock.mockReset();
+    useMutationMock.mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      variables: undefined,
+    });
+  });
+
   it('renders the new schedule board composition with rail and a single primary action', () => {
     mockQueries();
     render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
@@ -275,11 +354,28 @@ describe('ScheduleTeamBoard', () => {
 
     // 全員ガント: 行ラベル + 余白バッジ + 凡例
     expect(screen.getByRole('heading', { name: '今日のスケジュール — 全員' })).toBeTruthy();
-    expect(screen.getByText('山田(薬)')).toBeTruthy();
+    expect(screen.getAllByText('山田(薬)').length).toBeGreaterThan(0);
     expect(screen.getByText('鈴木(事務)')).toBeTruthy();
     expect(screen.getAllByTestId('team-board-idle').length).toBe(2);
+    expect(screen.getAllByText('予定').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('準備完了').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('完了').length).toBeGreaterThan(0);
+    expect(screen.getByText('訪問色＝ステータス')).toBeTruthy();
     expect(screen.getByText('斜線＝移動時間')).toBeTruthy();
     expect(screen.getByText('緑点線＝余白')).toBeTruthy();
+    const vehicles = screen.getByTestId('schedule-vehicle-resources');
+    expect(within(vehicles).getByText('車両リソース')).toBeTruthy();
+    expect(within(vehicles).getByText('空き 2台')).toBeTruthy();
+    expect(within(vehicles).getByText('軽バン1号')).toBeTruthy();
+    expect(within(vehicles).getByText('推奨')).toBeTruthy();
+    expect(within(vehicles).getByText(/未割当 1件を受けられます/)).toBeTruthy();
+    expect(within(vehicles).getByRole('button', { name: '推奨車両を反映' })).toBeTruthy();
+    const routePreview = screen.getByTestId('schedule-route-preview');
+    expect(within(routePreview).getByText('訪問ルート')).toBeTruthy();
+    expect(within(routePreview).getByRole('link', { name: 'ルート案を開く' })).toBeTruthy();
+    expect(within(routePreview).getByText('伊藤 キヨ様')).toBeTruthy();
+    expect(within(routePreview).getAllByText(/軽バン1号/).length).toBeGreaterThan(0);
+    expect(within(routePreview).getAllByText(/車両未割当/).length).toBeGreaterThan(0);
     const visitRequestLink = screen.getByRole('link', { name: '伊藤 キヨ様の訪問を依頼' });
     expect(visitRequestLink.getAttribute('href')).toContain(
       'work_request_type=staff_work_request_visit',
@@ -320,6 +416,46 @@ describe('ScheduleTeamBoard', () => {
 
     // 主操作(青)が 1 つだけ: 次にやることのリンク以外の主ボタンは存在しない
     expect(screen.getByRole('link', { name: '予定を作る' })).toBeTruthy();
+  });
+
+  it('offers visit status changes from the staff gantt', () => {
+    const mutate = vi.fn();
+    useMutationMock.mockReturnValue({
+      mutate,
+      isPending: false,
+      variables: undefined,
+    });
+    mockQueries();
+    render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
+
+    const controls = screen.getByTestId('schedule-status-controls');
+    const statusSelect = within(controls).getByLabelText('伊藤 キヨ様のステータスを変更');
+    expect(statusSelect).toBeTruthy();
+
+    fireEvent.change(statusSelect, { target: { value: 'in_progress' } });
+
+    expect(mutate).toHaveBeenCalledWith({
+      scheduleId: 'visit_1',
+      status: 'in_progress',
+    });
+  });
+
+  it('applies the recommended vehicle only to assignable unassigned visits', () => {
+    const mutate = vi.fn();
+    useMutationMock.mockReturnValue({
+      mutate,
+      isPending: false,
+      variables: undefined,
+    });
+    mockQueries();
+    render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
+
+    fireEvent.click(screen.getByRole('button', { name: '推奨車両を反映' }));
+
+    expect(mutate).toHaveBeenCalledWith({
+      vehicleId: 'vehicle_1',
+      scheduleIds: ['visit_4'],
+    });
   });
 
   it('renders only the heading row when the calendar (週) view is active', () => {

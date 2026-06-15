@@ -11,9 +11,14 @@ export type DayBoardVisit = {
   visit_type: string;
   schedule_status: string;
   priority: string;
+  /** 同一担当・同一日の訪問順。未設定は時刻順の仮順で表示する */
+  route_order: number | null;
   /** time_window_start(ISO)。未設定は null(ガントに置かない) */
   time_start: string | null;
   time_end: string | null;
+  vehicle_resource_id: string | null;
+  vehicle_label: string | null;
+  vehicle_travel_mode: string | null;
   /** confirmed_at あり = 確定(🔒 変更は理由必須) */
   confirmed: boolean;
   /** 施設一括訪問の施設名(個人宅は null) */
@@ -64,5 +69,19 @@ export type ScheduleDayBoardResponse = {
   audit_pending_count: number;
   /** 報告書待ち(visit_completed サイクル)件数。「報告」ブロックの元データ */
   report_pending_count: number;
+  vehicle_resources: DayBoardVehicleResource[];
   pending_proposals: DayBoardPendingProposal[];
+};
+
+export type DayBoardVehicleResource = {
+  id: string;
+  label: string;
+  vehicle_code: string | null;
+  travel_mode: string;
+  available: boolean;
+  max_stops: number;
+  assigned_visit_count: number;
+  remaining_stops: number;
+  recommended: boolean;
+  recommendation_reason: string;
 };

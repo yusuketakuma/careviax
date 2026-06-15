@@ -24,13 +24,23 @@ import { validateScheduleTimeDatesFitShift } from '@/server/services/visit-sched
 
 const VISIT_SCHEDULE_REORDER_SERIALIZABLE_RETRY_LIMIT = 3;
 
+const VEHICLE_ASSIGNABLE_STATUSES = new Set([
+  'planned',
+  'in_preparation',
+  'ready',
+  'departed',
+  'in_progress',
+]);
+const ROUTE_REORDERABLE_STATUSES = VEHICLE_ASSIGNABLE_STATUSES;
+
 const routeOrderConfirmationContextSchema = z.object({
-  source: z.enum(['schedule_day_route_preview']),
+  source: z.enum(['schedule_day_route_preview', 'route_compare_adoption']),
   date: visitScheduleDateKeySchema('確認日付の形式が不正です（YYYY-MM-DD）').optional(),
   pharmacist_id: z.string().trim().min(1).max(100).optional(),
   travel_mode: z.enum(['DRIVE', 'BICYCLE', 'WALK', 'TWO_WHEELER']).optional(),
   target_count: z.number().int().min(1).max(100).optional(),
   route_order_diff_count: z.number().int().min(0).max(100).optional(),
+  vehicle_assignment_count: z.number().int().min(0).max(100).optional(),
 });
 
 const visitScheduleReorderSchema = z.object({
@@ -41,9 +51,17 @@ const visitScheduleReorderSchema = z.object({
         route_order: z.number().int().min(1),
         scheduled_date: visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional(),
         pharmacist_id: z.string().trim().min(1).optional(),
+        vehicle_resource_id: z.string().trim().min(1).nullable().optional(),
       }),
     )
     .min(1),
+  vehicle_assignment: z
+    .object({
+      mode: z.literal('assign_if_unassigned'),
+      vehicle_resource_id: z.string().trim().min(1),
+      schedule_ids: z.array(z.string().trim().min(1)).min(1).max(100),
+    })
+    .optional(),
   confirmation_context: routeOrderConfirmationContextSchema.optional(),
 });
 
@@ -52,13 +70,27 @@ type VisitScheduleReorderError =
   | 'pharmacist_change_forbidden'
   | 'invalid_pharmacist'
   | 'confirmed_move'
+  | 'confirmed_route_change'
+  | 'route_status_locked'
   | 'shift_conflict'
   | 'confirmation_context_mismatch'
+  | 'vehicle_not_found'
+  | 'vehicle_site_required'
+  | 'vehicle_site_mismatch'
+  | 'vehicle_capacity_exceeded'
+  | 'vehicle_status_locked'
+  | 'vehicle_assignment_target_mismatch'
+  | 'vehicle_already_assigned'
   | 'duplicate_route_order';
 type VisitScheduleReorderResult =
-  | { error: Exclude<VisitScheduleReorderError, 'shift_conflict'> }
+  | { error: Exclude<VisitScheduleReorderError, 'shift_conflict' | 'vehicle_capacity_exceeded'> }
   | { error: 'shift_conflict'; message: string }
-  | { case_ids: string[]; schedule_ids: string[] };
+  | { error: 'vehicle_capacity_exceeded'; message: string }
+  | {
+      case_ids: string[];
+      schedule_ids: string[];
+      vehicle_assignment: { vehicle_resource_id: string; assigned_schedule_ids: string[] } | null;
+    };
 
 class VisitScheduleReorderConflictError extends Error {
   constructor() {
@@ -117,6 +149,22 @@ export const PATCH = withAuthContext(
       return validationError('同じ訪問予定を複数回指定できません');
     }
     const uniqueScheduleIds = dedupedUpdates.map((item) => item.schedule_id);
+    const vehicleAssignment = parsed.data.vehicle_assignment;
+    if (vehicleAssignment) {
+      const updateTargetIds = new Set(uniqueScheduleIds);
+      const duplicateVehicleTargets = new Set<string>();
+      const seenVehicleTargets = new Set<string>();
+      for (const scheduleId of vehicleAssignment.schedule_ids) {
+        if (seenVehicleTargets.has(scheduleId)) duplicateVehicleTargets.add(scheduleId);
+        seenVehicleTargets.add(scheduleId);
+      }
+      if (
+        duplicateVehicleTargets.size > 0 ||
+        vehicleAssignment.schedule_ids.some((scheduleId) => !updateTargetIds.has(scheduleId))
+      ) {
+        return validationError('車両反映対象は順路更新対象の訪問予定だけ指定できます');
+      }
+    }
 
     let result: VisitScheduleReorderResult;
     try {
@@ -138,6 +186,10 @@ export const PATCH = withAuthContext(
               time_window_start: true,
               time_window_end: true,
               confirmed_at: true,
+              route_order: true,
+              site_id: true,
+              schedule_status: true,
+              vehicle_resource_id: true,
               version: true,
             },
           });
@@ -147,8 +199,14 @@ export const PATCH = withAuthContext(
           }
 
           const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]));
+          const vehicleAssignmentScheduleIds = new Set(vehicleAssignment?.schedule_ids ?? []);
+          const effectiveUpdates = dedupedUpdates.map((item) =>
+            vehicleAssignment && vehicleAssignmentScheduleIds.has(item.schedule_id)
+              ? { ...item, vehicle_resource_id: vehicleAssignment.vehicle_resource_id }
+              : item,
+          );
           if (!canBypassVisitScheduleAssignmentAccess(ctx)) {
-            const pharmacistChange = dedupedUpdates.find((item) => {
+            const pharmacistChange = effectiveUpdates.find((item) => {
               const schedule = scheduleById.get(item.schedule_id);
               return (
                 item.pharmacist_id !== undefined &&
@@ -163,7 +221,7 @@ export const PATCH = withAuthContext(
 
           const pharmacistIds = Array.from(
             new Set(
-              dedupedUpdates
+              effectiveUpdates
                 .map((item) => item.pharmacist_id)
                 .filter((value): value is string => Boolean(value)),
             ),
@@ -186,7 +244,7 @@ export const PATCH = withAuthContext(
             }
           }
 
-          const routeCellByKey = dedupedUpdates.reduce((map, item) => {
+          const routeCellByKey = effectiveUpdates.reduce((map, item) => {
             const schedule = scheduleById.get(item.schedule_id);
             if (!schedule) return map;
             const targetDate = item.scheduled_date ?? formatDateKey(schedule.scheduled_date);
@@ -259,7 +317,7 @@ export const PATCH = withAuthContext(
             return { error: 'duplicate_route_order' as const };
           }
 
-          const confirmedDateMoves = dedupedUpdates.find((item) => {
+          const confirmedDateMoves = effectiveUpdates.find((item) => {
             const schedule = scheduleById.get(item.schedule_id);
             if (!schedule?.confirmed_at) return false;
             const nextDate = item.scheduled_date ?? formatDateKey(schedule.scheduled_date);
@@ -273,7 +331,7 @@ export const PATCH = withAuthContext(
             return { error: 'confirmed_move' as const };
           }
 
-          const moveTargets = dedupedUpdates
+          const moveTargets = effectiveUpdates
             .map((item) => {
               const schedule = scheduleById.get(item.schedule_id);
               if (!schedule) return null;
@@ -339,8 +397,146 @@ export const PATCH = withAuthContext(
             };
           }
 
+          const routeOrderLocked = effectiveUpdates.find((item) => {
+            const schedule = scheduleById.get(item.schedule_id);
+            if (!schedule) return false;
+            const routeOrderChanging = schedule.route_order !== item.route_order;
+            return routeOrderChanging && !ROUTE_REORDERABLE_STATUSES.has(schedule.schedule_status);
+          });
+          if (routeOrderLocked) return { error: 'route_status_locked' as const };
+
+          const confirmedRouteChange = effectiveUpdates.find((item) => {
+            const schedule = scheduleById.get(item.schedule_id);
+            if (!schedule?.confirmed_at) return false;
+            return schedule.route_order !== item.route_order;
+          });
+          if (confirmedRouteChange) return { error: 'confirmed_route_change' as const };
+
+          const vehicleResourceIds = Array.from(
+            new Set(
+              effectiveUpdates
+                .map((item) => item.vehicle_resource_id)
+                .filter((value): value is string => typeof value === 'string' && value.length > 0),
+            ),
+          );
+          const vehicleResources =
+            vehicleResourceIds.length === 0
+              ? []
+              : await tx.visitVehicleResource.findMany({
+                  where: {
+                    org_id: ctx.orgId,
+                    id: { in: vehicleResourceIds },
+                    available: true,
+                  },
+                  select: {
+                    id: true,
+                    site_id: true,
+                    label: true,
+                    max_stops: true,
+                  },
+                });
+          if (vehicleResources.length !== vehicleResourceIds.length) {
+            return { error: 'vehicle_not_found' as const };
+          }
+          const vehicleById = new Map(vehicleResources.map((vehicle) => [vehicle.id, vehicle]));
+
+          const vehicleUpdateTargets = effectiveUpdates
+            .map((item) => {
+              if (item.vehicle_resource_id === undefined) return null;
+              const schedule = scheduleById.get(item.schedule_id);
+              if (!schedule) return null;
+              const targetDate = item.scheduled_date ?? formatDateKey(schedule.scheduled_date);
+              const targetPharmacistId = item.pharmacist_id ?? schedule.pharmacist_id;
+              const targetShift = shiftByTarget.get(`${targetPharmacistId}:${targetDate}`) ?? null;
+              const targetSiteId = targetShift?.site_id ?? schedule.site_id;
+              return {
+                item,
+                schedule,
+                targetDate,
+                targetSiteId,
+                vehicleResourceId: item.vehicle_resource_id,
+              };
+            })
+            .filter((item): item is NonNullable<typeof item> => Boolean(item));
+
+          for (const target of vehicleUpdateTargets) {
+            if (target.vehicleResourceId === null) continue;
+            if (
+              vehicleAssignment &&
+              vehicleAssignmentScheduleIds.has(target.schedule.id) &&
+              target.schedule.vehicle_resource_id != null
+            ) {
+              return { error: 'vehicle_already_assigned' as const };
+            }
+            if (!VEHICLE_ASSIGNABLE_STATUSES.has(target.schedule.schedule_status)) {
+              return { error: 'vehicle_status_locked' as const };
+            }
+            if (!target.targetSiteId) return { error: 'vehicle_site_required' as const };
+            const vehicle = vehicleById.get(target.vehicleResourceId);
+            if (!vehicle) return { error: 'vehicle_not_found' as const };
+            if (vehicle.site_id !== target.targetSiteId) {
+              return { error: 'vehicle_site_mismatch' as const };
+            }
+          }
+
+          const vehicleCapacityCells = new Map<
+            string,
+            {
+              vehicleId: string;
+              dateKey: string;
+              label: string;
+              maxStops: number;
+              assignedUpdateCount: number;
+              updateScheduleIds: Set<string>;
+            }
+          >();
+          for (const target of vehicleUpdateTargets) {
+            if (target.vehicleResourceId === null) continue;
+            const vehicle = vehicleById.get(target.vehicleResourceId);
+            if (!vehicle || vehicle.max_stops == null) continue;
+            const key = `${target.vehicleResourceId}:${target.targetDate}`;
+            const current =
+              vehicleCapacityCells.get(key) ??
+              ({
+                vehicleId: target.vehicleResourceId,
+                dateKey: target.targetDate,
+                label: vehicle.label,
+                maxStops: vehicle.max_stops,
+                assignedUpdateCount: 0,
+                updateScheduleIds: new Set<string>(),
+              } satisfies {
+                vehicleId: string;
+                dateKey: string;
+                label: string;
+                maxStops: number;
+                assignedUpdateCount: number;
+                updateScheduleIds: Set<string>;
+              });
+            current.assignedUpdateCount += 1;
+            current.updateScheduleIds.add(target.schedule.id);
+            vehicleCapacityCells.set(key, current);
+          }
+
+          for (const cell of vehicleCapacityCells.values()) {
+            const existingAssignedCount = await tx.visitSchedule.count({
+              where: {
+                org_id: ctx.orgId,
+                vehicle_resource_id: cell.vehicleId,
+                scheduled_date: new Date(cell.dateKey),
+                schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+                id: { notIn: Array.from(cell.updateScheduleIds) },
+              },
+            });
+            if (existingAssignedCount + cell.assignedUpdateCount > cell.maxStops) {
+              return {
+                error: 'vehicle_capacity_exceeded' as const,
+                message: `${cell.label} で訪問できる件数は最大 ${cell.maxStops} 件です`,
+              };
+            }
+          }
+
           await Promise.all(
-            dedupedUpdates.map(async (item) => {
+            effectiveUpdates.map(async (item) => {
               const schedule = scheduleById.get(item.schedule_id);
               const targetDate =
                 item.scheduled_date ??
@@ -363,6 +559,9 @@ export const PATCH = withAuthContext(
                   scheduled_date: schedule.scheduled_date,
                   confirmed_at: schedule.confirmed_at,
                   version: schedule.version,
+                  ...(item.vehicle_resource_id !== undefined
+                    ? { vehicle_resource_id: schedule.vehicle_resource_id }
+                    : {}),
                   ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
                 },
                 data: {
@@ -370,6 +569,9 @@ export const PATCH = withAuthContext(
                   ...(item.scheduled_date ? { scheduled_date: new Date(item.scheduled_date) } : {}),
                   ...(item.pharmacist_id ? { pharmacist_id: item.pharmacist_id } : {}),
                   ...(targetShift ? { site_id: targetShift.site_id } : {}),
+                  ...(item.vehicle_resource_id !== undefined
+                    ? { vehicle_resource_id: item.vehicle_resource_id }
+                    : {}),
                   version: { increment: 1 },
                 },
               });
@@ -382,12 +584,18 @@ export const PATCH = withAuthContext(
             targetType: 'VisitScheduleBatch',
             targetId: uniqueScheduleIds[0],
             changes: {
-              updates: dedupedUpdates.map((item) => ({
+              updates: effectiveUpdates.map((item) => ({
                 schedule_id: item.schedule_id,
+                previous_route_order: scheduleById.get(item.schedule_id)?.route_order ?? null,
                 route_order: item.route_order,
                 scheduled_date: item.scheduled_date ?? null,
                 pharmacist_id: item.pharmacist_id ?? null,
+                previous_vehicle_resource_id:
+                  scheduleById.get(item.schedule_id)?.vehicle_resource_id ?? null,
+                vehicle_resource_id: item.vehicle_resource_id ?? null,
+                confirmed: scheduleById.get(item.schedule_id)?.confirmed_at != null,
               })),
+              vehicle_assignment: parsed.data.vehicle_assignment ?? null,
               confirmation_context: parsed.data.confirmation_context ?? null,
             },
           });
@@ -395,6 +603,12 @@ export const PATCH = withAuthContext(
           return {
             case_ids: Array.from(new Set(schedules.map((schedule) => schedule.case_id))),
             schedule_ids: uniqueScheduleIds,
+            vehicle_assignment: vehicleAssignment
+              ? {
+                  vehicle_resource_id: vehicleAssignment.vehicle_resource_id,
+                  assigned_schedule_ids: vehicleAssignment.schedule_ids,
+                }
+              : null,
           };
         },
       );
@@ -421,11 +635,38 @@ export const PATCH = withAuthContext(
       if (result.error === 'confirmed_move') {
         return validationError('電話確定済みの訪問予定は日付や担当を変更できません');
       }
+      if (result.error === 'confirmed_route_change') {
+        return validationError('電話確定済みの訪問予定は順路を変更できません');
+      }
+      if (result.error === 'route_status_locked') {
+        return validationError('完了済みまたは中止済みの訪問予定は順路を変更できません');
+      }
       if (result.error === 'shift_conflict') {
         return validationError(result.message);
       }
       if (result.error === 'confirmation_context_mismatch') {
         return validationError('確認コンテキストが訪問予定の対象セルと一致しません');
+      }
+      if (result.error === 'vehicle_not_found') {
+        return validationError('選択した車両リソースが見つからないか利用できません');
+      }
+      if (result.error === 'vehicle_site_required') {
+        return validationError('車両リソースを指定する場合は訪問拠点が必要です');
+      }
+      if (result.error === 'vehicle_site_mismatch') {
+        return validationError('選択した車両リソースは訪問予定の拠点では利用できません');
+      }
+      if (result.error === 'vehicle_capacity_exceeded') {
+        return validationError(result.message);
+      }
+      if (result.error === 'vehicle_status_locked') {
+        return validationError('完了済みまたは中止済みの訪問予定には車両を反映できません');
+      }
+      if (result.error === 'vehicle_assignment_target_mismatch') {
+        return validationError('車両反映対象は順路更新対象の訪問予定だけ指定できます');
+      }
+      if (result.error === 'vehicle_already_assigned') {
+        return conflict('車両反映対象が同時に更新されました。再読み込みしてください');
       }
       if (result.error === 'duplicate_route_order') {
         return validationError('同一セル内で route_order は重複できません');

@@ -5,6 +5,12 @@ export type VisitScheduleRouteUpdate = {
   pharmacist_id?: string;
 };
 
+export type VisitScheduleVehicleAssignment = {
+  mode: 'assign_if_unassigned';
+  vehicle_resource_id: string;
+  schedule_ids: string[];
+};
+
 export type VisitScheduleProposalRouteUpdate = {
   proposal_id: string;
   route_order: number;
@@ -23,11 +29,13 @@ export type VisitRouteConfirmationContext = {
   travel_mode?: 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';
   target_count?: number;
   route_order_diff_count?: number;
+  vehicle_assignment_count?: number;
 };
 
 export async function applyVisitScheduleRouteUpdates(args: {
   orgId: string;
   updates: VisitScheduleRouteUpdate[];
+  vehicleAssignment?: VisitScheduleVehicleAssignment;
   confirmationContext?: VisitRouteConfirmationContext;
 }) {
   const response = await fetch('/api/visit-schedules/reorder', {
@@ -43,6 +51,7 @@ export async function applyVisitScheduleRouteUpdates(args: {
         ...(update.scheduled_date ? { scheduled_date: update.scheduled_date } : {}),
         ...(update.pharmacist_id ? { pharmacist_id: update.pharmacist_id } : {}),
       })),
+      ...(args.vehicleAssignment ? { vehicle_assignment: args.vehicleAssignment } : {}),
       ...(args.confirmationContext ? { confirmation_context: args.confirmationContext } : {}),
     }),
   });

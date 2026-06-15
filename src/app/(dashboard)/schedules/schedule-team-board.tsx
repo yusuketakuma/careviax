@@ -1,11 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { AlertTriangle, Lock, Plus, Send } from 'lucide-react';
-import { buttonVariants } from '@/components/ui/button';
+import { AlertTriangle, Car, Lock, Plus, Route, Send } from 'lucide-react';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import {
@@ -17,8 +17,14 @@ import {
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildWorkRequestHref } from '@/lib/tasks/work-request-navigation';
 import { cn } from '@/lib/utils';
+import type { ScheduleStatus } from '@/lib/validations/visit-schedule';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
-import type { DayBoardPendingProposal, ScheduleDayBoardResponse } from '@/types/schedule-day-board';
+import type {
+  DayBoardPendingProposal,
+  DayBoardStaff,
+  DayBoardVisit,
+  ScheduleDayBoardResponse,
+} from '@/types/schedule-day-board';
 import {
   BOARD_END_MINUTES,
   BOARD_START_MINUTES,
@@ -27,6 +33,7 @@ import {
   buildStaffLane,
   formatTimeOfDayIso,
   pendingProposalDateLabel,
+  staffRowLabel,
   type BoardBlock,
   type StaffLane,
 } from './schedule-team-board.helpers';
@@ -57,6 +64,37 @@ async function fetchCockpitForRail(orgId: string): Promise<DashboardCockpitRespo
   if (!res.ok) throw new Error('当日の優先タスク取得に失敗しました');
   const json = await res.json();
   return json.data;
+}
+
+async function updateVisitScheduleStatus({
+  orgId,
+  scheduleId,
+  status,
+}: StatusChangePayload & { orgId: string }) {
+  await patchVisitSchedule({ orgId, scheduleId, payload: { schedule_status: status } });
+}
+
+async function patchVisitSchedule({
+  orgId,
+  scheduleId,
+  payload,
+}: {
+  orgId: string;
+  scheduleId: string;
+  payload: Record<string, unknown>;
+}) {
+  const res = await fetch(`/api/visit-schedules/${scheduleId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-org-id': orgId,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => null);
+    throw new Error(detail?.error ?? detail?.message ?? '訪問予定の更新に失敗しました');
+  }
 }
 
 /** 経過分 → 「30分」「2時間」「1日」(止まっている理由の経過時間)。 */
@@ -129,10 +167,45 @@ const BLOCK_KIND_CLASSES: Record<BoardBlock['kind'], string> = {
   idle: 'border border-dashed border-emerald-400 bg-emerald-50/50 text-emerald-700',
 };
 
+const SCHEDULE_STATUS_OPTIONS: Array<{ value: ScheduleStatus; label: string }> = [
+  { value: 'planned', label: '予定' },
+  { value: 'in_preparation', label: '準備中' },
+  { value: 'ready', label: '準備完了' },
+  { value: 'departed', label: '出発済み' },
+  { value: 'in_progress', label: '訪問中' },
+  { value: 'completed', label: '完了' },
+  { value: 'postponed', label: '延期' },
+  { value: 'rescheduled', label: '再調整' },
+  { value: 'no_show', label: '不在' },
+  { value: 'cancelled', label: '中止' },
+];
+
+const SCHEDULE_STATUS_CLASSES: Record<ScheduleStatus, string> = {
+  planned: 'bg-slate-600 text-white',
+  in_preparation: 'bg-amber-600 text-white',
+  ready: 'bg-sky-600 text-white',
+  departed: 'bg-violet-600 text-white',
+  in_progress: 'bg-blue-700 text-white',
+  completed: 'bg-emerald-700 text-white',
+  postponed: 'bg-orange-600 text-white',
+  rescheduled: 'bg-orange-700 text-white',
+  no_show: 'bg-rose-700 text-white',
+  cancelled: 'bg-rose-800 text-white',
+};
+
+function scheduleStatusLabel(status: string | null): string {
+  return (
+    SCHEDULE_STATUS_OPTIONS.find((option) => option.value === status)?.label ?? 'ステータス未設定'
+  );
+}
+
 function blockClassName(block: BoardBlock): string {
   if (block.kind === 'visit') {
-    if (block.risk) return 'bg-emerald-600 text-white ring-2 ring-amber-400';
-    return BLOCK_KIND_CLASSES.visit;
+    const statusClass =
+      block.status && block.status in SCHEDULE_STATUS_CLASSES
+        ? SCHEDULE_STATUS_CLASSES[block.status as ScheduleStatus]
+        : BLOCK_KIND_CLASSES.visit;
+    return cn(statusClass, block.risk && 'ring-2 ring-amber-400');
   }
   return BLOCK_KIND_CLASSES[block.kind];
 }
@@ -161,6 +234,11 @@ function GanttBlock({ block }: { block: BoardBlock }) {
       style={{ left: `${left}%`, width: `${width}%` }}
     >
       {block.locked ? <Lock className="size-3 shrink-0" aria-hidden="true" /> : null}
+      {block.kind === 'visit' ? (
+        <span className="shrink-0 rounded bg-white/20 px-1 py-0.5 text-[10px] leading-none">
+          {scheduleStatusLabel(block.status)}
+        </span>
+      ) : null}
       <span className={cn('truncate', block.kind === 'travel' && 'sr-only')}>{block.label}</span>
       {block.risk ? <AlertTriangle className="size-3 shrink-0" aria-hidden="true" /> : null}
       {requestHref ? (
@@ -175,6 +253,109 @@ function GanttBlock({ block }: { block: BoardBlock }) {
       ) : null}
       {block.locked ? <span className="sr-only">(確定・変更は理由必須)</span> : null}
     </li>
+  );
+}
+
+type VisitStatusBlock = BoardBlock & {
+  kind: 'visit';
+  status: string;
+};
+
+type StatusChangePayload = {
+  scheduleId: string;
+  status: ScheduleStatus;
+};
+
+type ApplyRecommendedVehiclePayload = {
+  vehicleId: string;
+  scheduleIds: string[];
+};
+
+function visitBlocksForLane(lane: StaffLane): VisitStatusBlock[] {
+  return lane.blocks.filter(
+    (block): block is VisitStatusBlock => block.kind === 'visit' && Boolean(block.status),
+  );
+}
+
+function ScheduleStatusControlPanel({
+  lanes,
+  onStatusChange,
+  pendingScheduleId,
+}: {
+  lanes: StaffLane[];
+  onStatusChange: (payload: StatusChangePayload) => void;
+  pendingScheduleId: string | null;
+}) {
+  const laneVisits = lanes
+    .map((lane) => ({ lane, visits: visitBlocksForLane(lane) }))
+    .filter((item) => item.visits.length > 0);
+
+  if (laneVisits.length === 0) return null;
+
+  return (
+    <div
+      className="mt-4 rounded-md border border-border/70 bg-muted/20 p-3"
+      data-testid="schedule-status-controls"
+    >
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <h4 className="text-sm font-bold text-foreground">ステータス変更</h4>
+        <p className="text-xs text-muted-foreground">
+          電話・準備・訪問後の状態を、今日の担当者別一覧から更新します。
+        </p>
+      </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        {laneVisits.map(({ lane, visits }) => (
+          <div key={lane.staffId} className="space-y-2">
+            <p className="text-xs font-bold text-muted-foreground">{lane.rowLabel}</p>
+            <ul className="space-y-2" role="list">
+              {visits.map((block) => {
+                const scheduleId = block.id.replace(/^visit:/, '');
+                const status = block.status as ScheduleStatus;
+                const pending = pendingScheduleId === scheduleId;
+                return (
+                  <li
+                    key={block.id}
+                    className="grid grid-cols-[minmax(0,1fr)_minmax(128px,150px)] items-center gap-2 rounded-md border border-border/60 bg-card px-2.5 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-foreground">
+                        {block.label}
+                      </p>
+                      <span
+                        className={cn(
+                          'mt-1 inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-bold',
+                          SCHEDULE_STATUS_CLASSES[status],
+                        )}
+                      >
+                        {scheduleStatusLabel(status)}
+                      </span>
+                    </div>
+                    <select
+                      aria-label={`${block.label}のステータスを変更`}
+                      className="min-h-[44px] rounded-md border border-input bg-background px-2 text-sm font-semibold text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      value={status}
+                      disabled={pending}
+                      onChange={(event) =>
+                        onStatusChange({
+                          scheduleId,
+                          status: event.target.value as ScheduleStatus,
+                        })
+                      }
+                    >
+                      {SCHEDULE_STATUS_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -209,16 +390,233 @@ function GanttRow({ lane }: { lane: StaffLane }) {
   );
 }
 
+const TRAVEL_MODE_LABELS: Record<string, string> = {
+  DRIVE: '車',
+  TWO_WHEELER: '二輪',
+  BICYCLE: '自転車',
+  WALK: '徒歩',
+};
+const VEHICLE_ASSIGNABLE_STATUSES = new Set([
+  'planned',
+  'in_preparation',
+  'ready',
+  'departed',
+  'in_progress',
+]);
+
+function routeVisitSort(left: DayBoardVisit, right: DayBoardVisit) {
+  return (
+    (left.route_order ?? Number.MAX_SAFE_INTEGER) -
+      (right.route_order ?? Number.MAX_SAFE_INTEGER) ||
+    (left.time_start ?? '').localeCompare(right.time_start ?? '') ||
+    left.patient_name.localeCompare(right.patient_name, 'ja') ||
+    left.id.localeCompare(right.id)
+  );
+}
+
+function routeStopLabel(visit: DayBoardVisit, index: number) {
+  return visit.route_order ? `${visit.route_order}` : `仮${index + 1}`;
+}
+
+function unassignedTimedVisitsForRecommendedVehicle(board: ScheduleDayBoardResponse) {
+  const recommendedVehicle = board.vehicle_resources.find((vehicle) => vehicle.recommended);
+  if (!recommendedVehicle) return [];
+  return board.staff
+    .flatMap((member) => member.visits)
+    .filter(
+      (visit) =>
+        visit.time_start &&
+        !visit.vehicle_resource_id &&
+        VEHICLE_ASSIGNABLE_STATUSES.has(visit.schedule_status),
+    )
+    .sort(routeVisitSort)
+    .slice(0, recommendedVehicle.remaining_stops);
+}
+
+function VehicleRoutePanel({
+  board,
+  onApplyRecommendedVehicle,
+  applyingRecommendedVehicle,
+}: {
+  board: ScheduleDayBoardResponse;
+  onApplyRecommendedVehicle: (payload: ApplyRecommendedVehiclePayload) => void;
+  applyingRecommendedVehicle: boolean;
+}) {
+  const routeStaff = board.staff
+    .map((member) => ({
+      member,
+      visits: [...member.visits].filter((visit) => visit.time_start).sort(routeVisitSort),
+    }))
+    .filter((item) => item.visits.length > 0);
+  const recommendedVehicle = board.vehicle_resources.find((vehicle) => vehicle.recommended);
+  const availableVehicleCount = board.vehicle_resources.filter(
+    (vehicle) => vehicle.available && vehicle.remaining_stops > 0,
+  ).length;
+  const recommendedVehicleTargets = unassignedTimedVisitsForRecommendedVehicle(board);
+
+  return (
+    <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(220px,0.9fr)_minmax(0,1.4fr)]">
+      <section
+        className="rounded-md border border-border/70 bg-muted/20 p-3"
+        aria-labelledby="vehicle-resource-heading"
+        data-testid="schedule-vehicle-resources"
+      >
+        <div className="flex items-center gap-2">
+          <Car className="size-4 text-primary" aria-hidden="true" />
+          <h4 id="vehicle-resource-heading" className="text-sm font-bold text-foreground">
+            車両リソース
+          </h4>
+          <span className="ml-auto text-xs font-semibold text-emerald-700">
+            空き {availableVehicleCount}台
+          </span>
+        </div>
+        {board.vehicle_resources.length === 0 ? (
+          <p className="mt-3 text-sm text-muted-foreground">
+            車両が登録されていません。車両マスターで社用車を追加してください。
+          </p>
+        ) : (
+          <ul className="mt-3 space-y-2" role="list">
+            {board.vehicle_resources.slice(0, 4).map((vehicle) => (
+              <li
+                key={vehicle.id}
+                className={cn(
+                  'rounded-md border px-2.5 py-2',
+                  vehicle.recommended
+                    ? 'border-emerald-300 bg-emerald-50'
+                    : 'border-border/60 bg-card',
+                )}
+              >
+                <div className="flex items-center gap-2">
+                  <p className="min-w-0 flex-1 truncate text-sm font-bold text-foreground">
+                    {vehicle.label}
+                  </p>
+                  <span
+                    className={cn(
+                      'rounded px-1.5 py-0.5 text-[11px] font-bold',
+                      vehicle.available && vehicle.remaining_stops > 0
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-amber-100 text-amber-800',
+                    )}
+                  >
+                    {vehicle.recommended ? '推奨' : vehicle.available ? '空きあり' : '停止中'}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  {TRAVEL_MODE_LABELS[vehicle.travel_mode] ?? vehicle.travel_mode} / 使用{' '}
+                  {vehicle.assigned_visit_count}件 / 残り {vehicle.remaining_stops}件
+                  <span className="ml-1 font-semibold text-foreground">
+                    {vehicle.recommendation_reason}
+                  </span>
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+        {recommendedVehicle ? (
+          <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50/70 p-2.5">
+            <p className="text-xs leading-5 text-emerald-900">
+              自動提案: {recommendedVehicle.label} を未割当訪問
+              {recommendedVehicleTargets.length}件へ反映できます。
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              className="mt-2 w-full"
+              disabled={applyingRecommendedVehicle || recommendedVehicleTargets.length === 0}
+              onClick={() =>
+                onApplyRecommendedVehicle({
+                  vehicleId: recommendedVehicle.id,
+                  scheduleIds: recommendedVehicleTargets.map((visit) => visit.id),
+                })
+              }
+              data-testid="apply-recommended-vehicle"
+            >
+              {applyingRecommendedVehicle ? '反映中' : '推奨車両を反映'}
+            </Button>
+          </div>
+        ) : null}
+      </section>
+
+      <section
+        className="rounded-md border border-border/70 bg-muted/20 p-3"
+        aria-labelledby="route-preview-heading"
+        data-testid="schedule-route-preview"
+      >
+        <div className="flex items-center gap-2">
+          <Route className="size-4 text-primary" aria-hidden="true" />
+          <h4 id="route-preview-heading" className="text-sm font-bold text-foreground">
+            訪問ルート
+          </h4>
+          <Link
+            href="/schedules/route-compare"
+            className="ml-auto text-xs font-bold text-primary underline-offset-4 hover:underline"
+          >
+            ルート案を開く
+          </Link>
+        </div>
+        {routeStaff.length === 0 ? (
+          <p className="mt-3 text-sm text-muted-foreground">
+            時間帯が入った訪問がありません。訪問枠が決まると順番を表示します。
+          </p>
+        ) : (
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            {routeStaff.map(({ member, visits }) => (
+              <RouteStaffList key={member.id} member={member} visits={visits} />
+            ))}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function RouteStaffList({ member, visits }: { member: DayBoardStaff; visits: DayBoardVisit[] }) {
+  return (
+    <div>
+      <p className="text-xs font-bold text-muted-foreground">{staffRowLabel(member)}</p>
+      <ol className="mt-2 space-y-1.5">
+        {visits.map((visit, index) => (
+          <li
+            key={visit.id}
+            className="grid grid-cols-[2.25rem_minmax(0,1fr)] gap-2 rounded-md border border-border/60 bg-card px-2.5 py-2"
+          >
+            <span className="inline-flex size-7 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+              {routeStopLabel(visit, index)}
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-foreground">
+                {visit.patient_name}様
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {visit.time_start ? formatTimeOfDayIso(visit.time_start) : '時間未定'} /{' '}
+                {visit.vehicle_label ?? '車両未割当'}
+              </p>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 function TeamGanttCard({
   board,
   cockpit,
   dateLabel,
   now,
+  onStatusChange,
+  pendingStatusScheduleId,
+  onApplyRecommendedVehicle,
+  applyingRecommendedVehicle,
 }: {
   board: ScheduleDayBoardResponse;
   cockpit: DashboardCockpitResponse | null;
   dateLabel: string;
   now: Date;
+  onStatusChange: (payload: StatusChangePayload) => void;
+  pendingStatusScheduleId: string | null;
+  onApplyRecommendedVehicle: (payload: ApplyRecommendedVehiclePayload) => void;
+  applyingRecommendedVehicle: boolean;
 }) {
   const riskPatientNames = new Set(
     (cockpit?.audit_queue ?? [])
@@ -311,12 +709,23 @@ function TeamGanttCard({
               <Lock className="size-3" aria-hidden="true" />
               ＝確定(変更は理由必須)
             </span>
+            <span>訪問色＝ステータス</span>
             <span>斜線＝移動時間</span>
             <span>緑点線＝余白</span>
             {showNowMarker ? (
               <span className="font-semibold text-red-600">|＝いま {nowLabel}</span>
             ) : null}
           </p>
+          <ScheduleStatusControlPanel
+            lanes={lanes}
+            onStatusChange={onStatusChange}
+            pendingScheduleId={pendingStatusScheduleId}
+          />
+          <VehicleRoutePanel
+            board={board}
+            onApplyRecommendedVehicle={onApplyRecommendedVehicle}
+            applyingRecommendedVehicle={applyingRecommendedVehicle}
+          />
         </div>
       )}
 
@@ -506,6 +915,7 @@ export type ScheduleTeamBoardProps = {
 
 export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoardProps) {
   const orgId = useOrgId();
+  const queryClient = useQueryClient();
   const now = new Date();
   const todayKey = format(now, 'yyyy-MM-dd');
   const dateKey = initialDate ?? todayKey;
@@ -523,6 +933,33 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
     queryFn: () => fetchCockpitForRail(orgId),
     enabled: Boolean(orgId) && activeView === 'list',
     staleTime: 30_000,
+  });
+  const statusMutation = useMutation({
+    mutationFn: (payload: StatusChangePayload) => updateVisitScheduleStatus({ orgId, ...payload }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['schedule-day-board', orgId, dateKey] }),
+        queryClient.invalidateQueries({ queryKey: ['schedule-rail-cockpit', orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['visit-schedules'] }),
+      ]);
+    },
+  });
+  const applyRecommendedVehicleMutation = useMutation({
+    mutationFn: async (payload: ApplyRecommendedVehiclePayload) => {
+      for (const scheduleId of payload.scheduleIds) {
+        await patchVisitSchedule({
+          orgId,
+          scheduleId,
+          payload: { vehicle_resource_id: payload.vehicleId },
+        });
+      }
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['schedule-day-board', orgId, dateKey] }),
+        queryClient.invalidateQueries({ queryKey: ['visit-schedules'] }),
+      ]);
+    },
   });
 
   const board = boardQuery.data ?? null;
@@ -581,7 +1018,20 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
           ) : (
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]">
               <div className="min-w-0 space-y-4">
-                <TeamGanttCard board={board} cockpit={cockpit} dateLabel={dateLabel} now={now} />
+                <TeamGanttCard
+                  board={board}
+                  cockpit={cockpit}
+                  dateLabel={dateLabel}
+                  now={now}
+                  onStatusChange={(payload) => statusMutation.mutate(payload)}
+                  pendingStatusScheduleId={
+                    statusMutation.isPending ? (statusMutation.variables?.scheduleId ?? null) : null
+                  }
+                  onApplyRecommendedVehicle={(payload) =>
+                    applyRecommendedVehicleMutation.mutate(payload)
+                  }
+                  applyingRecommendedVehicle={applyRecommendedVehicleMutation.isPending}
+                />
                 <PendingProposalsCard proposals={board.pending_proposals} todayKey={todayKey} />
               </div>
               <div className="space-y-4">

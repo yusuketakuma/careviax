@@ -11,6 +11,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import type { ScheduleDayBoardResponse } from '@/types/schedule-day-board';
 import type { VisitSchedule } from '../day-view.shared';
 import { fetchVisitSchedulesWindow } from '../visit-schedule-fetch.helpers';
 import { applyVisitScheduleRouteUpdates } from '../visit-route-client';
@@ -46,6 +47,22 @@ const SCENARIO_TONE_COLORS: Record<RouteScenarioTone, string> = {
 
 const CHART_WIDTH = 340;
 const CHART_HEIGHT = 272;
+const VEHICLE_ASSIGNABLE_STATUSES = new Set([
+  'planned',
+  'in_preparation',
+  'ready',
+  'departed',
+  'in_progress',
+]);
+
+async function fetchScheduleDayBoard(args: { orgId: string; date: string }) {
+  const res = await fetch(`/api/visit-schedules/day-board?date=${args.date}`, {
+    headers: { 'x-org-id': args.orgId },
+  });
+  if (!res.ok) throw new Error('本日の車両リソース取得に失敗しました');
+  const json = (await res.json()) as { data: ScheduleDayBoardResponse };
+  return json.data;
+}
 
 /** @db.Time 由来の ISO 文字列を 0 時からの分へ(表示系 timeLabel と同じくローカル時刻で解釈) */
 function isoTimeToMinutes(value: string | null): number | null {
@@ -320,8 +337,18 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
     enabled: !!orgId,
     staleTime: 30_000,
   });
+  const dayBoardQuery = useQuery({
+    queryKey: ['schedule-day-board', orgId, targetDate],
+    queryFn: () => fetchScheduleDayBoard({ orgId, date: targetDate }),
+    enabled: !!orgId,
+    staleTime: 30_000,
+  });
 
   const schedules = useMemo(() => schedulesQuery.data ?? [], [schedulesQuery.data]);
+  const recommendedVehicle = useMemo(
+    () => dayBoardQuery.data?.vehicle_resources.find((vehicle) => vehicle.recommended) ?? null,
+    [dayBoardQuery.data],
+  );
 
   // 比較対象は個人宅訪問のみ。施設一括訪問は居室順(施設トラッカー)で管理するため除外する
   const compareVisits = useMemo(
@@ -350,13 +377,15 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
   // p0_21 詳細ビュー: 推奨案 1 本を主役にした「守る条件」判定用の付帯情報を本日の予定から集計する
   const detailMeta = useMemo<RouteDetailVisitMeta>(() => {
     const vehicleLabel =
-      schedules.map((schedule) => schedule.vehicle_resource?.label ?? null).find(Boolean) ?? null;
+      schedules.map((schedule) => schedule.vehicle_resource?.label ?? null).find(Boolean) ??
+      recommendedVehicle?.label ??
+      null;
     return {
       hasConfirmedVisit: schedules.some((schedule) => schedule.confirmed_at != null),
       hasFacilityVisit: schedules.some((schedule) => schedule.facility_batch_id != null),
       vehicleLabel,
     };
-  }, [schedules]);
+  }, [recommendedVehicle?.label, schedules]);
   const routeDetail = useMemo(
     () => buildRecommendedRouteDetail(compareVisits, detailMeta),
     [compareVisits, detailMeta],
@@ -370,17 +399,60 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
   );
 
   const applyMutation = useMutation({
-    mutationFn: async (scenario: RouteScenario) =>
-      applyVisitScheduleRouteUpdates({
+    mutationFn: async (scenario: RouteScenario) => {
+      const routeUpdates = buildScenarioRouteOrderUpdates({ scenario, allVisits });
+      const routeUpdateScheduleIds = new Set(routeUpdates.map((update) => update.scheduleId));
+      const vehicleAssignmentScheduleIds =
+        recommendedVehicle == null
+          ? []
+          : schedules
+              .filter(
+                (schedule) =>
+                  routeUpdateScheduleIds.has(schedule.id) &&
+                  !schedule.vehicle_resource?.id &&
+                  VEHICLE_ASSIGNABLE_STATUSES.has(schedule.schedule_status),
+              )
+              .sort(
+                (left, right) =>
+                  (left.route_order ?? Number.MAX_SAFE_INTEGER) -
+                    (right.route_order ?? Number.MAX_SAFE_INTEGER) ||
+                  (isoTimeToMinutes(left.time_window_start) ?? Number.MAX_SAFE_INTEGER) -
+                    (isoTimeToMinutes(right.time_window_start) ?? Number.MAX_SAFE_INTEGER) ||
+                  left.case_.patient.name.localeCompare(right.case_.patient.name, 'ja') ||
+                  left.id.localeCompare(right.id),
+              )
+              .slice(0, recommendedVehicle.remaining_stops)
+              .map((schedule) => schedule.id);
+
+      return applyVisitScheduleRouteUpdates({
         orgId,
-        updates: buildScenarioRouteOrderUpdates({ scenario, allVisits }),
-      }),
+        updates: routeUpdates,
+        ...(recommendedVehicle && vehicleAssignmentScheduleIds.length > 0
+          ? {
+              vehicleAssignment: {
+                mode: 'assign_if_unassigned' as const,
+                vehicle_resource_id: recommendedVehicle.id,
+                schedule_ids: vehicleAssignmentScheduleIds,
+              },
+            }
+          : {}),
+        confirmationContext: {
+          source: 'route_compare_adoption',
+          date: targetDate,
+          target_count: routeUpdates.length,
+          route_order_diff_count: routeUpdates.length,
+          vehicle_assignment_count: vehicleAssignmentScheduleIds.length,
+        },
+      });
+    },
     onSuccess: async (_result, scenario) => {
       setAppliedScenarioId(scenario.id);
-      toast.success(`${scenario.shortLabel}を本日のルートに適用しました`);
+      const vehicleSuffix = recommendedVehicle ? ` / ${recommendedVehicle.label}も反映` : '';
+      toast.success(`${scenario.shortLabel}を本日のルートに適用しました${vehicleSuffix}`);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['visit-schedules'] }),
         queryClient.invalidateQueries({ queryKey: ['visit-route-plan', orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['schedule-day-board', orgId, targetDate] }),
       ]);
     },
     onError: (error) => {
@@ -445,6 +517,9 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
             <h2 className="text-base font-bold text-foreground">ルート最適化詳細</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               本日({targetDate})の推奨ルート 1 本と、守る条件の充足状況です。
+              {recommendedVehicle
+                ? ` 採用時は未割当の訪問に ${recommendedVehicle.label} を同時に反映します。`
+                : ''}
             </p>
           </div>
           <RecommendedRouteDetail
@@ -550,7 +625,11 @@ export function RouteCompareContent({ initialDate }: { initialDate?: string }) {
         title={`${confirmScenario?.label ?? ''}を本日のルートに適用しますか`}
         description={
           confirmScenario
-            ? `${confirmScenario.description} 訪問順 ${describeScenarioOrder(confirmScenario.stops)} で route_order を更新します。施設一括訪問は各担当の末尾に現在の居室順のまま続きます。`
+            ? `${confirmScenario.description} 担当者ごとの訪問順 ${describeScenarioOrder(confirmScenario.stops)} を反映します。施設一括訪問は各担当の末尾に現在の居室順のまま続きます。${
+                recommendedVehicle
+                  ? ` 未割当の訪問には ${recommendedVehicle.label} も同時に反映します。`
+                  : ''
+              }`
             : ''
         }
         confirmLabel="この案を使う"

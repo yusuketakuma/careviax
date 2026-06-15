@@ -12,6 +12,7 @@ const {
   facilityFindManyMock,
   contactLogFindFirstMock,
   pharmacistShiftFindManyMock,
+  visitVehicleResourceFindManyMock,
 } = vi.hoisted(() => ({
   authContextMock: { orgId: 'org_1', userId: 'user_1', role: 'admin' },
   membershipFindManyMock: vi.fn(),
@@ -23,6 +24,7 @@ const {
   facilityFindManyMock: vi.fn(),
   contactLogFindFirstMock: vi.fn(),
   pharmacistShiftFindManyMock: vi.fn(),
+  visitVehicleResourceFindManyMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -43,6 +45,7 @@ vi.mock('@/lib/db/client', () => ({
     facility: { findMany: facilityFindManyMock },
     visitScheduleContactLog: { findFirst: contactLogFindFirstMock },
     pharmacistShift: { findMany: pharmacistShiftFindManyMock },
+    visitVehicleResource: { findMany: visitVehicleResourceFindManyMock },
   },
 }));
 
@@ -71,6 +74,7 @@ describe('/api/visit-schedules/day-board', () => {
     facilityFindManyMock.mockResolvedValue([]);
     contactLogFindFirstMock.mockResolvedValue(null);
     pharmacistShiftFindManyMock.mockResolvedValue([]);
+    visitVehicleResourceFindManyMock.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -159,5 +163,103 @@ describe('/api/visit-schedules/day-board', () => {
     // 同日訪問 1 件(60分 + 移動30分)が余白試算に乗る = UTC 日付キー同士の一致が機能
     expect(proposal.idle_before_minutes).toBe(480 - 90);
     expect(proposal.proposed_date).toBe('2026-06-13');
+  });
+
+  it('returns visit route order and recommended vehicle resources for the day board', async () => {
+    membershipFindManyMock.mockResolvedValue([
+      { role: 'pharmacist', user: { id: 'user_1', name: '山田 太郎' } },
+    ]);
+    visitScheduleFindManyMock.mockResolvedValue([
+      {
+        id: 'visit_1',
+        pharmacist_id: 'user_1',
+        visit_type: 'regular',
+        schedule_status: 'planned',
+        priority: 'normal',
+        route_order: 1,
+        vehicle_resource_id: 'vehicle_1',
+        vehicle_resource: { id: 'vehicle_1', label: '軽バン1号', travel_mode: 'DRIVE' },
+        time_window_start: new Date(2026, 5, 12, 10, 0),
+        time_window_end: new Date(2026, 5, 12, 10, 30),
+        confirmed_at: new Date(2026, 5, 12, 9, 0),
+        facility_batch_id: null,
+        facility_batch: null,
+        case_: { patient: { name: '伊藤 キヨ' } },
+      },
+      {
+        id: 'visit_2',
+        pharmacist_id: 'user_1',
+        visit_type: 'regular',
+        schedule_status: 'planned',
+        priority: 'normal',
+        route_order: 2,
+        vehicle_resource_id: null,
+        vehicle_resource: null,
+        time_window_start: new Date(2026, 5, 12, 11, 0),
+        time_window_end: new Date(2026, 5, 12, 11, 30),
+        confirmed_at: null,
+        facility_batch_id: null,
+        facility_batch: null,
+        case_: { patient: { name: '田中 一郎' } },
+      },
+    ]);
+    visitVehicleResourceFindManyMock.mockResolvedValue([
+      {
+        id: 'vehicle_1',
+        label: '軽バン1号',
+        vehicle_code: 'VEH-DEMO-001',
+        travel_mode: 'DRIVE',
+        max_stops: 8,
+        available: true,
+      },
+      {
+        id: 'vehicle_2',
+        label: '軽バン2号',
+        vehicle_code: 'VEH-DEMO-002',
+        travel_mode: 'DRIVE',
+        max_stops: 4,
+        available: true,
+      },
+    ]);
+
+    const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+    expect(response.status).toBe(200);
+    const json = await response.json();
+
+    expect(json.data.staff[0].visits[0]).toMatchObject({
+      id: 'visit_1',
+      route_order: 1,
+      vehicle_resource_id: 'vehicle_1',
+      vehicle_label: '軽バン1号',
+      vehicle_travel_mode: 'DRIVE',
+    });
+    expect(json.data.vehicle_resources).toEqual([
+      expect.objectContaining({
+        id: 'vehicle_1',
+        assigned_visit_count: 1,
+        remaining_stops: 7,
+        recommended: true,
+        recommendation_reason: '未割当 1件を受けられます',
+      }),
+      expect.objectContaining({
+        id: 'vehicle_2',
+        assigned_visit_count: 0,
+        remaining_stops: 4,
+        recommended: false,
+        recommendation_reason: '空き 4件',
+      }),
+    ]);
+    expect(visitVehicleResourceFindManyMock).toHaveBeenCalledWith({
+      where: { org_id: 'org_1' },
+      orderBy: [{ available: 'desc' }, { label: 'asc' }],
+      select: {
+        id: true,
+        label: true,
+        vehicle_code: true,
+        travel_mode: true,
+        max_stops: true,
+        available: true,
+      },
+    });
   });
 });

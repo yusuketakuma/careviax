@@ -28,6 +28,13 @@ const TRAVEL_MINUTES_PER_VISIT = 30;
 const DEFAULT_VISIT_MINUTES = 60;
 
 const BOARD_MEMBER_ROLES = ['owner', 'admin', 'pharmacist', 'pharmacist_trainee', 'clerk'] as const;
+const VEHICLE_ASSIGNABLE_STATUSES = new Set([
+  'planned',
+  'in_preparation',
+  'ready',
+  'departed',
+  'in_progress',
+]);
 
 const dayBoardQuerySchema = z.object({
   date: visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional(),
@@ -72,6 +79,7 @@ export const GET = withAuthContext(
       openTaskGroups,
       reportPendingCount,
       unavailableShifts,
+      vehicleResources,
       proposals,
     ] = await Promise.all([
       prisma.membership.findMany({
@@ -99,6 +107,15 @@ export const GET = withAuthContext(
           visit_type: true,
           schedule_status: true,
           priority: true,
+          route_order: true,
+          vehicle_resource_id: true,
+          vehicle_resource: {
+            select: {
+              id: true,
+              label: true,
+              travel_mode: true,
+            },
+          },
           time_window_start: true,
           time_window_end: true,
           confirmed_at: true,
@@ -127,6 +144,20 @@ export const GET = withAuthContext(
           available: false,
         },
         select: { user_id: true },
+      }),
+      prisma.visitVehicleResource.findMany({
+        where: {
+          org_id: ctx.orgId,
+        },
+        orderBy: [{ available: 'desc' }, { label: 'asc' }],
+        select: {
+          id: true,
+          label: true,
+          vehicle_code: true,
+          travel_mode: true,
+          max_stops: true,
+          available: true,
+        },
       }),
       prisma.visitScheduleProposal.findMany({
         where: {
@@ -200,8 +231,12 @@ export const GET = withAuthContext(
       visit_type: schedule.visit_type,
       schedule_status: schedule.schedule_status,
       priority: schedule.priority,
+      route_order: schedule.route_order,
       time_start: schedule.time_window_start?.toISOString() ?? null,
       time_end: schedule.time_window_end?.toISOString() ?? null,
+      vehicle_resource_id: schedule.vehicle_resource_id,
+      vehicle_label: schedule.vehicle_resource?.label ?? null,
+      vehicle_travel_mode: schedule.vehicle_resource?.travel_mode ?? null,
       confirmed: schedule.confirmed_at != null,
       facility_label: schedule.facility_batch
         ? (facilityNameById.get(schedule.facility_batch.facility_id) ?? '施設')
@@ -322,6 +357,54 @@ export const GET = withAuthContext(
     );
 
     const auditPendingCount = auditTaskGroups.reduce((sum, group) => sum + group._count.id, 0);
+    const assignedVehicleCounts = new Map<string, number>();
+    let unassignedTimedVisitCount = 0;
+    for (const schedule of schedules) {
+      if (!schedule.time_window_start) continue;
+      if (schedule.vehicle_resource_id) {
+        assignedVehicleCounts.set(
+          schedule.vehicle_resource_id,
+          (assignedVehicleCounts.get(schedule.vehicle_resource_id) ?? 0) + 1,
+        );
+      } else if (VEHICLE_ASSIGNABLE_STATUSES.has(schedule.schedule_status)) {
+        unassignedTimedVisitCount += 1;
+      }
+    }
+    const vehicleSummaries = vehicleResources.map((vehicle) => {
+      const assignedVisitCount = assignedVehicleCounts.get(vehicle.id) ?? 0;
+      const remainingStops = Math.max(0, vehicle.max_stops - assignedVisitCount);
+      return {
+        id: vehicle.id,
+        label: vehicle.label,
+        vehicle_code: vehicle.vehicle_code,
+        travel_mode: vehicle.travel_mode,
+        available: vehicle.available,
+        max_stops: vehicle.max_stops,
+        assigned_visit_count: assignedVisitCount,
+        remaining_stops: remainingStops,
+        recommended: false,
+        recommendation_reason: vehicle.available
+          ? remainingStops > 0
+            ? `空き ${remainingStops}件`
+            : '本日の上限に到達'
+          : '停止中',
+      };
+    });
+    const recommendedVehicle = vehicleSummaries
+      .filter((vehicle) => vehicle.available && vehicle.remaining_stops > 0)
+      .sort(
+        (left, right) =>
+          right.remaining_stops - left.remaining_stops ||
+          left.assigned_visit_count - right.assigned_visit_count ||
+          left.label.localeCompare(right.label, 'ja'),
+      )[0];
+    if (recommendedVehicle) {
+      recommendedVehicle.recommended = true;
+      recommendedVehicle.recommendation_reason =
+        unassignedTimedVisitCount > 0
+          ? `未割当 ${unassignedTimedVisitCount}件を受けられます`
+          : `予備枠 ${recommendedVehicle.remaining_stops}件`;
+    }
 
     const responseData: ScheduleDayBoardResponse = {
       generated_at: now.toISOString(),
@@ -329,6 +412,7 @@ export const GET = withAuthContext(
       staff,
       audit_pending_count: auditPendingCount,
       report_pending_count: reportPendingCount,
+      vehicle_resources: vehicleSummaries,
       pending_proposals: pendingProposals,
     };
 
