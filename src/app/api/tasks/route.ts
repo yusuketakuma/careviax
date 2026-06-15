@@ -5,7 +5,7 @@ import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
-import { createTaskSchema, taskStatusValues } from '@/lib/validations/task';
+import { createTaskSchema, taskPriorityValues, taskStatusValues } from '@/lib/validations/task';
 import {
   type DashboardAssignmentScope,
   buildDashboardTaskAssignmentWhere,
@@ -14,6 +14,7 @@ import {
 import { z } from 'zod';
 
 const taskStatusSchema = z.enum(taskStatusValues);
+const taskPrioritySchema = z.enum(taskPriorityValues);
 
 function canCreateTaskInAssignmentScope(
   scope: DashboardAssignmentScope,
@@ -67,6 +68,13 @@ export async function GET(req: NextRequest) {
       status: ['対応していないステータスです'],
     });
   }
+  const priorityParam = searchParams.get('priority') ?? undefined;
+  const priority = priorityParam ? taskPrioritySchema.safeParse(priorityParam) : null;
+  if (priority && !priority.success) {
+    return validationError('タスク優先度が不正です', {
+      priority: ['対応していない優先度です'],
+    });
+  }
   const assignedTo = searchParams.get('assigned_to') ?? undefined;
   const relatedEntityType = searchParams.get('related_entity_type') ?? undefined;
   const relatedEntityId = searchParams.get('related_entity_id') ?? undefined;
@@ -82,6 +90,7 @@ export async function GET(req: NextRequest) {
       ...buildDashboardTaskAssignmentWhere(assignmentScope),
       ...(taskType ? { task_type: taskType } : {}),
       ...(status ? { status: status.data } : {}),
+      ...(priority ? { priority: priority.data } : {}),
       ...(assignedTo ? { assigned_to: assignedTo } : {}),
       ...(relatedEntityType ? { related_entity_type: relatedEntityType } : {}),
       ...(relatedEntityId ? { related_entity_id: relatedEntityId } : {}),
@@ -89,7 +98,26 @@ export async function GET(req: NextRequest) {
     orderBy: [{ sla_due_at: 'asc' }, { due_date: 'asc' }, { created_at: 'desc' }],
   });
 
-  return success({ data: tasks });
+  const assignedUserIds = Array.from(
+    new Set(tasks.map((task) => task.assigned_to).filter((id): id is string => Boolean(id))),
+  );
+  const assignedUsers =
+    assignedUserIds.length === 0
+      ? []
+      : await prisma.user.findMany({
+          where: { org_id: ctx.orgId, id: { in: assignedUserIds } },
+          select: { id: true, name: true },
+        });
+  const assignedUserNameById = new Map(assignedUsers.map((user) => [user.id, user.name]));
+
+  return success({
+    data: tasks.map((task) => ({
+      ...task,
+      assigned_to_name: task.assigned_to
+        ? (assignedUserNameById.get(task.assigned_to) ?? null)
+        : null,
+    })),
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -121,6 +149,20 @@ export async function POST(req: NextRequest) {
   }
   if (!canCreateTaskInAssignmentScope(assignmentScope, parsed.data)) {
     return validationError('担当外リソースのタスクは作成できません');
+  }
+  if (parsed.data.assigned_to) {
+    const assignee = await prisma.membership.findFirst({
+      where: {
+        org_id: ctx.orgId,
+        user_id: parsed.data.assigned_to,
+        is_active: true,
+        user: { is_active: true },
+      },
+      select: { user_id: true },
+    });
+    if (!assignee) {
+      return validationError('依頼先スタッフが見つかりません');
+    }
   }
 
   const task = await withOrgContext(

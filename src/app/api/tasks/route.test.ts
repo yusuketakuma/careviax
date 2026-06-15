@@ -5,12 +5,16 @@ const {
   requireAuthContextMock,
   careCaseFindManyMock,
   taskFindManyMock,
+  userFindManyMock,
+  membershipFindFirstMock,
   taskCreateMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
   taskFindManyMock: vi.fn(),
+  userFindManyMock: vi.fn(),
+  membershipFindFirstMock: vi.fn(),
   taskCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
@@ -26,6 +30,12 @@ vi.mock('@/lib/db/client', () => ({
     },
     task: {
       findMany: taskFindManyMock,
+    },
+    user: {
+      findMany: userFindManyMock,
+    },
+    membership: {
+      findFirst: membershipFindFirstMock,
     },
   },
 }));
@@ -72,6 +82,8 @@ describe('/api/tasks', () => {
     });
     careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
     taskFindManyMock.mockResolvedValue([]);
+    userFindManyMock.mockResolvedValue([]);
+    membershipFindFirstMock.mockResolvedValue({ user_id: 'user_1' });
     taskCreateMock.mockResolvedValue({ id: 'task_1', title: '折返し対応' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -113,8 +125,57 @@ describe('/api/tasks', () => {
     );
   });
 
+  it('filters tasks by priority and decorates assigned user names', async () => {
+    taskFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'task_1',
+        title: '患者A: 服薬の困りごと',
+        assigned_to: 'user_2',
+        priority: 'high',
+      },
+    ]);
+    userFindManyMock.mockResolvedValueOnce([{ id: 'user_2', name: '佐藤 薬剤師' }]);
+
+    const response = await GET(
+      createRequest('http://localhost/api/tasks?priority=high&status=pending'),
+    );
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(200);
+    expect(taskFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          priority: 'high',
+          status: 'pending',
+        }),
+      }),
+    );
+    expect(userFindManyMock).toHaveBeenCalledWith({
+      where: { org_id: 'org_1', id: { in: ['user_2'] } },
+      select: { id: true, name: true },
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        {
+          id: 'task_1',
+          assigned_to: 'user_2',
+          assigned_to_name: '佐藤 薬剤師',
+        },
+      ],
+    });
+  });
+
   it('rejects unsupported status filters before resolving assignment scope', async () => {
     const response = await GET(createRequest('http://localhost/api/tasks?status=bad_status'));
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(400);
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(taskFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsupported priority filters before resolving assignment scope', async () => {
+    const response = await GET(createRequest('http://localhost/api/tasks?priority=bad_priority'));
     if (!response) throw new Error('response is undefined');
 
     expect(response.status).toBe(400);
@@ -138,6 +199,15 @@ describe('/api/tasks', () => {
     if (!response) throw new Error('response is undefined');
 
     expect(response.status).toBe(201);
+    expect(membershipFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        user_id: 'user_1',
+        is_active: true,
+        user: { is_active: true },
+      },
+      select: { user_id: true },
+    });
     expect(taskCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
@@ -150,6 +220,28 @@ describe('/api/tasks', () => {
         metadata: { source: 'self_report', severity: 'high' },
       }),
     });
+  });
+
+  it('rejects create payloads assigned to inactive or unknown staff', async () => {
+    membershipFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await POST(
+      createRequest('http://localhost/api/tasks', {
+        task_type: 'patient_self_report_followup',
+        title: '患者A: 服薬の困りごと',
+        priority: 'high',
+        assigned_to: 'user_1',
+        related_entity_type: 'patient',
+        related_entity_id: 'patient_1',
+      }),
+    );
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '依頼先スタッフが見つかりません',
+    });
+    expect(taskCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object create payloads before resolving assignment scope', async () => {

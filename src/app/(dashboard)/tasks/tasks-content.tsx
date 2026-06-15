@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
-import { CheckSquare, Filter } from 'lucide-react';
+import { CheckSquare, Filter, Send, UserRoundCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageSection } from '@/components/layout/page-section';
 import { DataTable } from '@/components/ui/data-table';
@@ -14,7 +14,9 @@ import { Button } from '@/components/ui/button';
 import { ActionRail } from '@/components/ui/action-rail';
 import { Checkbox } from '@/components/ui/checkbox';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 
 import {
   Select,
@@ -45,12 +47,40 @@ type Task = {
   status: string;
   priority: string;
   assigned_to: string | null;
+  assigned_to_name?: string | null;
   due_date: string | null;
   sla_due_at: string | null;
   related_entity_type: string | null;
   related_entity_id: string | null;
   completed_at: string | null;
   created_at: string;
+};
+
+type StaffWorkload = {
+  id: string;
+  name: string;
+  role_label: string;
+  open_task_count: number;
+  today_visit_count: number;
+  dispense_task_count: number;
+  workload_score: number;
+  visits: Array<{
+    id: string;
+    patient_name: string;
+    visit_type: string;
+    schedule_status: string;
+    time_start: string | null;
+    time_end: string | null;
+  }>;
+  open_tasks: Array<{
+    id: string;
+    title: string;
+    task_type: string;
+    priority: string;
+    status: string;
+    due_date: string | null;
+    sla_due_at: string | null;
+  }>;
 };
 
 // --- Constants ---
@@ -73,6 +103,9 @@ const PRIORITY_OPTIONS = [
 
 const TASK_TYPE_OPTIONS = [
   { value: '', label: 'すべて' },
+  { value: 'staff_work_request_visit', label: '訪問依頼' },
+  { value: 'staff_work_request_audit', label: '監査依頼' },
+  { value: 'staff_work_request_general', label: '業務依頼' },
   { value: 'visit_demand', label: '訪問候補' },
   { value: 'visit_preparation', label: '訪問準備' },
   { value: 'management_plan_review', label: '計画書' },
@@ -82,6 +115,12 @@ const TASK_TYPE_OPTIONS = [
   { value: 'conference_action_item', label: 'カンファレンス' },
   { value: 'emergency_coverage_gap', label: '当番体制' },
   { value: 'inquiry_workbench', label: '疑義照会' },
+];
+
+const WORK_REQUEST_OPTIONS = [
+  { value: 'staff_work_request_visit', label: '訪問に行ってほしい' },
+  { value: 'staff_work_request_audit', label: '監査をしてほしい' },
+  { value: 'staff_work_request_general', label: 'その他の業務を依頼' },
 ];
 
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
@@ -125,6 +164,12 @@ export function TasksContent({
   const [taskTypeFilter, setTaskTypeFilter] = useState(initialTaskType ?? '');
   const [priorityFilter, setPriorityFilter] = useState(initialPriority ?? '');
   const [selectedTasks, setSelectedTasks] = useState<Task[]>([]);
+  const [requestAssignee, setRequestAssignee] = useState('');
+  const [requestType, setRequestType] = useState('staff_work_request_visit');
+  const [requestPriority, setRequestPriority] = useState('normal');
+  const [requestDueDate, setRequestDueDate] = useState('');
+  const [requestTitle, setRequestTitle] = useState('');
+  const [requestDescription, setRequestDescription] = useState('');
 
   const queryParams = useMemo(() => {
     const p = new URLSearchParams();
@@ -149,16 +194,72 @@ export function TasksContent({
 
   const tasks = data?.data ?? [];
 
+  const { data: staffWorkloadData, isLoading: isStaffWorkloadLoading } = useQuery({
+    queryKey: ['staff-workload', orgId],
+    queryFn: async () => {
+      const res = await fetch('/api/staff-workload', {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('スタッフ別業務量の取得に失敗しました');
+      return res.json() as Promise<{ data: StaffWorkload[]; date: string }>;
+    },
+    enabled: !!orgId,
+  });
+
+  const staffWorkload = staffWorkloadData?.data ?? [];
+  const selectedAssignee = staffWorkload.find((staff) => staff.id === requestAssignee) ?? null;
+  const selectedRequestTypeLabel =
+    WORK_REQUEST_OPTIONS.find((option) => option.value === requestType)?.label ?? '業務を依頼';
+
+  const createRequestMutation = useMutation({
+    mutationFn: async () => {
+      const dueDateIso = requestDueDate
+        ? new Date(`${requestDueDate}T23:59:00+09:00`).toISOString()
+        : null;
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        body: JSON.stringify({
+          task_type: requestType,
+          title: requestTitle.trim(),
+          description: requestDescription.trim() || undefined,
+          priority: requestPriority,
+          assigned_to: requestAssignee,
+          due_date: dueDateIso,
+          metadata: {
+            source: 'staff_work_request',
+            requested_by: currentUserId,
+            request_type_label: selectedRequestTypeLabel,
+          },
+        }),
+      });
+      if (!res.ok) throw new Error('業務依頼の作成に失敗しました');
+      return res.json();
+    },
+    onSuccess: () => {
+      toast.success('業務を依頼しました');
+      setRequestTitle('');
+      setRequestDescription('');
+      setRequestDueDate('');
+      void queryClient.invalidateQueries({ queryKey: ['tasks', orgId] });
+      void queryClient.invalidateQueries({ queryKey: ['staff-workload', orgId] });
+    },
+    onError: () => {
+      toast.error('業務依頼の作成に失敗しました');
+    },
+  });
+
   const bulkCompleteMutation = useMutation({
     mutationFn: async (ids: string[]) => {
       const results = await Promise.allSettled(
-        ids.map((id) =>
-          fetch(`/api/tasks/${id}`, {
+        ids.map(async (id) => {
+          const res = await fetch(`/api/tasks/${id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
             body: JSON.stringify({ status: 'completed' }),
-          }),
-        ),
+          });
+          if (!res.ok) throw new Error('タスク更新に失敗しました');
+        }),
       );
       const failed = results.filter((r) => r.status === 'rejected').length;
       return { total: ids.length, failed };
@@ -244,7 +345,9 @@ export function TasksContent({
         accessorKey: 'assigned_to',
         header: '担当',
         cell: ({ row }) => (
-          <span className="text-xs text-muted-foreground">{row.original.assigned_to ?? '—'}</span>
+          <span className="text-xs text-muted-foreground">
+            {row.original.assigned_to_name ?? row.original.assigned_to ?? '—'}
+          </span>
         ),
         size: 120,
       },
@@ -278,6 +381,179 @@ export function TasksContent({
           <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
         </Alert>
       ) : null}
+      <PageSection
+        title="スタッフ別の抱え込み"
+        description="今日の訪問、未完了タスク、調剤中の件数をスタッフごとに見て、依頼先の負荷を確認します。"
+        tone="subtle"
+        contentClassName="space-y-4"
+      >
+        <div className="grid gap-3 lg:grid-cols-3" data-testid="staff-workload-board">
+          {staffWorkload.map((staff) => (
+            <button
+              key={staff.id}
+              type="button"
+              onClick={() => setRequestAssignee(staff.id)}
+              className={`rounded-lg border p-4 text-left transition hover:border-primary/60 hover:bg-primary/5 ${
+                requestAssignee === staff.id ? 'border-primary bg-primary/5' : 'border-border/70'
+              }`}
+              data-testid="staff-workload-card"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">{staff.name}</p>
+                  <p className="text-xs text-muted-foreground">{staff.role_label}</p>
+                </div>
+                <Badge variant="outline" className="text-xs">
+                  負荷 {staff.workload_score}
+                </Badge>
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+                <div className="rounded-md bg-muted/60 p-2">
+                  <p className="font-semibold text-foreground">{staff.today_visit_count}</p>
+                  <p className="text-muted-foreground">訪問</p>
+                </div>
+                <div className="rounded-md bg-muted/60 p-2">
+                  <p className="font-semibold text-foreground">{staff.open_task_count}</p>
+                  <p className="text-muted-foreground">未完了</p>
+                </div>
+                <div className="rounded-md bg-muted/60 p-2">
+                  <p className="font-semibold text-foreground">{staff.dispense_task_count}</p>
+                  <p className="text-muted-foreground">調剤中</p>
+                </div>
+              </div>
+              <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                {staff.visits.slice(0, 2).map((visit) => (
+                  <p key={visit.id} className="truncate">
+                    訪問: {visit.patient_name}
+                  </p>
+                ))}
+                {staff.open_tasks.slice(0, 2).map((task) => (
+                  <p key={task.id} className="truncate">
+                    依頼: {task.title}
+                  </p>
+                ))}
+                {!isStaffWorkloadLoading &&
+                staff.visits.length === 0 &&
+                staff.open_tasks.length === 0 ? (
+                  <p>現在表示する抱え込みはありません</p>
+                ) : null}
+              </div>
+            </button>
+          ))}
+          {isStaffWorkloadLoading ? (
+            <p className="text-sm text-muted-foreground">スタッフ別業務量を読み込み中...</p>
+          ) : null}
+          {!isStaffWorkloadLoading && staffWorkload.length === 0 ? (
+            <p className="text-sm text-muted-foreground">依頼可能なスタッフが見つかりません</p>
+          ) : null}
+        </div>
+      </PageSection>
+
+      <PageSection
+        title="スタッフへ業務依頼"
+        description="訪問、監査、その他業務を特定スタッフへ割り当てます。依頼は未完了タスクとして残ります。"
+        tone="subtle"
+      >
+        <div className="grid gap-4 lg:grid-cols-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="work-request-assignee">依頼先</Label>
+            <Select
+              value={requestAssignee}
+              onValueChange={(value) => setRequestAssignee(value ?? '')}
+            >
+              <SelectTrigger id="work-request-assignee">
+                <SelectValue placeholder="スタッフを選択" />
+              </SelectTrigger>
+              <SelectContent>
+                {staffWorkload.map((staff) => (
+                  <SelectItem key={staff.id} value={staff.id}>
+                    {staff.name} / 未完了{staff.open_task_count}件
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="work-request-type">依頼内容</Label>
+            <Select value={requestType} onValueChange={(value) => setRequestType(value ?? '')}>
+              <SelectTrigger id="work-request-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {WORK_REQUEST_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="work-request-priority">優先度</Label>
+            <Select
+              value={requestPriority}
+              onValueChange={(value) => setRequestPriority(value ?? '')}
+            >
+              <SelectTrigger id="work-request-priority">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PRIORITY_OPTIONS.filter((option) => option.value).map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_180px]">
+          <div className="space-y-1.5">
+            <Label htmlFor="work-request-title">件名</Label>
+            <Input
+              id="work-request-title"
+              value={requestTitle}
+              onChange={(event) => setRequestTitle(event.target.value)}
+              placeholder="例: 山田さんの訪問に行ってほしい"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="work-request-due-date">期限</Label>
+            <Input
+              id="work-request-due-date"
+              type="date"
+              value={requestDueDate}
+              onChange={(event) => setRequestDueDate(event.target.value)}
+            />
+          </div>
+        </div>
+        <div className="mt-4 space-y-1.5">
+          <Label htmlFor="work-request-description">補足</Label>
+          <Textarea
+            id="work-request-description"
+            value={requestDescription}
+            onChange={(event) => setRequestDescription(event.target.value)}
+            placeholder="対象患者、理由、完了条件を短く記録"
+          />
+        </div>
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            {selectedAssignee
+              ? `${selectedAssignee.name}さんに「${selectedRequestTypeLabel}」を依頼します。`
+              : '依頼先スタッフを選ぶと、現在の抱え込みを見ながら依頼できます。'}
+          </p>
+          <Button
+            type="button"
+            onClick={() => createRequestMutation.mutate()}
+            disabled={!requestAssignee || !requestTitle.trim() || createRequestMutation.isPending}
+            data-testid="staff-work-request-submit"
+          >
+            <Send className="mr-1.5 size-3.5" aria-hidden="true" />
+            {createRequestMutation.isPending ? '依頼中...' : '依頼する'}
+          </Button>
+        </div>
+      </PageSection>
+
       <PageSection
         title="絞り込み"
         description="状態、種別、優先度、自分担当を先に絞り込み、処理対象のタスクだけに集中できるようにします。"
@@ -360,6 +636,7 @@ export function TasksContent({
                   replaceTaskUrl({ assigned: nextValue ? 'me' : null });
                 }}
               />
+              <UserRoundCheck className="size-3.5 text-muted-foreground" aria-hidden="true" />
               自分に割り当て
             </label>
           </div>
