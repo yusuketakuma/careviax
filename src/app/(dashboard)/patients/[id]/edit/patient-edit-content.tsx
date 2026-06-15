@@ -133,7 +133,7 @@ export function PatientEditContent({ patientId }: { patientId: string }) {
   }
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto max-w-7xl">
       <PatientForm
         patientId={patientId}
         redirectTo={`/patients/${patientId}`}

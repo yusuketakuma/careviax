@@ -50,8 +50,29 @@ describe('PatientForm', () => {
     const summary = document.getElementById('patient-form-error-summary');
     expect(summary).not.toBeNull();
     expect(summary?.textContent).toContain('氏名');
+    expect(screen.getByRole('tab', { name: '基本' }).getAttribute('data-active')).not.toBeNull();
+    expect(screen.getByRole('tab', { name: '住所・保険' }).getAttribute('data-active')).toBeNull();
     expect(screen.queryByText('氏名：氏名は必須です')).toBeNull();
     expect(screen.getByText('氏名は必須です')).toBeTruthy();
     expect(screen.getByText('フリガナは必須です')).toBeTruthy();
+  });
+
+  it('groups edit fields into compact information tabs', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({ data: [], isLoading: false });
+
+    render(<PatientForm />);
+
+    expect(screen.getByRole('tab', { name: '基本' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: '住所・保険' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: '依頼元' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: '訪問' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: '生活・薬学' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: '連携' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('tab', { name: '住所・保険' }));
+
+    expect(screen.getByText('連絡先・保険情報')).toBeTruthy();
+    expect(screen.getByLabelText('電話番号')).toBeTruthy();
   });
 });
