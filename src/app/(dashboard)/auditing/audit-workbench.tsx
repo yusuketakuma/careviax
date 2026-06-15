@@ -37,6 +37,7 @@ import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { cn } from '@/lib/utils';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import {
+  buildDispenseSafetySummary,
   canApproveCounts,
   familyName,
   findNextCountTarget,
@@ -45,6 +46,7 @@ import {
   formatRemainingLabel,
   judgeCountRow,
   type CountEntryState,
+  type DispenseSafetySummary,
   type DispenseWorkbenchData,
   type WorkbenchCountRow,
 } from '@/app/(dashboard)/dispensing/dispense-workbench.shared';
@@ -361,6 +363,71 @@ function CountTable({
   );
 }
 
+function AuditHandoffSummary({ summary }: { summary: DispenseSafetySummary }) {
+  return (
+    <section
+      className="mt-3 rounded-lg border border-border/70 bg-muted/25 p-3"
+      aria-label="調剤から監査への引継ぎサマリー"
+      data-testid="audit-handoff-summary"
+    >
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
+        <h4 className="text-sm font-bold text-foreground">調剤から監査への引継ぎ</h4>
+        <p className="text-xs font-medium text-muted-foreground">{summary.nextCheckLabel}</p>
+      </div>
+      <dl className="mt-3 grid gap-2 sm:grid-cols-4">
+        <div className="rounded-md border border-border/60 bg-card px-3 py-2">
+          <dt className="text-xs text-muted-foreground">変更薬剤</dt>
+          <dd className="mt-1 text-base font-bold text-foreground">{summary.changedCount}件</dd>
+        </div>
+        <div className="rounded-md border border-border/60 bg-card px-3 py-2">
+          <dt className="text-xs text-muted-foreground">疑義照会回答由来の変更</dt>
+          <dd className="mt-1 text-base font-bold text-foreground">
+            {summary.inquiryChangeCount}件
+          </dd>
+        </div>
+        <div
+          className={cn(
+            'rounded-md border px-3 py-2',
+            summary.unresolvedPrescriptionQuantityCount > 0
+              ? 'border-red-200 bg-red-50 text-red-900'
+              : 'border-border/60 bg-card',
+          )}
+        >
+          <dt className="text-xs text-muted-foreground">処方数量未確定</dt>
+          <dd className="mt-1 text-base font-bold">
+            {summary.unresolvedPrescriptionQuantityCount}件
+          </dd>
+          <dd className="mt-0.5 text-xs text-muted-foreground">
+            実数量未入力 {summary.missingActualQuantityCount}件
+          </dd>
+        </div>
+        <div className="rounded-md border border-border/60 bg-card px-3 py-2">
+          <dt className="text-xs text-muted-foreground">取扱い注意</dt>
+          <dd className="mt-1 flex flex-wrap gap-1.5 text-sm font-bold text-foreground">
+            {summary.specialHandlingLabels.length > 0
+              ? summary.specialHandlingLabels.map((label) => (
+                  <span
+                    key={label}
+                    className={cn(
+                      'inline-flex rounded-full border px-2 py-0.5 text-xs font-bold',
+                      label === '麻薬'
+                        ? 'border-red-200 bg-red-50 text-red-800'
+                        : label === '冷所'
+                          ? 'border-cyan-200 bg-cyan-50 text-cyan-800'
+                          : 'border-amber-200 bg-amber-50 text-amber-800',
+                    )}
+                  >
+                    {label}
+                  </span>
+                ))
+              : '該当なし'}
+          </dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
+
 // ── メイン ──
 
 export function AuditWorkbench() {
@@ -477,7 +544,13 @@ export function AuditWorkbench() {
   });
 
   const countRows = workbench?.count_rows ?? [];
-  const approvable = canApproveCounts(countRows, counts) && !(workbench?.is_self_audit ?? false);
+  const auditHandoffSummary = workbench ? buildDispenseSafetySummary(workbench) : null;
+  const hasUnresolvedPrescriptionQuantities =
+    (auditHandoffSummary?.unresolvedPrescriptionQuantityCount ?? 0) > 0;
+  const approvable =
+    canApproveCounts(countRows, counts) &&
+    !(workbench?.is_self_audit ?? false) &&
+    !hasUnresolvedPrescriptionQuantities;
   const hasMismatch = countRows.some(
     (row) =>
       judgeCountRow(
@@ -537,9 +610,11 @@ export function AuditWorkbench() {
           actionLabel: '差異ゼロを確認して合格 — セットへ',
           onAction: () => auditMutation.mutate({ result: 'approved' }),
           actionDisabled: !approvable || auditMutation.isPending,
-          description: hasMismatch
-            ? '計数に不一致があります。差戻し(理由必須)で調剤へ返します。'
-            : '計数がすべて一致しました。合格でセット工程へ自動で渡ります。',
+          description: hasUnresolvedPrescriptionQuantities
+            ? '処方数量未確定があります。処方取込を確認してから監査してください。'
+            : hasMismatch
+              ? '計数に不一致があります。差戻し(理由必須)で調剤へ返します。'
+              : '計数がすべて一致しました。合格でセット工程へ自動で渡ります。',
         }
     : undefined;
 
@@ -598,8 +673,12 @@ export function AuditWorkbench() {
 
   const dateLabel = format(new Date(), 'M/d(EEE)', { locale: ja });
   const guardText = workbench?.has_narcotic
-    ? '麻薬は2回目の計数が終わるまで合格できません'
-    : '計数(1回目・2回目)がすべて一致すると合格できます';
+    ? hasUnresolvedPrescriptionQuantities
+      ? '処方数量未確定があるため合格できません'
+      : '麻薬は2回目の計数が終わるまで合格できません'
+    : hasUnresolvedPrescriptionQuantities
+      ? '処方数量未確定があるため合格できません'
+      : '計数(1回目・2回目)がすべて一致すると合格できます';
 
   return (
     <section aria-label="監査ワークベンチ" data-testid="audit-workbench">
@@ -721,6 +800,8 @@ export function AuditWorkbench() {
                   調剤実績が未登録です。調剤工程の完了後に計数監査ができます。
                 </p>
               )}
+
+              {auditHandoffSummary ? <AuditHandoffSummary summary={auditHandoffSummary} /> : null}
 
               {/* 計数テーブル(麻薬ダブルカウント) */}
               <CountTable

@@ -109,8 +109,24 @@ const WORKBENCH: DispenseWorkbenchData = {
   patient: { id: 'patient-task-tanaka', name: '田中 一郎' },
   intake: { id: 'cmnhdemointk002amq0500', prescribed_date: '2024-06-08' },
   previous_intake: { prescribed_date: '2024-05-11' },
-  safety: { allergy: null, renal: null, handling_tags: [], swallowing: null, cautions: [] },
-  comparison: [],
+  safety: {
+    allergy: null,
+    renal: null,
+    handling_tags: ['cold_storage'],
+    swallowing: null,
+    cautions: [],
+  },
+  comparison: [
+    {
+      key: 'line-oxycodone',
+      drug_name: 'オキシコドン 5mg',
+      previous_label: null,
+      current_label: '5mg 追加',
+      change_type: 'added',
+      direction: null,
+      inquiry_origin: true,
+    },
+  ],
   count_rows: [
     {
       line_id: 'line-oxycodone',
@@ -256,12 +272,21 @@ describe('AuditWorkbench', () => {
     expect(banner.textContent).toContain('監査: 山田(あなた)');
     expect(banner.textContent).toContain('同一人による監査はシステム上できません');
 
+    // 調剤から監査への引継ぎサマリー
+    expect(screen.getByTestId('audit-handoff-summary')).toBeTruthy();
+    expect(screen.getByText('調剤から監査への引継ぎ')).toBeTruthy();
+    expect(screen.getByText('照会回答の変更点を読み上げ確認')).toBeTruthy();
+    expect(screen.getByText('変更薬剤')).toBeTruthy();
+    expect(screen.getByText('疑義照会回答由来の変更')).toBeTruthy();
+    expect(screen.getByText('処方数量未確定')).toBeTruthy();
+    expect(screen.getByText('実数量未入力 0件')).toBeTruthy();
+
     // 計数テーブル
     expect(screen.getByText('計数(調剤者)')).toBeTruthy();
     expect(screen.getByText('計数 1回目')).toBeTruthy();
     expect(screen.getByText('計数 2回目')).toBeTruthy();
     expect(screen.getByText('オキシコドン 5mg')).toBeTruthy();
-    expect(screen.getByText('冷所')).toBeTruthy();
+    expect(screen.getAllByText('冷所').length).toBeGreaterThanOrEqual(2);
 
     // 工程チップ+確定メッセージ
     expect(screen.getByText('セット 15分')).toBeTruthy();
@@ -312,6 +337,45 @@ describe('AuditWorkbench', () => {
     fireEvent.click(approveButton);
 
     expect(mutateMock).toHaveBeenCalledWith({ result: 'approved' });
+  });
+
+  it('処方数量未確定があると全行の計数が一致しても監査合格できない', () => {
+    const unresolvedWorkbench: DispenseWorkbenchData = {
+      ...WORKBENCH,
+      count_rows: WORKBENCH.count_rows.map((row) =>
+        row.line_id === 'line-oxycodone'
+          ? { ...row, prescribed_label: '未確定', prescribed_quantity: null }
+          : row,
+      ),
+    };
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'dispense-workbench') {
+        return { data: unresolvedWorkbench, isLoading: false };
+      }
+      if (queryKey[0] === 'dashboard') {
+        return { data: COCKPIT, isLoading: false };
+      }
+      return { data: undefined, isLoading: false };
+    });
+
+    render(<AuditWorkbench />);
+
+    fillCount('オキシコドン 5mg', '1回目', 14);
+    fillCount('アムロジピン 5mg', '1回目', 28);
+    fillCount('ランソプラゾール 15mg', '1回目', 28);
+    fillCount('インスリン グラルギン', '1回目', 1);
+    fillCount('オキシコドン 5mg', '2回目', 14);
+    fillCount('アムロジピン 5mg', '2回目', 28);
+    fillCount('ランソプラゾール 15mg', '2回目', 28);
+    fillCount('インスリン グラルギン', '2回目', 1);
+
+    expect(screen.getByText('処方数量未確定を処方取込で確認')).toBeTruthy();
+    expect(screen.getByText('処方数量未確定があるため合格できません')).toBeTruthy();
+
+    const approveButton = screen.getByTestId('audit-approve-button') as HTMLButtonElement;
+    expect(approveButton.disabled).toBe(true);
+    fireEvent.click(approveButton);
+    expect(mutateMock).not.toHaveBeenCalled();
   });
 
   it('計数が調剤実績とズレると「不一致」を表示し合格できない', () => {
