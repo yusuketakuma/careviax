@@ -201,6 +201,7 @@ export const GET = withAuthContext(
               // 施設一括報告の宛先は現状データソースが無いため看護師長宛で固定表示
               recipient_label: '施設(看護師長)',
               status: 'before_visit',
+              visit_record_id: null,
               note: patientCount > 0 ? `${patientCount}名分を1通に集約` : null,
               action: null,
             });
@@ -214,16 +215,24 @@ export const GET = withAuthContext(
           const draftReportId = schedule.visit_record?.id
             ? (draftReportByRecordId.get(schedule.visit_record.id) ?? null)
             : null;
+          const visitRecordId = schedule.visit_record?.id ?? null;
           draftRows.push({
             id: schedule.id,
             time_start: schedule.time_window_start?.toISOString() ?? null,
             patient_label: `${schedule.case_.patient.name} 様`,
             recipient_label: buildRecipientLabel(schedule.case_.care_team_links),
-            status: draftReportId ? 'draft_ready' : 'before_visit',
+            status: draftReportId
+              ? 'draft_ready'
+              : visitRecordId
+                ? 'ready_to_generate'
+                : 'before_visit',
+            visit_record_id: visitRecordId,
             note: hasNarcotic ? '麻薬使用状況を含む' : null,
             action: draftReportId
               ? { label: '→ 下書きへ', href: `/reports/${draftReportId}` }
-              : { label: '→ 訪問へ', href: '/visits' },
+              : visitRecordId
+                ? null
+                : { label: '→ 訪問へ', href: '/visits' },
           });
         }
 

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
@@ -16,8 +16,20 @@ import {
 
 setupDomTestEnv();
 
+const { routerPushMock } = vi.hoisted(() => ({
+  routerPushMock: vi.fn(),
+}));
+
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
+}));
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: routerPushMock }),
+}));
+
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn() },
 }));
 
 const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
@@ -29,6 +41,7 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
       patient_label: '伊藤 キヨ 様',
       recipient_label: 'ケアマネ(中島様)',
       status: 'before_visit',
+      visit_record_id: null,
       note: null,
       action: { label: '→ 訪問へ', href: '/visits' },
     },
@@ -37,9 +50,10 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
       time_start: '2026-06-11T05:00:00.000Z',
       patient_label: '田中 一郎 様',
       recipient_label: '医師(山本先生)+ケアマネ',
-      status: 'before_visit',
+      status: 'ready_to_generate',
+      visit_record_id: 'vr_2',
       note: '麻薬使用状況を含む',
-      action: { label: '→ 訪問へ', href: '/visits' },
+      action: null,
     },
     {
       id: 'row_3',
@@ -47,6 +61,7 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
       patient_label: '施設グリーンヒル',
       recipient_label: '施設(看護師長)',
       status: 'before_visit',
+      visit_record_id: null,
       note: '12名分を1通に集約',
       action: null,
     },
@@ -148,6 +163,12 @@ function stubFetch() {
     if (url.includes('/api/dashboard/cockpit')) {
       return new Response(JSON.stringify({ data: COCKPIT }), { status: 200 });
     }
+    if (url.includes('/api/care-reports/generate-from-visit')) {
+      return new Response(
+        JSON.stringify({ data: [{ id: 'rep_generated', report_type: 'care_manager_report' }] }),
+        { status: 201 },
+      );
+    }
     throw new Error(`unexpected fetch: ${url}`);
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -167,6 +188,7 @@ function renderWorkspace() {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  routerPushMock.mockClear();
 });
 
 describe('ReportShareWorkspace', () => {
@@ -185,16 +207,18 @@ describe('ReportShareWorkspace', () => {
     expect(screen.getByTestId('report-edit-templates').textContent).toContain('テンプレートを編集');
 
     // 今日書く報告: 宛先と状態
-    expect(screen.getByText('今日書く報告 — 訪問完了で下書きが開きます')).toBeTruthy();
+    expect(screen.getByText('未作成・下書き一覧 — 訪問完了後に選択して作成')).toBeTruthy();
     expect(screen.getByText('伊藤 キヨ 様')).toBeTruthy();
     expect(screen.getByText('ケアマネ(中島様)')).toBeTruthy();
     expect(screen.getByText('医師(山本先生)+ケアマネ')).toBeTruthy();
-    expect(screen.getAllByText('訪問後に下書き')).toHaveLength(3);
+    expect(screen.getAllByText('訪問後に下書き')).toHaveLength(2);
+    expect(screen.getByText('未作成')).toBeTruthy();
     // 危険区分メモは隠さない
     expect(screen.getByText('麻薬使用状況を含む')).toBeTruthy();
     expect(screen.getByText('12名分を1通に集約')).toBeTruthy();
     // メモがある行でも下書き/訪問導線を隠さない
-    expect(screen.getAllByRole('link', { name: '→ 訪問へ' })).toHaveLength(2);
+    expect(screen.getAllByRole('link', { name: '→ 訪問へ' })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: '下書きを自動作成' })).toBeTruthy();
 
     // 返信待ち / 今日解決した待ち
     expect(screen.getByText('返信待ち')).toBeTruthy();
@@ -209,6 +233,25 @@ describe('ReportShareWorkspace', () => {
     expect(screen.getByTestId('report-template-policy-bar').textContent).toContain(
       '実施したこと → 観察したこと → 提案',
     );
+  });
+
+  it('creates a report draft from a selected not-created row and opens the draft', async () => {
+    const fetchMock = stubFetch();
+    renderWorkspace();
+
+    const generateButton = await screen.findByRole('button', { name: '下書きを自動作成' });
+    fireEvent.click(generateButton);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/care-reports/generate-from-visit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': 'org_1' },
+        body: JSON.stringify({ visit_record_id: 'vr_2' }),
+      });
+    });
+    await waitFor(() => {
+      expect(routerPushMock).toHaveBeenCalledWith('/reports/rep_generated');
+    });
   });
 
   it('renders the shared action rail (next action, blocked reasons, evidence)', async () => {

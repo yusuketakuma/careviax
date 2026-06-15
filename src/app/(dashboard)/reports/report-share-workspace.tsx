@@ -1,8 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
-import { buttonVariants } from '@/components/ui/button';
+import { useRouter } from 'next/navigation';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import {
@@ -39,7 +41,13 @@ import {
 
 const DRAFT_STATUS_LABELS: Record<string, string> = {
   before_visit: '訪問後に下書き',
+  ready_to_generate: '未作成',
   draft_ready: '下書きあり',
+};
+
+type GeneratedCareReport = {
+  id: string;
+  report_type: string;
 };
 
 async function fetchReportsTodayWorkspace(orgId: string): Promise<ReportsTodayWorkspaceResponse> {
@@ -60,11 +68,36 @@ async function fetchOperationCockpit(orgId: string): Promise<DashboardCockpitRes
   return json.data;
 }
 
+async function generateCareReportDraftFromVisit(
+  orgId: string,
+  visitRecordId: string,
+): Promise<GeneratedCareReport[]> {
+  const res = await fetch('/api/care-reports/generate-from-visit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+    body: JSON.stringify({ visit_record_id: visitRecordId }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => null);
+    throw new Error((err as { message?: string } | null)?.message ?? '下書きの作成に失敗しました');
+  }
+  const json = (await res.json()) as { data?: GeneratedCareReport[] };
+  return json.data ?? [];
+}
+
 // ---------------------------------------------------------------------------
 // 今日書く報告
 // ---------------------------------------------------------------------------
 
-function TodayDraftsCard({ data }: { data: ReportsTodayWorkspaceResponse }) {
+function TodayDraftsCard({
+  data,
+  onGenerateDraft,
+  generatingVisitRecordId,
+}: {
+  data: ReportsTodayWorkspaceResponse;
+  onGenerateDraft: (visitRecordId: string) => void;
+  generatingVisitRecordId: string | null;
+}) {
   return (
     <section
       className="rounded-lg border border-border/70 bg-card p-4"
@@ -73,10 +106,10 @@ function TodayDraftsCard({ data }: { data: ReportsTodayWorkspaceResponse }) {
     >
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h3 id="report-today-drafts-heading" className="text-base font-bold text-foreground">
-          今日書く報告 — 訪問完了で下書きが開きます
+          未作成・下書き一覧 — 訪問完了後に選択して作成
         </h3>
         <p className="text-xs text-muted-foreground">
-          記憶が新しいうちに書ける設計 — 宛先別の文面差は1画面で編集
+          訪問記録から下書きを自動作成し、薬剤師が手直しして確定します
         </p>
       </div>
       {data.draft_rows.length === 0 ? (
@@ -122,6 +155,19 @@ function TodayDraftsCard({ data }: { data: ReportsTodayWorkspaceResponse }) {
                       >
                         {row.action.label}
                       </Link>
+                    ) : null}
+                    {row.status === 'ready_to_generate' && row.visit_record_id ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => onGenerateDraft(row.visit_record_id!)}
+                        disabled={generatingVisitRecordId === row.visit_record_id}
+                        className="px-3"
+                      >
+                        {generatingVisitRecordId === row.visit_record_id
+                          ? '作成中...'
+                          : '下書きを自動作成'}
+                      </Button>
                     ) : null}
                   </div>
                 </TableCell>
@@ -271,6 +317,8 @@ function WorkspaceSkeleton() {
 
 export function ReportShareWorkspace() {
   const orgId = useOrgId();
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const isBootstrappingOrg = !orgId;
 
   const workspaceQuery = useQuery({
@@ -284,6 +332,21 @@ export function ReportShareWorkspace() {
     queryFn: () => fetchOperationCockpit(orgId),
     staleTime: 30_000,
     enabled: !isBootstrappingOrg && workspaceQuery.isSuccess,
+  });
+  const generateDraftMutation = useMutation({
+    mutationFn: (visitRecordId: string) => generateCareReportDraftFromVisit(orgId, visitRecordId),
+    onSuccess: (reports) => {
+      const firstReport = reports[0];
+      if (!firstReport) {
+        toast.error('下書きは作成されませんでした');
+        return;
+      }
+      toast.success('報告書の下書きを作成しました');
+      queryClient.invalidateQueries({ queryKey: ['care-reports', 'today-workspace', orgId] });
+      queryClient.invalidateQueries({ queryKey: ['care-reports'] });
+      router.push(`/reports/${firstReport.id}`);
+    },
+    onError: (err: Error) => toast.error(err.message),
   });
 
   const now = new Date();
@@ -326,7 +389,13 @@ export function ReportShareWorkspace() {
         ) : (
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]">
             <div className="min-w-0 space-y-4">
-              <TodayDraftsCard data={data} />
+              <TodayDraftsCard
+                data={data}
+                onGenerateDraft={(visitRecordId) => generateDraftMutation.mutate(visitRecordId)}
+                generatingVisitRecordId={
+                  generateDraftMutation.isPending ? generateDraftMutation.variables : null
+                }
+              />
               <WaitingBoxesSection data={data} />
               <p
                 className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm leading-6 text-sky-800"

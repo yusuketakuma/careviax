@@ -100,9 +100,7 @@ describe('/api/care-reports/today-workspace', () => {
           facility_batch: null,
           case_: {
             patient: { id: 'p1', name: '伊藤 キヨ' },
-            care_team_links: [
-              { role: 'care_manager', name: '中島 桜', is_primary: true },
-            ],
+            care_team_links: [{ role: 'care_manager', name: '中島 桜', is_primary: true }],
           },
           cycle: { prescription_intakes: [{ lines: [{ packaging_instruction_tags: [] }] }] },
           visit_record: null,
@@ -160,6 +158,7 @@ describe('/api/care-reports/today-workspace', () => {
     expect(first.patient_label).toBe('伊藤 キヨ 様');
     expect(first.recipient_label).toBe('ケアマネ(中島様)');
     expect(first.status).toBe('before_visit');
+    expect(first.visit_record_id).toBeNull();
     expect(first.note).toBeNull();
     expect(first.action).toEqual({ label: '→ 訪問へ', href: '/visits' });
 
@@ -172,6 +171,38 @@ describe('/api/care-reports/today-workspace', () => {
     expect(third.note).toBe('12名分を1通に集約');
 
     expect(json.data.counts.to_write).toBe(3);
+  });
+
+  it('marks completed visits without report drafts as not-created generation candidates', async () => {
+    mockTx({
+      schedules: [
+        {
+          id: 'sched_ready',
+          time_window_start: new Date('2026-06-11T05:00:00.000Z'),
+          facility_batch_id: null,
+          facility_batch: null,
+          case_: {
+            patient: { id: 'p2', name: '田中 一郎' },
+            care_team_links: [{ role: 'care_manager', name: '中島 桜', is_primary: true }],
+          },
+          cycle: { prescription_intakes: [{ lines: [] }] },
+          visit_record: { id: 'visit_record_1' },
+        },
+      ],
+      draftReports: [],
+    });
+
+    const req = createRequest('http://localhost/api/care-reports/today-workspace');
+    const res = await GET(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(200);
+    const json = await res!.json();
+    expect(json.data.draft_rows).toHaveLength(1);
+    expect(json.data.draft_rows[0]).toMatchObject({
+      id: 'sched_ready',
+      status: 'ready_to_generate',
+      visit_record_id: 'visit_record_1',
+      action: null,
+    });
   });
 
   it('aggregates waiting replies (delivery + inquiry) and resolved-today entries', async () => {
@@ -224,9 +255,7 @@ describe('/api/care-reports/today-workspace', () => {
     const [oldest, second] = json.data.waiting_replies;
     expect(oldest.title).toBe('加藤 ミサ 様 — ケアマネへの服薬状況報告');
     expect(oldest.waiting_days).toBe(3);
-    expect(oldest.actions).toEqual([
-      { label: '再送する', href: '/reports/rep_1', kind: 'button' },
-    ]);
+    expect(oldest.actions).toEqual([{ label: '再送する', href: '/reports/rep_1', kind: 'button' }]);
     expect(second.title).toBe('高橋 茂 様 — みどり医院への疑義照会');
     expect(second.waiting_days).toBe(2);
     expect(second.actions).toEqual([

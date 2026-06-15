@@ -4,7 +4,7 @@
  * の集約(docs/design-gap-analysis-new.md 10_report)。
  */
 
-export type ReportDraftRowStatus = 'before_visit' | 'draft_ready';
+export type ReportDraftRowStatus = 'before_visit' | 'ready_to_generate' | 'draft_ready';
 
 export type ReportDraftRow = {
   id: string;
@@ -14,8 +14,10 @@ export type ReportDraftRow = {
   patient_label: string;
   /** 「ケアマネ(中島様)」「医師(山本先生)+ケアマネ」「施設(看護師長)」 */
   recipient_label: string;
-  /** before_visit=「訪問後に下書き」/ draft_ready=「下書きあり」 */
+  /** before_visit=「訪問後に下書き」/ ready_to_generate=「未作成」/ draft_ready=「下書きあり」 */
   status: ReportDraftRowStatus;
+  /** 訪問記録が確定し、報告書下書きを自動作成できる場合に入る。 */
+  visit_record_id: string | null;
   /** 「麻薬使用状況を含む」「12名分を1通に集約」等の常時表示メモ。無ければ null。 */
   note: string | null;
   /** 行アクション。note がある行でも導線を隠さず併記する。 */
