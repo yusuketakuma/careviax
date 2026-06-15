@@ -32,7 +32,7 @@ import {
 } from '@/server/services/billing-evidence';
 import { processHandoffExtraction } from '@/server/services/visit-handoff';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
-import { buildPatientStateSnapshot } from '@/server/services/patient-detail';
+import { buildPatientStateSnapshot } from '@/server/services/patient-state-snapshot';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
 
@@ -904,8 +904,7 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
 
     // 訪問時点の患者詳細を凍結する(過去訪問の不変参照 / 前回訪問差分の基準点)。
     // findPatientOverviewBase の生現在値読み出しを再利用し、二重実装しない。
-    // captured_at は凍結した実時刻(=保存時点)。snapshot は「記録作成時点の現在値」であり
-    // visit_date 時点の状態ではない(遡及入力では両者がずれるため意図的に分離)。visit_date は VisitRecord 本体が保持。
+    // 訪問時点の患者詳細を凍結する(過去訪問の不変参照 / 前回訪問差分の基準点)。
     const patientStateSnapshot = await buildPatientStateSnapshot(tx, {
       orgId: ctx.orgId,
       patientId: careCase.patient_id,
@@ -913,6 +912,7 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
       role: ctx.role,
       userId: ctx.userId,
       source: 'visit_record',
+      capturedAt: visitRecordedAt,
     });
 
     const record =

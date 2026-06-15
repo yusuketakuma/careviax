@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { buildPatientStateSnapshot } from './patient-detail';
+import { buildPatientStateSnapshot } from './patient-state-snapshot';
 
 type SnapshotDb = Parameters<typeof buildPatientStateSnapshot>[0];
 
