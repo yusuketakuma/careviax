@@ -282,7 +282,7 @@ describe('deriveSlotMarks / deriveRowStatus', () => {
     expect(deriveRowStatus(null)).toBe('waiting');
   });
 
-  it('全スロット充足 → 数量確認中(薬剤師確認前)', () => {
+  it('全スロット充足 → 監査待ち(薬剤師確認前)', () => {
     const plan = {
       ...basePlan,
       batches: [
@@ -294,14 +294,18 @@ describe('deriveSlotMarks / deriveRowStatus', () => {
     expect(deriveRowStatus(plan)).toBe('quantity_check');
   });
 
-  it('承認済み監査 → 完了', () => {
+  it.each([
+    ['approved', 'completed'],
+    ['partial_approved', 'partial_approved'],
+    ['rejected', 'rejected'],
+  ] as const)('最新監査 %s → %s', (result, status) => {
     const plan = {
       ...basePlan,
-      audits: [{ result: 'approved' }],
+      audits: [{ result }],
       batches: [
         { line_id: 'l1', slot: 'morning', day_number: 1, packaging_instruction_tags_snapshot: [] },
       ],
     };
-    expect(deriveRowStatus(plan)).toBe('completed');
+    expect(deriveRowStatus(plan)).toBe(status);
   });
 });

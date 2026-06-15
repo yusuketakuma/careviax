@@ -57,10 +57,13 @@ export function deriveSlotMarks(plan: DerivablePlan | null): Record<SetSlotKey, 
   return marks;
 }
 
-/** 行状態: 承認済=完了 / 全スロット充足=数量確認中 / 一部=進行中 / 未着手=着手前 */
+/** 行状態: 最新監査結果を優先し、未監査は全スロット充足=監査待ち / 一部=進行中 / 未着手=着手前 */
 export function deriveRowStatus(plan: DerivablePlan | null): SetRowStatusKey {
   if (!plan) return 'waiting';
-  if (plan.audits[0]?.result === 'approved') return 'completed';
+  const latestAuditResult = plan.audits[0]?.result;
+  if (latestAuditResult === 'approved') return 'completed';
+  if (latestAuditResult === 'partial_approved') return 'partial_approved';
+  if (latestAuditResult === 'rejected') return 'rejected';
   if (plan.batches.length === 0) return 'waiting';
   const marks = deriveSlotMarks(plan);
   const activeMarks = SET_SLOT_KEYS.map((slot) => marks[slot]).filter((mark) => mark !== 'none');

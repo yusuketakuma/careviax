@@ -584,4 +584,35 @@ describe('/api/set-audits POST', () => {
       }),
     });
   });
+
+  it('rejects invalid cycle transitions before creating a set audit record', async () => {
+    medicationCycleFindFirstMock.mockResolvedValue({
+      id: 'cycle_1',
+      overall_status: 'visit_completed',
+      version: 1,
+    });
+
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'approved',
+          checklist: completeSetAuditChecklist(),
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'ステータス遷移が不正です: visit_completed → set_audited',
+    });
+    expect(setAuditCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitPreparationUpdateManyMock).not.toHaveBeenCalled();
+    expect(taskCreateMock).not.toHaveBeenCalled();
+    expect(workflowExceptionCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
 });

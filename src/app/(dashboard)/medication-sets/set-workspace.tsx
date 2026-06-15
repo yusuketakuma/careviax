@@ -190,6 +190,12 @@ function SlotMarksCell({ slots }: { slots: Record<SetSlotKey, SetSlotMark> }) {
   );
 }
 
+const SET_ROW_ACTIONS: Partial<Record<SetWorkspaceRow['status'], string>> = {
+  quantity_check: '→ セット監査へ',
+  partial_approved: '→ 再作業へ',
+  rejected: '→ 再作業へ',
+};
+
 function FacilityGroupCard({ group }: { group: SetWorkspaceFacilityGroup }) {
   const { detailed, aggregate } = aggregateSetRows(sortRowsByRoom(group.rows));
   const progressPercent =
@@ -284,16 +290,16 @@ function FacilityGroupCard({ group }: { group: SetWorkspaceFacilityGroup }) {
                   {row.assignee_label ?? '—'}
                 </TableCell>
                 <TableCell className="text-right">
-                  {row.status === 'quantity_check' ? (
+                  {SET_ROW_ACTIONS[row.status] ? (
                     <Link
-                      href="/handoff"
+                      href="/medication-sets"
                       className={buttonVariants({
                         variant: 'outline',
                         size: 'sm',
                         className: 'whitespace-nowrap text-primary',
                       })}
                     >
-                      → ハンドオフへ
+                      {SET_ROW_ACTIONS[row.status]}
                     </Link>
                   ) : null}
                 </TableCell>
