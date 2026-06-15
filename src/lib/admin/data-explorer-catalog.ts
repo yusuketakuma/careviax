@@ -122,6 +122,8 @@ const COVERAGE_CATEGORY_ENTRIES = {
     'PatientInsurance',
     'PatientLabObservation',
     'PatientFieldRevision',
+    'PatientMedicalProcedure',
+    'PatientNarcoticUse',
     'PrescriptionLine',
     'VisitScheduleContactLog',
     'VisitScheduleOverride',

@@ -46,6 +46,12 @@ const {
   patientFieldRevisionCreateMock,
   patientFieldRevisionUpdateManyMock,
   taskUpsertMock,
+  patientMedicalProcedureFindManyMock,
+  patientMedicalProcedureCreateMock,
+  patientMedicalProcedureUpdateManyMock,
+  patientNarcoticUseFindManyMock,
+  patientNarcoticUseCreateMock,
+  patientNarcoticUseUpdateManyMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
@@ -91,6 +97,12 @@ const {
   patientFieldRevisionCreateMock: vi.fn(),
   patientFieldRevisionUpdateManyMock: vi.fn(),
   taskUpsertMock: vi.fn(),
+  patientMedicalProcedureFindManyMock: vi.fn(),
+  patientMedicalProcedureCreateMock: vi.fn(),
+  patientMedicalProcedureUpdateManyMock: vi.fn(),
+  patientNarcoticUseFindManyMock: vi.fn(),
+  patientNarcoticUseCreateMock: vi.fn(),
+  patientNarcoticUseUpdateManyMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -244,6 +256,8 @@ describe('/api/patients/[id]', () => {
     patientSchedulePreferenceUpdateManyMock.mockResolvedValue({ count: 1 });
     patientSchedulePreferenceFindUniqueMock.mockResolvedValue(null);
     taskUpsertMock.mockResolvedValue({ id: 'task_1' });
+    patientMedicalProcedureFindManyMock.mockResolvedValue([]);
+    patientNarcoticUseFindManyMock.mockResolvedValue([]);
     patientInsuranceFindFirstMock.mockResolvedValue(null);
     patientInsuranceUpdateMock.mockResolvedValue({ id: 'insurance_1' });
     patientInsuranceCreateMock.mockResolvedValue({ id: 'insurance_1' });
@@ -391,6 +405,16 @@ describe('/api/patients/[id]', () => {
         },
         task: {
           upsert: taskUpsertMock,
+        },
+        patientMedicalProcedure: {
+          findMany: patientMedicalProcedureFindManyMock,
+          create: patientMedicalProcedureCreateMock,
+          updateMany: patientMedicalProcedureUpdateManyMock,
+        },
+        patientNarcoticUse: {
+          findMany: patientNarcoticUseFindManyMock,
+          create: patientNarcoticUseCreateMock,
+          updateMany: patientNarcoticUseUpdateManyMock,
         },
       }),
     );

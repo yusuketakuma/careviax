@@ -551,3 +551,49 @@ model PatientFieldRevision {
   @@index([patient_id, is_current])
   @@index([source_visit_record_id])
 }
+
+/// 在宅医療処置(TPN/CV/在宅酸素/経管/胃瘻/褥瘡/透析 等)の構造化保持。
+/// 移行期は CareCase.required_visit_support.home_visit_intake.special_medical_procedures(JSON)が SoT で、
+/// 本表は今後の書込を反映する追加レイヤ。各処置に開始日/終了日/確認元を持たせ算定・準備判断に使う。
+/// IncidentReport 同様 patient_id は FK を張らず org_id + RLS でテナント分離する。
+model PatientMedicalProcedure {
+  id             String    @id @default(cuid())
+  org_id         String
+  patient_id     String
+  case_id        String?
+  procedure_type String // specialProcedureLabels のキー(tpn/cv/cv_port/picc/home_oxygen/enteral/gastrostomy/pressure_ulcer/dialysis ...)
+  is_active      Boolean   @default(true)
+  start_date     DateTime? @db.Date
+  end_date       DateTime? @db.Date
+  source         String    @default("patient_detail_edit") // 確認元/由来
+  confirmed_by   String?
+  confirmed_at   DateTime?
+  notes          String?
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+
+  @@index([org_id])
+  @@index([patient_id, is_active])
+  @@index([patient_id, procedure_type])
+}
+
+/// 在宅麻薬使用(ベース/レスキュー)の構造化保持。PatientMedicalProcedure と同方針(JSON継続SoT・追加レイヤ)。
+model PatientNarcoticUse {
+  id            String    @id @default(cuid())
+  org_id        String
+  patient_id    String
+  case_id       String?
+  narcotic_kind String // base / rescue
+  is_active     Boolean   @default(true)
+  start_date    DateTime? @db.Date
+  end_date      DateTime? @db.Date
+  source        String    @default("patient_detail_edit")
+  confirmed_by  String?
+  confirmed_at  DateTime?
+  notes         String?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+
+  @@index([org_id])
+  @@index([patient_id, is_active])
+}

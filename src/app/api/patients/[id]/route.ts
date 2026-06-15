@@ -35,6 +35,7 @@ import {
   type PatientFieldRevisionEntry,
 } from '@/server/services/patient-field-revision';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
+import { syncStructuredHomeCare } from '@/server/services/patient-structured-care';
 import { batchResolveNames } from '@/lib/utils/name-resolver';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import {
@@ -2493,6 +2494,39 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
                 required_visit_support: normalizeInputJsonObject(nextRequiredVisitSupport),
               },
             });
+
+            // 在宅医療処置/麻薬を構造化テーブルへ反映(JSON継続SoT・追加レイヤ)。追加(=開始)は確認タスク化する。
+            const structuredCare = await syncStructuredHomeCare(tx, {
+              orgId: ctx.orgId,
+              patientId: id,
+              caseId: activeCase.id,
+              intake: nextHomeVisitIntake,
+              source: source_visit_record_id ? 'visit_record' : 'patient_detail_edit',
+              confirmedBy: ctx.userId,
+              startDate: revisionDate,
+            });
+            if (structuredCare.proceduresAdded.includes('tpn')) {
+              await upsertOperationalTask(tx, {
+                orgId: ctx.orgId,
+                taskType: 'patient_change_review',
+                title: 'TPN開始: 無菌調製体制・物品を確認',
+                priority: 'high',
+                dedupeKey: `patient-tpn-start-review:${id}`,
+                relatedEntityType: 'patient',
+                relatedEntityId: id,
+              });
+            }
+            if (structuredCare.narcoticsAdded.length > 0) {
+              await upsertOperationalTask(tx, {
+                orgId: ctx.orgId,
+                taskType: 'patient_change_review',
+                title: '麻薬開始: 残数確認・管理者・保管方法を確認',
+                priority: 'high',
+                dedupeKey: `patient-narcotic-start-review:${id}`,
+                relatedEntityType: 'patient',
+                relatedEntityId: id,
+              });
+            }
           }
         }
 

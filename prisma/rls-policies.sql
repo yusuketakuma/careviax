@@ -565,3 +565,18 @@ CREATE POLICY tenant_isolation ON "PatientFieldRevision"
   USING ("org_id" = public.app_enforced_org_id())
   WITH CHECK ("org_id" = public.app_enforced_org_id());
 ALTER TABLE "PatientFieldRevision" FORCE ROW LEVEL SECURITY;
+
+-- ─── PatientMedicalProcedure / PatientNarcoticUse (在宅医療処置/麻薬 構造化) ──
+ALTER TABLE "PatientMedicalProcedure" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "PatientMedicalProcedure";
+CREATE POLICY tenant_isolation ON "PatientMedicalProcedure"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "PatientMedicalProcedure" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "PatientNarcoticUse" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "PatientNarcoticUse";
+CREATE POLICY tenant_isolation ON "PatientNarcoticUse"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "PatientNarcoticUse" FORCE ROW LEVEL SECURITY;
