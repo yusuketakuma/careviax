@@ -312,10 +312,12 @@ describe('DispenseWorkbench', () => {
     expect(screen.getByRole('button', { name: '医薬品グループを作成' }).className).toContain(
       'min-h-[44px]',
     );
-    expect(screen.getByText('朝食後')).toBeTruthy();
-    expect(screen.getByText('夕食後')).toBeTruthy();
-    expect(screen.getByText('group_morning')).toBeTruthy();
-    expect(screen.getByLabelText('朝食後の包装方法').className).toContain('min-h-[44px]');
+    expect(screen.getAllByText('朝食後').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('夕食後').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('group_morning').length).toBeGreaterThan(0);
+    for (const methodSelect of screen.getAllByLabelText('朝食後の包装方法')) {
+      expect(methodSelect.className).toContain('min-h-[44px]');
+    }
 
     // 中央薬剤フォーマット: 包装種別ごとに時点量と加工指示を見える化
     expect(screen.getByTestId('medication-format-grid')).toBeTruthy();

@@ -65,7 +65,7 @@ function SlotValue({
   return (
     <span
       className={cn(
-        'inline-flex min-h-8 min-w-14 items-center justify-center rounded-md border px-2 text-sm font-semibold tabular-nums',
+        'inline-flex min-h-8 min-w-12 items-center justify-center rounded-md border px-1.5 text-sm font-semibold tabular-nums',
         slot.status === 'scheduled' && 'border-emerald-200 bg-emerald-50 text-emerald-800',
         slot.status === 'needs_check' && 'border-amber-200 bg-amber-50 text-amber-800',
         slot.status === 'none' && 'border-border/60 bg-muted/40 text-muted-foreground',
@@ -85,7 +85,7 @@ function DesktopGroupTable({ group }: { group: MedicationFormatGroup }) {
       className="rounded-lg border border-border/70 bg-card"
       data-testid="medication-format-group"
     >
-      <div className="border-b border-border/70 px-3 py-2.5">
+      <div className="border-b border-border/70 px-2.5 py-2">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <h3
             id={`medication-format-group-${group.id}`}
@@ -95,37 +95,37 @@ function DesktopGroupTable({ group }: { group: MedicationFormatGroup }) {
           </h3>
           <span className="text-xs text-muted-foreground">{group.lines.length}品目</span>
         </div>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">{group.description}</p>
+        <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{group.description}</p>
       </div>
 
       <div className="max-w-full overflow-x-auto overscroll-x-contain">
-        <table className="min-w-[920px] border-separate border-spacing-0 text-sm">
+        <table className="min-w-[780px] border-separate border-spacing-0 text-sm">
           <thead className="bg-muted/35 text-xs text-muted-foreground">
             <tr>
-              <th className="sticky left-0 z-10 w-72 border-b border-border/70 bg-muted px-3 py-2 text-left font-semibold">
+              <th className="sticky left-0 z-10 w-[200px] border-b border-border/70 bg-muted px-2.5 py-1.5 text-left font-semibold">
                 薬剤名
               </th>
-              <th className="w-32 border-b border-border/70 px-2 py-2 text-left font-semibold">
+              <th className="w-[80px] border-b border-border/70 px-2 py-2 text-left font-semibold">
                 用法
               </th>
               {SLOT_KEYS.map((slotKey) => (
                 <th
                   key={slotKey}
-                  className="w-20 border-b border-border/70 px-2 py-2 text-center font-semibold"
+                  className="w-[56px] border-b border-border/70 px-1.5 py-1.5 text-center font-semibold"
                 >
                   {group.lines[0]?.slots[slotKey].label}
                 </th>
               ))}
-              <th className="w-28 border-b border-border/70 px-2 py-2 text-left font-semibold">
+              <th className="w-[78px] border-b border-border/70 px-2 py-1.5 text-left font-semibold">
                 日数/総量
               </th>
-              <th className="w-32 border-b border-border/70 px-2 py-2 text-left font-semibold">
+              <th className="w-[64px] border-b border-border/70 px-2 py-1.5 text-left font-semibold">
                 加工
               </th>
-              <th className="w-48 border-b border-border/70 px-2 py-2 text-left font-semibold">
+              <th className="w-[100px] border-b border-border/70 px-2 py-1.5 text-left font-semibold">
                 備考
               </th>
-              <th className="w-24 border-b border-border/70 px-2 py-2 text-left font-semibold">
+              <th className="w-[60px] border-b border-border/70 px-2 py-1.5 text-left font-semibold">
                 状態
               </th>
             </tr>
@@ -133,32 +133,32 @@ function DesktopGroupTable({ group }: { group: MedicationFormatGroup }) {
           <tbody>
             {group.lines.map((line) => (
               <tr key={line.lineId} className="align-top odd:bg-background even:bg-muted/15">
-                <td className="sticky left-0 z-10 border-b border-border/50 bg-inherit px-3 py-3">
+                <td className="sticky left-0 z-10 border-b border-border/50 bg-inherit px-2.5 py-2">
                   <div className="font-bold leading-5 text-foreground">{line.drugName}</div>
                   {line.doseText ? (
                     <div className="mt-0.5 text-xs text-muted-foreground">{line.doseText}</div>
                   ) : null}
                   <LineBadges line={line} />
                 </td>
-                <td className="border-b border-border/50 px-2 py-3 text-foreground">
+                <td className="border-b border-border/50 px-2 py-2 text-foreground">
                   {line.usage}
                 </td>
                 {SLOT_KEYS.map((slotKey) => (
-                  <td key={slotKey} className="border-b border-border/50 px-2 py-2 text-center">
+                  <td key={slotKey} className="border-b border-border/50 px-1.5 py-1.5 text-center">
                     <SlotValue line={line} slotKey={slotKey} />
                   </td>
                 ))}
-                <td className="border-b border-border/50 px-2 py-3 text-foreground">
+                <td className="border-b border-border/50 px-2 py-2 text-foreground">
                   <div>{line.days != null ? `${line.days}日分` : '日数未登録'}</div>
                   <div className="text-xs text-muted-foreground">総量 {line.quantityLabel}</div>
                 </td>
-                <td className="border-b border-border/50 px-2 py-3 text-foreground">
+                <td className="border-b border-border/50 px-2 py-2 text-foreground">
                   {joinLabels(line.processingLabels, '通常')}
                 </td>
-                <td className="border-b border-border/50 px-2 py-3 text-muted-foreground">
+                <td className="border-b border-border/50 px-2 py-2 text-muted-foreground">
                   {joinLabels(line.notes, '—')}
                 </td>
-                <td className="border-b border-border/50 px-2 py-3">
+                <td className="border-b border-border/50 px-2 py-2">
                   <span
                     className={cn(
                       'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold',
@@ -185,7 +185,7 @@ function MobileGroupCards({ group }: { group: MedicationFormatGroup }) {
   return (
     <section
       aria-labelledby={`medication-format-mobile-group-${group.id}`}
-      className="rounded-lg border border-border/70 bg-card p-3"
+      className="rounded-lg border border-border/70 bg-card p-2.5"
       data-testid="medication-format-mobile-group"
     >
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -197,12 +197,12 @@ function MobileGroupCards({ group }: { group: MedicationFormatGroup }) {
         </h3>
         <span className="text-xs text-muted-foreground">{group.lines.length}品目</span>
       </div>
-      <p className="mt-1 text-xs leading-5 text-muted-foreground">{group.description}</p>
-      <div className="mt-3 space-y-2">
+      <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{group.description}</p>
+      <div className="mt-2 space-y-1.5">
         {group.lines.map((line) => (
           <article
             key={line.lineId}
-            className="rounded-lg border border-border/60 bg-background p-3"
+            className="rounded-lg border border-border/60 bg-background p-2.5"
             aria-label={`${line.drugName} ${line.usage}`}
           >
             <h4 className="text-sm font-bold leading-5 text-foreground">{line.drugName}</h4>
@@ -211,7 +211,7 @@ function MobileGroupCards({ group }: { group: MedicationFormatGroup }) {
               {line.doseText ? ` / ${line.doseText}` : ''} /{' '}
               {line.days != null ? `${line.days}日分` : '日数未登録'} / 総量 {line.quantityLabel}
             </p>
-            <div className="mt-3 grid grid-cols-2 gap-2" aria-label="服用時点">
+            <div className="mt-2 grid grid-cols-2 gap-1.5" aria-label="服用時点">
               {SLOT_KEYS.map((slotKey) => (
                 <div key={slotKey} className="flex items-center justify-between gap-2">
                   <span className="text-xs font-medium text-muted-foreground">
@@ -222,7 +222,7 @@ function MobileGroupCards({ group }: { group: MedicationFormatGroup }) {
               ))}
             </div>
             <LineBadges line={line} />
-            <dl className="mt-3 grid gap-2 text-xs">
+            <dl className="mt-2 grid gap-1.5 text-xs">
               <div>
                 <dt className="font-medium text-muted-foreground">加工</dt>
                 <dd className="mt-0.5 text-foreground">
@@ -251,14 +251,14 @@ export function MedicationFormatGrid({
 
   return (
     <section
-      className={cn('rounded-lg border border-border/70 bg-muted/20 p-3', className)}
+      className={cn('rounded-lg border border-border/70 bg-muted/20 p-2.5', className)}
       aria-label={title}
       data-testid="medication-format-grid"
     >
       <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
         <div>
           <h2 className="text-sm font-bold text-foreground">{title}</h2>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
             Excel 原票と同じ順に、包装方法・薬剤名・用法・朝昼夕眠前・加工指示を確認します。
           </p>
         </div>
@@ -268,17 +268,17 @@ export function MedicationFormatGrid({
       </div>
 
       {groups.length === 0 ? (
-        <p className="mt-3 rounded-md border border-dashed border-border/70 bg-card px-3 py-2 text-sm text-muted-foreground">
+        <p className="mt-2 rounded-md border border-dashed border-border/70 bg-card px-3 py-2 text-sm text-muted-foreground">
           表示できる薬剤明細はありません。
         </p>
       ) : (
         <>
-          <div className="mt-3 hidden space-y-3 md:block">
+          <div className="mt-2 hidden space-y-2 md:block">
             {groups.map((group) => (
               <DesktopGroupTable key={group.id} group={group} />
             ))}
           </div>
-          <div className="mt-3 space-y-3 md:hidden">
+          <div className="mt-2 space-y-2 md:hidden">
             {groups.map((group) => (
               <MobileGroupCards key={group.id} group={group} />
             ))}

@@ -98,7 +98,7 @@ function queueBadge(row: DispenseQueueRow): { label: string; className: string }
 function WorkbenchCard({ children, className, ...props }: React.ComponentProps<'section'>) {
   return (
     <section
-      className={cn('min-w-0 rounded-lg border border-border/70 bg-card p-4', className)}
+      className={cn('min-w-0 rounded-lg border border-border/70 bg-card p-3', className)}
       {...props}
     >
       {children}
@@ -292,49 +292,32 @@ function MedicationGroupPanel({
           一包化候補になる内服用法がありません。
         </p>
       ) : (
-        <div className="mt-3 max-w-full overflow-x-auto overscroll-x-contain">
-          <table className="w-full min-w-[560px] border-separate border-spacing-0 text-sm">
-            <thead className="text-xs text-muted-foreground">
-              <tr>
-                <th className="border-b border-border/70 px-2 py-1.5 text-left font-medium">
-                  作成
-                </th>
-                <th className="border-b border-border/70 px-2 py-1.5 text-left font-medium">
-                  グループ
-                </th>
-                <th className="border-b border-border/70 px-2 py-1.5 text-left font-medium">
-                  薬剤
-                </th>
-                <th className="border-b border-border/70 px-2 py-1.5 text-left font-medium">
-                  設定
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {groups.map((group) => {
-                const setting = settings[group.id] ?? { enabled: false, method: group.method };
-                return (
-                  <tr key={group.id} className="align-top">
-                    <td className="border-b border-border/50 px-2 py-2">
-                      <Checkbox
-                        aria-label={`${group.label}を医薬品グループにする`}
-                        checked={setting.enabled}
-                        onCheckedChange={(value) => onToggleGroup(group.id, value === true)}
-                      />
-                    </td>
-                    <td className="border-b border-border/50 px-2 py-2">
-                      <div className="font-bold text-foreground">{group.label}</div>
+        <>
+          <div className="mt-3 space-y-2 md:hidden">
+            {groups.map((group) => {
+              const setting = settings[group.id] ?? { enabled: false, method: group.method };
+              return (
+                <article
+                  key={group.id}
+                  className="rounded-lg border border-border/60 bg-background p-2.5"
+                >
+                  <div className="flex items-start gap-2.5">
+                    <Checkbox
+                      aria-label={`${group.label}を医薬品グループにする`}
+                      checked={setting.enabled}
+                      onCheckedChange={(value) => onToggleGroup(group.id, value === true)}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-bold leading-5 text-foreground">{group.label}</div>
                       <div className="text-xs text-muted-foreground">{group.id}</div>
-                    </td>
-                    <td className="border-b border-border/50 px-2 py-2">
-                      <div className="space-y-1">
+                      <div className="mt-2 space-y-1">
                         {group.lineNames.map((name) => (
-                          <div key={name} className="leading-5 text-foreground">
+                          <div key={name} className="text-sm leading-5 text-foreground">
                             {name}
                           </div>
                         ))}
                       </div>
-                      <div className="mt-1 flex flex-wrap gap-1.5">
+                      <div className="mt-2 flex flex-wrap gap-1.5">
                         {group.cautionLabels.map((label) => (
                           <span
                             key={label}
@@ -349,14 +332,15 @@ function MedicationGroupPanel({
                           </span>
                         ) : null}
                       </div>
-                    </td>
-                    <td className="border-b border-border/50 px-2 py-2">
-                      <label className="sr-only" htmlFor={`dispense-group-method-${group.id}`}>
-                        {group.label}の包装方法
+                      <label
+                        className="mt-2 block text-xs font-medium text-muted-foreground"
+                        htmlFor={`dispense-group-method-mobile-${group.id}`}
+                      >
+                        包装方法
                       </label>
                       <select
-                        id={`dispense-group-method-${group.id}`}
-                        className="min-h-[44px] w-full min-w-36 rounded-md border border-input bg-background px-2 text-sm sm:min-h-9"
+                        id={`dispense-group-method-mobile-${group.id}`}
+                        className="mt-1 min-h-[44px] w-full rounded-md border border-input bg-background px-2 text-sm"
                         value={setting.method}
                         onChange={(event) =>
                           onMethodChange(
@@ -377,13 +361,105 @@ function MedicationGroupPanel({
                           ? `${getDispenseMedicationGroupMethodLabel(setting.method)}で監査へ引継ぎ`
                           : '未作成'}
                       </p>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+          <div className="mt-3 hidden max-w-full overflow-x-auto overscroll-x-contain md:block">
+            <table className="w-full min-w-[560px] border-separate border-spacing-0 text-sm">
+              <thead className="text-xs text-muted-foreground">
+                <tr>
+                  <th className="border-b border-border/70 px-2 py-1.5 text-left font-medium">
+                    作成
+                  </th>
+                  <th className="border-b border-border/70 px-2 py-1.5 text-left font-medium">
+                    グループ
+                  </th>
+                  <th className="border-b border-border/70 px-2 py-1.5 text-left font-medium">
+                    薬剤
+                  </th>
+                  <th className="border-b border-border/70 px-2 py-1.5 text-left font-medium">
+                    設定
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {groups.map((group) => {
+                  const setting = settings[group.id] ?? { enabled: false, method: group.method };
+                  return (
+                    <tr key={group.id} className="align-top">
+                      <td className="border-b border-border/50 px-2 py-2">
+                        <Checkbox
+                          aria-label={`${group.label}を医薬品グループにする`}
+                          checked={setting.enabled}
+                          onCheckedChange={(value) => onToggleGroup(group.id, value === true)}
+                        />
+                      </td>
+                      <td className="border-b border-border/50 px-2 py-2">
+                        <div className="font-bold text-foreground">{group.label}</div>
+                        <div className="text-xs text-muted-foreground">{group.id}</div>
+                      </td>
+                      <td className="border-b border-border/50 px-2 py-2">
+                        <div className="space-y-1">
+                          {group.lineNames.map((name) => (
+                            <div key={name} className="leading-5 text-foreground">
+                              {name}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          {group.cautionLabels.map((label) => (
+                            <span
+                              key={label}
+                              className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-800"
+                            >
+                              {label}
+                            </span>
+                          ))}
+                          {group.crushProhibitedCount > 0 ? (
+                            <span className="inline-flex rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-bold text-red-800">
+                              粉砕禁止 {group.crushProhibitedCount}件
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="border-b border-border/50 px-2 py-2">
+                        <label className="sr-only" htmlFor={`dispense-group-method-${group.id}`}>
+                          {group.label}の包装方法
+                        </label>
+                        <select
+                          id={`dispense-group-method-${group.id}`}
+                          className="min-h-[44px] w-full min-w-36 rounded-md border border-input bg-background px-2 text-sm sm:min-h-9"
+                          value={setting.method}
+                          onChange={(event) =>
+                            onMethodChange(
+                              group.id,
+                              event.target.value as DispenseMedicationGroupMethod,
+                            )
+                          }
+                          disabled={!setting.enabled}
+                        >
+                          {GROUP_METHOD_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {setting.enabled
+                            ? `${getDispenseMedicationGroupMethodLabel(setting.method)}で監査へ引継ぎ`
+                            : '未作成'}
+                        </p>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </section>
   );
@@ -775,14 +851,14 @@ export function DispenseWorkbench() {
         </nav>
       </div>
 
-      <div className="mt-4">
+      <div className="mt-3">
         <MainWorkflowCompactNav
           currentSteps={['dispensing']}
           description="調剤の安全確認、計数、監査送りまでを現行ワークベンチ上で完結します。"
         />
       </div>
 
-      <div className="mt-4 grid min-w-0 gap-4 xl:grid-cols-[260px_minmax(0,1fr)] xl:items-start 2xl:grid-cols-[260px_minmax(0,1fr)_minmax(250px,280px)]">
+      <div className="mt-3 grid min-w-0 gap-2 xl:grid-cols-[240px_minmax(0,1fr)] xl:items-start 2xl:grid-cols-[250px_minmax(0,1fr)_minmax(250px,280px)]">
         {/* 左: 調剤キュー */}
         <div className="order-2 xl:order-none">
           <DispenseQueuePanel
@@ -796,7 +872,7 @@ export function DispenseWorkbench() {
         </div>
 
         {/* 中央: いまの1件 */}
-        <div className="order-1 min-w-0 space-y-3 xl:order-none">
+        <div className="order-1 min-w-0 space-y-2.5 xl:order-none">
           <WorkbenchCard aria-label="いまの1件" data-testid="dispense-now-card">
             {!activeTaskId ? (
               <p className="text-sm text-muted-foreground">
@@ -839,16 +915,16 @@ export function DispenseWorkbench() {
                   title="中央薬剤フォーマット"
                   groups={medicationFormatGroups}
                   mode="dispense"
-                  className="mt-3"
+                  className="mt-2.5"
                 />
 
                 {safetySummary ? <SafetySummaryPanel summary={safetySummary} /> : null}
 
                 <div
-                  className="mt-3 grid gap-3 lg:grid-cols-[minmax(280px,0.92fr)_minmax(0,1.08fr)]"
+                  className="mt-2.5 grid gap-2.5 lg:grid-cols-[minmax(280px,0.92fr)_minmax(0,1.08fr)]"
                   data-testid="dispense-terminal-layout"
                 >
-                  <div className="space-y-3">
+                  <div className="min-w-0 space-y-2.5">
                     {/* セーフティボード(危険タグは隠さない) */}
                     <SafetyBoard
                       allergy={workbench.safety.allergy ?? undefined}
@@ -897,12 +973,12 @@ export function DispenseWorkbench() {
                       }
                     />
                   </div>
-                  <div className="min-w-0 space-y-3">
+                  <div className="min-w-0 space-y-2.5">
                     {/* 処方比較(前回 / 今回 / 差) */}
                     <ComparisonTable workbench={workbench} />
 
                     {/* 確認チェックリスト */}
-                    <ul className="space-y-3" data-testid="dispense-checklist">
+                    <ul className="space-y-2" data-testid="dispense-checklist">
                       {checklistItems.map((item) => (
                         <li key={item.id} className="flex items-center gap-3">
                           <Checkbox
@@ -929,7 +1005,7 @@ export function DispenseWorkbench() {
                 </div>
 
                 {/* アクション行(主操作は 1 つだけ青) */}
-                <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border/60 pt-4">
+                <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border/60 pt-3">
                   <Button
                     type="button"
                     className="min-h-[44px]"
@@ -973,7 +1049,7 @@ export function DispenseWorkbench() {
 
           {/* 割り込み防護の注記バー */}
           <p
-            className="rounded-lg border border-blue-200 bg-blue-50/70 px-4 py-2.5 text-sm leading-6 text-blue-900"
+            className="rounded-lg border border-blue-200 bg-blue-50/70 px-3 py-2 text-sm leading-6 text-blue-900"
             data-testid="interrupt-guard-note"
           >
             割り込み防護:

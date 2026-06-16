@@ -221,7 +221,7 @@ export function MainWorkflowCompactNav({
 
   return (
     <section
-      className="min-w-0 rounded-2xl border border-border/70 bg-card px-4 py-3 shadow-sm sm:px-5 sm:py-4"
+      className="min-w-0 overflow-hidden rounded-xl border border-border/70 bg-card px-3 py-2.5 shadow-sm sm:px-4 sm:py-3"
       data-testid={dataTestId}
     >
       <div className="space-y-1">
@@ -230,8 +230,8 @@ export function MainWorkflowCompactNav({
       </div>
 
       {primaryActiveStep ? (
-        <div className="mt-3 rounded-xl border border-primary/30 bg-primary/[0.06] p-2.5 md:hidden">
-          <div className="flex items-start justify-between gap-3">
+        <div className="mt-2 rounded-lg border border-primary/30 bg-primary/[0.06] p-2 md:hidden">
+          <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 space-y-1">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">
                 現在地
@@ -245,11 +245,11 @@ export function MainWorkflowCompactNav({
             </span>
           </div>
 
-          <div className="mt-2 flex flex-wrap gap-2">
+          <div className="mt-2 flex flex-wrap gap-1.5">
             {previousStep ? (
               <Link
                 href={previousStep.href}
-                className="inline-flex min-h-[44px] items-center rounded-lg border border-border/70 bg-background px-3 text-xs font-medium text-muted-foreground"
+                className="inline-flex min-h-[44px] min-w-[44px] items-center rounded-md border border-border/70 bg-background px-2.5 text-xs font-medium text-muted-foreground"
               >
                 前: {previousStep.title}
               </Link>
@@ -257,7 +257,7 @@ export function MainWorkflowCompactNav({
             {nextStep ? (
               <Link
                 href={nextStep.href}
-                className="inline-flex min-h-[44px] items-center rounded-lg border border-border/70 bg-background px-3 text-xs font-medium text-muted-foreground"
+                className="inline-flex min-h-[44px] min-w-[44px] items-center rounded-md border border-border/70 bg-background px-2.5 text-xs font-medium text-muted-foreground"
               >
                 次: {nextStep.title}
               </Link>
@@ -267,7 +267,7 @@ export function MainWorkflowCompactNav({
       ) : null}
 
       <ol
-        className="mt-4 flex max-h-24 max-w-full snap-x gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain pb-1 md:grid md:max-h-none md:grid-cols-4 md:overflow-visible md:pb-0 xl:grid-cols-8"
+        className="mt-3 flex max-h-20 w-full min-w-0 max-w-full snap-x gap-1.5 overflow-x-auto overflow-y-hidden overscroll-x-contain pb-1 md:grid md:max-h-none md:grid-cols-4 md:overflow-visible md:pb-0 xl:grid-cols-8"
         aria-label="主業務フローの工程一覧"
       >
         {MAIN_WORKFLOW_STEPS.map((step) => {
@@ -276,13 +276,13 @@ export function MainWorkflowCompactNav({
             <li key={`compact-${step.key}`} className="min-w-40 snap-start md:min-w-0">
               <div
                 className={cn(
-                  'h-20 rounded-xl border px-3 py-2 transition-colors md:h-full md:py-3',
+                  'h-16 rounded-lg border px-2.5 py-2 transition-colors md:h-full',
                   isActive
                     ? 'border-primary/40 bg-primary/[0.08] shadow-sm'
                     : 'border-border/70 bg-background',
                 )}
               >
-                <div className="space-y-2">
+                <div className="space-y-1">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                       {step.step}
@@ -300,7 +300,7 @@ export function MainWorkflowCompactNav({
                     <Link
                       href={step.href}
                       className={cn(
-                        'inline-flex min-h-11 min-w-0 items-center truncate rounded-lg px-2 py-2 text-sm font-semibold transition-colors hover:text-primary',
+                        'inline-flex min-h-[44px] min-w-[44px] items-center truncate rounded-md px-1.5 py-1 text-sm font-semibold transition-colors hover:text-primary md:min-h-9 md:min-w-0',
                         isActive ? 'text-primary' : 'text-foreground',
                       )}
                     >

@@ -140,7 +140,7 @@ const EMERGENCY_OPTIONS = [
 
 function WorkbenchCard({ children, className, ...props }: React.ComponentProps<'section'>) {
   return (
-    <section className={cn('rounded-lg border border-border/70 bg-card p-4', className)} {...props}>
+    <section className={cn('rounded-lg border border-border/70 bg-card p-3', className)} {...props}>
       {children}
     </section>
   );
@@ -727,14 +727,14 @@ export function AuditWorkbench() {
         </nav>
       </div>
 
-      <div className="mt-4">
+      <div className="mt-3">
         <MainWorkflowCompactNav
           currentSteps={['auditing']}
           description="調剤済み処方の差異確認、二人制監査、セット送りまでを現行ワークベンチ上で完結します。"
         />
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)] xl:items-start 2xl:grid-cols-[260px_minmax(0,1fr)_minmax(250px,280px)]">
+      <div className="mt-3 grid gap-2 xl:grid-cols-[240px_minmax(0,1fr)] xl:items-start 2xl:grid-cols-[250px_minmax(0,1fr)_minmax(250px,280px)]">
         {/* 左: 私の監査キュー */}
         <div className="order-2 xl:order-none">
           <AuditQueuePanel
@@ -833,7 +833,7 @@ export function AuditWorkbench() {
                 title="監査薬剤フォーマット"
                 groups={medicationFormatGroups}
                 mode="dispenseAudit"
-                className="mt-3"
+                className="mt-2.5"
               />
 
               {auditHandoffSummary ? <AuditHandoffSummary summary={auditHandoffSummary} /> : null}
@@ -856,7 +856,7 @@ export function AuditWorkbench() {
               />
 
               {/* 工程チップ + 確定メッセージ */}
-              <div className="mt-4 flex flex-wrap items-center gap-2">
+              <div className="mt-3 flex flex-wrap items-center gap-2">
                 <span className="inline-flex items-center rounded-md bg-primary px-2.5 py-1 text-xs font-bold text-primary-foreground">
                   監査
                 </span>
@@ -882,7 +882,7 @@ export function AuditWorkbench() {
               </div>
 
               {/* アクション行: 合格 / 差戻し / 保留 / 緊急例外 */}
-              <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border/60 pt-4">
+              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border/60 pt-3">
                 <Button
                   type="button"
                   className="min-h-[44px]"
