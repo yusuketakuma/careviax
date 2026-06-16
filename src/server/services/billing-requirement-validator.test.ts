@@ -429,4 +429,23 @@ describe('getBillingCadencePreview', () => {
     });
     expect(preview.current_week_count).toBe(3);
   });
+
+  it('uses weekly buckets when suggesting dates for special patients', async () => {
+    prismaMock.visitSchedule.findMany.mockResolvedValue([
+      { scheduled_date: new Date('2026-04-13') },
+      { scheduled_date: new Date('2026-04-14') },
+      { scheduled_date: new Date('2026-04-21') },
+    ]);
+
+    const preview = await getBillingCadencePreview({
+      ...baseArgs,
+      proposedDate: new Date('2026-04-15'),
+      specialCapEligible: true,
+    });
+
+    expect(prismaMock.visitSchedule.findMany).toHaveBeenCalledTimes(1);
+    expect(preview.current_week_count).toBe(2);
+    expect(preview.next_billable_date).toBe('2026-04-20');
+    expect(preview.suggested_dates[0]).toBe('2026-04-20');
+  });
 });
