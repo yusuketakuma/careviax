@@ -104,6 +104,15 @@ type ActionItem = {
   converted_at?: string;
 };
 
+const NOTE_TYPE_LABELS: Record<string, string> = {
+  regular: '定例会議',
+  pre_discharge: '退院前',
+  service_manager: '担当者会議',
+  care_team: '担当者ミーティング',
+  emergency: '緊急',
+  death_conference: 'デスカンファ',
+};
+
 type ConferenceNote = {
   id: string;
   note_type:
@@ -347,6 +356,74 @@ function NoteCard({
   );
 }
 
+function SummaryNoteCard({
+  note,
+  selected,
+  loading,
+  onSelect,
+}: {
+  note: ConferenceNote;
+  selected: boolean;
+  loading: boolean;
+  onSelect: (noteId: string) => void;
+}) {
+  const dateStr = format(parseISO(note.conference_date), 'yyyy年M月d日(E) HH:mm', {
+    locale: ja,
+  });
+  const reportCount = new Set([
+    ...(note.sync_summary?.report_draft_ids ?? []),
+    ...(note.generated_report_id ? [note.generated_report_id] : []),
+  ]).size;
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <CardTitle className="text-base">{note.title}</CardTitle>
+            <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Calendar className="size-3.5" aria-hidden="true" />
+                {dateStr}
+              </span>
+              <span>{NOTE_TYPE_LABELS[note.note_type] ?? note.note_type}</span>
+              {note.participants.length > 0 ? (
+                <span className="flex items-center gap-1">
+                  <Users className="size-3.5" aria-hidden="true" />
+                  {note.participants.map((item) => item.name).join('、')}
+                </span>
+              ) : null}
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant={selected ? 'secondary' : 'outline'}
+            onClick={() => onSelect(note.id)}
+            disabled={loading}
+          >
+            {loading ? '読込中' : selected ? '詳細表示中' : '詳細を開く'}
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-wrap gap-1.5">
+          {reportCount > 0 ? <Badge variant="outline">報告書 {reportCount}件</Badge> : null}
+          {note.sync_summary?.billing_candidate_id ? (
+            <Badge variant="outline">算定候補あり</Badge>
+          ) : null}
+          {note.sync_summary?.visit_proposal_id ? (
+            <Badge variant="outline">訪問候補あり</Badge>
+          ) : null}
+          {note.sync_summary?.tasks_created ? (
+            <Badge variant="outline">タスク {note.sync_summary.tasks_created}件</Badge>
+          ) : null}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function ActivityCard({ activity }: { activity: CommunityActivity }) {
   const dateStr = format(parseISO(activity.activity_date), 'yyyy年M月d日(E) HH:mm', {
     locale: ja,
@@ -426,6 +503,7 @@ export function ConferencesContent({
   const [noteViewMode, setNoteViewMode] = useState<'list' | 'calendar'>(initialViewMode);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
   const [selectedCalendarDate, setSelectedCalendarDate] = useState<Date | null>(null);
+  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [selectedNoteType, setSelectedNoteType] = useState<
     'all' | 'pre_discharge' | 'service_manager' | 'death_conference' | 'care_team'
   >(initialNoteType);
@@ -468,7 +546,9 @@ export function ConferencesContent({
   const notesQuery = useQuery({
     queryKey: ['conference-notes', orgId, selectedNoteType, contextPatientId, contextCaseId],
     queryFn: async () => {
-      const params = new URLSearchParams();
+      const params = new URLSearchParams({
+        detail_level: 'summary',
+      });
       if (selectedNoteType !== 'all') {
         params.set('conference_type', selectedNoteType);
       }
@@ -488,6 +568,20 @@ export function ConferencesContent({
       });
     },
     enabled: !!orgId,
+  });
+
+  const selectedNoteDetailQuery = useQuery({
+    queryKey: ['conference-note-detail', orgId, selectedNoteId],
+    queryFn: async () => {
+      if (!selectedNoteId) return null;
+      const response = await fetch(`/api/conference-notes/${selectedNoteId}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!response.ok) throw new Error('カンファレンスノート詳細の取得に失敗しました');
+      const payload = (await response.json()) as { data: ConferenceNote };
+      return payload.data;
+    },
+    enabled: Boolean(orgId && selectedNoteId),
   });
 
   const activitiesQuery = useQuery({
@@ -531,6 +625,7 @@ export function ConferencesContent({
       const params = new URLSearchParams({
         date_from: format(monthStart, 'yyyy-MM-dd'),
         date_to: format(monthEnd, 'yyyy-MM-dd'),
+        detail_level: 'summary',
       });
       if (selectedNoteType !== 'all') {
         params.set('conference_type', selectedNoteType);
@@ -599,6 +694,11 @@ export function ConferencesContent({
     onSuccess: (payload) => {
       queryClient.invalidateQueries({ queryKey: ['conference-notes', orgId] });
       queryClient.invalidateQueries({ queryKey: ['conference-notes-calendar', orgId] });
+      if (contextPatientId) {
+        queryClient.invalidateQueries({
+          queryKey: ['patient-home-operations', contextPatientId, orgId],
+        });
+      }
       setNewNoteOpen(false);
       resetNoteForm();
       toast.success('カンファレンスノートを作成しました');
@@ -657,6 +757,11 @@ export function ConferencesContent({
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['conference-notes', orgId] });
       await queryClient.invalidateQueries({ queryKey: ['conference-notes-calendar', orgId] });
+      if (selectedNoteId) {
+        await queryClient.invalidateQueries({
+          queryKey: ['conference-note-detail', orgId, selectedNoteId],
+        });
+      }
       await queryClient.invalidateQueries({ queryKey: ['tasks', orgId] });
       toast.success('アクションアイテムをタスク化しました');
     },
@@ -707,9 +812,15 @@ export function ConferencesContent({
             : ''
         }`,
       );
+      const generatedForNoteId = reportDialogNote?.id ?? null;
       setReportDialogNote(null);
       queryClient.invalidateQueries({ queryKey: ['conference-notes', orgId] });
       queryClient.invalidateQueries({ queryKey: ['conference-notes-calendar', orgId] });
+      if (generatedForNoteId) {
+        queryClient.invalidateQueries({
+          queryKey: ['conference-note-detail', orgId, generatedForNoteId],
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ['care-reports', orgId] });
       queryClient.invalidateQueries({ queryKey: ['care-report-analytics', orgId] });
     },
@@ -897,7 +1008,9 @@ export function ConferencesContent({
       ? initialFocus === 'activities'
         ? 'ホームから地域活動と紹介導線にフォーカスして開いています。'
         : 'ホームからカンファレンス記録にフォーカスして開いています。'
-      : null;
+      : initialContext === 'patient_detail'
+        ? '患者詳細からこの患者のカンファレンス記録にフォーカスして開いています。'
+        : null;
   const externalProfessionals = externalProfessionalsQuery.data?.data ?? [];
   const prescriberInstitutionSuggestion = prescriberInstitutionSuggestionQuery.data?.data ?? null;
   const calendarMonthStart = startOfMonth(calendarMonth);
@@ -1125,13 +1238,38 @@ export function ConferencesContent({
               </div>
             ) : (
               notes.map((note) => (
-                <NoteCard
-                  key={note.id}
-                  note={note}
-                  onConvertToTask={handleConvertToTask}
-                  onGenerateReport={handleGenerateReport}
-                  generating={generateReportMutation.isPending}
-                />
+                <div key={note.id} className="space-y-3">
+                  <SummaryNoteCard
+                    note={note}
+                    selected={selectedNoteId === note.id}
+                    loading={
+                      selectedNoteId === note.id &&
+                      selectedNoteDetailQuery.isLoading &&
+                      !selectedNoteDetailQuery.data
+                    }
+                    onSelect={(noteId) =>
+                      setSelectedNoteId((current) => (current === noteId ? null : noteId))
+                    }
+                  />
+                  {selectedNoteId === note.id ? (
+                    selectedNoteDetailQuery.data ? (
+                      <NoteCard
+                        note={selectedNoteDetailQuery.data}
+                        onConvertToTask={handleConvertToTask}
+                        onGenerateReport={handleGenerateReport}
+                        generating={generateReportMutation.isPending}
+                      />
+                    ) : selectedNoteDetailQuery.isError ? (
+                      <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                        カンファレンス詳細を取得できませんでした
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+                        カンファレンス詳細を読み込んでいます
+                      </div>
+                    )
+                  ) : null}
+                </div>
               ))
             )}
           </div>
@@ -1262,13 +1400,37 @@ export function ConferencesContent({
                 ) : (
                   <div className="space-y-3">
                     {selectedCalendarNotes.map((note) => (
-                      <NoteCard
+                      <div
                         key={note.id}
-                        note={note}
-                        onConvertToTask={handleConvertToTask}
-                        onGenerateReport={handleGenerateReport}
-                        generating={generateReportMutation.isPending}
-                      />
+                        className="rounded-lg border border-border bg-background p-3"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-medium text-foreground">{note.title}</p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {format(parseISO(note.conference_date), 'HH:mm')} /{' '}
+                              {NOTE_TYPE_LABELS[note.note_type] ?? note.note_type}
+                            </p>
+                          </div>
+                          {note.sync_summary?.visit_proposal_id ? (
+                            <Badge variant="outline">訪問候補あり</Badge>
+                          ) : null}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {note.generated_report_id ||
+                          note.sync_summary?.report_draft_ids?.length ? (
+                            <Badge variant="outline">報告書あり</Badge>
+                          ) : null}
+                          {note.sync_summary?.billing_candidate_id ? (
+                            <Badge variant="outline">算定候補あり</Badge>
+                          ) : null}
+                          {note.sync_summary?.tasks_created ? (
+                            <Badge variant="outline">
+                              タスク {note.sync_summary.tasks_created}件
+                            </Badge>
+                          ) : null}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}

@@ -48,13 +48,13 @@ const visitScheduleReorderSchema = z.object({
     .array(
       z.object({
         schedule_id: z.string().trim().min(1),
-        route_order: z.number().int().min(1),
+        route_order: z.number().int().min(1).optional(),
         scheduled_date: visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional(),
         pharmacist_id: z.string().trim().min(1).optional(),
         vehicle_resource_id: z.string().trim().min(1).nullable().optional(),
       }),
     )
-    .min(1),
+    .default([]),
   vehicle_assignment: z
     .object({
       mode: z.literal('assign_if_unassigned'),
@@ -150,21 +150,26 @@ export const PATCH = withAuthContext(
     }
     const uniqueScheduleIds = dedupedUpdates.map((item) => item.schedule_id);
     const vehicleAssignment = parsed.data.vehicle_assignment;
+    if (!vehicleAssignment && dedupedUpdates.length === 0) {
+      return validationError('順路更新または車両反映対象を指定してください');
+    }
+    if (!vehicleAssignment && dedupedUpdates.some((item) => item.route_order === undefined)) {
+      return validationError('順路更新には route_order が必要です');
+    }
     if (vehicleAssignment) {
-      const updateTargetIds = new Set(uniqueScheduleIds);
       const duplicateVehicleTargets = new Set<string>();
       const seenVehicleTargets = new Set<string>();
       for (const scheduleId of vehicleAssignment.schedule_ids) {
         if (seenVehicleTargets.has(scheduleId)) duplicateVehicleTargets.add(scheduleId);
         seenVehicleTargets.add(scheduleId);
       }
-      if (
-        duplicateVehicleTargets.size > 0 ||
-        vehicleAssignment.schedule_ids.some((scheduleId) => !updateTargetIds.has(scheduleId))
-      ) {
-        return validationError('車両反映対象は順路更新対象の訪問予定だけ指定できます');
+      if (duplicateVehicleTargets.size > 0) {
+        return validationError('同じ訪問予定を複数回指定できません');
       }
     }
+    const targetScheduleIds = Array.from(
+      new Set([...uniqueScheduleIds, ...(vehicleAssignment?.schedule_ids ?? [])]),
+    );
 
     let result: VisitScheduleReorderResult;
     try {
@@ -175,7 +180,7 @@ export const PATCH = withAuthContext(
           const schedules = await tx.visitSchedule.findMany({
             where: {
               org_id: ctx.orgId,
-              id: { in: uniqueScheduleIds },
+              id: { in: targetScheduleIds },
               ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
             },
             select: {
@@ -194,16 +199,22 @@ export const PATCH = withAuthContext(
             },
           });
 
-          if (schedules.length !== uniqueScheduleIds.length) {
+          if (schedules.length !== targetScheduleIds.length) {
             return { error: 'not_found' as const };
           }
 
           const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]));
           const vehicleAssignmentScheduleIds = new Set(vehicleAssignment?.schedule_ids ?? []);
-          const effectiveUpdates = dedupedUpdates.map((item) =>
-            vehicleAssignment && vehicleAssignmentScheduleIds.has(item.schedule_id)
-              ? { ...item, vehicle_resource_id: vehicleAssignment.vehicle_resource_id }
-              : item,
+          const updateByScheduleId = new Map(
+            dedupedUpdates.map((item) => [item.schedule_id, item]),
+          );
+          const effectiveUpdates = targetScheduleIds.map((scheduleId) =>
+            vehicleAssignment && vehicleAssignmentScheduleIds.has(scheduleId)
+              ? {
+                  ...(updateByScheduleId.get(scheduleId) ?? { schedule_id: scheduleId }),
+                  vehicle_resource_id: vehicleAssignment.vehicle_resource_id,
+                }
+              : updateByScheduleId.get(scheduleId)!,
           );
           if (!canBypassVisitScheduleAssignmentAccess(ctx)) {
             const pharmacistChange = effectiveUpdates.find((item) => {
@@ -245,6 +256,7 @@ export const PATCH = withAuthContext(
           }
 
           const routeCellByKey = effectiveUpdates.reduce((map, item) => {
+            if (item.route_order === undefined) return map;
             const schedule = scheduleById.get(item.schedule_id);
             if (!schedule) return map;
             const targetDate = item.scheduled_date ?? formatDateKey(schedule.scheduled_date);
@@ -284,35 +296,41 @@ export const PATCH = withAuthContext(
             return { error: 'confirmation_context_mismatch' as const };
           }
 
-          const existingRouteOrderConflict = await tx.visitSchedule.findFirst({
-            where: {
-              org_id: ctx.orgId,
-              id: { notIn: uniqueScheduleIds },
-              OR: routeCells.map((cell) => ({
-                pharmacist_id: cell.pharmacistId,
-                scheduled_date: new Date(cell.scheduledDate),
-                route_order: cell.routeOrder,
-              })),
-            },
-            select: { id: true },
-          });
+          const existingRouteOrderConflict =
+            routeCells.length === 0
+              ? null
+              : await tx.visitSchedule.findFirst({
+                  where: {
+                    org_id: ctx.orgId,
+                    id: { notIn: targetScheduleIds },
+                    OR: routeCells.map((cell) => ({
+                      pharmacist_id: cell.pharmacistId,
+                      scheduled_date: new Date(cell.scheduledDate),
+                      route_order: cell.routeOrder,
+                    })),
+                  },
+                  select: { id: true },
+                });
           if (existingRouteOrderConflict) {
             return { error: 'duplicate_route_order' as const };
           }
 
-          const existingProposalRouteOrderConflict = await tx.visitScheduleProposal.findFirst({
-            where: {
-              org_id: ctx.orgId,
-              finalized_schedule_id: null,
-              proposal_status: { in: OPEN_PROPOSAL_STATUSES },
-              OR: routeCells.map((cell) => ({
-                proposed_pharmacist_id: cell.pharmacistId,
-                proposed_date: new Date(cell.scheduledDate),
-                route_order: cell.routeOrder,
-              })),
-            },
-            select: { id: true },
-          });
+          const existingProposalRouteOrderConflict =
+            routeCells.length === 0
+              ? null
+              : await tx.visitScheduleProposal.findFirst({
+                  where: {
+                    org_id: ctx.orgId,
+                    finalized_schedule_id: null,
+                    proposal_status: { in: OPEN_PROPOSAL_STATUSES },
+                    OR: routeCells.map((cell) => ({
+                      proposed_pharmacist_id: cell.pharmacistId,
+                      proposed_date: new Date(cell.scheduledDate),
+                      route_order: cell.routeOrder,
+                    })),
+                  },
+                  select: { id: true },
+                });
           if (existingProposalRouteOrderConflict) {
             return { error: 'duplicate_route_order' as const };
           }
@@ -400,7 +418,8 @@ export const PATCH = withAuthContext(
           const routeOrderLocked = effectiveUpdates.find((item) => {
             const schedule = scheduleById.get(item.schedule_id);
             if (!schedule) return false;
-            const routeOrderChanging = schedule.route_order !== item.route_order;
+            const routeOrderChanging =
+              item.route_order !== undefined && schedule.route_order !== item.route_order;
             return routeOrderChanging && !ROUTE_REORDERABLE_STATUSES.has(schedule.schedule_status);
           });
           if (routeOrderLocked) return { error: 'route_status_locked' as const };
@@ -408,7 +427,7 @@ export const PATCH = withAuthContext(
           const confirmedRouteChange = effectiveUpdates.find((item) => {
             const schedule = scheduleById.get(item.schedule_id);
             if (!schedule?.confirmed_at) return false;
-            return schedule.route_order !== item.route_order;
+            return item.route_order !== undefined && schedule.route_order !== item.route_order;
           });
           if (confirmedRouteChange) return { error: 'confirmed_route_change' as const };
 
@@ -565,7 +584,7 @@ export const PATCH = withAuthContext(
                   ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
                 },
                 data: {
-                  route_order: item.route_order,
+                  ...(item.route_order !== undefined ? { route_order: item.route_order } : {}),
                   ...(item.scheduled_date ? { scheduled_date: new Date(item.scheduled_date) } : {}),
                   ...(item.pharmacist_id ? { pharmacist_id: item.pharmacist_id } : {}),
                   ...(targetShift ? { site_id: targetShift.site_id } : {}),
@@ -582,7 +601,7 @@ export const PATCH = withAuthContext(
           await createAuditLogEntry(tx, ctx, {
             action: 'visit_schedules_reordered',
             targetType: 'VisitScheduleBatch',
-            targetId: uniqueScheduleIds[0],
+            targetId: targetScheduleIds[0],
             changes: {
               updates: effectiveUpdates.map((item) => ({
                 schedule_id: item.schedule_id,
@@ -602,7 +621,7 @@ export const PATCH = withAuthContext(
 
           return {
             case_ids: Array.from(new Set(schedules.map((schedule) => schedule.case_id))),
-            schedule_ids: uniqueScheduleIds,
+            schedule_ids: targetScheduleIds,
             vehicle_assignment: vehicleAssignment
               ? {
                   vehicle_resource_id: vehicleAssignment.vehicle_resource_id,

@@ -4,7 +4,11 @@
  * の集約(docs/design-gap-analysis-new.md 10_report)。
  */
 
-export type ReportDraftRowStatus = 'before_visit' | 'ready_to_generate' | 'draft_ready';
+export type ReportDraftRowStatus =
+  | 'before_visit'
+  | 'ready_to_generate'
+  | 'draft_ready'
+  | 'report_existing';
 
 export type ReportDraftRow = {
   id: string;
@@ -14,7 +18,7 @@ export type ReportDraftRow = {
   patient_label: string;
   /** 「ケアマネ(中島様)」「医師(山本先生)+ケアマネ」「施設(看護師長)」 */
   recipient_label: string;
-  /** before_visit=「訪問後に下書き」/ ready_to_generate=「未作成」/ draft_ready=「下書きあり」 */
+  /** before_visit=「訪問後に下書き」/ ready_to_generate=「未作成」/ draft_ready=「下書きあり」/ report_existing=「作成済み」 */
   status: ReportDraftRowStatus;
   /** 訪問記録が確定し、報告書下書きを自動作成できる場合に入る。 */
   visit_record_id: string | null;

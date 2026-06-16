@@ -11,6 +11,7 @@ export type DayBoardVisit = {
   visit_type: string;
   schedule_status: string;
   priority: string;
+  site_id: string | null;
   /** 同一担当・同一日の訪問順。未設定は時刻順の仮順で表示する */
   route_order: number | null;
   /** time_window_start(ISO)。未設定は null(ガントに置かない) */
@@ -76,6 +77,7 @@ export type ScheduleDayBoardResponse = {
 export type DayBoardVehicleResource = {
   id: string;
   label: string;
+  site_id: string | null;
   vehicle_code: string | null;
   travel_mode: string;
   available: boolean;

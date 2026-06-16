@@ -253,7 +253,7 @@ describe('/api/care-reports/today-workspace', () => {
     });
   });
 
-  it('treats any existing report for the visit as an existing draft/detail target', async () => {
+  it('treats sent reports as existing detail targets instead of draft targets', async () => {
     mockTx({
       schedules: [
         {
@@ -278,9 +278,9 @@ describe('/api/care-reports/today-workspace', () => {
     expect(res!.status).toBe(200);
     const json = await res!.json();
     expect(json.data.draft_rows[0]).toMatchObject({
-      status: 'draft_ready',
+      status: 'report_existing',
       visit_record_id: 'visit_record_1',
-      action: { label: '→ 下書きへ', href: '/reports/report_sent' },
+      action: { label: '→ 詳細へ', href: '/reports/report_sent' },
     });
   });
 

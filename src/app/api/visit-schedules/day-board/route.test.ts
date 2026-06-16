@@ -176,6 +176,7 @@ describe('/api/visit-schedules/day-board', () => {
         visit_type: 'regular',
         schedule_status: 'planned',
         priority: 'normal',
+        site_id: 'site_1',
         route_order: 1,
         vehicle_resource_id: 'vehicle_1',
         vehicle_resource: { id: 'vehicle_1', label: '軽バン1号', travel_mode: 'DRIVE' },
@@ -192,6 +193,7 @@ describe('/api/visit-schedules/day-board', () => {
         visit_type: 'regular',
         schedule_status: 'planned',
         priority: 'normal',
+        site_id: 'site_1',
         route_order: 2,
         vehicle_resource_id: null,
         vehicle_resource: null,
@@ -207,6 +209,7 @@ describe('/api/visit-schedules/day-board', () => {
       {
         id: 'vehicle_1',
         label: '軽バン1号',
+        site_id: 'site_1',
         vehicle_code: 'VEH-DEMO-001',
         travel_mode: 'DRIVE',
         max_stops: 8,
@@ -215,6 +218,7 @@ describe('/api/visit-schedules/day-board', () => {
       {
         id: 'vehicle_2',
         label: '軽バン2号',
+        site_id: 'site_1',
         vehicle_code: 'VEH-DEMO-002',
         travel_mode: 'DRIVE',
         max_stops: 4,
@@ -230,6 +234,7 @@ describe('/api/visit-schedules/day-board', () => {
       id: 'visit_1',
       route_order: 1,
       vehicle_resource_id: 'vehicle_1',
+      site_id: 'site_1',
       vehicle_label: '軽バン1号',
       vehicle_travel_mode: 'DRIVE',
     });
@@ -239,7 +244,7 @@ describe('/api/visit-schedules/day-board', () => {
         assigned_visit_count: 1,
         remaining_stops: 7,
         recommended: true,
-        recommendation_reason: '未割当 1件を受けられます',
+        recommendation_reason: '同一拠点の未割当 1件を受けられます',
       }),
       expect.objectContaining({
         id: 'vehicle_2',
@@ -255,11 +260,141 @@ describe('/api/visit-schedules/day-board', () => {
       select: {
         id: true,
         label: true,
+        site_id: true,
         vehicle_code: true,
         travel_mode: true,
         max_stops: true,
         available: true,
       },
     });
+  });
+
+  it('counts untimed vehicle assignments when computing remaining capacity', async () => {
+    membershipFindManyMock.mockResolvedValue([
+      { role: 'pharmacist', user: { id: 'user_1', name: '山田 太郎' } },
+    ]);
+    visitScheduleFindManyMock.mockResolvedValue([
+      {
+        id: 'visit_1',
+        pharmacist_id: 'user_1',
+        visit_type: 'regular',
+        schedule_status: 'planned',
+        priority: 'normal',
+        site_id: 'site_1',
+        route_order: null,
+        vehicle_resource_id: 'vehicle_1',
+        vehicle_resource: { id: 'vehicle_1', label: '軽バン1号', travel_mode: 'DRIVE' },
+        time_window_start: null,
+        time_window_end: null,
+        confirmed_at: null,
+        facility_batch_id: null,
+        facility_batch: null,
+        case_: { patient: { name: '伊藤 キヨ' } },
+      },
+      {
+        id: 'visit_2',
+        pharmacist_id: 'user_1',
+        visit_type: 'regular',
+        schedule_status: 'planned',
+        priority: 'normal',
+        site_id: 'site_1',
+        route_order: null,
+        vehicle_resource_id: null,
+        vehicle_resource: null,
+        time_window_start: new Date(2026, 5, 12, 11, 0),
+        time_window_end: new Date(2026, 5, 12, 11, 30),
+        confirmed_at: null,
+        facility_batch_id: null,
+        facility_batch: null,
+        case_: { patient: { name: '田中 一郎' } },
+      },
+    ]);
+    visitVehicleResourceFindManyMock.mockResolvedValue([
+      {
+        id: 'vehicle_1',
+        label: '軽バン1号',
+        site_id: 'site_1',
+        vehicle_code: 'VEH-DEMO-001',
+        travel_mode: 'DRIVE',
+        max_stops: 1,
+        available: true,
+      },
+    ]);
+
+    const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+    expect(response.status).toBe(200);
+    const json = await response.json();
+
+    expect(json.data.vehicle_resources).toEqual([
+      expect.objectContaining({
+        id: 'vehicle_1',
+        assigned_visit_count: 1,
+        remaining_stops: 0,
+        recommended: false,
+        recommendation_reason: '本日の上限に到達',
+      }),
+    ]);
+  });
+
+  it('recommends vehicles only for unassigned visits in the same site', async () => {
+    membershipFindManyMock.mockResolvedValue([
+      { role: 'pharmacist', user: { id: 'user_1', name: '山田 太郎' } },
+    ]);
+    visitScheduleFindManyMock.mockResolvedValue([
+      {
+        id: 'visit_site_1',
+        pharmacist_id: 'user_1',
+        visit_type: 'regular',
+        schedule_status: 'planned',
+        priority: 'normal',
+        site_id: 'site_1',
+        route_order: null,
+        vehicle_resource_id: null,
+        vehicle_resource: null,
+        time_window_start: new Date(2026, 5, 12, 11, 0),
+        time_window_end: new Date(2026, 5, 12, 11, 30),
+        confirmed_at: null,
+        facility_batch_id: null,
+        facility_batch: null,
+        case_: { patient: { name: '田中 一郎' } },
+      },
+    ]);
+    visitVehicleResourceFindManyMock.mockResolvedValue([
+      {
+        id: 'vehicle_site_2',
+        label: '別拠点車両',
+        site_id: 'site_2',
+        vehicle_code: 'VEH-DEMO-002',
+        travel_mode: 'DRIVE',
+        max_stops: 8,
+        available: true,
+      },
+      {
+        id: 'vehicle_site_1',
+        label: '同一拠点車両',
+        site_id: 'site_1',
+        vehicle_code: 'VEH-DEMO-001',
+        travel_mode: 'DRIVE',
+        max_stops: 1,
+        available: true,
+      },
+    ]);
+
+    const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+    expect(response.status).toBe(200);
+    const json = await response.json();
+
+    expect(json.data.vehicle_resources).toEqual([
+      expect.objectContaining({
+        id: 'vehicle_site_2',
+        recommended: false,
+        recommendation_reason: '空き 8件',
+      }),
+      expect.objectContaining({
+        id: 'vehicle_site_1',
+        recommended: true,
+        recommendation_reason: '同一拠点の未割当 1件を受けられます',
+      }),
+    ]);
   });
 });

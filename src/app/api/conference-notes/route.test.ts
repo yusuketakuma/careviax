@@ -8,6 +8,7 @@ const {
   conferenceNoteCreateMock,
   conferenceNoteUpdateMock,
   careCaseFindManyMock,
+  patientFindFirstMock,
   // sync-related mocks
   taskFindManyMock,
   taskCreateManyMock,
@@ -38,6 +39,7 @@ const {
   conferenceNoteCreateMock: vi.fn(),
   conferenceNoteUpdateMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
+  patientFindFirstMock: vi.fn(),
   taskFindManyMock: vi.fn(),
   taskCreateManyMock: vi.fn(),
   billingCandidateUpsertMock: vi.fn(),
@@ -128,6 +130,9 @@ function buildTxMock() {
       findFirst: careCaseFindFirstMock,
       update: careCaseUpdateMock,
     },
+    patient: {
+      findFirst: patientFindFirstMock,
+    },
     task: {
       findMany: taskFindManyMock,
       createMany: taskCreateManyMock,
@@ -187,6 +192,7 @@ describe('/api/conference-notes', () => {
       primary_pharmacist_id: 'pharm_1',
       required_visit_support: null,
     });
+    patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
     careCaseUpdateMock.mockResolvedValue({
       id: 'case_1',
       required_visit_support: {
@@ -341,6 +347,77 @@ describe('/api/conference-notes', () => {
         }),
       ],
     });
+  });
+
+  it('omits free-text detail fields from summary conference note lists', async () => {
+    conferenceNoteFindManyMock.mockResolvedValue([
+      {
+        id: 'note_1',
+        org_id: 'org_1',
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+        facility_id: null,
+        note_type: 'pre_discharge',
+        title: '退院前カンファ',
+        content: '退院後の麻薬管理と家族支援を確認',
+        structured_content: {
+          template: 'pre_discharge',
+          sections: [{ key: 'discharge_background', label: '退院背景', body: '家族が自宅管理' }],
+        },
+        metadata: {
+          billing: {
+            link_status: 'candidate',
+            code: 'B011-6',
+          },
+          sync_summary: {
+            visit_proposal_id: 'proposal_1',
+            tasks_created: 1,
+          },
+        },
+        participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
+        billing_eligible: true,
+        billing_code: 'B011-6',
+        follow_up_date: null,
+        follow_up_completed: false,
+        generated_report_id: null,
+        conference_date: new Date('2026-03-28T01:00:00.000Z'),
+        action_items: [{ title: '麻薬保管説明', assignee: '薬剤師' }],
+        created_at: new Date('2026-03-28T02:00:00.000Z'),
+        updated_at: new Date('2026-03-28T02:00:00.000Z'),
+      },
+    ]);
+    careCaseFindManyMock.mockResolvedValue([
+      {
+        id: 'case_1',
+        patient_id: 'patient_1',
+        patient: {
+          name: '山田 太郎',
+          residences: [],
+        },
+      },
+    ]);
+
+    const response = await GET(
+      createRequest({
+        url: 'http://localhost/api/conference-notes?detail_level=summary&date_from=2026-03-01&date_to=2026-03-31',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.data[0]).toMatchObject({
+      id: 'note_1',
+      title: '退院前カンファ',
+      content: '',
+      action_items: null,
+      sync_summary: expect.objectContaining({
+        visit_proposal_id: 'proposal_1',
+        tasks_created: 1,
+      }),
+    });
+    expect(payload.data[0]).not.toHaveProperty('structured_content');
+    expect(payload.data[0]).not.toHaveProperty('metadata');
   });
 
   it('supports conference filters including conference_type and billing_eligible', async () => {
@@ -587,6 +664,81 @@ describe('/api/conference-notes', () => {
     expect(careReportCreateManyMock).not.toHaveBeenCalled();
   });
 
+  it('rejects blank participant names before transaction or sync side effects', async () => {
+    const response = await POST(
+      createRequest({
+        method: 'POST',
+        body: {
+          note_type: 'pre_discharge',
+          title: '退院前カンファ',
+          structured_content: {
+            sections: [
+              {
+                key: 'discharge_background',
+                label: '退院背景',
+                body: '来週火曜に退院予定',
+              },
+            ],
+          },
+          participants: [{ name: '   ', role: '薬剤師' }],
+          conference_date: '2026-03-28T01:00:00.000Z',
+        },
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: expect.arrayContaining([
+        expect.objectContaining({
+          path: ['participants', 0, 'name'],
+        }),
+      ]),
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(conferenceNoteCreateMock).not.toHaveBeenCalled();
+    expect(taskCreateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects blank action item titles before transaction or sync side effects', async () => {
+    const response = await POST(
+      createRequest({
+        method: 'POST',
+        body: {
+          note_type: 'service_manager',
+          title: '担当者会議',
+          structured_content: {
+            sections: [
+              {
+                key: 'meeting_purpose',
+                label: '会議目的',
+                body: '服薬支援の再調整',
+              },
+            ],
+          },
+          participants: [],
+          action_items: [{ title: '   ', assignee: '薬剤師' }],
+          conference_date: '2026-03-28T01:00:00.000Z',
+        },
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: expect.arrayContaining([
+        expect.objectContaining({
+          path: ['action_items', 0, 'title'],
+        }),
+      ]),
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(conferenceNoteCreateMock).not.toHaveBeenCalled();
+    expect(taskCreateManyMock).not.toHaveBeenCalled();
+  });
+
   it('rejects conference note creation when conference type is omitted', async () => {
     const response = await POST(
       createRequest({
@@ -629,6 +781,67 @@ describe('/api/conference-notes', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expect(conferenceNoteCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects patient-only conference note creation when the patient is not visible in the org', async () => {
+    patientFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await POST(
+      createRequest({
+        method: 'POST',
+        body: {
+          conference_type: 'service_manager',
+          patient_id: 'patient_foreign',
+          title: 'サービス担当者会議',
+          structured_content: {
+            sections: [{ key: 'meeting_purpose', label: '会議目的', body: '服薬支援を確認' }],
+          },
+          participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
+          conference_date: '2026-03-28T01:00:00.000Z',
+        },
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(patientFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'patient_foreign',
+        org_id: 'org_1',
+      },
+      select: {
+        id: true,
+      },
+    });
+    expect(conferenceNoteCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects conference note creation when top-level and metadata patient IDs differ', async () => {
+    const response = await POST(
+      createRequest({
+        method: 'POST',
+        body: {
+          conference_type: 'service_manager',
+          patient_id: 'patient_1',
+          title: 'サービス担当者会議',
+          structured_content: {
+            sections: [{ key: 'meeting_purpose', label: '会議目的', body: '服薬支援を確認' }],
+          },
+          metadata: {
+            visit_brief: {
+              patient_id: 'patient_other',
+            },
+          },
+          participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
+          conference_date: '2026-03-28T01:00:00.000Z',
+        },
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(conferenceNoteCreateMock).not.toHaveBeenCalled();
   });
 

@@ -107,6 +107,7 @@ export const GET = withAuthContext(
           visit_type: true,
           schedule_status: true,
           priority: true,
+          site_id: true,
           route_order: true,
           vehicle_resource_id: true,
           vehicle_resource: {
@@ -153,6 +154,7 @@ export const GET = withAuthContext(
         select: {
           id: true,
           label: true,
+          site_id: true,
           vehicle_code: true,
           travel_mode: true,
           max_stops: true,
@@ -231,6 +233,7 @@ export const GET = withAuthContext(
       visit_type: schedule.visit_type,
       schedule_status: schedule.schedule_status,
       priority: schedule.priority,
+      site_id: schedule.site_id,
       route_order: schedule.route_order,
       time_start: schedule.time_window_start?.toISOString() ?? null,
       time_end: schedule.time_window_end?.toISOString() ?? null,
@@ -358,30 +361,37 @@ export const GET = withAuthContext(
 
     const auditPendingCount = auditTaskGroups.reduce((sum, group) => sum + group._count.id, 0);
     const assignedVehicleCounts = new Map<string, number>();
-    let unassignedTimedVisitCount = 0;
+    const unassignedAssignableVisitCountsBySite = new Map<string, number>();
     for (const schedule of schedules) {
-      if (!schedule.time_window_start) continue;
       if (schedule.vehicle_resource_id) {
         assignedVehicleCounts.set(
           schedule.vehicle_resource_id,
           (assignedVehicleCounts.get(schedule.vehicle_resource_id) ?? 0) + 1,
         );
       } else if (VEHICLE_ASSIGNABLE_STATUSES.has(schedule.schedule_status)) {
-        unassignedTimedVisitCount += 1;
+        const siteKey = schedule.site_id ?? '';
+        unassignedAssignableVisitCountsBySite.set(
+          siteKey,
+          (unassignedAssignableVisitCountsBySite.get(siteKey) ?? 0) + 1,
+        );
       }
     }
     const vehicleSummaries = vehicleResources.map((vehicle) => {
       const assignedVisitCount = assignedVehicleCounts.get(vehicle.id) ?? 0;
       const remainingStops = Math.max(0, vehicle.max_stops - assignedVisitCount);
+      const matchingUnassignedVisitCount =
+        unassignedAssignableVisitCountsBySite.get(vehicle.site_id ?? '') ?? 0;
       return {
         id: vehicle.id,
         label: vehicle.label,
+        site_id: vehicle.site_id,
         vehicle_code: vehicle.vehicle_code,
         travel_mode: vehicle.travel_mode,
         available: vehicle.available,
         max_stops: vehicle.max_stops,
         assigned_visit_count: assignedVisitCount,
         remaining_stops: remainingStops,
+        matching_unassigned_visit_count: matchingUnassignedVisitCount,
         recommended: false,
         recommendation_reason: vehicle.available
           ? remainingStops > 0
@@ -394,6 +404,8 @@ export const GET = withAuthContext(
       .filter((vehicle) => vehicle.available && vehicle.remaining_stops > 0)
       .sort(
         (left, right) =>
+          Math.min(right.remaining_stops, right.matching_unassigned_visit_count) -
+            Math.min(left.remaining_stops, left.matching_unassigned_visit_count) ||
           right.remaining_stops - left.remaining_stops ||
           left.assigned_visit_count - right.assigned_visit_count ||
           left.label.localeCompare(right.label, 'ja'),
@@ -401,8 +413,11 @@ export const GET = withAuthContext(
     if (recommendedVehicle) {
       recommendedVehicle.recommended = true;
       recommendedVehicle.recommendation_reason =
-        unassignedTimedVisitCount > 0
-          ? `未割当 ${unassignedTimedVisitCount}件を受けられます`
+        recommendedVehicle.matching_unassigned_visit_count > 0
+          ? `同一拠点の未割当 ${Math.min(
+              recommendedVehicle.remaining_stops,
+              recommendedVehicle.matching_unassigned_visit_count,
+            )}件を受けられます`
           : `予備枠 ${recommendedVehicle.remaining_stops}件`;
     }
 

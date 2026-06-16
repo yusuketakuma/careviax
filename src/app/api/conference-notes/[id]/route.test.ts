@@ -71,7 +71,7 @@ vi.mock('@/server/services/operational-tasks', () => ({
   resolveOperationalTasks: resolveOperationalTasksMock,
 }));
 
-import { PATCH } from './route';
+import { GET, PATCH } from './route';
 
 function createRequest(body?: unknown) {
   return new NextRequest('http://localhost/api/conference-notes/note_1', {
@@ -428,5 +428,102 @@ describe('/api/conference-notes/[id] PATCH', () => {
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(taskCreateManyMock).not.toHaveBeenCalled();
     expect(careReportCreateManyMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('/api/conference-notes/[id] GET', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    conferenceNoteFindFirstMock.mockResolvedValue({
+      id: 'note_1',
+      org_id: 'org_1',
+      case_id: 'case_1',
+      patient_id: 'patient_1',
+      facility_id: 'facility_1',
+      note_type: 'service_manager',
+      title: '担当者会議',
+      content: '会議目的: 訪問頻度の見直し',
+      structured_content: {
+        template: 'service_manager',
+        sections: [{ key: 'meeting_purpose', label: '会議目的', body: '訪問頻度の見直し' }],
+      },
+      metadata: {
+        billing: {
+          link_status: 'candidate',
+          code: 'MED_INFO_PROVISION_2_HA',
+        },
+        sync_summary: {
+          report_draft_ids: ['report_1'],
+          billing_candidate_id: 'billing_1',
+          visit_proposal_id: 'proposal_1',
+          tasks_created: 2,
+          medication_issues_created: 1,
+        },
+      },
+      billing_eligible: false,
+      billing_code: null,
+      follow_up_date: null,
+      follow_up_completed: false,
+      generated_report_id: null,
+      participants: [{ name: '佐藤CM', role: 'care_manager' }],
+      conference_date: new Date('2026-03-30T10:00:00.000Z'),
+      action_items: [{ title: 'サービス調整を反映', assignee: '薬剤師' }],
+      created_at: new Date('2026-03-30T11:00:00.000Z'),
+      updated_at: new Date('2026-03-30T11:30:00.000Z'),
+    });
+  });
+
+  it('returns full conference note detail scoped to the current org', async () => {
+    const response = await GET(createRequest(), { params: Promise.resolve({ id: 'note_1' }) });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(conferenceNoteFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: 'note_1',
+          org_id: 'org_1',
+        },
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'note_1',
+        conference_type: 'service_manager',
+        content: '会議目的: 訪問頻度の見直し',
+        structured_content: {
+          template: 'service_manager',
+        },
+        metadata: expect.objectContaining({
+          billing: expect.objectContaining({
+            code: 'MED_INFO_PROVISION_2_HA',
+          }),
+        }),
+        action_items: [{ title: 'サービス調整を反映', assignee: '薬剤師' }],
+        billing_eligible: true,
+        billing_code: 'MED_INFO_PROVISION_2_HA',
+        sync_summary: expect.objectContaining({
+          billing_candidate_id: 'billing_1',
+          visit_proposal_id: 'proposal_1',
+        }),
+      },
+    });
+  });
+
+  it('returns 404 when the conference note is not visible in the org', async () => {
+    conferenceNoteFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await GET(createRequest(), { params: Promise.resolve({ id: 'missing' }) });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(404);
+  });
+
+  it('rejects an invalid conference note id before querying', async () => {
+    const response = await GET(createRequest(), { params: Promise.resolve({ id: '   ' }) });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(conferenceNoteFindFirstMock).not.toHaveBeenCalled();
   });
 });

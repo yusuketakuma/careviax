@@ -37,6 +37,7 @@ import {
   type BoardBlock,
   type StaffLane,
 } from './schedule-team-board.helpers';
+import { applyVisitScheduleRouteUpdates } from './visit-route-client';
 
 /**
  * new_03_schedule(docs/design-gap-analysis-new.md 03_schedule)の全員スケジュールボード。
@@ -427,6 +428,7 @@ function unassignedTimedVisitsForRecommendedVehicle(board: ScheduleDayBoardRespo
       (visit) =>
         visit.time_start &&
         !visit.vehicle_resource_id &&
+        visit.site_id === recommendedVehicle.site_id &&
         VEHICLE_ASSIGNABLE_STATUSES.has(visit.schedule_status),
     )
     .sort(routeVisitSort)
@@ -946,13 +948,20 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
   });
   const applyRecommendedVehicleMutation = useMutation({
     mutationFn: async (payload: ApplyRecommendedVehiclePayload) => {
-      for (const scheduleId of payload.scheduleIds) {
-        await patchVisitSchedule({
-          orgId,
-          scheduleId,
-          payload: { vehicle_resource_id: payload.vehicleId },
-        });
-      }
+      await applyVisitScheduleRouteUpdates({
+        orgId,
+        updates: [],
+        vehicleAssignment: {
+          mode: 'assign_if_unassigned',
+          vehicle_resource_id: payload.vehicleId,
+          schedule_ids: payload.scheduleIds,
+        },
+        confirmationContext: {
+          source: 'schedule_day_route_preview',
+          date: dateKey,
+          vehicle_assignment_count: payload.scheduleIds.length,
+        },
+      });
     },
     onSuccess: async () => {
       await Promise.all([

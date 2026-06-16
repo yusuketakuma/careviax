@@ -11,8 +11,8 @@ export const conferenceNoteTypeSchema = z.enum([
 ]);
 
 export const conferenceParticipantSchema = z.object({
-  name: z.string().min(1),
-  role: z.string().optional().default(''),
+  name: z.string().trim().min(1),
+  role: z.string().trim().optional().default(''),
   external_professional_id: z.string().trim().optional(),
   attended: z.boolean().optional().default(true),
   is_report_recipient: z.boolean().optional().default(false),
@@ -22,10 +22,10 @@ export const conferenceParticipantSchema = z.object({
 });
 
 export const conferenceActionItemSchema = z.object({
-  title: z.string().min(1),
-  assignee: z.string().optional(),
-  converted_task_id: z.string().optional(),
-  converted_at: z.string().optional(),
+  title: z.string().trim().min(1),
+  assignee: z.string().trim().optional(),
+  converted_task_id: z.string().trim().optional(),
+  converted_at: z.string().trim().optional(),
 });
 
 export const conferenceStructuredSectionSchema = z.object({
@@ -398,6 +398,7 @@ export const updateConferenceNoteSchema = z
 export const conferenceNoteQuerySchema = z.object({
   note_type: conferenceNoteTypeSchema.optional(),
   conference_type: conferenceNoteTypeSchema.optional(),
+  detail_level: z.enum(['detail', 'summary']).optional().default('detail'),
   patient_id: z.string().trim().optional(),
   facility_id: z.string().trim().optional(),
   date_from: z

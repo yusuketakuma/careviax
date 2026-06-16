@@ -252,7 +252,7 @@ export const GET = withAuthContext(
         const visitRecordIds = schedules
           .map((schedule) => schedule.visit_record?.id)
           .filter((id): id is string => Boolean(id));
-        const draftReports =
+        const existingReports =
           visitRecordIds.length === 0
             ? []
             : await tx.careReport.findMany({
@@ -260,12 +260,12 @@ export const GET = withAuthContext(
                   org_id: ctx.orgId,
                   visit_record_id: { in: visitRecordIds },
                 },
-                select: { id: true, visit_record_id: true },
+                select: { id: true, visit_record_id: true, status: true },
               });
-        const draftReportByRecordId = new Map(
-          draftReports
+        const reportByRecordId = new Map(
+          existingReports
             .filter((report) => report.visit_record_id)
-            .map((report) => [report.visit_record_id as string, report.id]),
+            .map((report) => [report.visit_record_id as string, report]),
         );
 
         const facilityIds = [
@@ -313,8 +313,8 @@ export const GET = withAuthContext(
           const hasNarcotic = intakeLines.some((line) =>
             line.packaging_instruction_tags.includes('narcotic'),
           );
-          const draftReportId = schedule.visit_record?.id
-            ? (draftReportByRecordId.get(schedule.visit_record.id) ?? null)
+          const existingReport = schedule.visit_record?.id
+            ? (reportByRecordId.get(schedule.visit_record.id) ?? null)
             : null;
           const visitRecordId = schedule.visit_record?.id ?? null;
           const canGenerateDraft =
@@ -324,15 +324,20 @@ export const GET = withAuthContext(
             time_start: schedule.time_window_start?.toISOString() ?? null,
             patient_label: `${schedule.case_.patient.name} 様`,
             recipient_label: buildRecipientLabel(schedule.case_.care_team_links),
-            status: draftReportId
-              ? 'draft_ready'
+            status: existingReport
+              ? existingReport.status === 'draft'
+                ? 'draft_ready'
+                : 'report_existing'
               : canGenerateDraft
                 ? 'ready_to_generate'
                 : 'before_visit',
             visit_record_id: visitRecordId,
             note: hasNarcotic ? '麻薬使用状況を含む' : null,
-            action: draftReportId
-              ? { label: '→ 下書きへ', href: `/reports/${draftReportId}` }
+            action: existingReport
+              ? {
+                  label: existingReport.status === 'draft' ? '→ 下書きへ' : '→ 詳細へ',
+                  href: `/reports/${existingReport.id}`,
+                }
               : canGenerateDraft
                 ? null
                 : { label: '→ 訪問へ', href: '/visits' },

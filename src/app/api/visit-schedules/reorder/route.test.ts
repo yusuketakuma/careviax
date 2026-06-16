@@ -825,6 +825,70 @@ describe('/api/visit-schedules/reorder PATCH', () => {
     );
   });
 
+  it('applies a vehicle-only assignment without changing route order', async () => {
+    const response = (await PATCH(
+      createRequest({
+        vehicle_assignment: {
+          mode: 'assign_if_unassigned',
+          vehicle_resource_id: 'vehicle_1',
+          schedule_ids: ['schedule_1', 'schedule_2'],
+        },
+        confirmation_context: {
+          source: 'schedule_day_route_preview',
+          date: '2026-04-09',
+          vehicle_assignment_count: 2,
+        },
+      }),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(scheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: { in: ['schedule_1', 'schedule_2'] },
+        }),
+      }),
+    );
+    expect(scheduleUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'schedule_1',
+          vehicle_resource_id: null,
+        }),
+        data: expect.not.objectContaining({
+          route_order: expect.any(Number),
+        }),
+      }),
+    );
+    expect(scheduleUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          vehicle_resource_id: 'vehicle_1',
+        }),
+      }),
+    );
+    expect(auditLogCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          changes: expect.objectContaining({
+            vehicle_assignment: {
+              mode: 'assign_if_unassigned',
+              vehicle_resource_id: 'vehicle_1',
+              schedule_ids: ['schedule_1', 'schedule_2'],
+            },
+            updates: expect.arrayContaining([
+              expect.objectContaining({
+                schedule_id: 'schedule_1',
+                route_order: undefined,
+                vehicle_resource_id: 'vehicle_1',
+              }),
+            ]),
+          }),
+        }),
+      }),
+    );
+  });
+
   it('rejects route adoption when recommended vehicle capacity would be exceeded', async () => {
     vehicleFindManyMock.mockResolvedValueOnce([
       { id: 'vehicle_1', site_id: 'site_1', label: '軽バン1号', max_stops: 2 },

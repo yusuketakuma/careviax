@@ -26,6 +26,79 @@ function normalizeInputJsonArray(value: unknown): Prisma.InputJsonArray {
   return Array.isArray(normalized) ? normalized : [];
 }
 
+function readConferenceSyncSummary(metadata: unknown) {
+  const value = readJsonObject(metadata);
+  const syncSummary = readJsonObject(value?.sync_summary);
+  return syncSummary ?? null;
+}
+
+export const GET = withAuthContext<{ id: string }>(
+  async (_req, ctx, routeContext) => {
+    const { id: rawId } = await routeContext.params;
+    const id = normalizeRequiredRouteParam(rawId);
+    if (!id) return validationError('カンファレンス記録IDが不正です');
+
+    const note = await prisma.conferenceNote.findFirst({
+      where: {
+        id,
+        org_id: ctx.orgId,
+      },
+      select: {
+        id: true,
+        org_id: true,
+        case_id: true,
+        patient_id: true,
+        facility_id: true,
+        note_type: true,
+        title: true,
+        content: true,
+        structured_content: true,
+        metadata: true,
+        billing_eligible: true,
+        billing_code: true,
+        follow_up_date: true,
+        follow_up_completed: true,
+        generated_report_id: true,
+        participants: true,
+        conference_date: true,
+        action_items: true,
+        created_at: true,
+        updated_at: true,
+      },
+    });
+
+    if (!note) {
+      return notFound('カンファレンス記録が見つかりません');
+    }
+
+    const metadata = readJsonObject(note.metadata);
+    const billing = readJsonObject(metadata?.billing);
+    const syncSummary = readConferenceSyncSummary(note.metadata);
+
+    return success({
+      data: {
+        ...note,
+        conference_type: note.note_type,
+        billing_eligible:
+          note.billing_eligible ||
+          note.note_type === 'service_manager' ||
+          billing?.link_status === 'candidate' ||
+          billing?.link_status === 'linked',
+        billing_code:
+          note.billing_code ?? (typeof billing?.code === 'string' ? billing.code : null),
+        sync_summary: syncSummary,
+        generated_report_id:
+          note.generated_report_id ??
+          (typeof metadata?.generated_report_id === 'string' ? metadata.generated_report_id : null),
+      },
+    });
+  },
+  {
+    permission: 'canReport',
+    message: 'カンファレンス記録の閲覧権限がありません',
+  },
+);
+
 export const PATCH = withAuthContext<{ id: string }>(
   async (req, ctx, routeContext) => {
     const { id: rawId } = await routeContext.params;

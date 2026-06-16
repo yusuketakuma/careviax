@@ -182,7 +182,7 @@ export const GET = withAuthContext(
             ].filter((value): value is string => Boolean(value)),
           ),
         );
-        return {
+        const baseNote = {
           ...note,
           conference_type: note.note_type,
           patient_id: note.patient_id ?? relatedCase?.patient_id ?? null,
@@ -196,6 +196,35 @@ export const GET = withAuthContext(
           sync_summary: billing?.sync_summary ?? null,
           generated_report_id: note.generated_report_id ?? billing?.generated_report_id ?? null,
         };
+
+        if (parsedFilters.data.detail_level === 'summary') {
+          return {
+            id: baseNote.id,
+            org_id: baseNote.org_id,
+            case_id: baseNote.case_id,
+            patient_id: baseNote.patient_id,
+            patient_name: baseNote.patient_name,
+            facility_id: baseNote.facility_id,
+            facility_ids: baseNote.facility_ids,
+            note_type: baseNote.note_type,
+            conference_type: baseNote.conference_type,
+            title: baseNote.title,
+            content: '',
+            participants: baseNote.participants,
+            billing_eligible: baseNote.billing_eligible,
+            billing_code: baseNote.billing_code,
+            follow_up_date: baseNote.follow_up_date,
+            follow_up_completed: baseNote.follow_up_completed,
+            generated_report_id: baseNote.generated_report_id,
+            conference_date: baseNote.conference_date,
+            action_items: null,
+            created_at: baseNote.created_at,
+            updated_at: baseNote.updated_at,
+            sync_summary: baseNote.sync_summary,
+          };
+        }
+
+        return baseNote;
       });
     });
 
@@ -267,6 +296,16 @@ export const POST = withAuthContext(
       const requestedPatientId =
         parsed.data.patient_id ??
         (metadata?.visit_brief?.patient_id?.trim() ? metadata.visit_brief.patient_id.trim() : null);
+      const metadataPatientId = metadata?.visit_brief?.patient_id?.trim()
+        ? metadata.visit_brief.patient_id.trim()
+        : null;
+      if (
+        parsed.data.patient_id &&
+        metadataPatientId &&
+        parsed.data.patient_id !== metadataPatientId
+      ) {
+        return { error: validationError('患者ID指定が一致していません') };
+      }
       if (
         careCase?.patient_id &&
         requestedPatientId &&
@@ -274,10 +313,21 @@ export const POST = withAuthContext(
       ) {
         return { error: validationError('ケースと患者が一致していません') };
       }
-      const resolvedPatientId =
-        careCase?.patient_id ??
-        parsed.data.patient_id ??
-        (metadata?.visit_brief?.patient_id?.trim() ? metadata.visit_brief.patient_id.trim() : null);
+      const resolvedPatientId = careCase?.patient_id ?? parsed.data.patient_id ?? metadataPatientId;
+      const resolvedPatient = resolvedPatientId
+        ? await tx.patient.findFirst({
+            where: {
+              id: resolvedPatientId,
+              org_id: ctx.orgId,
+            },
+            select: {
+              id: true,
+            },
+          })
+        : null;
+      if (resolvedPatientId && !resolvedPatient) {
+        return { error: validationError('患者が見つかりません') };
+      }
       const primaryResidence = resolvedPatientId
         ? await tx.residence.findFirst({
             where: {

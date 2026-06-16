@@ -699,7 +699,7 @@ describe('/api/visit-schedules/[id] GET', () => {
       where: {
         org_id: 'org_1',
         id: { not: 'schedule_1' },
-        pharmacist_id: 'user_1',
+        vehicle_resource_id: 'vehicle_1',
         scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
         schedule_status: {
           notIn: ['cancelled', 'rescheduled'],
@@ -713,6 +713,35 @@ describe('/api/visit-schedules/[id] GET', () => {
         }),
       }),
     );
+  });
+
+  it('rejects vehicle assignment when the vehicle is full across other pharmacists', async () => {
+    visitVehicleResourceFindFirstMock.mockResolvedValueOnce({
+      id: 'vehicle_1',
+      site_id: 'site_1',
+      label: '社用車A',
+      max_stops: 1,
+    });
+    visitScheduleCountMock.mockResolvedValueOnce(1);
+
+    const response = await PATCH(createPatchRequest({ vehicle_resource_id: 'vehicle_1' }), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '社用車A で訪問できる件数は最大 1 件です',
+    });
+    expect(visitScheduleCountMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        org_id: 'org_1',
+        id: { not: 'schedule_1' },
+        vehicle_resource_id: 'vehicle_1',
+      }),
+    });
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
   });
 
   it('rejects schedule PATCH when the selected vehicle belongs to another site', async () => {

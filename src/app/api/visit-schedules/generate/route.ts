@@ -247,7 +247,6 @@ export const POST = withAuthContext(
           orgId: ctx.orgId,
           vehicleResourceId: vehicle_resource_id,
           siteId: shift.site_id ?? null,
-          pharmacistId: pharmacist_id,
           scheduledDate: candidateDate,
         });
         if (!vehicleValidation.ok) return vehicleValidation.response;

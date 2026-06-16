@@ -381,7 +381,7 @@ describe('/api/visit-schedules/generate POST', () => {
     expect(visitScheduleCountMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
-        pharmacist_id: 'pharmacist_1',
+        vehicle_resource_id: 'vehicle_1',
         scheduled_date: new Date('2026-04-07T00:00:00.000Z'),
         schedule_status: {
           notIn: ['cancelled', 'rescheduled'],

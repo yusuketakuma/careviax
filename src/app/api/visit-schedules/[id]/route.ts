@@ -330,13 +330,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     vehicle_resource_id !== undefined ? vehicle_resource_id : existing.vehicle_resource_id;
   if (targetVehicleResourceId) {
     const targetDate = scheduled_date ? new Date(scheduled_date) : existing.scheduled_date;
-    const targetPharmacistId = rest.pharmacist_id ?? existing.pharmacist_id;
     const targetSiteId = site_id !== undefined ? site_id || null : existing.site_id;
     const vehicleValidation = await validateVisitVehicleResourceForSchedule(prisma, {
       orgId: ctx.orgId,
       vehicleResourceId: targetVehicleResourceId,
       siteId: targetSiteId,
-      pharmacistId: targetPharmacistId,
       scheduledDate: targetDate,
       excludeScheduleId: id,
     });

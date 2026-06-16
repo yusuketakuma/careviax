@@ -27,7 +27,6 @@ type VisitVehicleResourceValidationArgs = {
   orgId: string;
   vehicleResourceId: string;
   siteId: string | null;
-  pharmacistId: string;
   scheduledDate: Date;
   excludeScheduleId?: string;
 };
@@ -150,7 +149,7 @@ export async function validateVisitVehicleResourceForSchedule(
       where: {
         org_id: args.orgId,
         ...(args.excludeScheduleId ? { id: { not: args.excludeScheduleId } } : {}),
-        pharmacist_id: args.pharmacistId,
+        vehicle_resource_id: args.vehicleResourceId,
         scheduled_date: args.scheduledDate,
         schedule_status: {
           notIn: ['cancelled', 'rescheduled'],
@@ -287,7 +286,6 @@ export async function createSchedule(
       orgId,
       vehicleResourceId: vehicle_resource_id,
       siteId: effectiveSiteId,
-      pharmacistId: rest.pharmacist_id,
       scheduledDate,
     });
     if (!vehicleValidation.ok) return vehicleValidation.response;
