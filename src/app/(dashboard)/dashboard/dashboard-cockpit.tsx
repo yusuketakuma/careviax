@@ -229,8 +229,18 @@ function UrgentNowCard({
   );
 }
 
-function UrgentNowSection({ items, now }: { items: CockpitAuditQueueItem[]; now: Date }) {
+function UrgentNowSection({
+  items,
+  totalCount,
+  now,
+}: {
+  items: CockpitAuditQueueItem[];
+  totalCount: number;
+  now: Date;
+}) {
   const cards = items.slice(0, 3);
+  const shownCountLabel =
+    totalCount > cards.length ? `表示 ${cards.length}/${totalCount}件` : `${cards.length}件`;
 
   return (
     <section aria-labelledby="dashboard-urgent-now-heading" data-testid="dashboard-urgent-now">
@@ -242,9 +252,14 @@ function UrgentNowSection({ items, now }: { items: CockpitAuditQueueItem[]; now:
           期限と待ち解除だけがここに並びます・緊急度順
         </p>
         <span className="ml-auto inline-flex items-center rounded-full bg-primary px-2.5 py-0.5 text-xs font-bold text-primary-foreground">
-          {cards.length}件
+          {shownCountLabel}
         </span>
       </div>
+      {totalCount > cards.length ? (
+        <p className="mt-1 text-xs text-muted-foreground">
+          全{totalCount}件のうち、期限が近い{cards.length}件を表示しています。
+        </p>
+      ) : null}
       {cards.length === 0 ? (
         <p className="mt-3 rounded-lg border border-border/70 bg-card px-4 py-6 text-sm text-muted-foreground">
           いま期限・待ち解除で対応が必要な処方サイクルはありません。
@@ -697,7 +712,11 @@ export function DashboardCockpit() {
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]">
             <div className="min-w-0 space-y-4">
               <ConditionBanner data={data} />
-              <UrgentNowSection items={data.audit_queue} now={now} />
+              <UrgentNowSection
+                items={data.audit_queue}
+                totalCount={data.audit_pending_count}
+                now={now}
+              />
               <TodayFlowSection
                 visits={todayVisits}
                 auditCount={data.audit_pending_count}

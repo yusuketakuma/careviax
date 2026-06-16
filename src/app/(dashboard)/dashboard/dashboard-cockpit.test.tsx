@@ -220,7 +220,8 @@ describe('DashboardCockpit', () => {
 
     const section = screen.getByTestId('dashboard-urgent-now');
     expect(within(section).getByText('今すぐ対応')).toBeTruthy();
-    expect(within(section).getByText('2件')).toBeTruthy();
+    expect(within(section).getByText('表示 2/6件')).toBeTruthy();
+    expect(within(section).getByText('全6件のうち、期限が近い2件を表示しています。')).toBeTruthy();
 
     const cards = within(section).getAllByTestId('dashboard-urgent-card');
     expect(cards).toHaveLength(2);
