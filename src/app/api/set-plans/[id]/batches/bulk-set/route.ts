@@ -37,6 +37,12 @@ const batchInclude = {
   },
 } as const;
 
+class BulkSetRollback extends Error {
+  constructor(readonly response: NextResponse) {
+    super('bulk set transaction rolled back');
+  }
+}
+
 /**
  * POST /api/set-plans/[id]/batches/bulk-set
  * お薬カレンダーのセルを一括でセット済(set)にする。
@@ -141,15 +147,14 @@ export const POST = withAuthContext<{ id: string }>(
           },
         });
         if (updatedCount.count === 0) {
-          return {
-            kind: 'error' as const,
-            response: conflict(
+          throw new BulkSetRollback(
+            conflict(
               '他のユーザーによって更新されました。最新データを取得してから再試行してください',
               {
                 current: { id: batch.id, version: batch.version },
               },
             ),
-          };
+          );
         }
         lineIds.add(batch.line_id);
       }
@@ -189,6 +194,11 @@ export const POST = withAuthContext<{ id: string }>(
       });
 
       return { kind: 'success' as const, batches: updatedBatches };
+    }).catch((err: unknown) => {
+      if (err instanceof BulkSetRollback) {
+        return { kind: 'error' as const, response: err.response };
+      }
+      throw err;
     });
 
     if (result.kind === 'error') return result.response;

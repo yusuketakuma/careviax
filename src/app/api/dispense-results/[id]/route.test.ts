@@ -202,7 +202,7 @@ describe('/api/dispense-results/[id]', () => {
       select: { cycle_id: true },
     });
     expect(medicationCycleUpdateManyMock).toHaveBeenCalledWith({
-      where: { id: 'cycle_1', version: 1 },
+      where: { id: 'cycle_1', org_id: 'org_1', version: 1 },
       data: { overall_status: 'audit_pending', version: { increment: 1 } },
     });
     expect(cycleTransitionLogCreateMock).toHaveBeenCalled();

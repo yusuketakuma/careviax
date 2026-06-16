@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -15,15 +16,14 @@ import {
   buildMedicationCycleAssignmentWhere,
   buildSetPlanAssignmentWhere,
 } from '@/server/services/prescription-access';
+import { dateKeySchema } from '@/lib/validations/date-key';
 import { z } from 'zod';
 
 const createSetPlanSchema = z
   .object({
     cycle_id: z.string().min(1, 'サイクルIDは必須です'),
-    target_period_start: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）'),
-    target_period_end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）'),
+    target_period_start: dateKeySchema('日付形式が不正です（YYYY-MM-DD）'),
+    target_period_end: dateKeySchema('日付形式が不正です（YYYY-MM-DD）'),
     set_method: z.enum(['facility_calendar', 'four_times_daily', 'bedtime_only', 'custom'], {
       error: 'セット方式を選択してください',
     }),
@@ -39,6 +39,20 @@ const createSetPlanSchema = z
       });
     }
   });
+
+type SetPlanRollbackResult =
+  | { kind: 'error'; message: string }
+  | { kind: 'conflict'; message: string };
+
+class SetPlanRollback extends Error {
+  constructor(readonly result: SetPlanRollbackResult) {
+    super('set plan transaction rolled back');
+  }
+}
+
+function isUniqueConstraintError(error: unknown) {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}
 
 export const GET = withAuthContext(
   async (req: NextRequest, ctx: AuthContext) => {
@@ -167,6 +181,25 @@ export const POST = withAuthContext(
         };
       }
 
+      const targetPeriodStart = new Date(target_period_start);
+      const targetPeriodEnd = new Date(target_period_end);
+      const existingPlan = await tx.setPlan.findFirst({
+        where: {
+          org_id: ctx.orgId,
+          cycle_id,
+          target_period_start: targetPeriodStart,
+          target_period_end: targetPeriodEnd,
+          set_method,
+        },
+      });
+      if (existingPlan) {
+        return {
+          kind: 'success' as const,
+          data: existingPlan,
+          replayed: true,
+        };
+      }
+
       // B5: State guard — SetPlan can only be created when cycle is audited
       if (cycle.overall_status !== 'audited') {
         return {
@@ -203,41 +236,63 @@ export const POST = withAuthContext(
         patientPackagingProfile: cycle.case_?.patient.packaging_profile ?? null,
       });
 
-      const plan = await tx.setPlan.create({
-        data: {
-          org_id: ctx.orgId,
-          cycle_id,
-          target_period_start: new Date(target_period_start),
-          target_period_end: new Date(target_period_end),
-          set_method,
-          packaging_method_id: packagingMethod?.id ?? null,
-          packaging_summary_snapshot: packagingSummary,
-          notes: notes ?? null,
-        },
-      });
+      let plan;
+      try {
+        plan = await tx.setPlan.create({
+          data: {
+            org_id: ctx.orgId,
+            cycle_id,
+            target_period_start: targetPeriodStart,
+            target_period_end: targetPeriodEnd,
+            set_method,
+            packaging_method_id: packagingMethod?.id ?? null,
+            packaging_summary_snapshot: packagingSummary,
+            notes: notes ?? null,
+          },
+        });
+      } catch (err) {
+        if (!isUniqueConstraintError(err)) throw err;
+        const existingAfterRace = await tx.setPlan.findFirst({
+          where: {
+            org_id: ctx.orgId,
+            cycle_id,
+            target_period_start: targetPeriodStart,
+            target_period_end: targetPeriodEnd,
+            set_method,
+          },
+        });
+        if (!existingAfterRace) throw err;
+        return {
+          kind: 'success' as const,
+          data: existingAfterRace,
+          replayed: true,
+        };
+      }
 
-      // Advance cycle status to setting
-      if (cycle.overall_status === 'audited') {
-        try {
-          await transitionCycleStatus(tx, cycle_id, ctx.orgId, 'setting', ctx.userId);
-        } catch (err) {
-          if (err instanceof InvalidTransitionError) {
-            return {
-              kind: 'error' as const,
-              message: `ステータス遷移が不正です: ${err.fromStatus} → ${err.toStatus}`,
-            };
-          }
-          if (err instanceof VersionConflictError) {
-            return { kind: 'conflict' as const, message: err.message };
-          }
-          throw err;
+      // Advance cycle status to setting only for a newly-created plan.
+      try {
+        await transitionCycleStatus(tx, cycle_id, ctx.orgId, 'setting', ctx.userId);
+      } catch (err) {
+        if (err instanceof InvalidTransitionError) {
+          throw new SetPlanRollback({
+            kind: 'error' as const,
+            message: `ステータス遷移が不正です: ${err.fromStatus} → ${err.toStatus}`,
+          });
         }
+        if (err instanceof VersionConflictError) {
+          throw new SetPlanRollback({ kind: 'conflict' as const, message: err.message });
+        }
+        throw err;
       }
 
       return {
         kind: 'success' as const,
         data: plan,
+        replayed: false,
       };
+    }).catch((err: unknown) => {
+      if (err instanceof SetPlanRollback) return err.result;
+      throw err;
     });
 
     if (result.kind === 'error') {
@@ -247,13 +302,15 @@ export const POST = withAuthContext(
       return conflict(result.message);
     }
 
-    await notifyWorkflowMutation({
-      orgId: ctx.orgId,
-      eventType: 'cycle_transition',
-      payload: { source: 'set_plans', cycle_id },
-    });
+    if (!result.replayed) {
+      await notifyWorkflowMutation({
+        orgId: ctx.orgId,
+        eventType: 'cycle_transition',
+        payload: { source: 'set_plans', cycle_id },
+      });
+    }
 
-    return success({ data: result.data }, 201);
+    return success({ data: result.data, replayed: result.replayed }, result.replayed ? 200 : 201);
   },
   {
     permission: 'canSet',

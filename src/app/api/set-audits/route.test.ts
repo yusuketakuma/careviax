@@ -634,7 +634,7 @@ describe('/api/set-audits POST', () => {
   });
 
   it('blocks visit schedules on rejected audits', async () => {
-    // rejected transitions set_audited → setting
+    // rejected audits hold the cycle for rework instead of trying a no-op setting transition.
     medicationCycleFindFirstMock.mockResolvedValue({
       id: 'cycle_1',
       overall_status: 'set_audited',
@@ -654,6 +654,10 @@ describe('/api/set-audits POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expect(medicationCycleUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'cycle_1', org_id: 'org_1', version: 1 },
+      data: { overall_status: 'on_hold', version: { increment: 1 } },
+    });
     expect(visitScheduleUpdateManyMock).toHaveBeenCalledTimes(2);
     expect(visitScheduleUpdateManyMock).toHaveBeenNthCalledWith(1, {
       where: {

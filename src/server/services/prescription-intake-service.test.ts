@@ -79,6 +79,9 @@ function createMockTx() {
       create: vi.fn(),
       update: vi.fn(),
     },
+    prescriptionLine: {
+      findMany: vi.fn(),
+    },
     inquiryRecord: {
       count: vi.fn(),
       create: vi.fn(),
@@ -294,6 +297,143 @@ describe('createPrescriptionIntake', () => {
     );
   });
 
+  it('persists previous prescription source provenance after validating the source revision', async () => {
+    const tx = createMockTx();
+    tx.medicationCycle.findFirst.mockResolvedValue({
+      id: 'cycle_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      overall_status: 'ready_to_dispense',
+      version: 1,
+      case_: {
+        primary_pharmacist_id: 'pharmacist_1',
+      },
+      prescription_intakes: [],
+      dispense_tasks: [],
+    });
+    tx.prescriptionLine.findMany.mockResolvedValue([
+      {
+        id: 'line_prev',
+        intake_id: 'intake_prev',
+        updated_at: new Date('2026-04-01T09:30:00.000Z'),
+        intake: {
+          id: 'intake_prev',
+          updated_at: new Date('2026-04-01T10:00:00.000Z'),
+          cycle: {
+            patient_id: 'patient_1',
+            case_id: 'case_1',
+          },
+        },
+      },
+    ]);
+    tx.prescriptionIntake.create.mockResolvedValue({ id: 'intake_1' });
+    tx.inquiryRecord.count.mockResolvedValue(0);
+
+    const result = await createPrescriptionIntakeInTx(
+      tx,
+      {
+        cycle_id: 'cycle_1',
+        source_type: 'paper',
+        prescribed_date: '2026-04-02',
+        lines: [
+          {
+            ...validLine(),
+            source_intake_id: 'intake_prev',
+            source_line_id: 'line_prev',
+            source_intake_updated_at_snapshot: '2026-04-01T10:00:00.000Z',
+            source_line_updated_at_snapshot: '2026-04-01T09:30:00.000Z',
+          },
+        ],
+      },
+      'org_1',
+      'user_1',
+      { skipStructuringCheck: true, skipExpiryCheck: true },
+    );
+
+    expect(result.kind).toBe('intake');
+    expect(tx.prescriptionLine.findMany).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        id: { in: ['line_prev'] },
+      },
+      select: expect.objectContaining({
+        id: true,
+        updated_at: true,
+        intake: expect.anything(),
+      }),
+    });
+    expect(tx.prescriptionIntake.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        lines: {
+          create: [
+            expect.objectContaining({
+              source_intake_id: 'intake_prev',
+              source_line_id: 'line_prev',
+              source_intake_updated_at_snapshot: new Date('2026-04-01T10:00:00.000Z'),
+              source_line_updated_at_snapshot: new Date('2026-04-01T09:30:00.000Z'),
+            }),
+          ],
+        },
+      }),
+    });
+  });
+
+  it('rejects stale previous prescription source revisions before creating an intake', async () => {
+    const tx = createMockTx();
+    tx.medicationCycle.findFirst.mockResolvedValue({
+      id: 'cycle_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      overall_status: 'ready_to_dispense',
+      version: 1,
+      case_: {
+        primary_pharmacist_id: 'pharmacist_1',
+      },
+      prescription_intakes: [],
+      dispense_tasks: [],
+    });
+    tx.prescriptionLine.findMany.mockResolvedValue([
+      {
+        id: 'line_prev',
+        intake_id: 'intake_prev',
+        updated_at: new Date('2026-04-01T09:31:00.000Z'),
+        intake: {
+          id: 'intake_prev',
+          updated_at: new Date('2026-04-01T10:00:00.000Z'),
+          cycle: {
+            patient_id: 'patient_1',
+            case_id: 'case_1',
+          },
+        },
+      },
+    ]);
+
+    const result = await createPrescriptionIntakeInTx(
+      tx,
+      {
+        cycle_id: 'cycle_1',
+        source_type: 'paper',
+        prescribed_date: '2026-04-02',
+        lines: [
+          {
+            ...validLine(),
+            source_intake_id: 'intake_prev',
+            source_line_id: 'line_prev',
+            source_intake_updated_at_snapshot: '2026-04-01T10:00:00.000Z',
+            source_line_updated_at_snapshot: '2026-04-01T09:30:00.000Z',
+          },
+        ],
+      },
+      'org_1',
+      'user_1',
+      { skipStructuringCheck: true, skipExpiryCheck: true },
+    );
+
+    expect(result).toEqual({ kind: 'error', error: 'source_revision_conflict' });
+    expect(tx.prescriptionIntake.create).not.toHaveBeenCalled();
+    expect(createDispenseDraftMock).not.toHaveBeenCalled();
+  });
+
   it('rejects expired prescriptions in the transaction flow before DB side effects', async () => {
     const tx = createMockTx();
 
@@ -421,6 +561,132 @@ describe('createPrescriptionIntake', () => {
         status: 'open',
       }),
     });
+    expect(tx.prescriptionIntake.create).not.toHaveBeenCalled();
+    expect(createDispenseDraftMock).not.toHaveBeenCalled();
+  });
+
+  it('does not create duplicate open workflow exceptions for structuring-blocked lines', async () => {
+    const tx = createMockTx();
+    tx.medicationCycle.findFirst.mockResolvedValue({
+      id: 'cycle_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      overall_status: 'ready_to_dispense',
+      version: 1,
+      case_: {
+        primary_pharmacist_id: 'pharmacist_1',
+      },
+      prescription_intakes: [],
+      dispense_tasks: [],
+    });
+    tx.workflowException.findFirst.mockResolvedValue({ id: 'exception_existing' });
+
+    const result = await createPrescriptionIntakeInTx(
+      tx,
+      {
+        cycle_id: 'cycle_1',
+        source_type: 'e_prescription',
+        external_prescription_id: 'rx_abc123',
+        prescribed_date: '2026-04-01',
+        lines: [
+          {
+            ...validLine(),
+            drug_name: '未確認薬剤A',
+            drug_code: undefined,
+          },
+        ],
+      },
+      'org_1',
+      'user_1',
+      { skipExpiryCheck: true },
+    );
+
+    expect(result).toEqual({
+      kind: 'error',
+      error: 'structuring_blocked_lines',
+      blockedLines: [{ line_number: 1, drug_name: '未確認薬剤A' }],
+    });
+    expect(tx.workflowException.findFirst).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        cycle_id: 'cycle_1',
+        exception_type: 'prescription_structuring_block',
+        status: 'open',
+      },
+      select: { id: true },
+    });
+    expect(tx.workflowException.create).not.toHaveBeenCalled();
+    expect(tx.prescriptionIntake.create).not.toHaveBeenCalled();
+    expect(createDispenseDraftMock).not.toHaveBeenCalled();
+  });
+
+  it('does not create duplicate open workflow exceptions for outpatient injection blocks', async () => {
+    const tx = createMockTx();
+    tx.medicationCycle.findFirst.mockResolvedValue({
+      id: 'cycle_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      overall_status: 'ready_to_dispense',
+      version: 1,
+      case_: {
+        primary_pharmacist_id: 'pharmacist_1',
+      },
+      prescription_intakes: [],
+      dispense_tasks: [],
+    });
+    tx.workflowException.findFirst.mockResolvedValue({ id: 'exception_existing' });
+    tx.drugMaster.findMany.mockResolvedValue([
+      {
+        yj_code: 'INJ001',
+        receipt_code: null,
+        hot_code: null,
+        outpatient_injection_eligible: false,
+      },
+    ]);
+
+    const result = await createPrescriptionIntakeInTx(
+      tx,
+      {
+        cycle_id: 'cycle_1',
+        source_type: 'e_prescription',
+        external_prescription_id: 'rx_abc123',
+        prescribed_date: '2026-04-01',
+        lines: [
+          {
+            ...validLine(),
+            drug_name: '注射薬A',
+            drug_code: 'INJ001',
+            dosage_form: '注射液',
+            route: 'injection',
+          },
+        ],
+      },
+      'org_1',
+      'user_1',
+      { skipStructuringCheck: true, skipExpiryCheck: true },
+    );
+
+    expect(result).toEqual({
+      kind: 'error',
+      error: 'outpatient_injection_not_eligible',
+      blockedLines: [
+        {
+          line_number: 1,
+          drug_name: '注射薬A',
+          reason: '薬剤マスターで外来/在宅自己注射対象として確認されていません',
+        },
+      ],
+    });
+    expect(tx.workflowException.findFirst).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        cycle_id: 'cycle_1',
+        exception_type: 'outpatient_injection_eligibility_block',
+        status: 'open',
+      },
+      select: { id: true },
+    });
+    expect(tx.workflowException.create).not.toHaveBeenCalled();
     expect(tx.prescriptionIntake.create).not.toHaveBeenCalled();
     expect(createDispenseDraftMock).not.toHaveBeenCalled();
   });
@@ -717,6 +983,110 @@ describe('createPrescriptionIntake', () => {
     expect(prismaMock.medicationProfile.create).not.toHaveBeenCalled();
     expect(prismaMock.medicationProfile.updateMany).not.toHaveBeenCalled();
     expect(result.profileSyncResult).toEqual({ created: 0, updated: 1, discontinued: 0 });
+  });
+
+  it('detects medication changes against the previous same-case intake across cycle boundaries', async () => {
+    prismaMock.prescriptionIntake.findFirst
+      .mockResolvedValueOnce({
+        id: 'intake_current',
+        prescribed_date: new Date('2026-06-10T00:00:00.000Z'),
+        created_at: new Date('2026-06-10T09:00:00.000Z'),
+        cycle: {
+          case_id: 'case_1',
+        },
+        lines: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: '2149001',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+            start_date: new Date('2026-06-10T00:00:00.000Z'),
+            end_date: new Date('2026-06-23T00:00:00.000Z'),
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        id: 'intake_previous_cycle',
+        prescribed_date: new Date('2026-05-27T00:00:00.000Z'),
+        created_at: new Date('2026-05-27T09:00:00.000Z'),
+        lines: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: '2149001',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 7,
+            start_date: new Date('2026-05-27T00:00:00.000Z'),
+            end_date: new Date('2026-06-02T00:00:00.000Z'),
+          },
+        ],
+      });
+    prismaMock.medicationProfile.findMany.mockResolvedValue([]);
+    prismaMock.drugMaster.findMany.mockResolvedValue([]);
+    prismaMock.medicationProfile.create.mockResolvedValue({});
+
+    const result = await runPrescriptionIntakePostCreateHooks({
+      cycleId: 'cycle_current',
+      intakeId: 'intake_current',
+      patientId: 'patient_1',
+      orgId: 'org_1',
+      lines: [
+        {
+          drug_name: 'アムロジピン錠5mg',
+          drug_code: '2149001',
+          dose: '1錠',
+          frequency: '1日1回朝食後',
+        },
+      ],
+      prescriberName: '処方医A',
+      sourceType: 'qr_scan',
+    });
+
+    expect(prismaMock.prescriptionIntake.findFirst).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: {
+          id: 'intake_current',
+          org_id: 'org_1',
+          cycle: {
+            patient_id: 'patient_1',
+          },
+        },
+      }),
+    );
+    expect(prismaMock.prescriptionIntake.findFirst).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          id: { not: 'intake_current' },
+          cycle: {
+            patient_id: 'patient_1',
+            case_id: 'case_1',
+          },
+          OR: [
+            { prescribed_date: { lt: new Date('2026-06-10T00:00:00.000Z') } },
+            {
+              prescribed_date: new Date('2026-06-10T00:00:00.000Z'),
+              created_at: { lt: new Date('2026-06-10T09:00:00.000Z') },
+            },
+          ],
+        }),
+      }),
+    );
+    expect(result.medicationChanges).toEqual([
+      {
+        drug_name: 'アムロジピン錠5mg',
+        change_type: 'days_changed',
+        previous: '1錠 / 1日1回朝食後',
+        current: '1錠 / 1日1回朝食後',
+        previous_frequency: '1日1回朝食後',
+        current_frequency: '1日1回朝食後',
+        previous_days: 7,
+        current_days: 14,
+      },
+    ]);
   });
 
   it('does not discontinue OTC QR medication profiles during prescription sync', async () => {

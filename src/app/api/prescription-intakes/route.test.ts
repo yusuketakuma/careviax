@@ -232,6 +232,73 @@ describe('/api/prescription-intakes POST', () => {
     expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
   });
 
+  it('returns conflict when previous prescription source revision is stale', async () => {
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        medicationCycle: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'cycle_1',
+            patient_id: 'patient_1',
+            case_id: 'case_1',
+            overall_status: 'ready_to_dispense',
+            version: 1,
+            case_: { primary_pharmacist_id: 'pharmacist_1' },
+            prescription_intakes: [],
+            dispense_tasks: [],
+          }),
+        },
+        prescriptionLine: {
+          findMany: vi.fn().mockResolvedValue([
+            {
+              id: 'line_prev',
+              intake_id: 'intake_prev',
+              updated_at: new Date('2026-04-01T09:31:00.000Z'),
+              intake: {
+                id: 'intake_prev',
+                updated_at: new Date('2026-04-01T10:00:00.000Z'),
+                cycle: {
+                  patient_id: 'patient_1',
+                  case_id: 'case_1',
+                },
+              },
+            },
+          ]),
+        },
+        prescriptionIntake: {
+          create: vi.fn(),
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        cycle_id: 'cycle_1',
+        source_type: 'paper',
+        prescribed_date: TODAY,
+        lines: [
+          {
+            line_number: 1,
+            drug_name: 'アムロジピン錠5mg',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+            source_intake_id: 'intake_prev',
+            source_line_id: 'line_prev',
+            source_intake_updated_at_snapshot: '2026-04-01T10:00:00.000Z',
+            source_line_updated_at_snapshot: '2026-04-01T09:30:00.000Z',
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '前回処方が更新されています。再読み込みしてください',
+    });
+  });
+
   it('rejects blank required prescription intake fields before reference validation or intake creation', async () => {
     const response = await POST(
       createRequest({
@@ -667,15 +734,15 @@ describe('/api/prescription-intakes POST', () => {
       },
     });
     expect(cycleUpdateManyMock).toHaveBeenNthCalledWith(1, {
-      where: { id: 'cycle_1', version: 1 },
+      where: { id: 'cycle_1', org_id: 'org_1', version: 1 },
       data: expect.objectContaining({ overall_status: 'structuring' }),
     });
     expect(cycleUpdateManyMock).toHaveBeenNthCalledWith(2, {
-      where: { id: 'cycle_1', version: 2 },
+      where: { id: 'cycle_1', org_id: 'org_1', version: 2 },
       data: expect.objectContaining({ overall_status: 'ready_to_dispense' }),
     });
     expect(cycleUpdateManyMock).toHaveBeenNthCalledWith(3, {
-      where: { id: 'cycle_1', version: 3 },
+      where: { id: 'cycle_1', org_id: 'org_1', version: 3 },
       data: expect.objectContaining({ overall_status: 'dispensing' }),
     });
   });
@@ -794,7 +861,7 @@ describe('/api/prescription-intakes POST', () => {
     );
     expect(upsertOperationalTaskMock).toHaveBeenCalled();
     expect(cycleUpdateManyMock).toHaveBeenCalledWith({
-      where: { id: 'cycle_2', version: 1 },
+      where: { id: 'cycle_2', org_id: 'org_1', version: 1 },
       data: expect.objectContaining({ overall_status: 'inquiry_pending' }),
     });
   });
@@ -1645,7 +1712,7 @@ describe('/api/prescription-intakes POST', () => {
       },
     });
     expect(cycleUpdateManyMock).toHaveBeenCalledWith({
-      where: { id: 'cycle_1', version: 1 },
+      where: { id: 'cycle_1', org_id: 'org_1', version: 1 },
       data: expect.objectContaining({ overall_status: 'dispensing' }),
     });
   });

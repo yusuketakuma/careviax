@@ -17,6 +17,7 @@ import {
   resolvePrescriberInstitutionFields,
 } from '@/lib/prescriptions/prescriber-institutions';
 import { buildPrescriptionIntakeAssignmentWhere } from '@/server/services/prescription-access';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
 
 function getPrescriptionDocumentPathname(value: string) {
   if (value.startsWith('/')) return value;
@@ -162,6 +163,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     },
   });
   if (!existing) return notFound('処方箋が見つかりません');
+
+  if (existing.cycle?.patient_id) {
+    const writable = await requireWritablePatient(prisma, ctx, existing.cycle.patient_id);
+    if ('response' in writable) return writable.response;
+  }
 
   const {
     refill_next_dispense_date,

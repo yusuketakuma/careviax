@@ -102,16 +102,18 @@ model CommunicationRequest {
 }
 
 model CommunicationResponse {
-  id             String               @id @default(cuid())
-  org_id         String
-  request_id     String
-  request        CommunicationRequest @relation(fields: [request_id], references: [id])
-  responder_name String
-  content        String
-  responded_at   DateTime
-  created_at     DateTime             @default(now())
-  updated_at     DateTime             @updatedAt
+  id                  String               @id @default(cuid())
+  org_id              String
+  request_id          String
+  request             CommunicationRequest @relation(fields: [request_id], references: [id])
+  responder_name      String
+  content             String
+  responded_at        DateTime
+  response_intent_key String?
+  created_at          DateTime             @default(now())
+  updated_at          DateTime             @updatedAt
 
+  @@unique([org_id, response_intent_key])
   @@index([org_id])
   @@index([request_id])
 }
@@ -141,21 +143,23 @@ model CareReport {
 }
 
 model DeliveryRecord {
-  id                String               @id @default(cuid())
-  org_id            String
-  report_id         String
-  report            CareReport           @relation(fields: [report_id], references: [id])
-  channel           CommunicationChannel
-  recipient_name    String
-  recipient_contact String
-  status            ReportStatus         @default(draft)
-  sent_at           DateTime?
-  confirmed_at      DateTime?
-  failure_reason    String?
-  retry_count       Int                  @default(0)
-  created_at        DateTime             @default(now())
-  updated_at        DateTime             @updatedAt
+  id                  String               @id @default(cuid())
+  org_id              String
+  report_id           String
+  report              CareReport           @relation(fields: [report_id], references: [id])
+  channel             CommunicationChannel
+  recipient_name      String
+  recipient_contact   String
+  delivery_intent_key String?
+  status              ReportStatus         @default(draft)
+  sent_at             DateTime?
+  confirmed_at        DateTime?
+  failure_reason      String?
+  retry_count         Int                  @default(0)
+  created_at          DateTime             @default(now())
+  updated_at          DateTime             @updatedAt
 
+  @@unique([org_id, delivery_intent_key])
   @@index([org_id])
   @@index([status])
 }

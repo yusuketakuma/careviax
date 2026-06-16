@@ -97,6 +97,61 @@ describe('/api/patients/[id]/prescriptions', () => {
     });
   });
 
+  it('filters previous prescriptions to the requested accessible case', async () => {
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1' }, { id: 'case_2' }]);
+
+    const response = (await GET(createGetRequest('patient_1', 'limit=5&case_id=case_2'), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expect(prescriptionIntakeFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          cycle: { patient_id: 'patient_1', case_id: { in: ['case_2'] } },
+        }),
+      }),
+    );
+  });
+
+  it('selects intake and line updated_at for previous-prescription reuse provenance', async () => {
+    const response = (await GET(createGetRequest('patient_1', 'limit=5&case_id=case_1'), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
+
+    expect(response.status).toBe(200);
+    const findManyArgs = prescriptionIntakeFindManyMock.mock.calls[0]?.[0];
+    expect(findManyArgs.select).toEqual(
+      expect.objectContaining({
+        updated_at: true,
+        lines: expect.objectContaining({
+          select: expect.objectContaining({
+            id: true,
+            updated_at: true,
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('returns an empty result for inaccessible case filters without loading prescriptions', async () => {
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1' }]);
+
+    const response = (await GET(createGetRequest('patient_1', 'limit=5&case_id=case_other'), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expect(prescriptionIntakeFindManyMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      patient: expect.objectContaining({ id: 'patient_1' }),
+      data: [],
+      hasMore: false,
+      diff_review: null,
+      diff_meta: null,
+    });
+  });
+
   it('rejects blank patient ids before loading prescriptions', async () => {
     const response = (await GET(createGetRequest('%20%20', 'limit=1'), {
       params: Promise.resolve({ id: '   ' }),

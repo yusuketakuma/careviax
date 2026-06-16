@@ -11,6 +11,7 @@ import { dispatchNotificationEvent } from '@/server/services/notifications';
 import { annotateDispenseTask, sortDispenseTasks } from '@/server/services/dispense-task-list';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import {
+  ALLOWED_TRANSITIONS,
   transitionCycleStatus,
   InvalidTransitionError,
   VersionConflictError,
@@ -27,27 +28,18 @@ export const GET = withAuthContext(
     const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
 
     if (badgeOnly) {
-      const tasks = await prisma.dispenseTask.findMany({
+      const count = await prisma.dispenseTask.count({
         where: {
           org_id: ctx.orgId,
           status: 'completed',
           ...(cycleAssignmentWhere ? { cycle: cycleAssignmentWhere } : {}),
-        },
-        select: {
-          id: true,
           audits: {
-            orderBy: { audited_at: 'desc' },
-            take: 1,
-            select: {
-              result: true,
+            none: {
+              result: { notIn: ['hold'] },
             },
           },
         },
       });
-      const count = tasks.filter((task) => {
-        const latestAudit = task.audits[0] ?? null;
-        return latestAudit == null || latestAudit.result === 'hold';
-      }).length;
 
       return success({ data: { count } });
     }
@@ -246,6 +238,33 @@ type DispenseAuditMutationError =
   | { error: 'already_audited' }
   | { error: string; conflict?: true };
 
+class DispenseAuditRollback extends Error {
+  constructor(public readonly result: DispenseAuditMutationError) {
+    super(result.error);
+    this.name = 'DispenseAuditRollback';
+  }
+}
+
+function validateCycleTransitionPath(currentStatus: string, nextStatuses: string[]) {
+  let fromStatus = currentStatus;
+  for (const toStatus of nextStatuses) {
+    const allowed =
+      (ALLOWED_TRANSITIONS[fromStatus as keyof typeof ALLOWED_TRANSITIONS] as readonly string[]) ??
+      [];
+    if (!allowed.includes(toStatus)) {
+      return {
+        error: `ステータス遷移が不正です: ${fromStatus} → ${toStatus}`,
+      } as const;
+    }
+    fromStatus = toStatus;
+  }
+  return null;
+}
+
+function isDispenseAuditMutationError(value: unknown): value is DispenseAuditMutationError {
+  return typeof value === 'object' && value !== null && 'error' in value;
+}
+
 export const POST = withAuthContext(
   async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
@@ -274,237 +293,259 @@ export const POST = withAuthContext(
       return validationError('緊急例外承認時は理由の記録が必須です');
     }
 
-    const auditResult = await withOrgContext(ctx.orgId, async (tx) => {
-      const task = await tx.dispenseTask.findFirst({
-        where: {
-          id: task_id,
-          org_id: ctx.orgId,
-          ...(cycleAssignmentWhere ? { cycle: cycleAssignmentWhere } : {}),
-        },
-        select: {
-          id: true,
-          cycle_id: true,
-          assigned_to: true,
-          due_date: true,
-          priority: true,
-          cycle: {
-            select: {
-              patient_id: true,
-              set_plans: {
-                select: {
-                  id: true,
+    let auditResult: unknown;
+    try {
+      auditResult = await withOrgContext(ctx.orgId, async (tx) => {
+        const task = await tx.dispenseTask.findFirst({
+          where: {
+            id: task_id,
+            org_id: ctx.orgId,
+            ...(cycleAssignmentWhere ? { cycle: cycleAssignmentWhere } : {}),
+          },
+          select: {
+            id: true,
+            cycle_id: true,
+            assigned_to: true,
+            due_date: true,
+            priority: true,
+            cycle: {
+              select: {
+                patient_id: true,
+                overall_status: true,
+                set_plans: {
+                  select: {
+                    id: true,
+                  },
+                  take: 1,
                 },
-                take: 1,
-              },
-              case_: {
-                select: {
-                  primary_pharmacist_id: true,
-                  patient: {
-                    select: {
-                      name: true,
+                case_: {
+                  select: {
+                    primary_pharmacist_id: true,
+                    patient: {
+                      select: {
+                        name: true,
+                      },
                     },
                   },
                 },
               },
             },
           },
-        },
-      });
-      if (!task) return null;
-
-      // S2: Self-audit prevention — dispenser cannot audit their own work
-      const dispensedByUsers = await tx.dispenseResult.findMany({
-        where: { task_id, org_id: ctx.orgId },
-        select: { dispensed_by: true },
-        distinct: ['dispensed_by'],
-      });
-      const dispenserIds = new Set(dispensedByUsers.map((r) => r.dispensed_by));
-      if (dispenserIds.has(ctx.userId)) {
-        return { error: 'self_audit' as const };
-      }
-
-      // B2: Concurrent audit prevention — reject if a non-hold audit already exists
-      const existingAudit = await tx.dispenseAudit.findFirst({
-        where: { task_id, result: { notIn: ['hold'] } },
-        select: { id: true },
-      });
-      if (existingAudit) {
-        return { error: 'already_audited' as const };
-      }
-
-      if (result === 'emergency_approved') {
-        const adminMembership = await tx.membership.findFirst({
-          where: {
-            org_id: ctx.orgId,
-            user_id: ctx.userId,
-            is_active: true,
-            role: { in: [...ADMIN_MEMBER_ROLES] },
-          },
-          select: {
-            id: true,
-          },
         });
-        if (!adminMembership) {
-          return { error: '緊急例外承認は管理者のみ実行できます' } as const;
+        if (!task) return null;
+
+        // S2: Self-audit prevention — dispenser cannot audit their own work
+        const dispensedByUsers = await tx.dispenseResult.findMany({
+          where: { task_id, org_id: ctx.orgId },
+          select: { dispensed_by: true },
+          distinct: ['dispensed_by'],
+        });
+        const dispenserIds = new Set(dispensedByUsers.map((r) => r.dispensed_by));
+        if (dispenserIds.has(ctx.userId)) {
+          return { error: 'self_audit' as const };
         }
-      }
 
-      const now = new Date();
+        // B2: Concurrent audit prevention — reject if a non-hold audit already exists
+        const existingAudit = await tx.dispenseAudit.findFirst({
+          where: { task_id, result: { notIn: ['hold'] } },
+          select: { id: true },
+        });
+        if (existingAudit) {
+          return { error: 'already_audited' as const };
+        }
 
-      // Create DispenseAudit — the partial unique index on (task_id WHERE result NOT IN ('hold'))
-      // provides a DB-level TOCTOU guard; catch the constraint violation here.
-      const audit = await (async () => {
-        try {
-          return await tx.dispenseAudit.create({
-            data: {
+        if (result === 'emergency_approved') {
+          const adminMembership = await tx.membership.findFirst({
+            where: {
               org_id: ctx.orgId,
-              task_id,
-              result,
-              reject_reason: reject_reason ?? null,
-              reject_reason_code: reject_reason_code ?? null,
-              reject_detail: mergeRejectDetail({
-                rejectDetail: reject_detail,
-                externalAudit: external_audit,
-              }),
-              audited_by: ctx.userId,
-              audited_at: now,
+              user_id: ctx.userId,
+              is_active: true,
+              role: { in: [...ADMIN_MEMBER_ROLES] },
+            },
+            select: {
+              id: true,
             },
           });
-        } catch (err) {
-          if (isPrismaUniqueConstraintError(err)) {
-            return { error: 'already_audited' as const };
+          if (!adminMembership) {
+            return { error: '緊急例外承認は管理者のみ実行できます' } as const;
           }
-          throw err;
         }
-      })();
-      if ('error' in audit) return audit;
 
-      // 麻薬ダブルカウントの計数値を監査証跡として保存(操作ログ = AuditLog)
-      if (double_count && double_count.length > 0) {
-        await createAuditLogEntry(tx, ctx, {
-          action: 'dispense_audit_double_count',
-          targetType: 'DispenseAudit',
-          targetId: audit.id,
-          changes: { task_id, result, counts: double_count },
-        });
-      }
-
-      const transitionHelper = async (toStatus: string) => {
-        try {
-          await transitionCycleStatus(tx, task.cycle_id, ctx.orgId, toStatus, ctx.userId);
-        } catch (err) {
-          if (err instanceof InvalidTransitionError) {
-            return {
-              error: `ステータス遷移が不正です: ${err.fromStatus} → ${err.toStatus}`,
-            } as const;
-          }
-          if (err instanceof VersionConflictError) {
-            return { error: err.message, conflict: true } as const;
-          }
-          throw err;
-        }
-        return null;
-      };
-
-      if (result === 'approved' || result === 'emergency_approved') {
-        // Two-step transition: audit_pending → audited → setting/visit_ready
-        const toAuditedErr = await transitionHelper('audited');
-        if (toAuditedErr) return toAuditedErr;
-        const nextStatus = task.cycle.set_plans.length > 0 ? 'setting' : 'visit_ready';
-        const transitionErr = await transitionHelper(nextStatus);
-        if (transitionErr) return transitionErr;
-        await tx.dispenseTask.update({
-          where: { id: task_id },
-          data: { status: 'completed' },
-        });
-
-        // B4: Auto-resolve open dispense_audit_rejected exceptions on approval
-        await tx.workflowException.updateMany({
-          where: {
-            cycle_id: task.cycle_id,
-            exception_type: 'dispense_audit_rejected',
-            status: 'open' satisfies ExceptionStatus,
-          },
-          data: {
-            status: 'resolved' satisfies ExceptionStatus,
-            resolved_by: ctx.userId,
-            resolved_at: new Date(),
-          },
-        });
-      } else if (result === 'hold') {
-        const transitionErr = await transitionHelper('on_hold');
-        if (transitionErr) return transitionErr;
-      } else if (result === 'rejected') {
-        // Update MedicationCycle status back to dispensing for re-dispense
-        const transitionErr = await transitionHelper('dispensing');
-        if (transitionErr) return transitionErr;
-        await tx.dispenseTask.update({
-          where: { id: task_id },
-          data: { status: 'in_progress' },
-        });
-
-        // Auto-create WorkflowException
-        await tx.workflowException.create({
-          data: {
-            org_id: ctx.orgId,
-            cycle_id: task.cycle_id,
-            patient_id: task.cycle.patient_id,
-            exception_type: 'dispense_audit_rejected',
-            description: `調剤鑑査差戻し: ${reject_reason ?? '理由未記入'}${reject_detail ? ` — ${reject_detail}` : ''}`,
-            severity: 'warning' satisfies ExceptionSeverity,
-            status: 'open' satisfies ExceptionStatus,
-          },
-        });
-
-        const fallbackRecipients = await tx.membership.findMany({
-          where: {
-            org_id: ctx.orgId,
-            is_active: true,
-            role: { in: [...DISPENSE_AUDIT_FALLBACK_MEMBER_ROLES] },
-            user: {
-              is_active: true,
-            },
-          },
-          select: {
-            user_id: true,
-          },
-        });
-
-        const explicitUserIds = Array.from(
-          new Set(
-            [
-              task.assigned_to ?? null,
-              task.cycle.case_?.primary_pharmacist_id ?? null,
-              ...fallbackRecipients.map((member) => member.user_id),
-            ].filter((value): value is string => Boolean(value)),
-          ),
+        const plannedStatuses =
+          result === 'approved' || result === 'emergency_approved'
+            ? ['audited', task.cycle.set_plans.length > 0 ? 'setting' : 'visit_ready']
+            : result === 'hold'
+              ? ['on_hold']
+              : ['dispensing'];
+        const transitionPreflightErr = validateCycleTransitionPath(
+          task.cycle.overall_status,
+          plannedStatuses,
         );
+        if (transitionPreflightErr) return transitionPreflightErr;
 
-        await dispatchNotificationEvent(tx, {
-          orgId: ctx.orgId,
-          eventType: 'dispense_audit_rejected',
-          type: 'urgent',
-          title: '調剤鑑査で差戻しが発生しました',
-          message: `${task.cycle.case_.patient.name} の調剤結果が差戻しになりました${task.due_date ? `（期限 ${formatDateKey(task.due_date)}）` : ''}`,
-          link: `/dispense?taskId=${encodeURIComponent(task.id)}`,
-          metadata: {
-            task_id,
-            cycle_id: task.cycle_id,
-            patient_id: task.cycle.patient_id,
-            reject_reason: reject_reason ?? null,
-            priority: task.priority,
-          },
-          explicitUserIds,
-          dedupeKey: `dispense-audit-rejected:${task_id}:${audit.id}`,
-        });
+        const now = new Date();
+
+        // Create DispenseAudit — the partial unique index on (task_id WHERE result NOT IN ('hold'))
+        // provides a DB-level TOCTOU guard; catch the constraint violation here.
+        const audit = await (async () => {
+          try {
+            return await tx.dispenseAudit.create({
+              data: {
+                org_id: ctx.orgId,
+                task_id,
+                result,
+                reject_reason: reject_reason ?? null,
+                reject_reason_code: reject_reason_code ?? null,
+                reject_detail: mergeRejectDetail({
+                  rejectDetail: reject_detail,
+                  externalAudit: external_audit,
+                }),
+                audited_by: ctx.userId,
+                audited_at: now,
+              },
+            });
+          } catch (err) {
+            if (isPrismaUniqueConstraintError(err)) {
+              return { error: 'already_audited' as const };
+            }
+            throw err;
+          }
+        })();
+        if ('error' in audit) return audit;
+
+        // 麻薬ダブルカウントの計数値を監査証跡として保存(操作ログ = AuditLog)
+        if (double_count && double_count.length > 0) {
+          await createAuditLogEntry(tx, ctx, {
+            action: 'dispense_audit_double_count',
+            targetType: 'DispenseAudit',
+            targetId: audit.id,
+            changes: { task_id, result, counts: double_count },
+          });
+        }
+
+        const transitionHelper = async (toStatus: string) => {
+          try {
+            await transitionCycleStatus(tx, task.cycle_id, ctx.orgId, toStatus, ctx.userId);
+          } catch (err) {
+            if (err instanceof InvalidTransitionError) {
+              throw new DispenseAuditRollback({
+                error: `ステータス遷移が不正です: ${err.fromStatus} → ${err.toStatus}`,
+              });
+            }
+            if (err instanceof VersionConflictError) {
+              throw new DispenseAuditRollback({ error: err.message, conflict: true });
+            }
+            throw err;
+          }
+          return null;
+        };
+
+        if (result === 'approved' || result === 'emergency_approved') {
+          // Two-step transition: audit_pending → audited → setting/visit_ready
+          const toAuditedErr = await transitionHelper('audited');
+          if (toAuditedErr) return toAuditedErr;
+          const nextStatus = task.cycle.set_plans.length > 0 ? 'setting' : 'visit_ready';
+          const transitionErr = await transitionHelper(nextStatus);
+          if (transitionErr) return transitionErr;
+          await tx.dispenseTask.update({
+            where: { id: task_id },
+            data: { status: 'completed' },
+          });
+
+          // B4: Auto-resolve open dispense_audit_rejected exceptions on approval
+          await tx.workflowException.updateMany({
+            where: {
+              cycle_id: task.cycle_id,
+              exception_type: 'dispense_audit_rejected',
+              status: 'open' satisfies ExceptionStatus,
+            },
+            data: {
+              status: 'resolved' satisfies ExceptionStatus,
+              resolved_by: ctx.userId,
+              resolved_at: new Date(),
+            },
+          });
+        } else if (result === 'hold') {
+          const transitionErr = await transitionHelper('on_hold');
+          if (transitionErr) return transitionErr;
+        } else if (result === 'rejected') {
+          // Update MedicationCycle status back to dispensing for re-dispense
+          const transitionErr = await transitionHelper('dispensing');
+          if (transitionErr) return transitionErr;
+          await tx.dispenseTask.update({
+            where: { id: task_id },
+            data: { status: 'in_progress' },
+          });
+
+          // Auto-create WorkflowException
+          await tx.workflowException.create({
+            data: {
+              org_id: ctx.orgId,
+              cycle_id: task.cycle_id,
+              patient_id: task.cycle.patient_id,
+              exception_type: 'dispense_audit_rejected',
+              description: `調剤鑑査差戻し: ${reject_reason ?? '理由未記入'}${reject_detail ? ` — ${reject_detail}` : ''}`,
+              severity: 'warning' satisfies ExceptionSeverity,
+              status: 'open' satisfies ExceptionStatus,
+            },
+          });
+
+          const fallbackRecipients = await tx.membership.findMany({
+            where: {
+              org_id: ctx.orgId,
+              is_active: true,
+              role: { in: [...DISPENSE_AUDIT_FALLBACK_MEMBER_ROLES] },
+              user: {
+                is_active: true,
+              },
+            },
+            select: {
+              user_id: true,
+            },
+          });
+
+          const explicitUserIds = Array.from(
+            new Set(
+              [
+                task.assigned_to ?? null,
+                task.cycle.case_?.primary_pharmacist_id ?? null,
+                ...fallbackRecipients.map((member) => member.user_id),
+              ].filter((value): value is string => Boolean(value)),
+            ),
+          );
+
+          await dispatchNotificationEvent(tx, {
+            orgId: ctx.orgId,
+            eventType: 'dispense_audit_rejected',
+            type: 'urgent',
+            title: '調剤鑑査で差戻しが発生しました',
+            message: `${task.cycle.case_.patient.name} の調剤結果が差戻しになりました${task.due_date ? `（期限 ${formatDateKey(task.due_date)}）` : ''}`,
+            link: `/dispense?taskId=${encodeURIComponent(task.id)}`,
+            metadata: {
+              task_id,
+              cycle_id: task.cycle_id,
+              patient_id: task.cycle.patient_id,
+              reject_reason: reject_reason ?? null,
+              priority: task.priority,
+            },
+            explicitUserIds,
+            dedupeKey: `dispense-audit-rejected:${task_id}:${audit.id}`,
+          });
+        }
+
+        return audit;
+      });
+    } catch (err) {
+      if (err instanceof DispenseAuditRollback) {
+        auditResult = err.result;
+      } else {
+        throw err;
       }
-
-      return audit;
-    });
+    }
 
     if (!auditResult) return notFound('指定された調剤タスクが見つかりません');
-    if ('error' in auditResult) {
-      const auditError = auditResult as DispenseAuditMutationError;
+    if (isDispenseAuditMutationError(auditResult)) {
+      const auditError = auditResult;
       if (auditError.error === 'self_audit') {
         return validationError('ご自身が調剤した処方の監査はできません');
       }

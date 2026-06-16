@@ -376,6 +376,7 @@ model SetPlan {
   audits      SetAudit[]
   change_logs SetBatchChangeLog[]
 
+  @@unique([org_id, cycle_id, target_period_start, target_period_end, set_method])
   @@index([org_id])
   @@index([cycle_id])
   @@index([packaging_method_id])

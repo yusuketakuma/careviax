@@ -7,6 +7,7 @@ const {
   dispatchNotificationEventMock,
   notifyWorkflowMutationMock,
   dispenseTaskFindManyMock,
+  dispenseTaskCountMock,
 } = vi.hoisted(() => ({
   withAuthMock: vi.fn(
     (
@@ -27,6 +28,7 @@ const {
   dispatchNotificationEventMock: vi.fn(),
   notifyWorkflowMutationMock: vi.fn(),
   dispenseTaskFindManyMock: vi.fn(),
+  dispenseTaskCountMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -41,6 +43,7 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     dispenseTask: {
       findMany: dispenseTaskFindManyMock,
+      count: dispenseTaskCountMock,
     },
   },
 }));
@@ -88,6 +91,7 @@ function createGetRequest(search = '') {
 describe('/api/dispense-audits GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    dispenseTaskCountMock.mockResolvedValue(2);
     dispenseTaskFindManyMock.mockResolvedValue([
       {
         id: 'task_hold',
@@ -173,28 +177,23 @@ describe('/api/dispense-audits GET', () => {
   });
 
   it('returns only the visible audit count for nav badges', async () => {
-    dispenseTaskFindManyMock.mockResolvedValue([
-      { id: 'task_no_audit', audits: [] },
-      { id: 'task_hold', audits: [{ result: 'hold' }] },
-      { id: 'task_approved', audits: [{ result: 'approved' }] },
-    ]);
-
     const response = await GET(createGetRequest('?badge=1'));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ data: { count: 2 } });
-    expect(dispenseTaskFindManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        select: {
-          id: true,
-          audits: expect.objectContaining({
-            take: 1,
-            select: { result: true },
-          }),
+    expect(dispenseTaskCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        status: 'completed',
+        audits: {
+          none: {
+            result: { notIn: ['hold'] },
+          },
         },
-      }),
-    );
+      },
+    });
+    expect(dispenseTaskFindManyMock).not.toHaveBeenCalled();
   });
 });
 
@@ -260,6 +259,7 @@ describe('/api/dispense-audits POST', () => {
             priority: 'urgent',
             cycle: {
               patient_id: 'patient_1',
+              overall_status: 'audit_pending',
               case_: {
                 primary_pharmacist_id: 'pharmacist_1',
                 patient: {
@@ -308,7 +308,7 @@ describe('/api/dispense-audits POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
     expect(cycleUpdateManyMock).toHaveBeenCalledWith({
-      where: { id: 'cycle_1', version: 1 },
+      where: { id: 'cycle_1', org_id: 'org_1', version: 1 },
       data: { overall_status: 'dispensing', version: { increment: 1 } },
     });
     expect(taskUpdateMock).toHaveBeenCalledWith({
@@ -378,6 +378,76 @@ describe('/api/dispense-audits POST', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it('rejects invalid cycle transitions before creating a dispense audit record', async () => {
+    const dispenseAuditCreateMock = vi.fn();
+    const taskUpdateMock = vi.fn();
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'task_wrong_phase',
+            cycle_id: 'cycle_wrong_phase',
+            assigned_to: 'user_dispense',
+            due_date: null,
+            priority: 'normal',
+            cycle: {
+              patient_id: 'patient_1',
+              overall_status: 'visit_completed',
+              set_plans: [],
+              case_: {
+                primary_pharmacist_id: 'pharmacist_1',
+                patient: {
+                  name: '山田 太郎',
+                },
+              },
+            },
+          }),
+          update: taskUpdateMock,
+        },
+        dispenseResult: {
+          findMany: vi.fn().mockResolvedValue([{ dispensed_by: 'user_dispense' }]),
+        },
+        membership: {
+          findFirst: vi.fn().mockResolvedValue({ id: 'membership_admin' }),
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+        dispenseAudit: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: dispenseAuditCreateMock,
+        },
+        medicationCycle: {
+          findFirst: vi
+            .fn()
+            .mockResolvedValue({ id: 'cycle_wrong_phase', overall_status: 'visit_completed' }),
+          updateMany: vi.fn(),
+        },
+        cycleTransitionLog: { create: vi.fn() },
+        workflowException: {
+          create: vi.fn(),
+          updateMany: vi.fn(),
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_wrong_phase',
+        result: 'approved',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'ステータス遷移が不正です: visit_completed → audited',
+    });
+    expect(dispenseAuditCreateMock).not.toHaveBeenCalled();
+    expect(taskUpdateMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('rejects emergency approval for non-admin users without a reason', async () => {
     const response = await POST(
       createRequest({
@@ -412,6 +482,7 @@ describe('/api/dispense-audits POST', () => {
             priority: 'normal',
             cycle: {
               patient_id: 'patient_2',
+              overall_status: 'audit_pending',
               set_plans: [],
               case_: {
                 primary_pharmacist_id: 'pharmacist_1',
@@ -482,6 +553,7 @@ describe('/api/dispense-audits POST', () => {
             priority: 'normal',
             cycle: {
               patient_id: 'patient_3',
+              overall_status: 'audit_pending',
               set_plans: [],
               case_: {
                 primary_pharmacist_id: 'pharmacist_1',

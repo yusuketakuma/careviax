@@ -81,6 +81,16 @@ const NON_READY_MUTABLE_VISIT_SCHEDULE_STATUSES: ScheduleStatus[] = [
   'postponed',
 ];
 
+class SetAuditRollback extends Error {
+  constructor(
+    readonly result:
+      | { error: 'cell_version_conflict'; conflict: true }
+      | { error: string; conflict?: true },
+  ) {
+    super('set audit transaction rolled back');
+  }
+}
+
 function normalizeApprovedScope(scope: unknown) {
   if (!scope || typeof scope !== 'object' || Array.isArray(scope)) {
     return undefined;
@@ -465,7 +475,7 @@ export const POST = withAuthContext(
             },
           });
           if (updateResult.count === 0) {
-            return { error: 'cell_version_conflict' as const, conflict: true };
+            throw new SetAuditRollback({ error: 'cell_version_conflict', conflict: true });
           }
 
           const after = {
@@ -532,7 +542,7 @@ export const POST = withAuthContext(
         const carryItems = buildSetCarryItems(effectiveSetBatches);
         const carryItemsInput = toPrismaJsonInput(carryItems);
         const transitionErr = await transitionHelper('set_audited');
-        if (transitionErr) return transitionErr;
+        if (transitionErr) throw new SetAuditRollback(transitionErr);
         await tx.visitSchedule.updateMany({
           where: {
             org_id: ctx.orgId,
@@ -594,7 +604,7 @@ export const POST = withAuthContext(
         const transitionErr = await transitionHelper('set_audited', {
           exceptionStatus: 'carry_items_partial',
         });
-        if (transitionErr) return transitionErr;
+        if (transitionErr) throw new SetAuditRollback(transitionErr);
         await tx.visitSchedule.updateMany({
           where: {
             org_id: ctx.orgId,
@@ -650,9 +660,9 @@ export const POST = withAuthContext(
           },
         });
       } else {
-        // rejected — notify + WorkflowException + back to setting
-        const transitionErr = await transitionHelper('setting');
-        if (transitionErr) return transitionErr;
+        // rejected — notify + WorkflowException + hold for rework.
+        const transitionErr = await transitionHelper('on_hold');
+        if (transitionErr) throw new SetAuditRollback(transitionErr);
         await tx.visitSchedule.updateMany({
           where: {
             org_id: ctx.orgId,
@@ -740,6 +750,9 @@ export const POST = withAuthContext(
       });
 
       return audit;
+    }).catch((err: unknown) => {
+      if (err instanceof SetAuditRollback) return err.result;
+      throw err;
     });
 
     if (!auditResult) return notFound('指定されたセットプランが見つかりません');

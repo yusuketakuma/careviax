@@ -9,11 +9,13 @@ const {
   listAccessiblePatientCaseIdsMock,
   createEPrescriptionAdapterMock,
   fetchPrescriptionMock,
+  createPrescriptionIntakeMock,
 } = vi.hoisted(() => {
   const fetchPrescriptionMock = vi.fn();
   const createEPrescriptionAdapterMock = vi.fn(() => ({
     fetchPrescription: fetchPrescriptionMock,
   }));
+  const createPrescriptionIntakeMock = vi.fn();
 
   return {
     requireAuthContextMock: vi.fn(),
@@ -22,12 +24,13 @@ const {
     },
     withOrgContextMock: vi.fn(),
     txMock: {
-      medicationCycle: { findFirst: vi.fn() },
-      prescriptionIntake: { create: vi.fn() },
+      medicationCycle: { findMany: vi.fn() },
+      prescriptionIntake: { create: vi.fn(), findFirst: vi.fn() },
     },
     listAccessiblePatientCaseIdsMock: vi.fn(),
     createEPrescriptionAdapterMock,
     fetchPrescriptionMock,
+    createPrescriptionIntakeMock,
   };
 });
 
@@ -50,10 +53,22 @@ vi.mock('@/server/services/patient-access', () => ({
 vi.mock('@/server/adapters/e-prescription', () => {
   class EPrescriptionAdapterError extends Error {
     code: string;
-    constructor(message: string, code: string) {
+    retriable: boolean;
+    status?: number;
+    causeDetail?: unknown;
+    constructor(
+      message: string,
+      code: string,
+      retriable = false,
+      status?: number,
+      causeDetail?: unknown,
+    ) {
       super(message);
       this.name = 'EPrescriptionAdapterError';
       this.code = code;
+      this.retriable = retriable;
+      this.status = status;
+      this.causeDetail = causeDetail;
     }
   }
   return {
@@ -61,6 +76,10 @@ vi.mock('@/server/adapters/e-prescription', () => {
     EPrescriptionAdapterError,
   };
 });
+
+vi.mock('@/server/services/prescription-intake-service', () => ({
+  createPrescriptionIntake: createPrescriptionIntakeMock,
+}));
 
 vi.mock('@/lib/auth/visit-schedule-access', () => ({
   applyPatientAssignmentWhere: (base: unknown) => base,
@@ -101,8 +120,11 @@ function mockEPrescription() {
     prescriptionId: 'rx_abc123',
     issuedAt: '2026-05-01T09:00:00Z',
     expiresAt: '2026-05-08T23:59:59Z',
+    patientExternalId: 'patient_1',
+    patientName: '山田太郎',
     prescriberName: '鈴木医師',
     prescriberInstitution: '鈴木クリニック',
+    status: 'issued',
     refillRemainingCount: 0,
     items: [
       {
@@ -122,8 +144,16 @@ function mockEPrescription() {
 
 function expectNoIntakeSideEffects() {
   expect(withOrgContextMock).not.toHaveBeenCalled();
-  expect(txMock.medicationCycle.findFirst).not.toHaveBeenCalled();
+  expect(txMock.medicationCycle.findMany).not.toHaveBeenCalled();
   expect(txMock.prescriptionIntake.create).not.toHaveBeenCalled();
+  expect(txMock.prescriptionIntake.findFirst).not.toHaveBeenCalled();
+  expect(createPrescriptionIntakeMock).not.toHaveBeenCalled();
+}
+
+function expectNoIntakeWrites() {
+  expect(txMock.medicationCycle.findMany).not.toHaveBeenCalled();
+  expect(txMock.prescriptionIntake.create).not.toHaveBeenCalled();
+  expect(createPrescriptionIntakeMock).not.toHaveBeenCalled();
 }
 
 describe('POST /api/patients/[id]/prescriptions/e-prescription', () => {
@@ -136,6 +166,7 @@ describe('POST /api/patients/[id]/prescriptions/e-prescription', () => {
     withOrgContextMock.mockImplementation(
       async (_orgId: string, callback: (tx: typeof txMock) => unknown) => callback(txMock),
     );
+    txMock.prescriptionIntake.findFirst.mockResolvedValue(null);
   });
 
   it('rejects non-object request payloads before patient lookup or adapter calls', async () => {
@@ -230,6 +261,24 @@ describe('POST /api/patients/[id]/prescriptions/e-prescription', () => {
     expectNoIntakeSideEffects();
   });
 
+  it('rejects archived patients before adapter calls or intake writes', async () => {
+    prismaMock.patient.findFirst.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    const response = await POST(createRequest({ prescription_id: 'rx_abc123' }), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(listAccessiblePatientCaseIdsMock).not.toHaveBeenCalled();
+    expect(createEPrescriptionAdapterMock).not.toHaveBeenCalled();
+    expect(fetchPrescriptionMock).not.toHaveBeenCalled();
+    expectNoIntakeSideEffects();
+  });
+
   it('returns 501 and skips transaction/create when the adapter is disabled', async () => {
     mockAccessiblePatient();
     fetchPrescriptionMock.mockRejectedValue(
@@ -251,10 +300,62 @@ describe('POST /api/patients/[id]/prescriptions/e-prescription', () => {
     });
     expect(createEPrescriptionAdapterMock).toHaveBeenCalledOnce();
     expect(fetchPrescriptionMock).toHaveBeenCalledWith('rx_abc123');
-    expectNoIntakeSideEffects();
+    expectNoIntakeWrites();
   });
 
-  it('returns 502 and skips transaction/create when the adapter reports an upstream failure', async () => {
+  it('returns 503 and skips fetch/transaction/create when adapter configuration is invalid', async () => {
+    mockAccessiblePatient();
+    createEPrescriptionAdapterMock.mockImplementationOnce(() => {
+      throw new EPrescriptionAdapterError(
+        '電子処方箋 API の baseUrl が設定されていません',
+        'INVALID_CONFIGURATION',
+        false,
+      );
+    });
+
+    const response = await POST(createRequest({ prescription_id: 'rx_abc123' }), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'EPRESCRIPTION_CONFIGURATION_ERROR',
+      message: '電子処方箋連携の設定が不完全です。管理者に確認してください。',
+      details: { retriable: false },
+    });
+    expect(createEPrescriptionAdapterMock).toHaveBeenCalledOnce();
+    expect(fetchPrescriptionMock).not.toHaveBeenCalled();
+    expectNoIntakeWrites();
+  });
+
+  it('returns a distinct upstream auth error and skips transaction/create', async () => {
+    mockAccessiblePatient();
+    fetchPrescriptionMock.mockRejectedValue(
+      new EPrescriptionAdapterError(
+        '電子処方箋 API の認証に失敗しました',
+        'UNAUTHORIZED',
+        false,
+        401,
+      ),
+    );
+
+    const response = await POST(createRequest({ prescription_id: 'rx_abc123' }), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'EPRESCRIPTION_UPSTREAM_UNAUTHORIZED',
+      details: { retriable: false, upstream_status: 401 },
+    });
+    expect(createEPrescriptionAdapterMock).toHaveBeenCalledOnce();
+    expect(fetchPrescriptionMock).toHaveBeenCalledWith('rx_abc123');
+    expectNoIntakeWrites();
+  });
+
+  it('returns 503 and skips transaction/create when the adapter reports a retriable upstream failure', async () => {
     mockAccessiblePatient();
     fetchPrescriptionMock.mockRejectedValue(
       new EPrescriptionAdapterError('電子処方箋取得に失敗しました', 'UPSTREAM_FAILURE', true, 503),
@@ -265,13 +366,14 @@ describe('POST /api/patients/[id]/prescriptions/e-prescription', () => {
     });
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(502);
+    expect(response.status).toBe(503);
     await expect(response.json()).resolves.toMatchObject({
       code: 'EPRESCRIPTION_UPSTREAM_FAILURE',
+      details: { retriable: true, upstream_status: 503 },
     });
     expect(createEPrescriptionAdapterMock).toHaveBeenCalledOnce();
     expect(fetchPrescriptionMock).toHaveBeenCalledWith('rx_abc123');
-    expectNoIntakeSideEffects();
+    expectNoIntakeWrites();
   });
 
   it('returns 404 and skips transaction/create when the adapter cannot find the prescription', async () => {
@@ -289,13 +391,13 @@ describe('POST /api/patients/[id]/prescriptions/e-prescription', () => {
     });
     expect(createEPrescriptionAdapterMock).toHaveBeenCalledOnce();
     expect(fetchPrescriptionMock).toHaveBeenCalledWith('rx_missing');
-    expectNoIntakeSideEffects();
+    expectNoIntakeWrites();
   });
 
   it('returns 422 and skips intake create when no active medication cycle exists', async () => {
     mockAccessiblePatient();
     mockEPrescription();
-    txMock.medicationCycle.findFirst.mockResolvedValue(null);
+    txMock.medicationCycle.findMany.mockResolvedValue([]);
 
     const response = await POST(createRequest({ prescription_id: 'rx_abc123' }), {
       params: Promise.resolve({ id: 'patient_1' }),
@@ -308,20 +410,89 @@ describe('POST /api/patients/[id]/prescriptions/e-prescription', () => {
     });
     expect(createEPrescriptionAdapterMock).toHaveBeenCalledOnce();
     expect(fetchPrescriptionMock).toHaveBeenCalledWith('rx_abc123');
-    expect(withOrgContextMock).toHaveBeenCalledOnce();
-    expect(txMock.medicationCycle.findFirst).toHaveBeenCalledOnce();
+    expect(withOrgContextMock).toHaveBeenCalledTimes(2);
+    expect(txMock.prescriptionIntake.findFirst).toHaveBeenCalledOnce();
+    expect(txMock.medicationCycle.findMany).toHaveBeenCalledOnce();
     expect(txMock.prescriptionIntake.create).not.toHaveBeenCalled();
+    expect(createPrescriptionIntakeMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects electronic prescriptions for a different patient before transaction writes', async () => {
+    mockAccessiblePatient();
+    mockEPrescription();
+    fetchPrescriptionMock.mockResolvedValueOnce({
+      prescriptionId: 'rx_other_patient',
+      issuedAt: '2026-05-01T09:00:00Z',
+      expiresAt: '2026-05-08T23:59:59Z',
+      patientExternalId: 'patient_2',
+      patientName: '別患者',
+      prescriberName: '鈴木医師',
+      prescriberInstitution: '鈴木クリニック',
+      status: 'issued',
+      items: [],
+    });
+
+    const response = await POST(createRequest({ prescription_id: 'rx_other_patient' }), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '電子処方箋の患者IDが選択中の患者と一致しません',
+    });
+    expectNoIntakeWrites();
+  });
+
+  it('rejects cancelled electronic prescriptions before transaction writes', async () => {
+    mockAccessiblePatient();
+    mockEPrescription();
+    fetchPrescriptionMock.mockResolvedValueOnce({
+      prescriptionId: 'rx_cancelled',
+      issuedAt: '2026-05-01T09:00:00Z',
+      expiresAt: '2026-05-08T23:59:59Z',
+      patientExternalId: 'patient_1',
+      patientName: '山田太郎',
+      prescriberName: '鈴木医師',
+      prescriberInstitution: '鈴木クリニック',
+      status: 'cancelled',
+      items: [],
+    });
+
+    const response = await POST(createRequest({ prescription_id: 'rx_cancelled' }), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '受付できない状態の電子処方箋です',
+      details: { status: ['cancelled'] },
+    });
+    expectNoIntakeWrites();
   });
 
   it('returns 201 with the created intake on happy path when adapter resolves and cycle exists', async () => {
     mockAccessiblePatient();
     mockEPrescription();
-    txMock.medicationCycle.findFirst.mockResolvedValue({ id: 'cycle_1' });
-    txMock.prescriptionIntake.create.mockResolvedValue({
-      id: 'intake_1',
-      cycle_id: 'cycle_1',
-      prescribed_date: new Date('2026-05-01T09:00:00Z'),
-      source_type: 'e_prescription',
+    txMock.medicationCycle.findMany.mockResolvedValue([{ id: 'cycle_1', case_id: 'case_1' }]);
+    createPrescriptionIntakeMock.mockResolvedValue({
+      ok: true,
+      intake: {
+        id: 'intake_1',
+        rx_number: 'RX-20260501-intake_1',
+        lines: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: '1149037F1024',
+            dose: '5mg',
+            frequency: '1日1回朝食後',
+          },
+        ],
+      },
+      cycle: { id: 'cycle_1', patient_id: 'patient_1' },
+      medicationChanges: [],
+      profileSyncResult: null,
     });
 
     const response = await POST(createRequest({ prescription_id: 'rx_abc123' }), {
@@ -335,9 +506,253 @@ describe('POST /api/patients/[id]/prescriptions/e-prescription', () => {
         id: 'intake_1',
         cycle_id: 'cycle_1',
         source_type: 'e_prescription',
+        prescribed_date: '2026-05-01',
+        external_prescription_id: 'rx_abc123',
       },
       e_prescription_id: 'rx_abc123',
+      idempotent: false,
     });
-    expect(txMock.prescriptionIntake.create).toHaveBeenCalledOnce();
+    expect(txMock.prescriptionIntake.create).not.toHaveBeenCalled();
+    expect(createPrescriptionIntakeMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cycle_id: 'cycle_1',
+        source_type: 'e_prescription',
+        external_prescription_id: 'rx_abc123',
+        prescribed_date: '2026-05-01',
+        prescription_expiry_date: '2026-05-08',
+        lines: [
+          expect.objectContaining({
+            line_number: 1,
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: '1149037F1024',
+          }),
+        ],
+      }),
+      'org_1',
+      'user_1',
+      { accessContext: { userId: 'user_1', role: 'admin' } },
+    );
+    expect(txMock.medicationCycle.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          case_id: { in: ['case_1', 'case_2'] },
+          overall_status: {
+            in: [
+              'intake_received',
+              'structuring',
+              'inquiry_pending',
+              'inquiry_resolved',
+              'ready_to_dispense',
+            ],
+          },
+        }),
+      }),
+    );
+  });
+
+  it('requires case_id when multiple active cycles are eligible for the patient', async () => {
+    mockAccessiblePatient();
+    mockEPrescription();
+    txMock.medicationCycle.findMany.mockResolvedValue([
+      { id: 'cycle_2', case_id: 'case_2' },
+      { id: 'cycle_1', case_id: 'case_1' },
+    ]);
+
+    const response = await POST(createRequest({ prescription_id: 'rx_abc123' }), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AMBIGUOUS_ACTIVE_CYCLE',
+      details: { case_ids: ['case_2', 'case_1'] },
+    });
+    expect(createPrescriptionIntakeMock).not.toHaveBeenCalled();
+  });
+
+  it('uses the requested accessible case_id to select the active cycle', async () => {
+    mockAccessiblePatient();
+    mockEPrescription();
+    txMock.medicationCycle.findMany.mockResolvedValue([{ id: 'cycle_2', case_id: 'case_2' }]);
+    createPrescriptionIntakeMock.mockResolvedValue({
+      ok: true,
+      intake: {
+        id: 'intake_2',
+        rx_number: 'RX-20260501-intake_2',
+        lines: [],
+      },
+      cycle: { id: 'cycle_2', patient_id: 'patient_1' },
+      medicationChanges: [],
+      profileSyncResult: null,
+    });
+
+    const response = await POST(
+      createRequest({ prescription_id: 'rx_abc123', case_id: 'case_2' }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      data: { id: 'intake_2', cycle_id: 'cycle_2' },
+    });
+    expect(txMock.medicationCycle.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ case_id: 'case_2' }),
+      }),
+    );
+    expect(createPrescriptionIntakeMock).toHaveBeenCalledWith(
+      expect.objectContaining({ cycle_id: 'cycle_2' }),
+      'org_1',
+      'user_1',
+      { accessContext: { userId: 'user_1', role: 'admin' } },
+    );
+  });
+
+  it('requires cycle cleanup when requested case_id still has multiple eligible cycles', async () => {
+    mockAccessiblePatient();
+    mockEPrescription();
+    txMock.medicationCycle.findMany.mockResolvedValue([
+      { id: 'cycle_new', case_id: 'case_1' },
+      { id: 'cycle_old', case_id: 'case_1' },
+    ]);
+
+    const response = await POST(
+      createRequest({ prescription_id: 'rx_abc123', case_id: 'case_1' }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AMBIGUOUS_ACTIVE_CYCLE',
+      details: { case_ids: ['case_1'] },
+    });
+    expect(createPrescriptionIntakeMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects inaccessible case_id before adapter calls or intake writes', async () => {
+    mockAccessiblePatient();
+
+    const response = await POST(
+      createRequest({ prescription_id: 'rx_abc123', case_id: 'case_other' }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'CASE_NOT_ACCESSIBLE',
+    });
+    expect(createEPrescriptionAdapterMock).not.toHaveBeenCalled();
+    expect(fetchPrescriptionMock).not.toHaveBeenCalled();
+    expectNoIntakeSideEffects();
+  });
+
+  it('returns the existing intake without creating when the external prescription id was already accepted', async () => {
+    mockAccessiblePatient();
+    mockEPrescription();
+    txMock.prescriptionIntake.findFirst.mockResolvedValue({
+      id: 'intake_existing',
+      cycle_id: 'cycle_1',
+      prescribed_date: new Date('2026-05-01T00:00:00.000Z'),
+      source_type: 'e_prescription',
+      external_prescription_id: 'rx_abc123',
+      cycle: { case_id: 'case_1' },
+    });
+
+    const response = await POST(createRequest({ prescription_id: 'rx_abc123' }), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'intake_existing',
+        cycle_id: 'cycle_1',
+        source_type: 'e_prescription',
+        prescribed_date: '2026-05-01',
+        external_prescription_id: 'rx_abc123',
+      },
+      e_prescription_id: 'rx_abc123',
+      idempotent: true,
+    });
+    expect(txMock.medicationCycle.findMany).not.toHaveBeenCalled();
+    expect(createPrescriptionIntakeMock).not.toHaveBeenCalled();
+    expect(txMock.prescriptionIntake.create).not.toHaveBeenCalled();
+    expect(createEPrescriptionAdapterMock).not.toHaveBeenCalled();
+    expect(fetchPrescriptionMock).not.toHaveBeenCalled();
+  });
+
+  it('does not replay an existing e-prescription intake when requested case_id differs', async () => {
+    mockAccessiblePatient();
+    mockEPrescription();
+    txMock.prescriptionIntake.findFirst.mockResolvedValue({
+      id: 'intake_existing',
+      cycle_id: 'cycle_1',
+      prescribed_date: new Date('2026-05-01T00:00:00.000Z'),
+      source_type: 'e_prescription',
+      external_prescription_id: 'rx_abc123',
+      cycle: { case_id: 'case_1' },
+    });
+
+    const response = await POST(
+      createRequest({ prescription_id: 'rx_abc123', case_id: 'case_2' }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'EPRESCRIPTION_CASE_CONFLICT',
+      details: { existing_case_id: 'case_1' },
+    });
+    expect(txMock.medicationCycle.findMany).not.toHaveBeenCalled();
+    expect(createPrescriptionIntakeMock).not.toHaveBeenCalled();
+  });
+
+  it('converges a unique conflict from a concurrent retry to the existing intake', async () => {
+    mockAccessiblePatient();
+    mockEPrescription();
+    txMock.medicationCycle.findMany.mockResolvedValue([{ id: 'cycle_1', case_id: 'case_1' }]);
+    txMock.prescriptionIntake.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      id: 'intake_existing',
+      cycle_id: 'cycle_1',
+      prescribed_date: new Date('2026-05-01T00:00:00.000Z'),
+      source_type: 'e_prescription',
+      external_prescription_id: 'rx_abc123',
+      cycle: { case_id: 'case_1' },
+    });
+    createPrescriptionIntakeMock.mockRejectedValueOnce({ code: 'P2002' });
+
+    const response = await POST(createRequest({ prescription_id: 'rx_abc123' }), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'intake_existing',
+        cycle_id: 'cycle_1',
+        source_type: 'e_prescription',
+        prescribed_date: '2026-05-01',
+        external_prescription_id: 'rx_abc123',
+      },
+      e_prescription_id: 'rx_abc123',
+      idempotent: true,
+    });
+    expect(createPrescriptionIntakeMock).toHaveBeenCalledOnce();
+    expect(txMock.prescriptionIntake.create).not.toHaveBeenCalled();
   });
 });

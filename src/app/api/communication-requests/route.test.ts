@@ -5,6 +5,7 @@ const {
   communicationRequestFindManyMock,
   communicationRequestCreateMock,
   tracingReportFindFirstMock,
+  patientFindFirstMock,
   patientFindManyMock,
   careCaseFindManyMock,
   careCaseFindFirstMock,
@@ -15,6 +16,7 @@ const {
   communicationRequestFindManyMock: vi.fn(),
   communicationRequestCreateMock: vi.fn(),
   tracingReportFindFirstMock: vi.fn(),
+  patientFindFirstMock: vi.fn(),
   patientFindManyMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
@@ -48,6 +50,7 @@ vi.mock('@/lib/db/client', () => ({
       findFirst: tracingReportFindFirstMock,
     },
     patient: {
+      findFirst: patientFindFirstMock,
       findMany: patientFindManyMock,
     },
     careCase: {
@@ -106,6 +109,7 @@ describe('/api/communication-requests', () => {
       patient_id: 'patient_1',
       case_id: 'case_1',
     });
+    patientFindFirstMock.mockResolvedValue({ id: 'patient_1', archived_at: null });
     patientFindManyMock.mockResolvedValue([{ id: 'patient_1' }]);
     careCaseFindManyMock.mockResolvedValue([{ id: 'case_1' }]);
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
@@ -221,6 +225,28 @@ describe('/api/communication-requests', () => {
         due_date: new Date('2026-03-31'),
       }),
     });
+  });
+
+  it('rejects archived patients before recipient suggestions or request creation', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    const response = (await POST(
+      createPostRequest({
+        patient_id: 'patient_1',
+        request_type: '疑義照会',
+        subject: '確認事項',
+        content: '処方内容を確認したいです',
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    expect(findLatestPrescriberInstitutionSuggestionMock).not.toHaveBeenCalled();
+    expect(pickCommunicationRecipientCandidateMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank required request fields before assignment checks or suggestions', async () => {

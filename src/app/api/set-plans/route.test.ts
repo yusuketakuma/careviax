@@ -1,26 +1,31 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 
 const {
   authMock,
   membershipFindFirstMock,
   setPlanFindManyMock,
+  setPlanTxFindFirstMock,
   setPlanCreateMock,
   medicationCycleFindFirstMock,
   medicationCycleUpdateManyMock,
   cycleTransitionLogCreateMock,
   packagingMethodFindFirstMock,
   withOrgContextMock,
+  notifyWorkflowMutationMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   setPlanFindManyMock: vi.fn(),
+  setPlanTxFindFirstMock: vi.fn(),
   setPlanCreateMock: vi.fn(),
   medicationCycleFindFirstMock: vi.fn(),
   medicationCycleUpdateManyMock: vi.fn(),
   cycleTransitionLogCreateMock: vi.fn(),
   packagingMethodFindFirstMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  notifyWorkflowMutationMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -40,6 +45,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/server/services/workflow-dashboard-cache', () => ({
+  notifyWorkflowMutation: notifyWorkflowMutationMock,
 }));
 
 import { GET as rawGET, POST as rawPOST } from './route';
@@ -70,12 +79,23 @@ function createMalformedPostRequest() {
   });
 }
 
+function buildUniqueConstraintError() {
+  return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+    code: 'P2002',
+    clientVersion: 'test',
+    meta: {
+      target: ['org_id', 'cycle_id', 'target_period_start', 'target_period_end', 'set_method'],
+    },
+  });
+}
+
 describe('/api/set-plans', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
     setPlanFindManyMock.mockResolvedValue([{ id: 'plan_1' }]);
+    setPlanTxFindFirstMock.mockResolvedValue(null);
     setPlanCreateMock.mockResolvedValue({ id: 'plan_2' });
     medicationCycleFindFirstMock.mockResolvedValue({
       id: 'cycle_1',
@@ -99,6 +119,7 @@ describe('/api/set-plans', () => {
           findFirst: packagingMethodFindFirstMock,
         },
         setPlan: {
+          findFirst: setPlanTxFindFirstMock,
           create: setPlanCreateMock,
         },
       }),
@@ -150,12 +171,89 @@ describe('/api/set-plans', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({ replayed: false });
+    expect(setPlanTxFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        cycle_id: 'cycle_1',
+        target_period_start: new Date('2026-04-01'),
+        target_period_end: new Date('2026-04-07'),
+        set_method: 'custom',
+      },
+    });
     expect(setPlanCreateMock).toHaveBeenCalled();
     expect(medicationCycleUpdateManyMock).toHaveBeenCalledWith({
-      where: { id: 'cycle_1', version: 1 },
+      where: { id: 'cycle_1', org_id: 'org_1', version: 1 },
       data: { overall_status: 'setting', version: { increment: 1 } },
     });
     expect(cycleTransitionLogCreateMock).toHaveBeenCalled();
+  });
+
+  it('replays an existing set plan for the same cycle period and method without transition side effects', async () => {
+    medicationCycleFindFirstMock.mockResolvedValueOnce({
+      id: 'cycle_1',
+      overall_status: 'setting',
+      version: 2,
+      case_: { patient: { packaging_profile: null } },
+    });
+    setPlanTxFindFirstMock.mockResolvedValueOnce({
+      id: 'plan_existing',
+      org_id: 'org_1',
+      cycle_id: 'cycle_1',
+      target_period_start: new Date('2026-04-01'),
+      target_period_end: new Date('2026-04-07'),
+      set_method: 'custom',
+    });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/set-plans', {
+        cycle_id: 'cycle_1',
+        target_period_start: '2026-04-01',
+        target_period_end: '2026-04-07',
+        set_method: 'custom',
+      }),
+    ))!;
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      replayed: true,
+      data: { id: 'plan_existing' },
+    });
+    expect(setPlanCreateMock).not.toHaveBeenCalled();
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('converges a concurrent duplicate set-plan create race to the existing plan', async () => {
+    setPlanTxFindFirstMock.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      id: 'plan_race',
+      org_id: 'org_1',
+      cycle_id: 'cycle_1',
+      target_period_start: new Date('2026-04-01'),
+      target_period_end: new Date('2026-04-07'),
+      set_method: 'custom',
+    });
+    setPlanCreateMock.mockRejectedValueOnce(buildUniqueConstraintError());
+
+    const response = (await POST(
+      createRequest('http://localhost/api/set-plans', {
+        cycle_id: 'cycle_1',
+        target_period_start: '2026-04-01',
+        target_period_end: '2026-04-07',
+        set_method: 'custom',
+      }),
+    ))!;
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      replayed: true,
+      data: { id: 'plan_race' },
+    });
+    expect(setPlanCreateMock).toHaveBeenCalled();
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object create payloads before cycle lookup or writes', async () => {
@@ -229,5 +327,30 @@ describe('/api/set-plans', () => {
       },
     });
     expect(setPlanCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects impossible calendar dates before they can be normalized by Date parsing', async () => {
+    const response = (await POST(
+      createRequest('http://localhost/api/set-plans', {
+        cycle_id: 'cycle_1',
+        target_period_start: '2026-02-31',
+        target_period_end: '2026-03-07',
+        set_method: 'custom',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+      details: {
+        target_period_start: ['日付形式が不正です（YYYY-MM-DD）'],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(medicationCycleFindFirstMock).not.toHaveBeenCalled();
+    expect(packagingMethodFindFirstMock).not.toHaveBeenCalled();
+    expect(setPlanCreateMock).not.toHaveBeenCalled();
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
   });
 });

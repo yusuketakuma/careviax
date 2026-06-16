@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 
 const {
   requireAuthContextMock,
   communicationRequestFindFirstMock,
-  communicationRequestUpdateMock,
+  communicationRequestTxFindFirstMock,
+  communicationRequestUpdateManyMock,
+  communicationResponseFindFirstMock,
   communicationResponseCreateMock,
   tracingReportFindFirstMock,
   tracingReportUpdateMock,
@@ -16,7 +19,9 @@ const {
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   communicationRequestFindFirstMock: vi.fn(),
-  communicationRequestUpdateMock: vi.fn(),
+  communicationRequestTxFindFirstMock: vi.fn(),
+  communicationRequestUpdateManyMock: vi.fn(),
+  communicationResponseFindFirstMock: vi.fn(),
   communicationResponseCreateMock: vi.fn(),
   tracingReportFindFirstMock: vi.fn(),
   tracingReportUpdateMock: vi.fn(),
@@ -81,6 +86,14 @@ function createMalformedJsonRequest(headers?: Record<string, string>) {
       ...(headers ?? {}),
     },
     body: '{"status":',
+  });
+}
+
+function buildUniqueConstraintError() {
+  return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+    code: 'P2002',
+    clientVersion: 'test',
+    meta: { target: ['org_id', 'response_intent_key'] },
   });
 }
 
@@ -240,19 +253,23 @@ describe('/api/communication-requests/[id] PATCH', () => {
     });
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
-    communicationRequestUpdateMock.mockResolvedValue({
+    communicationRequestTxFindFirstMock.mockResolvedValue({
       id: 'request_1',
       status: 'responded',
       responses: [],
     });
+    communicationRequestUpdateManyMock.mockResolvedValue({ count: 1 });
+    communicationResponseFindFirstMock.mockResolvedValue(null);
     communicationResponseCreateMock.mockResolvedValue({ id: 'response_1' });
     auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         communicationRequest: {
-          update: communicationRequestUpdateMock,
+          updateMany: communicationRequestUpdateManyMock,
+          findFirst: communicationRequestTxFindFirstMock,
         },
         communicationResponse: {
+          findFirst: communicationResponseFindFirstMock,
           create: communicationResponseCreateMock,
         },
         tracingReport: {
@@ -287,7 +304,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
       code: 'VALIDATION_ERROR',
       message: 'draft から received へは遷移できません',
     });
-    expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('requires a reason for direct status changes', async () => {
@@ -304,7 +321,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
       code: 'VALIDATION_ERROR',
       message: 'ステータス変更理由は必須です',
     });
-    expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
@@ -320,7 +337,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(communicationResponseCreateMock).not.toHaveBeenCalled();
-    expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
@@ -346,7 +363,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(communicationResponseCreateMock).not.toHaveBeenCalled();
-    expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
@@ -366,7 +383,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(communicationResponseCreateMock).not.toHaveBeenCalled();
-    expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
@@ -394,7 +411,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(communicationResponseCreateMock).not.toHaveBeenCalled();
-    expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
@@ -409,10 +426,9 @@ describe('/api/communication-requests/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    expect(communicationRequestUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'request_1' },
+    expect(communicationRequestUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'request_1', org_id: 'org_1', status: 'received' },
       data: { status: 'in_progress' },
-      select: expect.any(Object),
     });
     expect(auditLogCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -428,6 +444,29 @@ describe('/api/communication-requests/[id] PATCH', () => {
         }),
       }),
     });
+  });
+
+  it('rejects archived patients before request update, response creation, tracing sync, or audit', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    const response = await PATCH(
+      createRequest(
+        { status: 'in_progress', status_change_reason: '電話で受領確認し対応を開始' },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'request_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationResponseCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(tracingReportUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('records a response and auto-advances to responded', async () => {
@@ -452,12 +491,12 @@ describe('/api/communication-requests/[id] PATCH', () => {
         request_id: 'request_1',
         responder_name: '在宅主治医',
         content: '現行処方で継続',
+        response_intent_key: expect.stringMatching(/^communication-response:v1:[a-f0-9]{64}$/),
       }),
     });
-    expect(communicationRequestUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'request_1' },
+    expect(communicationRequestUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'request_1', org_id: 'org_1', status: 'received' },
       data: { status: 'responded' },
-      select: expect.any(Object),
     });
     expect(auditLogCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -472,6 +511,201 @@ describe('/api/communication-requests/[id] PATCH', () => {
     });
   });
 
+  it('returns conflict without creating a response when the request status changes concurrently', async () => {
+    communicationRequestUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await PATCH(
+      createRequest(
+        {
+          response: {
+            responder_name: '在宅主治医',
+            content: '現行処方で継続',
+          },
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'request_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '連携依頼が同時に更新されました。再読み込みしてください',
+    });
+    expect(communicationRequestUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'request_1', org_id: 'org_1', status: 'received' },
+      data: { status: 'responded' },
+    });
+    expect(communicationResponseCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestTxFindFirstMock).not.toHaveBeenCalled();
+    expect(tracingReportUpdateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('reuses an existing response for the same retry payload without creating another row', async () => {
+    communicationRequestFindFirstMock.mockResolvedValue({
+      id: 'request_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'responded',
+      related_entity_type: null,
+      related_entity_id: null,
+    });
+    communicationResponseFindFirstMock.mockResolvedValue({
+      id: 'response_existing',
+      org_id: 'org_1',
+      request_id: 'request_1',
+      responder_name: '在宅主治医',
+      content: '現行処方で継続',
+      responded_at: new Date('2026-03-29T00:00:00.000Z'),
+    });
+
+    const response = await PATCH(
+      createRequest(
+        {
+          response: {
+            responder_name: '在宅主治医',
+            content: '現行処方で継続',
+            responded_at: '2026-03-29T00:00:00.000Z',
+          },
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'request_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(communicationResponseFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        request_id: 'request_1',
+        OR: [
+          {
+            response_intent_key: expect.stringMatching(/^communication-response:v1:[a-f0-9]{64}$/),
+          },
+          {
+            response_intent_key: null,
+            responder_name: '在宅主治医',
+            content: '現行処方で継続',
+            responded_at: new Date('2026-03-29T00:00:00.000Z'),
+          },
+        ],
+      },
+    });
+    expect(communicationResponseCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('reuses an existing inline response retry even when responded_at was omitted', async () => {
+    communicationRequestFindFirstMock.mockResolvedValue({
+      id: 'request_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'responded',
+      related_entity_type: null,
+      related_entity_id: null,
+    });
+    communicationResponseFindFirstMock.mockResolvedValue({
+      id: 'response_existing',
+      org_id: 'org_1',
+      request_id: 'request_1',
+      responder_name: '在宅主治医',
+      content: '現行処方で継続',
+      responded_at: new Date('2026-03-29T00:00:00.000Z'),
+    });
+
+    const response = await PATCH(
+      createRequest(
+        {
+          response: {
+            responder_name: '在宅主治医',
+            content: '現行処方で継続',
+          },
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'request_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const query = communicationResponseFindFirstMock.mock.calls[0]?.[0];
+    const intentKey = query?.where.OR[0].response_intent_key;
+    expect(intentKey).toEqual(expect.stringMatching(/^communication-response:v1:[a-f0-9]{64}$/));
+    expect(query).toMatchObject({
+      where: {
+        org_id: 'org_1',
+        request_id: 'request_1',
+        OR: [
+          { response_intent_key: intentKey },
+          {
+            response_intent_key: null,
+            responder_name: '在宅主治医',
+            content: '現行処方で継続',
+          },
+        ],
+      },
+    });
+    expect(query?.where.OR[1].responded_at).toBeInstanceOf(Date);
+    expect(communicationResponseCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns the concurrently inserted response when the PATCH response intent key wins the race', async () => {
+    communicationRequestFindFirstMock.mockResolvedValue({
+      id: 'request_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'responded',
+      related_entity_type: null,
+      related_entity_id: null,
+    });
+    communicationResponseFindFirstMock.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      id: 'response_race',
+      org_id: 'org_1',
+      request_id: 'request_1',
+      responder_name: '在宅主治医',
+      content: '現行処方で継続',
+      responded_at: new Date('2026-03-29T00:00:00.000Z'),
+    });
+    communicationResponseCreateMock.mockRejectedValueOnce(buildUniqueConstraintError());
+
+    const response = await PATCH(
+      createRequest(
+        {
+          response: {
+            responder_name: '在宅主治医',
+            content: '現行処方で継続',
+            responded_at: '2026-03-29T00:00:00.000Z',
+          },
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'request_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(communicationResponseCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        request_id: 'request_1',
+        response_intent_key: expect.stringMatching(/^communication-response:v1:[a-f0-9]{64}$/),
+      }),
+    });
+    const createData = communicationResponseCreateMock.mock.calls[0]?.[0]?.data;
+    expect(communicationResponseFindFirstMock).toHaveBeenLastCalledWith({
+      where: {
+        org_id: 'org_1',
+        request_id: 'request_1',
+        response_intent_key: createData.response_intent_key,
+      },
+    });
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
   it('updates and audits a linked tracing report only after scope consistency is verified', async () => {
     communicationRequestFindFirstMock.mockResolvedValue({
       id: 'request_1',
@@ -481,7 +715,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
       related_entity_type: 'tracing_report',
       related_entity_id: 'tracing_1',
     });
-    communicationRequestUpdateMock.mockResolvedValue({
+    communicationRequestTxFindFirstMock.mockResolvedValue({
       id: 'request_1',
       patient_id: 'patient_1',
       case_id: 'case_1',
@@ -591,7 +825,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(communicationResponseCreateMock).not.toHaveBeenCalled();
-    expect(communicationRequestUpdateMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
     expect(tracingReportUpdateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
@@ -634,7 +868,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
     expect(response.status).toBe(200);
     expect(withOrgContextMock).toHaveBeenCalled();
     expect(communicationResponseCreateMock).toHaveBeenCalled();
-    expect(communicationRequestUpdateMock).toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).toHaveBeenCalled();
   });
 
   it('lets an org-wide role respond regardless of case assignment', async () => {
@@ -656,6 +890,6 @@ describe('/api/communication-requests/[id] PATCH', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(communicationResponseCreateMock).toHaveBeenCalled();
-    expect(communicationRequestUpdateMock).toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).toHaveBeenCalled();
   });
 });

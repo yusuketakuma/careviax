@@ -1,4 +1,9 @@
-import { buildBearerHeaders, fetchJson, unwrapDataEnvelope } from '../http-client';
+import {
+  buildBearerHeaders,
+  fetchJson,
+  HttpAdapterError,
+  unwrapDataEnvelope,
+} from '../http-client';
 import { readJsonObject } from '@/lib/db/json';
 /**
  * 電子処方箋管理サービスアダプタ IF
@@ -235,6 +240,26 @@ function unwrapResponseData(payload: unknown): unknown {
   return envelope && 'data' in envelope ? envelope.data : payload;
 }
 
+function normalizeEPrescriptionTransportError(message: string, cause: unknown) {
+  if (cause instanceof EPrescriptionAdapterError) return cause;
+  if (cause instanceof HttpAdapterError) {
+    return new EPrescriptionAdapterError(
+      message,
+      'UPSTREAM_FAILURE',
+      cause.status === undefined || cause.status >= 500,
+      cause.status,
+      cause.causeDetail,
+    );
+  }
+  if (cause instanceof Error && (cause.name === 'AbortError' || cause instanceof TypeError)) {
+    return new EPrescriptionAdapterError(message, 'UPSTREAM_FAILURE', true, undefined, {
+      name: cause.name,
+      message: cause.message,
+    });
+  }
+  return cause;
+}
+
 export interface EPrescriptionAdapterContract {
   getCapabilities(): EPrescriptionAdapterCapabilities;
   fetchPrescription(prescriptionId: string): Promise<EPrescriptionRecord | null>;
@@ -320,12 +345,18 @@ class MhlwEPrescriptionAdapter implements EPrescriptionAdapterContract {
   }
 
   async fetchPrescription(prescriptionId: string): Promise<EPrescriptionRecord | null> {
-    const { status, data } = await fetchJson(
-      `${this.config.baseUrl!.replace(/\/$/, '')}/prescriptions/${encodeURIComponent(prescriptionId)}`,
-      {
-        headers: this.headers,
-      },
-    );
+    let status: number;
+    let data: unknown | null;
+    try {
+      ({ status, data } = await fetchJson(
+        `${this.config.baseUrl!.replace(/\/$/, '')}/prescriptions/${encodeURIComponent(prescriptionId)}`,
+        {
+          headers: this.headers,
+        },
+      ));
+    } catch (cause) {
+      throw normalizeEPrescriptionTransportError('電子処方箋取得に失敗しました', cause);
+    }
     if (status === 404) return null;
     if (status === 401 || status === 403) {
       throw new EPrescriptionAdapterError(
@@ -372,9 +403,15 @@ class MhlwEPrescriptionAdapter implements EPrescriptionAdapterContract {
       url.searchParams.set('includeDispensed', params.includeDispensed ? 'true' : 'false');
     }
 
-    const { status, data } = await fetchJson(url.toString(), {
-      headers: this.headers,
-    });
+    let status: number;
+    let data: unknown | null;
+    try {
+      ({ status, data } = await fetchJson(url.toString(), {
+        headers: this.headers,
+      }));
+    } catch (cause) {
+      throw normalizeEPrescriptionTransportError('電子処方箋検索に失敗しました', cause);
+    }
     if (status === 401 || status === 403) {
       throw new EPrescriptionAdapterError(
         '電子処方箋 API の認証に失敗しました',
@@ -423,14 +460,20 @@ class MhlwEPrescriptionAdapter implements EPrescriptionAdapterContract {
   }
 
   async confirmDispense(payload: EPrescriptionDispenseConfirmation): Promise<void> {
-    const { status, data } = await fetchJson(
-      `${this.config.baseUrl!.replace(/\/$/, '')}/dispenses/confirm`,
-      {
-        method: 'POST',
-        headers: this.headers,
-        body: payload,
-      },
-    );
+    let status: number;
+    let data: unknown | null;
+    try {
+      ({ status, data } = await fetchJson(
+        `${this.config.baseUrl!.replace(/\/$/, '')}/dispenses/confirm`,
+        {
+          method: 'POST',
+          headers: this.headers,
+          body: payload,
+        },
+      ));
+    } catch (cause) {
+      throw normalizeEPrescriptionTransportError('電子処方箋への調剤結果送信に失敗しました', cause);
+    }
     if (status === 401 || status === 403) {
       throw new EPrescriptionAdapterError(
         '電子処方箋 API の認証に失敗しました',
