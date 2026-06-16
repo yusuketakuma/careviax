@@ -585,6 +585,12 @@ function FirstVisitDocumentStatusForm({
   const selectedStorageLabel = DOCUMENT_STORAGE_LABELS[storageLocation] ?? storageLocation;
   const requiresReason = ['replaced', 'invalidated'].includes(documentAction);
   const missingRequiredReason = requiresReason && !historyReason.trim();
+  const requiresDocumentUrl = ['image_saved', 'replaced'].includes(documentAction);
+  const missingRequiredDocumentUrl = requiresDocumentUrl && !documentUrl.trim();
+  const requiresRecoveredDelivery = documentAction === 'recovered';
+  const missingRequiredDeliveryTarget = requiresRecoveredDelivery && !deliveredTo.trim();
+  const cannotSubmit =
+    missingRequiredReason || missingRequiredDocumentUrl || missingRequiredDeliveryTarget;
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -649,8 +655,23 @@ function FirstVisitDocumentStatusForm({
             id={`first-visit-delivered-to-${document.id}`}
             value={deliveredTo}
             onChange={(event) => setDeliveredTo(event.target.value)}
+            aria-invalid={missingRequiredDeliveryTarget}
+            aria-describedby={
+              missingRequiredDeliveryTarget
+                ? `first-visit-delivered-to-error-${document.id}`
+                : undefined
+            }
             placeholder="本人 / 家族名"
           />
+          {missingRequiredDeliveryTarget ? (
+            <p
+              id={`first-visit-delivered-to-error-${document.id}`}
+              className="text-xs text-destructive"
+              role="alert"
+            >
+              回収では同意者・交付先を入力してください。
+            </p>
+          ) : null}
         </div>
         <div className="space-y-1.5">
           <Label htmlFor={`first-visit-document-url-${document.id}`}>文書URL</Label>
@@ -658,8 +679,23 @@ function FirstVisitDocumentStatusForm({
             id={`first-visit-document-url-${document.id}`}
             value={documentUrl}
             onChange={(event) => setDocumentUrl(event.target.value)}
+            aria-invalid={missingRequiredDocumentUrl}
+            aria-describedby={
+              missingRequiredDocumentUrl
+                ? `first-visit-document-url-error-${document.id}`
+                : undefined
+            }
             placeholder="/api/visit-records/.../pdf または https://..."
           />
+          {missingRequiredDocumentUrl ? (
+            <p
+              id={`first-visit-document-url-error-${document.id}`}
+              className="text-xs text-destructive"
+              role="alert"
+            >
+              画像保存・差替えでは署名済み書類のURLを入力してください。
+            </p>
+          ) : null}
         </div>
         <div className="space-y-1.5">
           <Label htmlFor={`first-visit-document-action-${document.id}`}>履歴操作</Label>
@@ -791,7 +827,7 @@ function FirstVisitDocumentStatusForm({
         ) : null}
       </div>
       <div className="mt-3 flex justify-end">
-        <Button type="submit" size="sm" disabled={mutation.isPending || missingRequiredReason}>
+        <Button type="submit" size="sm" disabled={mutation.isPending || cannotSubmit}>
           <Save className="size-4" aria-hidden="true" />
           {mutation.isPending ? '保存中...' : '保存'}
         </Button>

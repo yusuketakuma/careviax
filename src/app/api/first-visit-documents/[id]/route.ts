@@ -29,6 +29,30 @@ function buildPrintBlockedMessage(
   return `初回文書の印刷前チェックで必須項目が未完了です。${reason}`;
 }
 
+function validateDocumentActionRequirements(args: {
+  action: string | undefined;
+  nextDocumentUrl: string | null;
+  nextDeliveredAt: Date | null;
+  nextDeliveredTo: string | null;
+}) {
+  const details: Record<string, string[]> = {};
+
+  if (['image_saved', 'replaced'].includes(args.action ?? '') && !args.nextDocumentUrl?.trim()) {
+    details.document_url = ['画像保存・差替えでは署名済み書類のURLを入力してください'];
+  }
+
+  if (args.action === 'recovered') {
+    if (!args.nextDeliveredAt) {
+      details.delivered_at = ['回収では回収日時を入力してください'];
+    }
+    if (!args.nextDeliveredTo?.trim()) {
+      details.delivered_to = ['回収では同意者・交付先を入力してください'];
+    }
+  }
+
+  return details;
+}
+
 export const PATCH = withAuthContext<{ id: string }>(
   async (req: NextRequest, ctx, routeContext: AuthRouteContext<{ id: string }>) => {
     const { id: rawId } = await routeContext.params;
@@ -77,6 +101,25 @@ export const PATCH = withAuthContext<{ id: string }>(
       ...(parsed.data.document_url !== undefined ? { document_url: parsed.data.document_url } : {}),
     };
     const hasDocumentUpdate = Object.keys(updateData).length > 0;
+    const nextDocumentUrl =
+      parsed.data.document_url !== undefined ? parsed.data.document_url : existing.document_url;
+    const nextDeliveredAt =
+      parsed.data.delivered_at !== undefined
+        ? parsed.data.delivered_at
+          ? new Date(parsed.data.delivered_at)
+          : null
+        : existing.delivered_at;
+    const nextDeliveredTo =
+      parsed.data.delivered_to !== undefined ? parsed.data.delivered_to : existing.delivered_to;
+    const requirementErrors = validateDocumentActionRequirements({
+      action: parsed.data.document_action?.action,
+      nextDocumentUrl,
+      nextDeliveredAt,
+      nextDeliveredTo,
+    });
+    if (Object.keys(requirementErrors).length > 0) {
+      return validationError('入力値が不正です', requirementErrors);
+    }
 
     const result = await withOrgContext(
       ctx.orgId,

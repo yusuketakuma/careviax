@@ -198,6 +198,52 @@ describe('FirstVisitDocumentsPanel', () => {
     expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
   });
 
+  it('requires signed document URL and delivery target for document history actions', () => {
+    const queryClient = new QueryClient();
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <FirstVisitDocumentsPanel
+          orgId="org_1"
+          patientId="patient_1"
+          cases={[{ id: 'case_1', status: 'active' } as never]}
+          documentStatuses={[]}
+          documents={[
+            {
+              id: 'doc_1',
+              case_id: 'case_1',
+              emergency_contacts: [],
+              document_url: null,
+              delivered_at: null,
+              delivered_to: null,
+              created_at: '2026-06-16T00:00:00.000Z',
+              updated_at: '2026-06-16T00:00:00.000Z',
+              history: [],
+            },
+          ]}
+        />
+      </QueryClientProvider>,
+    );
+
+    const saveButton = screen.getByRole('button', { name: '保存' });
+    expect(
+      screen.getByText('画像保存・差替えでは署名済み書類のURLを入力してください。'),
+    ).toBeTruthy();
+    expect(saveButton).toHaveProperty('disabled', true);
+
+    fireEvent.change(screen.getByLabelText('文書URL'), {
+      target: { value: 'https://files.example.test/signed/doc_1.pdf' },
+    });
+    expect(saveButton).not.toHaveProperty('disabled', true);
+
+    fireEvent.change(screen.getByLabelText('履歴操作'), { target: { value: 'recovered' } });
+    expect(screen.getByText('回収では同意者・交付先を入力してください。')).toBeTruthy();
+    expect(saveButton).toHaveProperty('disabled', true);
+
+    fireEvent.change(screen.getByLabelText('交付先'), { target: { value: '長女 山田' } });
+    expect(saveButton).not.toHaveProperty('disabled', true);
+  });
+
   it('creates missing first-visit documents from available default templates', async () => {
     const queryClient = new QueryClient();
     const fetchMock = vi.fn().mockResolvedValue({

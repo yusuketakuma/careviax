@@ -77,6 +77,9 @@ describe('/api/first-visit-documents/[id]', () => {
       id: 'doc_1',
       patient_id: 'patient_1',
       case_id: 'case_1',
+      document_url: '/api/visit-records/record_1/pdf',
+      delivered_at: null,
+      delivered_to: null,
       updated_at: updatedAt,
     });
     firstVisitDocumentUpdateManyMock.mockResolvedValue({ count: 1 });
@@ -187,6 +190,62 @@ describe('/api/first-visit-documents/[id]', () => {
       },
     });
     expect(firstVisitDocumentFindFirstMock).not.toHaveBeenCalled();
+  });
+
+  it('requires a document URL before recording image-saved history', async () => {
+    firstVisitDocumentFindFirstMock.mockResolvedValue({
+      id: 'doc_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      document_url: null,
+      delivered_at: null,
+      delivered_to: null,
+      updated_at: updatedAt,
+    });
+
+    const response = (await PATCH(
+      createPatchRequest({
+        document_action: {
+          action: 'image_saved',
+          document_type: 'contract',
+          storage_location: 'store',
+        },
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        document_url: expect.arrayContaining([
+          '画像保存・差替えでは署名済み書類のURLを入力してください',
+        ]),
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('requires delivery target before recording recovered history', async () => {
+    const response = (await PATCH(
+      createPatchRequest({
+        delivered_at: '2026-06-16T00:00:00.000Z',
+        delivered_to: '',
+        document_action: {
+          action: 'recovered',
+          document_type: 'important_matters',
+          storage_location: 'store',
+        },
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        delivered_to: expect.arrayContaining(['回収では同意者・交付先を入力してください']),
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
   it('allows localhost HTTP document URLs for local development previews', async () => {
