@@ -251,6 +251,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
 
       if (original_management) {
+        const originalManagementUpdatedAt = new Date();
+        const reconciliationCheckedAt =
+          original_management.reconciliation_result === 'not_checked'
+            ? null
+            : originalManagementUpdatedAt.toISOString();
+        const reconciliationCheckedBy =
+          original_management.reconciliation_result === 'not_checked' ? null : ctx.userId;
         const originalManagementMetadata = {
           ...original_management,
           patient_id: existing.cycle.patient_id,
@@ -261,8 +268,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               : updated.original_collected_at
             )?.toISOString() ?? null,
           original_collected_by: updated.original_collected_by ?? null,
+          reconciliation_checked_at: reconciliationCheckedAt,
+          reconciliation_checked_by: reconciliationCheckedBy,
           updated_by: ctx.userId,
-          updated_at: new Date().toISOString(),
+          updated_at: originalManagementUpdatedAt.toISOString(),
         };
 
         await upsertOperationalTask(tx, {

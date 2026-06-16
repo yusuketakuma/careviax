@@ -446,6 +446,8 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
           case_id: 'case_1',
           original_collected_at: '2026-03-28T09:30:00.000Z',
           original_collected_by: 'user_1',
+          reconciliation_checked_at: expect.any(String),
+          reconciliation_checked_by: 'user_1',
           updated_by: 'user_1',
         }),
       }),
@@ -476,9 +478,66 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
           case_id: 'case_1',
           original_collected_at: '2026-03-28T09:30:00.000Z',
           original_collected_by: 'user_1',
+          reconciliation_checked_at: expect.any(String),
+          reconciliation_checked_by: 'user_1',
           updated_by: 'user_1',
         }),
       },
+    );
+  });
+
+  it('does not mark a not-checked original management update as reconciled', async () => {
+    prescriptionIntakeFindFirstMock.mockResolvedValue({
+      id: 'intake_8',
+      org_id: 'org_1',
+      source_type: 'fax',
+      prescription_category: 'regular',
+      emergency_category: null,
+      split_dispense_total: null,
+      split_dispense_current: null,
+      split_next_dispense_date: null,
+      cycle: {
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+      },
+    });
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        prescriptionIntake: {
+          update: vi.fn().mockResolvedValue({
+            id: 'intake_8',
+            source_type: 'fax',
+            original_collected_at: new Date('2026-03-28T09:30:00.000Z'),
+            original_collected_by: 'user_1',
+            lines: [],
+          }),
+        },
+      }),
+    );
+
+    const response = await PATCH(
+      createRequest({
+        original_management: {
+          reconciliation_result: 'not_checked',
+          storage_location: 'not_stored',
+          e_prescription_acquired_status: 'not_applicable',
+          dispensing_result_registration: 'not_applicable',
+        },
+      }),
+      { params: Promise.resolve({ id: 'intake_8' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          reconciliation_result: 'not_checked',
+          reconciliation_checked_at: null,
+          reconciliation_checked_by: null,
+        }),
+      }),
     );
   });
 

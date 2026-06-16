@@ -689,6 +689,8 @@ describe('getPatientHomeOperationsData', () => {
           .mockResolvedValueOnce({
             metadata: {
               reconciliation_result: 'matched',
+              reconciliation_checked_at: '2026-06-15T09:30:00.000Z',
+              reconciliation_checked_by: 'user_1',
               storage_location: 'store',
               e_prescription_acquired_status: 'not_applicable',
               dispensing_result_registration: 'pending',
@@ -760,6 +762,8 @@ describe('getPatientHomeOperationsData', () => {
           .mockResolvedValueOnce({
             metadata: {
               reconciliation_result: 'matched',
+              reconciliation_checked_at: '2026-06-15T09:30:00.000Z',
+              reconciliation_checked_by: 'user_1',
               storage_location: 'store',
               e_prescription_acquired_status: 'not_applicable',
               dispensing_result_registration: 'pending',
@@ -780,6 +784,8 @@ describe('getPatientHomeOperationsData', () => {
       tone: 'attention',
       alerts: ['疑義照会が未完了です (6件)'],
       metrics: expect.arrayContaining([
+        { label: '原本照合日', value: '2026/06/15' },
+        { label: '照合', value: '一致 / 2026/06/15' },
         { label: '疑義照会', value: '6件未完了' },
         { label: '工程', value: 'inquiry_pending' },
       ]),

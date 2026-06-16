@@ -128,6 +128,8 @@ type McsProfileSnapshot = {
 
 type PrescriptionOriginalManagementSnapshot = {
   reconciliation_result: string | null;
+  reconciliation_checked_at: string | null;
+  reconciliation_checked_by: string | null;
   discrepancy_note: string | null;
   storage_location: string | null;
   e_prescription_exchange_number: string | null;
@@ -498,6 +500,8 @@ function readPrescriptionOriginalManagement(
 
   return {
     reconciliation_result: readString(value.reconciliation_result),
+    reconciliation_checked_at: readString(value.reconciliation_checked_at),
+    reconciliation_checked_by: readString(value.reconciliation_checked_by),
     discrepancy_note: readString(value.discrepancy_note),
     storage_location: readString(value.storage_location),
     e_prescription_exchange_number: readString(value.e_prescription_exchange_number),
@@ -771,9 +775,20 @@ function buildPrescriptionItem(args: {
     faxElapsedDays >= PRESCRIPTION_FAX_ORIGINAL_OVERDUE_DAYS,
   );
   const reconciliationResult = originalManagement?.reconciliation_result ?? null;
+  const reconciliationCheckedAt = originalManagement?.reconciliation_checked_at
+    ? new Date(originalManagement.reconciliation_checked_at)
+    : null;
+  const reconciliationCheckedDate =
+    reconciliationCheckedAt && !Number.isNaN(reconciliationCheckedAt.getTime())
+      ? reconciliationCheckedAt
+      : null;
   const reconciliationLabel = reconciliationResult
     ? (PRESCRIPTION_RECONCILIATION_LABELS[reconciliationResult] ?? reconciliationResult)
     : '未照合';
+  const reconciliationMetric =
+    reconciliationResult && reconciliationResult !== 'not_checked' && reconciliationCheckedDate
+      ? `${reconciliationLabel} / ${formatDate(reconciliationCheckedDate)}`
+      : reconciliationLabel;
   const storageLabel = originalManagement?.storage_location
     ? (PRESCRIPTION_STORAGE_LABELS[originalManagement.storage_location] ??
       originalManagement.storage_location)
@@ -849,6 +864,7 @@ function buildPrescriptionItem(args: {
       { label: '原本', value: intake?.original_collected_at ? '到着済み' : '未着/未記録' },
       { label: '原本到着日', value: formatDate(intake?.original_collected_at ?? null) },
       { label: '原本受領者', value: intake?.original_collected_by ?? '未記録' },
+      { label: '原本照合日', value: formatDate(reconciliationCheckedDate) },
       {
         label: 'FAX経過',
         value:
@@ -860,7 +876,7 @@ function buildPrescriptionItem(args: {
                 : `${faxElapsedDays}日未着`
             : '対象外',
       },
-      { label: '照合', value: reconciliationLabel },
+      { label: '照合', value: reconciliationMetric },
       { label: '保管', value: storageLabel },
       { label: '電子処方', value: ePrescriptionLabel },
       { label: '結果登録', value: dispensingResultLabel },

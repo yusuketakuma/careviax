@@ -419,7 +419,7 @@ describe('CardWorkspace', () => {
             { label: '原本', value: '未着/未記録' },
             { label: 'FAX経過', value: '7日未着' },
             { label: '疑義照会', value: '未解決なし' },
-            { label: '照合', value: '未照合' },
+            { label: '照合', value: '一致 / 2026/06/10' },
           ],
           alerts: ['FAX受信から7日経過しても原本到着が未記録です'],
           quick_actions: [
@@ -536,8 +536,8 @@ describe('CardWorkspace', () => {
     ).toBeGreaterThan(0);
     expect(within(homeOps).getByText('期限')).toBeTruthy();
     expect(within(homeOps).getByText('2026/06/12 / 4日超過')).toBeTruthy();
-    expect(within(homeOps).getByText('FAX経過')).toBeTruthy();
-    expect(within(homeOps).getByText('7日未着')).toBeTruthy();
+    expect(within(homeOps).getAllByText('照合').length).toBeGreaterThan(0);
+    expect(within(homeOps).getByText('一致 / 2026/06/10')).toBeTruthy();
     expect(within(homeOps).getByText('未処理の算定候補が1件あります')).toBeTruthy();
     expect(within(homeOps).getAllByText('未収額 1,080円 があります').length).toBeGreaterThan(0);
     expect(within(homeOps).getByText('未収額')).toBeTruthy();
