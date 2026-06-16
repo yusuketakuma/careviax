@@ -38,11 +38,15 @@ function readNotificationStreamItem(value: unknown): NotificationStreamItem | nu
   };
 }
 
-export function parseNotificationStreamPayload(raw: string): NotificationStreamItem[] {
-  const parsed = parseJsonOrNull(raw);
-  if (!Array.isArray(parsed)) return [];
-  return parsed.flatMap((item) => {
+export function normalizeNotificationStreamPayload(value: unknown): NotificationStreamItem[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
     const notification = readNotificationStreamItem(item);
     return notification ? [notification] : [];
   });
+}
+
+export function parseNotificationStreamPayload(raw: string): NotificationStreamItem[] {
+  const parsed = parseJsonOrNull(raw);
+  return normalizeNotificationStreamPayload(parsed);
 }

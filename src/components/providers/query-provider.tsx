@@ -10,12 +10,12 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
         defaultOptions: {
           queries: { staleTime: 60 * 1000, retry: 1 },
         },
-      })
+      }),
   );
 
   useEffect(() => {
     const handleOnline = () => {
-      void queryClient.invalidateQueries();
+      void queryClient.refetchQueries({ type: 'active', stale: true });
     };
     window.addEventListener('online', handleOnline);
     return () => window.removeEventListener('online', handleOnline);

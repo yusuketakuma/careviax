@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { parseNotificationStreamPayload } from './stream-payload';
+import {
+  normalizeNotificationStreamPayload,
+  parseNotificationStreamPayload,
+} from './stream-payload';
 
 describe('parseNotificationStreamPayload', () => {
   it('returns valid notification stream items', () => {
@@ -66,6 +69,34 @@ describe('parseNotificationStreamPayload', () => {
         link: null,
         is_read: false,
         created_at: '2026-05-31T00:01:00.000Z',
+      },
+    ]);
+  });
+});
+
+describe('normalizeNotificationStreamPayload', () => {
+  it('normalizes already-parsed notification arrays from the shared realtime stream', () => {
+    expect(
+      normalizeNotificationStreamPayload([
+        {
+          id: 'notification_3',
+          type: 'system',
+          title: 'システム通知',
+          message: '反映しました',
+          link: '/settings',
+          is_read: true,
+          created_at: '2026-05-31T00:02:00.000Z',
+        },
+      ]),
+    ).toEqual([
+      {
+        id: 'notification_3',
+        type: 'system',
+        title: 'システム通知',
+        message: '反映しました',
+        link: '/settings',
+        is_read: true,
+        created_at: '2026-05-31T00:02:00.000Z',
       },
     ]);
   });

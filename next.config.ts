@@ -10,6 +10,8 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ['127.0.0.1'],
   experimental: {
     authInterrupts: true,
+    preloadEntriesOnStart: false,
+    webpackMemoryOptimizations: true,
   },
   serverExternalPackages: ['@react-pdf/renderer'],
 };

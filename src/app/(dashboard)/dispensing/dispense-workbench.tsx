@@ -519,10 +519,14 @@ export function DispenseWorkbench() {
 
   const [selectedTaskId, setSelectedTaskId] = React.useState<string | null>(null);
   const [guardOn, setGuardOn] = React.useState(true);
-  const [checked, setChecked] = React.useState<Record<string, boolean>>({});
+  const [checkedByTaskId, setCheckedByTaskId] = React.useState<
+    Record<string, Record<string, boolean>>
+  >({});
   const [interruptOpen, setInterruptOpen] = React.useState(false);
   const [interruptReason, setInterruptReason] = React.useState('');
-  const [groupSettings, setGroupSettings] = React.useState<MedicationGroupSettings>({});
+  const [groupSettingsByTaskId, setGroupSettingsByTaskId] = React.useState<
+    Record<string, MedicationGroupSettings>
+  >({});
 
   const queueQuery = useRealtimeQuery({
     queryKey: ['dispense-queue', orgId],
@@ -569,13 +573,30 @@ export function DispenseWorkbench() {
     [workbench],
   );
 
-  // 選択タスクが変わったらチェックリストを初期化(1件集中: 件をまたいで持ち越さない)
-  const [checklistTaskId, setChecklistTaskId] = React.useState(activeTaskId);
-  if (checklistTaskId !== activeTaskId) {
-    setChecklistTaskId(activeTaskId);
-    setChecked({});
-    setGroupSettings(buildDefaultGroupSettings(medicationGroups));
-  }
+  const checked = activeTaskId ? (checkedByTaskId[activeTaskId] ?? {}) : {};
+  const groupSettings = activeTaskId ? (groupSettingsByTaskId[activeTaskId] ?? {}) : {};
+
+  const updateActiveTaskChecks = React.useCallback(
+    (updater: (prev: Record<string, boolean>) => Record<string, boolean>) => {
+      if (!activeTaskId) return;
+      setCheckedByTaskId((prev) => ({
+        ...prev,
+        [activeTaskId]: updater(prev[activeTaskId] ?? {}),
+      }));
+    },
+    [activeTaskId],
+  );
+
+  const updateActiveTaskGroupSettings = React.useCallback(
+    (updater: (prev: MedicationGroupSettings) => MedicationGroupSettings) => {
+      if (!activeTaskId) return;
+      setGroupSettingsByTaskId((prev) => ({
+        ...prev,
+        [activeTaskId]: updater(prev[activeTaskId] ?? buildDefaultGroupSettings(medicationGroups)),
+      }));
+    },
+    [activeTaskId, medicationGroups],
+  );
 
   const completeMutation = useMutation({
     mutationFn: async () => {
@@ -822,7 +843,7 @@ export function DispenseWorkbench() {
                       groups={medicationGroups}
                       settings={groupSettings}
                       onCreateGroups={() =>
-                        setGroupSettings((prev) => ({
+                        updateActiveTaskGroupSettings((prev) => ({
                           ...prev,
                           ...Object.fromEntries(
                             medicationGroups.map((group) => [
@@ -836,7 +857,7 @@ export function DispenseWorkbench() {
                         }))
                       }
                       onToggleGroup={(groupId, enabled) =>
-                        setGroupSettings((prev) => ({
+                        updateActiveTaskGroupSettings((prev) => ({
                           ...prev,
                           [groupId]: {
                             enabled,
@@ -848,7 +869,7 @@ export function DispenseWorkbench() {
                         }))
                       }
                       onMethodChange={(groupId, method) =>
-                        setGroupSettings((prev) => ({
+                        updateActiveTaskGroupSettings((prev) => ({
                           ...prev,
                           [groupId]: {
                             enabled: prev[groupId]?.enabled ?? true,
@@ -870,7 +891,10 @@ export function DispenseWorkbench() {
                             id={`dispense-check-${item.id}`}
                             checked={checked[item.id] ?? false}
                             onCheckedChange={(value) =>
-                              setChecked((prev) => ({ ...prev, [item.id]: value === true }))
+                              updateActiveTaskChecks((prev) => ({
+                                ...prev,
+                                [item.id]: value === true,
+                              }))
                             }
                             aria-label={item.label}
                           />

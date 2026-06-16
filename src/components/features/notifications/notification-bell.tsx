@@ -19,7 +19,8 @@ import {
   isBrowserNotificationSupported,
   showBrowserNotification,
 } from '@/lib/browser-notifications';
-import { parseNotificationStreamPayload } from '@/lib/notifications/stream-payload';
+import { normalizeNotificationStreamPayload } from '@/lib/notifications/stream-payload';
+import { subscribeSharedRealtimeStream } from '@/lib/realtime/shared-event-stream';
 
 type Notification = {
   id: string;
@@ -38,7 +39,6 @@ export function NotificationBell() {
   const { notificationDrawerOpen, setNotificationDrawerOpen } = useUIStore();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadSummaryCount, setUnreadSummaryCount] = useState(0);
-  const abortRef = useRef<AbortController | null>(null);
   const seenIdsRef = useRef(new Set<string>());
   const mountedRef = useRef(false);
 
@@ -127,44 +127,18 @@ export function NotificationBell() {
       void refreshNotificationSummary();
       return;
     }
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    (async () => {
-      try {
-        await refreshNotificationSummary();
-        const res = await fetch('/api/notifications/stream', {
-          headers: { 'x-org-id': orgId },
-          signal: controller.signal,
-        });
-        if (!res.body) return;
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n\n');
-          buffer = lines.pop() ?? '';
-          for (const chunk of lines) {
-            if (chunk.startsWith('data: ')) {
-              const nextNotifications = parseNotificationStreamPayload(chunk.slice(6));
-              if (nextNotifications.length > 0) {
-                mergeNotifications(nextNotifications, {
-                  announce: true,
-                });
-              }
-            }
-          }
+    void refreshNotificationSummary();
+    return subscribeSharedRealtimeStream({
+      orgId,
+      onEvent: (event) => {
+        const nextNotifications = normalizeNotificationStreamPayload(event);
+        if (nextNotifications.length > 0) {
+          mergeNotifications(nextNotifications, {
+            announce: true,
+          });
         }
-      } catch {
-        // Connection closed or aborted — expected on unmount
-      }
-    })();
-
-    return () => controller.abort();
+      },
+    });
   }, [mergeNotifications, orgId, refreshNotificationSummary]);
 
   useEffect(() => {

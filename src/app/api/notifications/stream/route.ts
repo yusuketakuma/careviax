@@ -98,6 +98,8 @@ export async function GET(req: NextRequest) {
       };
       keepaliveTimer = scheduleSseTimer(heartbeat, KEEPALIVE_INTERVAL_MS);
 
+      let userChannelSubscribed = false;
+
       // Try realtime adapter subscription
       try {
         adapter = getRealtimeAdapter();
@@ -118,16 +120,17 @@ export async function GET(req: NextRequest) {
             subscribedChannels.delete(channel);
           }
         };
-        await Promise.allSettled([
+        const subscriptionResults = await Promise.allSettled([
           subscribeToTrackedChannel(orgChannel, orgListener),
           subscribeToTrackedChannel(userChannel, userListener),
         ]);
+        userChannelSubscribed = subscriptionResults[1]?.status === 'fulfilled';
       } catch {
         // Fall back to polling when the realtime adapter cannot be created.
       }
       if (stopped) return;
 
-      // Poll unread notifications regardless of adapter availability.
+      // Poll unread notifications only when the user-channel subscription is unavailable.
       const poll = async () => {
         if (stopped) return;
         const windowEnd = new Date();
@@ -159,7 +162,9 @@ export async function GET(req: NextRequest) {
         }
       };
 
-      pollTimer = scheduleSseTimer(poll, POLL_INTERVAL_MS);
+      if (!userChannelSubscribed) {
+        pollTimer = scheduleSseTimer(poll, POLL_INTERVAL_MS);
+      }
     },
     cancel() {
       teardownStream?.();
