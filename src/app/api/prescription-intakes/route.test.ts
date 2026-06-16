@@ -281,6 +281,34 @@ describe('/api/prescription-intakes POST', () => {
     expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
   });
 
+  it('rejects non-local HTTP prescription original URLs before reference validation', async () => {
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        patient_id: 'patient_1',
+        source_type: 'fax',
+        prescribed_date: TODAY,
+        original_document_url: 'http://storage.example.com/original.pdf',
+        lines: [
+          {
+            line_number: 1,
+            drug_name: 'アムロジピン錠5mg',
+            dose: '1錠',
+            frequency: '1日1回朝食後',
+            days: 14,
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
+  });
+
   it('rejects future prescribed dates before intake creation', async () => {
     const response = await POST(
       createRequest({

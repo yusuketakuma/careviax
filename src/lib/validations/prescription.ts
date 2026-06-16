@@ -34,9 +34,25 @@ const optionalDateStringSchema = z.preprocess(
   dateStringSchema('日付形式が不正です').optional(),
 );
 
-const optionalUrlStringSchema = z.preprocess(
+const prescriptionDocumentUrlSchema = z
+  .string()
+  .trim()
+  .max(2048, '処方せん原本URLは2048文字以内で入力してください')
+  .refine((value) => {
+    if (value.startsWith('/')) return !value.startsWith('//');
+
+    try {
+      const url = new URL(value);
+      if (url.protocol === 'https:') return true;
+      return url.protocol === 'http:' && ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
+    } catch {
+      return false;
+    }
+  }, '処方せん原本URLは相対パス、HTTPS、またはローカル開発用HTTPで指定してください');
+
+const optionalPrescriptionDocumentUrlSchema = z.preprocess(
   blankStringToUndefined,
-  z.string().trim().url().optional(),
+  prescriptionDocumentUrlSchema.optional(),
 );
 
 /**
@@ -121,7 +137,7 @@ export const createPrescriptionIntakeSchema = z
     prescriber_institution_id: optionalTrimmedStringSchema,
     prescriber_institution: optionalTrimmedStringSchema,
     prescription_expiry_date: optionalDateStringSchema,
-    original_document_url: optionalUrlStringSchema,
+    original_document_url: optionalPrescriptionDocumentUrlSchema,
     refill_remaining_count: z.number().int().min(0).optional(),
     refill_next_dispense_date: optionalDateStringSchema,
     split_dispense_total: z.number().int().min(1).optional(),
@@ -166,7 +182,7 @@ export const createFacilityBatchPrescriptionIntakeSchema = z
     prescriber_name: optionalTrimmedStringSchema,
     prescriber_institution_id: optionalTrimmedStringSchema,
     prescriber_institution: optionalTrimmedStringSchema,
-    original_document_url: optionalUrlStringSchema,
+    original_document_url: optionalPrescriptionDocumentUrlSchema,
     prescription_category: z.enum(['regular', 'emergency']).default('regular'),
     emergency_category: z
       .enum(['planned_disease_exacerbation', 'other_exacerbation', 'online'])
@@ -196,7 +212,7 @@ export const updatePrescriptionIntakeSchema = z
     prescriber_name: z.string().optional(),
     prescriber_institution_id: z.string().nullable().optional(),
     prescriber_institution: z.string().optional(),
-    original_document_url: z.string().url().optional(),
+    original_document_url: optionalPrescriptionDocumentUrlSchema,
     original_collected_at: z.string().datetime('日時形式が不正です').optional(),
     refill_remaining_count: z.number().int().min(0).optional(),
     refill_next_dispense_date: optionalDateStringSchema.nullable().optional(),
@@ -208,6 +224,24 @@ export const updatePrescriptionIntakeSchema = z
       .enum(['planned_disease_exacerbation', 'other_exacerbation', 'online'])
       .nullable()
       .optional(),
+    original_management: z
+      .object({
+        reconciliation_result: z.enum(['not_checked', 'matched', 'discrepancy']),
+        discrepancy_note: z.string().trim().max(1000).nullable().optional(),
+        storage_location: z
+          .enum(['not_stored', 'store', 'headquarters', 'electronic', 'patient_copy_only'])
+          .nullable()
+          .optional(),
+        e_prescription_exchange_number: z.string().trim().max(100).nullable().optional(),
+        e_prescription_acquired_status: z
+          .enum(['not_applicable', 'pending', 'acquired'])
+          .default('not_applicable'),
+        dispensing_result_registration: z
+          .enum(['not_applicable', 'pending', 'registered'])
+          .default('not_applicable'),
+        note: z.string().trim().max(1000).nullable().optional(),
+      })
+      .optional(),
   })
   .superRefine((value, ctx) => {
     if (value.prescription_category === 'emergency' && value.emergency_category === undefined) {
@@ -215,6 +249,16 @@ export const updatePrescriptionIntakeSchema = z
         code: z.ZodIssueCode.custom,
         message: '緊急処方の場合は緊急区分の選択が必須です',
         path: ['emergency_category'],
+      });
+    }
+    if (
+      value.original_management?.reconciliation_result === 'discrepancy' &&
+      !value.original_management.discrepancy_note?.trim()
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '差異ありの場合は差異内容を入力してください',
+        path: ['original_management', 'discrepancy_note'],
       });
     }
   });

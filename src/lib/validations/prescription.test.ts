@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createPrescriptionIntakeSchema } from './prescription';
+import { createPrescriptionIntakeSchema, updatePrescriptionIntakeSchema } from './prescription';
 
 const validIntake = {
   case_id: 'case_1',
@@ -40,5 +40,44 @@ describe('createPrescriptionIntakeSchema', () => {
     });
 
     expect(result.success).toBe(false);
+  });
+
+  it('accepts relative, HTTPS, and local development original document URLs', () => {
+    for (const original_document_url of [
+      '/uploads/prescriptions/original.pdf',
+      'https://storage.example.com/original.pdf',
+      'http://localhost:3000/uploads/original.pdf',
+    ]) {
+      expect(
+        createPrescriptionIntakeSchema.safeParse({
+          ...validIntake,
+          original_document_url,
+        }).success,
+      ).toBe(true);
+      expect(
+        updatePrescriptionIntakeSchema.safeParse({
+          original_document_url,
+        }).success,
+      ).toBe(true);
+    }
+  });
+
+  it('rejects non-local HTTP and protocol-relative original document URLs', () => {
+    for (const original_document_url of [
+      'http://storage.example.com/original.pdf',
+      '//storage.example.com/original.pdf',
+    ]) {
+      expect(
+        createPrescriptionIntakeSchema.safeParse({
+          ...validIntake,
+          original_document_url,
+        }).success,
+      ).toBe(false);
+      expect(
+        updatePrescriptionIntakeSchema.safeParse({
+          original_document_url,
+        }).success,
+      ).toBe(false);
+    }
   });
 });

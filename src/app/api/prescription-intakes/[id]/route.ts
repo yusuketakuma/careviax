@@ -2,12 +2,16 @@ import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { updatePrescriptionIntakeSchema } from '@/lib/validations/prescription';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
 import { formatDateKey } from '@/lib/date-key';
-import { resolveOperationalTasks } from '@/server/services/operational-tasks';
+import {
+  resolveOperationalTasks,
+  upsertOperationalTask,
+} from '@/server/services/operational-tasks';
 import {
   PrescriberInstitutionReferenceValidationError,
   resolvePrescriberInstitutionFields,
@@ -125,6 +129,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       org_id: ctx.orgId,
       ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
     },
+    include: {
+      cycle: {
+        select: {
+          patient_id: true,
+          case_id: true,
+        },
+      },
+    },
   });
   if (!existing) return notFound('処方箋が見つかりません');
 
@@ -135,6 +147,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     split_dispense_current,
     split_next_dispense_date,
     prescriber_institution_id,
+    original_management,
     ...rest
   } = parsed.data;
 
@@ -234,6 +247,39 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           relatedEntityType: 'prescription_intake',
           relatedEntityId: id,
           status: 'completed',
+        });
+      }
+
+      if (original_management) {
+        const originalManagementMetadata = {
+          ...original_management,
+          patient_id: existing.cycle.patient_id,
+          case_id: existing.cycle.case_id,
+          updated_by: ctx.userId,
+          updated_at: new Date().toISOString(),
+        };
+
+        await upsertOperationalTask(tx, {
+          orgId: ctx.orgId,
+          taskType: 'prescription_original_management',
+          title: '処方せん原本管理を記録',
+          description:
+            original_management.reconciliation_result === 'discrepancy'
+              ? 'FAX・原本の差異内容、電子処方せん取得、調剤結果登録、保管場所を確認してください。'
+              : '処方せん原本照合、電子処方せん取得、調剤結果登録、保管場所を記録しました。',
+          priority: original_management.reconciliation_result === 'discrepancy' ? 'high' : 'normal',
+          status: 'completed',
+          dedupeKey: `prescription_original_management:${id}`,
+          relatedEntityType: 'prescription_intake',
+          relatedEntityId: id,
+          metadata: originalManagementMetadata,
+        });
+
+        await createAuditLogEntry(tx, ctx, {
+          action: 'prescription_original_management_updated',
+          targetType: 'prescription_intake',
+          targetId: id,
+          changes: originalManagementMetadata,
         });
       }
 

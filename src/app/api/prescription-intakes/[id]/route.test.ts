@@ -5,12 +5,16 @@ const {
   requireAuthContextMock,
   withOrgContextMock,
   prescriptionIntakeFindFirstMock,
+  createAuditLogEntryMock,
   resolveOperationalTasksMock,
+  upsertOperationalTaskMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   prescriptionIntakeFindFirstMock: vi.fn(),
+  createAuditLogEntryMock: vi.fn(),
   resolveOperationalTasksMock: vi.fn(),
+  upsertOperationalTaskMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -29,8 +33,13 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
+vi.mock('@/lib/audit/audit-entry', () => ({
+  createAuditLogEntry: createAuditLogEntryMock,
+}));
+
 vi.mock('@/server/services/operational-tasks', () => ({
   resolveOperationalTasks: resolveOperationalTasksMock,
+  upsertOperationalTask: upsertOperationalTaskMock,
 }));
 
 import { GET, PATCH } from './route';
@@ -66,6 +75,7 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
         userId: 'user_1',
       },
     });
+    createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
   });
 
   it('rejects blank prescription intake ids before loading the intake on GET', async () => {
@@ -177,6 +187,21 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
+    expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-local HTTP prescription original URLs before loading the intake', async () => {
+    const response = await PATCH(
+      createRequest({
+        original_document_url: 'http://storage.example.com/original.pdf',
+      }),
+      { params: Promise.resolve({ id: 'intake_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
     expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
@@ -351,5 +376,115 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
         }),
       }),
     );
+  });
+
+  it('records prescription original management as a completed workflow task', async () => {
+    prescriptionIntakeFindFirstMock.mockResolvedValue({
+      id: 'intake_7',
+      org_id: 'org_1',
+      source_type: 'fax',
+      prescription_category: 'regular',
+      emergency_category: null,
+      split_dispense_total: null,
+      split_dispense_current: null,
+      split_next_dispense_date: null,
+      cycle: {
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+      },
+    });
+
+    const updateMock = vi.fn().mockResolvedValue({
+      id: 'intake_7',
+      source_type: 'fax',
+      lines: [],
+    });
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        prescriptionIntake: {
+          update: updateMock,
+        },
+      }),
+    );
+
+    const response = await PATCH(
+      createRequest({
+        original_management: {
+          reconciliation_result: 'discrepancy',
+          discrepancy_note: 'FAXは28日分、原本は14日分',
+          storage_location: 'store',
+          e_prescription_exchange_number: 'EP-12345',
+          e_prescription_acquired_status: 'acquired',
+          dispensing_result_registration: 'registered',
+          note: '医師確認済み',
+        },
+      }),
+      { params: Promise.resolve({ id: 'intake_7' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        taskType: 'prescription_original_management',
+        priority: 'high',
+        status: 'completed',
+        dedupeKey: 'prescription_original_management:intake_7',
+        relatedEntityType: 'prescription_intake',
+        relatedEntityId: 'intake_7',
+        metadata: expect.objectContaining({
+          reconciliation_result: 'discrepancy',
+          discrepancy_note: 'FAXは28日分、原本は14日分',
+          storage_location: 'store',
+          patient_id: 'patient_1',
+          case_id: 'case_1',
+          updated_by: 'user_1',
+        }),
+      }),
+    );
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+      }),
+      {
+        action: 'prescription_original_management_updated',
+        targetType: 'prescription_intake',
+        targetId: 'intake_7',
+        changes: expect.objectContaining({
+          reconciliation_result: 'discrepancy',
+          discrepancy_note: 'FAXは28日分、原本は14日分',
+          storage_location: 'store',
+          patient_id: 'patient_1',
+          case_id: 'case_1',
+          updated_by: 'user_1',
+        }),
+      },
+    );
+  });
+
+  it('rejects discrepancy reconciliation without discrepancy details', async () => {
+    const response = await PATCH(
+      createRequest({
+        original_management: {
+          reconciliation_result: 'discrepancy',
+          storage_location: 'store',
+        },
+      }),
+      { params: Promise.resolve({ id: 'intake_8' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+    });
+    expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 });
