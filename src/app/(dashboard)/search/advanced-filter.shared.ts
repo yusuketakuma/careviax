@@ -14,8 +14,7 @@ export type AdvancedFilterState = {
   assigneeId: string | null;
   /** 現在の工程(MedicationCycleStatus サブセット)。接続可 (/api/prescription-intakes?status=)。 */
   cycleStatus: CycleStatusOption | null;
-  /** 注意ポイント。第一版 UI のみ提供・結果未反映。
-   * TODO(p0_06): packaging_instruction_tags 横断クエリ未対応のため将来接続。 */
+  /** 注意ポイント。処方カード検索では /api/prescription-intakes?care_tags= に接続する。 */
   careTags: CareTag[];
   /** 予定の状態(VisitProposalStatus サブセット)。将来接続扱い。
    * 接続先: /api/visit-schedule-proposals?status= */
@@ -89,12 +88,11 @@ export const CYCLE_STATUS_OPTIONS: Array<{ value: CycleStatusOption; label: stri
 // 注意ポイント(複数選択チップ)
 // ---------------------------------------------------------------------------
 
-export type CareTag = 'narcotic' | 'cold_storage' | 'prescription_change';
+export type CareTag = 'narcotic' | 'cold_storage';
 
 export const CARE_TAG_OPTIONS: Array<{ value: CareTag; label: string }> = [
   { value: 'narcotic', label: '麻薬' },
   { value: 'cold_storage', label: '冷所' },
-  { value: 'prescription_change', label: '処方変更' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -132,7 +130,7 @@ export const ADVANCED_FILTER_CONNECTABLE: Record<keyof AdvancedFilterState, bool
   visitDateRange: true,
   assigneeId: true,
   cycleStatus: true,
-  careTags: false, // packaging_instruction_tags 横断クエリ未対応
+  careTags: true,
   proposalStatus: false, // 将来接続 (/api/visit-schedule-proposals?status=)
   medicationDeadlineWithinDays: true,
 };

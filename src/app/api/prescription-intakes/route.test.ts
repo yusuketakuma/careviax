@@ -1805,6 +1805,46 @@ describe('/api/prescription-intakes GET', () => {
     expect(prescriptionIntakeCountMock).not.toHaveBeenCalled();
   });
 
+  it('passes care tag filters into the paginated query', async () => {
+    const response = await GET(
+      createGetRequest('http://localhost/api/prescription-intakes?care_tags=narcotic,cold_storage'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(prescriptionIntakeFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          lines: {
+            some: {
+              packaging_instruction_tags: {
+                hasSome: ['narcotic', 'cold_storage'],
+              },
+            },
+          },
+        }),
+      }),
+    );
+  });
+
+  it('rejects unsupported care tag filters before querying intakes', async () => {
+    const response = await GET(
+      createGetRequest('http://localhost/api/prescription-intakes?care_tags=prescription_change'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '注意ポイントの絞り込みが不正です',
+      details: {
+        care_tags: ['対応していない注意ポイントです'],
+      },
+    });
+    expect(prescriptionIntakeFindManyMock).not.toHaveBeenCalled();
+    expect(prescriptionIntakeCountMock).not.toHaveBeenCalled();
+  });
+
   it('rejects unsupported status filters before querying intakes', async () => {
     const response = await GET(
       createGetRequest('http://localhost/api/prescription-intakes?status=bad_status'),

@@ -16,10 +16,7 @@ import { FilterChipBar } from '@/components/features/workspace/filter-chip-bar';
 import { ListOpenCard } from '@/components/features/workspace/list-open-card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { AdvancedFilterModal } from './advanced-filter-modal';
-import {
-  type AdvancedFilterState,
-  EMPTY_ADVANCED_FILTER,
-} from './advanced-filter.shared';
+import { type AdvancedFilterState, EMPTY_ADVANCED_FILTER } from './advanced-filter.shared';
 import {
   type SearchCategory,
   type SearchResultRow,
@@ -68,7 +65,10 @@ type SearchContentProps = {
   initialCategory?: SearchCategory;
 };
 
-export function SearchContent({ initialQuery = '', initialCategory = 'patient' }: SearchContentProps) {
+export function SearchContent({
+  initialQuery = '',
+  initialCategory = 'patient',
+}: SearchContentProps) {
   const orgId = useOrgId();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -133,7 +133,6 @@ export function SearchContent({ initialQuery = '', initialCategory = 'patient' }
         const sig = controller.signal;
 
         // 接続可能な詳細絞り込み条件を既存 API に AND 合成(第一版)
-        // TODO(p0_06): careTags は packaging_instruction_tags 横断クエリ未対応のため将来接続
         const visitScheduleParams = new URLSearchParams({ q });
         if (advancedFilter.assigneeId) {
           visitScheduleParams.set('pharmacist_id', advancedFilter.assigneeId);
@@ -146,33 +145,34 @@ export function SearchContent({ initialQuery = '', initialCategory = 'patient' }
         const cycleStatusParam = advancedFilter.cycleStatus
           ? `&status=${encodeURIComponent(advancedFilter.cycleStatus)}`
           : '';
+        const careTagsParam =
+          advancedFilter.careTags.length > 0
+            ? `&care_tags=${encodeURIComponent(advancedFilter.careTags.join(','))}`
+            : '';
 
-        const [
-          patientRes,
-          prescriptionRes,
-          drugRes,
-          facilityRes,
-          reportRes,
-          contactRes,
-        ] = await Promise.all([
-          fetch(`/api/patients?q=${q}&limit=8`, { headers, signal: sig }).catch(() => null),
-          // prescription-intakes の q は API 側未実装(source_type/status のみ対応)のため
-          // クライアント側で patient.name による前方一致フィルタを補完する。
-          // 将来 API 側 q 実装時にフィルタ除去可。
-          fetch(`/api/prescription-intakes?q=${q}&limit=8${cycleStatusParam}`, { headers, signal: sig }).catch(() => null),
-          fetch(`/api/drug-masters?q=${q}&limit=8`, { signal: sig }).catch(() => null),
-          fetch(`/api/facilities?q=${q}&limit=8`, { headers, signal: sig }).catch(() => null),
-          fetch(`/api/care-reports?q=${q}`, { headers, signal: sig }).catch(() => null),
-          fetch(`/api/contact-profiles?q=${q}`, { headers, signal: sig }).catch(() => null),
-        ]);
+        const [patientRes, prescriptionRes, drugRes, facilityRes, reportRes, contactRes] =
+          await Promise.all([
+            fetch(`/api/patients?q=${q}&limit=8`, { headers, signal: sig }).catch(() => null),
+            // prescription-intakes の q は API 側未実装(source_type/status のみ対応)のため
+            // クライアント側で patient.name による前方一致フィルタを補完する。
+            // 将来 API 側 q 実装時にフィルタ除去可。
+            fetch(`/api/prescription-intakes?q=${q}&limit=8${cycleStatusParam}${careTagsParam}`, {
+              headers,
+              signal: sig,
+            }).catch(() => null),
+            fetch(`/api/drug-masters?q=${q}&limit=8`, { signal: sig }).catch(() => null),
+            fetch(`/api/facilities?q=${q}&limit=8`, { headers, signal: sig }).catch(() => null),
+            fetch(`/api/care-reports?q=${q}`, { headers, signal: sig }).catch(() => null),
+            fetch(`/api/contact-profiles?q=${q}`, { headers, signal: sig }).catch(() => null),
+          ]);
 
         const patientData = patientRes?.ok
-          ? ((await patientRes.json()) as { data: PatientSearchItem[] }).data ?? []
+          ? (((await patientRes.json()) as { data: PatientSearchItem[] }).data ?? [])
           : [];
 
         // prescription-intakes の API 側 q 未対応のためクライアントフィルタで補完
         const prescriptionRaw = prescriptionRes?.ok
-          ? ((await prescriptionRes.json()) as { data: PrescriptionSearchItem[] }).data ?? []
+          ? (((await prescriptionRes.json()) as { data: PrescriptionSearchItem[] }).data ?? [])
           : [];
         const prescriptionData = prescriptionRaw.filter((item) => {
           const patientName = item.cycle?.case_?.patient?.name ?? '';
@@ -180,21 +180,21 @@ export function SearchContent({ initialQuery = '', initialCategory = 'patient' }
         });
 
         const drugData = drugRes?.ok
-          ? ((await drugRes.json()) as { data: DrugSearchItem[] }).data ?? []
+          ? (((await drugRes.json()) as { data: DrugSearchItem[] }).data ?? [])
           : [];
 
         const facilityData = facilityRes?.ok
-          ? ((await facilityRes.json()) as { data: FacilitySearchItem[] }).data ?? []
+          ? (((await facilityRes.json()) as { data: FacilitySearchItem[] }).data ?? [])
           : [];
 
         // care-reports は limit なしのため先頭 8 件に slice
         const reportRaw = reportRes?.ok
-          ? ((await reportRes.json()) as { data: ReportSearchItem[] }).data ?? []
+          ? (((await reportRes.json()) as { data: ReportSearchItem[] }).data ?? [])
           : [];
         const reportData = reportRaw.slice(0, 8);
 
         const contactData = contactRes?.ok
-          ? ((await contactRes.json()) as { data: ContactSearchItem[] }).data ?? []
+          ? (((await contactRes.json()) as { data: ContactSearchItem[] }).data ?? [])
           : [];
 
         // medicationDeadlineWithinDays は /api/dashboard/medication-deadlines で取得可能だが
@@ -217,9 +217,7 @@ export function SearchContent({ initialQuery = '', initialCategory = 'patient' }
         );
       } catch (err) {
         if (controller.signal.aborted) return;
-        setSearchError(
-          err instanceof Error ? err.message : '検索結果の取得に失敗しました。',
-        );
+        setSearchError(err instanceof Error ? err.message : '検索結果の取得に失敗しました。');
       } finally {
         if (!controller.signal.aborted) {
           setIsLoading(false);

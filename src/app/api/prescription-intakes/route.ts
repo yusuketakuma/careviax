@@ -45,6 +45,7 @@ import {
 
 const prescriptionSourceTypeSchema = z.enum(PRESCRIPTION_SOURCE_TYPES);
 const medicationCycleStatusSchema = z.enum(MEDICATION_CYCLE_STATUSES);
+const prescriptionCareTagSchema = z.enum(['cold_storage', 'narcotic']);
 
 type CreatePrescriptionIntakeInput = z.infer<typeof createPrescriptionIntakeSchema>;
 type IntakeInTxResult = Awaited<ReturnType<typeof createPrescriptionIntakeInTx>>;
@@ -135,6 +136,21 @@ function readStringArray(value: unknown): string[] | undefined {
     return text ? [text] : [];
   });
   return values.length > 0 ? values : undefined;
+}
+
+function parsePrescriptionCareTags(value: string | null) {
+  if (!value) return { success: true as const, data: [] };
+  const tags = [
+    ...new Set(
+      value
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  ];
+  const parsed = z.array(prescriptionCareTagSchema).safeParse(tags);
+  if (!parsed.success) return { success: false as const };
+  return { success: true as const, data: parsed.data };
 }
 
 function readEnumValue<const T extends readonly string[]>(
@@ -301,10 +317,16 @@ export const GET = withAuthContext(
 
     const statusParam = searchParams.get('status') ?? undefined;
     const sourceTypeParam = searchParams.get('source_type') ?? undefined;
+    const careTags = parsePrescriptionCareTags(searchParams.get('care_tags'));
     const status = statusParam ? medicationCycleStatusSchema.safeParse(statusParam) : null;
     const sourceType = sourceTypeParam
       ? prescriptionSourceTypeSchema.safeParse(sourceTypeParam)
       : null;
+    if (!careTags.success) {
+      return validationError('注意ポイントの絞り込みが不正です', {
+        care_tags: ['対応していない注意ポイントです'],
+      });
+    }
     if (status && !status.success) {
       return validationError('処方受付ステータスが不正です', {
         status: ['対応していないステータスです'],
@@ -325,6 +347,17 @@ export const GET = withAuthContext(
         ? {
             cycle: {
               overall_status: status.data,
+            },
+          }
+        : {}),
+      ...(careTags.data.length > 0
+        ? {
+            lines: {
+              some: {
+                packaging_instruction_tags: {
+                  hasSome: careTags.data,
+                },
+              },
             },
           }
         : {}),

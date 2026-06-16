@@ -176,6 +176,33 @@ describe('SearchContent', () => {
     expect(screen.queryByRole('option', { name: 'セット中' })).toBeNull();
   });
 
+  it('applies connected care tag filters to prescription search requests', async () => {
+    render(<SearchContent />);
+    await triggerSearch('田中');
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '詳しく絞り込む' }));
+    });
+
+    expect(screen.queryByRole('button', { name: '処方変更' })).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '麻薬' }));
+      fireEvent.click(screen.getByRole('button', { name: '冷所' }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'この条件で探す' }));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+
+    const prescriptionUrls = fetchMock.mock.calls
+      .map((call) => String(call[0]))
+      .filter((url) => url.includes('/api/prescription-intakes'));
+    expect(prescriptionUrls.at(-1)).toContain('care_tags=narcotic%2Ccold_storage');
+  });
+
   it('modal リセット does not close modal', async () => {
     render(<SearchContent />);
 

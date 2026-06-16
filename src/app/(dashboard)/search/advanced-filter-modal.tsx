@@ -174,9 +174,7 @@ export function AdvancedFilterModal({
             </div>
           </div>
 
-          {/* 4. 注意ポイント — 複数選択チップ
-              第一版は UI のみ提供。結果への反映は TODO(p0_06) 参照。
-              disabled にはしない(仕様どおり)。 */}
+          {/* 4. 注意ポイント — 複数選択チップ */}
           <div className="flex items-start gap-4">
             <span className="w-28 shrink-0 pt-1 text-sm font-medium text-foreground">
               注意ポイント
