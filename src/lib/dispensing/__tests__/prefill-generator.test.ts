@@ -20,21 +20,23 @@ const ORG_ID = 'org_1';
 const CYCLE_ID = 'cycle_1';
 const SITE_ID = 'site_1';
 
-function makeIntakeLine(overrides: Partial<{
-  id: string;
-  line_number: number;
-  drug_name: string;
-  drug_code: string | null;
-  dose: string;
-  frequency: string;
-  days: number | null;
-  quantity: number | null;
-  unit: string | null;
-  notes: string | null;
-  packaging_instructions: string | null;
-  start_date: Date | null;
-  end_date: Date | null;
-}> = {}) {
+function makeIntakeLine(
+  overrides: Partial<{
+    id: string;
+    line_number: number;
+    drug_name: string;
+    drug_code: string | null;
+    dose: string;
+    frequency: string;
+    days: number | null;
+    quantity: number | null;
+    unit: string | null;
+    notes: string | null;
+    packaging_instructions: string | null;
+    start_date: Date | null;
+    end_date: Date | null;
+  }> = {},
+) {
   return {
     id: 'line_1',
     line_number: 1,
@@ -53,37 +55,51 @@ function makeIntakeLine(overrides: Partial<{
   };
 }
 
-function makeCurrentIntake(overrides: Partial<{
-  id: string;
-  source_type: string;
-  prescribed_date: Date;
-  prescriber_name: string | null;
-  lines: ReturnType<typeof makeIntakeLine>[];
-}> = {}) {
+function makeCurrentIntake(
+  overrides: Partial<{
+    id: string;
+    source_type: string;
+    prescribed_date: Date;
+    prescriber_name: string | null;
+    created_at: Date;
+    cycle: {
+      patient_id: string;
+      case_id: string | null;
+    };
+    lines: ReturnType<typeof makeIntakeLine>[];
+  }> = {},
+) {
   return {
     id: 'intake_current',
     source_type: 'qr',
     prescribed_date: new Date('2026-04-01'),
     prescriber_name: '鈴木医師',
+    created_at: new Date('2026-04-01T09:00:00.000Z'),
+    cycle: {
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+    },
     lines: [makeIntakeLine()],
     ...overrides,
   };
 }
 
-function makePreviousIntake(overrides: Partial<{
-  prescribed_date: Date;
-  prescriber_name: string | null;
-  lines: Array<{
-    id: string;
-    drug_name: string;
-    drug_code: string | null;
-    dose: string;
-    frequency: string;
-    days?: number | null;
-    start_date: Date | null;
-    end_date: Date | null;
-  }>;
-}> = {}) {
+function makePreviousIntake(
+  overrides: Partial<{
+    prescribed_date: Date;
+    prescriber_name: string | null;
+    lines: Array<{
+      id: string;
+      drug_name: string;
+      drug_code: string | null;
+      dose: string;
+      frequency: string;
+      days?: number | null;
+      start_date: Date | null;
+      end_date: Date | null;
+    }>;
+  }> = {},
+) {
   return {
     prescribed_date: new Date('2026-03-01'),
     prescriber_name: '鈴木医師',
@@ -141,8 +157,8 @@ describe('generateDispensePrefill', () => {
   describe('basic prefill line mapping', () => {
     it('maps a single line correctly', async () => {
       prismaMock.prescriptionIntake.findFirst
-        .mockResolvedValueOnce(makeCurrentIntake())  // current
-        .mockResolvedValueOnce(null);                // previous (none)
+        .mockResolvedValueOnce(makeCurrentIntake()) // current
+        .mockResolvedValueOnce(null); // previous (none)
       prismaMock.drugMaster.findMany.mockResolvedValue([]);
       prismaMock.pharmacyDrugStock.findMany.mockResolvedValue([]);
 
@@ -291,8 +307,21 @@ describe('generateDispensePrefill', () => {
     });
 
     it('marks dose change with changeMarker "dose_changed"', async () => {
-      const currentLine = makeIntakeLine({ drug_name: 'アムロジピン錠5mg', drug_code: 'YJ001', dose: '10mg', frequency: '1日1回' });
-      const prevLine = { id: 'prev_line_1', drug_name: 'アムロジピン錠5mg', drug_code: 'YJ001', dose: '5mg', frequency: '1日1回', start_date: null, end_date: null };
+      const currentLine = makeIntakeLine({
+        drug_name: 'アムロジピン錠5mg',
+        drug_code: 'YJ001',
+        dose: '10mg',
+        frequency: '1日1回',
+      });
+      const prevLine = {
+        id: 'prev_line_1',
+        drug_name: 'アムロジピン錠5mg',
+        drug_code: 'YJ001',
+        dose: '5mg',
+        frequency: '1日1回',
+        start_date: null,
+        end_date: null,
+      };
       prismaMock.prescriptionIntake.findFirst
         .mockResolvedValueOnce(makeCurrentIntake({ lines: [currentLine] }))
         .mockResolvedValueOnce(makePreviousIntake({ lines: [prevLine] }));
@@ -305,6 +334,69 @@ describe('generateDispensePrefill', () => {
       expect(result.lines[0].changeDetail).toMatchObject({
         previous: '5mg / 1日1回',
         current: '10mg / 1日1回',
+      });
+    });
+
+    it('keeps change markers scoped to the matching line when the same drug appears twice', async () => {
+      const morningLine = makeIntakeLine({
+        id: 'line_morning',
+        line_number: 1,
+        drug_name: 'ロキソプロフェン錠60mg',
+        drug_code: 'YJ222',
+        dose: '1回1錠',
+        frequency: '朝食後',
+      });
+      const eveningLine = makeIntakeLine({
+        id: 'line_evening',
+        line_number: 2,
+        drug_name: 'ロキソプロフェン錠60mg',
+        drug_code: 'YJ222',
+        dose: '1回2錠',
+        frequency: '夕食後',
+      });
+      const previousMorningLine = {
+        id: 'prev_morning',
+        drug_name: 'ロキソプロフェン錠60mg',
+        drug_code: 'YJ222',
+        dose: '1回1錠',
+        frequency: '朝食後',
+        days: 28,
+        start_date: null,
+        end_date: null,
+      };
+      const previousEveningLine = {
+        id: 'prev_evening',
+        drug_name: 'ロキソプロフェン錠60mg',
+        drug_code: 'YJ222',
+        dose: '1回1錠',
+        frequency: '夕食後',
+        days: 28,
+        start_date: null,
+        end_date: null,
+      };
+      prismaMock.prescriptionIntake.findFirst
+        .mockResolvedValueOnce(makeCurrentIntake({ lines: [morningLine, eveningLine] }))
+        .mockResolvedValueOnce(
+          makePreviousIntake({ lines: [previousMorningLine, previousEveningLine] }),
+        );
+      prismaMock.drugMaster.findMany.mockResolvedValue([]);
+      prismaMock.pharmacyDrugStock.findMany.mockResolvedValue([]);
+
+      const result = await generateDispensePrefill(CYCLE_ID, ORG_ID, SITE_ID);
+
+      expect(result.lines).toHaveLength(2);
+      expect(result.lines[0]).toMatchObject({
+        lineId: 'line_morning',
+        changeMarker: null,
+        changeDetail: null,
+      });
+      expect(result.lines[1]).toMatchObject({
+        lineId: 'line_evening',
+        changeMarker: 'dose_changed',
+        changeDetail: {
+          previous: '1回1錠 / 夕食後',
+          current: '1回2錠 / 夕食後',
+        },
       });
     });
 
@@ -329,7 +421,15 @@ describe('generateDispensePrefill', () => {
       prismaMock.prescriptionIntake.findFirst.mockReset();
 
       const currentLine = makeIntakeLine({ drug_name: '現在薬', drug_code: 'CURR001' });
-      const prevLine = { id: 'p1', drug_name: '削除薬', drug_code: 'PREV001', dose: '5mg', frequency: '1日1回', start_date: null, end_date: null };
+      const prevLine = {
+        id: 'p1',
+        drug_name: '削除薬',
+        drug_code: 'PREV001',
+        dose: '5mg',
+        frequency: '1日1回',
+        start_date: null,
+        end_date: null,
+      };
       prismaMock.prescriptionIntake.findFirst
         .mockResolvedValueOnce(makeCurrentIntake({ lines: [currentLine] }))
         .mockResolvedValueOnce(makePreviousIntake({ lines: [prevLine] }));
@@ -353,14 +453,18 @@ describe('generateDispensePrefill', () => {
 
       // Batch 1: DrugMaster lookup by code
       prismaMock.drugMaster.findMany
-        .mockResolvedValueOnce([{ id: 'dm_1', yj_code: 'YJ001', receipt_code: null }])  // drug masters
-        .mockResolvedValueOnce([{ id: 'dm_generic_1', drug_name: 'アムロジピン錠5mg「GE」', yj_code: 'YJ_GE_001' }]); // generics
+        .mockResolvedValueOnce([{ id: 'dm_1', yj_code: 'YJ001', receipt_code: null }]) // drug masters
+        .mockResolvedValueOnce([
+          { id: 'dm_generic_1', drug_name: 'アムロジピン錠5mg「GE」', yj_code: 'YJ_GE_001' },
+        ]); // generics
 
       // Batch 2: Stock lookup
-      prismaMock.pharmacyDrugStock.findMany.mockResolvedValueOnce([{
-        drug_master_id: 'dm_1',
-        preferred_generic_id: 'dm_generic_1',
-      }]);
+      prismaMock.pharmacyDrugStock.findMany.mockResolvedValueOnce([
+        {
+          drug_master_id: 'dm_1',
+          preferred_generic_id: 'dm_generic_1',
+        },
+      ]);
 
       const result = await generateDispensePrefill(CYCLE_ID, ORG_ID, SITE_ID);
 
@@ -377,7 +481,9 @@ describe('generateDispensePrefill', () => {
         .mockResolvedValueOnce(makeCurrentIntake({ lines: [line] }))
         .mockResolvedValueOnce(null);
 
-      prismaMock.drugMaster.findMany.mockResolvedValueOnce([{ id: 'dm_1', yj_code: 'YJ001', receipt_code: null }]);
+      prismaMock.drugMaster.findMany.mockResolvedValueOnce([
+        { id: 'dm_1', yj_code: 'YJ001', receipt_code: null },
+      ]);
       prismaMock.pharmacyDrugStock.findMany.mockResolvedValueOnce([]); // no stock with preferred generic
 
       const result = await generateDispensePrefill(CYCLE_ID, ORG_ID, SITE_ID);

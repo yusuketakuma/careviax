@@ -98,6 +98,8 @@ export type VisitPrescriptionChanges = {
 
 export type VisitPreviousStructuredReuse = {
   source_visit_record_id: string;
+  source_visit_record_version: number | null;
+  source_visit_record_updated_at: string | null;
   subjective: string[];
   objective: string[];
   assessment: string[];

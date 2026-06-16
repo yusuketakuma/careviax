@@ -134,6 +134,98 @@ describe('/api/patients/[id]/prescriptions', () => {
     );
   });
 
+  it('keeps diff review rows line-scoped when the same drug appears twice', async () => {
+    prescriptionIntakeFindManyMock.mockResolvedValue([
+      {
+        id: 'intake_current',
+        cycle_id: 'cycle_1',
+        prescribed_date: new Date('2026-04-20T00:00:00.000Z'),
+        created_at: new Date('2026-04-20T10:00:00.000Z'),
+        lines: [
+          {
+            id: 'line_current_morning',
+            drug_name: 'メトホルミン錠500mg',
+            drug_code: 'YJ002',
+            dose: '1錠',
+            frequency: '朝食後',
+            days: 28,
+            packaging_instructions: null,
+            dispensing_method: null,
+            start_date: null,
+            notes: null,
+          },
+          {
+            id: 'line_current_evening',
+            drug_name: 'メトホルミン錠500mg',
+            drug_code: 'YJ002',
+            dose: '2錠',
+            frequency: '夕食後',
+            days: 28,
+            packaging_instructions: null,
+            dispensing_method: null,
+            start_date: null,
+            notes: '夕のみ増量',
+          },
+        ],
+      },
+      {
+        id: 'intake_previous',
+        cycle_id: 'cycle_1',
+        prescribed_date: new Date('2026-04-01T00:00:00.000Z'),
+        created_at: new Date('2026-04-01T10:00:00.000Z'),
+        lines: [
+          {
+            id: 'line_previous_morning',
+            drug_name: 'メトホルミン錠500mg',
+            drug_code: 'YJ002',
+            dose: '1錠',
+            frequency: '朝食後',
+            days: 28,
+            packaging_instructions: null,
+            dispensing_method: null,
+            start_date: null,
+            notes: null,
+          },
+          {
+            id: 'line_previous_evening',
+            drug_name: 'メトホルミン錠500mg',
+            drug_code: 'YJ002',
+            dose: '1錠',
+            frequency: '夕食後',
+            days: 28,
+            packaging_instructions: null,
+            dispensing_method: null,
+            start_date: null,
+            notes: null,
+          },
+        ],
+      },
+    ]);
+
+    const response = (await GET(createGetRequest('patient_1', 'limit=5&case_id=case_1'), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.diff_review.rows).toEqual([
+      expect.objectContaining({
+        key: 'line_current_evening',
+        change_type: 'changed',
+        previous_label: '1錠 夕食後 28日',
+        current_label: '2錠 夕食後 28日',
+        pharmacist_memo: '夕のみ増量',
+      }),
+      expect.objectContaining({
+        key: 'line_current_morning',
+        change_type: 'unchanged',
+        previous_label: '1錠 朝食後 28日',
+        current_label: '同じ',
+      }),
+    ]);
+    expect(body.diff_review.change_count).toBe(1);
+  });
+
   it('returns an empty result for inaccessible case filters without loading prescriptions', async () => {
     careCaseFindManyMock.mockResolvedValue([{ id: 'case_1' }]);
 

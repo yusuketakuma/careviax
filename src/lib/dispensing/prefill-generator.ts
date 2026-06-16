@@ -9,13 +9,13 @@ import { prisma } from '@/lib/db/client';
 import { checkDateContinuity, type DateContinuityWarning } from './date-continuity';
 import {
   detectMedicationChanges,
+  formatDoseFrequency,
+  matchMedicationDiffLines,
   prescriptionLineKey,
   type MedicationChange,
 } from '@/lib/prescription/medication-diff';
-import {
-  generatePackagingGroups,
-  type PackagingGroupAssignment,
-} from './packaging-group';
+import { generatePackagingGroups, type PackagingGroupAssignment } from './packaging-group';
+import { findPreviousPrescriptionIntakeForMedicationDiff } from '@/server/services/prescription-intake-pair';
 
 // ── Types ──
 
@@ -73,6 +73,13 @@ export async function generateDispensePrefill(
       source_type: true,
       prescribed_date: true,
       prescriber_name: true,
+      created_at: true,
+      cycle: {
+        select: {
+          patient_id: true,
+          case_id: true,
+        },
+      },
       lines: {
         select: {
           id: true,
@@ -109,28 +116,13 @@ export async function generateDispensePrefill(
 
   // 2. Get previous intake + generic suggestions in parallel
   const [previousIntake, genericSuggestions] = await Promise.all([
-    prisma.prescriptionIntake.findFirst({
-      where: {
-        cycle_id: cycleId,
-        org_id: orgId,
-        id: { not: currentIntake.id },
-      },
-      orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }],
-      select: {
-        prescribed_date: true,
-        prescriber_name: true,
-        lines: {
-          select: {
-            id: true,
-            drug_name: true,
-            drug_code: true,
-            dose: true,
-            frequency: true,
-            start_date: true,
-            end_date: true,
-          },
-        },
-      },
+    findPreviousPrescriptionIntakeForMedicationDiff(prisma, {
+      orgId,
+      patientId: currentIntake.cycle.patient_id,
+      caseId: currentIntake.cycle.case_id,
+      currentIntakeId: currentIntake.id,
+      currentPrescribedDate: currentIntake.prescribed_date,
+      currentCreatedAt: currentIntake.created_at,
     }),
     siteId
       ? lookupGenericSuggestions(currentIntake.lines, siteId)
@@ -138,26 +130,60 @@ export async function generateDispensePrefill(
   ]);
 
   // 3. Detect medication changes
-  const medicationChanges = detectMedicationChanges(currentIntake.lines, previousIntake?.lines ?? []);
+  const medicationChanges = detectMedicationChanges(
+    currentIntake.lines,
+    previousIntake?.lines ?? [],
+  );
 
   // 4. Check date continuity
   const dateWarnings = previousIntake
     ? checkDateContinuity(currentIntake.lines, previousIntake.lines)
     : [];
 
-  // 5. Build change marker map
-  const changeMap = new Map<string, { marker: DispensePrefillLine['changeMarker']; detail: DispensePrefillLine['changeDetail'] }>();
-  for (const change of medicationChanges) {
-    changeMap.set(change.drug_name, {
-      marker: change.change_type,
-      detail: { previous: change.previous, current: change.current },
+  // 5. Build line-scoped change marker map. Do not key by drug name: the same drug can
+  // appear on multiple lines with different frequencies or durations.
+  const changeByLineId = new Map<
+    string,
+    { marker: DispensePrefillLine['changeMarker']; detail: DispensePrefillLine['changeDetail'] }
+  >();
+  for (const match of matchMedicationDiffLines(currentIntake.lines, previousIntake?.lines ?? [])) {
+    const line = match.current;
+    const previous = match.previous;
+    if (!line) continue;
+
+    if (!previous) {
+      changeByLineId.set(line.id, {
+        marker: 'added',
+        detail: { previous: null, current: formatDoseFrequency(line) },
+      });
+      continue;
+    }
+
+    if (prescriptionLineKey(previous) === prescriptionLineKey(line)) continue;
+
+    const marker: DispensePrefillLine['changeMarker'] =
+      previous.dose !== line.dose
+        ? 'dose_changed'
+        : previous.frequency !== line.frequency
+          ? 'frequency_changed'
+          : (previous.days ?? null) !== (line.days ?? null)
+            ? 'days_changed'
+            : null;
+    if (!marker) continue;
+
+    changeByLineId.set(line.id, {
+      marker,
+      detail: {
+        previous: formatDoseFrequency(previous),
+        current: formatDoseFrequency(line),
+      },
     });
   }
 
   // 6. Build prefill lines
   const prefillLines: DispensePrefillLine[] = currentIntake.lines.map((line) => {
-    const key = line.drug_code || line.drug_name;
-    const change = changeMap.get(line.drug_name);
+    const key = prescriptionLineKey(line);
+    const change = changeByLineId.get(line.id);
     const generic = genericSuggestions.get(key);
 
     // Calculate quantity: use quantity if available, otherwise cannot calculate without parsing dose
@@ -176,11 +202,18 @@ export async function generateDispensePrefill(
       actualDrugCode: line.drug_code,
       actualQuantity,
       actualUnit: line.unit,
-      carryType: currentIntake.source_type === 'facility_batch' ? 'facility_deposit' as const : 'carry' as const,
+      carryType:
+        currentIntake.source_type === 'facility_batch'
+          ? ('facility_deposit' as const)
+          : ('carry' as const),
       specialNotes,
       discrepancyReason: null, // No auto-conversion, so no discrepancy
       genericSuggestion: generic
-        ? { available: true, genericDrugName: generic.genericDrugName, genericDrugCode: generic.genericDrugCode }
+        ? {
+            available: true,
+            genericDrugName: generic.genericDrugName,
+            genericDrugCode: generic.genericDrugCode,
+          }
         : { available: false, genericDrugName: null, genericDrugCode: null },
       changeMarker: change?.marker ?? null,
       changeDetail: change?.detail ?? null,
@@ -194,7 +227,7 @@ export async function generateDispensePrefill(
       frequency: line.frequency,
       route: line.route,
       packaging_instruction_tags: line.packaging_instruction_tags as string[],
-    }))
+    })),
   );
 
   return {
@@ -238,7 +271,11 @@ async function lookupGenericSuggestions(
 
   // Batch 2: Find all stocks with preferred generics
   const stocks = await prisma.pharmacyDrugStock.findMany({
-    where: { site_id: siteId, drug_master_id: { in: masterIds }, preferred_generic_id: { not: null } },
+    where: {
+      site_id: siteId,
+      drug_master_id: { in: masterIds },
+      preferred_generic_id: { not: null },
+    },
     select: { drug_master_id: true, preferred_generic_id: true },
   });
 
