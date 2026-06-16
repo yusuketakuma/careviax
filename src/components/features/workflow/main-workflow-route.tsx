@@ -221,7 +221,7 @@ export function MainWorkflowCompactNav({
 
   return (
     <section
-      className="rounded-2xl border border-border/70 bg-card px-4 py-3 shadow-sm sm:px-5 sm:py-4"
+      className="min-w-0 rounded-2xl border border-border/70 bg-card px-4 py-3 shadow-sm sm:px-5 sm:py-4"
       data-testid={dataTestId}
     >
       <div className="space-y-1">
@@ -267,7 +267,7 @@ export function MainWorkflowCompactNav({
       ) : null}
 
       <ol
-        className="mt-4 flex max-h-24 snap-x gap-2 overflow-x-auto overflow-y-hidden pb-1 md:grid md:max-h-none md:grid-cols-4 md:overflow-visible md:pb-0 xl:grid-cols-8"
+        className="mt-4 flex max-h-24 max-w-full snap-x gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain pb-1 md:grid md:max-h-none md:grid-cols-4 md:overflow-visible md:pb-0 xl:grid-cols-8"
         aria-label="主業務フローの工程一覧"
       >
         {MAIN_WORKFLOW_STEPS.map((step) => {

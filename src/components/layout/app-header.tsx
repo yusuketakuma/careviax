@@ -149,7 +149,7 @@ export function AppHeader() {
       className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur"
       data-testid="app-header"
     >
-      <div className="flex min-h-14 items-center gap-3 px-4 md:px-6">
+      <div className="flex min-h-14 min-w-0 items-center gap-2 px-2 sm:gap-3 sm:px-4 md:px-6">
         <Button
           type="button"
           variant="ghost"
@@ -208,7 +208,7 @@ export function AppHeader() {
           </kbd>
         </button>
 
-        <div className="ml-auto flex shrink-0 items-center gap-2 md:gap-4">
+        <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1 sm:gap-2 md:gap-4">
           {/* md 未満は検索アイコンに縮退 */}
           <Button
             type="button"

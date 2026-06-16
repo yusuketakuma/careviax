@@ -95,7 +95,10 @@ function queueBadge(row: DispenseQueueRow): { label: string; className: string }
 
 function WorkbenchCard({ children, className, ...props }: React.ComponentProps<'section'>) {
   return (
-    <section className={cn('rounded-lg border border-border/70 bg-card p-4', className)} {...props}>
+    <section
+      className={cn('min-w-0 rounded-lg border border-border/70 bg-card p-4', className)}
+      {...props}
+    >
       {children}
     </section>
   );
@@ -259,7 +262,7 @@ function MedicationGroupPanel({
 
   return (
     <section
-      className="rounded-lg border border-border/70 bg-card p-3"
+      className="min-w-0 rounded-lg border border-border/70 bg-card p-3"
       aria-label="医薬品グループ設定"
       data-testid="dispense-medication-groups"
     >
@@ -274,7 +277,7 @@ function MedicationGroupPanel({
           type="button"
           variant={enabledCount > 0 ? 'secondary' : 'outline'}
           size="sm"
-          className="min-h-8 shrink-0"
+          className="min-h-[44px] shrink-0 sm:min-h-8"
           onClick={onCreateGroups}
           disabled={groups.length === 0}
         >
@@ -287,7 +290,7 @@ function MedicationGroupPanel({
           一包化候補になる内服用法がありません。
         </p>
       ) : (
-        <div className="mt-3 overflow-x-auto">
+        <div className="mt-3 max-w-full overflow-x-auto overscroll-x-contain">
           <table className="w-full min-w-[560px] border-separate border-spacing-0 text-sm">
             <thead className="text-xs text-muted-foreground">
               <tr>
@@ -351,7 +354,7 @@ function MedicationGroupPanel({
                       </label>
                       <select
                         id={`dispense-group-method-${group.id}`}
-                        className="h-9 w-full min-w-36 rounded-md border border-input bg-background px-2 text-sm"
+                        className="min-h-[44px] w-full min-w-36 rounded-md border border-input bg-background px-2 text-sm sm:min-h-9"
                         value={setting.method}
                         onChange={(event) =>
                           onMethodChange(
@@ -773,7 +776,7 @@ export function DispenseWorkbench() {
         />
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)_minmax(250px,280px)] xl:items-start">
+      <div className="mt-4 grid min-w-0 gap-4 xl:grid-cols-[260px_minmax(0,1fr)_minmax(250px,280px)] xl:items-start">
         {/* 左: 調剤キュー */}
         <DispenseQueuePanel
           rows={queueRows}
@@ -813,7 +816,7 @@ export function DispenseWorkbench() {
                     onClick={() => setGuardOn((prev) => !prev)}
                     aria-pressed={guardOn}
                     className={cn(
-                      'inline-flex min-h-7 items-center rounded-full px-3 py-1 text-xs font-bold transition-colors',
+                      'inline-flex min-h-[44px] items-center rounded-full px-3 py-1 text-xs font-bold transition-colors sm:min-h-7',
                       guardOn
                         ? 'bg-emerald-100 text-emerald-800'
                         : 'bg-muted text-muted-foreground',

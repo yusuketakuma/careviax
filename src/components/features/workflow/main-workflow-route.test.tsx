@@ -47,7 +47,11 @@ describe('MainWorkflowCompactNav', () => {
     render(<MainWorkflowCompactNav currentSteps={['schedules']} />);
 
     const nav = screen.getByTestId('main-workflow-compact-nav');
+    expect(nav.className).toContain('min-w-0');
     const links = nav.querySelectorAll('ol a');
+    const stepList = nav.querySelector('ol');
+    expect(stepList?.className).toContain('max-w-full');
+    expect(stepList?.className).toContain('overscroll-x-contain');
     expect(links).toHaveLength(8);
     expect(links[0]?.getAttribute('href')).toBe('/prescriptions');
     expect(links[5]?.getAttribute('href')).toBe('/schedules');

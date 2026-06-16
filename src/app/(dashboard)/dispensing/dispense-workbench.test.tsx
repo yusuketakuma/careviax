@@ -261,14 +261,16 @@ describe('DispenseWorkbench', () => {
     expect(screen.getByText('なし(確認済 6/1)')).toBeTruthy();
 
     // レセコン風の入力面: 安全確認と医薬品グループ設定を左、処方比較と確認を右に寄せる
-    expect(screen.getByTestId('dispense-terminal-layout')).toBeTruthy();
-    expect(screen.getByTestId('dispense-medication-groups')).toBeTruthy();
+    expect(screen.getByTestId('dispense-terminal-layout').className).toContain('grid');
+    expect(screen.getByTestId('dispense-medication-groups').className).toContain('min-w-0');
     expect(screen.getByText('医薬品グループ設定')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '医薬品グループを作成' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '医薬品グループを作成' }).className).toContain(
+      'min-h-[44px]',
+    );
     expect(screen.getByText('朝食後')).toBeTruthy();
     expect(screen.getByText('夕食後')).toBeTruthy();
     expect(screen.getByText('group_morning')).toBeTruthy();
-    expect(screen.getByLabelText('朝食後の包装方法')).toBeTruthy();
+    expect(screen.getByLabelText('朝食後の包装方法').className).toContain('min-h-[44px]');
 
     // 処方比較(前回 / 今回 / 差)
     expect(screen.getByText('前回')).toBeTruthy();
@@ -283,6 +285,7 @@ describe('DispenseWorkbench', () => {
     expect(screen.getByText('腎機能と用量の整合を確認')).toBeTruthy();
     expect(screen.getByText('計数 — 1回目(自分)')).toBeTruthy();
     expect(screen.getByText('一包化の印字(氏名・用法・日付)を確認')).toBeTruthy();
+    expect(screen.getByTestId('interrupt-guard-toggle').className).toContain('min-h-[44px]');
 
     // アクション行(主操作は 1 つ)+ 注記バー
     expect(screen.getByTestId('dispense-complete-button').textContent).toContain(

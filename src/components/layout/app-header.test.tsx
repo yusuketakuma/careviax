@@ -124,9 +124,23 @@ describe('AppHeader', () => {
     expect(communication.getAttribute('href')).toBe(
       '/tasks?work_request=1&work_request_type=staff_work_request_general&context=header_communication',
     );
+    expect(communication.className).toContain('min-w-[44px]');
     expect(screen.getByRole('button', { name: '通知 6' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'ヘルプ' })).toBeTruthy();
     expect(screen.getByTestId('app-header-user-name').textContent).toBe('山田 太郎');
+  });
+
+  it('keeps the mobile header row compact instead of pushing right-side controls off screen', () => {
+    render(<AppHeader />);
+
+    const headerRow = screen.getByTestId('app-header').firstElementChild as HTMLElement;
+    expect(headerRow.className).toContain('min-w-0');
+    expect(headerRow.className).toContain('gap-2');
+    expect(headerRow.className).toContain('px-2');
+
+    const actions = screen.getByTestId('app-header-search-compact').parentElement as HTMLElement;
+    expect(actions.className).toContain('min-w-0');
+    expect(actions.className).toContain('gap-1');
   });
 
   it('shows 外来モード on the trigger when careMode is outpatient', () => {

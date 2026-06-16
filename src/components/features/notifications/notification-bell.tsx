@@ -179,7 +179,7 @@ export function NotificationBell() {
         type="button"
         onClick={() => setNotificationDrawerOpen(true)}
         className={cn(
-          'flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-md px-2 text-sm font-medium hover:bg-accent sm:min-h-9 sm:min-w-0',
+          'relative flex min-h-[44px] min-w-[44px] items-center justify-center gap-1.5 rounded-md px-2 text-sm font-medium hover:bg-accent sm:min-h-9 sm:min-w-0',
           unreadCount > 0 ? 'text-destructive' : 'text-muted-foreground',
         )}
         aria-label={`通知${unreadCount > 0 ? ` ${unreadCount}件の未読` : ''}`}
@@ -191,7 +191,7 @@ export function NotificationBell() {
         <span className="hidden md:inline">通知{unreadCount > 0 ? ` ${unreadCount}` : ''}</span>
         {unreadCount > 0 && (
           <span
-            className="flex size-4.5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground md:hidden"
+            className="absolute right-1 top-1 flex size-4.5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground md:hidden"
             aria-hidden="true"
           >
             {unreadCount > 99 ? '99+' : unreadCount}
