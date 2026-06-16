@@ -33,6 +33,9 @@ const DOCUMENT_TYPE_OPTIONS = [
   { value: 'care_report', label: '報告書' },
   { value: 'tracing_report', label: 'トレーシングレポート' },
   { value: 'management_plan', label: '計画書' },
+  { value: 'contract_document', label: '契約書' },
+  { value: 'important_matters', label: '重要事項説明書' },
+  { value: 'privacy_consent', label: '個人情報同意書' },
   { value: 'consent_form', label: '同意書' },
 ] as const;
 
@@ -67,7 +70,10 @@ function normalizeFallbackChannels(input: string, primaryChannel: DeliveryChanne
       input
         .split(',')
         .map((value) => value.trim().toLowerCase())
-        .filter((value): value is DeliveryChannel => value === 'email' || value === 'fax' || value === 'mcs')
+        .filter(
+          (value): value is DeliveryChannel =>
+            value === 'email' || value === 'fax' || value === 'mcs',
+        )
         .filter((value) => value !== primaryChannel),
     ),
   );
@@ -210,8 +216,7 @@ export function DocumentDeliveryRuleManager() {
             <Select
               value={form.channel}
               onValueChange={(value) =>
-                value &&
-                setForm((current) => ({ ...current, channel: value as DeliveryChannel }))
+                value && setForm((current) => ({ ...current, channel: value as DeliveryChannel }))
               }
             >
               <SelectTrigger id="delivery-channel">
@@ -251,7 +256,9 @@ export function DocumentDeliveryRuleManager() {
             </div>
             <Switch
               checked={form.isActive}
-              onCheckedChange={(checked) => setForm((current) => ({ ...current, isActive: checked }))}
+              onCheckedChange={(checked) =>
+                setForm((current) => ({ ...current, isActive: checked }))
+              }
             />
           </div>
 
@@ -284,10 +291,12 @@ export function DocumentDeliveryRuleManager() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-medium text-foreground">
-                      {DOCUMENT_TYPE_OPTIONS.find((option) => option.value === rule.document_type)?.label ?? rule.document_type}
+                      {DOCUMENT_TYPE_OPTIONS.find((option) => option.value === rule.document_type)
+                        ?.label ?? rule.document_type}
                     </p>
                     <Badge variant="outline">
-                      {TARGET_ROLE_OPTIONS.find((option) => option.value === rule.target_role)?.label ?? rule.target_role}
+                      {TARGET_ROLE_OPTIONS.find((option) => option.value === rule.target_role)
+                        ?.label ?? rule.target_role}
                     </Badge>
                     <Badge>{CHANNEL_LABELS[rule.channel] ?? rule.channel}</Badge>
                     <Badge variant={rule.is_active ? 'default' : 'outline'}>
@@ -322,7 +331,10 @@ export function DocumentDeliveryRuleManager() {
                   </div>
                 </div>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  フォールバック: {(rule.fallback_channels ?? []).length > 0 ? (rule.fallback_channels ?? []).join(' → ') : 'なし'}
+                  フォールバック:{' '}
+                  {(rule.fallback_channels ?? []).length > 0
+                    ? (rule.fallback_channels ?? []).join(' → ')
+                    : 'なし'}
                 </p>
               </div>
             ))

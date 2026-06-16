@@ -372,6 +372,47 @@ describe('care-reports/[id] route', () => {
     });
   });
 
+  it('rejects content edits after pharmacist confirmation', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      status: 'confirmed',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      visit_record_id: 'visit_record_1',
+      content: { summary: '確認済み' },
+    });
+
+    const response = await PATCH(createRequest({ content: { summary: '改変' } }), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '薬剤師確認後または送付後の報告書本文はこのAPIから変更できません',
+    });
+    expect(careReportUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects template changes after the report has been sent', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      status: 'sent',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      visit_record_id: 'visit_record_1',
+      content: { summary: '送付済み' },
+    });
+
+    const response = await PATCH(createRequest({ template_id: 'template_2' }), {
+      params: Promise.resolve({ id: 'report_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(careReportUpdateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects report type changes because content and provenance are generated per type', async () => {
     const response = await PATCH(createRequest({ report_type: 'care_manager_report' }), {
       params: Promise.resolve({ id: 'report_1' }),

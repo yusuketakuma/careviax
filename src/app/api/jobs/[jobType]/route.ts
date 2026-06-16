@@ -18,6 +18,7 @@ import {
   checkFacilityStandardExpiry,
   checkCredentialExpiry,
   checkConsentExpiry,
+  checkPublicSubsidyExpiry,
   checkVisitRecordRetention,
   checkPrescriptionOriginalRetention,
   checkPcaPumpRentalOverdues,
@@ -94,6 +95,10 @@ const JOB_HANDLERS: Record<string, JobHandler> = {
   'daily-facility-standard-expiry': checkFacilityStandardExpiry,
   'daily-credential-expiry': checkCredentialExpiry,
   'daily-consent-expiry': checkConsentExpiry,
+  'daily-public-subsidy-expiry': (context) =>
+    checkPublicSubsidyExpiry(
+      context.authType === 'auth' && context.orgId ? { orgId: context.orgId } : undefined,
+    ),
   'daily-visit-record-retention': checkVisitRecordRetention,
   'daily-prescription-original-retention': checkPrescriptionOriginalRetention,
   'daily-pca-pump-rental-overdue': checkPcaPumpRentalOverdues,

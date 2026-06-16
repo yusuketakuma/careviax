@@ -1,6 +1,6 @@
 /**
  * p0_47(帳票・印刷プレビュー)の共有語彙と純関数。
- * /reports/print の左カラム(印刷するもの)で選ぶ 5 帳票それぞれについて、
+ * /reports/print の左カラム(印刷するもの)で選ぶ帳票それぞれについて、
  * 既存 API レスポンス(set-plans / patients/{id}/prescriptions / care-reports)を
  * A4 プレビューの帳票行へ射影する。副作用なし(vitest 対象)。
  */
@@ -19,20 +19,22 @@ export type PrintDocumentTypeKey =
   | 'medication_calendar'
   | 'visit_report'
   | 'document_receipt'
-  | 'medication_label';
+  | 'medication_label'
+  | 'first_visit_documents';
 
 export type PrintDocumentTypeOption = {
   key: PrintDocumentTypeKey;
   label: string;
 };
 
-/** 左カラム「印刷するもの」の 5 カード(target の並び順) */
+/** 左カラム「印刷するもの」のカード(target の並び順) */
 export const PRINT_DOCUMENT_TYPES: readonly PrintDocumentTypeOption[] = [
   { key: 'set_instruction', label: 'セット指示書' },
   { key: 'medication_calendar', label: '服薬カレンダー' },
   { key: 'visit_report', label: '訪問報告書' },
   { key: 'document_receipt', label: '文書交付控え' },
   { key: 'medication_label', label: '薬袋ラベル' },
+  { key: 'first_visit_documents', label: '契約・同意控え' },
 ] as const;
 
 const PRINT_DOCUMENT_TYPE_KEYS = new Set<string>(PRINT_DOCUMENT_TYPES.map((type) => type.key));
@@ -131,6 +133,105 @@ export type CareReportForPrint = {
   content: unknown;
   created_at: string;
   delivery_records: DeliveryRecordForPrint[];
+};
+
+export type FirstVisitDocumentHistoryForPrint = {
+  id: string;
+  action: string;
+  document_type: string | null;
+  template_name: string | null;
+  template_version: string | null;
+  storage_location: string | null;
+  reason: string | null;
+  note: string | null;
+  actor_id: string | null;
+  created_at: string;
+};
+
+export type EmergencyContactForPrint = {
+  id: string | null;
+  name: string;
+  relation: string | null;
+  organization_name: string | null;
+  department: string | null;
+  phone: string | null;
+  email: string | null;
+  fax: string | null;
+  is_primary: boolean;
+  is_emergency_contact: boolean;
+};
+
+export type FirstVisitDocumentForPrint = {
+  id: string;
+  case_id: string;
+  document_url: string | null;
+  delivered_at: string | null;
+  delivered_to: string | null;
+  created_at: string;
+  updated_at: string;
+  emergency_contacts: EmergencyContactForPrint[];
+  history: FirstVisitDocumentHistoryForPrint[];
+};
+
+export type FirstVisitDocumentPrintRow = {
+  documentId: string;
+  createdAtLabel: string;
+  deliveredAtLabel: string;
+  deliveredToLabel: string;
+  documentUrlLabel: string;
+  latestActionLabel: string;
+  latestStorageLabel: string;
+  latestTemplateLabel: string;
+};
+
+export type FirstVisitDocumentPrintContact = {
+  contactId: string;
+  name: string;
+  relationLabel: string;
+  organizationLabel: string;
+  contactLabel: string;
+  priorityLabel: string;
+};
+
+export type FirstVisitDocumentPrintSummary = {
+  patientName: string;
+  rows: FirstVisitDocumentPrintRow[];
+  contacts: FirstVisitDocumentPrintContact[];
+};
+
+export type FirstVisitPrintReadinessForPrint = {
+  overall_status: 'ready' | 'warning' | 'blocked';
+  missing_required_count: number;
+  warning_count: number;
+  template_versions: Array<{
+    document_type: string;
+    label: string;
+    template_name: string | null;
+    template_version: string | null;
+    effective_from: string | null;
+    effective_to: string | null;
+  }>;
+  checks: Array<{
+    key: string;
+    label: string;
+    completed: boolean;
+    severity: 'required' | 'warning';
+    description: string;
+    action_href: string;
+    action_label: string;
+  }>;
+};
+
+export type FirstVisitPrintReadinessSummary = {
+  status: 'ready' | 'warning' | 'blocked';
+  label: string;
+  message: string;
+  blocked: boolean;
+  missingRequiredCount: number;
+  warningCount: number;
+  missingRequiredLabels: string[];
+  warningLabels: string[];
+  templateLabels: string[];
 };
 
 // ─── 日付整形 ────────────────────────────────────────────────────────────────
@@ -263,8 +364,7 @@ function formatUsageLabel(line: PrescriptionLineForPrint): string {
 }
 
 function formatQuantityLabel(line: PrescriptionLineForPrint): string {
-  const quantity =
-    line.quantity !== null && line.unit ? `${line.quantity}${line.unit}` : null;
+  const quantity = line.quantity !== null && line.unit ? `${line.quantity}${line.unit}` : null;
   const days = line.days !== null ? `${line.days}日分` : null;
   if (quantity && days) return `${quantity}(${days})`;
   return quantity ?? days ?? '—';
@@ -291,7 +391,8 @@ export function buildSetInstructionDocument(
   return {
     patientName: plan.cycle.case_.patient.name,
     periodLabel: formatPrintPeriod(plan.target_period_start, plan.target_period_end),
-    setMethodLabel: SET_METHOD_LABELS[plan.set_method as keyof typeof SET_METHOD_LABELS] ?? plan.set_method,
+    setMethodLabel:
+      SET_METHOD_LABELS[plan.set_method as keyof typeof SET_METHOD_LABELS] ?? plan.set_method,
     packagingLabel,
     auditLabel: latestAudit
       ? (SET_AUDIT_RESULT_LABELS[latestAudit.result] ?? latestAudit.result)
@@ -473,8 +574,7 @@ export function buildVisitReportDocument(
   if (items.length === 0 && body) items.push({ label: '本文', value: body });
 
   const contentPatient = asRecord(content?.['patient']);
-  const patientName =
-    report.patient_name ?? readString(contentPatient, 'name') ?? '患者名未設定';
+  const patientName = report.patient_name ?? readString(contentPatient, 'name') ?? '患者名未設定';
   const reportDate = readString(content, 'report_date') ?? report.created_at;
 
   return {
@@ -521,6 +621,177 @@ export function buildDocumentReceiptRows(
     }));
   });
   return entries.sort((a, b) => b.sentAtValue - a.sentAtValue).map((entry) => entry.row);
+}
+
+// ─── 初回訪問文書・契約控え ──────────────────────────────────────────────────
+
+const FIRST_VISIT_DOCUMENT_ACTION_LABELS: Record<string, string> = {
+  generated: '作成',
+  printed: '印刷',
+  recovered: '回収',
+  image_saved: '画像保存',
+  replaced: '差替え',
+  invalidated: '無効化',
+};
+
+const FIRST_VISIT_DOCUMENT_STORAGE_LABELS: Record<string, string> = {
+  store: '店舗',
+  headquarters: '本部',
+  patient_home_copy_only: '患者宅控えのみ',
+  electronic: '電子保管',
+  unknown: '未確認',
+};
+
+function pickLatestDocumentHistory(
+  histories: readonly FirstVisitDocumentHistoryForPrint[],
+): FirstVisitDocumentHistoryForPrint | null {
+  if (histories.length === 0) return null;
+  return [...histories].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  )[0];
+}
+
+function formatTemplateLabel(history: FirstVisitDocumentHistoryForPrint | null): string {
+  if (!history?.template_name) return 'テンプレート未記録';
+  return [history.template_name, history.template_version].filter(Boolean).join(' ');
+}
+
+/** 患者文書スナップショット → 契約・同意控えの帳票データ */
+export function buildFirstVisitDocumentPrintSummary(
+  patientName: string,
+  documents: readonly FirstVisitDocumentForPrint[],
+): FirstVisitDocumentPrintSummary {
+  const contacts = new Map<string, FirstVisitDocumentPrintContact>();
+
+  for (const document of documents) {
+    for (const contact of document.emergency_contacts) {
+      const contactId =
+        contact.id ?? `${contact.name}-${contact.phone ?? contact.email ?? contact.fax ?? ''}`;
+      if (contacts.has(contactId)) continue;
+      contacts.set(contactId, {
+        contactId,
+        name: contact.name,
+        relationLabel: contact.relation ?? '連絡先',
+        organizationLabel:
+          [contact.organization_name, contact.department].filter(Boolean).join(' / ') ||
+          '所属未登録',
+        contactLabel: contact.phone ?? contact.email ?? contact.fax ?? '連絡先未登録',
+        priorityLabel: contact.is_primary
+          ? '主連絡先'
+          : contact.is_emergency_contact
+            ? '緊急連絡先'
+            : '連絡先',
+      });
+    }
+  }
+
+  return {
+    patientName,
+    rows: [...documents]
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .map((document) => {
+        const latestHistory = pickLatestDocumentHistory(document.history);
+        const latestAction = latestHistory?.action
+          ? (FIRST_VISIT_DOCUMENT_ACTION_LABELS[latestHistory.action] ?? latestHistory.action)
+          : '履歴未記録';
+        const latestStorage = latestHistory?.storage_location
+          ? (FIRST_VISIT_DOCUMENT_STORAGE_LABELS[latestHistory.storage_location] ??
+            latestHistory.storage_location)
+          : '保管未記録';
+
+        return {
+          documentId: document.id,
+          createdAtLabel: formatPrintDate(document.created_at),
+          deliveredAtLabel: formatPrintDate(document.delivered_at),
+          deliveredToLabel: document.delivered_to ?? '交付先未記録',
+          documentUrlLabel: document.document_url ? 'PDFあり' : 'PDF未登録',
+          latestActionLabel: latestAction,
+          latestStorageLabel: latestStorage,
+          latestTemplateLabel: formatTemplateLabel(latestHistory),
+        };
+      }),
+    contacts: [...contacts.values()].sort((a, b) => {
+      if (a.priorityLabel === b.priorityLabel) return a.name.localeCompare(b.name, 'ja');
+      if (a.priorityLabel === '主連絡先') return -1;
+      if (b.priorityLabel === '主連絡先') return 1;
+      return a.priorityLabel.localeCompare(b.priorityLabel, 'ja');
+    }),
+  };
+}
+
+export function summarizeFirstVisitPrintReadiness(
+  readiness: FirstVisitPrintReadinessForPrint | null | undefined,
+): FirstVisitPrintReadinessSummary {
+  if (!readiness) {
+    return {
+      status: 'blocked',
+      label: '印刷前チェック未取得',
+      message: '患者文書の印刷前チェックを取得できませんでした。再読み込みしてください。',
+      blocked: true,
+      missingRequiredCount: 1,
+      warningCount: 0,
+      missingRequiredLabels: ['印刷前チェック'],
+      warningLabels: [],
+      templateLabels: [],
+    };
+  }
+
+  const missingRequiredLabels = readiness.checks
+    .filter((check) => check.severity === 'required' && !check.completed)
+    .map((check) => check.label);
+  const warningLabels = readiness.checks
+    .filter((check) => check.severity === 'warning' && !check.completed)
+    .map((check) => check.label);
+  const templateLabels = readiness.template_versions.map((template) =>
+    [template.label, template.template_name, template.template_version].filter(Boolean).join(' '),
+  );
+  const blocked = readiness.overall_status === 'blocked' || readiness.missing_required_count > 0;
+
+  if (blocked) {
+    const reason =
+      missingRequiredLabels.length > 0
+        ? `不足: ${missingRequiredLabels.join('、')}`
+        : '必須項目に不足があります。';
+    return {
+      status: 'blocked',
+      label: '不足あり',
+      message: `印刷前チェックで必須項目が未完了です。${reason}`,
+      blocked: true,
+      missingRequiredCount: readiness.missing_required_count,
+      warningCount: readiness.warning_count,
+      missingRequiredLabels,
+      warningLabels,
+      templateLabels,
+    };
+  }
+
+  if (readiness.overall_status === 'warning' || readiness.warning_count > 0) {
+    const reason =
+      warningLabels.length > 0 ? `確認: ${warningLabels.join('、')}` : '確認推奨項目があります。';
+    return {
+      status: 'warning',
+      label: '確認あり',
+      message: `印刷は可能ですが、${reason}`,
+      blocked: false,
+      missingRequiredCount: readiness.missing_required_count,
+      warningCount: readiness.warning_count,
+      missingRequiredLabels,
+      warningLabels,
+      templateLabels,
+    };
+  }
+
+  return {
+    status: 'ready',
+    label: '印刷準備OK',
+    message: '必須情報とテンプレート版の確認が完了しています。',
+    blocked: false,
+    missingRequiredCount: readiness.missing_required_count,
+    warningCount: readiness.warning_count,
+    missingRequiredLabels,
+    warningLabels,
+    templateLabels,
+  };
 }
 
 // ─── 薬袋ラベル ──────────────────────────────────────────────────────────────

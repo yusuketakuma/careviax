@@ -151,6 +151,46 @@ describe('/api/templates', () => {
     );
   });
 
+  it('creates a contract document template with version metadata', async () => {
+    const response = await POST(
+      createRequest('http://localhost/api/templates', {
+        name: '居宅療養管理指導契約書 2026年版',
+        template_type: 'contract_document',
+        target_role: 'patient_family',
+        format: 'html',
+        version: 1,
+        effective_from: '2026-04-01',
+        content: { sections: ['patient', 'service_start', 'signature'] },
+        is_default: true,
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(templateUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          template_type: 'contract_document',
+          is_default: true,
+        }),
+      }),
+    );
+    expect(templateCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          name: '居宅療養管理指導契約書 2026年版',
+          template_type: 'contract_document',
+          target_role: 'patient_family',
+          version: 1,
+          effective_from: new Date('2026-04-01T00:00:00.000Z'),
+          content: { sections: ['patient', 'service_start', 'signature'] },
+        }),
+      }),
+    );
+  });
+
   it('rejects non-object create payloads before opening an org transaction', async () => {
     const response = await POST(createRequest('http://localhost/api/templates', []), {
       params: Promise.resolve({}),

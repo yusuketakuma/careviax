@@ -280,6 +280,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return conflict('報告書の送信状態は送信APIからのみ更新できます');
   }
 
+  if (
+    existing.status !== 'draft' &&
+    (content !== undefined || updateData.template_id !== undefined)
+  ) {
+    return conflict('薬剤師確認後または送付後の報告書本文はこのAPIから変更できません');
+  }
+
   if (existing.status !== 'draft' && updateData.status === 'draft') {
     return conflict('送信済みの報告書を下書きへ戻すことはできません');
   }

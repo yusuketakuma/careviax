@@ -13,6 +13,7 @@ export {
   checkFacilityStandardExpiry,
   checkCredentialExpiry,
   checkConsentExpiry,
+  checkPublicSubsidyExpiry,
   checkVisitRecordRetention,
   checkPrescriptionOriginalRetention,
   checkPcaPumpRentalOverdues,

@@ -50,6 +50,8 @@ function maskRecipientContact(channel: string, contact: string) {
   return contact ? '***' : '';
 }
 
+const EMAIL_DELIVERY_FAILURE_REASON = 'メール送信に失敗しました';
+
 type SendRecipient = {
   channel: 'email' | 'fax' | 'phone' | 'in_person' | 'postal' | 'ses' | 'ph_os_share';
   recipient_name: string;
@@ -75,6 +77,173 @@ const ALLOWED_RECIPIENT_ROLES = new Set([
 function normalizeRecipientRole(value: string) {
   const normalized = value.trim();
   return RECIPIENT_ROLE_ALIASES[normalized] ?? normalized;
+}
+
+function comparableText(value: string | null | undefined) {
+  return (value ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function comparableContact(channel: SendRecipient['channel'], value: string | null | undefined) {
+  const normalized = (value ?? '').trim();
+  if (channel === 'email' || channel === 'ses') return normalized.toLowerCase();
+  if (channel === 'phone' || channel === 'fax') return normalized.replace(/\D/g, '');
+  return comparableText(normalized);
+}
+
+function recipientContactMatches(
+  channel: SendRecipient['channel'],
+  recipientContact: string,
+  source: {
+    phone?: string | null;
+    email?: string | null;
+    fax?: string | null;
+    address?: string | null;
+  },
+) {
+  const expectedContact = comparableContact(channel, recipientContact);
+  if (!expectedContact) return false;
+
+  if (channel === 'email' || channel === 'ses') {
+    return comparableContact(channel, source.email) === expectedContact;
+  }
+  if (channel === 'fax') return comparableContact(channel, source.fax) === expectedContact;
+  if (channel === 'phone') return comparableContact(channel, source.phone) === expectedContact;
+  if (channel === 'postal' || channel === 'in_person') {
+    return comparableContact(channel, source.address) === expectedContact;
+  }
+
+  return (
+    comparableContact('email', source.email) === expectedContact ||
+    comparableContact('fax', source.fax) === expectedContact ||
+    comparableContact('phone', source.phone) === expectedContact
+  );
+}
+
+function recipientNameMatches(
+  recipientName: string,
+  sourceNames: Array<string | null | undefined>,
+) {
+  const expectedName = comparableText(recipientName);
+  return sourceNames.some((name) => comparableText(name) === expectedName);
+}
+
+async function validateRecipientsAgainstKnownSources(args: {
+  orgId: string;
+  report: ReportRecord;
+  recipients: SendRecipient[];
+}) {
+  const { orgId, report, recipients } = args;
+  if (!report.case_id && !report.patient_id) {
+    return {
+      ok: false as const,
+      recipientName: recipients[0]?.recipient_name ?? '',
+    };
+  }
+
+  const [cases, latestPrescriptionIntake] = await Promise.all([
+    prisma.careCase.findMany({
+      where: {
+        org_id: orgId,
+        ...(report.case_id ? { id: report.case_id } : {}),
+        ...(report.patient_id ? { patient_id: report.patient_id } : {}),
+      },
+      select: {
+        care_team_links: {
+          select: {
+            role: true,
+            name: true,
+            organization_name: true,
+            phone: true,
+            email: true,
+            fax: true,
+            address: true,
+            external_professional: {
+              select: {
+                profession_type: true,
+                name: true,
+                organization_name: true,
+                phone: true,
+                email: true,
+                fax: true,
+                address: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+    prisma.prescriptionIntake.findFirst({
+      where: {
+        org_id: orgId,
+        prescriber_institution_id: { not: null },
+        cycle: {
+          ...(report.case_id ? { case_id: report.case_id } : {}),
+          ...(report.patient_id ? { patient_id: report.patient_id } : {}),
+        },
+      },
+      orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }],
+      select: {
+        prescriber_name: true,
+        prescriber_institution_ref: {
+          select: {
+            name: true,
+            phone: true,
+            fax: true,
+            address: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  for (const recipient of recipients) {
+    const matchesCareTeam = cases.some((careCase) =>
+      careCase.care_team_links.some((link) => {
+        const professional = link.external_professional;
+        const linkRole = normalizeRecipientRole(link.role || professional?.profession_type || '');
+        if (linkRole !== recipient.recipient_role) return false;
+        if (
+          !recipientNameMatches(recipient.recipient_name, [
+            link.name,
+            professional?.name,
+            link.organization_name,
+            professional?.organization_name,
+          ])
+        ) {
+          return false;
+        }
+        return recipientContactMatches(recipient.channel, recipient.recipient_contact, {
+          phone: link.phone ?? professional?.phone,
+          email: link.email ?? professional?.email,
+          fax: link.fax ?? professional?.fax,
+          address: link.address ?? professional?.address,
+        });
+      }),
+    );
+    if (matchesCareTeam) continue;
+
+    const institution = latestPrescriptionIntake?.prescriber_institution_ref ?? null;
+    const matchesPrescriberInstitution =
+      recipient.recipient_role === 'physician' &&
+      institution != null &&
+      recipientNameMatches(recipient.recipient_name, [
+        latestPrescriptionIntake?.prescriber_name,
+        institution.name,
+      ]) &&
+      recipientContactMatches(recipient.channel, recipient.recipient_contact, {
+        phone: institution.phone,
+        fax: institution.fax,
+        address: institution.address,
+      });
+    if (matchesPrescriberInstitution) continue;
+
+    return {
+      ok: false as const,
+      recipientName: recipient.recipient_name,
+    };
+  }
+
+  return { ok: true as const };
 }
 
 function buildDeliveryAttemptAuditChanges(args: {
@@ -376,9 +545,8 @@ async function processRecipient(args: {
         reportId: report.id,
         pdfUrl: report.pdf_url,
       });
-    } catch (cause) {
-      const failureReason =
-        cause instanceof Error ? cause.message : 'SES によるメール送信に失敗しました';
+    } catch {
+      const failureReason = EMAIL_DELIVERY_FAILURE_REASON;
 
       await withOrgContext(
         ctx.orgId,
@@ -453,9 +621,9 @@ async function processRecipient(args: {
             counterpart_contact: recipient.recipient_contact,
             subject: report.report_type,
             content:
-              report.status === 'draft'
-                ? `${recipient.recipient_name} へ送付`
-                : `${recipient.recipient_name} へ再送`,
+              report.status === 'sent'
+                ? `${recipient.recipient_name} へ再送`
+                : `${recipient.recipient_name} へ送付`,
           },
         });
       }
@@ -493,7 +661,9 @@ async function finalizeReportDelivery(args: {
       const updatedReport = await tx.careReport.update({
         where: { id: reportId },
         data: {
-          status: 'sent',
+          status: outcomes.some((outcome) => outcome.failureReason !== null)
+            ? 'response_waiting'
+            : 'sent',
           content: toPrismaJsonInput(
             mergeReportDeliveryTargets({ content: report.content, outcomes }),
           ),
@@ -691,6 +861,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return validationError('報告書タイプと送付先区分が一致していません', {
       recipient_role: [
         `${roleMismatch.recipientName} は ${roleMismatch.recipientRole} ですが、この報告書の送付先区分は ${roleMismatch.expectedRole} です`,
+      ],
+    });
+  }
+
+  const recipientSourceValidation = await validateRecipientsAgainstKnownSources({
+    orgId: ctx.orgId,
+    report: existing,
+    recipients,
+  });
+  if (!recipientSourceValidation.ok) {
+    return validationError('送付先が現在の患者関係者または処方元候補と一致していません', {
+      recipient: [
+        `${recipientSourceValidation.recipientName} は現在の患者関係者・処方元候補として確認できません`,
       ],
     });
   }

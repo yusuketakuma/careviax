@@ -31,11 +31,13 @@ import { buildExternalAccessGrantVisibilityWhere } from '@/server/services/exter
 export { runPatientDetailTasks } from '@/server/services/patient-detail-tasks';
 export { getPatientCommunicationsData } from '@/server/services/patient-detail-communications';
 export { getPatientDocumentsData } from '@/server/services/patient-detail-documents';
+export { getPatientHomeOperationsData } from '@/server/services/patient-home-operations';
 export { getPatientReadinessData } from '@/server/services/patient-detail-readiness';
 export { getPatientWorkflowPreviewData } from '@/server/services/patient-detail-workflow-preview';
 
 type DbClient = typeof prisma | Prisma.TransactionClient;
 type PatientTimelineDb = {
+  auditLog: Pick<Prisma.TransactionClient['auditLog'], 'findMany'>;
   billingCandidate: Pick<Prisma.TransactionClient['billingCandidate'], 'findMany'>;
   careReport: Pick<Prisma.TransactionClient['careReport'], 'findMany'>;
   communicationEvent: Pick<Prisma.TransactionClient['communicationEvent'], 'findMany'>;
@@ -689,6 +691,56 @@ export async function getPatientTimelineData(db: PatientTimelineDb, args: Detail
       }),
   });
 
+  const operationHistoryFilters: Prisma.AuditLogWhereInput[] = [
+    {
+      target_type: 'Patient',
+      target_id: args.patientId,
+      action: { in: ['billing_payment_profile_updated', 'patient_mcs_profile_updated'] },
+    },
+  ];
+  const prescriptionIntakeIds = prescriptionIntakes.map((item) => item.id);
+  if (prescriptionIntakeIds.length > 0) {
+    operationHistoryFilters.push({
+      target_type: 'prescription_intake',
+      target_id: { in: prescriptionIntakeIds },
+      action: { in: ['prescription_original_management_updated'] },
+    });
+  }
+  const firstVisitDocumentIds = firstVisitDocuments.map((item) => item.id);
+  if (firstVisitDocumentIds.length > 0) {
+    operationHistoryFilters.push({
+      target_type: 'first_visit_document',
+      target_id: { in: firstVisitDocumentIds },
+      action: { startsWith: 'first_visit_document.' },
+    });
+  }
+  const billingCandidateIds = billingCandidates.map((item) => item.id);
+  if (billingCandidateIds.length > 0) {
+    operationHistoryFilters.push({
+      target_type: 'BillingCandidate',
+      target_id: { in: billingCandidateIds },
+      action: { in: ['billing_collection_updated'] },
+    });
+  }
+
+  const operationHistory = await db.auditLog.findMany({
+    where: {
+      org_id: args.orgId,
+      OR: operationHistoryFilters,
+    },
+    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+    take: 20,
+    select: {
+      id: true,
+      action: true,
+      target_type: true,
+      target_id: true,
+      actor_id: true,
+      changes: true,
+      created_at: true,
+    },
+  });
+
   const actorNameMap = await batchResolveNames(
     db,
     args.orgId,
@@ -704,6 +756,7 @@ export async function getPatientTimelineData(db: PatientTimelineDb, args: Detail
             item.approved_by,
             item.reviewed_by,
           ]),
+          ...operationHistory.map((item) => item.actor_id),
         ]),
       ),
     ),
@@ -725,6 +778,7 @@ export async function getPatientTimelineData(db: PatientTimelineDb, args: Detail
     firstVisitDocuments,
     conferenceNotes,
     billingCandidates,
+    operationHistory,
   });
 
   return {

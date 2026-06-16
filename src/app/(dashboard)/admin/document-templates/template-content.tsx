@@ -35,6 +35,9 @@ type TemplateType =
   | 'tracing_report'
   | 'management_plan'
   | 'medication_calendar'
+  | 'contract_document'
+  | 'important_matters'
+  | 'privacy_consent'
   | 'consent_form';
 
 type TemplateFormat = 'html' | 'pdf';
@@ -59,6 +62,9 @@ const TEMPLATE_TYPE_LABELS: Record<TemplateType, string> = {
   tracing_report: 'トレーシング',
   management_plan: '計画書',
   medication_calendar: '服薬カレンダー',
+  contract_document: '契約書',
+  important_matters: '重要事項説明書',
+  privacy_consent: '個人情報同意書',
   consent_form: '同意書',
 };
 
@@ -77,6 +83,21 @@ const DEFAULT_TEMPLATE_CONTENT: Record<TemplateType, Record<string, unknown>> = 
   medication_calendar: {
     layout: 'weekly',
     show_dose_icons: true,
+  },
+  contract_document: {
+    sections: ['patient', 'service_start', 'pharmacy', 'fees', 'signature'],
+    merge_fields: ['patient.name', 'patient.address', 'case.start_date', 'pharmacy.name'],
+    footer: '契約開始日・説明担当者・署名者を確認して保存',
+  },
+  important_matters: {
+    sections: ['provider', 'service_scope', 'fees', 'privacy', 'complaints', 'signature'],
+    merge_fields: ['patient.name', 'pharmacy.name', 'pharmacy.phone', 'care_insurance'],
+    footer: '最新版の適用期間と説明日を明記',
+  },
+  privacy_consent: {
+    sections: ['purpose', 'shared_parties', 'mcs', 'family', 'signature'],
+    merge_fields: ['patient.name', 'key_person.name', 'patient.phone'],
+    footer: '利用目的・共有範囲・同意者を明記して保存',
   },
   consent_form: {
     sections: ['purpose', 'scope', 'privacy', 'signature'],
@@ -288,7 +309,7 @@ export function DocumentTemplateContent() {
     <PageScaffold>
       <AdminPageHeader
         title="文書テンプレート管理"
-        description="報告書や同意書のテンプレート版管理と、相手別の自動送達ルールをまとめて管理します。"
+        description="報告書、契約書、重要事項説明書、同意書のテンプレート版管理と、相手別の自動送達ルールをまとめて管理します。"
         shortcuts={getAdminDocumentTemplatesShortcutLinks()}
       />
 

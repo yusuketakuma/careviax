@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildDocumentReceiptRows,
+  buildFirstVisitDocumentPrintSummary,
   buildMedicationCalendarDocument,
   buildMedicationLabelCards,
   buildSetInstructionDocument,
@@ -13,7 +14,10 @@ import {
   pickPrintSetPlan,
   pickVisitReportForPrint,
   PRINT_DOCUMENT_TYPES,
+  summarizeFirstVisitPrintReadiness,
   type CareReportForPrint,
+  type FirstVisitDocumentForPrint,
+  type FirstVisitPrintReadinessForPrint,
   type PrescriptionIntakeForPrint,
   type SetPlanForPrint,
 } from './print-hub.shared';
@@ -125,7 +129,7 @@ function makeReport(overrides: Partial<CareReportForPrint> = {}): CareReportForP
 // ─── 帳票種別 ────────────────────────────────────────────────────────────────
 
 describe('parsePrintDocumentType', () => {
-  it('5 種別すべてのキーをそのまま返す', () => {
+  it('6 種別すべてのキーをそのまま返す', () => {
     for (const type of PRINT_DOCUMENT_TYPES) {
       expect(parsePrintDocumentType(type.key)).toBe(type.key);
     }
@@ -137,13 +141,14 @@ describe('parsePrintDocumentType', () => {
     expect(parsePrintDocumentType('unknown_doc')).toBe('set_instruction');
   });
 
-  it('target の並び順(セット指示書 → 薬袋ラベル)を保持する', () => {
+  it('target の並び順(セット指示書 → 契約・同意控え)を保持する', () => {
     expect(PRINT_DOCUMENT_TYPES.map((type) => type.label)).toEqual([
       'セット指示書',
       '服薬カレンダー',
       '訪問報告書',
       '文書交付控え',
       '薬袋ラベル',
+      '契約・同意控え',
     ]);
   });
 });
@@ -258,6 +263,175 @@ describe('buildSetInstructionDocument', () => {
   });
 });
 
+// ─── 初回訪問文書・契約控え ─────────────────────────────────────────────────
+
+describe('buildFirstVisitDocumentPrintSummary', () => {
+  it('初回訪問文書の交付状況・最新履歴・緊急連絡先を帳票データへ射影する', () => {
+    const documents: FirstVisitDocumentForPrint[] = [
+      {
+        id: 'doc_1',
+        case_id: 'case_1',
+        document_url: '/api/visit-records/record_1/pdf',
+        delivered_at: '2026-06-16T10:00:00+09:00',
+        delivered_to: '長女 田中花子',
+        created_at: '2026-06-15T10:00:00+09:00',
+        updated_at: '2026-06-16T10:00:00+09:00',
+        emergency_contacts: [
+          {
+            id: 'contact_1',
+            name: '田中 花子',
+            relation: '長女',
+            organization_name: '田中家',
+            department: null,
+            phone: '090-0000-0000',
+            email: null,
+            fax: null,
+            is_primary: true,
+            is_emergency_contact: true,
+          },
+        ],
+        history: [
+          {
+            id: 'audit_old',
+            action: 'generated',
+            document_type: 'contract',
+            template_name: '居宅療養管理指導契約書',
+            template_version: 'v1.0',
+            storage_location: 'store',
+            reason: null,
+            note: null,
+            actor_id: 'user_1',
+            created_at: '2026-06-15T10:00:00+09:00',
+          },
+          {
+            id: 'audit_new',
+            action: 'recovered',
+            document_type: 'contract',
+            template_name: '居宅療養管理指導契約書',
+            template_version: 'v1.1',
+            storage_location: 'headquarters',
+            reason: null,
+            note: null,
+            actor_id: 'user_1',
+            created_at: '2026-06-16T11:00:00+09:00',
+          },
+        ],
+      },
+    ];
+
+    const summary = buildFirstVisitDocumentPrintSummary('田中 一郎', documents);
+
+    expect(summary.patientName).toBe('田中 一郎');
+    expect(summary.rows).toHaveLength(1);
+    expect(summary.rows[0]).toMatchObject({
+      deliveredToLabel: '長女 田中花子',
+      documentUrlLabel: 'PDFあり',
+      latestActionLabel: '回収',
+      latestStorageLabel: '本部',
+      latestTemplateLabel: '居宅療養管理指導契約書 v1.1',
+    });
+    expect(summary.contacts).toEqual([
+      {
+        contactId: 'contact_1',
+        name: '田中 花子',
+        relationLabel: '長女',
+        organizationLabel: '田中家',
+        contactLabel: '090-0000-0000',
+        priorityLabel: '主連絡先',
+      },
+    ]);
+  });
+});
+
+describe('summarizeFirstVisitPrintReadiness', () => {
+  function makeReadiness(
+    overrides: Partial<FirstVisitPrintReadinessForPrint> = {},
+  ): FirstVisitPrintReadinessForPrint {
+    return {
+      overall_status: 'ready',
+      missing_required_count: 0,
+      warning_count: 0,
+      template_versions: [
+        {
+          document_type: 'contract',
+          label: '契約書',
+          template_name: '居宅療養管理指導契約書',
+          template_version: 'v1.0',
+          effective_from: '2026-06-01T00:00:00+09:00',
+          effective_to: null,
+        },
+      ],
+      checks: [
+        {
+          key: 'patient_profile',
+          label: '患者基本情報',
+          completed: true,
+          severity: 'required',
+          description: '氏名・生年月日を確認します。',
+          action_href: '/patients/patient_1#patient-master',
+          action_label: '基本情報へ',
+        },
+      ],
+      ...overrides,
+    };
+  }
+
+  it('必須項目不足は印刷ブロックとして要約する', () => {
+    const summary = summarizeFirstVisitPrintReadiness(
+      makeReadiness({
+        overall_status: 'blocked',
+        missing_required_count: 1,
+        checks: [
+          {
+            key: 'care_insurance',
+            label: '介護保険情報',
+            completed: false,
+            severity: 'required',
+            description: '介護保険番号を確認します。',
+            action_href: '/patients/patient_1#care-insurance',
+            action_label: '保険情報へ',
+          },
+        ],
+      }),
+    );
+
+    expect(summary.blocked).toBe(true);
+    expect(summary.label).toBe('不足あり');
+    expect(summary.message).toContain('介護保険情報');
+    expect(summary.missingRequiredLabels).toEqual(['介護保険情報']);
+  });
+
+  it('warning は印刷可能だが確認ありとして要約する', () => {
+    const summary = summarizeFirstVisitPrintReadiness(
+      makeReadiness({
+        overall_status: 'warning',
+        warning_count: 1,
+        checks: [
+          {
+            key: 'contact_channel',
+            label: '連絡先',
+            completed: false,
+            severity: 'warning',
+            description: '電話番号を確認します。',
+            action_href: '/patients/patient_1#contacts',
+            action_label: '連絡先へ',
+          },
+        ],
+      }),
+    );
+
+    expect(summary.blocked).toBe(false);
+    expect(summary.label).toBe('確認あり');
+    expect(summary.warningLabels).toEqual(['連絡先']);
+  });
+
+  it('readiness 未取得は fail-closed で印刷ブロックする', () => {
+    const summary = summarizeFirstVisitPrintReadiness(null);
+    expect(summary.blocked).toBe(true);
+    expect(summary.label).toBe('印刷前チェック未取得');
+  });
+});
+
 // ─── 服薬カレンダー ──────────────────────────────────────────────────────────
 
 describe('buildMedicationCalendarDocument', () => {
@@ -275,9 +449,7 @@ describe('buildMedicationCalendarDocument', () => {
       bedtime: false,
     });
     expect(document?.rows[1].marks.evening).toBe(true);
-    expect(document?.prnRows).toEqual([
-      { drugName: 'オキシコドン 5mg', conditionLabel: '疼痛時' },
-    ]);
+    expect(document?.prnRows).toEqual([{ drugName: 'オキシコドン 5mg', conditionLabel: '疼痛時' }]);
   });
 
   it('明細が無い場合は null', () => {

@@ -12,6 +12,9 @@ const templateTypeSchema = z.enum([
   'tracing_report',
   'management_plan',
   'medication_calendar',
+  'contract_document',
+  'important_matters',
+  'privacy_consent',
   'consent_form',
 ]);
 

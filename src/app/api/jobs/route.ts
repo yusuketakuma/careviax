@@ -73,6 +73,11 @@ const JOB_DEFINITIONS = [
     endpoint: '/api/jobs/daily-consent-expiry',
   },
   {
+    job_type: 'daily-public-subsidy-expiry',
+    schedule_hint: '毎朝',
+    endpoint: '/api/jobs/daily-public-subsidy-expiry',
+  },
+  {
     job_type: 'daily-visit-record-retention',
     schedule_hint: '毎朝',
     endpoint: '/api/jobs/daily-visit-record-retention',

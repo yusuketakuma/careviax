@@ -39,6 +39,7 @@ type TimelineEvent = {
     | 'first_visit_document'
     | 'conference_note'
     | 'billing_candidate'
+    | 'operation_history'
     | 'self_report'
     | 'communication'
     | 'external_share';
@@ -163,6 +164,11 @@ const EVENT_META: Record<
   billing_candidate: {
     label: '算定',
     icon: CircleDollarSign,
+    className: 'border-amber-200 bg-amber-50 text-amber-700',
+  },
+  operation_history: {
+    label: '変更履歴',
+    icon: Activity,
     className: 'border-amber-200 bg-amber-50 text-amber-700',
   },
   self_report: {

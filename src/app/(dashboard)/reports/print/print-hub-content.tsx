@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -10,6 +11,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import {
   buildDocumentReceiptRows,
+  buildFirstVisitDocumentPrintSummary,
   buildMedicationCalendarDocument,
   buildMedicationLabelCards,
   buildSetInstructionDocument,
@@ -21,8 +23,13 @@ import {
   pickVisitReportForPrint,
   PRINT_DOCUMENT_TYPES,
   printDocumentTypeLabel,
+  summarizeFirstVisitPrintReadiness,
   type CareReportForPrint,
   type DocumentReceiptRow,
+  type FirstVisitDocumentForPrint,
+  type FirstVisitDocumentPrintSummary,
+  type FirstVisitPrintReadinessForPrint,
+  type FirstVisitPrintReadinessSummary,
   type MedicationCalendarDocument,
   type MedicationLabelCard,
   type PrescriptionIntakeForPrint,
@@ -35,7 +42,7 @@ import {
 
 /**
  * p0_47(帳票・印刷プレビュー)/reports/print。
- * 左「印刷するもの」(5 帳票カード)/ 中央「プレビュー」(A4 縦の白紙カード)/
+ * 左「印刷するもの」(帳票カード)/ 中央「プレビュー」(A4 縦の白紙カード)/
  * 右「出力設定」(チェック 4 つ + 印刷する)の 3 カラム。
  * 印刷時はプレビューの帳票のみを出力する(他カラムとカード枠は print:hidden)。
  */
@@ -48,6 +55,53 @@ type PatientPrescriptionsResponse = {
   data: PrescriptionIntakeForPrint[];
 };
 type CareReportsResponse = { data: CareReportForPrint[] };
+type PatientDocumentsForPrintResponse = {
+  patient: { id: string; name: string; name_kana: string };
+  print_readiness: FirstVisitPrintReadinessForPrint;
+  first_visit_documents: FirstVisitDocumentForPrint[];
+};
+
+function pickLatestFirstVisitHistory(document: FirstVisitDocumentForPrint) {
+  if (document.history.length === 0) return null;
+  return [...document.history].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  )[0];
+}
+
+async function recordFirstVisitPrintHistory({
+  orgId,
+  documents,
+}: {
+  orgId: string;
+  documents: readonly FirstVisitDocumentForPrint[];
+}) {
+  await Promise.all(
+    documents.map(async (document) => {
+      const latestHistory = pickLatestFirstVisitHistory(document);
+      const res = await fetch(`/api/first-visit-documents/${document.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          document_action: {
+            action: 'printed',
+            document_type: latestHistory?.document_type ?? 'first_visit_document',
+            template_name: latestHistory?.template_name ?? '契約・同意控え',
+            template_version: latestHistory?.template_version ?? 'print-preview',
+            storage_location: latestHistory?.storage_location ?? null,
+            note: '印刷ハブから印刷',
+          },
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message ?? '初回文書の印刷履歴を記録できませんでした');
+      }
+    }),
+  );
+}
 
 function documentTypeNeedsSetPlan(documentType: PrintDocumentTypeKey) {
   return (
@@ -61,9 +115,14 @@ function documentTypeNeedsCareReports(documentType: PrintDocumentTypeKey) {
   return documentType === 'visit_report' || documentType === 'document_receipt';
 }
 
-function usePrintHubData(orgId: string, documentType: PrintDocumentTypeKey) {
+function usePrintHubData(
+  orgId: string,
+  documentType: PrintDocumentTypeKey,
+  explicitPatientId: string | null,
+) {
   const needsSetPlan = documentTypeNeedsSetPlan(documentType);
   const needsCareReports = documentTypeNeedsCareReports(documentType);
+  const needsFirstVisitDocuments = documentType === 'first_visit_documents';
 
   const setPlansQuery = useQuery({
     queryKey: ['print-hub-set-plans', orgId],
@@ -108,26 +167,51 @@ function usePrintHubData(orgId: string, documentType: PrintDocumentTypeKey) {
     staleTime: 60_000,
   });
 
+  const patientDocumentsQuery = useQuery({
+    queryKey: ['print-hub-patient-documents', orgId, explicitPatientId],
+    queryFn: async () => {
+      const res = await fetch(`/api/patients/${explicitPatientId}/documents`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('患者文書の取得に失敗しました');
+      return res.json() as Promise<PatientDocumentsForPrintResponse>;
+    },
+    enabled: !!orgId && !!explicitPatientId && needsFirstVisitDocuments,
+    staleTime: 60_000,
+  });
+
   const intake = useMemo(
     () => pickIntakeForCycle(prescriptionsQuery.data?.data ?? [], plan?.cycle_id),
     [prescriptionsQuery.data, plan],
   );
   const reports = useMemo(() => careReportsQuery.data?.data ?? [], [careReportsQuery.data]);
+  const firstVisitDocuments = useMemo(
+    () => patientDocumentsQuery.data?.first_visit_documents ?? [],
+    [patientDocumentsQuery.data],
+  );
+  const firstVisitPatientName = patientDocumentsQuery.data?.patient.name ?? '患者名未設定';
+  const firstVisitPrintReadiness = patientDocumentsQuery.data?.print_readiness ?? null;
 
   return {
     plan,
     intake,
     reports,
+    firstVisitDocuments,
+    firstVisitPatientName,
+    firstVisitPrintReadiness,
     // disabled クエリは isLoading=false になるため isPending で判定する。
     // 選択中の帳票で不要な API 取得は待たない。既定のセット指示書で
     // care-reports 取得に引きずられてプレビューが空になるのを避ける。
     isLoading:
       (needsSetPlan && setPlansQuery.isPending) ||
       (needsCareReports && careReportsQuery.isPending) ||
+      (needsFirstVisitDocuments && !!explicitPatientId && patientDocumentsQuery.isPending) ||
       (!!patientId && prescriptionsQuery.isPending),
     isError:
       (needsSetPlan && setPlansQuery.isError) ||
       (needsCareReports && careReportsQuery.isError) ||
+      (needsFirstVisitDocuments && !explicitPatientId) ||
+      (needsFirstVisitDocuments && patientDocumentsQuery.isError) ||
       prescriptionsQuery.isError,
   };
 }
@@ -218,7 +302,10 @@ function SetInstructionSheet({
         <>
           <SheetMetaRows
             rows={[
-              { label: '患者名', value: settings.showPatientName ? `${document.patientName} 様` : null },
+              {
+                label: '患者名',
+                value: settings.showPatientName ? `${document.patientName} 様` : null,
+              },
               { label: '対象期間', value: document.periodLabel },
               { label: 'セット方式', value: document.setMethodLabel },
               { label: '配薬方法', value: document.packagingLabel },
@@ -292,7 +379,10 @@ function MedicationCalendarSheet({
         <>
           <SheetMetaRows
             rows={[
-              { label: '患者名', value: settings.showPatientName ? `${document.patientName} 様` : null },
+              {
+                label: '患者名',
+                value: settings.showPatientName ? `${document.patientName} 様` : null,
+              },
               { label: '対象期間', value: document.periodLabel },
             ]}
           />
@@ -357,7 +447,10 @@ function VisitReportSheet({
         <>
           <SheetMetaRows
             rows={[
-              { label: '患者名', value: settings.showPatientName ? `${document.patientName} 様` : null },
+              {
+                label: '患者名',
+                value: settings.showPatientName ? `${document.patientName} 様` : null,
+              },
               { label: '種別', value: document.reportTypeLabel },
               { label: '報告日', value: document.reportDateLabel },
               { label: '状態', value: document.statusLabel },
@@ -458,17 +551,156 @@ function MedicationLabelSheet({
   );
 }
 
+function FirstVisitDocumentsSheet({
+  summary,
+  settings,
+}: {
+  summary: FirstVisitDocumentPrintSummary;
+  settings: PrintOutputSettings;
+}) {
+  return (
+    <div>
+      <SheetHeader title="契約・同意控え" settings={settings} />
+      <SheetMetaRows
+        rows={[
+          { label: '患者名', value: settings.showPatientName ? `${summary.patientName} 様` : null },
+          { label: '文書数', value: `${summary.rows.length}件` },
+        ]}
+      />
+      {summary.rows.length === 0 ? (
+        <EmptySheetBody note="初回訪問文書・契約同意書の履歴がまだありません。" />
+      ) : (
+        <>
+          <table className="mt-4 w-full border-collapse text-xs">
+            <thead>
+              <tr className="border-b border-slate-400 text-left text-muted-foreground">
+                <th className="py-1.5 pr-2 font-medium">作成日</th>
+                <th className="py-1.5 pr-2 font-medium">交付</th>
+                <th className="py-1.5 pr-2 font-medium">最新履歴</th>
+                <th className="py-1.5 font-medium">控え</th>
+              </tr>
+            </thead>
+            <tbody>
+              {summary.rows.map((row) => (
+                <tr key={row.documentId} className="border-b border-slate-200 align-top">
+                  <td className="py-2 pr-2">{row.createdAtLabel}</td>
+                  <td className="py-2 pr-2">
+                    <span className="block text-foreground">{row.deliveredToLabel}</span>
+                    <span className="block text-muted-foreground">{row.deliveredAtLabel}</span>
+                  </td>
+                  <td className="py-2 pr-2">
+                    <span className="block text-foreground">{row.latestActionLabel}</span>
+                    <span className="block text-muted-foreground">{row.latestStorageLabel}</span>
+                    <span className="block text-muted-foreground">{row.latestTemplateLabel}</span>
+                  </td>
+                  <td className="py-2">{row.documentUrlLabel}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {summary.contacts.length > 0 && (
+            <div className="mt-4 text-xs">
+              <p className="font-medium text-foreground">緊急連絡先控え</p>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {summary.contacts.map((contact) => (
+                  <div key={contact.contactId} className="border border-slate-200 p-2 leading-4">
+                    <p className="font-medium text-foreground">{contact.name}</p>
+                    <p className="text-muted-foreground">
+                      {contact.relationLabel} / {contact.priorityLabel}
+                    </p>
+                    <p className="text-muted-foreground">{contact.organizationLabel}</p>
+                    <p className="text-muted-foreground">{contact.contactLabel}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function FirstVisitPrintReadinessPanel({ summary }: { summary: FirstVisitPrintReadinessSummary }) {
+  const badgeVariant = summary.status === 'blocked' ? 'destructive' : 'outline';
+  const badgeClassName =
+    summary.status === 'ready'
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+      : summary.status === 'warning'
+        ? 'border-amber-200 bg-amber-50 text-amber-800'
+        : undefined;
+  const detailLabels =
+    summary.status === 'blocked' ? summary.missingRequiredLabels : summary.warningLabels;
+
+  return (
+    <div
+      data-testid="first-visit-print-readiness"
+      className={cn(
+        'rounded-lg border p-3 text-xs leading-5',
+        summary.status === 'blocked'
+          ? 'border-destructive/30 bg-destructive/5'
+          : summary.status === 'warning'
+            ? 'border-amber-200 bg-amber-50/60'
+            : 'border-emerald-200 bg-emerald-50/60',
+      )}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-medium text-foreground">印刷前チェック</p>
+        <Badge variant={badgeVariant} className={badgeClassName}>
+          {summary.label}
+        </Badge>
+      </div>
+      <p
+        className={cn(
+          'mt-2',
+          summary.status === 'blocked'
+            ? 'text-destructive'
+            : summary.status === 'warning'
+              ? 'text-amber-900'
+              : 'text-emerald-900',
+        )}
+      >
+        {summary.message}
+      </p>
+      {detailLabels.length > 0 ? (
+        <ul className="mt-2 list-disc space-y-1 pl-4 text-muted-foreground">
+          {detailLabels.map((label) => (
+            <li key={label}>{label}</li>
+          ))}
+        </ul>
+      ) : null}
+      {summary.templateLabels.length > 0 ? (
+        <p className="mt-2 text-muted-foreground">
+          使用予定テンプレート: {summary.templateLabels.join(' / ')}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 // ─── 画面本体 ────────────────────────────────────────────────────────────────
 
 export function PrintHubContent() {
   const orgId = useOrgId();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const documentType = parsePrintDocumentType(searchParams.get('type'));
+  const explicitPatientId = searchParams.get('patient_id');
   const [settings, setSettings] = useState<PrintOutputSettings>(DEFAULT_PRINT_OUTPUT_SETTINGS);
+  const [printError, setPrintError] = useState<string | null>(null);
 
-  const { plan, intake, reports, isLoading, isError } = usePrintHubData(orgId, documentType);
+  const {
+    plan,
+    intake,
+    reports,
+    firstVisitDocuments,
+    firstVisitPatientName,
+    firstVisitPrintReadiness,
+    isLoading,
+    isError,
+  } = usePrintHubData(orgId, documentType, explicitPatientId);
 
   const setInstruction = useMemo(() => buildSetInstructionDocument(plan, intake), [plan, intake]);
   const calendar = useMemo(() => buildMedicationCalendarDocument(plan, intake), [plan, intake]);
@@ -478,13 +710,55 @@ export function PrintHubContent() {
   );
   const receiptRows = useMemo(() => buildDocumentReceiptRows(reports), [reports]);
   const labelCards = useMemo(() => buildMedicationLabelCards(plan, intake), [plan, intake]);
+  const firstVisitDocumentSummary = useMemo(
+    () => buildFirstVisitDocumentPrintSummary(firstVisitPatientName, firstVisitDocuments),
+    [firstVisitPatientName, firstVisitDocuments],
+  );
+  const firstVisitPrintReadinessSummary = useMemo(
+    () => summarizeFirstVisitPrintReadiness(firstVisitPrintReadiness),
+    [firstVisitPrintReadiness],
+  );
+  const firstVisitPrintHistoryMutation = useMutation({
+    mutationFn: () => recordFirstVisitPrintHistory({ orgId, documents: firstVisitDocuments }),
+    onSuccess: async () => {
+      if (explicitPatientId) {
+        await queryClient.invalidateQueries({
+          queryKey: ['print-hub-patient-documents', orgId, explicitPatientId],
+        });
+      }
+    },
+  });
 
   const selectDocumentType = (key: PrintDocumentTypeKey) => {
-    router.replace(`${pathname}?type=${key}`, { scroll: false });
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('type', key);
+    if (key !== 'first_visit_documents') {
+      params.delete('patient_id');
+    }
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
   const toggleSetting = (key: keyof PrintOutputSettings) => (checked: boolean) => {
     setSettings((current) => ({ ...current, [key]: checked === true }));
+  };
+
+  const handlePrint = async () => {
+    setPrintError(null);
+    if (documentType === 'first_visit_documents' && firstVisitPrintReadinessSummary.blocked) {
+      setPrintError(firstVisitPrintReadinessSummary.message);
+      return;
+    }
+    if (documentType === 'first_visit_documents' && firstVisitDocuments.length > 0) {
+      try {
+        await firstVisitPrintHistoryMutation.mutateAsync();
+      } catch (error) {
+        setPrintError(
+          error instanceof Error ? error.message : '初回文書の印刷履歴を記録できませんでした',
+        );
+        return;
+      }
+    }
+    window.print();
   };
 
   const renderSheetBody = () => {
@@ -509,6 +783,8 @@ export function PrintHubContent() {
         return <DocumentReceiptSheet rows={receiptRows} settings={settings} />;
       case 'medication_label':
         return <MedicationLabelSheet cards={labelCards} settings={settings} />;
+      case 'first_visit_documents':
+        return <FirstVisitDocumentsSheet summary={firstVisitDocumentSummary} settings={settings} />;
     }
   };
 
@@ -522,6 +798,10 @@ export function PrintHubContent() {
     { key: 'showQr', id: 'print-option-qr', label: 'QRコードを付ける' },
     { key: 'saveCopy', id: 'print-option-save-copy', label: '控えを保存' },
   ];
+  const isFirstVisitPrint = documentType === 'first_visit_documents';
+  const printDisabled =
+    firstVisitPrintHistoryMutation.isPending ||
+    (isFirstVisitPrint && firstVisitPrintReadinessSummary.blocked);
 
   return (
     <div
@@ -605,16 +885,25 @@ export function PrintHubContent() {
               </Label>
             </div>
           ))}
+          {isFirstVisitPrint && !isLoading && !isError ? (
+            <FirstVisitPrintReadinessPanel summary={firstVisitPrintReadinessSummary} />
+          ) : null}
         </div>
         <div className="mt-14">
           <Button
             type="button"
             className="min-h-11 w-full"
             data-testid="print-submit-button"
-            onClick={() => window.print()}
+            onClick={() => void handlePrint()}
+            disabled={printDisabled}
           >
-            印刷する
+            {firstVisitPrintHistoryMutation.isPending ? '履歴記録中...' : '印刷する'}
           </Button>
+          {printError ? (
+            <p className="mt-2 text-xs leading-5 text-destructive" role="alert">
+              {printError}
+            </p>
+          ) : null}
           {settings.saveCopy && (
             <p className="mt-2 text-xs leading-5 text-muted-foreground">
               控えを残す場合は、印刷ダイアログで「PDFとして保存」を選んでください。

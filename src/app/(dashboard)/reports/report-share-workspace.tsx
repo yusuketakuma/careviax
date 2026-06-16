@@ -45,6 +45,7 @@ const DRAFT_STATUS_LABELS: Record<string, string> = {
   before_visit: '訪問後に下書き',
   ready_to_generate: '未作成',
   draft_ready: '下書きあり',
+  report_existing: '作成済み',
 };
 
 const ISSUE_TONE_CLASSES: Record<ReportOpenIssue['severity'], string> = {

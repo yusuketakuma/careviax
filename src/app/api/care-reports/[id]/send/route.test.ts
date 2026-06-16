@@ -8,6 +8,8 @@ const {
   visitRecordFindFirstMock,
   visitScheduleFindFirstMock,
   careCaseFindFirstMock,
+  careCaseFindManyMock,
+  prescriptionIntakeFindFirstMock,
   sendCareReportEmailMock,
   upsertBillingEvidenceForVisitMock,
   resolveOperationalTasksMock,
@@ -21,6 +23,8 @@ const {
   visitRecordFindFirstMock: vi.fn(),
   visitScheduleFindFirstMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
+  careCaseFindManyMock: vi.fn(),
+  prescriptionIntakeFindFirstMock: vi.fn(),
   sendCareReportEmailMock: vi.fn(),
   upsertBillingEvidenceForVisitMock: vi.fn(),
   resolveOperationalTasksMock: vi.fn(),
@@ -79,6 +83,10 @@ vi.mock('@/lib/db/client', () => ({
     },
     careCase: {
       findFirst: careCaseFindFirstMock,
+      findMany: careCaseFindManyMock,
+    },
+    prescriptionIntake: {
+      findFirst: prescriptionIntakeFindFirstMock,
     },
   },
 }));
@@ -156,6 +164,51 @@ describe('/api/care-reports/[id]/send POST', () => {
     careCaseFindFirstMock.mockResolvedValue({
       primary_pharmacist_id: 'user_1',
       backup_pharmacist_id: null,
+    });
+    careCaseFindManyMock.mockResolvedValue([
+      {
+        care_team_links: [
+          {
+            role: 'physician',
+            name: '山田 太郎',
+            organization_name: '山田クリニック',
+            phone: '03-1234-5678',
+            email: 'doctor@example.com',
+            fax: '03-1234-5678',
+            address: '東京都千代田区1-2-3',
+            external_professional: null,
+          },
+          {
+            role: 'care_manager',
+            name: '担当ケアマネ',
+            organization_name: 'ケア事業所',
+            phone: '03-1234-5678',
+            email: null,
+            fax: '03-1234-5678',
+            address: null,
+            external_professional: null,
+          },
+          {
+            role: 'facility_staff',
+            name: '施設連携先',
+            organization_name: '施設',
+            phone: '03-0000-0000',
+            email: null,
+            fax: '03-0000-0000',
+            address: null,
+            external_professional: null,
+          },
+        ],
+      },
+    ]);
+    prescriptionIntakeFindFirstMock.mockResolvedValue({
+      prescriber_name: '山田 太郎',
+      prescriber_institution_ref: {
+        name: '山田クリニック',
+        phone: '03-1234-5678',
+        fax: '03-1234-5678',
+        address: '東京都千代田区1-2-3',
+      },
     });
     sendCareReportEmailMock.mockResolvedValue({
       messageId: 'ses-message-1',
@@ -394,6 +447,30 @@ describe('/api/care-reports/[id]/send POST', () => {
     expect(communicationEventCreateMock).not.toHaveBeenCalled();
   });
 
+  it('rejects same-role recipients that are not current care-team or prescriber sources', async () => {
+    const response = await POST(
+      createRequest({
+        channel: 'email',
+        recipient_name: '別の医師',
+        recipient_contact: 'other-doctor@example.com',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '送付先が現在の患者関係者または処方元候補と一致していません',
+    });
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(txMock.auditLog.create).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects bulk sends when any recipient role does not match the report type', async () => {
     const response = await POST(
       createRequest({
@@ -556,7 +633,7 @@ describe('/api/care-reports/[id]/send POST', () => {
     const response = await POST(
       createRequest({
         channel: 'fax',
-        recipient_name: '主治医',
+        recipient_name: '山田 太郎',
         recipient_contact: '03-1234-5678',
         recipient_role: 'physician',
         safety_ack: true,
@@ -713,7 +790,7 @@ describe('/api/care-reports/[id]/send POST', () => {
         where: { id: 'delivery_1' },
         data: expect.objectContaining({
           status: 'failed',
-          failure_reason: 'SES unavailable',
+          failure_reason: 'メール送信に失敗しました',
         }),
       }),
     );
@@ -735,11 +812,81 @@ describe('/api/care-reports/[id]/send POST', () => {
           event_type: 'delivery_failure',
           channel: 'email',
           counterpart_name: '山田 太郎',
+          content: 'メール送信に失敗しました',
         }),
       }),
     );
     await expect(response.json()).resolves.toMatchObject({
       code: 'EXTERNAL_EMAIL_SEND_FAILED',
+    });
+  });
+
+  it('keeps the report awaiting response when a bulk send partially fails', async () => {
+    txMock.deliveryRecord.create
+      .mockResolvedValueOnce({ id: 'delivery_success', status: 'draft' })
+      .mockResolvedValueOnce({ id: 'delivery_failed', status: 'draft' });
+    txMock.careReport.update.mockResolvedValueOnce({
+      id: 'report_1',
+      status: 'response_waiting',
+    });
+    sendCareReportEmailMock.mockRejectedValueOnce(new Error('SES unavailable'));
+
+    const response = await POST(
+      createRequest({
+        recipients: [
+          {
+            channel: 'fax',
+            recipient_name: '山田 太郎',
+            recipient_contact: '03-1234-5678',
+            recipient_role: 'physician',
+          },
+          {
+            channel: 'email',
+            recipient_name: '山田 太郎',
+            recipient_contact: 'doctor@example.com',
+            recipient_role: 'physician',
+          },
+        ],
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(txMock.careReport.update).toHaveBeenCalledWith({
+      where: { id: 'report_1' },
+      data: expect.objectContaining({
+        status: 'response_waiting',
+        content: expect.objectContaining({
+          report_delivery_targets: [
+            expect.objectContaining({
+              delivery_record_id: 'delivery_success',
+              status: 'sent',
+            }),
+            expect.objectContaining({
+              delivery_record_id: 'delivery_failed',
+              status: 'failed',
+              failure_reason: 'メール送信に失敗しました',
+            }),
+          ],
+        }),
+      }),
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        report: { status: 'response_waiting' },
+        sent_count: 1,
+        failed_count: 1,
+        deliveries: [
+          { delivery_record_id: 'delivery_success', status: 'sent' },
+          {
+            delivery_record_id: 'delivery_failed',
+            status: 'failed',
+            failure_reason: 'メール送信に失敗しました',
+          },
+        ],
+      },
     });
   });
 
@@ -829,7 +976,7 @@ describe('/api/care-reports/[id]/send POST', () => {
     const response = await POST(
       createRequest({
         channel: 'fax',
-        recipient_name: '主治医',
+        recipient_name: '山田 太郎',
         recipient_contact: '03-1234-5678',
         recipient_role: 'physician',
         safety_ack: true,

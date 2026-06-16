@@ -6,16 +6,22 @@ const {
   membershipFindFirstMock,
   careCaseFindFirstMock,
   careCaseFindManyMock,
+  auditLogCreateMock,
+  contactPartyFindManyMock,
   firstVisitDocumentCreateMock,
   firstVisitDocumentFindManyMock,
+  templateFindFirstMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
+  auditLogCreateMock: vi.fn(),
+  contactPartyFindManyMock: vi.fn(),
   firstVisitDocumentCreateMock: vi.fn(),
   firstVisitDocumentFindManyMock: vi.fn(),
+  templateFindFirstMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -34,6 +40,12 @@ vi.mock('@/lib/db/client', () => ({
     },
     firstVisitDocument: {
       findMany: firstVisitDocumentFindManyMock,
+    },
+    template: {
+      findFirst: templateFindFirstMock,
+    },
+    contactParty: {
+      findMany: contactPartyFindManyMock,
     },
   },
 }));
@@ -85,9 +97,34 @@ describe('/api/first-visit-documents', () => {
       patient_id: 'patient_1',
       case_id: 'case_1',
       emergency_contacts: [{ name: '山田太郎', relationship: '配偶者', phone: '090-1234-5678' }],
+      delivered_at: null,
+      delivered_to: null,
+      document_url: '/api/visit-records/record_1/pdf',
     });
+    templateFindFirstMock.mockResolvedValue({
+      id: 'template_default',
+      name: '初回契約セット',
+      template_type: 'consent_form',
+      version: 3,
+    });
+    contactPartyFindManyMock.mockResolvedValue([
+      {
+        name: '山田花子',
+        relation: 'child',
+        phone: '090-1111-2222',
+        email: null,
+        fax: null,
+        organization_name: '山田家',
+        department: null,
+        is_primary: true,
+        is_emergency_contact: true,
+      },
+    ]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        auditLog: {
+          create: auditLogCreateMock,
+        },
         firstVisitDocument: {
           create: firstVisitDocumentCreateMock,
         },
@@ -163,6 +200,7 @@ describe('/api/first-visit-documents', () => {
         createRequest('http://localhost/api/first-visit-documents', {
           patient_id: 'patient_1',
           case_id: 'case_1',
+          document_url: '/api/visit-records/record_1/pdf',
           emergency_contacts: [
             { name: '山田太郎', relationship: '配偶者', phone: ' 090-1234-5678 ' },
           ],
@@ -180,11 +218,231 @@ describe('/api/first-visit-documents', () => {
       });
       expect(firstVisitDocumentCreateMock).toHaveBeenCalledWith({
         data: expect.objectContaining({
+          document_url: '/api/visit-records/record_1/pdf',
           emergency_contacts: [
             { name: '山田太郎', relationship: '配偶者', phone: '090-1234-5678' },
           ],
         }),
       });
+      expect(templateFindFirstMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            org_id: 'org_1',
+            template_type: 'consent_form',
+            is_default: true,
+          }),
+        }),
+      );
+      expect(auditLogCreateMock).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          action: 'first_visit_document.generated',
+          target_type: 'first_visit_document',
+          target_id: 'doc_2',
+          changes: expect.objectContaining({
+            document_action: expect.objectContaining({
+              action: 'generated',
+              document_type: 'consent',
+              template_id: 'template_default',
+              template_name: '初回契約セット',
+              template_version: '3',
+            }),
+            patient_id: 'patient_1',
+            case_id: 'case_1',
+            document_url: '/api/visit-records/record_1/pdf',
+          }),
+        }),
+      });
+    });
+
+    it('fills emergency contacts from patient contacts when creating from a template', async () => {
+      const response = (await POST(
+        createRequest('http://localhost/api/first-visit-documents', {
+          patient_id: 'patient_1',
+          case_id: 'case_1',
+          template_id: 'template_default',
+        }),
+      ))!;
+
+      expect(response.status).toBe(201);
+      expect(contactPartyFindManyMock).toHaveBeenCalledWith({
+        where: {
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+          OR: [{ is_primary: true }, { is_emergency_contact: true }],
+        },
+        orderBy: [{ is_primary: 'desc' }, { is_emergency_contact: 'desc' }, { created_at: 'asc' }],
+        take: 5,
+        select: {
+          name: true,
+          relation: true,
+          phone: true,
+          email: true,
+          fax: true,
+          organization_name: true,
+          department: true,
+          is_primary: true,
+          is_emergency_contact: true,
+        },
+      });
+      expect(firstVisitDocumentCreateMock).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          emergency_contacts: [
+            {
+              name: '山田花子',
+              relationship: '子',
+              relation: '子',
+              phone: '090-1111-2222',
+              email: null,
+              fax: null,
+              organization_name: '山田家',
+              department: null,
+              is_primary: true,
+              is_emergency_contact: true,
+            },
+          ],
+        }),
+      });
+    });
+
+    it('rejects template creation when no emergency contact can be derived', async () => {
+      contactPartyFindManyMock.mockResolvedValue([]);
+
+      const response = (await POST(
+        createRequest('http://localhost/api/first-visit-documents', {
+          patient_id: 'patient_1',
+          case_id: 'case_1',
+          template_id: 'template_default',
+        }),
+      ))!;
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        details: {
+          emergency_contacts: ['緊急連絡先を1件以上入力してください'],
+        },
+      });
+      expect(firstVisitDocumentCreateMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects non-local HTTP document URLs for signed contract files', async () => {
+      const response = (await POST(
+        createRequest('http://localhost/api/first-visit-documents', {
+          patient_id: 'patient_1',
+          case_id: 'case_1',
+          document_url: 'http://files.example.test/contracts/doc_1.pdf',
+          emergency_contacts: [
+            { name: '山田太郎', relationship: '配偶者', phone: '090-1234-5678' },
+          ],
+        }),
+      ))!;
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        details: {
+          document_url: expect.arrayContaining([
+            '文書URLは相対パス、HTTPS、またはローカル開発用HTTPで指定してください',
+          ]),
+        },
+      });
+      expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+      expect(firstVisitDocumentCreateMock).not.toHaveBeenCalled();
+    });
+
+    it('allows HTTPS document URLs when creating a document', async () => {
+      const response = (await POST(
+        createRequest('http://localhost/api/first-visit-documents', {
+          patient_id: 'patient_1',
+          case_id: 'case_1',
+          document_url: 'https://files.example.test/contracts/doc_1.pdf',
+          emergency_contacts: [
+            { name: '山田太郎', relationship: '配偶者', phone: '090-1234-5678' },
+          ],
+        }),
+      ))!;
+
+      expect(response.status).toBe(201);
+      expect(firstVisitDocumentCreateMock).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          document_url: 'https://files.example.test/contracts/doc_1.pdf',
+        }),
+      });
+    });
+
+    it('uses an explicitly selected first visit template when creating a document', async () => {
+      templateFindFirstMock.mockResolvedValue({
+        id: 'template_1',
+        name: '重要事項説明書',
+        template_type: 'important_matters',
+        version: 7,
+      });
+
+      const response = (await POST(
+        createRequest('http://localhost/api/first-visit-documents', {
+          patient_id: 'patient_1',
+          case_id: 'case_1',
+          template_id: 'template_1',
+          emergency_contacts: [
+            { name: '山田太郎', relationship: '配偶者', phone: '090-1234-5678' },
+          ],
+        }),
+      ))!;
+
+      expect(response.status).toBe(201);
+      expect(templateFindFirstMock).toHaveBeenCalledWith({
+        where: {
+          id: 'template_1',
+          org_id: 'org_1',
+          template_type: {
+            in: ['contract_document', 'important_matters', 'privacy_consent', 'consent_form'],
+          },
+        },
+        select: {
+          id: true,
+          name: true,
+          template_type: true,
+          version: true,
+        },
+      });
+      expect(auditLogCreateMock).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          action: 'first_visit_document.generated',
+          changes: expect.objectContaining({
+            document_action: expect.objectContaining({
+              document_type: 'important_matters',
+              template_id: 'template_1',
+              template_name: '重要事項説明書',
+              template_version: '7',
+            }),
+          }),
+        }),
+      });
+    });
+
+    it('rejects an explicit first visit template outside the organization', async () => {
+      templateFindFirstMock.mockResolvedValue(null);
+
+      const response = (await POST(
+        createRequest('http://localhost/api/first-visit-documents', {
+          patient_id: 'patient_1',
+          case_id: 'case_1',
+          template_id: 'template_other',
+          emergency_contacts: [
+            { name: '山田太郎', relationship: '配偶者', phone: '090-1234-5678' },
+          ],
+        }),
+      ))!;
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        details: {
+          template_id: ['有効な初回文書テンプレートを選択してください'],
+        },
+      });
+      expect(firstVisitDocumentCreateMock).not.toHaveBeenCalled();
+      expect(auditLogCreateMock).not.toHaveBeenCalled();
     });
 
     it('returns 404 without creating when the case is outside assignment scope', async () => {

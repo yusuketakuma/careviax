@@ -16,8 +16,6 @@ export function buildWorkRequestHref(input: WorkRequestHrefInput = {}): string {
   const params = new URLSearchParams();
   params.set('work_request', '1');
   params.set('work_request_type', input.type ?? 'staff_work_request_general');
-  if (input.title) params.set('work_request_title', input.title);
-  if (input.description) params.set('work_request_description', input.description);
   if (input.relatedEntityType) params.set('related_entity_type', input.relatedEntityType);
   if (input.relatedEntityId) params.set('related_entity_id', input.relatedEntityId);
   if (input.context) params.set('context', input.context);

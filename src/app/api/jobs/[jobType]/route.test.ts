@@ -33,6 +33,7 @@ const {
   checkFacilityStandardExpiryMock,
   checkCredentialExpiryMock,
   checkConsentExpiryMock,
+  checkPublicSubsidyExpiryMock,
   checkVisitRecordRetentionMock,
   checkPrescriptionOriginalRetentionMock,
   checkPcaPumpRentalOverduesMock,
@@ -69,6 +70,7 @@ const {
   checkFacilityStandardExpiryMock: vi.fn(),
   checkCredentialExpiryMock: vi.fn(),
   checkConsentExpiryMock: vi.fn(),
+  checkPublicSubsidyExpiryMock: vi.fn(),
   checkVisitRecordRetentionMock: vi.fn(),
   checkPrescriptionOriginalRetentionMock: vi.fn(),
   checkPcaPumpRentalOverduesMock: vi.fn(),
@@ -117,6 +119,7 @@ vi.mock('@/server/jobs', () => ({
   checkFacilityStandardExpiry: checkFacilityStandardExpiryMock,
   checkCredentialExpiry: checkCredentialExpiryMock,
   checkConsentExpiry: checkConsentExpiryMock,
+  checkPublicSubsidyExpiry: checkPublicSubsidyExpiryMock,
   checkVisitRecordRetention: checkVisitRecordRetentionMock,
   checkPrescriptionOriginalRetention: checkPrescriptionOriginalRetentionMock,
   checkPcaPumpRentalOverdues: checkPcaPumpRentalOverduesMock,
@@ -183,6 +186,7 @@ describe('/api/jobs/[jobType] POST', () => {
     checkFacilityStandardExpiryMock.mockResolvedValue({ processedCount: 0 });
     checkCredentialExpiryMock.mockResolvedValue({ processedCount: 0 });
     checkConsentExpiryMock.mockResolvedValue({ processedCount: 0 });
+    checkPublicSubsidyExpiryMock.mockResolvedValue({ processedCount: 1 });
     checkVisitRecordRetentionMock.mockResolvedValue({ processedCount: 1 });
     checkPrescriptionOriginalRetentionMock.mockResolvedValue({ processedCount: 1 });
     checkPcaPumpRentalOverduesMock.mockResolvedValue({ processedCount: 1 });
@@ -275,6 +279,33 @@ describe('/api/jobs/[jobType] POST', () => {
       jobType: 'daily-visit-support-sync',
       processedCount: 2,
     });
+  });
+
+  it('scopes public subsidy expiry checks to the authenticated admin org', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await POST(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ jobType: 'daily-public-subsidy-expiry' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(checkPublicSubsidyExpiryMock).toHaveBeenCalledWith({ orgId: 'org_1' });
+    await expect(response.json()).resolves.toMatchObject({
+      jobType: 'daily-public-subsidy-expiry',
+      processedCount: 1,
+    });
+  });
+
+  it('allows api key public subsidy expiry checks across organizations', async () => {
+    authMock.mockResolvedValue(null);
+
+    const response = await POST(createRequest({ 'x-api-key': 'job-secret' }), {
+      params: Promise.resolve({ jobType: 'daily-public-subsidy-expiry' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(checkPublicSubsidyExpiryMock).toHaveBeenCalledWith(undefined);
   });
 
   it('returns 200 when api key executes drug master refresh', async () => {

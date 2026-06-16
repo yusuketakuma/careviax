@@ -227,6 +227,16 @@ type BillingCandidateTimelineSource = {
   updated_at: Date;
 };
 
+type OperationHistoryTimelineSource = {
+  id: string;
+  action: string;
+  target_type: string;
+  target_id: string;
+  actor_id: string;
+  changes: unknown;
+  created_at: Date;
+};
+
 export type BuildPatientTimelineEventsInput = {
   patientId: string;
   actorNameMap: ReadonlyMap<string, string>;
@@ -243,6 +253,7 @@ export type BuildPatientTimelineEventsInput = {
   firstVisitDocuments: readonly FirstVisitDocumentTimelineSource[];
   conferenceNotes: readonly ConferenceNoteTimelineSource[];
   billingCandidates: readonly BillingCandidateTimelineSource[];
+  operationHistory: readonly OperationHistoryTimelineSource[];
 };
 
 function formatTimelineDate(value: Date | null | undefined) {
@@ -257,6 +268,141 @@ function previewTimelineText(value: string | null | undefined, maxLength = 96) {
   const normalized = value?.replace(/\s+/g, ' ').trim();
   if (!normalized) return null;
   return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function readString(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+const OPERATION_ACTION_LABELS: Record<string, { title: string; statusLabel: string }> = {
+  'first_visit_document.generated': { title: '初回文書を生成', statusLabel: '生成' },
+  'first_visit_document.printed': { title: '初回文書を印刷', statusLabel: '印刷' },
+  'first_visit_document.recovered': { title: '初回文書を回収', statusLabel: '回収' },
+  'first_visit_document.image_saved': { title: '初回文書画像を保存', statusLabel: '画像保存' },
+  'first_visit_document.replaced': { title: '初回文書を差し替え', statusLabel: '差し替え' },
+  'first_visit_document.invalidated': { title: '初回文書を無効化', statusLabel: '無効化' },
+  billing_collection_updated: { title: '集金情報を更新', statusLabel: '集金更新' },
+  billing_payment_profile_updated: { title: '支払設定を更新', statusLabel: '支払設定' },
+  patient_mcs_profile_updated: { title: 'MCS連携状態を更新', statusLabel: 'MCS更新' },
+  prescription_original_management_updated: {
+    title: '処方せん原本管理を更新',
+    statusLabel: '原本管理',
+  },
+};
+
+const FIRST_VISIT_DOCUMENT_TYPE_LABELS: Record<string, string> = {
+  contract: '契約書',
+  important_matters: '重要事項説明書',
+  consent: '同意書',
+  privacy_consent: '個人情報同意書',
+  first_visit_document: '初回訪問文書',
+  other: 'その他',
+};
+
+const FIRST_VISIT_DOCUMENT_ACTION_VERBS: Record<string, string> = {
+  generated: '作成',
+  printed: '印刷',
+  recovered: '回収',
+  image_saved: '画像保存',
+  replaced: '差し替え',
+  invalidated: '無効化',
+};
+
+const FIRST_VISIT_DOCUMENT_STORAGE_LABELS: Record<string, string> = {
+  store: '店舗',
+  headquarters: '本部',
+  patient_home_copy_only: '患者宅控えのみ',
+  electronic: '電子保管',
+  unknown: '未確認',
+};
+
+function readFirstVisitDocumentAction(item: OperationHistoryTimelineSource) {
+  if (item.target_type !== 'first_visit_document') return null;
+  if (!item.action.startsWith('first_visit_document.')) return null;
+  const changes = isRecord(item.changes) ? item.changes : {};
+  const documentAction = isRecord(changes.document_action) ? changes.document_action : {};
+  const action =
+    readString(documentAction.action) ?? item.action.replace('first_visit_document.', '');
+  const documentType = readString(documentAction.document_type);
+  const storageLocation = readString(documentAction.storage_location);
+
+  return {
+    action,
+    documentType,
+    documentTypeLabel: documentType
+      ? (FIRST_VISIT_DOCUMENT_TYPE_LABELS[documentType] ?? documentType)
+      : '初回訪問文書',
+    templateName: readString(documentAction.template_name),
+    templateVersion: readString(documentAction.template_version),
+    storageLabel: storageLocation
+      ? (FIRST_VISIT_DOCUMENT_STORAGE_LABELS[storageLocation] ?? storageLocation)
+      : null,
+    reason: readString(documentAction.reason),
+    note: readString(documentAction.note),
+    actorId: item.actor_id,
+    occurredAt: item.created_at,
+  };
+}
+
+function latestFirstVisitDocumentActionByDocumentId(
+  operationHistory: readonly OperationHistoryTimelineSource[],
+) {
+  const byDocumentId = new Map<
+    string,
+    NonNullable<ReturnType<typeof readFirstVisitDocumentAction>>
+  >();
+  for (const item of operationHistory) {
+    const action = readFirstVisitDocumentAction(item);
+    if (!action) continue;
+    const current = byDocumentId.get(item.target_id);
+    if (!current || action.occurredAt.getTime() > current.occurredAt.getTime()) {
+      byDocumentId.set(item.target_id, action);
+    }
+  }
+  return byDocumentId;
+}
+
+function buildOperationHistorySummary(item: OperationHistoryTimelineSource) {
+  const changes = isRecord(item.changes) ? item.changes : {};
+  const documentAction = isRecord(changes.document_action) ? changes.document_action : {};
+  const collection = isRecord(changes.collection) ? changes.collection : {};
+
+  return (
+    compactTimelineValues([
+      readString(documentAction.document_type),
+      readString(documentAction.template_name),
+      readString(documentAction.template_version)
+        ? `版 ${readString(documentAction.template_version)}`
+        : null,
+      readString(documentAction.storage_location),
+      readString(documentAction.reason),
+      readString(changes.payer_name) ? `支払者 ${readString(changes.payer_name)}` : null,
+      readString(changes.payment_method) ? `方法 ${readString(changes.payment_method)}` : null,
+      readString(collection.status) ? `状態 ${readString(collection.status)}` : null,
+      typeof collection.collected_amount === 'number'
+        ? `集金 ${collection.collected_amount.toLocaleString('ja-JP')}円`
+        : null,
+      readString(collection.payer_name) ? `支払者 ${readString(collection.payer_name)}` : null,
+      readString(changes.linked_status) ? `MCS ${readString(changes.linked_status)}` : null,
+      readString(changes.participation_status)
+        ? `参加 ${readString(changes.participation_status)}`
+        : null,
+      readString(changes.reconciliation_result)
+        ? `照合 ${readString(changes.reconciliation_result)}`
+        : null,
+      readString(changes.storage_location) ? `保管 ${readString(changes.storage_location)}` : null,
+      readString(changes.e_prescription_acquired_status)
+        ? `電子処方箋 ${readString(changes.e_prescription_acquired_status)}`
+        : null,
+      readString(changes.dispensing_result_registration)
+        ? `調剤結果 ${readString(changes.dispensing_result_registration)}`
+        : null,
+    ]).join(' / ') || null
+  );
 }
 
 function getCommunicationDirectionLabel(direction: string) {
@@ -282,7 +428,9 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
     firstVisitDocuments,
     conferenceNotes,
     billingCandidates,
+    operationHistory,
   } = input;
+  const firstVisitDocumentActions = latestFirstVisitDocumentActionByDocumentId(operationHistory);
 
   return [
     ...visitSchedules.map((item) => ({
@@ -479,23 +627,39 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
     }),
     ...firstVisitDocuments.map((item) => {
       const isDelivered = Boolean(item.delivered_at);
+      const latestAction = firstVisitDocumentActions.get(item.id) ?? null;
+      const actionVerb = latestAction
+        ? (FIRST_VISIT_DOCUMENT_ACTION_VERBS[latestAction.action] ?? latestAction.action)
+        : isDelivered
+          ? '交付'
+          : '作成';
+      const documentLabel = latestAction?.documentTypeLabel ?? '初回訪問文書';
       return {
         id: `first_visit_document:${item.id}`,
         event_type: 'first_visit_document',
         category: 'document',
-        occurred_at: item.delivered_at ?? item.created_at,
-        title: isDelivered ? '初回訪問文書を交付' : '初回訪問文書を作成',
+        occurred_at: latestAction?.occurredAt ?? item.delivered_at ?? item.created_at,
+        title: `${documentLabel}を${actionVerb}`,
         summary:
           compactTimelineValues([
+            latestAction?.templateName ?? null,
+            latestAction?.templateVersion ? `版 ${latestAction.templateVersion}` : null,
             item.delivered_to,
             isDelivered ? '交付記録あり' : '交付未記録',
+            latestAction?.storageLabel ? `保管 ${latestAction.storageLabel}` : null,
+            latestAction?.reason,
+            latestAction?.note,
           ]).join(' / ') || null,
-        href: item.document_url ?? `/patients/${patientId}`,
-        action_label: item.document_url ? 'PDFを見る' : '患者詳細を開く',
-        status: isDelivered ? 'delivered' : 'created',
-        status_label: isDelivered ? '交付済み' : '作成済み',
-        actor_name: null,
-        metadata: [],
+        href: item.document_url ?? `/patients/${patientId}#patient-documents`,
+        action_label: item.document_url ? 'PDFを見る' : '文書状態を開く',
+        status: latestAction?.action ?? (isDelivered ? 'delivered' : 'created'),
+        status_label: latestAction
+          ? (FIRST_VISIT_DOCUMENT_ACTION_VERBS[latestAction.action] ?? latestAction.action)
+          : isDelivered
+            ? '交付済み'
+            : '作成済み',
+        actor_name: latestAction ? (actorNameMap.get(latestAction.actorId) ?? null) : null,
+        metadata: compactTimelineValues([latestAction?.documentTypeLabel ?? null]),
       };
     }),
     ...conferenceNotes.map((item) => {
@@ -556,6 +720,37 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
         `算定月 ${formatTimelineDate(item.billing_month)}`,
       ]),
     })),
+    ...operationHistory.map((item) => {
+      const meta = OPERATION_ACTION_LABELS[item.action] ?? {
+        title: '患者操作履歴を記録',
+        statusLabel: item.action,
+      };
+      const isBilling = item.action.startsWith('billing_');
+      const isPrescription = item.action.startsWith('prescription_');
+
+      return {
+        id: `operation_history:${item.id}`,
+        event_type: 'operation_history',
+        category: 'document',
+        occurred_at: item.created_at,
+        title: meta.title,
+        summary: buildOperationHistorySummary(item),
+        href: isBilling
+          ? `/billing/candidates?patient_id=${patientId}`
+          : isPrescription
+            ? `/prescriptions/${item.target_id}`
+            : `/patients/${patientId}`,
+        action_label: isBilling
+          ? '請求を開く'
+          : isPrescription
+            ? '処方受付を開く'
+            : '患者詳細を開く',
+        status: item.action,
+        status_label: meta.statusLabel,
+        actor_name: actorNameMap.get(item.actor_id) ?? null,
+        metadata: compactTimelineValues([item.target_type, item.target_id]),
+      };
+    }),
     ...selfReports.map((item) => ({
       id: `self_report:${item.id}`,
       event_type: 'self_report',

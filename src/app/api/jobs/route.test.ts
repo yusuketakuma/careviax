@@ -115,6 +115,10 @@ describe('/api/jobs GET', () => {
           endpoint: '/api/jobs/bulk-export-artifact-cleanup',
         }),
         expect.objectContaining({
+          job_type: 'daily-public-subsidy-expiry',
+          endpoint: '/api/jobs/daily-public-subsidy-expiry',
+        }),
+        expect.objectContaining({
           job_type: 'daily-visit-record-retention',
           endpoint: '/api/jobs/daily-visit-record-retention',
         }),

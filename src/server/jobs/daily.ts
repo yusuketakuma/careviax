@@ -2119,78 +2119,84 @@ export async function checkConsentExpiry() {
   });
 }
 
-export async function checkPublicSubsidyExpiry() {
-  return runJob('public_subsidy_expiry_check', async () => {
-    // valid_until(@db.Date)は UTC 深夜で保存されるため、当日分を取りこぼさないよう
-    // 今日もローカル日付の UTC 深夜で表して比較する(時刻付き now では当日が gte から漏れる)。
-    const today = utcDateFromLocalKey(localDateKey());
-    const in30Days = addUtcDays(today, 30);
+export async function checkPublicSubsidyExpiry(context: JobExecutionContext = {}) {
+  return runJob(
+    'public_subsidy_expiry_check',
+    async () => {
+      // valid_until(@db.Date)は UTC 深夜で保存されるため、当日分を取りこぼさないよう
+      // 今日もローカル日付の UTC 深夜で表して比較する(時刻付き now では当日が gte から漏れる)。
+      const today = utcDateFromLocalKey(localDateKey());
+      const in30Days = addUtcDays(today, 30);
 
-    const expiring = await prisma.patientInsurance.findMany({
-      where: {
-        insurance_type: 'public_subsidy',
-        is_active: true,
-        valid_until: { lte: in30Days, gte: today },
-      },
-      include: {
-        patient: { select: { id: true, name: true } },
-      },
-    });
-
-    const taskSpecs: GeneratedTaskSpec[] = [];
-    let notificationCount = 0;
-
-    for (const insurance of expiring) {
-      if (!insurance.valid_until) continue;
-      const daysUntilExpiry = Math.ceil(
-        (insurance.valid_until.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
-      );
-      const priority = daysUntilExpiry <= 7 ? ('urgent' as const) : ('high' as const);
-      const patientName = insurance.patient?.name ?? '不明';
-
-      const activeCase = await prisma.careCase.findFirst({
+      const expiring = await prisma.patientInsurance.findMany({
         where: {
-          patient_id: insurance.patient_id,
-          status: { notIn: ['discharged', 'terminated'] },
+          ...(context.orgId ? { org_id: context.orgId } : {}),
+          insurance_type: 'public_subsidy',
+          is_active: true,
+          valid_until: { lte: in30Days, gte: today },
         },
-        select: { primary_pharmacist_id: true },
+        include: {
+          patient: { select: { id: true, name: true } },
+        },
       });
-      const pharmacistId = activeCase?.primary_pharmacist_id;
-      if (pharmacistId) {
-        await prisma.notification.create({
-          data: {
+
+      const taskSpecs: GeneratedTaskSpec[] = [];
+      let notificationCount = 0;
+
+      for (const insurance of expiring) {
+        if (!insurance.valid_until) continue;
+        const daysUntilExpiry = Math.ceil(
+          (insurance.valid_until.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+        );
+        const priority = daysUntilExpiry <= 7 ? ('urgent' as const) : ('high' as const);
+        const patientName = insurance.patient?.name ?? '不明';
+
+        const activeCase = await prisma.careCase.findFirst({
+          where: {
             org_id: insurance.org_id,
-            user_id: pharmacistId,
-            type: priority === 'urgent' ? 'urgent' : 'business',
-            title: '公費の有効期限',
-            message: `${patientName} さんの公費受給者証が ${formatDateKey(insurance.valid_until)} に期限切れ。証書の確認が必要です。`,
-            link: `/patients/${insurance.patient_id}`,
-            dedupe_key: `public-subsidy-expiry:${insurance.id}:${daysUntilExpiry <= 7 ? '7' : '30'}`,
+            patient_id: insurance.patient_id,
+            status: { notIn: ['discharged', 'terminated'] },
           },
+          select: { primary_pharmacist_id: true },
         });
-        notificationCount++;
+        const pharmacistId = activeCase?.primary_pharmacist_id;
+        if (pharmacistId) {
+          await prisma.notification.create({
+            data: {
+              org_id: insurance.org_id,
+              user_id: pharmacistId,
+              type: priority === 'urgent' ? 'urgent' : 'business',
+              title: '公費の有効期限',
+              message: `${patientName} さんの公費受給者証が ${formatDateKey(insurance.valid_until)} に期限切れ。証書の確認が必要です。`,
+              link: `/patients/${insurance.patient_id}`,
+              dedupe_key: `public-subsidy-expiry:${insurance.id}:${daysUntilExpiry <= 7 ? '7' : '30'}`,
+            },
+          });
+          notificationCount++;
+        }
+
+        taskSpecs.push({
+          orgId: insurance.org_id,
+          taskType: 'public_subsidy_expiry',
+          dedupeKey: buildPublicSubsidyExpiryTaskKey(insurance.id),
+          title: `公費更新: ${patientName}`,
+          description: `公費受給者証が ${formatDateKey(insurance.valid_until)} に期限切れ`,
+          priority,
+          assignedTo: pharmacistId,
+          dueDate: insurance.valid_until,
+          relatedEntityType: 'patient_insurance',
+          relatedEntityId: insurance.id,
+        });
       }
 
-      taskSpecs.push({
-        orgId: insurance.org_id,
-        taskType: 'public_subsidy_expiry',
-        dedupeKey: buildPublicSubsidyExpiryTaskKey(insurance.id),
-        title: `公費更新: ${patientName}`,
-        description: `公費受給者証が ${formatDateKey(insurance.valid_until)} に期限切れ`,
-        priority,
-        assignedTo: pharmacistId,
-        dueDate: insurance.valid_until,
-        relatedEntityType: 'patient_insurance',
-        relatedEntityId: insurance.id,
+      await syncGeneratedOperationalTasks(taskSpecs, ['public_subsidy_expiry'], {
+        scopeOrgIds: context.orgId ? [context.orgId] : undefined,
       });
-    }
 
-    if (taskSpecs.length > 0) {
-      await syncGeneratedOperationalTasks(taskSpecs, ['public_subsidy_expiry']);
-    }
-
-    return { processedCount: notificationCount };
-  });
+      return { processedCount: notificationCount };
+    },
+    context.orgId,
+  );
 }
 
 export async function trackAllOrgPatientStatuses() {

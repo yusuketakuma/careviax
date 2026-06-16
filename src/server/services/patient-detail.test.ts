@@ -52,9 +52,13 @@ function buildDb<T extends Record<string, unknown> = Record<string, never>>(over
       findFirst: vi.fn(),
       findMany: vi.fn().mockResolvedValue([]),
     },
+    template: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
     visitSchedule: { count: vi.fn().mockResolvedValue(0), findMany: vi.fn().mockResolvedValue([]) },
     visitRecord: { findMany: vi.fn().mockResolvedValue([]) },
     careReport: { findMany: vi.fn().mockResolvedValue([]) },
+    auditLog: { findMany: vi.fn().mockResolvedValue([]) },
     communicationEvent: { findMany: vi.fn().mockResolvedValue([]) },
     patientSelfReport: { findMany: vi.fn().mockResolvedValue([]) },
     externalAccessGrant: { findMany: vi.fn().mockResolvedValue([]) },
@@ -183,6 +187,8 @@ describe('getPatientVisitsData', () => {
       patient: {
         findFirst: vi.fn().mockResolvedValue({
           id: 'patient_1',
+          name: '山田 太郎',
+          name_kana: 'ヤマダ タロウ',
           cases: [{ id: 'case_1' }],
         }),
       },
@@ -625,6 +631,8 @@ describe('getPatientTimelineData', () => {
       patient: {
         findFirst: vi.fn().mockResolvedValue({
           id: 'patient_1',
+          name: '山田 太郎',
+          name_kana: 'ヤマダ タロウ',
           cases: [{ id: 'case_1' }],
         }),
       },
@@ -661,6 +669,22 @@ describe('getPatientTimelineData', () => {
           },
         ]),
       },
+      auditLog: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'audit_1',
+            action: 'billing_payment_profile_updated',
+            target_type: 'Patient',
+            target_id: 'patient_1',
+            actor_id: 'user_2',
+            changes: {
+              payer_name: '山田花子',
+              payment_method: 'bank_transfer',
+            },
+            created_at: new Date('2026-04-05T11:00:00.000Z'),
+          },
+        ]),
+      },
       communicationEvent: {
         findMany: vi.fn().mockResolvedValue([
           {
@@ -694,11 +718,25 @@ describe('getPatientTimelineData', () => {
     });
 
     expect(result?.timeline_events.map((item) => item.id)).toEqual([
+      'operation_history:audit_1',
       'communication:communication_1',
       'visit_schedule:schedule_1',
       'care_report:report_1',
     ]);
-    expect(result?.timeline_events[1]).toMatchObject({
+    expect(result?.timeline_events[0]).toMatchObject({
+      id: 'operation_history:audit_1',
+      event_type: 'operation_history',
+      category: 'document',
+      occurred_at: new Date('2026-04-05T11:00:00.000Z'),
+      title: '支払設定を更新',
+      summary: '支払者 山田花子 / 方法 bank_transfer',
+      href: '/billing/candidates?patient_id=patient_1',
+      action_label: '請求を開く',
+      status: 'billing_payment_profile_updated',
+      status_label: '支払設定',
+      metadata: ['Patient', 'patient_1'],
+    });
+    expect(result?.timeline_events[2]).toMatchObject({
       id: 'visit_schedule:schedule_1',
       event_type: 'visit_schedule',
       category: 'visit',
@@ -711,6 +749,92 @@ describe('getPatientTimelineData', () => {
       status_label: 'confirmed',
       metadata: ['優先度 至急', 'ルート順 2'],
     });
+  });
+
+  it('uses first visit document audit details for document timeline identity', async () => {
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      firstVisitDocument: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'doc_1',
+            document_url: null,
+            delivered_at: null,
+            delivered_to: null,
+            created_at: new Date('2026-04-01T09:00:00.000Z'),
+          },
+        ]),
+      },
+      auditLog: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'audit_doc_1',
+            action: 'first_visit_document.generated',
+            target_type: 'first_visit_document',
+            target_id: 'doc_1',
+            actor_id: 'user_1',
+            changes: {
+              document_action: {
+                action: 'generated',
+                document_type: 'important_matters',
+                template_name: '重要事項説明書 2026年版',
+                template_version: 'v2',
+                storage_location: 'store',
+                note: '患者詳細から作成',
+              },
+            },
+            created_at: new Date('2026-04-02T10:00:00.000Z'),
+          },
+        ]),
+      },
+      user: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'user_1', name: '佐藤 薬剤師' }]),
+      },
+    });
+
+    const result = await getPatientTimelineData(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    expect(result?.timeline_events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'first_visit_document:doc_1',
+          event_type: 'first_visit_document',
+          category: 'document',
+          occurred_at: new Date('2026-04-02T10:00:00.000Z'),
+          title: '重要事項説明書を作成',
+          summary: '重要事項説明書 2026年版 / 版 v2 / 交付未記録 / 保管 店舗 / 患者詳細から作成',
+          href: '/patients/patient_1#patient-documents',
+          action_label: '文書状態を開く',
+          status: 'generated',
+          status_label: '作成',
+          actor_name: '佐藤 薬剤師',
+          metadata: ['重要事項説明書'],
+        }),
+      ]),
+    );
+    expect(db.auditLog.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              target_type: 'first_visit_document',
+              target_id: { in: ['doc_1'] },
+              action: { startsWith: 'first_visit_document.' },
+            }),
+          ]),
+        }),
+      }),
+    );
   });
 
   it('scopes conference notes to patient-level notes or assigned cases', async () => {
@@ -926,8 +1050,75 @@ describe('getPatientDocumentsData', () => {
       patient: {
         findFirst: vi.fn().mockResolvedValue({
           id: 'patient_1',
-          cases: [{ id: 'case_1' }],
+          name: '山田 太郎',
+          name_kana: 'ヤマダ タロウ',
+          birth_date: new Date('1940-01-01T00:00:00.000Z'),
+          phone: '03-0000-0000',
+          medical_insurance_number: null,
+          care_insurance_number: 'CARE123456',
+          residences: [
+            {
+              address: '東京都千代田区1-1-1',
+              facility_id: null,
+              building_id: null,
+              unit_name: null,
+              is_primary: true,
+            },
+          ],
+          contacts: [
+            {
+              name: '山田 花子',
+              phone: '03-1111-1111',
+              is_primary: true,
+              is_emergency_contact: true,
+            },
+          ],
+          insurances: [],
+          cases: [
+            {
+              id: 'case_1',
+              status: 'active',
+              start_date: new Date('2026-04-01T00:00:00.000Z'),
+              primary_pharmacist_id: 'user_1',
+            },
+          ],
         }),
+      },
+      template: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'template_contract',
+            template_type: 'contract_document',
+            name: '居宅療養管理指導契約書 2026年版',
+            version: 2,
+            effective_from: new Date('2026-04-01T00:00:00.000Z'),
+            effective_to: null,
+          },
+          {
+            id: 'template_important',
+            template_type: 'important_matters',
+            name: '重要事項説明書 2026年版',
+            version: 1,
+            effective_from: new Date('2026-04-01T00:00:00.000Z'),
+            effective_to: null,
+          },
+          {
+            id: 'template_privacy',
+            template_type: 'privacy_consent',
+            name: '個人情報同意書 2026年版',
+            version: 1,
+            effective_from: new Date('2026-04-01T00:00:00.000Z'),
+            effective_to: null,
+          },
+          {
+            id: 'template_consent',
+            template_type: 'consent_form',
+            name: '在宅サービス同意書 2026年版',
+            version: 1,
+            effective_from: new Date('2026-04-01T00:00:00.000Z'),
+            effective_to: null,
+          },
+        ]),
       },
       firstVisitDocument: {
         findMany: vi.fn().mockResolvedValue([
@@ -958,6 +1149,28 @@ describe('getPatientDocumentsData', () => {
           },
         ]),
       },
+      auditLog: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'audit_1',
+            actor_id: 'user_1',
+            action: 'first_visit_document.replaced',
+            target_id: 'doc_1',
+            changes: {
+              document_action: {
+                action: 'replaced',
+                document_type: 'contract',
+                template_name: '居宅療養管理指導契約書 2026年版',
+                template_version: 'v1.1',
+                storage_location: 'store',
+                reason: '署名者を長女へ訂正',
+                note: '本人同席',
+              },
+            },
+            created_at: new Date('2026-06-17T00:00:00.000Z'),
+          },
+        ]),
+      },
     });
 
     const result = await getPatientDocumentsData(
@@ -970,6 +1183,34 @@ describe('getPatientDocumentsData', () => {
       },
     );
 
+    expect(result?.patient).toEqual({
+      id: 'patient_1',
+      name: '山田 太郎',
+      name_kana: 'ヤマダ タロウ',
+    });
+    expect(result?.print_readiness).toMatchObject({
+      overall_status: 'ready',
+      missing_required_count: 0,
+      warning_count: 0,
+      template_versions: expect.arrayContaining([
+        expect.objectContaining({
+          document_type: 'contract',
+          label: '契約書',
+          template_id: 'template_contract',
+          template_name: '居宅療養管理指導契約書 2026年版',
+          template_version: 'v2',
+          effective_from: new Date('2026-04-01T00:00:00.000Z'),
+          effective_to: null,
+        }),
+      ]),
+      checks: expect.arrayContaining([
+        expect.objectContaining({
+          key: 'default_templates',
+          completed: true,
+          severity: 'required',
+        }),
+      ]),
+    });
     expect(result?.first_visit_documents[0]?.emergency_contacts).toEqual([
       {
         id: 'contact_1',
@@ -984,6 +1225,134 @@ describe('getPatientDocumentsData', () => {
         is_emergency_contact: true,
       },
     ]);
+    expect(result?.first_visit_documents[0]?.history).toEqual([
+      {
+        id: 'audit_1',
+        action: 'replaced',
+        document_type: 'contract',
+        template_name: '居宅療養管理指導契約書 2026年版',
+        template_version: 'v1.1',
+        storage_location: 'store',
+        reason: '署名者を長女へ訂正',
+        note: '本人同席',
+        actor_id: 'user_1',
+        created_at: new Date('2026-06-17T00:00:00.000Z'),
+      },
+    ]);
+    expect(result?.document_statuses).toEqual(
+      expect.arrayContaining([
+        {
+          document_type: 'contract',
+          label: '契約書',
+          status: 'replaced',
+          status_label: '差替え済み',
+          template_name: '居宅療養管理指導契約書 2026年版',
+          template_version: 'v1.1',
+          storage_location: 'store',
+          latest_action_at: new Date('2026-06-17T00:00:00.000Z'),
+          latest_document_id: 'doc_1',
+          has_file: false,
+          delivered_at: null,
+          alerts: ['契約書の画像/PDFが未保存です'],
+        },
+        {
+          document_type: 'important_matters',
+          label: '重要事項説明書',
+          status: 'not_created',
+          status_label: '未作成',
+          template_name: null,
+          template_version: null,
+          storage_location: null,
+          latest_action_at: null,
+          latest_document_id: null,
+          has_file: false,
+          delivered_at: null,
+          alerts: ['重要事項説明書が未作成です'],
+        },
+      ]),
+    );
+  });
+
+  it('returns blocked print readiness when required contract print data is missing', async () => {
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          name: '山田 太郎',
+          name_kana: 'ヤマダ タロウ',
+          birth_date: new Date('1940-01-01T00:00:00.000Z'),
+          phone: null,
+          medical_insurance_number: null,
+          care_insurance_number: null,
+          residences: [],
+          contacts: [],
+          insurances: [],
+          cases: [
+            {
+              id: 'case_1',
+              status: 'active',
+              start_date: null,
+              primary_pharmacist_id: null,
+            },
+          ],
+        }),
+      },
+      template: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'template_contract',
+            template_type: 'contract_document',
+            name: '居宅療養管理指導契約書 2026年版',
+            version: 1,
+            effective_from: null,
+            effective_to: null,
+          },
+        ]),
+      },
+      firstVisitDocument: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+    });
+
+    const result = await getPatientDocumentsData(
+      db as unknown as Parameters<typeof getPatientDocumentsData>[0],
+      {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        role: 'pharmacist',
+        userId: 'user_1',
+      },
+    );
+
+    expect(result?.print_readiness).toMatchObject({
+      overall_status: 'blocked',
+      missing_required_count: 4,
+      warning_count: 3,
+    });
+    expect(result?.print_readiness.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'primary_residence',
+          completed: false,
+          severity: 'required',
+        }),
+        expect.objectContaining({
+          key: 'contact_channel',
+          completed: false,
+          severity: 'required',
+        }),
+        expect.objectContaining({
+          key: 'care_insurance',
+          completed: false,
+          severity: 'required',
+        }),
+        expect.objectContaining({
+          key: 'default_templates',
+          completed: false,
+          description: '既定テンプレート未設定: 重要事項説明書 / 個人情報同意書 / 同意書',
+        }),
+      ]),
+    );
   });
 
   it('masks first-visit emergency contact channels for external viewers', async () => {
@@ -991,6 +1360,8 @@ describe('getPatientDocumentsData', () => {
       patient: {
         findFirst: vi.fn().mockResolvedValue({
           id: 'patient_1',
+          name: '山田 太郎',
+          name_kana: 'ヤマダ タロウ',
           cases: [{ id: 'case_1' }],
         }),
       },

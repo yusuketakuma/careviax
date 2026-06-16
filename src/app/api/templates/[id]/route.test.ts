@@ -133,6 +133,38 @@ describe('/api/templates/[id]', () => {
     );
   });
 
+  it('updates a template to an important-matters document type', async () => {
+    const response = await PATCH(
+      createRequest({
+        template_type: 'important_matters',
+        name: '重要事項説明書 2026年版',
+        is_default: true,
+      }),
+      { params: Promise.resolve({ id: 'template_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(templateUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          template_type: 'important_matters',
+          id: { not: 'template_1' },
+        }),
+      }),
+    );
+    expect(templateUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          template_type: 'important_matters',
+          name: '重要事項説明書 2026年版',
+          is_default: true,
+        }),
+      }),
+    );
+  });
+
   it('rejects non-object update payloads before loading the template', async () => {
     const response = await PATCH(createRequest([]), {
       params: Promise.resolve({ id: 'template_1' }),
