@@ -90,6 +90,21 @@ export const PATCH = withAuthContext<{ id: string }>(
         });
         if (!canStillAccessScope) return { error: 'not_found' };
 
+        if (parsed.data.document_action?.action === 'printed') {
+          const documentsData = await getPatientDocumentsData(tx, {
+            orgId: ctx.orgId,
+            patientId: existing.patient_id,
+            role: ctx.role,
+            userId: ctx.userId,
+          });
+          if (!documentsData) return { error: 'not_found' };
+
+          const readiness = documentsData.print_readiness;
+          if (readiness.overall_status === 'blocked' || readiness.missing_required_count > 0) {
+            return { error: 'print_blocked', message: buildPrintBlockedMessage(readiness) };
+          }
+        }
+
         if (hasDocumentUpdate) {
           const updateResult = await tx.firstVisitDocument.updateMany({
             where: {
@@ -110,21 +125,6 @@ export const PATCH = withAuthContext<{ id: string }>(
           where: { id },
         });
         if (!document) return { error: 'not_found' };
-
-        if (parsed.data.document_action?.action === 'printed') {
-          const documentsData = await getPatientDocumentsData(tx, {
-            orgId: ctx.orgId,
-            patientId: existing.patient_id,
-            role: ctx.role,
-            userId: ctx.userId,
-          });
-          if (!documentsData) return { error: 'not_found' };
-
-          const readiness = documentsData.print_readiness;
-          if (readiness.overall_status === 'blocked' || readiness.missing_required_count > 0) {
-            return { error: 'print_blocked', message: buildPrintBlockedMessage(readiness) };
-          }
-        }
 
         if (parsed.data.document_action) {
           await tx.auditLog.create({

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildDocumentReceiptRows,
   buildFirstVisitDocumentPrintSummary,
+  buildFirstVisitPrintCopyUrl,
   buildMedicationCalendarDocument,
   buildMedicationLabelCards,
   buildSetInstructionDocument,
@@ -150,6 +151,14 @@ describe('parsePrintDocumentType', () => {
       '薬袋ラベル',
       '契約・同意控え',
     ]);
+  });
+
+  it('初回訪問文書の印刷控えURLを患者・文書ID付きで作る', () => {
+    expect(
+      buildFirstVisitPrintCopyUrl({ patientId: 'patient_1', documentId: 'doc_contract_1' }),
+    ).toBe(
+      '/reports/print?type=first_visit_documents&patient_id=patient_1&document_id=doc_contract_1&copy=1',
+    );
   });
 });
 
@@ -325,7 +334,7 @@ describe('buildFirstVisitDocumentPrintSummary', () => {
     expect(summary.rows).toHaveLength(1);
     expect(summary.rows[0]).toMatchObject({
       deliveredToLabel: '長女 田中花子',
-      documentUrlLabel: 'PDFあり',
+      documentUrlLabel: '控えあり',
       latestActionLabel: '回収',
       latestStorageLabel: '本部',
       latestTemplateLabel: '居宅療養管理指導契約書 v1.1',

@@ -51,6 +51,22 @@ export function printDocumentTypeLabel(key: PrintDocumentTypeKey): string {
   return PRINT_DOCUMENT_TYPES.find((type) => type.key === key)?.label ?? key;
 }
 
+export function buildFirstVisitPrintCopyUrl({
+  patientId,
+  documentId,
+}: {
+  patientId: string;
+  documentId: string;
+}): string {
+  const params = new URLSearchParams({
+    type: 'first_visit_documents',
+    patient_id: patientId,
+    document_id: documentId,
+    copy: '1',
+  });
+  return `/reports/print?${params.toString()}`;
+}
+
 // ─── 出力設定(右カラム) ─────────────────────────────────────────────────────
 
 export type PrintOutputSettings = {
@@ -704,7 +720,7 @@ export function buildFirstVisitDocumentPrintSummary(
           createdAtLabel: formatPrintDate(document.created_at),
           deliveredAtLabel: formatPrintDate(document.delivered_at),
           deliveredToLabel: document.delivered_to ?? '交付先未記録',
-          documentUrlLabel: document.document_url ? 'PDFあり' : 'PDF未登録',
+          documentUrlLabel: document.document_url ? '控えあり' : '控え未登録',
           latestActionLabel: latestAction,
           latestStorageLabel: latestStorage,
           latestTemplateLabel: formatTemplateLabel(latestHistory),

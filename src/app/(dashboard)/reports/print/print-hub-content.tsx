@@ -11,6 +11,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import {
   buildDocumentReceiptRows,
+  buildFirstVisitPrintCopyUrl,
   buildFirstVisitDocumentPrintSummary,
   buildMedicationCalendarDocument,
   buildMedicationLabelCards,
@@ -70,14 +71,22 @@ function pickLatestFirstVisitHistory(document: FirstVisitDocumentForPrint) {
 
 async function recordFirstVisitPrintHistory({
   orgId,
+  patientId,
   documents,
+  saveCopy,
 }: {
   orgId: string;
+  patientId: string | null;
   documents: readonly FirstVisitDocumentForPrint[];
+  saveCopy: boolean;
 }) {
   await Promise.all(
     documents.map(async (document) => {
       const latestHistory = pickLatestFirstVisitHistory(document);
+      const documentUrl =
+        saveCopy && patientId
+          ? buildFirstVisitPrintCopyUrl({ patientId, documentId: document.id })
+          : undefined;
       const res = await fetch(`/api/first-visit-documents/${document.id}`, {
         method: 'PATCH',
         headers: {
@@ -85,13 +94,14 @@ async function recordFirstVisitPrintHistory({
           'x-org-id': orgId,
         },
         body: JSON.stringify({
+          ...(documentUrl ? { document_url: documentUrl } : {}),
           document_action: {
             action: 'printed',
             document_type: latestHistory?.document_type ?? 'first_visit_document',
             template_name: latestHistory?.template_name ?? '契約・同意控え',
             template_version: latestHistory?.template_version ?? 'print-preview',
             storage_location: latestHistory?.storage_location ?? null,
-            note: '印刷ハブから印刷',
+            note: documentUrl ? '印刷ハブから印刷し、控えリンクを保存' : '印刷ハブから印刷',
           },
         }),
       });
@@ -719,7 +729,13 @@ export function PrintHubContent() {
     [firstVisitPrintReadiness],
   );
   const firstVisitPrintHistoryMutation = useMutation({
-    mutationFn: () => recordFirstVisitPrintHistory({ orgId, documents: firstVisitDocuments }),
+    mutationFn: () =>
+      recordFirstVisitPrintHistory({
+        orgId,
+        patientId: explicitPatientId,
+        documents: firstVisitDocuments,
+        saveCopy: settings.saveCopy,
+      }),
     onSuccess: async () => {
       if (explicitPatientId) {
         await queryClient.invalidateQueries({
@@ -906,7 +922,7 @@ export function PrintHubContent() {
           ) : null}
           {settings.saveCopy && (
             <p className="mt-2 text-xs leading-5 text-muted-foreground">
-              控えを残す場合は、印刷ダイアログで「PDFとして保存」を選んでください。
+              印刷後、患者文書にこの印刷プレビューの控えリンクを保存します。紙控えが必要な場合は印刷ダイアログでPDF保存してください。
             </p>
           )}
         </div>

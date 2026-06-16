@@ -238,7 +238,7 @@ export function FirstVisitDocumentsPanel({
                         className={buttonVariants({ variant: 'outline', size: 'sm' })}
                       >
                         <FileDown className="mr-1.5 size-4" aria-hidden="true" />
-                        PDF
+                        控え
                       </Link>
                     ) : null}
                   </div>

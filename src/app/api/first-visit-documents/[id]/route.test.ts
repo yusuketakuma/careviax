@@ -307,6 +307,61 @@ describe('/api/first-visit-documents/[id]', () => {
     });
   });
 
+  it('records print history and saves the print copy URL when requested', async () => {
+    firstVisitDocumentFindUniqueMock.mockResolvedValue({
+      id: 'doc_1',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      emergency_contacts: [],
+      document_url:
+        '/reports/print?type=first_visit_documents&patient_id=patient_1&document_id=doc_1&copy=1',
+      delivered_at: new Date('2026-06-16T00:00:00.000Z'),
+      delivered_to: '山田太郎',
+      created_at: new Date('2026-06-01T00:00:00.000Z'),
+      updated_at: new Date('2026-06-16T00:00:00.000Z'),
+    });
+
+    const response = (await PATCH(
+      createPatchRequest({
+        document_url:
+          '/reports/print?type=first_visit_documents&patient_id=patient_1&document_id=doc_1&copy=1',
+        document_action: {
+          action: 'printed',
+          document_type: 'first_visit_document',
+          template_name: '契約・同意控え',
+          template_version: 'print-preview',
+          note: '印刷ハブから印刷し、控えリンクを保存',
+        },
+      }),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(getPatientDocumentsDataMock).toHaveBeenCalled();
+    expect(firstVisitDocumentUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'doc_1',
+        org_id: 'org_1',
+        updated_at: updatedAt,
+      },
+      data: {
+        document_url:
+          '/reports/print?type=first_visit_documents&patient_id=patient_1&document_id=doc_1&copy=1',
+      },
+    });
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'first_visit_document.printed',
+        changes: expect.objectContaining({
+          next: expect.objectContaining({
+            document_url:
+              '/reports/print?type=first_visit_documents&patient_id=patient_1&document_id=doc_1&copy=1',
+          }),
+        }),
+      }),
+    });
+  });
+
   it('blocks print history when required print-readiness checks are incomplete', async () => {
     getPatientDocumentsDataMock.mockResolvedValue({
       print_readiness: {
@@ -339,6 +394,8 @@ describe('/api/first-visit-documents/[id]', () => {
 
     const response = (await PATCH(
       createPatchRequest({
+        document_url:
+          '/reports/print?type=first_visit_documents&patient_id=patient_1&document_id=doc_1&copy=1',
         document_action: {
           action: 'printed',
           document_type: 'first_visit_document',
