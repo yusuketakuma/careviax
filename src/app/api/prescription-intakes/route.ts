@@ -37,6 +37,7 @@ import {
   readJahisSupplementalRecords,
 } from '@/server/services/jahis-supplemental-records';
 import { broadcastOrgRealtimeEvent } from '@/server/services/org-realtime';
+import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import {
   assessQrPatientIdentity,
   readQrPatientIdentityFromDraftParsedData,
@@ -700,6 +701,10 @@ export const POST = withAuthContext(
         orgId: ctx.orgId,
         type: 'qr_draft_confirmed',
       });
+      await notifyWorkflowMutation({
+        orgId: ctx.orgId,
+        payload: { source: 'prescription_intakes_create' },
+      });
 
       return success(qrResult.intake, 201);
     }
@@ -761,6 +766,11 @@ export const POST = withAuthContext(
         return validationError('他のユーザーによって更新されています。再読み込みしてください');
       }
     }
+
+    await notifyWorkflowMutation({
+      orgId: ctx.orgId,
+      payload: { source: 'prescription_intakes_create' },
+    });
 
     return success(result.intake, 201);
   },

@@ -23,6 +23,7 @@ const {
   careCaseFindFirstMock,
   patientFindFirstMock,
   broadcastOrgRealtimeEventMock,
+  notifyWorkflowMutationMock,
   notifyWebhookEventForOrgMock,
 } = vi.hoisted(() => ({
   withAuthContextMock: vi.fn(
@@ -49,6 +50,7 @@ const {
   careCaseFindFirstMock: vi.fn().mockResolvedValue({ id: 'case_1' }),
   patientFindFirstMock: vi.fn(),
   broadcastOrgRealtimeEventMock: vi.fn().mockResolvedValue(undefined),
+  notifyWorkflowMutationMock: vi.fn().mockResolvedValue(undefined),
   notifyWebhookEventForOrgMock: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -71,6 +73,10 @@ vi.mock('@/server/services/operational-tasks', () => ({
 
 vi.mock('@/server/services/org-realtime', () => ({
   broadcastOrgRealtimeEvent: broadcastOrgRealtimeEventMock,
+}));
+
+vi.mock('@/server/services/workflow-dashboard-cache', () => ({
+  notifyWorkflowMutation: notifyWorkflowMutationMock,
 }));
 
 vi.mock('@/server/services/outbound-webhook', () => ({
@@ -1047,6 +1053,10 @@ describe('/api/prescription-intakes POST', () => {
       orgId: 'org_1',
       type: 'qr_draft_confirmed',
     });
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      payload: { source: 'prescription_intakes_create' },
+    });
     expect(notifyWebhookEventForOrgMock).toHaveBeenCalledWith(
       'org_1',
       'prescription.created',
@@ -1621,6 +1631,10 @@ describe('/api/prescription-intakes POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      payload: { source: 'prescription_intakes_create' },
+    });
     expect(dispenseTaskCreateMock).toHaveBeenCalledWith({
       data: {
         org_id: 'org_1',

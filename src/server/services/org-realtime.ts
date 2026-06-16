@@ -17,6 +17,7 @@ export const WORKFLOW_REALTIME_SOURCES = [
   'facility_visit_batches_upsert',
   'facility_visit_days_upsert',
   'medication_cycles_transition',
+  'prescription_intakes_create',
   'set_audits',
   'set_batches_create',
   'set_batches_delete',
