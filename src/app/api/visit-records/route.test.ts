@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 
 const {
   authMock,
@@ -14,6 +15,7 @@ const {
   visitRecordFindManyMock,
   visitRecordCreateMock,
   visitRecordFindFirstMock,
+  visitRecordUpdateManyMock,
   visitScheduleUpdateMock,
   consentRecordFindFirstMock,
   medicationCycleFindFirstMock,
@@ -56,6 +58,7 @@ const {
   visitRecordFindManyMock: vi.fn(),
   visitRecordCreateMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
+  visitRecordUpdateManyMock: vi.fn(),
   visitScheduleUpdateMock: vi.fn(),
   consentRecordFindFirstMock: vi.fn(),
   medicationCycleFindFirstMock: vi.fn(),
@@ -122,6 +125,7 @@ vi.mock('@/server/services/billing-evidence', () => ({
 
 vi.mock('@/server/services/visit-handoff', () => ({
   processHandoffExtraction: processHandoffExtractionMock,
+  VisitHandoffStaleRecordError: class VisitHandoffStaleRecordError extends Error {},
 }));
 
 import { GET as rawGET, POST as rawPOST } from './route';
@@ -149,6 +153,13 @@ function createMalformedJsonRequest(headers?: Record<string, string>) {
       'content-type': 'application/json',
       ...headers,
     },
+  });
+}
+
+function createUniqueConstraintError() {
+  return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+    code: 'P2002',
+    clientVersion: 'test',
   });
 }
 
@@ -494,6 +505,9 @@ describe('/api/visit-records POST', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    visitRecordFindFirstMock.mockReset();
+    visitRecordCreateMock.mockReset();
+    visitRecordUpdateManyMock.mockReset();
 
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     getRequestAuthContextMock.mockReturnValue({
@@ -538,8 +552,9 @@ describe('/api/visit-records POST', () => {
     });
     visitRecordFindManyMock.mockResolvedValue([{ id: 'record_1' }]);
     listBillingEvidenceBlockersMock.mockResolvedValue([]);
-    visitRecordCreateMock.mockResolvedValue({ id: 'record_1' });
+    visitRecordCreateMock.mockResolvedValue({ id: 'record_1', version: 1 });
     visitRecordFindFirstMock.mockResolvedValue(null);
+    visitRecordUpdateManyMock.mockResolvedValue({ count: 1 });
     residualMedicationFindManyMock.mockResolvedValue([]);
     residualMedicationDeleteManyMock.mockResolvedValue({ count: 0 });
     residualMedicationCreateMock.mockResolvedValue({ id: 'residual_1' });
@@ -581,6 +596,7 @@ describe('/api/visit-records POST', () => {
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        $queryRaw: vi.fn().mockResolvedValue([]),
         visitSchedule: {
           findFirst: visitScheduleFindFirstMock,
           update: visitScheduleUpdateMock,
@@ -598,6 +614,7 @@ describe('/api/visit-records POST', () => {
           create: visitRecordCreateMock,
           findFirst: visitRecordFindFirstMock,
           findMany: visitRecordFindManyMock,
+          updateMany: visitRecordUpdateManyMock,
         },
         residualMedication: {
           findMany: residualMedicationFindManyMock,
@@ -1050,6 +1067,160 @@ describe('/api/visit-records POST', () => {
     expect(visitRecordCreateMock).not.toHaveBeenCalled();
   });
 
+  it('maps concurrent schedule record creation races to an existing-record conflict', async () => {
+    visitRecordCreateMock.mockRejectedValueOnce(createUniqueConstraintError());
+    visitRecordFindFirstMock.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      id: 'record_existing',
+      version: 1,
+      patient_id: 'patient_1',
+      visit_date: new Date('2026-03-26T00:00:00.000Z'),
+      outcome_status: 'completed',
+      soap_subjective: '別端末で保存済み',
+      soap_objective: null,
+      soap_assessment: null,
+      soap_plan: null,
+      next_visit_suggestion_date: null,
+    });
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'completed',
+          structured_soap: completedVisitStructuredSoap,
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        existing_record: {
+          id: 'record_existing',
+        },
+      },
+    });
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects stale previous visit reuse metadata before creating a visit record', async () => {
+    visitRecordFindFirstMock.mockResolvedValueOnce({
+      id: 'previous_visit_1',
+      patient_id: 'patient_1',
+      version: 5,
+      updated_at: new Date('2026-04-02T03:00:00.000Z'),
+      schedule: { case_id: 'case_1' },
+    });
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'completed',
+          structured_soap: {
+            ...completedVisitStructuredSoap,
+            previous_visit_reuse: {
+              source_visit_record_id: 'previous_visit_1',
+              source_visit_record_version: 4,
+              source_visit_record_updated_at: '2026-04-01T03:00:00.000Z',
+              carry_forward_items: ['眠気の継続確認'],
+            },
+          },
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        reason: 'source_version_conflict',
+      },
+    });
+    expect(visitRecordCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects previous visit reuse without source revision metadata before creating a visit record', async () => {
+    visitRecordFindFirstMock.mockResolvedValueOnce({
+      id: 'previous_visit_1',
+      patient_id: 'patient_1',
+      version: 5,
+      updated_at: new Date('2026-04-02T03:00:00.000Z'),
+      schedule: { case_id: 'case_1' },
+    });
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'completed',
+          structured_soap: {
+            ...completedVisitStructuredSoap,
+            previous_visit_reuse: {
+              source_visit_record_id: 'previous_visit_1',
+              carry_forward_items: ['眠気の継続確認'],
+            },
+          },
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        reason: 'source_revision_missing',
+      },
+    });
+    expect(visitRecordCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects calendar-overflow visit and receipt dates before loading the visit schedule', async () => {
+    const visitDateResponse = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-02-30',
+          outcome_status: 'completed',
+          structured_soap: completedVisitStructuredSoap,
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+    const receiptResponse = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'completed',
+          receipt_at: '2026-02-30T10:00',
+          structured_soap: completedVisitStructuredSoap,
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!visitDateResponse || !receiptResponse) throw new Error('response is required');
+    expect(visitDateResponse.status).toBe(400);
+    expect(receiptResponse.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+  });
+
   it('rejects non-object create payloads before loading the visit schedule', async () => {
     const response = await POST(createRequest(['schedule_1'], { 'x-org-id': 'org_1' }));
 
@@ -1256,7 +1427,7 @@ describe('/api/visit-records POST', () => {
         {
           schedule_id: 'schedule_1',
           patient_id: 'patient_1',
-          visit_date: '2026-03-25T15:30:00.000Z',
+          visit_date: '2026-03-26',
           outcome_status: 'completed',
           structured_soap: completedVisitStructuredSoap,
         },
@@ -1563,6 +1734,7 @@ describe('/api/visit-records POST', () => {
         visitRecordId: 'record_1',
         patientId: 'patient_1',
         patientName: '患者A',
+        expectedVersion: 1,
         requestContext: expect.objectContaining({
           userId: 'user_1',
           orgId: 'org_1',

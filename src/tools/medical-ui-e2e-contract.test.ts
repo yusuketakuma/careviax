@@ -48,6 +48,7 @@ describe('medical UI E2E release contract', () => {
     expect(preflight).toContain("'PatientFieldRevision'");
     expect(preflight).toContain("'PatientMedicalProcedure'");
     expect(preflight).toContain("'PatientNarcoticUse'");
+    expect(preflight).toContain("'VisitHandoffExtraction'");
     expect(preflight).toContain("'WebhookDelivery'");
   });
 });

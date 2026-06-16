@@ -4,7 +4,8 @@ import { NextRequest } from 'next/server';
 const {
   requireAuthContextMock,
   visitRecordFindFirstMock,
-  visitRecordUpdateMock,
+  txVisitRecordFindFirstMock,
+  visitRecordUpdateManyMock,
   visitRecordFindManyMock,
   medicationCycleFindManyMock,
   residualMedicationDeleteManyMock,
@@ -22,7 +23,8 @@ const {
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
-  visitRecordUpdateMock: vi.fn(),
+  txVisitRecordFindFirstMock: vi.fn(),
+  visitRecordUpdateManyMock: vi.fn(),
   visitRecordFindManyMock: vi.fn(),
   medicationCycleFindManyMock: vi.fn(),
   residualMedicationDeleteManyMock: vi.fn(),
@@ -108,6 +110,8 @@ function createMalformedJsonRequest() {
 describe('/api/visit-records/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    txVisitRecordFindFirstMock.mockReset();
+    visitRecordUpdateManyMock.mockReset();
     requireAuthContextMock.mockResolvedValue({
       ctx: {
         orgId: 'org_1',
@@ -126,6 +130,32 @@ describe('/api/visit-records/[id]', () => {
     patientLabObservationDeleteManyMock.mockResolvedValue({ count: 1 });
     patientLabObservationCreateManyMock.mockResolvedValue({ count: 1 });
     listBillingEvidenceBlockersMock.mockResolvedValue([]);
+    txVisitRecordFindFirstMock
+      .mockResolvedValueOnce({
+        id: 'visit_1',
+        version: 1,
+        patient_id: 'patient_1',
+        visit_date: new Date('2026-03-28T00:00:00.000Z'),
+        outcome_status: 'delivery_only',
+        structured_soap: null,
+        schedule: {
+          case_id: 'case_1',
+          pharmacist_id: 'user_1',
+          visit_type: 'regular',
+          case_: {
+            primary_pharmacist_id: 'user_primary',
+            backup_pharmacist_id: null,
+            required_visit_support: null,
+          },
+        },
+      })
+      .mockResolvedValue({
+        id: 'visit_1',
+        version: 2,
+        patient_id: 'patient_1',
+        structured_soap: {},
+      });
+    visitRecordUpdateManyMock.mockResolvedValue({ count: 1 });
     toVisitRecordAttachmentMock.mockImplementation((record) => ({
       file_id: record.id,
       file_name: record.originalName,
@@ -137,27 +167,11 @@ describe('/api/visit-records/[id]', () => {
     }));
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        $queryRaw: vi.fn().mockResolvedValue([]),
         visitRecord: {
-          findFirst: vi.fn().mockResolvedValue({
-            id: 'visit_1',
-            version: 1,
-            patient_id: 'patient_1',
-            visit_date: new Date('2026-03-28T00:00:00.000Z'),
-            outcome_status: 'delivery_only',
-            structured_soap: null,
-            schedule: {
-              case_id: 'case_1',
-              pharmacist_id: 'user_1',
-              visit_type: 'regular',
-              case_: {
-                primary_pharmacist_id: 'user_primary',
-                backup_pharmacist_id: null,
-                required_visit_support: null,
-              },
-            },
-          }),
+          findFirst: txVisitRecordFindFirstMock,
           findMany: visitRecordFindManyMock,
-          update: visitRecordUpdateMock,
+          updateMany: visitRecordUpdateManyMock,
         },
         medicationCycle: {
           findMany: medicationCycleFindManyMock,
@@ -319,21 +333,28 @@ describe('/api/visit-records/[id]', () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         visitRecord: {
-          findFirst: vi.fn().mockResolvedValue({
-            id: 'visit_1',
-            version: 1,
-            outcome_status: 'delivery_only',
-            structured_soap: null,
-            schedule: {
-              pharmacist_id: 'user_other',
-              visit_type: 'regular',
-              case_: {
-                primary_pharmacist_id: 'user_primary',
-                backup_pharmacist_id: null,
+          findFirst: vi
+            .fn()
+            .mockResolvedValueOnce({
+              id: 'visit_1',
+              version: 1,
+              patient_id: 'patient_1',
+              visit_date: new Date('2026-03-28T00:00:00.000Z'),
+              outcome_status: 'delivery_only',
+              structured_soap: null,
+              schedule: {
+                case_id: 'case_1',
+                pharmacist_id: 'user_other',
+                visit_type: 'regular',
+                case_: {
+                  primary_pharmacist_id: 'user_primary',
+                  backup_pharmacist_id: null,
+                  required_visit_support: null,
+                },
               },
-            },
-          }),
-          update: visitRecordUpdateMock,
+            })
+            .mockResolvedValue({ id: 'visit_1', version: 2 }),
+          updateMany: visitRecordUpdateManyMock,
         },
         residualMedication: {
           count: vi.fn().mockResolvedValue(0),
@@ -355,12 +376,6 @@ describe('/api/visit-records/[id]', () => {
       completedAt: '2026-03-28T00:00:00.000Z',
       downloadDisposition: 'inline',
     });
-    visitRecordUpdateMock.mockResolvedValue({
-      id: 'visit_1',
-      version: 2,
-      attachments: [],
-    });
-
     const response = await PATCH(
       createRequest({
         version: 1,
@@ -374,7 +389,7 @@ describe('/api/visit-records/[id]', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(getStoredFileRecordMock).toHaveBeenCalled();
-    expect(visitRecordUpdateMock).toHaveBeenCalled();
+    expect(visitRecordUpdateManyMock).toHaveBeenCalled();
   });
 
   it('stores validated attachment metadata on PATCH', async () => {
@@ -393,12 +408,6 @@ describe('/api/visit-records/[id]', () => {
       completedAt: '2026-03-28T00:00:00.000Z',
       downloadDisposition: 'inline',
     });
-    visitRecordUpdateMock.mockResolvedValue({
-      id: 'visit_1',
-      version: 2,
-      attachments: [],
-    });
-
     const response = await PATCH(
       createRequest({
         version: 1,
@@ -411,9 +420,9 @@ describe('/api/visit-records/[id]', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    expect(visitRecordUpdateMock).toHaveBeenCalledWith(
+    expect(visitRecordUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'visit_1' },
+        where: { id: 'visit_1', org_id: 'org_1', version: 1 },
         data: expect.objectContaining({
           attachments: [
             expect.objectContaining({
@@ -426,19 +435,204 @@ describe('/api/visit-records/[id]', () => {
         }),
       }),
     );
-    const savedAttachments = visitRecordUpdateMock.mock.calls[0][0].data.attachments as Array<
+    const savedAttachments = visitRecordUpdateManyMock.mock.calls[0][0].data.attachments as Array<
       Record<string, unknown>
     >;
     expect(savedAttachments[0].legacy_debug).toBeUndefined();
   });
 
-  it('resyncs derived labs and residual medications when structured visit data is patched', async () => {
-    visitRecordUpdateMock.mockResolvedValue({
-      id: 'visit_1',
-      version: 2,
-      structured_soap: {},
-    });
+  it('clears next visit suggestion and receipt timestamp when empty strings are patched', async () => {
+    const response = await PATCH(
+      createRequest({
+        version: 1,
+        next_visit_suggestion_date: '',
+        receipt_at: '',
+      }),
+      {
+        params: Promise.resolve({ id: 'visit_1' }),
+      },
+    );
 
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(visitRecordUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'visit_1', org_id: 'org_1', version: 1 },
+        data: expect.objectContaining({
+          next_visit_suggestion_date: null,
+          receipt_at: null,
+        }),
+      }),
+    );
+  });
+
+  it('rejects calendar-overflow receipt timestamps before loading the visit record', async () => {
+    const response = await PATCH(
+      createRequest({
+        version: 1,
+        receipt_at: '2026-02-30T10:00',
+      }),
+      {
+        params: Promise.resolve({ id: 'visit_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when the visit record update loses the optimistic lock race', async () => {
+    visitRecordUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await PATCH(
+      createRequest({
+        version: 1,
+        soap_subjective: '別タブ更新と競合',
+      }),
+      {
+        params: Promise.resolve({ id: 'visit_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(residualMedicationDeleteManyMock).not.toHaveBeenCalled();
+    expect(patientLabObservationDeleteManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects stale previous-visit reuse metadata before patching structured soap', async () => {
+    txVisitRecordFindFirstMock.mockReset();
+    txVisitRecordFindFirstMock
+      .mockResolvedValueOnce({
+        id: 'visit_1',
+        version: 1,
+        patient_id: 'patient_1',
+        visit_date: new Date('2026-03-28T00:00:00.000Z'),
+        outcome_status: 'delivery_only',
+        structured_soap: null,
+        schedule: {
+          case_id: 'case_1',
+          pharmacist_id: 'user_1',
+          visit_type: 'regular',
+          case_: {
+            primary_pharmacist_id: 'user_primary',
+            backup_pharmacist_id: null,
+            required_visit_support: null,
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        id: 'previous_visit_1',
+        patient_id: 'patient_1',
+        version: 5,
+        updated_at: new Date('2026-04-02T03:00:00.000Z'),
+        schedule: { case_id: 'case_1' },
+      });
+
+    const response = await PATCH(
+      createRequest({
+        version: 1,
+        structured_soap: {
+          subjective: { symptom_checks: [] },
+          objective: {
+            medication_status: 'full_compliance',
+            adherence_score: 4,
+            side_effect_checks: [],
+          },
+          assessment: { problem_checks: [] },
+          plan: { intervention_checks: [] },
+          previous_visit_reuse: {
+            source_visit_record_id: 'previous_visit_1',
+            source_visit_record_version: 4,
+            source_visit_record_updated_at: '2026-04-01T03:00:00.000Z',
+            carry_forward_items: ['眠気の継続確認'],
+          },
+        },
+      }),
+      {
+        params: Promise.resolve({ id: 'visit_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        reason: 'source_version_conflict',
+      },
+    });
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(patientLabObservationDeleteManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects previous-visit reuse without source revision metadata before patching structured soap', async () => {
+    txVisitRecordFindFirstMock.mockReset();
+    txVisitRecordFindFirstMock
+      .mockResolvedValueOnce({
+        id: 'visit_1',
+        version: 1,
+        patient_id: 'patient_1',
+        visit_date: new Date('2026-03-28T00:00:00.000Z'),
+        outcome_status: 'delivery_only',
+        structured_soap: null,
+        schedule: {
+          case_id: 'case_1',
+          pharmacist_id: 'user_1',
+          visit_type: 'regular',
+          case_: {
+            primary_pharmacist_id: 'user_primary',
+            backup_pharmacist_id: null,
+            required_visit_support: null,
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        id: 'previous_visit_1',
+        patient_id: 'patient_1',
+        version: 5,
+        updated_at: new Date('2026-04-02T03:00:00.000Z'),
+        schedule: { case_id: 'case_1' },
+      });
+
+    const response = await PATCH(
+      createRequest({
+        version: 1,
+        structured_soap: {
+          subjective: { symptom_checks: [] },
+          objective: {
+            medication_status: 'full_compliance',
+            adherence_score: 4,
+            side_effect_checks: [],
+          },
+          assessment: { problem_checks: [] },
+          plan: { intervention_checks: [] },
+          previous_visit_reuse: {
+            source_visit_record_id: 'previous_visit_1',
+            carry_forward_items: ['眠気の継続確認'],
+          },
+        },
+      }),
+      {
+        params: Promise.resolve({ id: 'visit_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        reason: 'source_revision_missing',
+      },
+    });
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(patientLabObservationDeleteManyMock).not.toHaveBeenCalled();
+  });
+
+  it('resyncs derived labs and residual medications when structured visit data is patched', async () => {
     const response = await PATCH(
       createRequest({
         version: 1,
@@ -520,7 +714,7 @@ describe('/api/visit-records/[id]', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(visitRecordUpdateMock).not.toHaveBeenCalled();
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects create-only carry-item acknowledgement on PATCH before updating', async () => {
@@ -541,7 +735,7 @@ describe('/api/visit-records/[id]', () => {
       message: '持参物警告確認は訪問記録作成時のみ指定できます',
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(visitRecordUpdateMock).not.toHaveBeenCalled();
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object patch payloads before loading the visit record', async () => {
@@ -557,7 +751,7 @@ describe('/api/visit-records/[id]', () => {
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(getStoredFileRecordMock).not.toHaveBeenCalled();
-    expect(visitRecordUpdateMock).not.toHaveBeenCalled();
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank visit record ids before loading or updating the visit record', async () => {
@@ -579,7 +773,7 @@ describe('/api/visit-records/[id]', () => {
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(getStoredFileRecordMock).not.toHaveBeenCalled();
-    expect(visitRecordUpdateMock).not.toHaveBeenCalled();
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects malformed JSON patch payloads before loading the visit record', async () => {
@@ -595,7 +789,7 @@ describe('/api/visit-records/[id]', () => {
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(getStoredFileRecordMock).not.toHaveBeenCalled();
-    expect(visitRecordUpdateMock).not.toHaveBeenCalled();
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects completing a visit record update without medication-management readiness evidence', async () => {
@@ -619,7 +813,7 @@ describe('/api/visit-records/[id]', () => {
         home_visit_2026_readiness: expect.arrayContaining(['残薬確認']),
       },
     });
-    expect(visitRecordUpdateMock).not.toHaveBeenCalled();
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('includes baseline_context with care_level, adl_level, dementia_level from intake data', async () => {
@@ -735,6 +929,6 @@ describe('/api/visit-records/[id]', () => {
       code: 'VALIDATION_ERROR',
       message: '添付ファイルの訪問記録IDが一致しません',
     });
-    expect(visitRecordUpdateMock).not.toHaveBeenCalled();
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
   });
 });

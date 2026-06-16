@@ -162,6 +162,13 @@ CREATE POLICY tenant_isolation ON "VisitPreparation"
   USING (org_id = current_setting('app.current_org_id', true))
   WITH CHECK (org_id = current_setting('app.current_org_id', true));
 
+ALTER TABLE "VisitHandoffExtraction" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "VisitHandoffExtraction";
+CREATE POLICY tenant_isolation ON "VisitHandoffExtraction"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+ALTER TABLE "VisitHandoffExtraction" FORCE ROW LEVEL SECURITY;
+
 ALTER TABLE "VisitVehicleResource" ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS tenant_isolation ON "VisitVehicleResource";
 CREATE POLICY tenant_isolation ON "VisitVehicleResource"
@@ -517,6 +524,7 @@ ALTER TABLE "VisitSchedule" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "FacilityVisitBatch" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "VisitRecord" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "VisitPreparation" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "VisitHandoffExtraction" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "CommunicationEvent" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "CommunicationRequest" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "CommunicationResponse" FORCE ROW LEVEL SECURITY;

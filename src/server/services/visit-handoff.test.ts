@@ -56,8 +56,12 @@ describe('processHandoffExtraction', () => {
 
     const visitRecordFindUniqueOrThrowMock = vi.fn().mockResolvedValue({
       structured_soap: baseSoap,
+      schedule_id: 'schedule-1',
+      version: 2,
+      updated_at: new Date('2026-04-01T01:00:00Z'),
     });
-    const visitRecordUpdateMock = vi.fn().mockResolvedValue({});
+    const visitRecordUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    const visitHandoffExtractionUpsertMock = vi.fn().mockResolvedValue({});
     upsertOperationalTaskMock.mockResolvedValue({ id: 'task-1' });
 
     withOrgContextMock.mockImplementation(
@@ -65,7 +69,10 @@ describe('processHandoffExtraction', () => {
         const tx = {
           visitRecord: {
             findUniqueOrThrow: visitRecordFindUniqueOrThrowMock,
-            update: visitRecordUpdateMock,
+            updateMany: visitRecordUpdateManyMock,
+          },
+          visitHandoffExtraction: {
+            upsert: visitHandoffExtractionUpsertMock,
           },
         };
         return fn(tx);
@@ -87,8 +94,8 @@ describe('processHandoffExtraction', () => {
     expect(result.next_check_items).toEqual(['血圧確認']);
     expect(result.ai_extracted).toBe(true);
     expect(result.ai_confidence).toBe(0.85);
-    expect(visitRecordUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'vr-1' },
+    expect(visitRecordUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'vr-1', version: 2 },
       data: {
         structured_soap: expect.objectContaining({
           ...baseSoap,
@@ -105,6 +112,27 @@ describe('processHandoffExtraction', () => {
         }),
       },
     });
+    expect(visitHandoffExtractionUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          visit_record_id: 'vr-1',
+          schedule_id: 'schedule-1',
+          source_visit_record_version: 2,
+          source_visit_record_updated_at: new Date('2026-04-01T01:00:00Z'),
+          status: 'extracting',
+          retry_count: 0,
+          retryable: false,
+        }),
+      }),
+    );
+    expect(visitHandoffExtractionUpsertMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          status: 'succeeded',
+          retryable: false,
+        }),
+      }),
+    );
 
     // Verify the task was upserted
     expect(upsertOperationalTaskMock).toHaveBeenCalledOnce();
@@ -125,8 +153,12 @@ describe('processHandoffExtraction', () => {
 
     const visitRecordFindUniqueOrThrowMock = vi.fn().mockResolvedValue({
       structured_soap: ['unexpected'],
+      schedule_id: 'schedule-1',
+      version: 2,
+      updated_at: new Date('2026-04-01T01:00:00Z'),
     });
-    const visitRecordUpdateMock = vi.fn().mockResolvedValue({});
+    const visitRecordUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    const visitHandoffExtractionUpsertMock = vi.fn().mockResolvedValue({});
     upsertOperationalTaskMock.mockResolvedValue({ id: 'task-1' });
 
     withOrgContextMock.mockImplementation(
@@ -134,7 +166,10 @@ describe('processHandoffExtraction', () => {
         const tx = {
           visitRecord: {
             findUniqueOrThrow: visitRecordFindUniqueOrThrowMock,
-            update: visitRecordUpdateMock,
+            updateMany: visitRecordUpdateManyMock,
+          },
+          visitHandoffExtraction: {
+            upsert: visitHandoffExtractionUpsertMock,
           },
         };
         return fn(tx);
@@ -152,16 +187,131 @@ describe('processHandoffExtraction', () => {
       soapPlan: '継続処方',
     });
 
-    expect(visitRecordUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'vr-1' },
+    expect(visitRecordUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'vr-1', version: 2 },
       data: {
-        structured_soap: {
+        structured_soap: expect.objectContaining({
           handoff: expect.objectContaining({
             next_check_items: ['血圧確認'],
           }),
-        },
+        }),
       },
     });
+    expect(visitHandoffExtractionUpsertMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          status: 'succeeded',
+          retryable: false,
+        }),
+      }),
+    );
+  });
+
+  it('persists a retryable failed extraction state without touching VisitRecord when AI extraction fails', async () => {
+    extractHandoffFromSoapMock.mockRejectedValue(new Error('model timeout'));
+
+    const visitRecordFindUniqueOrThrowMock = vi.fn().mockResolvedValue({
+      structured_soap: baseSoap,
+      schedule_id: 'schedule-1',
+      version: 2,
+      updated_at: new Date('2026-04-01T01:00:00Z'),
+    });
+    const visitRecordUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    const visitHandoffExtractionUpsertMock = vi.fn().mockResolvedValue({});
+
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          visitRecord: {
+            findUniqueOrThrow: visitRecordFindUniqueOrThrowMock,
+            updateMany: visitRecordUpdateManyMock,
+          },
+          visitHandoffExtraction: {
+            upsert: visitHandoffExtractionUpsertMock,
+          },
+        };
+        return fn(tx);
+      },
+    );
+
+    const db = {} as Parameters<typeof processHandoffExtraction>[0];
+    await expect(
+      processHandoffExtraction(db, {
+        orgId: 'org-1',
+        visitRecordId: 'vr-1',
+        patientId: 'p-1',
+        patientName: '田中太郎',
+        structuredSoap: baseSoap,
+        soapAssessment: '状態安定',
+        soapPlan: '継続処方',
+        expectedVersion: 2,
+      }),
+    ).rejects.toThrow('model timeout');
+
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitHandoffExtractionUpsertMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          status: 'failed',
+          retry_count: { increment: 1 },
+          error_message: 'model timeout',
+          retryable: true,
+        }),
+      }),
+    );
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+
+  it('does not persist or enqueue confirmation when the visit record changed after extraction started', async () => {
+    extractHandoffFromSoapMock.mockResolvedValue({
+      next_check_items: ['血圧確認'],
+      ongoing_monitoring: ['残薬管理'],
+      decision_rationale: '急変リスクあり',
+      confidence: 0.85,
+      extracted_at: '2026-04-01T00:00:00Z',
+    });
+
+    const visitRecordFindUniqueOrThrowMock = vi.fn().mockResolvedValue({
+      structured_soap: baseSoap,
+      schedule_id: 'schedule-1',
+      version: 3,
+      updated_at: new Date('2026-04-01T01:00:00Z'),
+    });
+    const visitRecordUpdateManyMock = vi.fn().mockResolvedValue({ count: 0 });
+    const visitHandoffExtractionUpsertMock = vi.fn().mockResolvedValue({});
+
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) => {
+        const tx = {
+          visitRecord: {
+            findUniqueOrThrow: visitRecordFindUniqueOrThrowMock,
+            updateMany: visitRecordUpdateManyMock,
+          },
+          visitHandoffExtraction: {
+            upsert: visitHandoffExtractionUpsertMock,
+          },
+        };
+        return fn(tx);
+      },
+    );
+
+    const db = {} as Parameters<typeof processHandoffExtraction>[0];
+    await expect(
+      processHandoffExtraction(db, {
+        orgId: 'org-1',
+        visitRecordId: 'vr-1',
+        patientId: 'p-1',
+        patientName: '田中太郎',
+        structuredSoap: baseSoap,
+        soapAssessment: '状態安定',
+        soapPlan: '継続処方',
+        expectedVersion: 2,
+      }),
+    ).rejects.toThrow('changed before handoff extraction');
+
+    expect(visitRecordUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitHandoffExtractionUpsertMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 });
 

@@ -17,6 +17,14 @@ const patientStructuredCareMigration = readFileSync(
   'prisma/migrations/20260616140000_add_patient_structured_care/migration.sql',
   'utf8',
 );
+const visitScheduleProposalBatchMigration = readFileSync(
+  'prisma/migrations/20260617040500_add_visit_schedule_proposal_batch/migration.sql',
+  'utf8',
+);
+const visitHandoffExtractionMigration = readFileSync(
+  'prisma/migrations/20260617051000_add_visit_handoff_extraction_status/migration.sql',
+  'utf8',
+);
 const rlsPolicySsot = readFileSync('prisma/rls-policies.sql', 'utf8');
 
 describe('RLS policy contract for billing and PCA rental domains', () => {
@@ -28,12 +36,18 @@ describe('RLS policy contract for billing and PCA rental domains', () => {
     'PatientFieldRevision',
     'PatientMedicalProcedure',
     'PatientNarcoticUse',
+    'VisitScheduleProposalBatch',
+    'VisitHandoffExtraction',
   ])('enforces app RLS context for %s in the hardening migration', (tableName) => {
     const source =
       tableName === 'PcaPumpMaintenanceEvent'
         ? maintenanceEventMigration
         : tableName === 'PatientFieldRevision'
           ? patientFieldRevisionMigration
+          : tableName === 'VisitHandoffExtraction'
+            ? visitHandoffExtractionMigration
+          : tableName === 'VisitScheduleProposalBatch'
+            ? visitScheduleProposalBatchMigration
           : tableName === 'PatientMedicalProcedure' || tableName === 'PatientNarcoticUse'
             ? patientStructuredCareMigration
             : hardenedRlsMigration;
@@ -50,6 +64,8 @@ describe('RLS policy contract for billing and PCA rental domains', () => {
     'PatientFieldRevision',
     'PatientMedicalProcedure',
     'PatientNarcoticUse',
+    'VisitScheduleProposalBatch',
+    'VisitHandoffExtraction',
   ])('keeps %s in the RLS SSOT file', (tableName) => {
     expect(rlsPolicySsot).toContain(`ALTER TABLE "${tableName}" ENABLE ROW LEVEL SECURITY`);
     expect(rlsPolicySsot).toContain(`DROP POLICY IF EXISTS tenant_isolation ON "${tableName}"`);

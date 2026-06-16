@@ -433,6 +433,16 @@ describe('/api/visit-schedule-proposals/reorder PATCH', () => {
     await expect(response.json()).resolves.toMatchObject({
       message: 'route_order は重複できません',
     });
+    expect(scheduleFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        pharmacist_id: 'pharmacist_1',
+        scheduled_date: new Date('2026-04-03'),
+        route_order: { in: [1] },
+        schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+      },
+      select: { id: true },
+    });
     expect(proposalUpdateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });

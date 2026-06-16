@@ -81,6 +81,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     select: { id: true, structured_soap: true },
   });
   if (!record) return notFound('訪問記録が見つかりません');
+  const handoffExtraction = await prisma.visitHandoffExtraction.findUnique({
+    where: { visit_record_id: id },
+    select: {
+      status: true,
+      retry_count: true,
+      last_attempted_at: true,
+      last_succeeded_at: true,
+      last_failed_at: true,
+      error_message: true,
+      retryable: true,
+      source_visit_record_version: true,
+      source_visit_record_updated_at: true,
+    },
+  });
 
   const structuredSoap =
     record.structured_soap &&
@@ -89,11 +103,26 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       ? (record.structured_soap as StructuredSoap)
       : null;
   const handoff = structuredSoap?.handoff ?? null;
-  if (!handoff) {
+  const extraction = handoffExtraction
+    ? {
+        status: handoffExtraction.status,
+        retry_count: handoffExtraction.retry_count,
+        last_attempted_at: handoffExtraction.last_attempted_at?.toISOString() ?? null,
+        last_succeeded_at: handoffExtraction.last_succeeded_at?.toISOString() ?? null,
+        last_failed_at: handoffExtraction.last_failed_at?.toISOString() ?? null,
+        error_message: handoffExtraction.error_message,
+        retryable: handoffExtraction.retryable,
+        source_visit_record_version: handoffExtraction.source_visit_record_version,
+        source_visit_record_updated_at:
+          handoffExtraction.source_visit_record_updated_at.toISOString(),
+      }
+    : null;
+  if (!handoff && !extraction) {
     return notFound('引継ぎデータが見つかりません');
   }
 
   return success({
     data: handoff,
+    extraction,
   });
 }

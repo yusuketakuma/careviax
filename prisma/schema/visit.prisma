@@ -142,6 +142,7 @@ model VisitSchedule {
   updated_at                    DateTime              @updatedAt
 
   visit_record          VisitRecord?
+  handoff_extraction    VisitHandoffExtraction?
   preparation           VisitPreparation?
   proposal_finalization VisitScheduleProposal?    @relation("ProposalFinalizedSchedule")
   reschedule_proposals  VisitScheduleProposal[]   @relation("ProposalRescheduleSource")
@@ -212,10 +213,35 @@ model VisitRecord {
   created_at                 DateTime      @default(now())
   updated_at                 DateTime      @updatedAt
 
+  handoff_extraction VisitHandoffExtraction?
+
   @@index([org_id])
   @@index([patient_id])
   @@index([visit_date])
   @@index([schedule_id])
+}
+
+model VisitHandoffExtraction {
+  id                             String        @id @default(cuid())
+  org_id                         String
+  visit_record_id                String        @unique
+  visit_record                   VisitRecord   @relation(fields: [visit_record_id], references: [id], onDelete: Cascade)
+  schedule_id                    String        @unique
+  schedule                       VisitSchedule @relation(fields: [schedule_id], references: [id], onDelete: Cascade)
+  source_visit_record_version    Int
+  source_visit_record_updated_at DateTime
+  status                         String
+  retry_count                    Int           @default(0)
+  last_attempted_at              DateTime?
+  last_succeeded_at              DateTime?
+  last_failed_at                 DateTime?
+  error_message                  String?
+  retryable                      Boolean       @default(false)
+  created_at                     DateTime      @default(now())
+  updated_at                     DateTime      @updatedAt
+
+  @@index([org_id])
+  @@index([status])
 }
 
 model VisitPreparation {
@@ -240,29 +266,31 @@ model VisitPreparation {
 }
 
 model VisitScheduleProposal {
-  id                            String                    @id @default(cuid())
+  id                            String                      @id @default(cuid())
   org_id                        String
+  proposal_batch_id             String?
+  proposal_batch                VisitScheduleProposalBatch? @relation(fields: [proposal_batch_id], references: [id])
   cycle_id                      String?
-  cycle                         MedicationCycle?          @relation(fields: [cycle_id], references: [id])
+  cycle                         MedicationCycle?            @relation(fields: [cycle_id], references: [id])
   case_id                       String
-  case_                         CareCase                  @relation(fields: [case_id], references: [id])
+  case_                         CareCase                    @relation(fields: [case_id], references: [id])
   site_id                       String?
-  site                          PharmacySite?             @relation(fields: [site_id], references: [id])
+  site                          PharmacySite?               @relation(fields: [site_id], references: [id])
   visit_type                    VisitType
-  priority                      VisitPriority             @default(normal)
-  proposal_status               VisitProposalStatus       @default(proposed)
-  patient_contact_status        PatientContactStatus      @default(pending)
-  proposed_date                 DateTime                  @db.Date
-  time_window_start             DateTime?                 @db.Time()
-  time_window_end               DateTime?                 @db.Time()
+  priority                      VisitPriority               @default(normal)
+  proposal_status               VisitProposalStatus         @default(proposed)
+  patient_contact_status        PatientContactStatus        @default(pending)
+  proposed_date                 DateTime                    @db.Date
+  time_window_start             DateTime?                   @db.Time()
+  time_window_end               DateTime?                   @db.Time()
   proposed_pharmacist_id        String
-  assignment_mode               VisitAssignmentMode       @default(primary)
+  assignment_mode               VisitAssignmentMode         @default(primary)
   route_order                   Int?
   route_distance_score          Float?
   vehicle_resource_id           String?
-  vehicle_resource              VisitVehicleResource?     @relation("VisitScheduleProposalVehicleResource", fields: [vehicle_resource_id, org_id], references: [id, org_id])
-  medication_end_date           DateTime?                 @db.Date
-  visit_deadline_date           DateTime?                 @db.Date
+  vehicle_resource              VisitVehicleResource?       @relation("VisitScheduleProposalVehicleResource", fields: [vehicle_resource_id, org_id], references: [id, org_id])
+  medication_end_date           DateTime?                   @db.Date
+  visit_deadline_date           DateTime?                   @db.Date
   proposal_reason               String?
   reject_reason                 String?
   suggested_recurrence_rule     String?
@@ -272,19 +300,39 @@ model VisitScheduleProposal {
   patient_contacted_at          DateTime?
   confirmed_by                  String?
   confirmed_at                  DateTime?
-  finalized_schedule_id         String?                   @unique
-  finalized_schedule            VisitSchedule?            @relation("ProposalFinalizedSchedule", fields: [finalized_schedule_id], references: [id])
+  finalized_schedule_id         String?                     @unique
+  finalized_schedule            VisitSchedule?              @relation("ProposalFinalizedSchedule", fields: [finalized_schedule_id], references: [id])
   reschedule_source_schedule_id String?
-  reschedule_source_schedule    VisitSchedule?            @relation("ProposalRescheduleSource", fields: [reschedule_source_schedule_id], references: [id])
+  reschedule_source_schedule    VisitSchedule?              @relation("ProposalRescheduleSource", fields: [reschedule_source_schedule_id], references: [id])
   contact_logs                  VisitScheduleContactLog[]
-  created_at                    DateTime                  @default(now())
-  updated_at                    DateTime                  @updatedAt
+  created_at                    DateTime                    @default(now())
+  updated_at                    DateTime                    @updatedAt
 
   @@index([org_id, proposal_status])
   @@index([case_id, proposed_date])
   @@index([site_id, proposed_date])
   @@index([org_id, vehicle_resource_id])
+  @@index([proposal_batch_id])
   @@index([org_id, proposed_pharmacist_id, proposed_date, route_order], map: "VisitScheduleProposal_route_cell_order_idx")
+}
+
+model VisitScheduleProposalBatch {
+  id                  String       @id @default(cuid())
+  org_id              String
+  org                 Organization @relation(fields: [org_id], references: [id])
+  case_id             String
+  idempotency_key     String
+  request_fingerprint String
+  created_by          String
+  created_at          DateTime     @default(now())
+  updated_at          DateTime     @updatedAt
+
+  proposals      VisitScheduleProposal[]
+  pharmacySite   PharmacySite?           @relation(fields: [pharmacySiteId], references: [id])
+  pharmacySiteId String?
+
+  @@unique([org_id, idempotency_key])
+  @@index([org_id, case_id])
 }
 
 model VisitScheduleContactLog {

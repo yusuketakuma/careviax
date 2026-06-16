@@ -776,8 +776,15 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    expect(proposalUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'proposal_1' },
+    expect(proposalUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'proposal_1',
+        org_id: 'org_1',
+        proposal_status: {
+          in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+        },
+        finalized_schedule_id: null,
+      },
       data: {
         proposal_status: 'rejected',
         reject_reason: null,
@@ -954,8 +961,13 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         note: '了承済み',
       }),
     });
-    expect(proposalUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'proposal_1' },
+    expect(proposalUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'proposal_1',
+        org_id: 'org_1',
+        proposal_status: 'patient_contact_pending',
+        finalized_schedule_id: null,
+      },
       data: expect.objectContaining({
         proposal_status: 'patient_contact_pending',
         patient_contact_status: 'confirmed',
@@ -986,8 +998,13 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    expect(proposalUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'proposal_1' },
+    expect(proposalUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'proposal_1',
+        org_id: 'org_1',
+        proposal_status: 'patient_contact_pending',
+        finalized_schedule_id: null,
+      },
       data: expect.objectContaining({
         proposal_status: 'rejected',
         patient_contact_status: 'change_requested',
@@ -1082,6 +1099,40 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     );
   });
 
+  it('returns conflict when a stale contact attempt loses the proposal state claim', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'pending',
+      }),
+    );
+    proposalUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await PATCH(
+      createRequest(
+        {
+          action: 'contact_attempt',
+          outcome: 'confirmed',
+          contact_method: 'phone',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'proposal_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'この候補はすでに確定または変更されています。再読み込みしてください',
+    });
+    expect(contactLogCreateMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('does not stamp patient contact metadata when rejecting before outreach starts', async () => {
     proposalFindFirstMock.mockResolvedValue(
       buildProposal({
@@ -1105,8 +1156,15 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    expect(proposalUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'proposal_1' },
+    expect(proposalUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'proposal_1',
+        org_id: 'org_1',
+        proposal_status: {
+          in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+        },
+        finalized_schedule_id: null,
+      },
       data: {
         proposal_status: 'rejected',
         reject_reason: '東京都港区2-2-2 090-1234-5678 アムロジピン 処方詳細',
@@ -1132,6 +1190,88 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     expect(auditPayload).not.toContain('090-1234-5678');
     expect(auditPayload).not.toContain('アムロジピン');
     expect(auditPayload).not.toContain('処方詳細');
+  });
+
+  it('claims proposal approval state before writing approval audit logs', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'proposed',
+        patient_contact_status: 'pending',
+      }),
+    );
+
+    const response = await PATCH(createRequest({ action: 'approve' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(proposalUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'proposal_1',
+        org_id: 'org_1',
+        proposal_status: { in: ['proposed', 'reschedule_pending'] },
+        finalized_schedule_id: null,
+      },
+      data: expect.objectContaining({
+        proposal_status: 'patient_contact_pending',
+        approved_by: 'user_1',
+      }),
+    });
+    expect(proposalUpdateManyMock.mock.calls[0][0].data.approved_at).toBeInstanceOf(Date);
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'visit_schedule_proposal_approved',
+        target_type: 'VisitScheduleProposal',
+      }),
+    });
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns conflict when approval loses the state claim race', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'proposed',
+        patient_contact_status: 'pending',
+      }),
+    );
+    proposalUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await PATCH(createRequest({ action: 'approve' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'この候補はすでに確定または変更されています。再読み込みしてください',
+    });
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns conflict when rejection loses the state claim race', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+      }),
+    );
+    proposalUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await PATCH(createRequest({ action: 'reject' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'この候補はすでに確定または変更されています。再読み込みしてください',
+    });
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('finalizes the proposal into a confirmed visit and supersedes sibling drafts', async () => {
@@ -1213,6 +1353,81 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     });
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+  });
+
+  it('creates the visit from the transaction-time proposal snapshot after the confirmation claim', async () => {
+    const outerSnapshot = buildProposal({
+      proposal_status: 'patient_contact_pending',
+      patient_contact_status: 'confirmed',
+      proposed_date: new Date('2026-03-27T00:00:00.000Z'),
+      proposed_pharmacist_id: 'pharmacist_old',
+      time_window_start: new Date('1970-01-01T09:00:00.000Z'),
+      time_window_end: new Date('1970-01-01T10:00:00.000Z'),
+      route_order: 1,
+    });
+    const transactionSnapshot = buildProposal({
+      proposal_status: 'patient_contact_pending',
+      patient_contact_status: 'confirmed',
+      proposed_date: new Date('2026-03-29T00:00:00.000Z'),
+      proposed_pharmacist_id: 'pharmacist_latest',
+      time_window_start: new Date('1970-01-01T13:00:00.000Z'),
+      time_window_end: new Date('1970-01-01T14:00:00.000Z'),
+      priority: 'urgent',
+      assignment_mode: 'fallback',
+      route_order: 3,
+    });
+    proposalFindFirstMock
+      .mockResolvedValueOnce(outerSnapshot)
+      .mockResolvedValueOnce(transactionSnapshot)
+      .mockResolvedValueOnce(transactionSnapshot);
+    proposalUpdateMock.mockResolvedValueOnce(
+      buildProposal({
+        ...transactionSnapshot,
+        proposal_status: 'confirmed',
+        finalized_schedule_id: 'schedule_1',
+      }),
+    );
+
+    const response = await PATCH(createRequest({ action: 'confirm' }, { 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ id: 'proposal_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(evaluateVisitWorkflowGateMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        caseId: 'case_1',
+        asOf: new Date('2026-03-29T00:00:00.000Z'),
+      }),
+    );
+    expect(pharmacistShiftFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        user_id: 'pharmacist_latest',
+        date: new Date('2026-03-29T00:00:00.000Z'),
+      },
+      select: {
+        site_id: true,
+        available: true,
+        available_from: true,
+        available_to: true,
+      },
+    });
+    expect(scheduleCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        scheduled_date: new Date('2026-03-29T00:00:00.000Z'),
+        time_window_start: new Date('1970-01-01T13:00:00.000Z'),
+        time_window_end: new Date('1970-01-01T14:00:00.000Z'),
+        pharmacist_id: 'pharmacist_latest',
+        priority: 'urgent',
+        assignment_mode: 'fallback',
+      }),
+    });
+    expect(scheduleCreateMock.mock.calls[0]?.[0]?.data).not.toMatchObject({
+      scheduled_date: new Date('2026-03-27T00:00:00.000Z'),
+      pharmacist_id: 'pharmacist_old',
     });
   });
 
@@ -1401,11 +1616,13 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
           finalized_schedule_id: null,
         }),
       )
-      .mockResolvedValueOnce({
-        proposal_status: 'patient_contact_pending',
-        patient_contact_status: 'confirmed',
-        finalized_schedule_id: null,
-      })
+      .mockResolvedValueOnce(
+        buildProposal({
+          proposal_status: 'patient_contact_pending',
+          patient_contact_status: 'confirmed',
+          finalized_schedule_id: null,
+        }),
+      )
       .mockResolvedValueOnce({
         proposal_status: 'confirmed',
         patient_contact_status: 'confirmed',

@@ -35,6 +35,7 @@ import {
   replaceVisitRecordResidualMedications,
   syncVisitRecordLabObservations,
 } from '@/server/services/visit-record-derived-data';
+import { validatePreviousVisitReuseSource } from '@/server/services/visit-record-source-validation';
 
 function normalizeInputJsonArray(value: unknown): Prisma.InputJsonArray {
   const normalized = normalizeJsonInput(value);
@@ -327,6 +328,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         };
       }
 
+      if (rest.structured_soap !== undefined) {
+        const previousVisitReuseValidation = await validatePreviousVisitReuseSource({
+          tx,
+          orgId: ctx.orgId,
+          patientId: existing.patient_id,
+          caseId: schedule.case_id,
+          structuredSoap: rest.structured_soap,
+        });
+        if (!previousVisitReuseValidation.ok) {
+          return {
+            error: 'previous_visit_source_conflict' as const,
+            reason: previousVisitReuseValidation.reason,
+            details: previousVisitReuseValidation.details,
+          };
+        }
+      }
+
       let normalizedAttachments: VisitRecordAttachment[] | undefined;
       if (attachments) {
         try {
@@ -339,13 +357,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }
       }
 
-      const record = await tx.visitRecord.update({
-        where: { id },
+      const updateResult = await tx.visitRecord.updateMany({
+        where: { id, org_id: ctx.orgId, version },
         data: {
           ...rest,
           ...(visit_date ? { visit_date: new Date(visit_date) } : {}),
-          ...(next_visit_suggestion_date
-            ? { next_visit_suggestion_date: new Date(next_visit_suggestion_date) }
+          ...(next_visit_suggestion_date !== undefined
+            ? {
+                next_visit_suggestion_date:
+                  next_visit_suggestion_date === '' ? null : new Date(next_visit_suggestion_date),
+              }
+            : {}),
+          ...(rest.receipt_at !== undefined
+            ? { receipt_at: rest.receipt_at === '' ? null : new Date(rest.receipt_at) }
             : {}),
           ...(normalizedAttachments
             ? { attachments: normalizeInputJsonArray(normalizedAttachments) }
@@ -353,6 +377,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           version: { increment: 1 },
         } as Prisma.VisitRecordUncheckedUpdateInput,
       });
+      if (updateResult.count === 0) return 'conflict' as const;
+
+      const record = await tx.visitRecord.findFirst({
+        where: { id, org_id: ctx.orgId },
+      });
+      if (!record) return null;
 
       if (residual_medications !== undefined) {
         await replaceVisitRecordResidualMedications(tx, ctx.orgId, id, residual_medications);
@@ -390,6 +420,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return validationError('訪問完了には訪問薬剤管理の必須確認が必要です', {
       home_visit_2026_readiness: updated.missingItems,
     });
+  }
+  if ('error' in updated && updated.error === 'previous_visit_source_conflict') {
+    return conflict(
+      '前回訪問データが他のユーザーによって更新されています。訪問準備を再読み込みしてください。',
+      {
+        reason: updated.reason,
+        source: updated.details,
+      },
+    );
   }
 
   return success(updated);

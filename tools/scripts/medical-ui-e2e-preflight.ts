@@ -55,6 +55,7 @@ const REQUIRED_RLS_TABLES = [
   'PushSubscription',
   'ServiceArea',
   'TaskComment',
+  'VisitHandoffExtraction',
   'VisitVehicleResource',
   'WebhookDelivery',
 ] as const;

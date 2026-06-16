@@ -6,11 +6,13 @@ const {
   visitRecordFindFirstMock,
   patientFindFirstMock,
   processHandoffExtractionMock,
+  VisitHandoffStaleRecordErrorMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   processHandoffExtractionMock: vi.fn(),
+  VisitHandoffStaleRecordErrorMock: class VisitHandoffStaleRecordError extends Error {},
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -26,6 +28,7 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/server/services/visit-handoff', () => ({
   processHandoffExtraction: processHandoffExtractionMock,
+  VisitHandoffStaleRecordError: VisitHandoffStaleRecordErrorMock,
 }));
 
 import { POST } from './route';
@@ -57,6 +60,7 @@ describe('/api/visit-records/[id]/handoff/extract', () => {
       soap_assessment: 'assessment',
       soap_plan: 'plan',
       structured_soap: { subjective: {}, objective: {} },
+      version: 2,
     });
     patientFindFirstMock.mockResolvedValue({ name: 'Taro' });
     const handoff = { next_check_items: ['check1'] };
@@ -65,6 +69,13 @@ describe('/api/visit-records/[id]/handoff/extract', () => {
     const req = createRequest('http://localhost/api/visit-records/vr_1/handoff/extract');
     const res = await POST(req, { params: Promise.resolve({ id: 'vr_1' }) });
     expect(res!.status).toBe(201);
+    expect(processHandoffExtractionMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        visitRecordId: 'vr_1',
+        expectedVersion: 2,
+      }),
+    );
   });
 
   it('rejects blank visit record ids before loading or extracting handoff data', async () => {
@@ -101,5 +112,27 @@ describe('/api/visit-records/[id]/handoff/extract', () => {
     const req = createRequest('http://localhost/api/visit-records/vr_1/handoff/extract');
     const res = await POST(req, { params: Promise.resolve({ id: 'vr_1' }) });
     expect(res!.status).toBe(422);
+  });
+
+  it('returns conflict when the visit record changes before extraction is persisted', async () => {
+    visitRecordFindFirstMock.mockResolvedValue({
+      id: 'vr_1',
+      patient_id: 'patient_1',
+      soap_assessment: 'assessment',
+      soap_plan: 'plan',
+      structured_soap: { subjective: {}, objective: {} },
+      version: 2,
+    });
+    patientFindFirstMock.mockResolvedValue({ name: 'Taro' });
+    processHandoffExtractionMock.mockRejectedValue(new VisitHandoffStaleRecordErrorMock('stale'));
+
+    const req = createRequest('http://localhost/api/visit-records/vr_1/handoff/extract');
+    const res = await POST(req, { params: Promise.resolve({ id: 'vr_1' }) });
+
+    expect(res!.status).toBe(409);
+    await expect(res!.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '訪問記録が更新されています。再読み込みしてから申し送り抽出をやり直してください',
+    });
   });
 });

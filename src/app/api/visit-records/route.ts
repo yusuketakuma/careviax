@@ -26,7 +26,7 @@ import {
   isHomeVisit2026CompletionOutcome,
 } from '@/lib/visits/home-visit-2026-evidence';
 import type { StructuredSoap } from '@/types/structured-soap';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import {
   listBillingEvidenceBlockers,
   upsertBillingEvidenceForVisit,
@@ -40,6 +40,7 @@ import {
   replaceVisitRecordResidualMedications,
   syncVisitRecordLabObservations,
 } from '@/server/services/visit-record-derived-data';
+import { validatePreviousVisitReuseSource } from '@/server/services/visit-record-source-validation';
 
 const scheduleStatusByOutcome: Record<
   CreateVisitRecordInput['outcome_status'],
@@ -110,6 +111,7 @@ type VisitRecordHandoffExtractionPayload = {
   structuredSoap: StructuredSoap;
   soapAssessment: string | null;
   soapPlan: string | null;
+  expectedVersion: number;
 };
 
 function isInputJsonObject(
@@ -128,6 +130,10 @@ function normalizeOptionalJsonInput(value: unknown): Prisma.InputJsonValue | und
 function normalizeInputJsonObject(value: unknown): Prisma.InputJsonObject {
   const normalized = normalizeJsonInput(value);
   return isInputJsonObject(normalized) ? normalized : {};
+}
+
+function isUniqueConstraintError(error: unknown) {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 }
 
 async function loadExistingVisitRecordConflict(
@@ -759,6 +765,22 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
     if (careCase.patient_id !== patient_id) {
       return { error: 'patient_mismatch' as const };
     }
+
+    const previousVisitReuseValidation = await validatePreviousVisitReuseSource({
+      tx,
+      orgId: ctx.orgId,
+      patientId: careCase.patient_id,
+      caseId: schedule.case_id,
+      structuredSoap: structured_soap,
+    });
+    if (!previousVisitReuseValidation.ok) {
+      return {
+        error: 'previous_visit_source_conflict' as const,
+        reason: previousVisitReuseValidation.reason,
+        details: previousVisitReuseValidation.details,
+      };
+    }
+
     if (
       schedule.carry_items_status === 'blocked' &&
       !['postponed', 'cancelled'].includes(outcome_status)
@@ -887,27 +909,46 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
       console.warn('[visit-records] patient_state_snapshot build failed', snapshotError);
     }
 
-    const record =
-      existingRecord && conflict_resolution === 'overwrite'
-        ? await tx.visitRecord.update({
-            where: { id: existingRecord.id },
-            data: {
-              patient_id: careCase.patient_id,
-              pharmacist_id: ctx.userId,
-              visit_date: visitRecordedAt,
-              next_visit_suggestion_date: nextVisitSuggestionDateInput,
-              receipt_at: receipt_at ? new Date(receipt_at) : null,
-              ...rest,
-              outcome_status,
-              ...soapTextOverrides,
-              soap_plan: soapPlan,
-              structured_soap: normalizeOptionalJsonInput(structured_soap),
-              visit_geo_log: normalizeOptionalJsonInput(visit_geo_log),
-              patient_state_snapshot: patientStateSnapshot ?? undefined,
-              version: { increment: 1 },
-            } as Prisma.VisitRecordUncheckedUpdateInput,
-          })
-        : await tx.visitRecord.create({
+    let record;
+    if (existingRecord && conflict_resolution === 'overwrite') {
+      const updateResult = await tx.visitRecord.updateMany({
+        where: {
+          id: existingRecord.id,
+          org_id: ctx.orgId,
+          version: expected_version,
+        },
+        data: {
+          patient_id: careCase.patient_id,
+          pharmacist_id: ctx.userId,
+          visit_date: visitRecordedAt,
+          next_visit_suggestion_date: nextVisitSuggestionDateInput,
+          receipt_at: receipt_at ? new Date(receipt_at) : null,
+          ...rest,
+          outcome_status,
+          ...soapTextOverrides,
+          soap_plan: soapPlan,
+          structured_soap: normalizeOptionalJsonInput(structured_soap),
+          visit_geo_log: normalizeOptionalJsonInput(visit_geo_log),
+          patient_state_snapshot: patientStateSnapshot ?? undefined,
+          version: { increment: 1 },
+        } as Prisma.VisitRecordUncheckedUpdateInput,
+      });
+      if (updateResult.count === 0) {
+        return {
+          error: 'record_conflict' as const,
+          existingRecord,
+        };
+      }
+      const updatedRecord = await tx.visitRecord.findFirst({
+        where: { id: existingRecord.id, org_id: ctx.orgId },
+      });
+      if (!updatedRecord) {
+        return { error: 'record_conflict' as const, existingRecord };
+      }
+      record = updatedRecord;
+    } else {
+      try {
+        record = await tx.visitRecord.create({
             data: {
               org_id: ctx.orgId,
               schedule_id,
@@ -925,6 +966,19 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
               patient_state_snapshot: patientStateSnapshot ?? undefined,
             } as Prisma.VisitRecordUncheckedCreateInput,
           });
+      } catch (err) {
+        if (!isUniqueConstraintError(err)) throw err;
+        const existingRecordAfterRace = await loadExistingVisitRecordConflict(
+          tx,
+          ctx.orgId,
+          schedule_id,
+        );
+        return {
+          error: 'record_conflict' as const,
+          existingRecord: existingRecordAfterRace,
+        };
+      }
+    }
 
     await replaceVisitRecordResidualMedications(tx, ctx.orgId, record.id, residual_medications);
     await syncVisitRecordLabObservations(
@@ -1280,6 +1334,7 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
           structuredSoap: structured_soap as StructuredSoap,
           soapAssessment,
           soapPlan,
+          expectedVersion: record.version,
         };
       }
     }
@@ -1349,6 +1404,15 @@ export const POST = withAuthContext(
           },
         );
       }
+      if (result.error === 'previous_visit_source_conflict') {
+        return conflict(
+          '前回訪問データが他のユーザーによって更新されています。訪問準備を再読み込みしてください。',
+          {
+            reason: result.reason,
+            source: result.details,
+          },
+        );
+      }
       return validationError('指定されたスケジュールが見つかりません');
     }
 
@@ -1362,6 +1426,7 @@ export const POST = withAuthContext(
         structuredSoap: result.handoffExtraction.structuredSoap,
         soapAssessment: result.handoffExtraction.soapAssessment,
         soapPlan: result.handoffExtraction.soapPlan,
+        expectedVersion: result.handoffExtraction.expectedVersion,
         requestContext,
       }).catch((cause) => {
         console.warn('[visit-records] handoff extraction failed', cause);
