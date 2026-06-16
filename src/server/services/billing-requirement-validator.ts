@@ -87,6 +87,14 @@ function endOfWeekMonday(value: Date) {
   return endOfWeek(value, { weekStartsOn: 1 });
 }
 
+function dateBucketKey(value: Date): number {
+  return value.getTime();
+}
+
+function incrementCount(counts: Map<number, number>, key: number): void {
+  counts.set(key, (counts.get(key) ?? 0) + 1);
+}
+
 export async function getBillingCadencePreview(
   args: ValidateBillingRequirementsArgs,
 ): Promise<BillingCadencePreview> {
@@ -116,19 +124,22 @@ export async function getBillingCadencePreview(
     orderBy: [{ scheduled_date: 'asc' }],
   });
 
+  const monthCountByStart = new Map<number, number>();
+  const weekCountByStart = new Map<number, number>();
+  for (const schedule of schedules) {
+    incrementCount(monthCountByStart, dateBucketKey(startOfMonth(schedule.scheduled_date)));
+    incrementCount(weekCountByStart, dateBucketKey(startOfWeekMonday(schedule.scheduled_date)));
+  }
+
   const scheduledDatesCurrentMonth = schedules
     .filter(
       (schedule) => schedule.scheduled_date >= monthStart && schedule.scheduled_date <= monthEnd,
     )
     .map((schedule) => formatUtcDateKey(schedule.scheduled_date));
 
-  const currentMonthCount = scheduledDatesCurrentMonth.length;
+  const currentMonthCount = monthCountByStart.get(dateBucketKey(monthStart)) ?? 0;
   const currentWeekStart = startOfWeekMonday(args.proposedDate);
-  const currentWeekEnd = endOfWeekMonday(args.proposedDate);
-  const currentWeekCount = schedules.filter(
-    (schedule) =>
-      schedule.scheduled_date >= currentWeekStart && schedule.scheduled_date <= currentWeekEnd,
-  ).length;
+  const currentWeekCount = weekCountByStart.get(dateBucketKey(currentWeekStart)) ?? 0;
 
   let nextBillableDate: Date | null = null;
   const suggestedDates: string[] = [];
@@ -136,20 +147,11 @@ export async function getBillingCadencePreview(
     const candidate = new Date(args.proposedDate);
     candidate.setDate(candidate.getDate() + offset);
     const candidateMonthStart = startOfMonth(candidate);
-    const candidateMonthEnd = endOfMonth(candidate);
-    const monthCount = schedules.filter(
-      (schedule) =>
-        schedule.scheduled_date >= candidateMonthStart &&
-        schedule.scheduled_date <= candidateMonthEnd,
-    ).length;
+    const monthCount = monthCountByStart.get(dateBucketKey(candidateMonthStart)) ?? 0;
     const candidateWeekCount =
       weeklyCap == null
         ? 0
-        : schedules.filter((schedule) => {
-            const weekStart = startOfWeekMonday(candidate);
-            const weekEnd = endOfWeekMonday(candidate);
-            return schedule.scheduled_date >= weekStart && schedule.scheduled_date <= weekEnd;
-          }).length;
+        : (weekCountByStart.get(dateBucketKey(startOfWeekMonday(candidate))) ?? 0);
 
     const monthlyAvailable = monthCount < monthlyCap;
     const weeklyAvailable = weeklyCap == null || candidateWeekCount < weeklyCap;
