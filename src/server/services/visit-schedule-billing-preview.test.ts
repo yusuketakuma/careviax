@@ -81,14 +81,20 @@ import {
 function makeInsuranceRecord(overrides: Record<string, unknown> = {}) {
   return {
     id: 'insurance_1',
+    patient_id: 'patient_1',
     insurance_type: 'medical',
     application_status: 'confirmed',
     number: 'INS-001',
     public_program_code: null,
+    insurer_number: null,
     previous_care_level: null,
     provisional_care_level: null,
     confirmed_care_level: null,
     is_active: true,
+    application_submitted_at: null,
+    valid_from: null,
+    valid_until: null,
+    created_at: new Date('2026-01-01T00:00:00.000Z'),
     ...overrides,
   };
 }
@@ -305,6 +311,15 @@ describe('buildVisitScheduleBillingPreview', () => {
   });
 
   it('prefetches case-scoped dependencies once for same-case batch previews across different dates', async () => {
+    patientInsuranceFindManyMock.mockResolvedValue([
+      makeInsuranceRecord(),
+      makeInsuranceRecord({
+        id: 'insurance_care_1',
+        insurance_type: 'care',
+        number: 'CARE-001',
+      }),
+    ]);
+
     const previews = await buildVisitScheduleBillingPreviewBatch(
       [
         {
@@ -330,6 +345,78 @@ describe('buildVisitScheduleBillingPreview', () => {
     expect(careCaseFindManyMock).toHaveBeenCalledTimes(1);
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(findLatestPrescriptionIntakeClassificationMock).toHaveBeenCalledTimes(1);
+    expect(patientInsuranceFindManyMock).toHaveBeenCalledTimes(1);
+    expect(patientInsuranceFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: { in: ['patient_1'] },
+          insurance_type: { in: ['medical', 'care', 'public_subsidy'] },
+          is_active: true,
+        }),
+      }),
+    );
+    expect(resolvePatientInsuranceMock).not.toHaveBeenCalled();
     expect(Object.keys(previews).sort()).toEqual(['proposal_1', 'proposal_2']);
+  });
+
+  it('resolves batch insurance snapshots by proposed date after one range read', async () => {
+    patientInsuranceFindManyMock.mockResolvedValue([
+      makeInsuranceRecord({
+        id: 'insurance_medical_1',
+        insurance_type: 'medical',
+        number: 'MED-OLD',
+        valid_until: new Date('2026-04-05T00:00:00.000Z'),
+        created_at: new Date('2026-01-01T00:00:00.000Z'),
+      }),
+      makeInsuranceRecord({
+        id: 'insurance_care_1',
+        insurance_type: 'care',
+        number: 'CARE-NEW',
+        valid_from: new Date('2026-04-06T00:00:00.000Z'),
+        created_at: new Date('2026-01-02T00:00:00.000Z'),
+      }),
+    ]);
+
+    await buildVisitScheduleBillingPreviewBatch(
+      [
+        {
+          key: 'proposal_1',
+          caseId: 'case_1',
+          proposedDate: '2026-04-03',
+          pharmacistId: 'pharm_1',
+          siteId: 'site_1',
+          visitType: 'regular',
+        },
+        {
+          key: 'proposal_2',
+          caseId: 'case_1',
+          proposedDate: '2026-04-10',
+          pharmacistId: 'pharm_1',
+          siteId: 'site_1',
+          visitType: 'regular',
+        },
+      ],
+      'org_1',
+    );
+
+    expect(patientInsuranceFindManyMock).toHaveBeenCalledTimes(1);
+    expect(resolvePatientInsuranceMock).not.toHaveBeenCalled();
+    expect(resolveBillingRuntimeContextMock).toHaveBeenNthCalledWith(
+      1,
+      expect.anything(),
+      expect.objectContaining({
+        payerBasis: 'medical',
+        asOfDate: new Date('2026-04-03'),
+      }),
+    );
+    expect(resolveBillingRuntimeContextMock).toHaveBeenNthCalledWith(
+      2,
+      expect.anything(),
+      expect.objectContaining({
+        payerBasis: 'care',
+        asOfDate: new Date('2026-04-10'),
+      }),
+    );
   });
 });

@@ -8,7 +8,7 @@ import {
 import { resolveBillingPayerBasis } from './billing-payer-basis';
 import { resolvePatientInsurance } from './patient-insurance';
 import { findLatestPrescriptionIntakeClassification } from './prescription-intake-classification';
-import type { InsuranceApplicationStatus } from '@prisma/client';
+import type { InsuranceApplicationStatus, InsuranceType } from '@prisma/client';
 import type {
   BillingRuntimeHomeComprehensive,
   BillingRuntimeSiteConfigStatus,
@@ -62,6 +62,36 @@ type LatestPrescriptionIntakeClassification = Awaited<
   ReturnType<typeof findLatestPrescriptionIntakeClassification>
 >;
 
+type BillingPreviewInsuranceType = Extract<InsuranceType, 'medical' | 'care'>;
+
+type BillingPreviewInsuranceRecord = {
+  patient_id: string;
+  insurance_type: InsuranceType;
+  application_status: InsuranceApplicationStatus;
+  number: string | null;
+  public_program_code: string | null;
+  insurer_number: string | null;
+  previous_care_level: string | null;
+  provisional_care_level: string | null;
+  confirmed_care_level: string | null;
+  application_submitted_at: Date | null;
+  valid_from: Date | null;
+  valid_until: Date | null;
+  created_at: Date;
+};
+
+type BillingPreviewInsurancePrefetch = {
+  resolveInsurance(args: {
+    patientId: string;
+    type: BillingPreviewInsuranceType;
+    asOf: Date;
+  }): CareInsuranceApplicationPreview;
+  resolvePendingPublicSubsidy(args: {
+    patientId: string;
+    asOf: Date;
+  }): PublicSubsidyApplicationPreview;
+};
+
 const BILLING_PREVIEW_CARE_CASE_SELECT = {
   id: true,
   patient_id: true,
@@ -74,13 +104,156 @@ const BILLING_PREVIEW_CARE_CASE_SELECT = {
   },
 } as const;
 
+function effectiveInsuranceDate(asOf: Date): Date {
+  return utcDateFromLocalKey(localDateKey(asOf));
+}
+
+function compareNullableDateDesc(left: Date | null, right: Date | null): number {
+  return (right?.getTime() ?? 0) - (left?.getTime() ?? 0);
+}
+
+function compareInsuranceByEffectivePriority(
+  left: BillingPreviewInsuranceRecord,
+  right: BillingPreviewInsuranceRecord,
+): number {
+  return (
+    compareNullableDateDesc(left.valid_from, right.valid_from) ||
+    right.created_at.getTime() - left.created_at.getTime()
+  );
+}
+
+function comparePendingPublicSubsidyPriority(
+  left: BillingPreviewInsuranceRecord,
+  right: BillingPreviewInsuranceRecord,
+): number {
+  return (
+    compareNullableDateDesc(left.application_submitted_at, right.application_submitted_at) ||
+    compareNullableDateDesc(left.valid_from, right.valid_from) ||
+    right.created_at.getTime() - left.created_at.getTime()
+  );
+}
+
+function insuranceCoversDate(record: BillingPreviewInsuranceRecord, asOf: Date): boolean {
+  const effectiveDate = effectiveInsuranceDate(asOf);
+  return (
+    (record.valid_from == null || record.valid_from <= effectiveDate) &&
+    (record.valid_until == null || record.valid_until >= effectiveDate)
+  );
+}
+
+function buildBillingPreviewInsurancePrefetch(
+  records: BillingPreviewInsuranceRecord[],
+): BillingPreviewInsurancePrefetch {
+  const recordsByPatientId = new Map<string, BillingPreviewInsuranceRecord[]>();
+  for (const record of records) {
+    const patientRecords = recordsByPatientId.get(record.patient_id);
+    if (patientRecords) {
+      patientRecords.push(record);
+    } else {
+      recordsByPatientId.set(record.patient_id, [record]);
+    }
+  }
+
+  return {
+    resolveInsurance(args) {
+      const record =
+        recordsByPatientId
+          .get(args.patientId)
+          ?.filter(
+            (candidate) =>
+              candidate.insurance_type === args.type && insuranceCoversDate(candidate, args.asOf),
+          )
+          .sort(compareInsuranceByEffectivePriority)[0] ?? null;
+
+      if (!record) return null;
+
+      return {
+        application_status: record.application_status,
+        previous_care_level: record.previous_care_level,
+        provisional_care_level: record.provisional_care_level,
+        confirmed_care_level: record.confirmed_care_level,
+        number: record.number,
+      };
+    },
+    resolvePendingPublicSubsidy(args) {
+      const record =
+        recordsByPatientId
+          .get(args.patientId)
+          ?.filter(
+            (candidate) =>
+              candidate.insurance_type === 'public_subsidy' &&
+              (candidate.application_status === 'applying' ||
+                candidate.application_status === 'change_pending') &&
+              insuranceCoversDate(candidate, args.asOf),
+          )
+          .sort(comparePendingPublicSubsidyPriority)[0] ?? null;
+
+      if (!record) return null;
+
+      return {
+        application_status: record.application_status,
+        public_program_code: record.public_program_code,
+        insurer_number: record.insurer_number,
+        number: record.number,
+        application_submitted_at: record.application_submitted_at,
+        valid_from: record.valid_from,
+      };
+    },
+  };
+}
+
+async function prefetchBillingPreviewPatientInsurance(args: {
+  orgId: string;
+  careCases: BillingPreviewCareCase[];
+  proposedDates: string[];
+}): Promise<BillingPreviewInsurancePrefetch> {
+  const patientIds = [...new Set(args.careCases.map((careCase) => careCase.patient_id))];
+  const effectiveDates = args.proposedDates
+    .map((date) => effectiveInsuranceDate(new Date(date)))
+    .sort((left, right) => left.getTime() - right.getTime());
+
+  if (patientIds.length === 0 || effectiveDates.length === 0) {
+    return buildBillingPreviewInsurancePrefetch([]);
+  }
+
+  const minDate = effectiveDates[0];
+  const maxDate = effectiveDates[effectiveDates.length - 1];
+  const records = await prisma.patientInsurance.findMany({
+    where: {
+      org_id: args.orgId,
+      patient_id: { in: patientIds },
+      insurance_type: { in: ['medical', 'care', 'public_subsidy'] },
+      is_active: true,
+      OR: [{ valid_from: null }, { valid_from: { lte: maxDate } }],
+      AND: [{ OR: [{ valid_until: null }, { valid_until: { gte: minDate } }] }],
+    },
+    select: {
+      patient_id: true,
+      insurance_type: true,
+      application_status: true,
+      number: true,
+      public_program_code: true,
+      insurer_number: true,
+      previous_care_level: true,
+      provisional_care_level: true,
+      confirmed_care_level: true,
+      application_submitted_at: true,
+      valid_from: true,
+      valid_until: true,
+      created_at: true,
+    },
+  });
+
+  return buildBillingPreviewInsurancePrefetch(records);
+}
+
 async function findPendingPublicSubsidyInsurance(args: {
   orgId: string;
   patientId: string;
   asOf: Date;
 }): Promise<PublicSubsidyApplicationPreview> {
   // valid_from / valid_until(@db.Date)は UTC 深夜で保存されるため UTC 深夜で比較する
-  const asOf = utcDateFromLocalKey(localDateKey(args.asOf));
+  const asOf = effectiveInsuranceDate(args.asOf);
 
   const [record] = await prisma.patientInsurance.findMany({
     where: {
@@ -205,6 +378,7 @@ async function buildVisitScheduleBillingPreviewForCareCase(
     siteId?: string | null;
     visitType?: string | null;
     latestIntake?: LatestPrescriptionIntakeClassification;
+    insurancePrefetch?: BillingPreviewInsurancePrefetch;
   },
   careCase: BillingPreviewCareCase,
 ): Promise<VisitScheduleBillingPreview | null> {
@@ -218,23 +392,46 @@ async function buildVisitScheduleBillingPreviewForCareCase(
             orgId: args.orgId,
             caseId: args.caseId,
           }),
-      resolvePatientInsurance(prisma, {
-        orgId: args.orgId,
-        patientId: careCase.patient_id,
-        type: 'medical',
-        asOf: proposedDate,
-      }),
-      resolvePatientInsurance(prisma, {
-        orgId: args.orgId,
-        patientId: careCase.patient_id,
-        type: 'care',
-        asOf: proposedDate,
-      }),
-      findPendingPublicSubsidyInsurance({
-        orgId: args.orgId,
-        patientId: careCase.patient_id,
-        asOf: proposedDate,
-      }),
+      args.insurancePrefetch
+        ? Promise.resolve(
+            args.insurancePrefetch.resolveInsurance({
+              patientId: careCase.patient_id,
+              type: 'medical',
+              asOf: proposedDate,
+            }),
+          )
+        : resolvePatientInsurance(prisma, {
+            orgId: args.orgId,
+            patientId: careCase.patient_id,
+            type: 'medical',
+            asOf: proposedDate,
+          }),
+      args.insurancePrefetch
+        ? Promise.resolve(
+            args.insurancePrefetch.resolveInsurance({
+              patientId: careCase.patient_id,
+              type: 'care',
+              asOf: proposedDate,
+            }),
+          )
+        : resolvePatientInsurance(prisma, {
+            orgId: args.orgId,
+            patientId: careCase.patient_id,
+            type: 'care',
+            asOf: proposedDate,
+          }),
+      args.insurancePrefetch
+        ? Promise.resolve(
+            args.insurancePrefetch.resolvePendingPublicSubsidy({
+              patientId: careCase.patient_id,
+              asOf: proposedDate,
+            }),
+          )
+        : findPendingPublicSubsidyInsurance({
+            orgId: args.orgId,
+            patientId: careCase.patient_id,
+            asOf: proposedDate,
+          }),
     ]);
 
   const visitType =
@@ -351,6 +548,11 @@ export async function buildVisitScheduleBillingPreviewBatch(
     ),
   );
   const latestIntakeByCaseId = new Map(latestIntakeEntries);
+  const insurancePrefetch = await prefetchBillingPreviewPatientInsurance({
+    orgId,
+    careCases,
+    proposedDates: args.map((item) => item.proposedDate),
+  });
   const previewByInput = new Map<string, Promise<VisitScheduleBillingPreview | null>>();
   const entries = await Promise.all(
     args.map(async (item) => {
@@ -374,6 +576,7 @@ export async function buildVisitScheduleBillingPreviewBatch(
                 siteId: item.siteId,
                 visitType: item.visitType,
                 latestIntake: latestIntakeByCaseId.get(item.caseId) ?? null,
+                insurancePrefetch,
               },
               careCase,
             )
