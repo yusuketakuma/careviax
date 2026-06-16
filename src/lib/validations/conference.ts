@@ -422,6 +422,17 @@ export const createConferenceNoteSchema = z
 
     validateConferenceStructuredContent(noteType, value.structured_content, ctx);
 
+    if (
+      value.follow_up_date &&
+      new Date(value.follow_up_date).getTime() < new Date(value.conference_date).getTime()
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['follow_up_date'],
+        message: 'フォロー期限は会議日時以降にしてください',
+      });
+    }
+
     const conferenceOperation = value.metadata?.conference_operation;
     if (!conferenceOperation) return;
 

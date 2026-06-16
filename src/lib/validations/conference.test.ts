@@ -92,6 +92,38 @@ describe('conference validation metadata', () => {
     );
   });
 
+  it('rejects follow-up deadlines before the conference date', () => {
+    const parsed = createConferenceNoteSchema.safeParse({
+      patient_id: 'patient_1',
+      note_type: 'service_manager',
+      conference_type: 'service_manager',
+      title: '田中 一郎様 サービス担当者会議',
+      content: '訪問頻度と報告先を確認した',
+      conference_date: '2026-06-16T09:00:00.000Z',
+      follow_up_date: '2026-06-16T08:59:00.000Z',
+      participants: [],
+      metadata: {
+        conference_operation: {
+          format: 'mcs',
+          organizer: 'visiting_nurse',
+          report_type: 'nurse_share',
+        },
+      },
+      action_items: [{ title: '訪看へ共有', assignee: '薬剤師' }],
+    });
+
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    expect(parsed.error.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: ['follow_up_date'],
+          message: 'フォロー期限は会議日時以降にしてください',
+        }),
+      ]),
+    );
+  });
+
   it('requires a target discharge date for patient-detail pre-discharge operations', () => {
     const parsed = createConferenceNoteSchema.safeParse({
       patient_id: 'patient_1',

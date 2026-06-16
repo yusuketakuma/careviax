@@ -1539,10 +1539,15 @@ describe('CardWorkspace', () => {
     fireEvent.change(screen.getByLabelText('訪問頻度変更'), {
       target: { value: '月2回' },
     });
+    fireEvent.change(screen.getByLabelText('フォロー期限'), {
+      target: { value: '2026-06-17T10:30' },
+    });
+    fireEvent.click(screen.getByLabelText('フォロー完了'));
     fireEvent.change(screen.getByLabelText('薬局タスク'), {
       target: { value: '報告書作成 / 薬剤師' },
     });
     expect(screen.getByText('タスク 1件')).toBeTruthy();
+    expect(screen.getByText('2026-06-17 10:30 / 完了')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /会議要点を登録/ }));
 
     expect(conferenceMutate).toHaveBeenCalledWith({
@@ -1554,6 +1559,8 @@ describe('CardWorkspace', () => {
       conferenceFormat: 'mcs',
       organizer: 'visiting_nurse',
       reportType: 'nurse_share',
+      followUpDate: '2026-06-17T10:30',
+      followUpCompleted: true,
       content: '退院後の服薬支援と残薬確認を合意した',
       visitScheduleChange: '月2回',
       targetDischargeDate: '',
@@ -1634,6 +1641,8 @@ describe('CardWorkspace', () => {
         conferenceFormat: 'in_person',
         organizer: 'care_manager',
         reportType: 'care_manager_report',
+        followUpDate: '',
+        followUpCompleted: false,
         content: 'ケアプラン変更と服薬支援方針を確認した',
         visitScheduleChange: '月2回',
         targetDischargeDate: '',
@@ -1665,6 +1674,8 @@ describe('CardWorkspace', () => {
         conferenceFormat: 'in_person',
         organizer: 'hospital',
         reportType: 'physician_report',
+        followUpDate: '',
+        followUpCompleted: false,
         content: '退院後の服薬支援を確認した',
         visitScheduleChange: '月1回',
         targetDischargeDate: '2026-06-20',
@@ -1693,6 +1704,8 @@ describe('CardWorkspace', () => {
         conferenceFormat: 'in_person',
         organizer: 'hospital',
         reportType: 'physician_report',
+        followUpDate: '',
+        followUpCompleted: false,
         content: '退院後の服薬支援を確認した',
         visitScheduleChange: '月1回',
         targetDischargeDate: '',

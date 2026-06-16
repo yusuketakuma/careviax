@@ -836,6 +836,8 @@ type ConferenceNoteFormInput = {
     | 'nurse_share'
     | 'family_share'
     | 'internal_record';
+  followUpDate: string;
+  followUpCompleted: boolean;
   content: string;
   visitScheduleChange: string;
   targetDischargeDate: string;
@@ -2140,6 +2142,8 @@ function ConferenceNoteQuickForm({
   const [reportType, setReportType] = useState<ConferenceNoteFormInput['reportType']>(() =>
     defaultConferenceReportType('service_manager'),
   );
+  const [followUpDate, setFollowUpDate] = useState('');
+  const [followUpCompleted, setFollowUpCompleted] = useState(false);
   const [title, setTitle] = useState(() => `${patientName}様 サービス担当者会議`);
   const [content, setContent] = useState('');
   const [visitScheduleChange, setVisitScheduleChange] = useState('');
@@ -2158,6 +2162,7 @@ function ConferenceNoteQuickForm({
         const trimmedContent = content.trim();
         const trimmedVisitScheduleChange = visitScheduleChange.trim();
         const trimmedTargetDischargeDate = targetDischargeDate.trim();
+        const trimmedFollowUpDate = followUpDate.trim();
         const trimmedActionItemsRaw = actionItemsRaw.trim();
         if (!trimmedTitle || !conferenceDate || !trimmedContent) {
           setError('会議名・開催日時・会議要点を入力してください。');
@@ -2181,6 +2186,8 @@ function ConferenceNoteQuickForm({
           conferenceFormat,
           organizer,
           reportType,
+          followUpDate: trimmedFollowUpDate,
+          followUpCompleted,
           content: trimmedContent,
           visitScheduleChange: trimmedVisitScheduleChange,
           targetDischargeDate: trimmedTargetDischargeDate,
@@ -2346,6 +2353,33 @@ function ConferenceNoteQuickForm({
             />
           </div>
         </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div className="space-y-1">
+            <Label htmlFor={`conference-follow-up-date-${patientId}`} className="text-xs">
+              フォロー期限
+            </Label>
+            <Input
+              id={`conference-follow-up-date-${patientId}`}
+              type="datetime-local"
+              value={followUpDate}
+              onChange={(event) => setFollowUpDate(event.target.value)}
+              className="min-h-9 text-xs"
+            />
+          </div>
+          <label
+            htmlFor={`conference-follow-up-completed-${patientId}`}
+            className="flex min-h-9 items-center gap-2 self-end rounded-lg border border-border/70 bg-background px-2 text-xs text-foreground"
+          >
+            <input
+              id={`conference-follow-up-completed-${patientId}`}
+              type="checkbox"
+              checked={followUpCompleted}
+              onChange={(event) => setFollowUpCompleted(event.target.checked)}
+              className="size-4 rounded border-input"
+            />
+            フォロー完了
+          </label>
+        </div>
         <div className="space-y-1">
           <Label htmlFor={`conference-actions-${patientId}`} className="text-xs">
             薬局タスク
@@ -2373,6 +2407,14 @@ function ConferenceNoteQuickForm({
             <dt>報告書・薬局タスク</dt>
             <dd className="text-foreground">
               {actionItemCount > 0 ? `タスク ${actionItemCount}件` : '未入力'}
+            </dd>
+            <dt>フォロー</dt>
+            <dd className="text-foreground">
+              {followUpDate
+                ? `${followUpDate.replace('T', ' ')} / ${followUpCompleted ? '完了' : '未完了'}`
+                : followUpCompleted
+                  ? '完了'
+                  : '期限未設定'}
             </dd>
             <dt>訪問頻度</dt>
             <dd className="text-foreground">{visitScheduleChange || '変更なし'}</dd>
@@ -2945,6 +2987,10 @@ export function CardWorkspace({
           ...(input.caseId ? { case_id: input.caseId } : {}),
           content: input.content,
           conference_date: new Date(input.conferenceDate).toISOString(),
+          ...(input.followUpDate
+            ? { follow_up_date: new Date(input.followUpDate).toISOString() }
+            : {}),
+          follow_up_completed: input.followUpCompleted,
           participants: [],
           metadata: {
             visit_brief: {
