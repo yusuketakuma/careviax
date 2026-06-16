@@ -28,6 +28,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loading } from '@/components/ui/loading';
+import { LoadingButton } from '@/components/ui/loading-button';
 import {
   Table,
   TableBody,
@@ -989,10 +990,12 @@ function McsCheckLogQuickForm({
   const [summary, setSummary] = useState('');
   const [nextAction, setNextAction] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const errorId = `mcs-check-error-${patientId}`;
 
   return (
     <form
       className="mt-3 rounded-lg border border-current/20 bg-background/80 p-2"
+      aria-busy={isPending}
       onSubmit={(event) => {
         event.preventDefault();
         const trimmedSummary = summary.trim();
@@ -1038,6 +1041,8 @@ function McsCheckLogQuickForm({
             value={summary}
             onChange={(event) => setSummary(event.target.value)}
             className="min-h-16 text-xs"
+            aria-invalid={error?.includes('MCS確認内容') ? true : undefined}
+            aria-describedby={error ? errorId : undefined}
             placeholder="確認した投稿、相談内容、指示内容"
           />
         </div>
@@ -1053,11 +1058,26 @@ function McsCheckLogQuickForm({
             placeholder="医師へ確認、訪看へ返信"
           />
         </div>
-        {error ? <p className="text-xs text-destructive">{error}</p> : null}
-        <Button type="submit" size="sm" className="min-h-9 w-full" disabled={isPending}>
+        {error ? (
+          <p id={errorId} role="alert" className="text-xs text-destructive">
+            {error}
+          </p>
+        ) : null}
+        {isPending ? (
+          <p role="status" aria-label="MCS確認ログを保存中" className="sr-only">
+            MCS確認ログを保存中です。
+          </p>
+        ) : null}
+        <LoadingButton
+          type="submit"
+          size="sm"
+          className="h-auto min-h-11 w-full sm:h-auto sm:min-h-11"
+          loading={isPending}
+          loadingLabel="保存中"
+        >
           <CheckCircle2 className="mr-1.5 size-4" aria-hidden="true" />
-          {isPending ? '保存中' : actionLabel}
-        </Button>
+          {actionLabel}
+        </LoadingButton>
       </div>
     </form>
   );
@@ -1227,10 +1247,12 @@ function BillingPaymentProfileQuickForm({
   );
   const [note, setNote] = useState(() => metricValue(item, '備考'));
   const [error, setError] = useState<string | null>(null);
+  const errorId = `billing-payment-profile-error-${patientId}`;
 
   return (
     <form
       className="mt-3 rounded-lg border border-current/20 bg-background/80 p-2"
+      aria-busy={isPending}
       onSubmit={(event) => {
         event.preventDefault();
         const trimmedPayerName = payerName.trim();
@@ -1319,6 +1341,8 @@ function BillingPaymentProfileQuickForm({
               value={payerName}
               onChange={(event) => setPayerName(event.target.value)}
               className="min-h-9 text-xs"
+              aria-invalid={error?.includes('支払者氏名') ? true : undefined}
+              aria-describedby={error?.includes('支払者氏名') ? errorId : undefined}
               placeholder="長女 山田花子"
             />
           </div>
@@ -1331,6 +1355,8 @@ function BillingPaymentProfileQuickForm({
               value={payerRelation}
               onChange={(event) => setPayerRelation(event.target.value)}
               className="min-h-9 text-xs"
+              aria-invalid={error?.includes('続柄') ? true : undefined}
+              aria-describedby={error?.includes('続柄') ? errorId : undefined}
               placeholder="長女"
             />
           </div>
@@ -1360,6 +1386,8 @@ function BillingPaymentProfileQuickForm({
               value={billingAddress}
               onChange={(event) => setBillingAddress(event.target.value)}
               className="min-h-16 text-xs"
+              aria-invalid={error?.includes('請求先住所') ? true : undefined}
+              aria-describedby={error?.includes('請求先住所') ? errorId : undefined}
               placeholder="請求書・領収証の送付先"
             />
           </div>
@@ -1438,14 +1466,31 @@ function BillingPaymentProfileQuickForm({
             value={note}
             onChange={(event) => setNote(event.target.value)}
             className="min-h-16 text-xs"
+            aria-invalid={error?.includes('備考') ? true : undefined}
+            aria-describedby={error?.includes('備考') ? errorId : undefined}
             placeholder="月末に長女へ請求"
           />
         </div>
-        {error ? <p className="text-xs text-destructive">{error}</p> : null}
-        <Button type="submit" size="sm" className="min-h-9 w-full" disabled={isPending}>
+        {error ? (
+          <p id={errorId} role="alert" className="text-xs text-destructive">
+            {error}
+          </p>
+        ) : null}
+        {isPending ? (
+          <p role="status" aria-label="支払設定を保存中" className="sr-only">
+            支払設定を保存中です。
+          </p>
+        ) : null}
+        <LoadingButton
+          type="submit"
+          size="sm"
+          className="h-auto min-h-11 w-full sm:h-auto sm:min-h-11"
+          loading={isPending}
+          loadingLabel="保存中"
+        >
           <CheckCircle2 className="mr-1.5 size-4" aria-hidden="true" />
-          {isPending ? '保存中' : actionLabel}
-        </Button>
+          {actionLabel}
+        </LoadingButton>
       </div>
     </form>
   );
@@ -1512,6 +1557,7 @@ function BillingCollectionQuickForm({
   const invoiceIssueCode = metricValueOrDefault(item, '請求書発行コード', 'yes');
   const receiptCopyUrl = metricValue(item, '領収証控えURL');
   const invoiceCopyUrl = metricValue(item, '請求書控えURL');
+  const errorId = `billing-collection-error-${candidateId}`;
   const receiptRequired = receiptIssueCode !== 'none';
   const receiptRequiredForStatus = receiptRequired && ['collected', 'partial'].includes(status);
   const invoiceRequiredForStatus =
@@ -1531,6 +1577,7 @@ function BillingCollectionQuickForm({
   return (
     <form
       className="mt-3 rounded-lg border border-current/20 bg-background/80 p-2"
+      aria-busy={isPending}
       onSubmit={(event) => {
         event.preventDefault();
         const billed = billedAmount ? Number(billedAmount) : null;
@@ -1808,11 +1855,26 @@ function BillingCollectionQuickForm({
             </p>
           ) : null}
         </div>
-        {error ? <p className="text-xs text-destructive">{error}</p> : null}
-        <Button type="submit" size="sm" className="min-h-9 w-full" disabled={isPending}>
+        {error ? (
+          <p id={errorId} role="alert" className="text-xs text-destructive">
+            {error}
+          </p>
+        ) : null}
+        {isPending ? (
+          <p role="status" aria-label="集金記録を保存中" className="sr-only">
+            集金記録を保存中です。
+          </p>
+        ) : null}
+        <LoadingButton
+          type="submit"
+          size="sm"
+          className="h-auto min-h-11 w-full sm:h-auto sm:min-h-11"
+          loading={isPending}
+          loadingLabel="保存中"
+        >
           <CheckCircle2 className="mr-1.5 size-4" aria-hidden="true" />
-          {isPending ? '保存中' : actionLabel}
-        </Button>
+          {actionLabel}
+        </LoadingButton>
       </div>
     </form>
   );
@@ -1835,10 +1897,13 @@ function PrescriptionDocumentQuickForm({
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const errorId = `prescription-document-error-${intakeId}`;
+  const isBusy = isPending || uploading;
 
   return (
     <form
       className="mt-3 rounded-lg border border-current/20 bg-background/80 p-2"
+      aria-busy={isBusy}
       onSubmit={async (event) => {
         event.preventDefault();
         setLocalError(null);
@@ -1892,19 +1957,37 @@ function PrescriptionDocumentQuickForm({
             value={documentUrl}
             onChange={(event) => setDocumentUrl(event.target.value)}
             className="min-h-9 text-xs"
+            aria-invalid={localError ? true : undefined}
+            aria-describedby={localError ? errorId : undefined}
             placeholder="https://..."
           />
         </div>
-        {localError ? <p className="text-xs text-red-700">{localError}</p> : null}
-        <Button
+        {localError ? (
+          <p id={errorId} role="alert" className="text-xs text-red-700">
+            {localError}
+          </p>
+        ) : null}
+        {isBusy ? (
+          <p
+            role="status"
+            aria-label={uploading ? '処方せん画像/PDFをアップロード中' : '処方せん画像/PDFを保存中'}
+            className="sr-only"
+          >
+            {uploading
+              ? '処方せん画像/PDFをアップロード中です。'
+              : '処方せん画像/PDFを保存中です。'}
+          </p>
+        ) : null}
+        <LoadingButton
           type="submit"
           size="sm"
-          className="min-h-9 w-full"
-          disabled={isPending || uploading}
+          className="h-auto min-h-11 w-full sm:h-auto sm:min-h-11"
+          loading={isBusy}
+          loadingLabel={uploading ? 'アップロード中' : '保存中'}
         >
           <CheckCircle2 className="mr-1.5 size-4" aria-hidden="true" />
-          {isPending || uploading ? '保存中' : actionLabel}
-        </Button>
+          {actionLabel}
+        </LoadingButton>
       </div>
     </form>
   );
@@ -1944,6 +2027,7 @@ function PrescriptionOriginalManagementQuickForm({
   return (
     <form
       className="mt-3 rounded-lg border border-current/20 bg-background/80 p-2"
+      aria-busy={isPending}
       onSubmit={(event) => {
         event.preventDefault();
         const trimmedDiscrepancyNote = discrepancyNote.trim();
@@ -2169,10 +2253,21 @@ function PrescriptionOriginalManagementQuickForm({
             {error}
           </p>
         ) : null}
-        <Button type="submit" size="sm" className="min-h-9 w-full" disabled={isPending}>
+        {isPending ? (
+          <p role="status" aria-label="処方せん原本管理を保存中" className="sr-only">
+            処方せん原本管理を保存中です。
+          </p>
+        ) : null}
+        <LoadingButton
+          type="submit"
+          size="sm"
+          className="h-auto min-h-11 w-full sm:h-auto sm:min-h-11"
+          loading={isPending}
+          loadingLabel="保存中"
+        >
           <CheckCircle2 className="mr-1.5 size-4" aria-hidden="true" />
-          {isPending ? '保存中' : actionLabel}
-        </Button>
+          {actionLabel}
+        </LoadingButton>
       </div>
     </form>
   );
@@ -2221,6 +2316,7 @@ function ConferenceNoteQuickForm({
   return (
     <form
       className="mt-3 rounded-lg border border-current/20 bg-background/80 p-2"
+      aria-busy={isPending}
       onSubmit={(event) => {
         event.preventDefault();
         const trimmedTitle = title.trim();
@@ -2563,10 +2659,21 @@ function ConferenceNoteQuickForm({
             {error}
           </p>
         ) : null}
-        <Button type="submit" size="sm" className="min-h-9 w-full" disabled={isPending}>
+        {isPending ? (
+          <p role="status" aria-label="会議要点を保存中" className="sr-only">
+            会議要点を保存中です。
+          </p>
+        ) : null}
+        <LoadingButton
+          type="submit"
+          size="sm"
+          className="h-auto min-h-11 w-full sm:h-auto sm:min-h-11"
+          loading={isPending}
+          loadingLabel="保存中"
+        >
           <CheckCircle2 className="mr-1.5 size-4" aria-hidden="true" />
-          {isPending ? '保存中' : actionLabel}
-        </Button>
+          {actionLabel}
+        </LoadingButton>
       </div>
     </form>
   );

@@ -167,6 +167,18 @@ function buildWorkspace(overrides: Partial<PatientWorkspace> = {}): PatientWorks
 function mockPatientQuery(
   workspace: PatientWorkspace | null,
   homeOperations: PatientHomeOperationsSnapshot | null = null,
+  pending: Partial<
+    Record<
+      | 'fax'
+      | 'prescriptionDocument'
+      | 'prescriptionOriginalManagement'
+      | 'billing'
+      | 'billingProfile'
+      | 'conference'
+      | 'mcsCheckLog',
+      boolean
+    >
+  > = {},
 ) {
   const faxMutate = vi.fn();
   const prescriptionDocumentMutate = vi.fn();
@@ -179,21 +191,41 @@ function mockPatientQuery(
   useRouterMock.mockReturnValue({ push: vi.fn(), replace: vi.fn() });
   useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
   useMutationMock
-    .mockReturnValueOnce({ mutate: faxMutate, isPending: false, variables: null })
+    .mockReturnValueOnce({
+      mutate: faxMutate,
+      isPending: Boolean(pending.fax),
+      variables: pending.fax ? 'intake_0500' : null,
+    })
     .mockReturnValueOnce({
       mutate: prescriptionDocumentMutate,
-      isPending: false,
-      variables: null,
+      isPending: Boolean(pending.prescriptionDocument),
+      variables: pending.prescriptionDocument ? { intakeId: 'intake_0500' } : null,
     })
     .mockReturnValueOnce({
       mutate: prescriptionOriginalManagementMutate,
-      isPending: false,
-      variables: null,
+      isPending: Boolean(pending.prescriptionOriginalManagement),
+      variables: pending.prescriptionOriginalManagement ? { intakeId: 'intake_0500' } : null,
     })
-    .mockReturnValueOnce({ mutate: billingMutate, isPending: false, variables: null })
-    .mockReturnValueOnce({ mutate: billingProfileMutate, isPending: false, variables: null })
-    .mockReturnValueOnce({ mutate: conferenceMutate, isPending: false, variables: null })
-    .mockReturnValueOnce({ mutate: mcsCheckLogMutate, isPending: false, variables: null });
+    .mockReturnValueOnce({
+      mutate: billingMutate,
+      isPending: Boolean(pending.billing),
+      variables: pending.billing ? { candidateId: 'billing_1' } : null,
+    })
+    .mockReturnValueOnce({
+      mutate: billingProfileMutate,
+      isPending: Boolean(pending.billingProfile),
+      variables: pending.billingProfile ? { patientId: 'patient_1' } : null,
+    })
+    .mockReturnValueOnce({
+      mutate: conferenceMutate,
+      isPending: Boolean(pending.conference),
+      variables: pending.conference ? { patientId: 'patient_1', caseId: null } : null,
+    })
+    .mockReturnValueOnce({
+      mutate: mcsCheckLogMutate,
+      isPending: Boolean(pending.mcsCheckLog),
+      variables: pending.mcsCheckLog ? { patientId: 'patient_1' } : null,
+    });
   const patientData = {
     id: 'patient_1',
     name: '田中 一郎',
@@ -786,6 +818,48 @@ describe('CardWorkspace', () => {
       summary: '訪看からの食欲低下共有を確認',
       nextAction: '医師へ服薬状況を確認',
     });
+  });
+
+  it('shows an accessible 44px pending state for quick-form save actions', () => {
+    mockPatientQuery(
+      buildWorkspace(),
+      {
+        generated_at: '2026-06-16T00:00:00.000Z',
+        attention_count: 0,
+        top_alerts: [],
+        items: [
+          {
+            key: 'mcs',
+            label: 'MCS・外部連携',
+            status: '連携あり',
+            description: '田中一郎 在宅チーム / 最終確認 2026/06/01',
+            href: '/patients/patient_1/mcs',
+            action_label: 'MCS連携を管理',
+            tone: 'ok',
+            updated_at: '2026-06-01T00:00:00.000Z',
+            metrics: [{ label: '最終確認', value: '2026/06/01' }],
+            alerts: [],
+            quick_actions: [
+              {
+                key: 'record_mcs_check_log',
+                label: 'MCS確認ログを記録',
+                resource_id: 'patient_1',
+              },
+            ],
+          },
+        ],
+      },
+      { mcsCheckLog: true },
+    );
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    const savingButton = screen.getByRole('button', { name: '保存中' });
+    expect(savingButton.getAttribute('aria-busy')).toBe('true');
+    expect((savingButton as HTMLButtonElement).disabled).toBe(true);
+    expect(savingButton.className).toContain('min-h-11');
+    expect(screen.getByRole('status', { name: 'MCS確認ログを保存中' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: '読み込み中' })).toBeNull();
   });
 
   it('saves a prescription image or PDF URL from the home operations panel', () => {

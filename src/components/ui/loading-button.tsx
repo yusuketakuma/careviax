@@ -16,7 +16,7 @@ export function LoadingButton({
 }: LoadingButtonProps) {
   return (
     <Button aria-busy={loading} disabled={disabled || loading} {...props}>
-      {loading ? <Spinner size="sm" className="text-current" /> : null}
+      {loading ? <Spinner size="sm" className="text-current" label={null} /> : null}
       {loading ? (loadingLabel ?? children) : children}
     </Button>
   );

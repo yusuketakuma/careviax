@@ -4,6 +4,7 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { Loading, SkeletonRows, Spinner } from './loading';
+import { LoadingButton } from './loading-button';
 
 setupDomTestEnv();
 
@@ -28,5 +29,18 @@ describe('Loading primitives', () => {
 
     expect(screen.queryByRole('status')).toBeNull();
     expect(document.querySelector('[aria-hidden="true"]')).toBeTruthy();
+  });
+
+  it('keeps loading button spinners decorative under the busy button label', () => {
+    render(
+      <LoadingButton loading loadingLabel="保存中">
+        保存
+      </LoadingButton>,
+    );
+
+    const button = screen.getByRole('button', { name: '保存中' });
+    expect(button.getAttribute('aria-busy')).toBe('true');
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole('status')).toBeNull();
   });
 });
