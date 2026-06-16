@@ -146,10 +146,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     // Create notification for status transition (best-effort)
     try {
-      await tx.notification.create({
-        data: {
-          org_id: ctx.orgId,
-          user_id: ctx.userId,
+      const notificationData = {
+        org_id: ctx.orgId,
+        user_id: ctx.userId,
+        event_type: 'status_changed',
+        type: 'system' as const,
+        title: 'ステータス変更',
+        message:
+          note ?? `処方サイクルのステータスが ${fromStatus} から ${toStatus} に変更されました`,
+        link: `/workflow`,
+        metadata: { cycle_id: id, from: fromStatus, to: toStatus },
+        dedupe_key: `cycle-transition:${id}:${fromStatus}:${toStatus}:${version}`,
+      };
+
+      await tx.notification.upsert({
+        where: {
+          org_id_user_id_dedupe_key: {
+            org_id: ctx.orgId,
+            user_id: ctx.userId,
+            dedupe_key: notificationData.dedupe_key,
+          },
+        },
+        create: notificationData,
+        update: {
           event_type: 'status_changed',
           type: 'system',
           title: 'ステータス変更',
@@ -157,6 +176,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             note ?? `処方サイクルのステータスが ${fromStatus} から ${toStatus} に変更されました`,
           link: `/workflow`,
           metadata: { cycle_id: id, from: fromStatus, to: toStatus },
+          is_read: false,
+          read_at: null,
         },
       });
     } catch {

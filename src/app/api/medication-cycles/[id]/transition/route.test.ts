@@ -6,7 +6,7 @@ const {
   medicationCycleFindFirstMock,
   medicationCycleUpdateManyMock,
   cycleTransitionLogCreateMock,
-  notificationCreateMock,
+  notificationUpsertMock,
   withOrgContextMock,
   notifyWorkflowMutationMock,
 } = vi.hoisted(() => ({
@@ -14,7 +14,7 @@ const {
   medicationCycleFindFirstMock: vi.fn(),
   medicationCycleUpdateManyMock: vi.fn(),
   cycleTransitionLogCreateMock: vi.fn(),
-  notificationCreateMock: vi.fn(),
+  notificationUpsertMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   notifyWorkflowMutationMock: vi.fn(),
 }));
@@ -84,7 +84,7 @@ describe('/api/medication-cycles/[id]/transition', () => {
           create: cycleTransitionLogCreateMock,
         },
         notification: {
-          create: notificationCreateMock,
+          upsert: notificationUpsertMock,
         },
       }),
     );
@@ -125,7 +125,7 @@ describe('/api/medication-cycles/[id]/transition', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
     expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
-    expect(notificationCreateMock).not.toHaveBeenCalled();
+    expect(notificationUpsertMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
@@ -143,7 +143,7 @@ describe('/api/medication-cycles/[id]/transition', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
     expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
-    expect(notificationCreateMock).not.toHaveBeenCalled();
+    expect(notificationUpsertMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
@@ -161,7 +161,7 @@ describe('/api/medication-cycles/[id]/transition', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
     expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
-    expect(notificationCreateMock).not.toHaveBeenCalled();
+    expect(notificationUpsertMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
@@ -194,7 +194,36 @@ describe('/api/medication-cycles/[id]/transition', () => {
         note: '調剤開始',
       }),
     });
-    expect(notificationCreateMock).toHaveBeenCalled();
+    expect(notificationUpsertMock).toHaveBeenCalledWith({
+      where: {
+        org_id_user_id_dedupe_key: {
+          org_id: 'org_1',
+          user_id: 'user_1',
+          dedupe_key: 'cycle-transition:cycle_1:ready_to_dispense:dispensing:2',
+        },
+      },
+      create: expect.objectContaining({
+        org_id: 'org_1',
+        user_id: 'user_1',
+        event_type: 'status_changed',
+        type: 'system',
+        title: 'ステータス変更',
+        message: '調剤開始',
+        link: '/workflow',
+        metadata: { cycle_id: 'cycle_1', from: 'ready_to_dispense', to: 'dispensing' },
+        dedupe_key: 'cycle-transition:cycle_1:ready_to_dispense:dispensing:2',
+      }),
+      update: expect.objectContaining({
+        event_type: 'status_changed',
+        type: 'system',
+        title: 'ステータス変更',
+        message: '調剤開始',
+        link: '/workflow',
+        metadata: { cycle_id: 'cycle_1', from: 'ready_to_dispense', to: 'dispensing' },
+        is_read: false,
+        read_at: null,
+      }),
+    });
     expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
       orgId: 'org_1',
       eventType: 'cycle_transition',
@@ -204,6 +233,29 @@ describe('/api/medication-cycles/[id]/transition', () => {
     expect(notifyPayload).not.toHaveProperty('cycleId');
     expect(notifyPayload).not.toHaveProperty('from');
     expect(notifyPayload).not.toHaveProperty('to');
+  });
+
+  it('keeps transition success when status notification upsert fails', async () => {
+    notificationUpsertMock.mockRejectedValueOnce(new Error('notification write failed'));
+
+    const response = (await PATCH(
+      createPatchRequest({
+        to: 'dispensing',
+        version: 2,
+      }),
+      {
+        params: Promise.resolve({ id: 'cycle_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(medicationCycleUpdateManyMock).toHaveBeenCalled();
+    expect(notificationUpsertMock).toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      eventType: 'cycle_transition',
+      payload: { source: 'medication_cycles_transition' },
+    });
   });
 
   it('rejects dispense audit transitions when a trainee lacks audit permission', async () => {
@@ -236,7 +288,7 @@ describe('/api/medication-cycles/[id]/transition', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
     expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
-    expect(notificationCreateMock).not.toHaveBeenCalled();
+    expect(notificationUpsertMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
@@ -270,7 +322,7 @@ describe('/api/medication-cycles/[id]/transition', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
     expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
-    expect(notificationCreateMock).not.toHaveBeenCalled();
+    expect(notificationUpsertMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
@@ -325,7 +377,7 @@ describe('/api/medication-cycles/[id]/transition', () => {
 
     expect(response.status).toBe(404);
     expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
-    expect(notificationCreateMock).not.toHaveBeenCalled();
+    expect(notificationUpsertMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 });
