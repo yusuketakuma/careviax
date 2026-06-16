@@ -373,6 +373,26 @@ export const POST = withAuthContext(
           action_items: action_items !== undefined ? action_items : Prisma.JsonNull,
         },
       });
+      await tx.auditLog.create({
+        data: {
+          org_id: ctx.orgId,
+          actor_id: ctx.userId,
+          action: 'conference_note.created',
+          target_type: 'conference_note',
+          target_id: created.id,
+          changes: {
+            conference_note: {
+              note_type,
+              report_type: normalizedMetadata?.conference_operation?.report_type ?? null,
+              follow_up_date: parsed.data.follow_up_date ?? null,
+              follow_up_completed: parsed.data.follow_up_completed ?? false,
+              action_item_count: action_items?.length ?? 0,
+              billing_eligible: resolvedBillingEligible,
+              billing_code: resolvedBillingCode,
+            },
+          },
+        },
+      });
 
       return ConferenceDataSyncService.syncSavedNote(tx, ctx.orgId, ctx.userId, created, {
         mode: 'create',

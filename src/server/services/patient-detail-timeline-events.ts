@@ -288,6 +288,12 @@ const OPERATION_ACTION_LABELS: Record<string, { title: string; statusLabel: stri
   billing_collection_updated: { title: '集金情報を更新', statusLabel: '集金更新' },
   billing_payment_profile_updated: { title: '支払設定を更新', statusLabel: '支払設定' },
   patient_mcs_profile_updated: { title: 'MCS連携状態を更新', statusLabel: 'MCS更新' },
+  'conference_note.created': { title: 'カンファレンス記録を登録', statusLabel: '会議登録' },
+  'conference_note.updated': { title: 'カンファレンス記録を更新', statusLabel: '会議更新' },
+  'conference_note.report_generated': {
+    title: 'カンファレンス報告書を作成',
+    statusLabel: '報告書作成',
+  },
   prescription_original_management_updated: {
     title: '処方せん原本管理を更新',
     statusLabel: '原本管理',
@@ -362,6 +368,15 @@ const MCS_PARTICIPATION_STATUS_LABELS: Record<string, string> = {
   unknown: '不明',
 };
 
+const CONFERENCE_REPORT_TYPE_LABELS: Record<string, string> = {
+  physician_report: '医師向け',
+  care_manager_report: 'ケアマネ向け',
+  facility_handoff: '施設申し送り',
+  nurse_share: '訪看共有',
+  family_share: '家族共有',
+  internal_record: '薬局内記録',
+};
+
 const PRESCRIPTION_RECONCILIATION_LABELS: Record<string, string> = {
   not_checked: '未照合',
   matched: '一致',
@@ -391,6 +406,14 @@ const DISPENSING_RESULT_REGISTRATION_LABELS: Record<string, string> = {
 function labelOf(labels: Record<string, string>, value: unknown) {
   const key = readString(value);
   return key ? (labels[key] ?? key) : null;
+}
+
+function formatAuditDate(value: unknown) {
+  const raw = readString(value);
+  if (!raw) return null;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw;
+  return formatTimelineDate(date);
 }
 
 function readFirstVisitDocumentAction(item: OperationHistoryTimelineSource) {
@@ -443,6 +466,7 @@ function buildOperationHistorySummary(item: OperationHistoryTimelineSource) {
   const changes = isRecord(item.changes) ? item.changes : {};
   const documentAction = isRecord(changes.document_action) ? changes.document_action : {};
   const collection = isRecord(changes.collection) ? changes.collection : {};
+  const conferenceNote = isRecord(changes.conference_note) ? changes.conference_note : {};
   const receiptNumber = readString(collection.receipt_number);
   const exchangeNumber = readString(changes.e_prescription_exchange_number);
 
@@ -495,6 +519,30 @@ function buildOperationHistorySummary(item: OperationHistoryTimelineSource) {
       labelOf(DISPENSING_RESULT_REGISTRATION_LABELS, changes.dispensing_result_registration)
         ? `調剤結果 ${labelOf(DISPENSING_RESULT_REGISTRATION_LABELS, changes.dispensing_result_registration)}`
         : null,
+      readString(conferenceNote.note_type)
+        ? getConferenceTypeLabel(readString(conferenceNote.note_type) ?? '')
+        : null,
+      labelOf(CONFERENCE_REPORT_TYPE_LABELS, conferenceNote.report_type)
+        ? `報告用途 ${labelOf(CONFERENCE_REPORT_TYPE_LABELS, conferenceNote.report_type)}`
+        : null,
+      formatAuditDate(conferenceNote.follow_up_date)
+        ? `フォロー期限 ${formatAuditDate(conferenceNote.follow_up_date)}`
+        : null,
+      typeof conferenceNote.follow_up_completed === 'boolean'
+        ? `フォロー ${conferenceNote.follow_up_completed ? '完了' : '未完了'}`
+        : null,
+      typeof conferenceNote.action_item_count === 'number'
+        ? `薬局タスク ${conferenceNote.action_item_count}件`
+        : null,
+      Array.isArray(conferenceNote.report_draft_ids)
+        ? `報告ドラフト ${conferenceNote.report_draft_ids.length}件`
+        : null,
+      typeof conferenceNote.queued_recipient_count === 'number'
+        ? `送付下書き ${conferenceNote.queued_recipient_count}件`
+        : null,
+      readString(conferenceNote.billing_code)
+        ? `算定 ${readString(conferenceNote.billing_code)}`
+        : null,
     ]).join(' / ') || null
   );
 }
@@ -503,6 +551,7 @@ function getOperationHistoryCategory(item: OperationHistoryTimelineSource) {
   if (item.action.startsWith('billing_')) return 'billing';
   if (item.action.startsWith('prescription_')) return 'prescription';
   if (item.action.startsWith('patient_mcs_')) return 'communication';
+  if (item.action.startsWith('conference_note.')) return 'communication';
   return 'document';
 }
 
@@ -828,6 +877,7 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
       };
       const isBilling = item.action.startsWith('billing_');
       const isPrescription = item.action.startsWith('prescription_');
+      const isConference = item.action.startsWith('conference_note.');
 
       return {
         id: `operation_history:${item.id}`,
@@ -840,12 +890,16 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
           ? `/billing/candidates?patient_id=${patientId}`
           : isPrescription
             ? `/prescriptions/${item.target_id}`
-            : `/patients/${patientId}`,
+            : isConference
+              ? `/conferences?patient_id=${patientId}`
+              : `/patients/${patientId}`,
         action_label: isBilling
           ? '請求を開く'
           : isPrescription
             ? '処方受付を開く'
-            : '患者詳細を開く',
+            : isConference
+              ? '会議を開く'
+              : '患者詳細を開く',
         status: item.action,
         status_label: meta.statusLabel,
         actor_name: actorNameMap.get(item.actor_id) ?? null,

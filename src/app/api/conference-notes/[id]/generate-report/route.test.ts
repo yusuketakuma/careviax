@@ -9,6 +9,7 @@ const {
   careReportCreateManyMock,
   deliveryRecordFindManyMock,
   deliveryRecordCreateManyMock,
+  auditLogCreateMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   conferenceNoteFindFirstMock: vi.fn(),
@@ -18,6 +19,7 @@ const {
   careReportCreateManyMock: vi.fn(),
   deliveryRecordFindManyMock: vi.fn(),
   deliveryRecordCreateManyMock: vi.fn(),
+  auditLogCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -100,6 +102,7 @@ describe('/api/conference-notes/[id]/generate-report POST', () => {
     careReportCreateManyMock.mockResolvedValue({ count: 1 });
     deliveryRecordFindManyMock.mockResolvedValue([]);
     deliveryRecordCreateManyMock.mockResolvedValue({ count: 1 });
+    auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
     conferenceNoteUpdateMock.mockResolvedValue({
       id: 'note_1',
       generated_report_id: 'report_cm_1',
@@ -119,6 +122,9 @@ describe('/api/conference-notes/[id]/generate-report POST', () => {
         deliveryRecord: {
           findMany: deliveryRecordFindManyMock,
           createMany: deliveryRecordCreateManyMock,
+        },
+        auditLog: {
+          create: auditLogCreateMock,
         },
       }),
     );
@@ -155,6 +161,23 @@ describe('/api/conference-notes/[id]/generate-report POST', () => {
       where: { id: 'note_1' },
       data: {
         generated_report_id: 'report_cm_1',
+      },
+    });
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: {
+        org_id: 'org_1',
+        actor_id: 'user_1',
+        action: 'conference_note.report_generated',
+        target_type: 'conference_note',
+        target_id: 'note_1',
+        changes: {
+          conference_note: {
+            note_type: 'service_manager',
+            report_type: 'care_manager_report',
+            report_draft_ids: ['report_cm_1'],
+            queued_recipient_count: 1,
+          },
+        },
       },
     });
 

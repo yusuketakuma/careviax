@@ -30,6 +30,7 @@ const {
   patientSchedulePreferenceUpsertMock,
   consentRecordFindFirstMock,
   managementPlanFindFirstMock,
+  auditLogCreateMock,
   upsertOperationalTaskMock,
   resolveOperationalTasksMock,
 } = vi.hoisted(() => ({
@@ -60,6 +61,7 @@ const {
   patientSchedulePreferenceUpsertMock: vi.fn(),
   consentRecordFindFirstMock: vi.fn(),
   managementPlanFindFirstMock: vi.fn(),
+  auditLogCreateMock: vi.fn(),
   upsertOperationalTaskMock: vi.fn(),
   resolveOperationalTasksMock: vi.fn(),
 }));
@@ -173,6 +175,9 @@ function buildTxMock() {
     patientSchedulePreference: {
       upsert: patientSchedulePreferenceUpsertMock,
     },
+    auditLog: {
+      create: auditLogCreateMock,
+    },
   };
 }
 
@@ -224,6 +229,7 @@ describe('/api/conference-notes', () => {
       }),
     );
     billingCandidateUpsertMock.mockResolvedValue({ id: 'billing_new' });
+    auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
     visitScheduleProposalFindFirstMock.mockResolvedValue(null);
     visitScheduleProposalCreateMock.mockResolvedValue({ id: 'proposal_new' });
     visitScheduleProposalUpdateMock.mockResolvedValue({ id: 'proposal_existing' });
@@ -592,6 +598,26 @@ describe('/api/conference-notes', () => {
         follow_up_date: new Date('2026-04-05T00:00:00.000Z'),
         follow_up_completed: false,
       }),
+    });
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: {
+        org_id: 'org_1',
+        actor_id: 'user_1',
+        action: 'conference_note.created',
+        target_type: 'conference_note',
+        target_id: 'note_2',
+        changes: {
+          conference_note: {
+            note_type: 'pre_discharge',
+            report_type: null,
+            follow_up_date: '2026-04-05T00:00:00.000Z',
+            follow_up_completed: false,
+            action_item_count: 0,
+            billing_eligible: true,
+            billing_code: 'B011-6',
+          },
+        },
+      },
     });
   });
 

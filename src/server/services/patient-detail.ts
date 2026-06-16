@@ -652,7 +652,6 @@ export async function getPatientTimelineData(db: PatientTimelineDb, args: Detail
             where: {
               org_id: args.orgId,
               OR: [{ patient_id: args.patientId, case_id: null }, { case_id: { in: caseIds } }],
-              note_type: { in: ['pre_discharge', 'service_manager'] },
             },
             orderBy: [{ conference_date: 'desc' }],
             take: 8,
@@ -720,6 +719,14 @@ export async function getPatientTimelineData(db: PatientTimelineDb, args: Detail
       target_type: 'BillingCandidate',
       target_id: { in: billingCandidateIds },
       action: { in: ['billing_collection_updated'] },
+    });
+  }
+  const conferenceNoteIds = conferenceNotes.map((item) => item.id);
+  if (conferenceNoteIds.length > 0) {
+    operationHistoryFilters.push({
+      target_type: 'conference_note',
+      target_id: { in: conferenceNoteIds },
+      action: { startsWith: 'conference_note.' },
     });
   }
 

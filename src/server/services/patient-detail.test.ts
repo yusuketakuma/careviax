@@ -909,6 +909,96 @@ describe('getPatientTimelineData', () => {
     );
   });
 
+  it('adds conference operation audits to the patient timeline without note body exposure', async () => {
+    const auditLogFindManyMock = vi.fn().mockResolvedValue([
+      {
+        id: 'audit_conference_1',
+        action: 'conference_note.created',
+        target_type: 'conference_note',
+        target_id: 'conference_1',
+        actor_id: 'user_1',
+        changes: {
+          conference_note: {
+            note_type: 'service_manager',
+            report_type: 'care_manager_report',
+            follow_up_date: '2026-04-06T00:00:00.000Z',
+            follow_up_completed: false,
+            action_item_count: 2,
+            billing_code: 'MED_INFO_PROVISION_2_HA',
+          },
+        },
+        created_at: new Date('2026-04-05T11:00:00.000Z'),
+      },
+    ]);
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      conferenceNote: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'conference_1',
+            note_type: 'service_manager',
+            title: '山田 太郎様 サービス担当者会議',
+            conference_date: new Date('2026-04-05T10:00:00.000Z'),
+            follow_up_date: new Date('2026-04-06T00:00:00.000Z'),
+            follow_up_completed: false,
+            generated_report_id: null,
+            action_items: [{ title: '報告書作成' }, { title: '次回訪問調整' }],
+          },
+        ]),
+      },
+      auditLog: {
+        findMany: auditLogFindManyMock,
+      },
+      user: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'user_1', name: '佐藤 薬剤師' }]),
+      },
+    });
+
+    const result = await getPatientTimelineData(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    expect(result?.timeline_events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'operation_history:audit_conference_1',
+          event_type: 'operation_history',
+          category: 'communication',
+          title: 'カンファレンス記録を登録',
+          summary:
+            '担当者会議 / 報告用途 ケアマネ向け / フォロー期限 2026/04/06 / フォロー 未完了 / 薬局タスク 2件 / 算定 MED_INFO_PROVISION_2_HA',
+          href: '/conferences?patient_id=patient_1',
+          action_label: '会議を開く',
+          status: 'conference_note.created',
+          status_label: '会議登録',
+          actor_name: '佐藤 薬剤師',
+        }),
+      ]),
+    );
+    expect(JSON.stringify(result?.timeline_events)).not.toContain('退院後の服薬支援本文');
+    expect(auditLogFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              target_type: 'conference_note',
+              target_id: { in: ['conference_1'] },
+              action: { startsWith: 'conference_note.' },
+            }),
+          ]),
+        }),
+      }),
+    );
+  });
+
   it('scopes conference notes to patient-level notes or assigned cases', async () => {
     const conferenceNoteFindManyMock = vi.fn().mockResolvedValue([]);
     const db = buildDb({
