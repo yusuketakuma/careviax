@@ -330,6 +330,7 @@ type FirstVisitDocumentHomeAction = {
   documentType: string | null;
   templateName: string | null;
   templateVersion: string | null;
+  printBatchId: string | null;
   storageLocation: string | null;
   createdAt: Date;
 };
@@ -360,6 +361,7 @@ function readFirstVisitDocumentAction(log: {
     documentType: readString(documentAction?.document_type),
     templateName: readString(documentAction?.template_name),
     templateVersion: readString(documentAction?.template_version),
+    printBatchId: readString(documentAction?.print_batch_id),
     storageLocation: readString(documentAction?.storage_location),
     createdAt: log.created_at,
   };
@@ -374,6 +376,7 @@ function deriveFirstVisitDocumentHomeStatuses(args: {
       .filter((action) => action.documentType === documentType)
       .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
     const latestAction = matchingActions[0] ?? null;
+    const latestPrintAction = matchingActions.find((action) => action.action === 'printed') ?? null;
     const latestDocument = latestAction
       ? (args.documents.find((document) => document.id === latestAction.documentId) ?? null)
       : null;
@@ -403,6 +406,8 @@ function deriveFirstVisitDocumentHomeStatuses(args: {
       templateVersion: latestAction?.templateVersion ?? null,
       storageLocation: latestAction?.storageLocation ?? null,
       latestActionAt: latestAction?.createdAt ?? null,
+      latestPrintedAt: latestPrintAction?.createdAt ?? null,
+      latestPrintBatchId: latestPrintAction?.printBatchId ?? null,
       latestDocument,
       hasFile,
       deliveredAt,
@@ -591,6 +596,9 @@ function buildDocumentItem(args: {
   const recoveredCount = documentStatuses.filter((status) =>
     ['recovered', 'image_saved', 'replaced'].includes(status.status),
   ).length;
+  const latestPrint = documentStatuses
+    .filter((status) => status.latestPrintedAt)
+    .sort((left, right) => right.latestPrintedAt!.getTime() - left.latestPrintedAt!.getTime())[0];
   const latestUpdatedAt =
     [
       ...args.documents.map((document) => document.updated_at ?? document.created_at),
@@ -617,6 +625,12 @@ function buildDocumentItem(args: {
     metrics: [
       { label: 'PDF/画像', value: `${fileCount}/${documentStatuses.length}件保存` },
       { label: '回収/画像', value: `${recoveredCount}/${documentStatuses.length}件完了` },
+      {
+        label: '最終印刷',
+        value: latestPrint?.latestPrintedAt
+          ? `${formatDate(latestPrint.latestPrintedAt)} / ${latestPrint.latestPrintBatchId ?? 'バッチ未記録'}`
+          : '未記録',
+      },
       ...documentStatuses.map((status) => {
         const template = templatesByType.get(status.templateType);
         const templateText = status.templateName

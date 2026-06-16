@@ -284,7 +284,7 @@ const HOME_OPS_ALERT_LIMIT = 6;
 const HOME_OPS_METRIC_LIMIT = 4;
 
 const HOME_OPS_METRIC_PRIORITIES: Partial<Record<PatientHomeOperationKey, string[]>> = {
-  documents: ['PDF/画像', '回収/画像', '契約書', '重要事項説明書'],
+  documents: ['PDF/画像', '回収/画像', '最終印刷', '契約書'],
   mcs: ['最終確認', '参加状況', '主な連携先', '同期状態'],
   prescription: ['期限', '原本', '照合', '疑義照会'],
   billing: ['未収額', '次回集金予定', '支払者', '領収証'],

@@ -36,6 +36,21 @@ function createDb(overrides: Record<string, unknown> = {}) {
       findMany: vi.fn().mockResolvedValue([
         {
           target_id: 'doc_contract',
+          action: 'first_visit_document.printed',
+          changes: {
+            document_action: {
+              action: 'printed',
+              document_type: 'contract',
+              template_name: '居宅療養管理指導契約書 2026年版',
+              template_version: 'v1',
+              print_batch_id: 'print_20260603T000000Z_batch1',
+              storage_location: 'store',
+            },
+          },
+          created_at: new Date('2026-06-03T00:00:00.000Z'),
+        },
+        {
+          target_id: 'doc_contract',
           action: 'first_visit_document.generated',
           changes: {
             document_action: {
@@ -291,7 +306,8 @@ describe('getPatientHomeOperationsData', () => {
       metrics: expect.arrayContaining([
         { label: 'PDF/画像', value: '1/4件保存' },
         { label: '回収/画像', value: '0/4件完了' },
-        { label: '契約書', value: '作成済み / 居宅療養管理指導契約書 2026年版 v1' },
+        { label: '最終印刷', value: '2026/06/03 / print_20260603T000000Z_batch1' },
+        { label: '契約書', value: '印刷済み / 居宅療養管理指導契約書 2026年版 v1' },
         { label: '重要事項説明書', value: '未作成 / 重要事項説明書 2026年版 v2' },
         { label: '個人情報同意書', value: '未作成 / 個人情報使用同意書 2026年版 v1' },
         { label: '同意書', value: '未作成 / 在宅サービス同意書 2026年版 v1' },
@@ -467,7 +483,8 @@ describe('getPatientHomeOperationsData', () => {
 
     expect(result?.items.find((item) => item.key === 'documents')).toMatchObject({
       metrics: expect.arrayContaining([
-        { label: '契約書', value: '作成済み / 居宅療養管理指導契約書 2026年版 v1' },
+        { label: '最終印刷', value: '2026/06/03 / print_20260603T000000Z_batch1' },
+        { label: '契約書', value: '印刷済み / 居宅療養管理指導契約書 2026年版 v1' },
         { label: '重要事項説明書', value: '未作成 / 既定テンプレート未設定' },
         { label: '同意書', value: '未作成 / 在宅サービス同意書 2026年版 v1' },
       ]),
