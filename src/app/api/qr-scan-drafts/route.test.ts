@@ -8,11 +8,14 @@ type TestRouteContext = { params: Promise<Record<string, string>> };
 const {
   withAuthContextMock,
   withOrgContextMock,
+  qrScanDraftFindManyMock,
+  qrScanDraftCountMock,
   qrScanDraftFindFirstMock,
   qrScanDraftCreateMock,
   patientFindFirstMock,
   pharmacySiteFindFirstMock,
   careCaseFindFirstMock,
+  careCaseFindManyMock,
   jahisSupplementalRecordDeleteManyMock,
   jahisSupplementalRecordCreateManyMock,
   broadcastStatusUpdateMock,
@@ -35,11 +38,14 @@ const {
     },
   ),
   withOrgContextMock: vi.fn(),
+  qrScanDraftFindManyMock: vi.fn(),
+  qrScanDraftCountMock: vi.fn(),
   qrScanDraftFindFirstMock: vi.fn().mockResolvedValue(null),
   qrScanDraftCreateMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   pharmacySiteFindFirstMock: vi.fn(),
   careCaseFindFirstMock: vi.fn().mockResolvedValue({ id: 'case_1' }),
+  careCaseFindManyMock: vi.fn().mockResolvedValue([]),
   jahisSupplementalRecordDeleteManyMock: vi.fn(),
   jahisSupplementalRecordCreateManyMock: vi.fn(),
   broadcastStatusUpdateMock: vi.fn(),
@@ -71,6 +77,7 @@ vi.mock('@/lib/db/client', () => ({
     },
     careCase: {
       findFirst: careCaseFindFirstMock,
+      findMany: careCaseFindManyMock,
     },
   },
 }));
@@ -92,9 +99,10 @@ vi.mock('@/lib/pharmacy/qr-intake-mapper', () => ({
   mapJahisToIntake: mapJahisToIntakeMock,
 }));
 
-import { POST as rawPOST } from './route';
+import { GET as rawGET, POST as rawPOST } from './route';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createRequest(body: unknown) {
@@ -112,6 +120,72 @@ function createMalformedJsonRequest() {
     body: '{"qr_texts":',
   });
 }
+
+function createGetRequest(url = 'http://localhost/api/qr-scan-drafts') {
+  return new NextRequest(url, { method: 'GET' });
+}
+
+describe('/api/qr-scan-drafts GET', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    qrScanDraftFindManyMock.mockResolvedValue([
+      {
+        id: 'draft_1',
+        status: 'pending',
+        patient_id: null,
+        raw_qr_texts: ['secret'],
+        qr_payload_hash: 'hash_1',
+        parsed_data: { patient: { name: '山田 太郎' }, rawText: 'secret text' },
+        created_at: new Date('2026-06-16T00:00:00.000Z'),
+      },
+    ]);
+    qrScanDraftCountMock.mockResolvedValue(3);
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        qrScanDraft: {
+          findMany: qrScanDraftFindManyMock,
+          count: qrScanDraftCountMock,
+        },
+      }),
+    );
+  });
+
+  it('returns unmatched count with the main list when requested', async () => {
+    const response = await GET(
+      createGetRequest('http://localhost/api/qr-scan-drafts?include_unmatched_count=1'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: [
+        {
+          id: 'draft_1',
+          parsed_data: { patient: { name: '山田 太郎' } },
+        },
+      ],
+      unmatchedCount: 3,
+    });
+    expect(qrScanDraftFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ org_id: 'org_1', status: 'pending' }),
+      }),
+    );
+    expect(qrScanDraftCountMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({ org_id: 'org_1', status: 'pending', patient_id: null }),
+    });
+    expect(JSON.stringify(body)).not.toContain('secret');
+  });
+
+  it('does not run the unmatched count query by default', async () => {
+    const response = await GET(createGetRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(qrScanDraftCountMock).not.toHaveBeenCalled();
+  });
+});
 
 describe('/api/qr-scan-drafts POST', () => {
   beforeEach(() => {

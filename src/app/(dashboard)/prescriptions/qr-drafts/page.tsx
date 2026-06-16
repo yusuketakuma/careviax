@@ -41,6 +41,11 @@ type QrDraftRow = {
   } | null;
 };
 
+type QrDraftListResponse = {
+  data: QrDraftRow[];
+  unmatchedCount?: number;
+};
+
 const statusConfig: Record<
   string,
   { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }
@@ -128,11 +133,11 @@ function QrDraftList() {
   const { data: allData, isLoading: allLoading } = useRealtimeQuery({
     queryKey: ['qr-drafts', orgId, 'all'],
     queryFn: async () => {
-      const res = await fetch('/api/qr-scan-drafts', {
+      const res = await fetch('/api/qr-scan-drafts?include_unmatched_count=1', {
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('QRスキャン下書きの取得に失敗しました');
-      return res.json() as Promise<{ data: QrDraftRow[] }>;
+      return res.json() as Promise<QrDraftListResponse>;
     },
     enabled: !!orgId,
     refetchInterval: 30_000,
@@ -146,9 +151,9 @@ function QrDraftList() {
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('QRスキャン下書きの取得に失敗しました');
-      return res.json() as Promise<{ data: QrDraftRow[] }>;
+      return res.json() as Promise<QrDraftListResponse>;
     },
-    enabled: !!orgId,
+    enabled: !!orgId && filterMode === 'unmatched',
     refetchInterval: 30_000,
     invalidateOn: ['qr_draft_created', 'qr_draft_confirmed'],
   });
@@ -158,7 +163,7 @@ function QrDraftList() {
     () => (filterMode === 'unmatched' ? (unmatchedData?.data ?? []) : (allData?.data ?? [])),
     [filterMode, allData, unmatchedData],
   );
-  const unmatchedCount = unmatchedData?.data.length ?? 0;
+  const unmatchedCount = allData?.unmatchedCount ?? 0;
 
   const handleMoveUp = useCallback(() => {
     setSelectedIndex((prev) => Math.max(0, prev - 1));

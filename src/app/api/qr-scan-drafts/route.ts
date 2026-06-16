@@ -195,28 +195,49 @@ export const GET = withAuthContext(
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
     const unmatched = searchParams.get('unmatched') === 'true';
+    const includeUnmatchedCount = searchParams.get('include_unmatched_count') === '1';
     const assignedPatientIds = await getAssignedPatientIds(prisma, ctx.orgId, ctx);
     const assignmentWhere = buildQrDraftAssignmentWhere(ctx, assignedPatientIds ?? []);
 
-    const drafts = await withOrgContext(ctx.orgId, (tx) => {
-      return tx.qrScanDraft.findMany({
-        where: {
-          org_id: ctx.orgId,
-          status: 'pending',
-          ...(unmatched ? { patient_id: null } : {}),
-          ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
-        },
-        take: limit + 1,
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-      });
+    const baseWhere = {
+      org_id: ctx.orgId,
+      status: 'pending' as const,
+      ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+    };
+    const listWhere = {
+      ...baseWhere,
+      ...(unmatched ? { patient_id: null } : {}),
+    };
+
+    const { drafts, unmatchedCount } = await withOrgContext(ctx.orgId, async (tx) => {
+      const [drafts, unmatchedCount] = await Promise.all([
+        tx.qrScanDraft.findMany({
+          where: listWhere,
+          take: limit + 1,
+          ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+          orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+        }),
+        includeUnmatchedCount
+          ? tx.qrScanDraft.count({
+              where: {
+                ...baseWhere,
+                patient_id: null,
+              },
+            })
+          : Promise.resolve(undefined),
+      ]);
+
+      return {
+        drafts,
+        unmatchedCount,
+      };
     });
 
     const hasMore = drafts.length > limit;
     const data = (hasMore ? drafts.slice(0, limit) : drafts).map(toQrDraftResponse);
     const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
 
-    return success({ data, hasMore, nextCursor });
+    return success({ data, hasMore, nextCursor, unmatchedCount });
   },
   {
     permission: 'canVisit',
