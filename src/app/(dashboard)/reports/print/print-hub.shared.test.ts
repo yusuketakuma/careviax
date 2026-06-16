@@ -8,6 +8,7 @@ import {
   buildSetInstructionDocument,
   buildVisitReportDocument,
   deriveCalendarSlots,
+  firstVisitPrintBlockReason,
   formatPrintDate,
   formatSlotLabel,
   parsePrintDocumentType,
@@ -438,6 +439,39 @@ describe('summarizeFirstVisitPrintReadiness', () => {
     const summary = summarizeFirstVisitPrintReadiness(null);
     expect(summary.blocked).toBe(true);
     expect(summary.label).toBe('印刷前チェック未取得');
+  });
+
+  it('初回訪問文書が0件なら印刷対象なしとしてブロックする', () => {
+    const summary = summarizeFirstVisitPrintReadiness(makeReadiness());
+
+    expect(firstVisitPrintBlockReason({ readiness: summary, documentCount: 0 })).toBe(
+      '印刷対象の契約・同意文書がありません。患者詳細で文書を作成してから印刷してください。',
+    );
+    expect(firstVisitPrintBlockReason({ readiness: summary, documentCount: 1 })).toBeNull();
+  });
+
+  it('readiness の必須不足は文書件数より優先してブロック理由にする', () => {
+    const summary = summarizeFirstVisitPrintReadiness(
+      makeReadiness({
+        overall_status: 'blocked',
+        missing_required_count: 1,
+        checks: [
+          {
+            key: 'care_insurance',
+            label: '介護保険情報',
+            completed: false,
+            severity: 'required',
+            description: '介護保険番号を確認します。',
+            action_href: '/patients/patient_1#care-insurance',
+            action_label: '保険情報へ',
+          },
+        ],
+      }),
+    );
+
+    expect(firstVisitPrintBlockReason({ readiness: summary, documentCount: 0 })).toContain(
+      '介護保険情報',
+    );
   });
 });
 

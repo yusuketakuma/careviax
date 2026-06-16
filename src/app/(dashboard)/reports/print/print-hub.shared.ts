@@ -250,6 +250,20 @@ export type FirstVisitPrintReadinessSummary = {
   templateLabels: string[];
 };
 
+export function firstVisitPrintBlockReason({
+  readiness,
+  documentCount,
+}: {
+  readiness: FirstVisitPrintReadinessSummary;
+  documentCount: number;
+}): string | null {
+  if (readiness.blocked) return readiness.message;
+  if (documentCount <= 0) {
+    return '印刷対象の契約・同意文書がありません。患者詳細で文書を作成してから印刷してください。';
+  }
+  return null;
+}
+
 // ─── 日付整形 ────────────────────────────────────────────────────────────────
 
 /** ISO 文字列 → 「2026/6/1」。不正値は「—」 */

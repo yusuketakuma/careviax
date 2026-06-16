@@ -18,6 +18,7 @@ import {
   buildSetInstructionDocument,
   buildVisitReportDocument,
   DEFAULT_PRINT_OUTPUT_SETTINGS,
+  firstVisitPrintBlockReason,
   parsePrintDocumentType,
   pickIntakeForCycle,
   pickPrintSetPlan,
@@ -728,6 +729,14 @@ export function PrintHubContent() {
     () => summarizeFirstVisitPrintReadiness(firstVisitPrintReadiness),
     [firstVisitPrintReadiness],
   );
+  const firstVisitPrintBlockMessage = useMemo(
+    () =>
+      firstVisitPrintBlockReason({
+        readiness: firstVisitPrintReadinessSummary,
+        documentCount: firstVisitDocuments.length,
+      }),
+    [firstVisitDocuments.length, firstVisitPrintReadinessSummary],
+  );
   const firstVisitPrintHistoryMutation = useMutation({
     mutationFn: () =>
       recordFirstVisitPrintHistory({
@@ -760,8 +769,8 @@ export function PrintHubContent() {
 
   const handlePrint = async () => {
     setPrintError(null);
-    if (documentType === 'first_visit_documents' && firstVisitPrintReadinessSummary.blocked) {
-      setPrintError(firstVisitPrintReadinessSummary.message);
+    if (documentType === 'first_visit_documents' && firstVisitPrintBlockMessage) {
+      setPrintError(firstVisitPrintBlockMessage);
       return;
     }
     if (documentType === 'first_visit_documents' && firstVisitDocuments.length > 0) {
@@ -817,7 +826,7 @@ export function PrintHubContent() {
   const isFirstVisitPrint = documentType === 'first_visit_documents';
   const printDisabled =
     firstVisitPrintHistoryMutation.isPending ||
-    (isFirstVisitPrint && firstVisitPrintReadinessSummary.blocked);
+    (isFirstVisitPrint && Boolean(firstVisitPrintBlockMessage));
 
   return (
     <div
