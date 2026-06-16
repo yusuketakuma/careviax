@@ -916,6 +916,88 @@ describe('getPatientTimelineData', () => {
     );
   });
 
+  it('adds patient-level document exports to the patient operation timeline', async () => {
+    const auditLogFindManyMock = vi.fn().mockResolvedValue([
+      {
+        id: 'audit_patient_export_1',
+        action: 'export',
+        target_type: 'medication_calendar',
+        target_id: 'patient_1',
+        actor_id: 'user_2',
+        changes: {
+          format: 'pdf',
+          record_count: 1,
+          filters: {
+            month: '2026-06',
+          },
+          metadata: {},
+        },
+        created_at: new Date('2026-06-16T13:00:00.000Z'),
+      },
+    ]);
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          name: '山田 太郎',
+          name_kana: 'ヤマダ タロウ',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      auditLog: {
+        findMany: auditLogFindManyMock,
+      },
+      user: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'user_2', name: '鈴木 事務' }]),
+      },
+    });
+
+    const result = await getPatientTimelineData(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    expect(result?.timeline_events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'operation_history:audit_patient_export_1',
+          event_type: 'operation_history',
+          category: 'document',
+          title: '服薬カレンダーPDFを出力',
+          summary: 'PDF / 1件 / 対象月 2026-06',
+          href: '/patients/patient_1',
+          action_label: '患者詳細を開く',
+          status: 'export',
+          status_label: '服薬カレンダー',
+          actor_name: '鈴木 事務',
+          metadata: ['medication_calendar', 'patient_1'],
+        }),
+      ]),
+    );
+    expect(auditLogFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              target_type: {
+                in: [
+                  'medication_history',
+                  'medication_calendar',
+                  'visit_record_list',
+                  'prescription_history',
+                ],
+              },
+              target_id: 'patient_1',
+              action: 'export',
+            }),
+          ]),
+        }),
+      }),
+    );
+  });
+
   it('uses first visit document audit details for document timeline identity', async () => {
     const db = buildDb({
       patient: {

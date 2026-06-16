@@ -702,6 +702,18 @@ export async function getPatientTimelineData(db: PatientTimelineDb, args: Detail
         ],
       },
     },
+    {
+      target_type: {
+        in: [
+          'medication_history',
+          'medication_calendar',
+          'visit_record_list',
+          'prescription_history',
+        ],
+      },
+      target_id: args.patientId,
+      action: 'export',
+    },
   ];
   const prescriptionIntakeIds = prescriptionIntakes.map((item) => item.id);
   if (prescriptionIntakeIds.length > 0) {

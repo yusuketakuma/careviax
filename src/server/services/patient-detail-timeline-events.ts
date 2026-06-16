@@ -310,6 +310,13 @@ const BILLING_EXPORT_LABELS: Record<string, { title: string; statusLabel: string
   billing_invoice: { title: '請求書PDFを出力', statusLabel: '請求書PDF' },
 };
 
+const PATIENT_EXPORT_LABELS: Record<string, { title: string; statusLabel: string }> = {
+  medication_history: { title: '薬歴PDFを出力', statusLabel: '薬歴PDF' },
+  medication_calendar: { title: '服薬カレンダーPDFを出力', statusLabel: '服薬カレンダー' },
+  visit_record_list: { title: '訪問記録PDFを出力', statusLabel: '訪問記録PDF' },
+  prescription_history: { title: '処方履歴CSVを出力', statusLabel: '処方履歴CSV' },
+};
+
 const FIRST_VISIT_DOCUMENT_TYPE_LABELS: Record<string, string> = {
   contract: '契約書',
   important_matters: '重要事項説明書',
@@ -492,6 +499,7 @@ function buildOperationHistorySummary(item: OperationHistoryTimelineSource) {
   const documentAction = isRecord(changes.document_action) ? changes.document_action : {};
   const collection = isRecord(changes.collection) ? changes.collection : {};
   const conferenceNote = isRecord(changes.conference_note) ? changes.conference_note : {};
+  const exportFilters = isRecord(changes.filters) ? changes.filters : {};
   const receiptNumber = readString(collection.receipt_number);
   const exchangeNumber = readString(changes.e_prescription_exchange_number);
   const documentUrlType = readString(changes.document_url_type);
@@ -506,6 +514,13 @@ function buildOperationHistorySummary(item: OperationHistoryTimelineSource) {
   const exportFormat = readString(changes.format)?.toUpperCase();
   const exportRecordCount =
     typeof changes.record_count === 'number' ? `${changes.record_count}件` : null;
+  const exportMonth = readString(exportFilters.month);
+  const exportDateFrom = readString(exportFilters.date_from);
+  const exportDateTo = readString(exportFilters.date_to);
+  const exportPeriod =
+    exportDateFrom || exportDateTo
+      ? `期間 ${exportDateFrom ?? '未指定'} - ${exportDateTo ?? '未指定'}`
+      : null;
   const billedAmount =
     typeof collection.billed_amount === 'number'
       ? `請求 ${collection.billed_amount.toLocaleString('ja-JP')}円`
@@ -614,6 +629,8 @@ function buildOperationHistorySummary(item: OperationHistoryTimelineSource) {
         : null,
       exportFormat,
       exportRecordCount,
+      exportMonth ? `対象月 ${exportMonth}` : null,
+      exportPeriod,
     ]).join(' / ') || null
   );
 }
@@ -623,6 +640,8 @@ function getOperationHistoryCategory(item: OperationHistoryTimelineSource) {
     return 'billing';
   }
   if (item.action.startsWith('prescription_')) return 'prescription';
+  if (item.target_type === 'prescription_history') return 'prescription';
+  if (item.target_type === 'visit_record_list') return 'visit';
   if (item.action.startsWith('patient_mcs_')) return 'communication';
   if (item.action.startsWith('conference_note.')) return 'communication';
   return 'document';
@@ -630,7 +649,9 @@ function getOperationHistoryCategory(item: OperationHistoryTimelineSource) {
 
 function getOperationHistoryLabel(item: OperationHistoryTimelineSource) {
   if (item.action === 'export') {
-    return BILLING_EXPORT_LABELS[item.target_type] ?? null;
+    return (
+      BILLING_EXPORT_LABELS[item.target_type] ?? PATIENT_EXPORT_LABELS[item.target_type] ?? null
+    );
   }
   return OPERATION_ACTION_LABELS[item.action] ?? null;
 }
