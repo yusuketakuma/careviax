@@ -48,6 +48,28 @@ type PublicSubsidyApplicationPreview = {
   valid_from: Date | null;
 } | null;
 
+type BillingPreviewCareCase = {
+  id: string;
+  patient_id: string;
+  primary_pharmacist_id: string | null;
+  required_visit_support: unknown;
+  patient: {
+    id: string;
+  };
+};
+
+const BILLING_PREVIEW_CARE_CASE_SELECT = {
+  id: true,
+  patient_id: true,
+  primary_pharmacist_id: true,
+  required_visit_support: true,
+  patient: {
+    select: {
+      id: true,
+    },
+  },
+} as const;
+
 async function findPendingPublicSubsidyInsurance(args: {
   orgId: string;
   patientId: string;
@@ -163,20 +185,24 @@ export async function buildVisitScheduleBillingPreview(args: {
       id: args.caseId,
       org_id: args.orgId,
     },
-    select: {
-      id: true,
-      patient_id: true,
-      primary_pharmacist_id: true,
-      required_visit_support: true,
-      patient: {
-        select: {
-          id: true,
-        },
-      },
-    },
+    select: BILLING_PREVIEW_CARE_CASE_SELECT,
   });
   if (!careCase) return null;
 
+  return buildVisitScheduleBillingPreviewForCareCase(args, careCase);
+}
+
+async function buildVisitScheduleBillingPreviewForCareCase(
+  args: {
+    orgId: string;
+    caseId: string;
+    proposedDate: string;
+    pharmacistId?: string | null;
+    siteId?: string | null;
+    visitType?: string | null;
+  },
+  careCase: BillingPreviewCareCase,
+): Promise<VisitScheduleBillingPreview | null> {
   const proposedDate = new Date(args.proposedDate);
 
   const [latestIntake, medicalInsurance, careInsurance, pendingPublicSubsidyInsurance] =
@@ -283,6 +309,28 @@ export async function buildVisitScheduleBillingPreviewBatch(
   }[],
   orgId: string,
 ) {
+  if (
+    typeof prisma.careCase?.findMany !== 'function' ||
+    typeof prisma.prescriptionIntake?.findFirst !== 'function' ||
+    typeof prisma.visitSchedule?.findMany !== 'function' ||
+    typeof prisma.visitSchedule?.count !== 'function' ||
+    typeof prisma.user?.findFirst !== 'function' ||
+    typeof prisma.pharmacySiteInsuranceConfig?.findFirst !== 'function' ||
+    typeof prisma.patientInsurance?.findFirst !== 'function' ||
+    typeof prisma.patientInsurance?.findMany !== 'function'
+  ) {
+    return {};
+  }
+
+  const uniqueCaseIds = [...new Set(args.map((item) => item.caseId))];
+  const careCases = await prisma.careCase.findMany({
+    where: {
+      id: { in: uniqueCaseIds },
+      org_id: orgId,
+    },
+    select: BILLING_PREVIEW_CARE_CASE_SELECT,
+  });
+  const careCaseById = new Map(careCases.map((careCase) => [careCase.id, careCase]));
   const previewByInput = new Map<string, Promise<VisitScheduleBillingPreview | null>>();
   const entries = await Promise.all(
     args.map(async (item) => {
@@ -295,14 +343,20 @@ export async function buildVisitScheduleBillingPreviewBatch(
       ]);
       let preview = previewByInput.get(inputKey);
       if (!preview) {
-        preview = buildVisitScheduleBillingPreview({
-          orgId,
-          caseId: item.caseId,
-          proposedDate: item.proposedDate,
-          pharmacistId: item.pharmacistId,
-          siteId: item.siteId,
-          visitType: item.visitType,
-        });
+        const careCase = careCaseById.get(item.caseId) ?? null;
+        preview = careCase
+          ? buildVisitScheduleBillingPreviewForCareCase(
+              {
+                orgId,
+                caseId: item.caseId,
+                proposedDate: item.proposedDate,
+                pharmacistId: item.pharmacistId,
+                siteId: item.siteId,
+                visitType: item.visitType,
+              },
+              careCase,
+            )
+          : Promise.resolve(null);
         previewByInput.set(inputKey, preview);
       }
 

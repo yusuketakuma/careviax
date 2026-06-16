@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   careCaseFindFirstMock,
+  careCaseFindManyMock,
   patientInsuranceFindManyMock,
   prescriptionIntakeFindFirstMock,
   visitScheduleFindManyMock,
@@ -15,6 +16,7 @@ const {
   resolveBillingRuntimeContextMock,
 } = vi.hoisted(() => ({
   careCaseFindFirstMock: vi.fn(),
+  careCaseFindManyMock: vi.fn(),
   patientInsuranceFindManyMock: vi.fn(),
   prescriptionIntakeFindFirstMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
@@ -32,6 +34,7 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     careCase: {
       findFirst: careCaseFindFirstMock,
+      findMany: careCaseFindManyMock,
     },
     patientInsurance: {
       findFirst: vi.fn(),
@@ -102,6 +105,17 @@ describe('buildVisitScheduleBillingPreview', () => {
         id: 'patient_1',
       },
     });
+    careCaseFindManyMock.mockResolvedValue([
+      {
+        id: 'case_1',
+        patient_id: 'patient_1',
+        primary_pharmacist_id: 'pharm_1',
+        required_visit_support: null,
+        patient: {
+          id: 'patient_1',
+        },
+      },
+    ]);
     findLatestPrescriptionIntakeClassificationMock.mockResolvedValue({
       prescription_category: 'regular',
     });
@@ -263,12 +277,59 @@ describe('buildVisitScheduleBillingPreview', () => {
       'org_1',
     );
 
-    expect(careCaseFindFirstMock).toHaveBeenCalledTimes(1);
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).toHaveBeenCalledTimes(1);
+    expect(careCaseFindManyMock).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['case_1'] },
+        org_id: 'org_1',
+      },
+      select: {
+        id: true,
+        patient_id: true,
+        primary_pharmacist_id: true,
+        required_visit_support: true,
+        patient: {
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
     expect(findLatestPrescriptionIntakeClassificationMock).toHaveBeenCalledTimes(1);
     expect(resolveBillingRuntimeContextMock).toHaveBeenCalledTimes(1);
     expect(validateBillingRequirementsMock).toHaveBeenCalledTimes(1);
     expect(getBillingCadencePreviewMock).toHaveBeenCalledTimes(1);
     expect(Object.keys(previews).sort()).toEqual(['proposal_1', 'schedule_1']);
     expect(previews.proposal_1).toBe(previews.schedule_1);
+  });
+
+  it('prefetches care cases once for same-case batch previews across different dates', async () => {
+    const previews = await buildVisitScheduleBillingPreviewBatch(
+      [
+        {
+          key: 'proposal_1',
+          caseId: 'case_1',
+          proposedDate: '2026-04-03',
+          pharmacistId: 'pharm_1',
+          siteId: 'site_1',
+          visitType: 'regular',
+        },
+        {
+          key: 'proposal_2',
+          caseId: 'case_1',
+          proposedDate: '2026-04-10',
+          pharmacistId: 'pharm_1',
+          siteId: 'site_1',
+          visitType: 'regular',
+        },
+      ],
+      'org_1',
+    );
+
+    expect(careCaseFindManyMock).toHaveBeenCalledTimes(1);
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(findLatestPrescriptionIntakeClassificationMock).toHaveBeenCalledTimes(2);
+    expect(Object.keys(previews).sort()).toEqual(['proposal_1', 'proposal_2']);
   });
 });
