@@ -3,6 +3,7 @@ import {
   getBillingCadencePreview,
   validateBillingRequirements,
   type BillingCadencePreview,
+  type BillingCadenceScheduleRow,
   type BillingRequirementAlert,
 } from './billing-requirement-validator';
 import { resolveBillingPayerBasis } from './billing-payer-basis';
@@ -16,6 +17,7 @@ import type {
 import { resolveBillingRuntimeContext } from './billing-runtime-context';
 import { getHomeVisitSpecialMedicalProcedures } from '@/lib/patient/home-visit-intake';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { startOfMonth } from 'date-fns';
 
 export type VisitScheduleBillingPreview = {
   alerts: BillingRequirementAlert[];
@@ -96,6 +98,9 @@ type BillingPreviewInsurancePrefetch = {
 
 type BillingPreviewRuntimeContextCache = Map<string, Promise<BillingRuntimeContextResult>>;
 type BillingPreviewPharmacistWeeklyCapById = Map<string, number | null>;
+type BillingPreviewCadenceScheduleRows = BillingCadenceScheduleRow[];
+
+const BILLING_PREVIEW_CADENCE_SEARCH_DAYS = 120;
 
 const BILLING_PREVIEW_CARE_CASE_SELECT = {
   id: true,
@@ -339,6 +344,58 @@ async function prefetchBillingPreviewPharmacistWeeklyCaps(args: {
   return capById;
 }
 
+async function prefetchBillingPreviewCadenceSchedules(args: {
+  orgId: string;
+  careCases: BillingPreviewCareCase[];
+  proposedDates: string[];
+}): Promise<BillingPreviewCadenceScheduleRows> {
+  const patientIds = [...new Set(args.careCases.map((careCase) => careCase.patient_id))];
+  if (patientIds.length === 0 || args.proposedDates.length === 0) return [];
+
+  const proposedDates = args.proposedDates
+    .map((date) => new Date(date))
+    .sort((left, right) => left.getTime() - right.getTime());
+  const minDate = startOfMonth(proposedDates[0]!);
+  const maxDate = new Date(proposedDates[proposedDates.length - 1]!);
+  maxDate.setDate(maxDate.getDate() + BILLING_PREVIEW_CADENCE_SEARCH_DAYS);
+
+  const schedules = await prisma.visitSchedule.findMany({
+    where: {
+      org_id: args.orgId,
+      cycle: {
+        patient_id: { in: patientIds },
+      },
+      scheduled_date: {
+        gte: minDate,
+        lte: maxDate,
+      },
+      schedule_status: {
+        in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress', 'completed'],
+      },
+    },
+    select: {
+      cycle: {
+        select: {
+          patient_id: true,
+        },
+      },
+      scheduled_date: true,
+    },
+    orderBy: [{ scheduled_date: 'asc' }],
+  });
+
+  return schedules.flatMap((schedule) =>
+    schedule.cycle
+      ? [
+          {
+            patient_id: schedule.cycle.patient_id,
+            scheduled_date: schedule.scheduled_date,
+          },
+        ]
+      : [],
+  );
+}
+
 async function findPendingPublicSubsidyInsurance(args: {
   orgId: string;
   patientId: string;
@@ -473,6 +530,7 @@ async function buildVisitScheduleBillingPreviewForCareCase(
     insurancePrefetch?: BillingPreviewInsurancePrefetch;
     runtimeContextCache?: BillingPreviewRuntimeContextCache;
     pharmacistWeeklyCapById?: BillingPreviewPharmacistWeeklyCapById;
+    cadenceScheduleRows?: BillingPreviewCadenceScheduleRows;
   },
   careCase: BillingPreviewCareCase,
 ): Promise<VisitScheduleBillingPreview | null> {
@@ -558,6 +616,7 @@ async function buildVisitScheduleBillingPreviewForCareCase(
       latestIntake?.prescription_category === 'emergency' ? 'emergency' : 'regular',
     payerBasis: payerBasis === 'self_pay' ? 'medical' : payerBasis,
     specialCapEligible,
+    ...(args.cadenceScheduleRows ? { cadenceScheduleRows: args.cadenceScheduleRows } : {}),
   } as const;
 
   const runtimeContext = await resolveBillingRuntimeContextWithCache({
@@ -659,6 +718,11 @@ export async function buildVisitScheduleBillingPreviewBatch(
     items: args,
     careCaseById,
   });
+  const cadenceScheduleRows = await prefetchBillingPreviewCadenceSchedules({
+    orgId,
+    careCases,
+    proposedDates: args.map((item) => item.proposedDate),
+  });
   const runtimeContextCache: BillingPreviewRuntimeContextCache = new Map();
   const previewByInput = new Map<string, Promise<VisitScheduleBillingPreview | null>>();
   const entries = await Promise.all(
@@ -686,6 +750,7 @@ export async function buildVisitScheduleBillingPreviewBatch(
                 insurancePrefetch,
                 runtimeContextCache,
                 pharmacistWeeklyCapById,
+                cadenceScheduleRows,
               },
               careCase,
             )

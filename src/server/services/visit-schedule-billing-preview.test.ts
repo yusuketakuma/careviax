@@ -143,6 +143,7 @@ describe('buildVisitScheduleBillingPreview', () => {
       },
     );
     patientInsuranceFindManyMock.mockResolvedValue([]);
+    visitScheduleFindManyMock.mockResolvedValue([]);
     userFindManyMock.mockResolvedValue([{ id: 'pharm_1', max_weekly_visits: 24 }]);
     validateBillingRequirementsMock.mockResolvedValue([]);
     getBillingCadencePreviewMock.mockResolvedValue({
@@ -313,9 +314,16 @@ describe('buildVisitScheduleBillingPreview', () => {
       expect.objectContaining({
         pharmacistId: 'pharm_1',
         pharmacistWeeklyCap: 24,
+        cadenceScheduleRows: [],
       }),
     );
     expect(getBillingCadencePreviewMock).toHaveBeenCalledTimes(1);
+    expect(getBillingCadencePreviewMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        patientId: 'patient_1',
+        cadenceScheduleRows: [],
+      }),
+    );
     expect(Object.keys(previews).sort()).toEqual(['proposal_1', 'schedule_1']);
     expect(previews.proposal_1).toBe(previews.schedule_1);
   });
@@ -587,6 +595,105 @@ describe('buildVisitScheduleBillingPreview', () => {
         caseId: 'case_2',
         pharmacistId: 'pharm_1',
         pharmacistWeeklyCap: 18,
+      }),
+    );
+  });
+
+  it('prefetches cadence schedules once for batch previews', async () => {
+    visitScheduleFindManyMock.mockResolvedValue([
+      {
+        cycle: {
+          patient_id: 'patient_1',
+        },
+        scheduled_date: new Date('2026-04-01T00:00:00.000Z'),
+      },
+      {
+        cycle: {
+          patient_id: 'patient_2',
+        },
+        scheduled_date: new Date('2026-04-08T00:00:00.000Z'),
+      },
+    ]);
+    careCaseFindManyMock.mockResolvedValue([
+      {
+        id: 'case_1',
+        patient_id: 'patient_1',
+        primary_pharmacist_id: 'pharm_1',
+        required_visit_support: null,
+        patient: {
+          id: 'patient_1',
+        },
+      },
+      {
+        id: 'case_2',
+        patient_id: 'patient_2',
+        primary_pharmacist_id: 'pharm_2',
+        required_visit_support: null,
+        patient: {
+          id: 'patient_2',
+        },
+      },
+    ]);
+
+    await buildVisitScheduleBillingPreviewBatch(
+      [
+        {
+          key: 'proposal_1',
+          caseId: 'case_1',
+          proposedDate: '2026-04-03',
+          pharmacistId: 'pharm_1',
+          siteId: 'site_1',
+          visitType: 'regular',
+        },
+        {
+          key: 'proposal_2',
+          caseId: 'case_2',
+          proposedDate: '2026-04-10',
+          pharmacistId: 'pharm_2',
+          siteId: 'site_1',
+          visitType: 'regular',
+        },
+      ],
+      'org_1',
+    );
+
+    expect(visitScheduleFindManyMock).toHaveBeenCalledTimes(1);
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          cycle: {
+            patient_id: { in: ['patient_1', 'patient_2'] },
+          },
+          schedule_status: {
+            in: ['planned', 'in_preparation', 'ready', 'departed', 'in_progress', 'completed'],
+          },
+        }),
+        select: {
+          cycle: {
+            select: {
+              patient_id: true,
+            },
+          },
+          scheduled_date: true,
+        },
+      }),
+    );
+    expect(getBillingCadencePreviewMock).toHaveBeenCalledTimes(2);
+    expect(getBillingCadencePreviewMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        patientId: 'patient_1',
+        cadenceScheduleRows: [
+          {
+            patient_id: 'patient_1',
+            scheduled_date: new Date('2026-04-01T00:00:00.000Z'),
+          },
+          {
+            patient_id: 'patient_2',
+            scheduled_date: new Date('2026-04-08T00:00:00.000Z'),
+          },
+        ],
       }),
     );
   });

@@ -51,6 +51,12 @@ export type ValidateBillingRequirementsArgs = {
   payerBasis: 'medical' | 'care' | 'mixed';
   specialCapEligible?: boolean;
   pharmacistWeeklyCap?: number | null;
+  cadenceScheduleRows?: BillingCadenceScheduleRow[];
+};
+
+export type BillingCadenceScheduleRow = {
+  patient_id: string;
+  scheduled_date: Date;
 };
 
 export type BillingCadencePreview = {
@@ -109,21 +115,33 @@ export async function getBillingCadencePreview(
   const searchEnd = new Date(args.proposedDate);
   searchEnd.setDate(searchEnd.getDate() + NEXT_DATE_SEARCH_DAYS);
 
-  const schedules = await prisma.visitSchedule.findMany({
-    where: {
-      org_id: args.orgId,
-      cycle: { patient_id: args.patientId },
-      scheduled_date: {
-        gte: monthStart,
-        lte: searchEnd,
-      },
-      schedule_status: { in: ACTIVE_SCHEDULE_STATUSES },
-    },
-    select: {
-      scheduled_date: true,
-    },
-    orderBy: [{ scheduled_date: 'asc' }],
-  });
+  const schedules =
+    args.cadenceScheduleRows?.filter(
+      (row) =>
+        row.patient_id === args.patientId &&
+        row.scheduled_date >= monthStart &&
+        row.scheduled_date <= searchEnd,
+    ) ??
+    (
+      await prisma.visitSchedule.findMany({
+        where: {
+          org_id: args.orgId,
+          cycle: { patient_id: args.patientId },
+          scheduled_date: {
+            gte: monthStart,
+            lte: searchEnd,
+          },
+          schedule_status: { in: ACTIVE_SCHEDULE_STATUSES },
+        },
+        select: {
+          scheduled_date: true,
+        },
+        orderBy: [{ scheduled_date: 'asc' }],
+      })
+    ).map((schedule) => ({
+      patient_id: args.patientId,
+      scheduled_date: schedule.scheduled_date,
+    }));
 
   const monthCountByStart = new Map<number, number>();
   const weekCountByStart = new Map<number, number>();

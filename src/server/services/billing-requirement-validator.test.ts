@@ -373,6 +373,30 @@ describe('getBillingCadencePreview', () => {
     expect(preview.weekly_cap).toBeNull();
   });
 
+  it('uses prefetched cadence schedule rows without loading visit schedules', async () => {
+    const preview = await getBillingCadencePreview({
+      ...baseArgs,
+      cadenceScheduleRows: [
+        {
+          patient_id: 'patient_1',
+          scheduled_date: new Date('2026-04-03T00:00:00.000Z'),
+        },
+        {
+          patient_id: 'patient_2',
+          scheduled_date: new Date('2026-04-10T00:00:00.000Z'),
+        },
+        {
+          patient_id: 'patient_1',
+          scheduled_date: new Date('2026-08-30T00:00:00.000Z'),
+        },
+      ],
+    });
+
+    expect(prismaMock.visitSchedule.findMany).not.toHaveBeenCalled();
+    expect(preview.current_month_count).toBe(1);
+    expect(preview.scheduled_dates_current_month).toEqual(['2026-04-03']);
+  });
+
   it('returns special cap (8) and weekly cap (2) for special patients', async () => {
     prismaMock.visitSchedule.findMany.mockResolvedValue([]);
 
