@@ -751,6 +751,84 @@ describe('getPatientTimelineData', () => {
     });
   });
 
+  it('summarizes billing collection history with bill, payment, receipt, invoice, and unpaid evidence', async () => {
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          name: '山田 太郎',
+          name_kana: 'ヤマダ タロウ',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      billingCandidate: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'candidate_1',
+            status: 'candidate',
+            billing_month: new Date('2026-06-01T00:00:00.000Z'),
+            billing_code: 'HOME_VISIT_MANAGEMENT',
+            billing_name: '居宅療養管理指導',
+            points: 518,
+            created_at: new Date('2026-06-01T00:00:00.000Z'),
+            updated_at: new Date('2026-06-01T00:00:00.000Z'),
+          },
+        ]),
+      },
+      auditLog: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'audit_collection_1',
+            action: 'billing_collection_updated',
+            target_type: 'BillingCandidate',
+            target_id: 'candidate_1',
+            actor_id: 'user_2',
+            changes: {
+              status_before: 'candidate',
+              collection: {
+                status: 'partial',
+                billed_amount: 3240,
+                collected_amount: 2160,
+                unpaid_amount: 1080,
+                payment_method: 'cash',
+                payer_name: '山田花子',
+                collected_at: '2026-06-16T10:30:00.000Z',
+                receipt_number: 'R20260616-001',
+                receipt_issue_status: 'issued',
+                invoice_issue_status: 'issued',
+                unpaid_reason: '次回訪問時に残額集金',
+              },
+            },
+            created_at: new Date('2026-06-16T11:00:00.000Z'),
+          },
+        ]),
+      },
+    });
+
+    const result = await getPatientTimelineData(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    const collectionEvent = result?.timeline_events.find(
+      (item) => item.id === 'operation_history:audit_collection_1',
+    );
+
+    expect(collectionEvent).toMatchObject({
+      event_type: 'operation_history',
+      category: 'billing',
+      title: '集金情報を更新',
+      summary:
+        '状態 一部入金 / 請求 3,240円 / 入金 2,160円 / 未収 1,080円 / 入金日 2026/06/16 / 入金方法 現金 / 領収証 R20260616-001 / 領収証状態 発行済み / 請求書状態 発行済み / 支払者 山田花子 / 未収理由 次回訪問時に残額集金',
+      href: '/billing/candidates?patient_id=patient_1',
+      action_label: '請求を開く',
+      status: 'billing_collection_updated',
+      status_label: '集金更新',
+    });
+  });
+
   it('uses first visit document audit details for document timeline identity', async () => {
     const db = buildDb({
       patient: {

@@ -356,6 +356,12 @@ const BILLING_RECEIPT_ISSUE_LABELS: Record<string, string> = {
   none: '不要',
 };
 
+const BILLING_DOCUMENT_ISSUE_STATUS_LABELS: Record<string, string> = {
+  not_required: '不要',
+  not_issued: '未発行',
+  issued: '発行済み',
+};
+
 const MCS_LINKED_STATUS_LABELS: Record<string, string> = {
   linked: 'あり',
   unlinked: 'なし',
@@ -479,6 +485,18 @@ function buildOperationHistorySummary(item: OperationHistoryTimelineSource) {
   const conferenceNote = isRecord(changes.conference_note) ? changes.conference_note : {};
   const receiptNumber = readString(collection.receipt_number);
   const exchangeNumber = readString(changes.e_prescription_exchange_number);
+  const billedAmount =
+    typeof collection.billed_amount === 'number'
+      ? `請求 ${collection.billed_amount.toLocaleString('ja-JP')}円`
+      : null;
+  const collectedAmount =
+    typeof collection.collected_amount === 'number'
+      ? `入金 ${collection.collected_amount.toLocaleString('ja-JP')}円`
+      : null;
+  const unpaidAmount =
+    typeof collection.unpaid_amount === 'number'
+      ? `未収 ${collection.unpaid_amount.toLocaleString('ja-JP')}円`
+      : null;
 
   return (
     compactTimelineValues([
@@ -505,11 +523,26 @@ function buildOperationHistorySummary(item: OperationHistoryTimelineSource) {
       labelOf(BILLING_COLLECTION_STATUS_LABELS, collection.status)
         ? `状態 ${labelOf(BILLING_COLLECTION_STATUS_LABELS, collection.status)}`
         : null,
-      typeof collection.collected_amount === 'number'
-        ? `集金 ${collection.collected_amount.toLocaleString('ja-JP')}円`
+      billedAmount,
+      collectedAmount,
+      unpaidAmount,
+      formatAuditDate(collection.collected_at)
+        ? `入金日 ${formatAuditDate(collection.collected_at)}`
+        : null,
+      labelOf(BILLING_PAYMENT_METHOD_LABELS, collection.payment_method)
+        ? `入金方法 ${labelOf(BILLING_PAYMENT_METHOD_LABELS, collection.payment_method)}`
         : null,
       receiptNumber ? `領収証 ${receiptNumber}` : null,
+      labelOf(BILLING_DOCUMENT_ISSUE_STATUS_LABELS, collection.receipt_issue_status)
+        ? `領収証状態 ${labelOf(BILLING_DOCUMENT_ISSUE_STATUS_LABELS, collection.receipt_issue_status)}`
+        : null,
+      labelOf(BILLING_DOCUMENT_ISSUE_STATUS_LABELS, collection.invoice_issue_status)
+        ? `請求書状態 ${labelOf(BILLING_DOCUMENT_ISSUE_STATUS_LABELS, collection.invoice_issue_status)}`
+        : null,
       readString(collection.payer_name) ? `支払者 ${readString(collection.payer_name)}` : null,
+      previewTimelineText(readString(collection.unpaid_reason), 40)
+        ? `未収理由 ${previewTimelineText(readString(collection.unpaid_reason), 40)}`
+        : null,
       labelOf(MCS_LINKED_STATUS_LABELS, changes.linked_status)
         ? `MCS ${labelOf(MCS_LINKED_STATUS_LABELS, changes.linked_status)}`
         : null,
