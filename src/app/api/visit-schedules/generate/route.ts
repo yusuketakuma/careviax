@@ -173,14 +173,19 @@ export const POST = withAuthContext(
       return validationError('指定されたRRULEから日程を生成できませんでした');
     }
 
-    for (const candidateDate of candidateDates) {
-      const gate = await evaluateVisitWorkflowGate(prisma, {
-        orgId: ctx.orgId,
-        patientId: careCase.patient_id,
-        caseId: case_id,
-        asOf: candidateDate,
-      });
+    const workflowGates = await Promise.all(
+      candidateDates.map((candidateDate) =>
+        evaluateVisitWorkflowGate(prisma, {
+          orgId: ctx.orgId,
+          patientId: careCase.patient_id,
+          caseId: case_id,
+          asOf: candidateDate,
+        }),
+      ),
+    );
+    for (const [index, gate] of workflowGates.entries()) {
       if (!gate.ok) {
+        const candidateDate = candidateDates[index]!;
         return validationError(
           `${format(candidateDate, 'yyyy-MM-dd')}: ${formatVisitWorkflowGateIssues(gate.issues)}`,
         );
