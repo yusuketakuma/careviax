@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { todayUtcRange } from '@/lib/utils/date-boundary';
 import { runJob } from './runner';
@@ -31,21 +32,25 @@ export async function checkUnrecordedVisits() {
 
     // VisitRecordが未作成のスケジュールをフィルタ
     const unrecorded = completedSchedules.filter((s) => !recordedIds.has(s.id));
+    const notifications: Prisma.NotificationCreateManyInput[] = unrecorded.map((schedule) => ({
+      org_id: schedule.org_id,
+      user_id: schedule.pharmacist_id,
+      type: 'reminder',
+      title: '薬歴未記入',
+      message: '本日の訪問記録が未入力です。薬歴を記入してください。',
+      link: `/visit-schedules/${schedule.id}`,
+      dedupe_key: `unrecorded-visit:${schedule.id}:${schedule.pharmacist_id}`,
+    }));
 
-    for (const schedule of unrecorded) {
-      await prisma.notification.create({
-        data: {
-          org_id: schedule.org_id,
-          user_id: schedule.pharmacist_id,
-          type: 'reminder',
-          title: '薬歴未記入',
-          message: '本日の訪問記録が未入力です。薬歴を記入してください。',
-          link: `/visit-schedules/${schedule.id}`,
-        },
-      });
-    }
+    const notificationResult =
+      notifications.length === 0
+        ? { count: 0 }
+        : await prisma.notification.createMany({
+            data: notifications,
+            skipDuplicates: true,
+          });
 
-    return { processedCount: unrecorded.length };
+    return { processedCount: notificationResult.count };
   });
 }
 
