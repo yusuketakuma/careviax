@@ -113,6 +113,10 @@ type FileAssetStore = {
   deleteMany(args: unknown): Promise<unknown>;
 };
 
+type CareReportPdfUrlStore = {
+  updateMany(args: unknown): Promise<unknown>;
+};
+
 type StoredFileLookup = {
   record: StoredFileRecord;
   settingId: string | null;
@@ -722,6 +726,27 @@ function throwFileAccessForbidden(mode: StoredFileAccessMode, message: string): 
 
 function throwFileMetadataNotFound(message = 'ファイルに紐づく参照先が見つかりません'): never {
   throw new FileStorageError('FILE_METADATA_NOT_FOUND', message, 404);
+}
+
+function buildStoredFileDownloadUrl(record: StoredFileRecord) {
+  return `/api/files/${record.id}/download`;
+}
+
+async function syncReportPdfUrl(record: StoredFileRecord) {
+  if (record.purpose !== 'report' || !record.reportId) return;
+
+  const careReportStore = (prisma as unknown as { careReport?: CareReportPdfUrlStore }).careReport;
+  if (!careReportStore || typeof careReportStore.updateMany !== 'function') return;
+
+  await careReportStore.updateMany({
+    where: {
+      id: record.reportId,
+      org_id: record.orgId,
+    },
+    data: {
+      pdf_url: buildStoredFileDownloadUrl(record),
+    },
+  });
 }
 
 function assertRoleAuthorizedForStoredFile(
@@ -1354,6 +1379,7 @@ export async function completeUploadedFile({
   await assertStoredFileAccess({ orgId, record, accessContext, mode: 'complete' });
 
   if (record.status === 'uploaded') {
+    await syncReportPdfUrl(record);
     return record;
   }
 
@@ -1419,6 +1445,7 @@ export async function completeUploadedFile({
   } else {
     await upsertLegacySettingRecord(nextRecord);
   }
+  await syncReportPdfUrl(nextRecord);
 
   return nextRecord;
 }

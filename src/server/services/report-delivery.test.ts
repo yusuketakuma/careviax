@@ -67,6 +67,21 @@ describe('sendCareReportEmail', () => {
     expect(call.htmlBody).not.toContain('<a href=');
   });
 
+  it('omits internal file urls from external email bodies', async () => {
+    await sendCareReportEmail({
+      to: 'cm@example.com',
+      recipientName: 'ケアマネ太郎',
+      reportType: 'care_manager_report',
+      reportId: 'report-2',
+      pdfUrl: '/api/files/file_1/download',
+    });
+
+    const call = sendEmailMock.mock.calls[0][0];
+    expect(call.textBody).not.toContain('PDF参照');
+    expect(call.textBody).not.toContain('/api/files/file_1/download');
+    expect(call.htmlBody).not.toContain('<a href=');
+  });
+
   it('escapes HTML in html body', async () => {
     await sendCareReportEmail({
       to: 'test@example.com',

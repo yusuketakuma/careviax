@@ -19,6 +19,16 @@ function escapeHtml(value: string) {
     .replaceAll("'", '&#39;');
 }
 
+function isExternalShareableUrl(value: string | null | undefined) {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
 export async function sendCareReportEmail({
   to,
   recipientName,
@@ -53,17 +63,18 @@ export async function sendCareReportEmail({
     .replaceAll('{{recipientName}}', recipientName)
     .replaceAll('{{reportType}}', reportTypeLabel)
     .replaceAll('{{reportId}}', reportId);
-  const pdfText = pdfUrl
-    ? labels['mail.care_report.pdf_line'].replaceAll('{{pdfUrl}}', pdfUrl)
+  const shareablePdfUrl = isExternalShareableUrl(pdfUrl) ? pdfUrl : null;
+  const pdfText = shareablePdfUrl
+    ? labels['mail.care_report.pdf_line'].replaceAll('{{pdfUrl}}', shareablePdfUrl)
     : '';
   const footerText = labels['mail.care_report.footer'];
 
   const textBody = [introText, pdfText, footerText].filter(Boolean).join('\n\n');
   const htmlBody = [
     `<p>${escapeHtml(introText).replaceAll('\n', '<br />')}</p>`,
-    pdfUrl
-      ? `<p><a href="${escapeHtml(pdfUrl)}" target="_blank" rel="noreferrer">${escapeHtml(
-          pdfText
+    shareablePdfUrl
+      ? `<p><a href="${escapeHtml(shareablePdfUrl)}" target="_blank" rel="noreferrer">${escapeHtml(
+          pdfText,
         )}</a></p>`
       : '',
     `<p>${escapeHtml(footerText)}</p>`,

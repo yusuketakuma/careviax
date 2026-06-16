@@ -12,6 +12,7 @@ const {
   careCaseFindFirstMock,
   visitRecordFindFirstMock,
   careReportFindFirstMock,
+  careReportUpdateManyMock,
   randomUuidMock,
   s3ClientMock,
   s3SendMock,
@@ -27,6 +28,7 @@ const {
   careCaseFindFirstMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
   careReportFindFirstMock: vi.fn(),
+  careReportUpdateManyMock: vi.fn(),
   randomUuidMock: vi.fn(),
   s3ClientMock: vi.fn(),
   s3SendMock: vi.fn(),
@@ -103,6 +105,7 @@ vi.mock('@/lib/db/client', () => ({
     },
     careReport: {
       findFirst: careReportFindFirstMock,
+      updateMany: careReportUpdateManyMock,
     },
   },
 }));
@@ -266,6 +269,7 @@ describe('file-storage', () => {
     careCaseFindFirstMock.mockResolvedValue(null);
     mockVisitRecordAssignment('user_1');
     mockReportLinkedToVisitRecord();
+    careReportUpdateManyMock.mockResolvedValue({ count: 1 });
     s3SendMock.mockResolvedValue({
       ETag: '"etag-123"',
       ContentLength: 2048,
@@ -1172,6 +1176,73 @@ describe('file-storage', () => {
       expect(getSignedUrlMock).toHaveBeenCalledOnce();
     },
   );
+
+  it('syncs report upload completion to CareReport.pdf_url', async () => {
+    mockStoredFile({
+      purpose: 'report',
+      reportId: 'report_1',
+      visitRecordId: null,
+      storageKey: 'reports/org_1/report_1/file_1-report.pdf',
+      originalName: 'report.pdf',
+      status: 'pending_upload',
+      completedAt: null,
+    });
+    mockReportLinkedToVisitRecord();
+    mockVisitRecordAssignment('user_1');
+
+    const result = await completeUploadedFile({
+      orgId: 'org_1',
+      fileId: 'file_1',
+      uploadedBy: 'user_1',
+      accessContext: assignedAccessContext,
+    });
+
+    expect(result.status).toBe('uploaded');
+    expect(careReportUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'report_1',
+        org_id: 'org_1',
+      },
+      data: {
+        pdf_url: '/api/files/file_1/download',
+      },
+    });
+  });
+
+  it('retries CareReport.pdf_url sync for an already uploaded report file', async () => {
+    mockStoredFile({
+      purpose: 'report',
+      reportId: 'report_1',
+      visitRecordId: null,
+      storageKey: 'reports/org_1/report_1/file_1-report.pdf',
+      originalName: 'report.pdf',
+      status: 'uploaded',
+      uploadedBy: 'original_user',
+      completedAt: '2026-03-28T00:00:00.000Z',
+    });
+    mockReportLinkedToVisitRecord();
+    mockVisitRecordAssignment('user_1');
+
+    const result = await completeUploadedFile({
+      orgId: 'org_1',
+      fileId: 'file_1',
+      uploadedBy: 'retry_user',
+      accessContext: assignedAccessContext,
+    });
+
+    expect(result.status).toBe('uploaded');
+    expect(s3SendMock).not.toHaveBeenCalled();
+    expect(settingUpdateMock).not.toHaveBeenCalled();
+    expect(careReportUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'report_1',
+        org_id: 'org_1',
+      },
+      data: {
+        pdf_url: '/api/files/file_1/download',
+      },
+    });
+  });
 
   it.each(fileAccessCases)(
     'allows presigned downloads for an authorized pharmacist on $purpose files',
