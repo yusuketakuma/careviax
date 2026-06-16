@@ -729,7 +729,7 @@ describe('getPatientTimelineData', () => {
       category: 'document',
       occurred_at: new Date('2026-04-05T11:00:00.000Z'),
       title: '支払設定を更新',
-      summary: '支払者 山田花子 / 方法 bank_transfer',
+      summary: '支払者 山田花子 / 方法 振込',
       href: '/billing/candidates?patient_id=patient_1',
       action_label: '請求を開く',
       status: 'billing_payment_profile_updated',
@@ -834,6 +834,78 @@ describe('getPatientTimelineData', () => {
           ]),
         }),
       }),
+    );
+  });
+
+  it('renders operation history summaries with pharmacy workflow labels', async () => {
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      prescriptionIntake: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'intake_1',
+            source_type: 'fax',
+            prescribed_date: new Date('2026-04-01T00:00:00.000Z'),
+            prescriber_name: '山田医師',
+            prescriber_institution: '山田内科',
+            original_collected_by: null,
+            created_at: new Date('2026-04-01T09:00:00.000Z'),
+            cycle: { overall_status: 'intake_received' },
+            lines: [{ id: 'line_1' }],
+          },
+        ]),
+      },
+      auditLog: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'audit_prescription_1',
+            action: 'prescription_original_management_updated',
+            target_type: 'prescription_intake',
+            target_id: 'intake_1',
+            actor_id: 'user_1',
+            changes: {
+              reconciliation_result: 'discrepancy',
+              storage_location: 'electronic',
+              e_prescription_acquired_status: 'acquired',
+              e_prescription_exchange_number: 'EP-12345',
+              dispensing_result_registration: 'registered',
+            },
+            created_at: new Date('2026-04-05T11:00:00.000Z'),
+          },
+        ]),
+      },
+      user: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'user_1', name: '佐藤 薬剤師' }]),
+      },
+    });
+
+    const result = await getPatientTimelineData(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    expect(result?.timeline_events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'operation_history:audit_prescription_1',
+          event_type: 'operation_history',
+          category: 'document',
+          title: '処方せん原本管理を更新',
+          summary:
+            '照合 差異あり / 保管 電子保管 / 電子処方箋 取得済み / 引換番号 EP-12345 / 調剤結果 登録済み',
+          href: '/prescriptions/intake_1',
+          action_label: '処方受付を開く',
+          status_label: '原本管理',
+          actor_name: '佐藤 薬剤師',
+        }),
+      ]),
     );
   });
 

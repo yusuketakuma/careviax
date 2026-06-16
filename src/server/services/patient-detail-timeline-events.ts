@@ -320,6 +320,79 @@ const FIRST_VISIT_DOCUMENT_STORAGE_LABELS: Record<string, string> = {
   unknown: '未確認',
 };
 
+const BILLING_COLLECTION_STATUS_LABELS: Record<string, string> = {
+  unbilled: '未請求',
+  billed: '請求済',
+  scheduled: '集金予定',
+  collected: '集金済',
+  partial: '一部入金',
+  unpaid: '未収',
+  dunning: '督促中',
+  waived: '免除・公費',
+  refunded: '返金あり',
+  offset: '相殺済',
+};
+
+const BILLING_PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cash: '現金',
+  bank_transfer: '振込',
+  bank_debit: '口座振替',
+  credit_card: 'クレカ',
+  facility_billing: '施設請求',
+  corporate_billing: '法人請求',
+  other: 'その他',
+};
+
+const BILLING_RECEIPT_ISSUE_LABELS: Record<string, string> = {
+  paper: '紙',
+  pdf: 'PDF',
+  none: '不要',
+};
+
+const MCS_LINKED_STATUS_LABELS: Record<string, string> = {
+  linked: 'あり',
+  unlinked: 'なし',
+  unknown: '不明',
+};
+
+const MCS_PARTICIPATION_STATUS_LABELS: Record<string, string> = {
+  invited: '招待済',
+  joined: '参加済',
+  not_joined: '未参加',
+  unknown: '不明',
+};
+
+const PRESCRIPTION_RECONCILIATION_LABELS: Record<string, string> = {
+  not_checked: '未照合',
+  matched: '一致',
+  discrepancy: '差異あり',
+};
+
+const PRESCRIPTION_STORAGE_LABELS: Record<string, string> = {
+  not_stored: '未保管',
+  store: '店舗保管',
+  headquarters: '本部保管',
+  electronic: '電子保管',
+  patient_copy_only: '患者控えのみ',
+};
+
+const E_PRESCRIPTION_ACQUIRED_LABELS: Record<string, string> = {
+  not_applicable: '対象外',
+  pending: '取得待ち',
+  acquired: '取得済み',
+};
+
+const DISPENSING_RESULT_REGISTRATION_LABELS: Record<string, string> = {
+  not_applicable: '対象外',
+  pending: '登録待ち',
+  registered: '登録済み',
+};
+
+function labelOf(labels: Record<string, string>, value: unknown) {
+  const key = readString(value);
+  return key ? (labels[key] ?? key) : null;
+}
+
 function readFirstVisitDocumentAction(item: OperationHistoryTimelineSource) {
   if (item.target_type !== 'first_visit_document') return null;
   if (!item.action.startsWith('first_visit_document.')) return null;
@@ -370,36 +443,57 @@ function buildOperationHistorySummary(item: OperationHistoryTimelineSource) {
   const changes = isRecord(item.changes) ? item.changes : {};
   const documentAction = isRecord(changes.document_action) ? changes.document_action : {};
   const collection = isRecord(changes.collection) ? changes.collection : {};
+  const receiptNumber = readString(collection.receipt_number);
+  const exchangeNumber = readString(changes.e_prescription_exchange_number);
 
   return (
     compactTimelineValues([
-      readString(documentAction.document_type),
+      readString(documentAction.document_type)
+        ? (FIRST_VISIT_DOCUMENT_TYPE_LABELS[readString(documentAction.document_type) ?? ''] ??
+          readString(documentAction.document_type))
+        : null,
       readString(documentAction.template_name),
       readString(documentAction.template_version)
         ? `版 ${readString(documentAction.template_version)}`
         : null,
-      readString(documentAction.storage_location),
+      readString(documentAction.storage_location)
+        ? (FIRST_VISIT_DOCUMENT_STORAGE_LABELS[readString(documentAction.storage_location) ?? ''] ??
+          readString(documentAction.storage_location))
+        : null,
       readString(documentAction.reason),
       readString(changes.payer_name) ? `支払者 ${readString(changes.payer_name)}` : null,
-      readString(changes.payment_method) ? `方法 ${readString(changes.payment_method)}` : null,
-      readString(collection.status) ? `状態 ${readString(collection.status)}` : null,
+      labelOf(BILLING_PAYMENT_METHOD_LABELS, changes.payment_method)
+        ? `方法 ${labelOf(BILLING_PAYMENT_METHOD_LABELS, changes.payment_method)}`
+        : null,
+      labelOf(BILLING_RECEIPT_ISSUE_LABELS, changes.receipt_issue)
+        ? `領収証 ${labelOf(BILLING_RECEIPT_ISSUE_LABELS, changes.receipt_issue)}`
+        : null,
+      labelOf(BILLING_COLLECTION_STATUS_LABELS, collection.status)
+        ? `状態 ${labelOf(BILLING_COLLECTION_STATUS_LABELS, collection.status)}`
+        : null,
       typeof collection.collected_amount === 'number'
         ? `集金 ${collection.collected_amount.toLocaleString('ja-JP')}円`
         : null,
+      receiptNumber ? `領収証 ${receiptNumber}` : null,
       readString(collection.payer_name) ? `支払者 ${readString(collection.payer_name)}` : null,
-      readString(changes.linked_status) ? `MCS ${readString(changes.linked_status)}` : null,
-      readString(changes.participation_status)
-        ? `参加 ${readString(changes.participation_status)}`
+      labelOf(MCS_LINKED_STATUS_LABELS, changes.linked_status)
+        ? `MCS ${labelOf(MCS_LINKED_STATUS_LABELS, changes.linked_status)}`
         : null,
-      readString(changes.reconciliation_result)
-        ? `照合 ${readString(changes.reconciliation_result)}`
+      labelOf(MCS_PARTICIPATION_STATUS_LABELS, changes.participation_status)
+        ? `参加 ${labelOf(MCS_PARTICIPATION_STATUS_LABELS, changes.participation_status)}`
         : null,
-      readString(changes.storage_location) ? `保管 ${readString(changes.storage_location)}` : null,
-      readString(changes.e_prescription_acquired_status)
-        ? `電子処方箋 ${readString(changes.e_prescription_acquired_status)}`
+      labelOf(PRESCRIPTION_RECONCILIATION_LABELS, changes.reconciliation_result)
+        ? `照合 ${labelOf(PRESCRIPTION_RECONCILIATION_LABELS, changes.reconciliation_result)}`
         : null,
-      readString(changes.dispensing_result_registration)
-        ? `調剤結果 ${readString(changes.dispensing_result_registration)}`
+      labelOf(PRESCRIPTION_STORAGE_LABELS, changes.storage_location)
+        ? `保管 ${labelOf(PRESCRIPTION_STORAGE_LABELS, changes.storage_location)}`
+        : null,
+      labelOf(E_PRESCRIPTION_ACQUIRED_LABELS, changes.e_prescription_acquired_status)
+        ? `電子処方箋 ${labelOf(E_PRESCRIPTION_ACQUIRED_LABELS, changes.e_prescription_acquired_status)}`
+        : null,
+      exchangeNumber ? `引換番号 ${exchangeNumber}` : null,
+      labelOf(DISPENSING_RESULT_REGISTRATION_LABELS, changes.dispensing_result_registration)
+        ? `調剤結果 ${labelOf(DISPENSING_RESULT_REGISTRATION_LABELS, changes.dispensing_result_registration)}`
         : null,
     ]).join(' / ') || null
   );
