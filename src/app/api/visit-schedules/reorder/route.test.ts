@@ -152,10 +152,36 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         version: 1,
       },
     ];
-    scheduleFindManyMock.mockImplementation(({ where }: { where: { id?: { in?: string[] } } }) => {
-      const ids = where.id?.in ?? schedules.map((schedule) => schedule.id);
-      return Promise.resolve(schedules.filter((schedule) => ids.includes(schedule.id)));
-    });
+    scheduleFindManyMock.mockImplementation(
+      ({
+        where,
+      }: {
+        where: {
+          id?: { in?: string[]; notIn?: string[] };
+          vehicle_resource_id?: { in?: string[] };
+          scheduled_date?: { in?: Date[] };
+        };
+      }) => {
+        if (where.vehicle_resource_id?.in) {
+          const dateKeys = new Set(
+            (where.scheduled_date?.in ?? []).map((date) => date.toISOString()),
+          );
+          const excludedIds = new Set(where.id?.notIn ?? []);
+          return Promise.resolve(
+            schedules.filter(
+              (schedule) =>
+                schedule.vehicle_resource_id &&
+                where.vehicle_resource_id?.in?.includes(schedule.vehicle_resource_id) &&
+                dateKeys.has(schedule.scheduled_date.toISOString()) &&
+                !excludedIds.has(schedule.id),
+            ),
+          );
+        }
+
+        const ids = where.id?.in ?? schedules.map((schedule) => schedule.id);
+        return Promise.resolve(schedules.filter((schedule) => ids.includes(schedule.id)));
+      },
+    );
     scheduleFindFirstMock.mockResolvedValue(null);
     scheduleCountMock.mockResolvedValue(0);
     proposalFindFirstMock.mockResolvedValue(null);
@@ -777,15 +803,20 @@ describe('/api/visit-schedules/reorder PATCH', () => {
         max_stops: true,
       },
     });
-    expect(scheduleCountMock).toHaveBeenCalledWith({
+    expect(scheduleFindManyMock).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
-        vehicle_resource_id: 'vehicle_1',
-        scheduled_date: new Date('2026-04-09'),
+        vehicle_resource_id: { in: ['vehicle_1'] },
+        scheduled_date: { in: [new Date('2026-04-09')] },
         schedule_status: { notIn: ['cancelled', 'rescheduled'] },
         id: { notIn: ['schedule_1', 'schedule_2'] },
       },
+      select: {
+        vehicle_resource_id: true,
+        scheduled_date: true,
+      },
     });
+    expect(scheduleCountMock).not.toHaveBeenCalled();
     expect(scheduleUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -889,11 +920,84 @@ describe('/api/visit-schedules/reorder PATCH', () => {
     );
   });
 
+  it('checks vehicle capacity for multiple cells with one batched read', async () => {
+    authRoleRef.current = 'admin';
+
+    const response = (await PATCH(
+      createRequest({
+        updates: [
+          { schedule_id: 'schedule_1', route_order: 1, vehicle_resource_id: 'vehicle_1' },
+          { schedule_id: 'schedule_3', route_order: 1, vehicle_resource_id: 'vehicle_2' },
+        ],
+      }),
+    ))!;
+
+    expect(response.status).toBe(200);
+    const capacityReads = scheduleFindManyMock.mock.calls.filter(
+      ([args]) => args.where.vehicle_resource_id,
+    );
+    expect(capacityReads).toHaveLength(1);
+    expect(capacityReads[0]?.[0]).toEqual({
+      where: {
+        org_id: 'org_1',
+        vehicle_resource_id: { in: ['vehicle_1', 'vehicle_2'] },
+        scheduled_date: { in: [new Date('2026-04-09'), new Date('2026-04-10')] },
+        schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+        id: { notIn: ['schedule_1', 'schedule_3'] },
+      },
+      select: {
+        vehicle_resource_id: true,
+        scheduled_date: true,
+      },
+    });
+    expect(scheduleCountMock).not.toHaveBeenCalled();
+  });
+
   it('rejects route adoption when recommended vehicle capacity would be exceeded', async () => {
     vehicleFindManyMock.mockResolvedValueOnce([
       { id: 'vehicle_1', site_id: 'site_1', label: '軽バン1号', max_stops: 2 },
     ]);
-    scheduleCountMock.mockResolvedValueOnce(1);
+    scheduleFindManyMock.mockImplementation(({ where }: { where: { id?: { in?: string[] } } }) => {
+      if (!where.id?.in) {
+        return Promise.resolve([
+          {
+            id: 'schedule_existing',
+            vehicle_resource_id: 'vehicle_1',
+            scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+          },
+        ]);
+      }
+      return Promise.resolve([
+        {
+          id: 'schedule_1',
+          case_id: 'case_1',
+          pharmacist_id: 'pharmacist_1',
+          scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+          time_window_start: new Date('1970-01-01T09:00:00'),
+          time_window_end: new Date('1970-01-01T10:00:00'),
+          confirmed_at: null,
+          route_order: 1,
+          site_id: 'site_1',
+          schedule_status: 'planned',
+          vehicle_resource_id: null,
+          version: 1,
+        },
+        {
+          id: 'schedule_2',
+          case_id: 'case_1',
+          pharmacist_id: 'pharmacist_1',
+          scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+          time_window_start: new Date('1970-01-01T10:00:00'),
+          time_window_end: new Date('1970-01-01T11:00:00'),
+          confirmed_at: null,
+          route_order: 2,
+          site_id: 'site_1',
+          schedule_status: 'planned',
+          vehicle_resource_id: null,
+          version: 1,
+        },
+      ]);
+    });
 
     const response = (await PATCH(
       createRequest({

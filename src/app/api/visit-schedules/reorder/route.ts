@@ -506,7 +506,6 @@ export const PATCH = withAuthContext(
               label: string;
               maxStops: number;
               assignedUpdateCount: number;
-              updateScheduleIds: Set<string>;
             }
           >();
           for (const target of vehicleUpdateTargets) {
@@ -522,30 +521,59 @@ export const PATCH = withAuthContext(
                 label: vehicle.label,
                 maxStops: vehicle.max_stops,
                 assignedUpdateCount: 0,
-                updateScheduleIds: new Set<string>(),
               } satisfies {
                 vehicleId: string;
                 dateKey: string;
                 label: string;
                 maxStops: number;
                 assignedUpdateCount: number;
-                updateScheduleIds: Set<string>;
               });
             current.assignedUpdateCount += 1;
-            current.updateScheduleIds.add(target.schedule.id);
             vehicleCapacityCells.set(key, current);
           }
 
-          for (const cell of vehicleCapacityCells.values()) {
-            const existingAssignedCount = await tx.visitSchedule.count({
-              where: {
-                org_id: ctx.orgId,
-                vehicle_resource_id: cell.vehicleId,
-                scheduled_date: new Date(cell.dateKey),
-                schedule_status: { notIn: ['cancelled', 'rescheduled'] },
-                id: { notIn: Array.from(cell.updateScheduleIds) },
-              },
-            });
+          const vehicleCapacityUpdateScheduleIds = Array.from(
+            new Set(vehicleUpdateTargets.map((target) => target.schedule.id)),
+          );
+          const vehicleCapacityRows =
+            vehicleCapacityCells.size === 0
+              ? []
+              : await tx.visitSchedule.findMany({
+                  where: {
+                    org_id: ctx.orgId,
+                    vehicle_resource_id: {
+                      in: Array.from(
+                        new Set(
+                          Array.from(vehicleCapacityCells.values()).map((cell) => cell.vehicleId),
+                        ),
+                      ),
+                    },
+                    scheduled_date: {
+                      in: Array.from(
+                        new Set(
+                          Array.from(vehicleCapacityCells.values()).map(
+                            (cell) => new Date(cell.dateKey),
+                          ),
+                        ),
+                      ),
+                    },
+                    schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+                    id: { notIn: vehicleCapacityUpdateScheduleIds },
+                  },
+                  select: {
+                    vehicle_resource_id: true,
+                    scheduled_date: true,
+                  },
+                });
+          const existingAssignedCountByCell = new Map<string, number>();
+          for (const row of vehicleCapacityRows) {
+            if (!row.vehicle_resource_id) continue;
+            const key = `${row.vehicle_resource_id}:${formatDateKey(row.scheduled_date)}`;
+            existingAssignedCountByCell.set(key, (existingAssignedCountByCell.get(key) ?? 0) + 1);
+          }
+
+          for (const [cellKey, cell] of vehicleCapacityCells) {
+            const existingAssignedCount = existingAssignedCountByCell.get(cellKey) ?? 0;
             if (existingAssignedCount + cell.assignedUpdateCount > cell.maxStops) {
               return {
                 error: 'vehicle_capacity_exceeded' as const,
