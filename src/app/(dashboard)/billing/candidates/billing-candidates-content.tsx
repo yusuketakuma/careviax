@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { format, subMonths, addMonths } from 'date-fns';
@@ -140,6 +140,7 @@ type BillingCandidatesResponse = {
 type BillingCandidatesContentProps = {
   initialBillingMonth?: string | null;
   initialPatientId?: string | null;
+  initialCandidateId?: string | null;
   initialWorkflowFrom?: string | null;
   initialVisitRecordId?: string | null;
 };
@@ -300,6 +301,7 @@ function parseInitialBillingMonth(value: string | null | undefined) {
 export function BillingCandidatesContent({
   initialBillingMonth,
   initialPatientId,
+  initialCandidateId,
   initialWorkflowFrom,
   initialVisitRecordId,
 }: BillingCandidatesContentProps) {
@@ -314,6 +316,7 @@ export function BillingCandidatesContent({
   });
   const [billingDomain, setBillingDomain] = useState<BillingDomain>('home_care');
   const patientIdFilter = initialPatientId?.trim() || null;
+  const targetCandidateId = initialCandidateId?.trim() || null;
   const visitRecordIdFilter = initialVisitRecordId?.trim() || null;
   const isVisitRecordContext =
     initialWorkflowFrom === 'visit_record' && Boolean(visitRecordIdFilter);
@@ -347,6 +350,16 @@ export function BillingCandidatesContent({
 
   const candidates = data?.pages.flatMap((p) => p.data) ?? [];
   const summary = data?.pages[0]?.summary ?? null;
+  const targetCandidateIndex = targetCandidateId
+    ? candidates.findIndex((candidate) => candidate.id === targetCandidateId)
+    : -1;
+  const targetCandidate = targetCandidateIndex >= 0 ? candidates[targetCandidateIndex] : null;
+
+  useEffect(() => {
+    if (!targetCandidateId || isLoading) return;
+    const targetElement = document.getElementById('billing-target-candidate');
+    targetElement?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [isLoading, targetCandidateId, targetCandidate]);
 
   const generateMutation = useMutation({
     mutationFn: async () => {
@@ -727,6 +740,36 @@ export function BillingCandidatesContent({
         />
       ) : null}
 
+      {targetCandidateId ? (
+        <div
+          id="billing-target-candidate"
+          className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+          data-testid="billing-target-candidate"
+        >
+          <p className="font-medium">{targetCandidate ? '対象候補を選択中' : '対象候補を検索中'}</p>
+          {targetCandidate ? (
+            <div className="mt-2 grid gap-2 text-xs sm:grid-cols-3">
+              <p>
+                <span className="text-emerald-800">候補ID:</span>{' '}
+                <span className="font-mono">{targetCandidate.id}</span>
+              </p>
+              <p>
+                <span className="text-emerald-800">算定:</span> {targetCandidate.billing_name}
+              </p>
+              <p>
+                <span className="text-emerald-800">請求先:</span>{' '}
+                {candidateBillingTargetLabel(targetCandidate)}
+              </p>
+            </div>
+          ) : (
+            <p className="mt-1 text-xs">
+              候補ID {targetCandidateId}{' '}
+              は現在の月・患者・請求区分の表示範囲にまだ見つかりません。月、患者、請求区分を確認するか、追加読み込みしてください。
+            </p>
+          )}
+        </div>
+      ) : null}
+
       {patientIdFilter ? (
         <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
           <p className="font-medium">患者で絞り込み中</p>
@@ -888,6 +931,7 @@ export function BillingCandidatesContent({
         data={candidates}
         isLoading={isLoading}
         caption="月次請求候補一覧"
+        selectedRowIndex={targetCandidateIndex >= 0 ? targetCandidateIndex : undefined}
         enableRowSelection
         toolbar={{
           enableGlobalFilter: true,
