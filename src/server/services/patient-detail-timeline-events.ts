@@ -288,6 +288,7 @@ const OPERATION_ACTION_LABELS: Record<string, { title: string; statusLabel: stri
   billing_collection_updated: { title: '集金情報を更新', statusLabel: '集金更新' },
   billing_payment_profile_updated: { title: '支払設定を更新', statusLabel: '支払設定' },
   patient_mcs_profile_updated: { title: 'MCS連携状態を更新', statusLabel: 'MCS更新' },
+  patient_mcs_check_log_created: { title: 'MCS確認ログを登録', statusLabel: 'MCS確認' },
   'conference_note.created': { title: 'カンファレンス記録を登録', statusLabel: '会議登録' },
   'conference_note.updated': { title: 'カンファレンス記録を更新', statusLabel: '会議更新' },
   'conference_note.report_generated': {
@@ -366,6 +367,15 @@ const MCS_PARTICIPATION_STATUS_LABELS: Record<string, string> = {
   joined: '参加済',
   not_joined: '未参加',
   unknown: '不明',
+};
+
+const MCS_CHECK_LOG_CATEGORY_LABELS: Record<string, string> = {
+  report: '報告確認',
+  consultation: '相談確認',
+  instruction_check: '指示確認',
+  photo_review: '写真確認',
+  urgent: '緊急確認',
+  other: 'その他',
 };
 
 const CONFERENCE_REPORT_TYPE_LABELS: Record<string, string> = {
@@ -506,6 +516,9 @@ function buildOperationHistorySummary(item: OperationHistoryTimelineSource) {
       labelOf(MCS_PARTICIPATION_STATUS_LABELS, changes.participation_status)
         ? `参加 ${labelOf(MCS_PARTICIPATION_STATUS_LABELS, changes.participation_status)}`
         : null,
+      labelOf(MCS_CHECK_LOG_CATEGORY_LABELS, changes.content_type),
+      previewTimelineText(readString(changes.summary), 64),
+      readString(changes.next_action) ? `次 ${readString(changes.next_action)}` : null,
       labelOf(PRESCRIPTION_RECONCILIATION_LABELS, changes.reconciliation_result)
         ? `照合 ${labelOf(PRESCRIPTION_RECONCILIATION_LABELS, changes.reconciliation_result)}`
         : null,
@@ -877,6 +890,7 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
       };
       const isBilling = item.action.startsWith('billing_');
       const isPrescription = item.action.startsWith('prescription_');
+      const isMcs = item.action.startsWith('patient_mcs_');
       const isConference = item.action.startsWith('conference_note.');
 
       return {
@@ -890,16 +904,20 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
           ? `/billing/candidates?patient_id=${patientId}`
           : isPrescription
             ? `/prescriptions/${item.target_id}`
-            : isConference
-              ? `/conferences?patient_id=${patientId}`
-              : `/patients/${patientId}`,
+            : isMcs
+              ? `/patients/${patientId}/mcs`
+              : isConference
+                ? `/conferences?patient_id=${patientId}`
+                : `/patients/${patientId}`,
         action_label: isBilling
           ? '請求を開く'
           : isPrescription
             ? '処方受付を開く'
-            : isConference
-              ? '会議を開く'
-              : '患者詳細を開く',
+            : isMcs
+              ? 'MCS連携を開く'
+              : isConference
+                ? '会議を開く'
+                : '患者詳細を開く',
         status: item.action,
         status_label: meta.statusLabel,
         actor_name: actorNameMap.get(item.actor_id) ?? null,

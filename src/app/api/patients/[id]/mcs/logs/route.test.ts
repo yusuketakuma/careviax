@@ -8,6 +8,7 @@ const {
   taskFindFirstMock,
   taskUpsertMock,
   communicationEventCreateMock,
+  createAuditLogEntryMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
@@ -16,6 +17,7 @@ const {
   taskFindFirstMock: vi.fn(),
   taskUpsertMock: vi.fn(),
   communicationEventCreateMock: vi.fn(),
+  createAuditLogEntryMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -39,6 +41,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/audit/audit-entry', () => ({
+  createAuditLogEntry: createAuditLogEntryMock,
 }));
 
 import { POST } from './route';
@@ -88,6 +94,7 @@ describe('/api/patients/[id]/mcs/logs POST', () => {
       },
     });
     taskUpsertMock.mockResolvedValue({ id: 'task_mcs_profile' });
+    createAuditLogEntryMock.mockResolvedValue({ id: 'audit_mcs_check_1' });
     communicationEventCreateMock.mockResolvedValue({
       id: 'event_1',
       event_type: 'mcs_check',
@@ -180,6 +187,25 @@ describe('/api/patients/[id]/mcs/logs POST', () => {
         }),
       }),
     });
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+      }),
+      {
+        action: 'patient_mcs_check_log_created',
+        targetType: 'Patient',
+        targetId: 'patient_1',
+        changes: {
+          content_type: 'instruction_check',
+          summary: '訪看からの食欲低下共有を確認',
+          next_action: '医師へ服薬状況を確認',
+          occurred_at: '2026-06-16T00:00:00.000Z',
+          communication_event_id: 'event_1',
+        },
+      },
+    );
   });
 
   it('falls back to a safe source URL when the saved project URL is malformed', async () => {

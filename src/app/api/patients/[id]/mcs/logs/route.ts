@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireAuthContext } from '@/lib/auth/context';
 import { forbidden, notFound, success, validationError } from '@/lib/api/response';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -161,6 +162,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       relatedEntityType: 'patient',
       relatedEntityId: id,
       metadata: profileMetadata,
+    });
+
+    await createAuditLogEntry(tx, ctx, {
+      action: 'patient_mcs_check_log_created',
+      targetType: 'Patient',
+      targetId: id,
+      changes: {
+        content_type: parsed.data.content_type,
+        summary: parsed.data.summary,
+        next_action: parsed.data.next_action?.trim() || null,
+        occurred_at: occurredAt.toISOString(),
+        communication_event_id: created.id,
+      },
     });
 
     return created;

@@ -909,6 +909,79 @@ describe('getPatientTimelineData', () => {
     );
   });
 
+  it('adds MCS check logs to the patient operation timeline', async () => {
+    const auditLogFindManyMock = vi.fn().mockResolvedValue([
+      {
+        id: 'audit_mcs_1',
+        action: 'patient_mcs_check_log_created',
+        target_type: 'Patient',
+        target_id: 'patient_1',
+        actor_id: 'user_1',
+        changes: {
+          content_type: 'instruction_check',
+          summary: '訪看から食欲低下の共有を確認',
+          next_action: '医師へ服薬状況を確認',
+          occurred_at: '2026-06-16T00:00:00.000Z',
+          communication_event_id: 'event_1',
+        },
+        created_at: new Date('2026-06-16T00:00:00.000Z'),
+      },
+    ]);
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      auditLog: {
+        findMany: auditLogFindManyMock,
+      },
+      user: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'user_1', name: '佐藤 薬剤師' }]),
+      },
+    });
+
+    const result = await getPatientTimelineData(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    expect(result?.timeline_events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'operation_history:audit_mcs_1',
+          event_type: 'operation_history',
+          category: 'communication',
+          title: 'MCS確認ログを登録',
+          summary: '指示確認 / 訪看から食欲低下の共有を確認 / 次 医師へ服薬状況を確認',
+          href: '/patients/patient_1/mcs',
+          action_label: 'MCS連携を開く',
+          status: 'patient_mcs_check_log_created',
+          status_label: 'MCS確認',
+          actor_name: '佐藤 薬剤師',
+        }),
+      ]),
+    );
+    expect(auditLogFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              target_type: 'Patient',
+              target_id: 'patient_1',
+              action: {
+                in: expect.arrayContaining(['patient_mcs_check_log_created']),
+              },
+            }),
+          ]),
+        }),
+      }),
+    );
+  });
+
   it('adds conference operation audits to the patient timeline without note body exposure', async () => {
     const auditLogFindManyMock = vi.fn().mockResolvedValue([
       {

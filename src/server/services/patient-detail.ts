@@ -694,7 +694,13 @@ export async function getPatientTimelineData(db: PatientTimelineDb, args: Detail
     {
       target_type: 'Patient',
       target_id: args.patientId,
-      action: { in: ['billing_payment_profile_updated', 'patient_mcs_profile_updated'] },
+      action: {
+        in: [
+          'billing_payment_profile_updated',
+          'patient_mcs_profile_updated',
+          'patient_mcs_check_log_created',
+        ],
+      },
     },
   ];
   const prescriptionIntakeIds = prescriptionIntakes.map((item) => item.id);
