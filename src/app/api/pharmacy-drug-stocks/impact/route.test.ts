@@ -9,6 +9,7 @@ const { authMock, prismaMock } = vi.hoisted(() => ({
     pharmacyDrugStock: { count: vi.fn(), findMany: vi.fn() },
     drugMasterChangeEvent: { findMany: vi.fn() },
     qrScanDraft: { findMany: vi.fn() },
+    $queryRaw: vi.fn(),
   },
 }));
 
@@ -21,6 +22,27 @@ vi.mock('@/lib/db/client', () => ({
 }));
 
 import { GET } from './route';
+
+function makeCountRow(overrides: Record<string, unknown> = {}) {
+  return {
+    stocked_count: 0,
+    review_due_count: 0,
+    missing_reorder_point_count: 0,
+    safety_flagged_count: 0,
+    high_risk_count: 0,
+    lasa_risk_count: 0,
+    controlled_count: 0,
+    transitional_expiry_count: 0,
+    transitional_expiry_within_30_count: 0,
+    transitional_expiry_within_60_count: 0,
+    action_required_count: 0,
+    recent_master_change_count: 0,
+    unresolved_follow_up_count: 0,
+    overdue_follow_up_count: 0,
+    missing_due_follow_up_count: 0,
+    ...overrides,
+  };
+}
 
 function createRequest(url: string) {
   return new NextRequest(url, {
@@ -58,11 +80,13 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
     prismaMock.pharmacyDrugStock.findMany.mockReset();
     prismaMock.drugMasterChangeEvent.findMany.mockReset();
     prismaMock.qrScanDraft.findMany.mockReset();
+    prismaMock.$queryRaw.mockReset();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     prismaMock.membership.findFirst.mockResolvedValue({ role: 'admin' });
     prismaMock.pharmacySite.findFirst.mockResolvedValue({ id: 'site_1', name: '本店' });
     prismaMock.drugMasterChangeEvent.findMany.mockResolvedValue([]);
     prismaMock.qrScanDraft.findMany.mockResolvedValue([]);
+    prismaMock.$queryRaw.mockResolvedValue([makeCountRow()]);
   });
 
   it('summarizes review, reorder, safety, and transitional expiry impact', async () => {
@@ -98,22 +122,22 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
         transitional_expiry_date: soonExpiry,
       },
     };
-    prismaMock.pharmacyDrugStock.count
-      .mockResolvedValueOnce(1)
-      .mockResolvedValueOnce(1)
-      .mockResolvedValueOnce(1)
-      .mockResolvedValueOnce(1)
-      .mockResolvedValueOnce(1)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(1)
-      .mockResolvedValueOnce(1)
-      .mockResolvedValueOnce(1)
-      .mockResolvedValueOnce(1)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(2)
-      .mockResolvedValueOnce(1)
-      .mockResolvedValueOnce(1);
+    prismaMock.$queryRaw.mockResolvedValueOnce([
+      makeCountRow({
+        stocked_count: 1,
+        review_due_count: 1,
+        missing_reorder_point_count: 1,
+        safety_flagged_count: 1,
+        high_risk_count: 1,
+        transitional_expiry_count: 1,
+        transitional_expiry_within_30_count: 1,
+        transitional_expiry_within_60_count: 1,
+        action_required_count: 1,
+        unresolved_follow_up_count: 2,
+        overdue_follow_up_count: 1,
+        missing_due_follow_up_count: 1,
+      }),
+    ]);
     prismaMock.pharmacyDrugStock.findMany
       .mockResolvedValueOnce([stock])
       .mockResolvedValueOnce([])
@@ -134,6 +158,8 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(prismaMock.pharmacyDrugStock.count).not.toHaveBeenCalled();
+    expect(prismaMock.$queryRaw).toHaveBeenCalledTimes(1);
     expect(prismaMock.pharmacyDrugStock.findMany).toHaveBeenCalledTimes(9);
     await expect(response.json()).resolves.toMatchObject({
       site: { id: 'site_1' },
@@ -214,22 +240,12 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
     prismaMock.drugMasterChangeEvent.findMany
       .mockResolvedValueOnce([{ yj_code: '123456789012' }])
       .mockResolvedValueOnce([change]);
-    prismaMock.pharmacyDrugStock.count
-      .mockResolvedValueOnce(2)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(1)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0);
+    prismaMock.$queryRaw.mockResolvedValueOnce([
+      makeCountRow({
+        stocked_count: 2,
+        recent_master_change_count: 1,
+      }),
+    ]);
     prismaMock.pharmacyDrugStock.findMany
       .mockResolvedValueOnce([changedStock])
       .mockResolvedValueOnce([changedStock])
@@ -379,22 +395,12 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
         transitional_expiry_date: null,
       },
     }));
-    prismaMock.pharmacyDrugStock.count
-      .mockResolvedValueOnce(501)
-      .mockResolvedValueOnce(501)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0);
+    prismaMock.$queryRaw.mockResolvedValueOnce([
+      makeCountRow({
+        stocked_count: 501,
+        review_due_count: 501,
+      }),
+    ]);
     prismaMock.pharmacyDrugStock.findMany
       .mockResolvedValueOnce(stocks)
       .mockResolvedValueOnce([])

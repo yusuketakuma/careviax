@@ -68,6 +68,24 @@ const stockImpactSelect = {
 
 const CHANGE_REPORT_LIMIT = 50;
 
+type StockImpactCountsRow = {
+  stocked_count: unknown;
+  review_due_count: unknown;
+  missing_reorder_point_count: unknown;
+  safety_flagged_count: unknown;
+  high_risk_count: unknown;
+  lasa_risk_count: unknown;
+  controlled_count: unknown;
+  transitional_expiry_count: unknown;
+  transitional_expiry_within_30_count: unknown;
+  transitional_expiry_within_60_count: unknown;
+  action_required_count: unknown;
+  recent_master_change_count: unknown;
+  unresolved_follow_up_count: unknown;
+  overdue_follow_up_count: unknown;
+  missing_due_follow_up_count: unknown;
+};
+
 type ParsedMedication = {
   drugCode?: unknown;
   drugName?: unknown;
@@ -96,6 +114,114 @@ function readDrugPrice(value: unknown) {
   if (!normalized) return null;
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function readCount(value: unknown): number {
+  if (typeof value === 'bigint') return Number(value);
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+async function loadStockImpactCounts(args: {
+  orgId: string;
+  siteId: string;
+  now: Date;
+  reviewCutoff: Date;
+  expiryUntil: Date;
+  expiryWithin30: Date;
+  expiryWithin60: Date;
+  changedYjCodes: string[];
+}): Promise<StockImpactCountsRow> {
+  const [row] = await prisma.$queryRaw<StockImpactCountsRow[]>`
+    SELECT
+      COUNT(*) AS stocked_count,
+      COUNT(*) FILTER (
+        WHERE stock.last_reviewed_at IS NULL OR stock.last_reviewed_at < ${args.reviewCutoff}
+      ) AS review_due_count,
+      COUNT(*) FILTER (WHERE stock.reorder_point IS NULL) AS missing_reorder_point_count,
+      COUNT(*) FILTER (
+        WHERE drug.is_high_risk = true
+           OR drug.is_lasa_risk = true
+           OR drug.is_narcotic = true
+           OR drug.is_psychotropic = true
+      ) AS safety_flagged_count,
+      COUNT(*) FILTER (WHERE drug.is_high_risk = true) AS high_risk_count,
+      COUNT(*) FILTER (WHERE drug.is_lasa_risk = true) AS lasa_risk_count,
+      COUNT(*) FILTER (
+        WHERE drug.is_narcotic = true OR drug.is_psychotropic = true
+      ) AS controlled_count,
+      COUNT(*) FILTER (
+        WHERE drug.transitional_expiry_date >= ${args.now}
+          AND drug.transitional_expiry_date <= ${args.expiryUntil}
+      ) AS transitional_expiry_count,
+      COUNT(*) FILTER (
+        WHERE drug.transitional_expiry_date >= ${args.now}
+          AND drug.transitional_expiry_date <= ${args.expiryWithin30}
+      ) AS transitional_expiry_within_30_count,
+      COUNT(*) FILTER (
+        WHERE drug.transitional_expiry_date >= ${args.now}
+          AND drug.transitional_expiry_date <= ${args.expiryWithin60}
+      ) AS transitional_expiry_within_60_count,
+      COUNT(*) FILTER (
+        WHERE (
+          stock.follow_up_status IS NOT NULL
+          AND stock.follow_up_status NOT IN ('active', 'resolved', '')
+        ) OR (
+          (stock.follow_up_status IS NULL OR stock.follow_up_status = 'active')
+          AND (
+            (
+              drug.transitional_expiry_date >= ${args.now}
+              AND drug.transitional_expiry_date <= ${args.expiryUntil}
+            )
+            OR drug.yj_code = ANY(${args.changedYjCodes}::text[])
+          )
+        )
+      ) AS action_required_count,
+      COUNT(*) FILTER (WHERE drug.yj_code = ANY(${args.changedYjCodes}::text[])) AS recent_master_change_count,
+      COUNT(*) FILTER (
+        WHERE stock.follow_up_status IS NOT NULL
+          AND stock.follow_up_status NOT IN ('active', 'resolved', '')
+      ) AS unresolved_follow_up_count,
+      COUNT(*) FILTER (
+        WHERE stock.follow_up_status IS NOT NULL
+          AND stock.follow_up_status NOT IN ('active', 'resolved', '')
+          AND stock.follow_up_due_date < ${args.now}
+      ) AS overdue_follow_up_count,
+      COUNT(*) FILTER (
+        WHERE stock.follow_up_status IS NOT NULL
+          AND stock.follow_up_status NOT IN ('active', 'resolved', '')
+          AND stock.follow_up_due_date IS NULL
+      ) AS missing_due_follow_up_count
+    FROM "PharmacyDrugStock" stock
+    INNER JOIN "DrugMaster" drug ON drug.id = stock.drug_master_id
+    WHERE stock.org_id = ${args.orgId}
+      AND stock.site_id = ${args.siteId}
+      AND stock.is_stocked = true
+  `;
+
+  return (
+    row ?? {
+      stocked_count: 0,
+      review_due_count: 0,
+      missing_reorder_point_count: 0,
+      safety_flagged_count: 0,
+      high_risk_count: 0,
+      lasa_risk_count: 0,
+      controlled_count: 0,
+      transitional_expiry_count: 0,
+      transitional_expiry_within_30_count: 0,
+      transitional_expiry_within_60_count: 0,
+      action_required_count: 0,
+      recent_master_change_count: 0,
+      unresolved_follow_up_count: 0,
+      overdue_follow_up_count: 0,
+      missing_due_follow_up_count: 0,
+    }
+  );
 }
 
 export const GET = withAuthContext(
@@ -166,24 +292,6 @@ export const GET = withAuthContext(
         },
       },
     } satisfies Prisma.PharmacyDrugStockWhereInput;
-    const transitionalExpiryWithin30Where = {
-      ...baseWhere,
-      drug_master: {
-        transitional_expiry_date: {
-          gte: now,
-          lte: expiryWithin30,
-        },
-      },
-    } satisfies Prisma.PharmacyDrugStockWhereInput;
-    const transitionalExpiryWithin60Where = {
-      ...baseWhere,
-      drug_master: {
-        transitional_expiry_date: {
-          gte: now,
-          lte: expiryWithin60,
-        },
-      },
-    } satisfies Prisma.PharmacyDrugStockWhereInput;
     const recentChangeYjRows = await prisma.drugMasterChangeEvent.findMany({
       where: {
         source: 'mhlw_price',
@@ -222,21 +330,6 @@ export const GET = withAuthContext(
       ...baseWhere,
       OR: actionRequiredTriggers,
     } satisfies Prisma.PharmacyDrugStockWhereInput;
-    const unresolvedFollowUpWhere = {
-      ...baseWhere,
-      AND: [
-        { follow_up_status: { not: null } },
-        { follow_up_status: { notIn: ['active', 'resolved', ''] } },
-      ],
-    } satisfies Prisma.PharmacyDrugStockWhereInput;
-    const overdueFollowUpWhere = {
-      ...unresolvedFollowUpWhere,
-      follow_up_due_date: { lt: now },
-    } satisfies Prisma.PharmacyDrugStockWhereInput;
-    const missingDueFollowUpWhere = {
-      ...unresolvedFollowUpWhere,
-      follow_up_due_date: null,
-    } satisfies Prisma.PharmacyDrugStockWhereInput;
     const queueWhereByKey: Record<ImpactQueueKey, Prisma.PharmacyDrugStockWhereInput> = {
       action_required: actionRequiredWhere,
       recently_changed: recentlyChangedWhere,
@@ -251,6 +344,16 @@ export const GET = withAuthContext(
     const queueOrderBy = [
       { updated_at: 'desc' },
     ] satisfies Prisma.PharmacyDrugStockOrderByWithRelationInput[];
+    const countsPromise = loadStockImpactCounts({
+      orgId: authCtx.orgId,
+      siteId: site.id,
+      now,
+      reviewCutoff,
+      expiryUntil,
+      expiryWithin30,
+      expiryWithin60,
+      changedYjCodes,
+    });
     const selectedQueueRowsPromise = prisma.pharmacyDrugStock.findMany({
       where: queueWhereByKey[parsed.data.queue],
       orderBy: queueOrderBy,
@@ -279,21 +382,7 @@ export const GET = withAuthContext(
       });
     };
     const [
-      stockedCount,
-      reviewDueCount,
-      missingReorderPointCount,
-      safetyFlaggedCount,
-      highRiskCount,
-      lasaRiskCount,
-      controlledCount,
-      transitionalExpiryCount,
-      transitionalExpiryWithin30Count,
-      transitionalExpiryWithin60Count,
-      actionRequiredCount,
-      recentMasterChangeCount,
-      unresolvedFollowUpCount,
-      overdueFollowUpCount,
-      missingDueFollowUpCount,
+      countsRow,
       selectedQueueRows,
       masterChangeReportRows,
       reviewDueSample,
@@ -306,21 +395,7 @@ export const GET = withAuthContext(
       actionRequiredSample,
       recentlyChangedSample,
     ] = await Promise.all([
-      prisma.pharmacyDrugStock.count({ where: baseWhere }),
-      prisma.pharmacyDrugStock.count({ where: reviewDueWhere }),
-      prisma.pharmacyDrugStock.count({ where: missingReorderWhere }),
-      prisma.pharmacyDrugStock.count({ where: safetyFlaggedWhere }),
-      prisma.pharmacyDrugStock.count({ where: highRiskWhere }),
-      prisma.pharmacyDrugStock.count({ where: lasaRiskWhere }),
-      prisma.pharmacyDrugStock.count({ where: controlledWhere }),
-      prisma.pharmacyDrugStock.count({ where: transitionalExpiryWhere }),
-      prisma.pharmacyDrugStock.count({ where: transitionalExpiryWithin30Where }),
-      prisma.pharmacyDrugStock.count({ where: transitionalExpiryWithin60Where }),
-      prisma.pharmacyDrugStock.count({ where: actionRequiredWhere }),
-      prisma.pharmacyDrugStock.count({ where: recentlyChangedWhere }),
-      prisma.pharmacyDrugStock.count({ where: unresolvedFollowUpWhere }),
-      prisma.pharmacyDrugStock.count({ where: overdueFollowUpWhere }),
-      prisma.pharmacyDrugStock.count({ where: missingDueFollowUpWhere }),
+      countsPromise,
       selectedQueueRowsPromise,
       masterChangeReportRowsPromise,
       sampleRows('review_due', reviewDueWhere),
@@ -333,6 +408,25 @@ export const GET = withAuthContext(
       sampleRows('action_required', actionRequiredWhere),
       masterChangeReportRowsPromise.then((rows) => rows.slice(0, 10)),
     ]);
+    const stockedCount = readCount(countsRow.stocked_count);
+    const reviewDueCount = readCount(countsRow.review_due_count);
+    const missingReorderPointCount = readCount(countsRow.missing_reorder_point_count);
+    const safetyFlaggedCount = readCount(countsRow.safety_flagged_count);
+    const highRiskCount = readCount(countsRow.high_risk_count);
+    const lasaRiskCount = readCount(countsRow.lasa_risk_count);
+    const controlledCount = readCount(countsRow.controlled_count);
+    const transitionalExpiryCount = readCount(countsRow.transitional_expiry_count);
+    const transitionalExpiryWithin30Count = readCount(
+      countsRow.transitional_expiry_within_30_count,
+    );
+    const transitionalExpiryWithin60Count = readCount(
+      countsRow.transitional_expiry_within_60_count,
+    );
+    const actionRequiredCount = readCount(countsRow.action_required_count);
+    const recentMasterChangeCount = readCount(countsRow.recent_master_change_count);
+    const unresolvedFollowUpCount = readCount(countsRow.unresolved_follow_up_count);
+    const overdueFollowUpCount = readCount(countsRow.overdue_follow_up_count);
+    const missingDueFollowUpCount = readCount(countsRow.missing_due_follow_up_count);
     const adoptedChangedYjCodes = new Set(
       [...selectedQueueRows, ...recentlyChangedSample, ...masterChangeReportRows].map(
         (stock) => stock.drug_master.yj_code,
