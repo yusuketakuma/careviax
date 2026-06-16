@@ -108,6 +108,25 @@ function parseImportRows(rows: unknown[]): ParsedImportRow[] {
   });
 }
 
+function getImportCandidateEmail(row: PharmacistImportRow) {
+  return row.email.toLowerCase();
+}
+
+function failedImportResult(args: {
+  rowNumber: number;
+  email: string;
+  name: string;
+  message: string;
+}): ImportResult {
+  return {
+    row_number: args.rowNumber,
+    email: args.email,
+    name: args.name,
+    status: 'failed',
+    message: args.message,
+  };
+}
+
 export async function POST(req: NextRequest) {
   const authResult = await requireAuthContext(req, {
     permission: 'canAdmin',
@@ -162,10 +181,10 @@ export async function POST(req: NextRequest) {
     siteIdByName.set(key, site.id);
   }
 
-  for (const parsedRow of parsedRows) {
+  const candidateEmails = new Set<string>();
+  const rowChecks = parsedRows.map((parsedRow) => {
     if (parsedRow.status === 'failed') {
-      results.push(parsedRow.result);
-      continue;
+      return { status: 'failed' as const, parsedRow, result: parsedRow.result };
     }
 
     const { row_number: rowNumber, row } = parsedRow;
@@ -173,45 +192,69 @@ export async function POST(req: NextRequest) {
     const siteId = siteKey ? (siteIdByName.get(siteKey) ?? null) : null;
 
     if (duplicateEmails.has(row.email)) {
-      results.push({
-        row_number: rowNumber,
-        email: row.email,
-        name: row.name,
-        status: 'failed',
-        message: 'CSV内で同じメールアドレスが重複しています',
-      });
-      continue;
+      return {
+        status: 'failed' as const,
+        parsedRow,
+        result: failedImportResult({
+          rowNumber,
+          email: row.email,
+          name: row.name,
+          message: 'CSV内で同じメールアドレスが重複しています',
+        }),
+      };
     }
 
     if (siteKey && duplicateSiteNames.has(siteKey)) {
-      results.push({
-        row_number: rowNumber,
-        email: row.email,
-        name: row.name,
-        status: 'failed',
-        message: `店舗 "${row.site_name}" は同名店舗があるため特定できません`,
-      });
-      continue;
+      return {
+        status: 'failed' as const,
+        parsedRow,
+        result: failedImportResult({
+          rowNumber,
+          email: row.email,
+          name: row.name,
+          message: `店舗 "${row.site_name}" は同名店舗があるため特定できません`,
+        }),
+      };
     }
 
     if (roleRequiresSite(row.role) && !siteId) {
-      results.push({
-        row_number: rowNumber,
-        email: row.email,
-        name: row.name,
-        status: 'failed',
-        message: row.site_name ? `店舗 "${row.site_name}" が見つかりません` : '所属店舗が必須です',
-      });
+      return {
+        status: 'failed' as const,
+        parsedRow,
+        result: failedImportResult({
+          rowNumber,
+          email: row.email,
+          name: row.name,
+          message: row.site_name
+            ? `店舗 "${row.site_name}" が見つかりません`
+            : '所属店舗が必須です',
+        }),
+      };
+    }
+
+    candidateEmails.add(getImportCandidateEmail(row));
+    return { status: 'candidate' as const, parsedRow, siteId };
+  });
+
+  const existingUsers =
+    candidateEmails.size > 0
+      ? await prisma.user.findMany({
+          where: {
+            email: { in: [...candidateEmails] },
+          },
+          select: { email: true },
+        })
+      : [];
+  const existingEmails = new Set(existingUsers.map((user) => user.email.toLowerCase()));
+
+  for (const rowCheck of rowChecks) {
+    if (rowCheck.status === 'failed') {
+      results.push(rowCheck.result);
       continue;
     }
 
-    const existing = await prisma.user.findFirst({
-      where: {
-        email: row.email.toLowerCase(),
-      },
-      select: { id: true },
-    });
-    if (existing) {
+    const { row_number: rowNumber, row } = rowCheck.parsedRow;
+    if (existingEmails.has(getImportCandidateEmail(row))) {
       results.push({
         row_number: rowNumber,
         email: row.email,
@@ -221,6 +264,8 @@ export async function POST(req: NextRequest) {
       });
       continue;
     }
+
+    const siteId = rowCheck.siteId;
 
     let identity: Awaited<ReturnType<typeof inviteCognitoUser>>;
     try {

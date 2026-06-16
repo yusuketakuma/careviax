@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server';
 const {
   requireAuthContextMock,
   pharmacySiteFindManyMock,
-  userFindFirstMock,
+  userFindManyMock,
   inviteCognitoUserMock,
   deleteCognitoUserMock,
   withOrgContextMock,
@@ -15,7 +15,7 @@ const {
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   pharmacySiteFindManyMock: vi.fn(),
-  userFindFirstMock: vi.fn(),
+  userFindManyMock: vi.fn(),
   inviteCognitoUserMock: vi.fn(),
   deleteCognitoUserMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -35,7 +35,7 @@ vi.mock('@/lib/db/client', () => ({
       findMany: pharmacySiteFindManyMock,
     },
     user: {
-      findFirst: userFindFirstMock,
+      findMany: userFindManyMock,
     },
   },
 }));
@@ -79,7 +79,7 @@ describe('/api/pharmacists/import POST', () => {
       },
     });
     pharmacySiteFindManyMock.mockResolvedValue([{ id: 'site_1', name: '本店' }]);
-    userFindFirstMock.mockResolvedValue(null);
+    userFindManyMock.mockResolvedValue([]);
     inviteCognitoUserMock.mockResolvedValue({
       sub: 'cognito-sub-1',
       username: 'bulk@example.com',
@@ -108,7 +108,7 @@ describe('/api/pharmacists/import POST', () => {
       message: 'リクエストボディが不正です',
     });
     expect(pharmacySiteFindManyMock).not.toHaveBeenCalled();
-    expect(userFindFirstMock).not.toHaveBeenCalled();
+    expect(userFindManyMock).not.toHaveBeenCalled();
     expect(inviteCognitoUserMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(userCreateMock).not.toHaveBeenCalled();
@@ -123,7 +123,7 @@ describe('/api/pharmacists/import POST', () => {
       message: 'リクエストボディが不正です',
     });
     expect(pharmacySiteFindManyMock).not.toHaveBeenCalled();
-    expect(userFindFirstMock).not.toHaveBeenCalled();
+    expect(userFindManyMock).not.toHaveBeenCalled();
     expect(inviteCognitoUserMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(userCreateMock).not.toHaveBeenCalled();
@@ -321,7 +321,7 @@ describe('/api/pharmacists/import POST', () => {
       },
     });
     expect(pharmacySiteFindManyMock).not.toHaveBeenCalled();
-    expect(userFindFirstMock).not.toHaveBeenCalled();
+    expect(userFindManyMock).not.toHaveBeenCalled();
     expect(inviteCognitoUserMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
@@ -353,7 +353,13 @@ describe('/api/pharmacists/import POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(pharmacySiteFindManyMock).toHaveBeenCalledTimes(1);
-    expect(userFindFirstMock).toHaveBeenCalledTimes(1);
+    expect(userFindManyMock).toHaveBeenCalledTimes(1);
+    expect(userFindManyMock).toHaveBeenCalledWith({
+      where: {
+        email: { in: ['valid@example.com'] },
+      },
+      select: { email: true },
+    });
     expect(inviteCognitoUserMock).toHaveBeenCalledWith({
       email: 'valid@example.com',
       name: '佐藤 花子',
@@ -458,7 +464,7 @@ describe('/api/pharmacists/import POST', () => {
       },
     });
     expect(pharmacySiteFindManyMock).not.toHaveBeenCalled();
-    expect(userFindFirstMock).not.toHaveBeenCalled();
+    expect(userFindManyMock).not.toHaveBeenCalled();
     expect(inviteCognitoUserMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
@@ -487,7 +493,7 @@ describe('/api/pharmacists/import POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    expect(userFindFirstMock).not.toHaveBeenCalled();
+    expect(userFindManyMock).not.toHaveBeenCalled();
     expect(inviteCognitoUserMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
@@ -533,7 +539,7 @@ describe('/api/pharmacists/import POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    expect(userFindFirstMock).not.toHaveBeenCalled();
+    expect(userFindManyMock).not.toHaveBeenCalled();
     expect(inviteCognitoUserMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
@@ -546,6 +552,92 @@ describe('/api/pharmacists/import POST', () => {
             row_number: 1,
             status: 'failed',
             message: '店舗 "本店" は同名店舗があるため特定できません',
+          }),
+        ],
+      },
+    });
+  });
+
+  it('loads existing users once for all import candidates and skips already registered emails', async () => {
+    userFindManyMock.mockResolvedValue([{ email: 'existing@example.com' }]);
+    inviteCognitoUserMock
+      .mockResolvedValueOnce({
+        sub: 'cognito-sub-new-1',
+        username: 'new-1@example.com',
+      })
+      .mockResolvedValueOnce({
+        sub: 'cognito-sub-new-2',
+        username: 'new-2@example.com',
+      });
+
+    const response = await POST(
+      createRequest({
+        rows: [
+          {
+            name: '既存 太郎',
+            name_kana: 'キソン タロウ',
+            email: 'Existing@Example.COM',
+            role: 'pharmacist',
+            site_name: '本店',
+          },
+          {
+            name: '新規 一郎',
+            name_kana: 'シンキ イチロウ',
+            email: 'new-1@example.com',
+            role: 'pharmacist',
+            site_name: '本店',
+          },
+          {
+            name: '新規 二郎',
+            name_kana: 'シンキ ジロウ',
+            email: 'new-2@example.com',
+            role: 'pharmacist',
+            site_name: '本店',
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(userFindManyMock).toHaveBeenCalledTimes(1);
+    expect(userFindManyMock).toHaveBeenCalledWith({
+      where: {
+        email: { in: ['existing@example.com', 'new-1@example.com', 'new-2@example.com'] },
+      },
+      select: { email: true },
+    });
+    expect(inviteCognitoUserMock).toHaveBeenCalledTimes(2);
+    expect(inviteCognitoUserMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ email: 'new-1@example.com' }),
+    );
+    expect(inviteCognitoUserMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ email: 'new-2@example.com' }),
+    );
+    expect(withOrgContextMock).toHaveBeenCalledTimes(2);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        created_count: 2,
+        failed_count: 1,
+        outcome: 'partial_failed',
+        results: [
+          expect.objectContaining({
+            row_number: 1,
+            email: 'existing@example.com',
+            status: 'failed',
+            message: '同じメールアドレスのユーザーが既に存在します',
+          }),
+          expect.objectContaining({
+            row_number: 2,
+            email: 'new-1@example.com',
+            status: 'created',
+          }),
+          expect.objectContaining({
+            row_number: 3,
+            email: 'new-2@example.com',
+            status: 'created',
           }),
         ],
       },
