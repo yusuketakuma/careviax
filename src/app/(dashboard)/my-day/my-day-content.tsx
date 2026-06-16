@@ -6,20 +6,26 @@ import { format } from 'date-fns';
 import {
   AlertCircle,
   ArrowRight,
+  Bell,
   CalendarPlus,
+  CalendarDays,
   Car,
   CheckSquare,
   CirclePause,
   Clock,
   FileWarning,
   Hospital,
+  LayoutDashboard,
+  ListChecks,
   LogOut,
+  MessageSquareText,
   PhoneOff,
   RefreshCw,
   Sparkles,
   Star,
   TriangleAlert,
   UserCheck,
+  Workflow,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -324,7 +330,10 @@ export function MyDayContent({
       : null;
 
   return (
-    <div className="space-y-4 p-4 max-w-lg mx-auto">
+    <div
+      className="mx-auto w-full max-w-7xl space-y-4 p-3 sm:p-4 lg:p-6"
+      data-testid="my-day-content"
+    >
       {contextSummary ? (
         <Alert
           className="border-sky-200 bg-sky-50 text-sky-900"
@@ -345,7 +354,7 @@ export function MyDayContent({
       <PageSection
         title="今日の概要"
         description="今日の訪問、タスク、パイプライン、緊急件数を最初に把握する導入グループです。"
-        contentClassName="grid grid-cols-4 gap-2"
+        contentClassName="grid grid-cols-2 gap-2 sm:grid-cols-4"
       >
         <QuickStat
           label="訪問"
@@ -370,406 +379,435 @@ export function MyDayContent({
         />
       </PageSection>
 
-      <PageSection
-        title="優先対応"
-        description="緊急アクションと今日の訪問準備を先に処理するための優先グループです。"
-        contentClassName="space-y-3"
-      >
-        <MyDayNextStepPanel {...nextStep} />
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.38fr)] xl:items-start">
+        <div className="space-y-4">
+          <PageSection
+            title="優先対応"
+            description="緊急アクションと今日の訪問準備を先に処理するための優先グループです。"
+            contentClassName="space-y-3"
+          >
+            <MyDayNextStepPanel {...nextStep} />
 
-        {actionsQuery.isError ? (
-          <MyDaySectionError
-            title="優先アクションを取得できません"
-            description="緊急対応とパイプラインの取得に失敗しました。空状態ではない可能性があるため、ワークフロー画面で確認してください。"
-            href="/workflow"
-            label="ワークフローを確認"
-          />
-        ) : urgentActions.length > 0 ? (
-          <Card className="border-red-200 bg-red-50/50">
-            <CardHeader className="pb-2">
-              <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-red-700">
-                <TriangleAlert className="size-4" aria-hidden="true" />
-                緊急・高優先アクション
-              </h3>
-            </CardHeader>
-            <CardContent className="space-y-1.5">
-              {urgentActions.slice(0, 5).map((item) => (
-                <Link
-                  key={item.id}
-                  href={item.action_href}
-                  className="flex min-h-[44px] items-center justify-between rounded-md border border-red-200 bg-white p-2.5 transition-colors hover:bg-red-50"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{item.title}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {item.patient_name && `${item.patient_name} / `}
-                      {item.queue_label}
-                    </p>
-                  </div>
-                  <Badge variant="outline" className={PRIORITY_STYLES[item.priority] ?? ''}>
-                    {item.priority === 'urgent' ? '緊急' : '高'}
-                  </Badge>
-                </Link>
-              ))}
-            </CardContent>
-          </Card>
-        ) : null}
-
-        <Card className={initialFocus === 'visits' ? 'ring-2 ring-primary/25' : undefined}>
-          <CardHeader className="pb-2">
-            <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
-              <Car className="size-4 text-primary" aria-hidden="true" />
-              今日の訪問
-              <Badge variant="secondary" className="ml-auto text-xs">
-                {isUserPending || visitsQuery.isLoading || visitsQuery.isError
-                  ? '…'
-                  : `${filteredVisits.length}件`}
-              </Badge>
-            </h3>
-          </CardHeader>
-          <CardContent className="space-y-1.5">
-            <div className="mb-2 flex flex-wrap gap-2">
-              <button
-                type="button"
-                aria-pressed={initialVisitFilter === 'all'}
-                onClick={() =>
-                  replaceMyDayUrl({
-                    focus: 'visits',
-                    visit_filter: null,
-                    context: initialContext ?? null,
-                  })
-                }
-                className="border-0 bg-transparent p-0"
-              >
-                <InlineFilterButton active={initialVisitFilter === 'all'} label="全て" />
-              </button>
-              <button
-                type="button"
-                aria-pressed={initialVisitFilter === 'unprepared'}
-                onClick={() =>
-                  replaceMyDayUrl({
-                    focus: 'visits',
-                    visit_filter: 'unprepared',
-                    context: initialContext ?? null,
-                  })
-                }
-                className="border-0 bg-transparent p-0"
-              >
-                <InlineFilterButton
-                  active={initialVisitFilter === 'unprepared'}
-                  label="準備未完了のみ"
-                />
-              </button>
-              <button
-                type="button"
-                aria-pressed={initialVisitFilter === 'in_progress'}
-                onClick={() =>
-                  replaceMyDayUrl({
-                    focus: 'visits',
-                    visit_filter: 'in_progress',
-                    context: initialContext ?? null,
-                  })
-                }
-                className="border-0 bg-transparent p-0"
-              >
-                <InlineFilterButton
-                  active={initialVisitFilter === 'in_progress'}
-                  label="訪問進行中のみ"
-                />
-              </button>
-            </div>
-            {visitsQuery.isError ? (
+            {actionsQuery.isError ? (
               <MyDaySectionError
-                title="本日の訪問を取得できません"
-                description="担当訪問の取得に失敗しました。訪問なしとは判断せず、スケジュール画面で担当予定を確認してください。"
-                href="/schedules"
-                label="スケジュールを確認"
+                title="優先アクションを取得できません"
+                description="緊急対応とパイプラインの取得に失敗しました。空状態ではない可能性があるため、ワークフロー画面で確認してください。"
+                href="/workflow"
+                label="ワークフローを確認"
               />
-            ) : isUserPending || visitsQuery.isLoading ? (
-              <SectionSkeleton />
-            ) : filteredVisits.length === 0 ? (
-              <MyDayEmptyAction
-                message={
-                  initialVisitFilter === 'all'
-                    ? '本日の訪問はありません'
-                    : 'この条件に一致する本日の訪問はありません'
-                }
-                href="/schedules"
-                label="スケジュールを確認"
-              />
-            ) : (
-              filteredVisits.map((visit) => {
-                const windowLabel = timeLabel(visit.time_window_start, visit.time_window_end);
-                return (
-                  <Link
-                    key={visit.id}
-                    href={`/visits/${visit.id}/record`}
-                    className="flex min-h-[44px] items-center justify-between rounded-lg border p-3 transition-colors hover:bg-muted/50"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{visit.case_.patient.name}</p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {windowLabel} / {VISIT_TYPE_LABELS[visit.visit_type] ?? visit.visit_type}
-                      </p>
-                    </div>
-                    <div className="ml-2 flex shrink-0 items-center gap-1">
-                      <Badge
-                        variant="outline"
-                        className={`text-[10px] ${statusBadgeClass(visit.schedule_status)}`}
-                      >
-                        {SCHEDULE_STATUS_LABELS[visit.schedule_status] ?? visit.schedule_status}
+            ) : urgentActions.length > 0 ? (
+              <Card className="border-red-200 bg-red-50/50">
+                <CardHeader className="pb-2">
+                  <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-red-700">
+                    <TriangleAlert className="size-4" aria-hidden="true" />
+                    緊急・高優先アクション
+                  </h3>
+                </CardHeader>
+                <CardContent className="space-y-1.5">
+                  {urgentActions.slice(0, 5).map((item) => (
+                    <Link
+                      key={item.id}
+                      href={item.action_href}
+                      className="flex min-h-[44px] items-center justify-between rounded-md border border-red-200 bg-white p-2.5 transition-colors hover:bg-red-50"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{item.title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {item.patient_name && `${item.patient_name} / `}
+                          {item.queue_label}
+                        </p>
+                      </div>
+                      <Badge variant="outline" className={PRIORITY_STYLES[item.priority] ?? ''}>
+                        {item.priority === 'urgent' ? '緊急' : '高'}
                       </Badge>
-                      {!visit.preparation?.prepared_at && (
-                        <Badge
-                          variant="outline"
-                          className="border-orange-300 text-[10px] text-orange-600"
-                        >
-                          準備未
-                        </Badge>
-                      )}
-                    </div>
-                  </Link>
-                );
-              })
-            )}
-          </CardContent>
-        </Card>
-
-        {unpreparedVisits.length > 0 && <UnpreparedVisitLink count={unpreparedVisits.length} />}
-      </PageSection>
-
-      <PageSection
-        title="進行中の業務"
-        description="パイプラインと未完了タスクを見て、今日の作業順を組み立てるグループです。"
-        contentClassName="space-y-3"
-      >
-        {actionsQuery.isError ? (
-          <MyDaySectionError
-            title="パイプラインを取得できません"
-            description="未解決の業務件数を取得できませんでした。空状態ではない可能性があるため、ワークフロー画面で確認してください。"
-            href="/workflow"
-            label="ワークフローを確認"
-          />
-        ) : pipeline.length > 0 ? (
-          <Card>
-            <CardHeader className="pb-2">
-              <h3 className="font-heading text-sm leading-snug font-medium">パイプライン</h3>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-4 gap-2">
-                {pipeline
-                  .filter((p) => p.count > 0)
-                  .map((step) => (
-                    <div key={step.key} className="rounded-md border p-2 text-center">
-                      <p className="text-lg font-bold text-foreground">{step.count}</p>
-                      <p className="text-[10px] leading-tight text-muted-foreground">
-                        {step.label}
-                      </p>
-                    </div>
+                    </Link>
                   ))}
-              </div>
-            </CardContent>
-          </Card>
-        ) : null}
+                </CardContent>
+              </Card>
+            ) : null}
 
-        <Card className={initialFocus === 'tasks' ? 'ring-2 ring-primary/25' : undefined}>
-          <CardHeader className="pb-2">
-            <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
-              <CheckSquare className="size-4 text-primary" aria-hidden="true" />
-              未完了タスク
-              <Badge variant="secondary" className="ml-auto text-xs">
-                {isUserPending || tasksQuery.isLoading || tasksQuery.isError
-                  ? '…'
-                  : `${filteredPendingTasks.length}件`}
-              </Badge>
-            </h3>
-          </CardHeader>
-          <CardContent className="space-y-1.5">
-            <div className="mb-2 flex flex-wrap gap-2">
-              <button
-                type="button"
-                aria-pressed={initialTaskFilter === 'all'}
-                onClick={() =>
-                  replaceMyDayUrl({
-                    focus: 'tasks',
-                    task_filter: null,
-                    context: initialContext ?? null,
+            <Card className={initialFocus === 'visits' ? 'ring-2 ring-primary/25' : undefined}>
+              <CardHeader className="pb-2">
+                <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
+                  <Car className="size-4 text-primary" aria-hidden="true" />
+                  今日の訪問
+                  <Badge variant="secondary" className="ml-auto text-xs">
+                    {isUserPending || visitsQuery.isLoading || visitsQuery.isError
+                      ? '…'
+                      : `${filteredVisits.length}件`}
+                  </Badge>
+                </h3>
+              </CardHeader>
+              <CardContent className="space-y-1.5">
+                <div className="mb-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    aria-pressed={initialVisitFilter === 'all'}
+                    onClick={() =>
+                      replaceMyDayUrl({
+                        focus: 'visits',
+                        visit_filter: null,
+                        context: initialContext ?? null,
+                      })
+                    }
+                    className="border-0 bg-transparent p-0"
+                  >
+                    <InlineFilterButton active={initialVisitFilter === 'all'} label="全て" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={initialVisitFilter === 'unprepared'}
+                    onClick={() =>
+                      replaceMyDayUrl({
+                        focus: 'visits',
+                        visit_filter: 'unprepared',
+                        context: initialContext ?? null,
+                      })
+                    }
+                    className="border-0 bg-transparent p-0"
+                  >
+                    <InlineFilterButton
+                      active={initialVisitFilter === 'unprepared'}
+                      label="準備未完了のみ"
+                    />
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={initialVisitFilter === 'in_progress'}
+                    onClick={() =>
+                      replaceMyDayUrl({
+                        focus: 'visits',
+                        visit_filter: 'in_progress',
+                        context: initialContext ?? null,
+                      })
+                    }
+                    className="border-0 bg-transparent p-0"
+                  >
+                    <InlineFilterButton
+                      active={initialVisitFilter === 'in_progress'}
+                      label="訪問進行中のみ"
+                    />
+                  </button>
+                </div>
+                {visitsQuery.isError ? (
+                  <MyDaySectionError
+                    title="本日の訪問を取得できません"
+                    description="担当訪問の取得に失敗しました。訪問なしとは判断せず、スケジュール画面で担当予定を確認してください。"
+                    href="/schedules"
+                    label="スケジュールを確認"
+                  />
+                ) : isUserPending || visitsQuery.isLoading ? (
+                  <SectionSkeleton />
+                ) : filteredVisits.length === 0 ? (
+                  <MyDayEmptyAction
+                    message={
+                      initialVisitFilter === 'all'
+                        ? '本日の訪問はありません'
+                        : 'この条件に一致する本日の訪問はありません'
+                    }
+                    href="/schedules"
+                    label="スケジュールを確認"
+                  />
+                ) : (
+                  filteredVisits.map((visit) => {
+                    const windowLabel = timeLabel(visit.time_window_start, visit.time_window_end);
+                    return (
+                      <Link
+                        key={visit.id}
+                        href={`/visits/${visit.id}/record`}
+                        className="flex min-h-[44px] items-center justify-between rounded-lg border p-3 transition-colors hover:bg-muted/50"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{visit.case_.patient.name}</p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {windowLabel} /{' '}
+                            {VISIT_TYPE_LABELS[visit.visit_type] ?? visit.visit_type}
+                          </p>
+                        </div>
+                        <div className="ml-2 flex shrink-0 items-center gap-1">
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] ${statusBadgeClass(visit.schedule_status)}`}
+                          >
+                            {SCHEDULE_STATUS_LABELS[visit.schedule_status] ?? visit.schedule_status}
+                          </Badge>
+                          {!visit.preparation?.prepared_at && (
+                            <Badge
+                              variant="outline"
+                              className="border-orange-300 text-[10px] text-orange-600"
+                            >
+                              準備未
+                            </Badge>
+                          )}
+                        </div>
+                      </Link>
+                    );
                   })
-                }
-                className="border-0 bg-transparent p-0"
-              >
-                <InlineFilterButton active={initialTaskFilter === 'all'} label="全て" />
-              </button>
-              <button
-                type="button"
-                aria-pressed={initialTaskFilter === 'urgent'}
-                onClick={() =>
-                  replaceMyDayUrl({
-                    focus: 'tasks',
-                    task_filter: 'urgent',
-                    context: initialContext ?? null,
-                  })
-                }
-                className="border-0 bg-transparent p-0"
-              >
-                <InlineFilterButton active={initialTaskFilter === 'urgent'} label="高優先のみ" />
-              </button>
-              <button
-                type="button"
-                aria-pressed={initialTaskFilter === 'pending'}
-                onClick={() =>
-                  replaceMyDayUrl({
-                    focus: 'tasks',
-                    task_filter: 'pending',
-                    context: initialContext ?? null,
-                  })
-                }
-                className="border-0 bg-transparent p-0"
-              >
-                <InlineFilterButton active={initialTaskFilter === 'pending'} label="未着手のみ" />
-              </button>
-            </div>
-            {tasksQuery.isError ? (
+                )}
+              </CardContent>
+            </Card>
+
+            {unpreparedVisits.length > 0 && <UnpreparedVisitLink count={unpreparedVisits.length} />}
+          </PageSection>
+
+          <PageSection
+            title="進行中の業務"
+            description="パイプラインと未完了タスクを見て、今日の作業順を組み立てるグループです。"
+            contentClassName="space-y-3"
+          >
+            {actionsQuery.isError ? (
               <MyDaySectionError
-                title="未完了タスクを取得できません"
-                description="担当タスクの取得に失敗しました。タスクなしとは判断せず、タスク一覧で確認してください。"
-                href="/tasks"
-                label="タスク一覧を確認"
+                title="パイプラインを取得できません"
+                description="未解決の業務件数を取得できませんでした。空状態ではない可能性があるため、ワークフロー画面で確認してください。"
+                href="/workflow"
+                label="ワークフローを確認"
               />
-            ) : isUserPending || tasksQuery.isLoading ? (
-              <SectionSkeleton />
-            ) : filteredPendingTasks.length === 0 ? (
-              <MyDayEmptyAction
-                message={
-                  initialTaskFilter === 'all'
-                    ? '未完了のタスクはありません'
-                    : 'この条件に一致する未完了タスクはありません'
-                }
-                href="/tasks"
-                label="タスク一覧を確認"
-              />
-            ) : (
-              filteredPendingTasks.slice(0, 8).map((task) => {
-                const presentation = describeOperationalTask(task);
-                return (
-                  <Link
-                    key={task.id}
-                    href={presentation.actionHref}
-                    className="flex min-h-[44px] items-center justify-between rounded-lg border p-2.5 transition-colors hover:bg-muted/50"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{task.title}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {presentation.queueLabel} / {presentation.actionLabel}
-                      </p>
-                    </div>
-                    <div className="ml-2 flex shrink-0 items-center gap-1">
-                      {(task.priority === 'urgent' || task.priority === 'high') && (
-                        <Badge
-                          variant={task.priority === 'urgent' ? 'destructive' : 'secondary'}
-                          className="text-[10px]"
+            ) : pipeline.length > 0 ? (
+              <Card>
+                <CardHeader className="pb-2">
+                  <h3 className="font-heading text-sm leading-snug font-medium">パイプライン</h3>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                    {pipeline
+                      .filter((p) => p.count > 0)
+                      .map((step) => (
+                        <div
+                          key={step.key}
+                          className="flex min-h-[70px] flex-col justify-center rounded-md border p-2 text-center"
                         >
-                          {task.priority === 'urgent' ? '緊急' : '高'}
-                        </Badge>
-                      )}
-                      <ArrowRight className="size-3.5 text-muted-foreground" aria-hidden="true" />
-                    </div>
-                  </Link>
-                );
-              })
-            )}
-          </CardContent>
-        </Card>
-      </PageSection>
+                          <p className="text-lg font-bold text-foreground">{step.count}</p>
+                          <p className="text-[10px] leading-tight text-muted-foreground">
+                            {step.label}
+                          </p>
+                        </div>
+                      ))}
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
 
-      <PageSection
-        title="補助情報"
-        description="患者ステータス変更やショートカットを確認し、必要な別画面へ移動する補助グループです。"
-        contentClassName="space-y-3"
-      >
-        {statusChangesQuery.isError ? (
-          <MyDaySectionError
-            title="ステータス変更を取得できません"
-            description="患者ステータスの変更履歴を取得できませんでした。必要に応じて患者一覧または監査ログで確認してください。"
-            href="/patients"
-            label="患者一覧を確認"
-          />
-        ) : statusChanges.length > 0 ? (
-          <Card>
-            <CardHeader className="pb-2">
-              <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
-                <AlertCircle className="size-4 text-primary" aria-hidden="true" />
-                ステータス変更
-                <Badge variant="secondary" className="ml-auto text-xs">
-                  {statusChanges.length}件
-                </Badge>
-              </h3>
-            </CardHeader>
-            <CardContent className="space-y-1.5">
-              {statusChanges.map((change) => {
-                const toCfg = STATUS_ICON_CONFIG[change.changes.to] ?? STATUS_ICON_CONFIG.stable;
-                const ToIcon = STATUS_ICONS[change.changes.to] ?? UserCheck;
-                return (
-                  <Link
-                    key={change.id}
-                    href={`/patients/${change.target_id}`}
-                    className="flex min-h-[44px] items-center gap-2.5 rounded-lg border p-2.5 transition-colors hover:bg-muted/50"
+            <Card className={initialFocus === 'tasks' ? 'ring-2 ring-primary/25' : undefined}>
+              <CardHeader className="pb-2">
+                <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
+                  <CheckSquare className="size-4 text-primary" aria-hidden="true" />
+                  未完了タスク
+                  <Badge variant="secondary" className="ml-auto text-xs">
+                    {isUserPending || tasksQuery.isLoading || tasksQuery.isError
+                      ? '…'
+                      : `${filteredPendingTasks.length}件`}
+                  </Badge>
+                </h3>
+              </CardHeader>
+              <CardContent className="space-y-1.5">
+                <div className="mb-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    aria-pressed={initialTaskFilter === 'all'}
+                    onClick={() =>
+                      replaceMyDayUrl({
+                        focus: 'tasks',
+                        task_filter: null,
+                        context: initialContext ?? null,
+                      })
+                    }
+                    className="border-0 bg-transparent p-0"
                   >
-                    <div className={`shrink-0 rounded-full p-1 ${toCfg.color} ${toCfg.bg}`}>
-                      <ToIcon className="size-3.5" aria-hidden="true" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{change.changes.patient_name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {change.changes.from_label} → {change.changes.to_label}
-                      </p>
-                    </div>
-                  </Link>
-                );
-              })}
-            </CardContent>
-          </Card>
-        ) : null}
-
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-          <Link
-            href="/dashboard"
-            className="flex items-center justify-center gap-1.5 rounded-lg border p-3 text-sm font-medium transition-colors hover:bg-muted/50"
-          >
-            ダッシュボード
-          </Link>
-          <Link
-            href="/schedules"
-            className="flex items-center justify-center gap-1.5 rounded-lg border p-3 text-sm font-medium transition-colors hover:bg-muted/50"
-          >
-            スケジュール
-          </Link>
-          <Link
-            href="/tasks"
-            className="flex items-center justify-center gap-1.5 rounded-lg border p-3 text-sm font-medium transition-colors hover:bg-muted/50"
-          >
-            タスク
-          </Link>
-          <Link
-            href="/workflow"
-            className="flex items-center justify-center gap-1.5 rounded-lg border p-3 text-sm font-medium transition-colors hover:bg-muted/50"
-          >
-            ワークフロー
-          </Link>
-          <Link
-            href="/handoff"
-            className="flex items-center justify-center gap-1.5 rounded-lg border p-3 text-sm font-medium transition-colors hover:bg-muted/50"
-          >
-            申し送り
-          </Link>
-          <Link
-            href="/notifications"
-            className="flex items-center justify-center gap-1.5 rounded-lg border p-3 text-sm font-medium transition-colors hover:bg-muted/50"
-          >
-            通知
-          </Link>
+                    <InlineFilterButton active={initialTaskFilter === 'all'} label="全て" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={initialTaskFilter === 'urgent'}
+                    onClick={() =>
+                      replaceMyDayUrl({
+                        focus: 'tasks',
+                        task_filter: 'urgent',
+                        context: initialContext ?? null,
+                      })
+                    }
+                    className="border-0 bg-transparent p-0"
+                  >
+                    <InlineFilterButton
+                      active={initialTaskFilter === 'urgent'}
+                      label="高優先のみ"
+                    />
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={initialTaskFilter === 'pending'}
+                    onClick={() =>
+                      replaceMyDayUrl({
+                        focus: 'tasks',
+                        task_filter: 'pending',
+                        context: initialContext ?? null,
+                      })
+                    }
+                    className="border-0 bg-transparent p-0"
+                  >
+                    <InlineFilterButton
+                      active={initialTaskFilter === 'pending'}
+                      label="未着手のみ"
+                    />
+                  </button>
+                </div>
+                {tasksQuery.isError ? (
+                  <MyDaySectionError
+                    title="未完了タスクを取得できません"
+                    description="担当タスクの取得に失敗しました。タスクなしとは判断せず、タスク一覧で確認してください。"
+                    href="/tasks"
+                    label="タスク一覧を確認"
+                  />
+                ) : isUserPending || tasksQuery.isLoading ? (
+                  <SectionSkeleton />
+                ) : filteredPendingTasks.length === 0 ? (
+                  <MyDayEmptyAction
+                    message={
+                      initialTaskFilter === 'all'
+                        ? '未完了のタスクはありません'
+                        : 'この条件に一致する未完了タスクはありません'
+                    }
+                    href="/tasks"
+                    label="タスク一覧を確認"
+                  />
+                ) : (
+                  filteredPendingTasks.slice(0, 8).map((task) => {
+                    const presentation = describeOperationalTask(task);
+                    return (
+                      <Link
+                        key={task.id}
+                        href={presentation.actionHref}
+                        className="flex min-h-[44px] items-center justify-between rounded-lg border p-2.5 transition-colors hover:bg-muted/50"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{task.title}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {presentation.queueLabel} / {presentation.actionLabel}
+                          </p>
+                        </div>
+                        <div className="ml-2 flex shrink-0 items-center gap-1">
+                          {(task.priority === 'urgent' || task.priority === 'high') && (
+                            <Badge
+                              variant={task.priority === 'urgent' ? 'destructive' : 'secondary'}
+                              className="text-[10px]"
+                            >
+                              {task.priority === 'urgent' ? '緊急' : '高'}
+                            </Badge>
+                          )}
+                          <ArrowRight
+                            className="size-3.5 text-muted-foreground"
+                            aria-hidden="true"
+                          />
+                        </div>
+                      </Link>
+                    );
+                  })
+                )}
+              </CardContent>
+            </Card>
+          </PageSection>
         </div>
-      </PageSection>
+
+        <div className="space-y-4 xl:sticky xl:top-4 xl:pt-20">
+          <PageSection
+            title="補助情報"
+            description="患者ステータス変更やショートカットを確認し、必要な別画面へ移動する補助グループです。"
+            contentClassName="space-y-3"
+            tone="subtle"
+          >
+            {statusChangesQuery.isError ? (
+              <MyDaySectionError
+                title="ステータス変更を取得できません"
+                description="患者ステータスの変更履歴を取得できませんでした。必要に応じて患者一覧または監査ログで確認してください。"
+                href="/patients"
+                label="患者一覧を確認"
+              />
+            ) : statusChanges.length > 0 ? (
+              <Card>
+                <CardHeader className="pb-2">
+                  <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium">
+                    <AlertCircle className="size-4 text-primary" aria-hidden="true" />
+                    ステータス変更
+                    <Badge variant="secondary" className="ml-auto text-xs">
+                      {statusChanges.length}件
+                    </Badge>
+                  </h3>
+                </CardHeader>
+                <CardContent className="space-y-1.5">
+                  {statusChanges.map((change) => {
+                    const toCfg =
+                      STATUS_ICON_CONFIG[change.changes.to] ?? STATUS_ICON_CONFIG.stable;
+                    const ToIcon = STATUS_ICONS[change.changes.to] ?? UserCheck;
+                    return (
+                      <Link
+                        key={change.id}
+                        href={`/patients/${change.target_id}`}
+                        className="flex min-h-[44px] items-center gap-2.5 rounded-lg border p-2.5 transition-colors hover:bg-muted/50"
+                      >
+                        <div className={`shrink-0 rounded-full p-1 ${toCfg.color} ${toCfg.bg}`}>
+                          <ToIcon className="size-3.5" aria-hidden="true" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium">
+                            {change.changes.patient_name}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {change.changes.from_label} → {change.changes.to_label}
+                          </p>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            ) : null}
+
+            <div className="grid grid-cols-2 gap-2">
+              <Link
+                href="/dashboard"
+                className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg border p-3 text-sm font-medium transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <LayoutDashboard className="size-4" aria-hidden="true" />
+                ダッシュボード
+              </Link>
+              <Link
+                href="/schedules"
+                className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg border p-3 text-sm font-medium transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <CalendarDays className="size-4" aria-hidden="true" />
+                スケジュール
+              </Link>
+              <Link
+                href="/tasks"
+                className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg border p-3 text-sm font-medium transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <ListChecks className="size-4" aria-hidden="true" />
+                タスク
+              </Link>
+              <Link
+                href="/workflow"
+                className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg border p-3 text-sm font-medium transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <Workflow className="size-4" aria-hidden="true" />
+                ワークフロー
+              </Link>
+              <Link
+                href="/handoff"
+                className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg border p-3 text-sm font-medium transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <MessageSquareText className="size-4" aria-hidden="true" />
+                申し送り
+              </Link>
+              <Link
+                href="/notifications"
+                className="flex min-h-[44px] items-center justify-center gap-1.5 rounded-lg border p-3 text-sm font-medium transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <Bell className="size-4" aria-hidden="true" />
+                通知
+              </Link>
+            </div>
+          </PageSection>
+        </div>
+      </div>
     </div>
   );
 }

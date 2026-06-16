@@ -42,7 +42,7 @@ export function QuickStat({
 }) {
   return (
     <div
-      className={`rounded-lg border p-2.5 text-center ${urgent ? 'border-red-200 bg-red-50' : ''}`}
+      className={`flex min-h-[72px] flex-col justify-center rounded-lg border p-2.5 text-center ${urgent ? 'border-red-200 bg-red-50' : ''}`}
     >
       <p className={`text-xl font-bold ${urgent ? 'text-red-600' : 'text-foreground'}`}>
         {loading ? '...' : value}
