@@ -33,6 +33,8 @@ describe('perf-smoke parseArgs', () => {
         '120001',
         '--method',
         'post',
+        '--body',
+        '{"items":[]}',
         '--path',
         '/api/patients',
         '--path',
@@ -50,6 +52,7 @@ describe('perf-smoke parseArgs', () => {
       requestTimeoutMs: 120_000,
       method: 'POST',
       paths: ['/api/patients'],
+      body: '{"items":[]}',
       headers: {
         Authorization: 'Bearer test-token',
       },
@@ -148,5 +151,43 @@ describe('perf-smoke parseArgs', () => {
     expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 1234);
     expect(unref).toHaveBeenCalledTimes(1);
     expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutHandle);
+  });
+
+  it('sends POST bodies with a default JSON content type', async () => {
+    const args = parseArgs(
+      [
+        '--requests',
+        '1',
+        '--concurrency',
+        '1',
+        '--method',
+        'POST',
+        '--path',
+        '/api/visit-schedule-proposals/billing-preview-batch',
+        '--body',
+        '{"items":[{"key":"proposal_1"}]}',
+      ],
+      {},
+    );
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response('{}', { status: 200 }));
+
+    await expect(runPerfSmoke(args, fetchImpl)).resolves.toMatchObject({
+      requests: 1,
+      method: 'POST',
+      body_bytes: 32,
+      error_count: 0,
+      target_met: true,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      'http://127.0.0.1:3000/api/visit-schedule-proposals/billing-preview-batch',
+      expect.objectContaining({
+        method: 'POST',
+        body: '{"items":[{"key":"proposal_1"}]}',
+        headers: expect.objectContaining({
+          'content-type': 'application/json',
+        }),
+      }),
+    );
   });
 });

@@ -1,4 +1,5 @@
 import process from 'node:process';
+import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 type Args = {
@@ -10,6 +11,7 @@ type Args = {
   method: string;
   paths: string[];
   headers: Record<string, string>;
+  body?: string;
 };
 
 export type PerfSmokeResult = {
@@ -20,6 +22,7 @@ export type PerfSmokeResult = {
   request_timeout_ms: number;
   method: string;
   paths: string[];
+  body_bytes: number;
   average_ms: number;
   p50_ms: number;
   p95_ms: number;
@@ -69,6 +72,7 @@ export function parseArgs(
     method: env.PERF_METHOD ?? 'GET',
     paths: ['/api/health'],
     headers: {},
+    ...(env.PERF_BODY ? { body: env.PERF_BODY } : {}),
   };
 
   let hasExplicitPath = false;
@@ -93,6 +97,8 @@ export function parseArgs(
       );
     }
     if (value === '--method' && next) args.method = next.toUpperCase();
+    if (value === '--body' && next) args.body = next;
+    if (value === '--body-file' && next) args.body = readFileSync(next, 'utf8');
     if (value === '--path' && next) {
       if (!hasExplicitPath) {
         args.paths = [];
@@ -112,6 +118,26 @@ export function parseArgs(
 
   args.paths = args.paths.filter((item, index, list) => list.indexOf(item) === index);
   return args;
+}
+
+function hasHeader(headers: Record<string, string>, name: string): boolean {
+  const normalized = name.toLowerCase();
+  return Object.keys(headers).some((key) => key.toLowerCase() === normalized);
+}
+
+function buildRequestInit(args: Args, signal: AbortSignal): RequestInit {
+  const headers = { ...args.headers };
+  const body = args.method === 'GET' || args.method === 'HEAD' ? undefined : args.body;
+  if (body !== undefined && !hasHeader(headers, 'content-type')) {
+    headers['content-type'] = 'application/json';
+  }
+
+  return {
+    method: args.method,
+    headers,
+    ...(body !== undefined ? { body } : {}),
+    signal,
+  };
 }
 
 function percentile(values: number[], ratio: number) {
@@ -168,9 +194,7 @@ export async function runPerfSmoke(
 
       try {
         const response = await fetchImpl(target, {
-          method: args.method,
-          headers: args.headers,
-          signal: requestAbort.signal,
+          ...buildRequestInit(args, requestAbort.signal),
         });
         durations.push(Math.round(performance.now() - startedAt));
         if (!response.ok) {
@@ -204,6 +228,7 @@ export async function runPerfSmoke(
     request_timeout_ms: args.requestTimeoutMs,
     method: args.method,
     paths: args.paths,
+    body_bytes: args.body ? Buffer.byteLength(args.body) : 0,
     average_ms: average,
     p50_ms: p50,
     p95_ms: p95,
