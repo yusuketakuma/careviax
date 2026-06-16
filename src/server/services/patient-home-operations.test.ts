@@ -294,7 +294,7 @@ describe('getPatientHomeOperationsData', () => {
         expect.objectContaining({
           key: 'conference',
           label: 'カンファレンス',
-          message: '会議後の報告書が未作成です',
+          message: '会議後フォローアップ期限を過ぎています',
           href: '/conferences?patient_id=patient_1&case_id=case_1&focus=notes&context=patient_detail',
           action_label: '会議要点へ',
         }),
@@ -418,11 +418,11 @@ describe('getPatientHomeOperationsData', () => {
       status: '後処理あり',
       href: '/conferences?patient_id=patient_1&case_id=case_1&focus=notes&context=patient_detail',
       alerts: expect.arrayContaining([
-        '会議後の報告書が未作成です',
         '会議後フォローアップが未完了です',
         '会議関連タスクが1件残っています',
       ]),
       metrics: expect.arrayContaining([
+        { label: '報告書', value: 'ドラフト1件' },
         { label: '予定連動', value: '訪問提案あり' },
         { label: '議題', value: '退院後の服薬支援と訪問頻度を調整する' },
         { label: '場所', value: 'MCS 山田太郎さん在宅チーム' },
@@ -439,6 +439,9 @@ describe('getPatientHomeOperationsData', () => {
         },
       ],
     });
+    expect(result?.items.find((item) => item.key === 'conference')?.alerts).not.toContain(
+      '会議後の報告書が未作成です',
+    );
     expect(db.billingCandidate.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({

@@ -554,6 +554,13 @@ function readConferenceOperation(metadata: unknown): ConferenceOperationSnapshot
   };
 }
 
+function hasConferenceReportDraft(conference: ConferenceOperationNote) {
+  return Boolean(
+    conference.generated_report_id ||
+    (readConferenceSyncSummary(conference.metadata)?.report_draft_ids.length ?? 0) > 0,
+  );
+}
+
 function readConferenceActionItemSummary(actionItems: unknown): ConferenceActionItemSummary {
   const items = Array.isArray(actionItems)
     ? actionItems.flatMap((item) => {
@@ -1201,7 +1208,7 @@ function buildConferenceItem(args: {
   const dueWorkNote =
     dueConferences.find(
       (conference) =>
-        !conference.generated_report_id ||
+        !hasConferenceReportDraft(conference) ||
         Boolean(conference.follow_up_date && !conference.follow_up_completed) ||
         readConferenceActionItemSummary(conference.action_items).total >
           Math.max(
@@ -1220,7 +1227,11 @@ function buildConferenceItem(args: {
   const openActionItemCount = Math.max(0, actionItemSummary.total - convertedActionItemCount);
   const todayTokyoKey = formatTokyoDateKey(new Date());
   const conferenceUpcoming = Boolean(upcomingNote);
-  const reportMissing = Boolean(dueWorkNote && !dueWorkNote.generated_report_id);
+  const reportDraftCount = new Set([
+    ...(syncSummary?.report_draft_ids ?? []),
+    ...(note?.generated_report_id ? [note.generated_report_id] : []),
+  ]).size;
+  const reportMissing = Boolean(dueWorkNote && !hasConferenceReportDraft(dueWorkNote));
   const followUpOpen = Boolean(note?.follow_up_date && !note.follow_up_completed);
   const followUpOverdue = Boolean(
     followUpOpen && note?.follow_up_date && formatTokyoDateKey(note.follow_up_date) < todayTokyoKey,
@@ -1260,11 +1271,12 @@ function buildConferenceItem(args: {
     metrics: [
       {
         label: '報告書',
-        value: note?.generated_report_id
-          ? '作成済み'
-          : !dueWorkNote && conferenceUpcoming
-            ? '予定前'
-            : '未作成',
+        value:
+          reportDraftCount > 0
+            ? `ドラフト${reportDraftCount}件`
+            : !dueWorkNote && conferenceUpcoming
+              ? '予定前'
+              : '未作成',
       },
       {
         label: 'フォロー',
