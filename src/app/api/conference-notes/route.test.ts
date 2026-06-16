@@ -1306,6 +1306,85 @@ describe('/api/conference-notes', () => {
       });
     });
 
+    it('uses the selected conference report purpose when creating CareReport drafts', async () => {
+      conferenceNoteCreateMock.mockImplementationOnce(
+        async (args?: {
+          data?: {
+            metadata?: unknown;
+            action_items?: unknown;
+            structured_content?: unknown;
+            content?: string;
+          };
+        }) => ({
+          id: 'note_service_1',
+          case_id: 'case_1',
+          patient_id: 'patient_1',
+          note_type: 'service_manager',
+          title: '担当者会議',
+          content: args?.data?.content ?? '会議目的: 訪看へ服薬状況を連絡',
+          conference_date: new Date('2026-03-28T01:00:00.000Z'),
+          participants: [{ name: '佐藤CM', role: 'care_manager', attended: true }],
+          structured_content: args?.data?.structured_content ?? null,
+          metadata: args?.data?.metadata ?? null,
+          action_items: args?.data?.action_items ?? null,
+        }),
+      );
+
+      const response = await POST(
+        createRequest({
+          method: 'POST',
+          body: {
+            conference_type: 'service_manager',
+            case_id: 'case_1',
+            title: '担当者会議',
+            structured_content: {
+              sections: [
+                { key: 'meeting_purpose', label: '会議目的', body: '訪看へ服薬状況を連絡' },
+                { key: 'coordination_items', label: '連携事項', body: '訪看へ共有' },
+              ],
+            },
+            participants: [{ name: '佐藤CM', role: 'care_manager', attended: true }],
+            metadata: {
+              conference_operation: {
+                format: 'mcs',
+                organizer: 'visiting_nurse',
+                report_type: 'nurse_share',
+              },
+            },
+            conference_date: '2026-03-28T01:00:00.000Z',
+            action_items: [{ title: '訪看共有内容を確認する', assignee: '薬剤師' }],
+          },
+        }),
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(201);
+      expect(careReportCreateManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: [
+            expect.objectContaining({
+              report_type: 'nurse_share',
+              content: expect.objectContaining({
+                conference_note_id: 'note_service_1',
+                disclosure_scope: expect.objectContaining({
+                  audience: 'nurse_share',
+                }),
+              }),
+            }),
+          ],
+        }),
+      );
+      expect(careReportCreateManyMock).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.arrayContaining([
+            expect.objectContaining({
+              report_type: 'care_manager_report',
+            }),
+          ]),
+        }),
+      );
+    });
+
     it('stores care plan update in careCase required_visit_support on POST service_manager', async () => {
       conferenceNoteCreateMock.mockResolvedValue({
         id: 'note_service_1',

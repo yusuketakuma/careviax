@@ -93,6 +93,15 @@ type NoteInput = {
   action_items: unknown;
 };
 
+const CONFERENCE_OPERATION_REPORT_TYPES = new Set<ReportType>([
+  'physician_report',
+  'care_manager_report',
+  'facility_handoff',
+  'nurse_share',
+  'family_share',
+  'internal_record',
+]);
+
 /**
  * Billing configuration per conference note_type.
  * billing_code follows the レセ電コード standard:
@@ -131,6 +140,21 @@ const REPORT_TYPE_MAP: Record<string, string[]> = {
   emergency: ['physician_report', 'internal_record'],
   regular: ['internal_record'],
 };
+
+function resolveOperationReportTypes(metadata: unknown): ReportType[] | undefined {
+  const value = readJsonObject(metadata);
+  const operation =
+    value?.conference_operation &&
+    typeof value.conference_operation === 'object' &&
+    !Array.isArray(value.conference_operation)
+      ? (value.conference_operation as Record<string, unknown>)
+      : null;
+  const reportType = typeof operation?.report_type === 'string' ? operation.report_type : null;
+  if (!reportType || !CONFERENCE_OPERATION_REPORT_TYPES.has(reportType as ReportType)) {
+    return undefined;
+  }
+  return [reportType as ReportType];
+}
 
 /** Human-readable Japanese label per note_type */
 const NOTE_TYPE_LABEL: Record<string, string> = {
@@ -360,7 +384,9 @@ export class ConferenceSyncService {
     }
 
     // 5. Generate CareReport draft(s) based on note_type
-    const reportDraftIds = await this.generateReportDraft(tx, orgId, userId, note, patientId);
+    const reportDraftIds = await this.generateReportDraft(tx, orgId, userId, note, patientId, {
+      reportTypes: resolveOperationReportTypes(note.metadata),
+    });
     if (process.env.DEBUG_SYNC === '1') {
       logger.info('[conference-sync] generated report drafts', {
         noteId: note.id,
