@@ -251,6 +251,33 @@ export const GET = withAuthContext(
     const queueOrderBy = [
       { updated_at: 'desc' },
     ] satisfies Prisma.PharmacyDrugStockOrderByWithRelationInput[];
+    const selectedQueueRowsPromise = prisma.pharmacyDrugStock.findMany({
+      where: queueWhereByKey[parsed.data.queue],
+      orderBy: queueOrderBy,
+      take: parsed.data.queue_limit,
+      select: stockImpactSelect,
+    });
+    const masterChangeReportRowsPromise = prisma.pharmacyDrugStock.findMany({
+      where: recentlyChangedWhere,
+      orderBy: queueOrderBy,
+      take: CHANGE_REPORT_LIMIT,
+      select: stockImpactSelect,
+    });
+    const sampleRows = (
+      queueKey: ImpactQueueKey,
+      where: Prisma.PharmacyDrugStockWhereInput,
+    ): Promise<Awaited<typeof selectedQueueRowsPromise>> => {
+      if (parsed.data.queue === queueKey && parsed.data.queue_limit >= 10) {
+        return selectedQueueRowsPromise.then((rows) => rows.slice(0, 10));
+      }
+
+      return prisma.pharmacyDrugStock.findMany({
+        where,
+        orderBy: queueOrderBy,
+        take: 10,
+        select: stockImpactSelect,
+      });
+    };
     const [
       stockedCount,
       reviewDueCount,
@@ -294,72 +321,17 @@ export const GET = withAuthContext(
       prisma.pharmacyDrugStock.count({ where: unresolvedFollowUpWhere }),
       prisma.pharmacyDrugStock.count({ where: overdueFollowUpWhere }),
       prisma.pharmacyDrugStock.count({ where: missingDueFollowUpWhere }),
-      prisma.pharmacyDrugStock.findMany({
-        where: queueWhereByKey[parsed.data.queue],
-        orderBy: queueOrderBy,
-        take: parsed.data.queue_limit,
-        select: stockImpactSelect,
-      }),
-      prisma.pharmacyDrugStock.findMany({
-        where: recentlyChangedWhere,
-        orderBy: queueOrderBy,
-        take: CHANGE_REPORT_LIMIT,
-        select: stockImpactSelect,
-      }),
-      prisma.pharmacyDrugStock.findMany({
-        where: reviewDueWhere,
-        orderBy: queueOrderBy,
-        take: 10,
-        select: stockImpactSelect,
-      }),
-      prisma.pharmacyDrugStock.findMany({
-        where: missingReorderWhere,
-        orderBy: queueOrderBy,
-        take: 10,
-        select: stockImpactSelect,
-      }),
-      prisma.pharmacyDrugStock.findMany({
-        where: safetyFlaggedWhere,
-        orderBy: queueOrderBy,
-        take: 10,
-        select: stockImpactSelect,
-      }),
-      prisma.pharmacyDrugStock.findMany({
-        where: highRiskWhere,
-        orderBy: queueOrderBy,
-        take: 10,
-        select: stockImpactSelect,
-      }),
-      prisma.pharmacyDrugStock.findMany({
-        where: lasaRiskWhere,
-        orderBy: queueOrderBy,
-        take: 10,
-        select: stockImpactSelect,
-      }),
-      prisma.pharmacyDrugStock.findMany({
-        where: controlledWhere,
-        orderBy: queueOrderBy,
-        take: 10,
-        select: stockImpactSelect,
-      }),
-      prisma.pharmacyDrugStock.findMany({
-        where: transitionalExpiryWhere,
-        orderBy: queueOrderBy,
-        take: 10,
-        select: stockImpactSelect,
-      }),
-      prisma.pharmacyDrugStock.findMany({
-        where: actionRequiredWhere,
-        orderBy: queueOrderBy,
-        take: 10,
-        select: stockImpactSelect,
-      }),
-      prisma.pharmacyDrugStock.findMany({
-        where: recentlyChangedWhere,
-        orderBy: queueOrderBy,
-        take: 10,
-        select: stockImpactSelect,
-      }),
+      selectedQueueRowsPromise,
+      masterChangeReportRowsPromise,
+      sampleRows('review_due', reviewDueWhere),
+      sampleRows('missing_reorder_point', missingReorderWhere),
+      sampleRows('safety_flagged', safetyFlaggedWhere),
+      sampleRows('high_risk', highRiskWhere),
+      sampleRows('lasa_risk', lasaRiskWhere),
+      sampleRows('controlled', controlledWhere),
+      sampleRows('transitional_expiry', transitionalExpiryWhere),
+      sampleRows('action_required', actionRequiredWhere),
+      masterChangeReportRowsPromise.then((rows) => rows.slice(0, 10)),
     ]);
     const adoptedChangedYjCodes = new Set(
       [...selectedQueueRows, ...recentlyChangedSample, ...masterChangeReportRows].map(

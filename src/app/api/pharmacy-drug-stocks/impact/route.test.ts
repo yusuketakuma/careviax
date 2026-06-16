@@ -53,6 +53,11 @@ async function readImpactPayload(response: Response): Promise<ImpactPayload> {
 describe('/api/pharmacy-drug-stocks/impact', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    prismaMock.pharmacySite.findFirst.mockReset();
+    prismaMock.pharmacyDrugStock.count.mockReset();
+    prismaMock.pharmacyDrugStock.findMany.mockReset();
+    prismaMock.drugMasterChangeEvent.findMany.mockReset();
+    prismaMock.qrScanDraft.findMany.mockReset();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     prismaMock.membership.findFirst.mockResolvedValue({ role: 'admin' });
     prismaMock.pharmacySite.findFirst.mockResolvedValue({ id: 'site_1', name: '本店' });
@@ -129,6 +134,7 @@ describe('/api/pharmacy-drug-stocks/impact', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(prismaMock.pharmacyDrugStock.findMany).toHaveBeenCalledTimes(9);
     await expect(response.json()).resolves.toMatchObject({
       site: { id: 'site_1' },
       selected_queue: {
