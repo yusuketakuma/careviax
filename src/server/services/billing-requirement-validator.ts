@@ -57,6 +57,8 @@ export type ValidateBillingRequirementsArgs = {
 export type BillingCadenceScheduleRow = {
   patient_id: string;
   scheduled_date: Date;
+  pharmacist_id?: string | null;
+  visit_type?: string | null;
 };
 
 export type BillingCadencePreview = {
@@ -100,6 +102,17 @@ function dateBucketKey(value: Date): number {
 
 function incrementCount(counts: Map<number, number>, key: number): void {
   counts.set(key, (counts.get(key) ?? 0) + 1);
+}
+
+function countScheduleRows(
+  rows: BillingCadenceScheduleRow[],
+  predicate: (row: BillingCadenceScheduleRow) => boolean,
+): number {
+  let count = 0;
+  for (const row of rows) {
+    if (predicate(row)) count += 1;
+  }
+  return count;
 }
 
 export async function getBillingCadencePreview(
@@ -225,45 +238,86 @@ export async function validateBillingRequirements(
     managementPlan,
   ] = await Promise.all([
     // Monthly schedule count for patient
-    prisma.visitSchedule.count({
-      where: {
-        org_id: args.orgId,
-        cycle: { patient_id: args.patientId },
-        scheduled_date: { gte: monthStart, lte: monthEnd },
-        schedule_status: { in: ACTIVE_SCHEDULE_STATUSES },
-      },
-    }),
-    // Weekly visit count for pharmacist
-    prisma.visitSchedule.count({
-      where: {
-        org_id: args.orgId,
-        pharmacist_id: args.pharmacistId,
-        scheduled_date: { gte: weekStart, lte: weekEnd },
-        schedule_status: { in: ACTIVE_SCHEDULE_STATUSES },
-      },
-    }),
-    // Weekly visit count for patient (special cap check)
-    args.specialCapEligible
-      ? prisma.visitSchedule.count({
+    args.cadenceScheduleRows
+      ? Promise.resolve(
+          countScheduleRows(
+            args.cadenceScheduleRows,
+            (row) =>
+              row.patient_id === args.patientId &&
+              row.scheduled_date >= monthStart &&
+              row.scheduled_date <= monthEnd,
+          ),
+        )
+      : prisma.visitSchedule.count({
           where: {
             org_id: args.orgId,
             cycle: { patient_id: args.patientId },
-            scheduled_date: { gte: weekStart, lte: weekEnd },
-            schedule_status: { in: ACTIVE_SCHEDULE_STATUSES },
-          },
-        })
-      : Promise.resolve(0),
-    // Existing regular visits in month (for concurrent check)
-    args.visitType === 'emergency'
-      ? prisma.visitSchedule.count({
-          where: {
-            org_id: args.orgId,
-            cycle: { patient_id: args.patientId },
-            visit_type: 'regular',
             scheduled_date: { gte: monthStart, lte: monthEnd },
             schedule_status: { in: ACTIVE_SCHEDULE_STATUSES },
           },
-        })
+        }),
+    // Weekly visit count for pharmacist
+    args.cadenceScheduleRows
+      ? Promise.resolve(
+          countScheduleRows(
+            args.cadenceScheduleRows,
+            (row) =>
+              row.pharmacist_id === args.pharmacistId &&
+              row.scheduled_date >= weekStart &&
+              row.scheduled_date <= weekEnd,
+          ),
+        )
+      : prisma.visitSchedule.count({
+          where: {
+            org_id: args.orgId,
+            pharmacist_id: args.pharmacistId,
+            scheduled_date: { gte: weekStart, lte: weekEnd },
+            schedule_status: { in: ACTIVE_SCHEDULE_STATUSES },
+          },
+        }),
+    // Weekly visit count for patient (special cap check)
+    args.specialCapEligible
+      ? args.cadenceScheduleRows
+        ? Promise.resolve(
+            countScheduleRows(
+              args.cadenceScheduleRows,
+              (row) =>
+                row.patient_id === args.patientId &&
+                row.scheduled_date >= weekStart &&
+                row.scheduled_date <= weekEnd,
+            ),
+          )
+        : prisma.visitSchedule.count({
+            where: {
+              org_id: args.orgId,
+              cycle: { patient_id: args.patientId },
+              scheduled_date: { gte: weekStart, lte: weekEnd },
+              schedule_status: { in: ACTIVE_SCHEDULE_STATUSES },
+            },
+          })
+      : Promise.resolve(0),
+    // Existing regular visits in month (for concurrent check)
+    args.visitType === 'emergency'
+      ? args.cadenceScheduleRows
+        ? Promise.resolve(
+            countScheduleRows(
+              args.cadenceScheduleRows,
+              (row) =>
+                row.patient_id === args.patientId &&
+                row.visit_type === 'regular' &&
+                row.scheduled_date >= monthStart &&
+                row.scheduled_date <= monthEnd,
+            ),
+          )
+        : prisma.visitSchedule.count({
+            where: {
+              org_id: args.orgId,
+              cycle: { patient_id: args.patientId },
+              visit_type: 'regular',
+              scheduled_date: { gte: monthStart, lte: monthEnd },
+              schedule_status: { in: ACTIVE_SCHEDULE_STATUSES },
+            },
+          })
       : Promise.resolve(0),
     // Consent check
     findActiveVisitConsent(prisma, {

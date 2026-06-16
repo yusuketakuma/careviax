@@ -606,12 +606,16 @@ describe('buildVisitScheduleBillingPreview', () => {
           patient_id: 'patient_1',
         },
         scheduled_date: new Date('2026-04-01T00:00:00.000Z'),
+        pharmacist_id: 'pharm_1',
+        visit_type: 'regular',
       },
       {
         cycle: {
           patient_id: 'patient_2',
         },
         scheduled_date: new Date('2026-04-08T00:00:00.000Z'),
+        pharmacist_id: 'pharm_2',
+        visit_type: 'regular',
       },
     ]);
     careCaseFindManyMock.mockResolvedValue([
@@ -676,6 +680,8 @@ describe('buildVisitScheduleBillingPreview', () => {
             },
           },
           scheduled_date: true,
+          pharmacist_id: true,
+          visit_type: true,
         },
       }),
     );
@@ -688,10 +694,14 @@ describe('buildVisitScheduleBillingPreview', () => {
           {
             patient_id: 'patient_1',
             scheduled_date: new Date('2026-04-01T00:00:00.000Z'),
+            pharmacist_id: 'pharm_1',
+            visit_type: 'regular',
           },
           {
             patient_id: 'patient_2',
             scheduled_date: new Date('2026-04-08T00:00:00.000Z'),
+            pharmacist_id: 'pharm_2',
+            visit_type: 'regular',
           },
         ],
       }),

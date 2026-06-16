@@ -380,6 +380,8 @@ async function prefetchBillingPreviewCadenceSchedules(args: {
         },
       },
       scheduled_date: true,
+      pharmacist_id: true,
+      visit_type: true,
     },
     orderBy: [{ scheduled_date: 'asc' }],
   });
@@ -390,6 +392,8 @@ async function prefetchBillingPreviewCadenceSchedules(args: {
           {
             patient_id: schedule.cycle.patient_id,
             scheduled_date: schedule.scheduled_date,
+            pharmacist_id: schedule.pharmacist_id,
+            visit_type: schedule.visit_type,
           },
         ]
       : [],

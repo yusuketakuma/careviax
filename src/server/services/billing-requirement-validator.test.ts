@@ -159,6 +159,88 @@ describe('validateBillingRequirements', () => {
     expect(prismaMock.user.findFirst).not.toHaveBeenCalled();
   });
 
+  it('uses prefetched schedule rows for visit counts without loading count queries', async () => {
+    const alerts = await validateBillingRequirements({
+      ...baseArgs,
+      visitType: 'emergency',
+      specialCapEligible: true,
+      pharmacistWeeklyCap: 40,
+      cadenceScheduleRows: [
+        {
+          patient_id: 'patient_1',
+          pharmacist_id: 'pharmacist_1',
+          visit_type: 'regular',
+          scheduled_date: new Date('2026-04-01T00:00:00.000Z'),
+        },
+        {
+          patient_id: 'patient_1',
+          pharmacist_id: 'pharmacist_1',
+          visit_type: 'regular',
+          scheduled_date: new Date('2026-04-08T00:00:00.000Z'),
+        },
+        {
+          patient_id: 'patient_1',
+          pharmacist_id: 'pharmacist_2',
+          visit_type: 'regular',
+          scheduled_date: new Date('2026-04-14T00:00:00.000Z'),
+        },
+        {
+          patient_id: 'patient_1',
+          pharmacist_id: 'pharmacist_2',
+          visit_type: 'regular',
+          scheduled_date: new Date('2026-04-15T00:00:00.000Z'),
+        },
+        {
+          patient_id: 'patient_1',
+          pharmacist_id: 'pharmacist_2',
+          visit_type: 'regular',
+          scheduled_date: new Date('2026-04-22T00:00:00.000Z'),
+        },
+        {
+          patient_id: 'patient_1',
+          pharmacist_id: 'pharmacist_2',
+          visit_type: 'regular',
+          scheduled_date: new Date('2026-04-23T00:00:00.000Z'),
+        },
+        {
+          patient_id: 'patient_1',
+          pharmacist_id: 'pharmacist_2',
+          visit_type: 'regular',
+          scheduled_date: new Date('2026-04-24T00:00:00.000Z'),
+        },
+        {
+          patient_id: 'patient_1',
+          pharmacist_id: 'pharmacist_2',
+          visit_type: 'regular',
+          scheduled_date: new Date('2026-04-27T00:00:00.000Z'),
+        },
+        {
+          patient_id: 'patient_1',
+          pharmacist_id: 'pharmacist_2',
+          visit_type: 'regular',
+          scheduled_date: new Date('2026-04-28T00:00:00.000Z'),
+        },
+        ...Array.from({ length: 37 }, (_, index) => ({
+          patient_id: `patient_other_${index}`,
+          pharmacist_id: 'pharmacist_1',
+          visit_type: 'regular',
+          scheduled_date: new Date('2026-04-16T00:00:00.000Z'),
+        })),
+      ],
+    });
+
+    expect(prismaMock.visitSchedule.count).not.toHaveBeenCalled();
+    expect(prismaMock.user.findFirst).not.toHaveBeenCalled();
+    expect(alerts.map((alert) => alert.type)).toEqual(
+      expect.arrayContaining([
+        'monthly_cap_exceeded',
+        'pharmacist_weekly_capacity',
+        'emergency_regular_concurrent',
+        'special_patient_weekly_cap',
+      ]),
+    );
+  });
+
   it('does not warn when pharmacist capacity is below threshold', async () => {
     // baseArgs → 2 count calls
     prismaMock.visitSchedule.count
