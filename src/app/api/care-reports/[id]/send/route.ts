@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
-import type { MemberRole, Prisma } from '@prisma/client';
+import { createHash } from 'node:crypto';
+import { Prisma, type MemberRole } from '@prisma/client';
 import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
@@ -88,6 +89,32 @@ function comparableContact(channel: SendRecipient['channel'], value: string | nu
   if (channel === 'email' || channel === 'ses') return normalized.toLowerCase();
   if (channel === 'phone' || channel === 'fax') return normalized.replace(/\D/g, '');
   return comparableText(normalized);
+}
+
+function buildDeliveryIntentKey(args: {
+  reportId: string;
+  channel: SendRecipient['channel'];
+  recipientName: string;
+  recipientRole: string;
+  recipientContact: string;
+}) {
+  const material = [
+    'care-report',
+    args.reportId,
+    args.channel,
+    comparableText(args.recipientRole),
+    comparableText(args.recipientName),
+    comparableContact(args.channel, args.recipientContact),
+  ].join(':');
+  return `care-report:v1:${createHash('sha256').update(material).digest('hex')}`;
+}
+
+function isUniqueConstraintError(error: unknown) {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}
+
+function isDeliveredReportStatus(status: string) {
+  return status === 'sent' || status === 'confirmed' || status === 'response_waiting';
 }
 
 function recipientContactMatches(
@@ -364,6 +391,66 @@ function readJsonObject(value: Prisma.JsonValue): Record<string, unknown> {
     : {};
 }
 
+function readReportSourceRevision(content: Prisma.JsonValue) {
+  const sourceProvenance = readJsonObject(
+    readJsonObject(content).source_provenance as Prisma.JsonValue,
+  );
+  const visitRecordVersion = sourceProvenance.visit_record_version;
+  const visitRecordUpdatedAt = sourceProvenance.visit_record_updated_at;
+  return {
+    visitRecordVersion: typeof visitRecordVersion === 'number' ? visitRecordVersion : null,
+    visitRecordUpdatedAt:
+      typeof visitRecordUpdatedAt === 'string' && visitRecordUpdatedAt.trim().length > 0
+        ? visitRecordUpdatedAt
+        : null,
+  };
+}
+
+async function validateReportVisitRecordFreshness(args: {
+  orgId: string;
+  visitRecordId: string | null;
+  content: Prisma.JsonValue;
+}) {
+  if (!args.visitRecordId) return { ok: true as const };
+  const sourceRevision = readReportSourceRevision(args.content);
+  if (sourceRevision.visitRecordVersion == null && sourceRevision.visitRecordUpdatedAt == null) {
+    return {
+      ok: false as const,
+      reason: 'missing_source_provenance' as const,
+      currentVersion: null,
+      currentUpdatedAt: null,
+    };
+  }
+
+  const currentVisitRecord = await prisma.visitRecord.findFirst({
+    where: { id: args.visitRecordId, org_id: args.orgId },
+    select: { version: true, updated_at: true },
+  });
+  if (!currentVisitRecord) {
+    return {
+      ok: false as const,
+      reason: 'source_visit_record_missing' as const,
+      currentVersion: null,
+      currentUpdatedAt: null,
+    };
+  }
+
+  const versionMatches =
+    sourceRevision.visitRecordVersion == null ||
+    currentVisitRecord.version === sourceRevision.visitRecordVersion;
+  const updatedAtMatches =
+    sourceRevision.visitRecordUpdatedAt == null ||
+    currentVisitRecord.updated_at.toISOString() === sourceRevision.visitRecordUpdatedAt;
+  if (versionMatches && updatedAtMatches) return { ok: true as const };
+
+  return {
+    ok: false as const,
+    reason: 'source_visit_record_stale' as const,
+    currentVersion: currentVisitRecord.version,
+    currentUpdatedAt: currentVisitRecord.updated_at.toISOString(),
+  };
+}
+
 function mergeReportDeliveryTargets(args: {
   content: Prisma.JsonValue;
   outcomes: DeliveryOutcome[];
@@ -386,7 +473,20 @@ function mergeReportDeliveryTargets(args: {
         delivered_at: outcome.failureReason ? null : deliveredAt,
         failure_reason: outcome.failureReason,
       })),
-    ],
+    ].filter((target, index, targets) => {
+      if (!target || typeof target !== 'object' || Array.isArray(target)) return true;
+      const deliveryRecordId = (target as { delivery_record_id?: unknown }).delivery_record_id;
+      if (typeof deliveryRecordId !== 'string') return true;
+      return (
+        targets.findIndex(
+          (candidate) =>
+            candidate &&
+            typeof candidate === 'object' &&
+            !Array.isArray(candidate) &&
+            (candidate as { delivery_record_id?: unknown }).delivery_record_id === deliveryRecordId,
+        ) === index
+      );
+    }),
   };
 }
 
@@ -491,7 +591,14 @@ type DeliveryOutcome = {
   recipient: SendRecipient;
   deliveryRecordId: string;
   failureReason: string | null;
+  reusedExistingDelivery?: boolean;
 };
+
+class DeliveryInProgressConflict extends Error {
+  constructor() {
+    super('同じ送付先への報告書送付が進行中です。送付履歴を確認してください');
+  }
+}
 
 /**
  * 1 件の送付先について、送達レコード作成・監査ログ・(必要なら)メール送信・
@@ -505,20 +612,94 @@ async function processRecipient(args: {
   recipient: SendRecipient;
 }): Promise<DeliveryOutcome> {
   const { ctx, reportId, report, recipient } = args;
+  const deliveryIntentKey = buildDeliveryIntentKey({
+    reportId,
+    channel: recipient.channel,
+    recipientName: recipient.recipient_name,
+    recipientRole: recipient.recipient_role,
+    recipientContact: recipient.recipient_contact,
+  });
 
   const attemptedDeliveryRecord = await withOrgContext(
     ctx.orgId,
     async (tx) => {
-      const deliveryRecord = await tx.deliveryRecord.create({
-        data: {
+      const existingDeliveryRecord = await tx.deliveryRecord.findFirst({
+        where: {
           org_id: ctx.orgId,
           report_id: reportId,
           channel: recipient.channel,
-          recipient_name: recipient.recipient_name,
-          recipient_contact: recipient.recipient_contact,
-          status: 'draft',
+          OR: [
+            { delivery_intent_key: deliveryIntentKey },
+            { delivery_intent_key: null, recipient_contact: recipient.recipient_contact },
+          ],
+        },
+        orderBy: { created_at: 'desc' },
+        select: {
+          id: true,
+          status: true,
         },
       });
+      if (existingDeliveryRecord && isDeliveredReportStatus(existingDeliveryRecord.status)) {
+        return {
+          id: existingDeliveryRecord.id,
+          status: existingDeliveryRecord.status,
+          reusedExistingDelivery: true,
+        };
+      }
+      if (existingDeliveryRecord?.status === 'draft') {
+        throw new DeliveryInProgressConflict();
+      }
+
+      const deliveryRecord =
+        existingDeliveryRecord?.status === 'failed'
+          ? await tx.deliveryRecord.update({
+              where: { id: existingDeliveryRecord.id },
+              data: {
+                recipient_name: recipient.recipient_name,
+                recipient_contact: recipient.recipient_contact,
+                delivery_intent_key: deliveryIntentKey,
+                status: 'draft',
+                failure_reason: null,
+                retry_count: { increment: 1 },
+              },
+            })
+          : await tx.deliveryRecord
+              .create({
+                data: {
+                  org_id: ctx.orgId,
+                  report_id: reportId,
+                  channel: recipient.channel,
+                  recipient_name: recipient.recipient_name,
+                  recipient_contact: recipient.recipient_contact,
+                  delivery_intent_key: deliveryIntentKey,
+                  status: 'draft',
+                },
+              })
+              .catch(async (createError: unknown) => {
+                if (!isUniqueConstraintError(createError)) throw createError;
+                const racedDeliveryRecord = await tx.deliveryRecord.findFirst({
+                  where: {
+                    org_id: ctx.orgId,
+                    delivery_intent_key: deliveryIntentKey,
+                  },
+                  select: {
+                    id: true,
+                    status: true,
+                  },
+                });
+                if (racedDeliveryRecord && isDeliveredReportStatus(racedDeliveryRecord.status)) {
+                  return {
+                    id: racedDeliveryRecord.id,
+                    status: racedDeliveryRecord.status,
+                    reusedExistingDelivery: true,
+                  };
+                }
+                throw new DeliveryInProgressConflict();
+              });
+
+      if ('reusedExistingDelivery' in deliveryRecord) {
+        return deliveryRecord;
+      }
 
       await createAuditLogEntry(tx, ctx, {
         action: 'care_report_delivery_attempted',
@@ -535,6 +716,15 @@ async function processRecipient(args: {
     },
     { requestContext: ctx },
   );
+
+  if ('reusedExistingDelivery' in attemptedDeliveryRecord) {
+    return {
+      recipient,
+      deliveryRecordId: attemptedDeliveryRecord.id,
+      failureReason: null,
+      reusedExistingDelivery: true,
+    };
+  }
 
   if (recipient.channel === 'email' || recipient.channel === 'ses') {
     try {
@@ -658,6 +848,10 @@ async function finalizeReportDelivery(args: {
   return withOrgContext(
     ctx.orgId,
     async (tx) => {
+      const currentReportContent = await tx.careReport.findFirst({
+        where: { id: reportId, org_id: ctx.orgId },
+        select: { content: true },
+      });
       const updatedReport = await tx.careReport.update({
         where: { id: reportId },
         data: {
@@ -665,7 +859,10 @@ async function finalizeReportDelivery(args: {
             ? 'response_waiting'
             : 'sent',
           content: toPrismaJsonInput(
-            mergeReportDeliveryTargets({ content: report.content, outcomes }),
+            mergeReportDeliveryTargets({
+              content: currentReportContent?.content ?? report.content,
+              outcomes,
+            }),
           ),
         },
       });
@@ -854,6 +1051,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       status: existing.status,
     });
   }
+  const freshness = await validateReportVisitRecordFreshness({
+    orgId: ctx.orgId,
+    visitRecordId: existing.visit_record_id,
+    content: existing.content,
+  });
+  if (!freshness.ok) {
+    return conflict('訪問記録が更新されています。報告書を再生成してから送付してください', {
+      reason: freshness.reason,
+      visit_record_id: existing.visit_record_id,
+      current_visit_record_version: freshness.currentVersion,
+      current_visit_record_updated_at: freshness.currentUpdatedAt,
+    });
+  }
 
   const recipients = normalized.recipients;
   const roleMismatch = validateRecipientRoles(existing.report_type, recipients);
@@ -881,13 +1091,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // 各送付先を順次処理(監査・送達は送付先単位)。
   const outcomes: DeliveryOutcome[] = [];
   for (const recipient of recipients) {
-    const outcome = await processRecipient({
-      ctx,
-      reportId: id,
-      report: existing,
-      recipient,
-    });
-    outcomes.push(outcome);
+    try {
+      const outcome = await processRecipient({
+        ctx,
+        reportId: id,
+        report: existing,
+        recipient,
+      });
+      outcomes.push(outcome);
+    } catch (cause) {
+      if (cause instanceof DeliveryInProgressConflict) {
+        return conflict(cause.message, {
+          report_id: id,
+          recipient_contact: recipient.recipient_contact,
+          channel: recipient.channel,
+        });
+      }
+      throw cause;
+    }
   }
 
   const failures = outcomes.filter((outcome) => outcome.failureReason !== null);
@@ -921,7 +1142,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     recipient_role: outcome.recipient.recipient_role,
     status: outcome.failureReason ? 'failed' : 'sent',
     failure_reason: outcome.failureReason,
+    reused_existing_delivery: outcome.reusedExistingDelivery === true,
+    external_send_skipped:
+      outcome.reusedExistingDelivery === true && outcome.failureReason === null,
   }));
+  const reusedDeliveryCount = outcomes.filter(
+    (outcome) => outcome.reusedExistingDelivery === true,
+  ).length;
 
   return success({
     data: {
@@ -929,6 +1156,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       deliveries,
       sent_count: successes.length,
       failed_count: failures.length,
+      reused_delivery_count: reusedDeliveryCount,
+      retry_finalized_from_existing_delivery: reusedDeliveryCount > 0,
     },
   });
 }

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 
 const {
   requireAuthContextMock,
@@ -32,10 +33,12 @@ const {
   communicationEventCreateMock: vi.fn(),
   txMock: {
     deliveryRecord: {
+      findFirst: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
     },
     careReport: {
+      findFirst: vi.fn(),
       update: vi.fn(),
       findMany: vi.fn(),
     },
@@ -109,6 +112,14 @@ vi.mock('@/lib/contact-profiles', () => ({
 
 import { POST } from './route';
 
+function buildUniqueConstraintError() {
+  return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+    code: 'P2002',
+    clientVersion: 'test',
+    meta: { target: ['org_id', 'delivery_intent_key'] },
+  });
+}
+
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/care-reports/report_1/send', {
     method: 'POST',
@@ -152,6 +163,8 @@ describe('/api/care-reports/[id]/send POST', () => {
       pdf_url: 'https://example.com/report.pdf',
     });
     visitRecordFindFirstMock.mockResolvedValue({
+      version: 1,
+      updated_at: new Date('2026-03-10T03:00:00.000Z'),
       schedule: {
         pharmacist_id: 'user_1',
         case_: {
@@ -214,6 +227,7 @@ describe('/api/care-reports/[id]/send POST', () => {
       messageId: 'ses-message-1',
       stub: false,
     });
+    txMock.deliveryRecord.findFirst.mockResolvedValue(null);
     txMock.deliveryRecord.create.mockResolvedValue({
       id: 'delivery_1',
       status: 'draft',
@@ -227,6 +241,7 @@ describe('/api/care-reports/[id]/send POST', () => {
       id: 'report_1',
       status: 'sent',
     });
+    txMock.careReport.findFirst.mockResolvedValue({ content: {} });
     txMock.conferenceNote.findFirst.mockResolvedValue(null);
     txMock.visitRecord.findFirst.mockResolvedValue(null);
     txMock.visitRecord.findMany.mockResolvedValue([]);
@@ -267,6 +282,97 @@ describe('/api/care-reports/[id]/send POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects confirmed visit reports when the source visit record changed after generation', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'confirmed',
+      visit_record_id: 'visit_record_1',
+      content: {
+        source_provenance: {
+          visit_record_id: 'visit_record_1',
+          visit_record_version: 3,
+          visit_record_updated_at: '2026-03-10T03:00:00.000Z',
+        },
+      },
+      report_type: 'physician_report',
+      pdf_url: 'https://example.com/report.pdf',
+    });
+    visitRecordFindFirstMock.mockResolvedValue({
+      version: 4,
+      updated_at: new Date('2026-03-10T04:00:00.000Z'),
+    });
+
+    const response = await POST(
+      createRequest({
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '訪問記録が更新されています。報告書を再生成してから送付してください',
+      details: {
+        visit_record_id: 'visit_record_1',
+        current_visit_record_version: 4,
+        current_visit_record_updated_at: '2026-03-10T04:00:00.000Z',
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects confirmed visit reports that are missing source provenance', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'confirmed',
+      visit_record_id: 'visit_record_1',
+      content: {
+        source_provenance: { visit_record_id: 'visit_record_1' },
+      },
+      report_type: 'physician_report',
+      pdf_url: 'https://example.com/report.pdf',
+    });
+
+    const response = await POST(
+      createRequest({
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        reason: 'missing_source_provenance',
+        visit_record_id: 'visit_record_1',
+      },
+    });
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalledWith({
+      where: { id: 'visit_record_1', org_id: 'org_1' },
+      select: { version: true, updated_at: true },
+    });
     expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
     expect(sendCareReportEmailMock).not.toHaveBeenCalled();
   });
@@ -616,19 +722,21 @@ describe('/api/care-reports/[id]/send POST', () => {
   });
 
   it('appends delivery target provenance without dropping existing report content metadata', async () => {
+    const currentContent = {
+      source_provenance: { visit_record_id: 'visit_record_1' },
+      report_delivery_targets: [{ delivery_record_id: 'delivery_previous' }],
+    };
     careReportFindFirstMock.mockResolvedValue({
       id: 'report_1',
       patient_id: 'patient_1',
       case_id: 'case_1',
       status: 'confirmed',
       visit_record_id: null,
-      content: {
-        source_provenance: { visit_record_id: 'visit_record_1' },
-        report_delivery_targets: [{ delivery_record_id: 'delivery_previous' }],
-      },
+      content: currentContent,
       report_type: 'physician_report',
       pdf_url: 'https://example.com/report.pdf',
     });
+    txMock.careReport.findFirst.mockResolvedValue({ content: currentContent });
 
     const response = await POST(
       createRequest({
@@ -660,6 +768,210 @@ describe('/api/care-reports/[id]/send POST', () => {
           ],
         },
       }),
+    });
+  });
+
+  it('does not resend when the same recipient already has a sent delivery record', async () => {
+    txMock.deliveryRecord.findFirst.mockResolvedValueOnce({
+      id: 'delivery_existing',
+      status: 'sent',
+    });
+    txMock.careReport.findFirst.mockResolvedValue({
+      content: {
+        report_delivery_targets: [
+          {
+            delivery_record_id: 'delivery_existing',
+            recipient_role: 'physician',
+            channel: 'email',
+            status: 'sent',
+          },
+        ],
+      },
+    });
+
+    const response = await POST(
+      createRequest({
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    expect(txMock.deliveryRecord.update).not.toHaveBeenCalled();
+    expect(txMock.careReport.update).toHaveBeenCalledWith({
+      where: { id: 'report_1' },
+      data: expect.objectContaining({
+        content: expect.objectContaining({
+          report_delivery_targets: [
+            expect.objectContaining({
+              delivery_record_id: 'delivery_existing',
+            }),
+          ],
+        }),
+      }),
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        deliveries: [
+          {
+            delivery_record_id: 'delivery_existing',
+            status: 'sent',
+            reused_existing_delivery: true,
+            external_send_skipped: true,
+          },
+        ],
+        reused_delivery_count: 1,
+        retry_finalized_from_existing_delivery: true,
+      },
+    });
+  });
+
+  it('returns conflict without sending when the same recipient already has an in-progress delivery', async () => {
+    txMock.deliveryRecord.findFirst.mockResolvedValueOnce({
+      id: 'delivery_in_progress',
+      status: 'draft',
+    });
+
+    const response = await POST(
+      createRequest({
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同じ送付先への報告書送付が進行中です。送付履歴を確認してください',
+      details: {
+        report_id: 'report_1',
+        recipient_contact: 'doctor@example.com',
+        channel: 'email',
+      },
+    });
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    expect(txMock.careReport.update).not.toHaveBeenCalled();
+  });
+
+  it('returns conflict without sending when a concurrent delivery insert wins the idempotency key race', async () => {
+    txMock.deliveryRecord.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'delivery_race', status: 'draft' });
+    txMock.deliveryRecord.create.mockRejectedValueOnce(buildUniqueConstraintError());
+
+    const response = await POST(
+      createRequest({
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同じ送付先への報告書送付が進行中です。送付履歴を確認してください',
+    });
+    expect(txMock.deliveryRecord.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          delivery_intent_key: expect.stringMatching(/^care-report:v1:[a-f0-9]{64}$/),
+        }),
+      }),
+    );
+    const deliveryIntentKey = txMock.deliveryRecord.create.mock.calls[0]?.[0]?.data
+      .delivery_intent_key as string;
+    expect(txMock.deliveryRecord.findFirst).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [
+            { delivery_intent_key: deliveryIntentKey },
+            { delivery_intent_key: null, recipient_contact: 'doctor@example.com' },
+          ],
+        }),
+      }),
+    );
+    expect(txMock.deliveryRecord.findFirst).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          delivery_intent_key: deliveryIntentKey,
+        },
+      }),
+    );
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    expect(txMock.careReport.update).not.toHaveBeenCalled();
+  });
+
+  it('retries a failed same-recipient delivery by reusing the existing delivery record', async () => {
+    txMock.deliveryRecord.findFirst.mockResolvedValueOnce({
+      id: 'delivery_failed_previous',
+      status: 'failed',
+    });
+    txMock.deliveryRecord.update
+      .mockResolvedValueOnce({
+        id: 'delivery_failed_previous',
+        status: 'draft',
+      })
+      .mockResolvedValueOnce({
+        id: 'delivery_failed_previous',
+        status: 'sent',
+      });
+
+    const response = await POST(
+      createRequest({
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(txMock.deliveryRecord.update).toHaveBeenNthCalledWith(1, {
+      where: { id: 'delivery_failed_previous' },
+      data: expect.objectContaining({
+        status: 'draft',
+        failure_reason: null,
+        retry_count: { increment: 1 },
+        delivery_intent_key: expect.stringMatching(/^care-report:v1:[a-f0-9]{64}$/),
+      }),
+    });
+    expect(sendCareReportEmailMock).toHaveBeenCalled();
+    expect(txMock.deliveryRecord.update).toHaveBeenNthCalledWith(2, {
+      where: { id: 'delivery_failed_previous' },
+      data: expect.objectContaining({
+        status: 'sent',
+        failure_reason: null,
+      }),
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        deliveries: [{ delivery_record_id: 'delivery_failed_previous', status: 'sent' }],
+      },
     });
   });
 
@@ -710,7 +1022,13 @@ describe('/api/care-reports/[id]/send POST', () => {
       case_id: 'case_1',
       status: 'confirmed',
       visit_record_id: 'visit_record_1',
-      content: {},
+      content: {
+        source_provenance: {
+          visit_record_id: 'visit_record_1',
+          visit_record_version: 1,
+          visit_record_updated_at: '2026-03-10T03:00:00.000Z',
+        },
+      },
       report_type: 'physician_report',
       pdf_url: 'https://example.com/report.pdf',
     });
