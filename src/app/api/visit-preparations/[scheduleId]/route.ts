@@ -965,13 +965,14 @@ export async function GET(
         schedule: {
           case_id: schedule.case_id,
         },
+        visit_date: {
+          lt: schedule.scheduled_date,
+        },
         schedule_id: {
           not: schedule.id,
         },
       },
-      orderBy: {
-        visit_date: 'desc',
-      },
+      orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
       select: {
         id: true,
         visit_date: true,

@@ -906,6 +906,16 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
           }),
         }),
       );
+      expect(visitRecordFindFirstMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            schedule: { case_id: 'case_1' },
+            schedule_id: { not: 'schedule_1' },
+            visit_date: { lt: new Date('2026-03-27T00:00:00.000Z') },
+          }),
+          orderBy: [{ visit_date: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
+        }),
+      );
     },
   );
 
