@@ -1395,8 +1395,19 @@ describe('CardWorkspace', () => {
     render(<CardWorkspace patientId="patient_1" />);
 
     expect(screen.getByText('保存される会議連動')).toBeTruthy();
+    expect(screen.getByText('対面 / CM')).toBeTruthy();
+    expect(screen.getByText('ケアマネ向け報告書')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('会議要点'), {
       target: { value: '退院後の服薬支援と残薬確認を合意した' },
+    });
+    fireEvent.change(screen.getByLabelText('開催形式'), {
+      target: { value: 'mcs' },
+    });
+    fireEvent.change(screen.getByLabelText('主催者'), {
+      target: { value: 'visiting_nurse' },
+    });
+    fireEvent.change(screen.getByLabelText('報告書用途'), {
+      target: { value: 'nurse_share' },
     });
     fireEvent.change(screen.getByLabelText('訪問頻度変更'), {
       target: { value: '月2回' },
@@ -1413,6 +1424,9 @@ describe('CardWorkspace', () => {
       noteType: 'service_manager',
       title: '田中 一郎様 サービス担当者会議',
       conferenceDate: expect.any(String),
+      conferenceFormat: 'mcs',
+      organizer: 'visiting_nurse',
+      reportType: 'nurse_share',
       content: '退院後の服薬支援と残薬確認を合意した',
       visitScheduleChange: '月2回',
       targetDischargeDate: '',
@@ -1490,6 +1504,9 @@ describe('CardWorkspace', () => {
         noteType: 'service_manager',
         title: 'サービス担当者会議',
         conferenceDate: '2026-06-16T09:00',
+        conferenceFormat: 'in_person',
+        organizer: 'care_manager',
+        reportType: 'care_manager_report',
         content: 'ケアプラン変更と服薬支援方針を確認した',
         visitScheduleChange: '月2回',
         targetDischargeDate: '',
@@ -1518,6 +1535,9 @@ describe('CardWorkspace', () => {
         noteType: 'pre_discharge',
         title: '退院前カンファ',
         conferenceDate: '2026-06-16T09:00',
+        conferenceFormat: 'in_person',
+        organizer: 'hospital',
+        reportType: 'physician_report',
         content: '退院後の服薬支援を確認した',
         visitScheduleChange: '月1回',
         targetDischargeDate: '2026-06-20',
@@ -1543,6 +1563,9 @@ describe('CardWorkspace', () => {
         noteType: 'pre_discharge',
         title: '退院前カンファ',
         conferenceDate: '2026-06-16T09:00',
+        conferenceFormat: 'in_person',
+        organizer: 'hospital',
+        reportType: 'physician_report',
         content: '退院後の服薬支援を確認した',
         visitScheduleChange: '月1回',
         targetDischargeDate: '',

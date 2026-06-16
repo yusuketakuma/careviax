@@ -57,6 +57,33 @@ export const conferenceMetadataSchema = z
         summary: z.string().trim().optional(),
       })
       .optional(),
+    conference_operation: z
+      .object({
+        format: z.enum(['in_person', 'phone', 'web', 'mcs', 'written']).optional(),
+        organizer: z
+          .enum([
+            'hospital',
+            'care_manager',
+            'visiting_nurse',
+            'physician',
+            'pharmacy',
+            'family',
+            'facility',
+            'other',
+          ])
+          .optional(),
+        report_type: z
+          .enum([
+            'physician_report',
+            'care_manager_report',
+            'facility_handoff',
+            'nurse_share',
+            'family_share',
+            'internal_record',
+          ])
+          .optional(),
+      })
+      .optional(),
   })
   .optional();
 
@@ -288,14 +315,27 @@ export function buildConferenceMetadata(
         }
       : {}),
   };
+  const normalizedConferenceOperation = {
+    ...(metadata?.conference_operation?.format
+      ? { format: metadata.conference_operation.format }
+      : {}),
+    ...(metadata?.conference_operation?.organizer
+      ? { organizer: metadata.conference_operation.organizer }
+      : {}),
+    ...(metadata?.conference_operation?.report_type
+      ? { report_type: metadata.conference_operation.report_type }
+      : {}),
+  };
 
   const hasBilling = Object.keys(normalizedBilling).length > 0;
   const hasVisitBrief = Object.keys(normalizedVisitBrief).length > 0;
+  const hasConferenceOperation = Object.keys(normalizedConferenceOperation).length > 0;
 
-  if (!hasBilling && !hasVisitBrief) return undefined;
+  if (!hasBilling && !hasVisitBrief && !hasConferenceOperation) return undefined;
   return {
     ...(hasBilling ? { billing: normalizedBilling } : {}),
     ...(hasVisitBrief ? { visit_brief: normalizedVisitBrief } : {}),
+    ...(hasConferenceOperation ? { conference_operation: normalizedConferenceOperation } : {}),
   };
 }
 

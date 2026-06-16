@@ -815,6 +815,23 @@ type ConferenceNoteFormInput = {
   noteType: 'pre_discharge' | 'service_manager' | 'care_team' | 'emergency' | 'death_conference';
   title: string;
   conferenceDate: string;
+  conferenceFormat: 'in_person' | 'phone' | 'web' | 'mcs' | 'written';
+  organizer:
+    | 'hospital'
+    | 'care_manager'
+    | 'visiting_nurse'
+    | 'physician'
+    | 'pharmacy'
+    | 'family'
+    | 'facility'
+    | 'other';
+  reportType:
+    | 'physician_report'
+    | 'care_manager_report'
+    | 'facility_handoff'
+    | 'nurse_share'
+    | 'family_share'
+    | 'internal_record';
   content: string;
   visitScheduleChange: string;
   targetDischargeDate: string;
@@ -841,6 +858,42 @@ const conferenceNoteTypeLabels: Record<ConferenceNoteFormInput['noteType'], stri
   emergency: '緊急',
   death_conference: 'デスカンファ',
 };
+
+const conferenceFormatLabels: Record<ConferenceNoteFormInput['conferenceFormat'], string> = {
+  in_person: '対面',
+  phone: '電話',
+  web: 'Web',
+  mcs: 'MCS',
+  written: '書面',
+};
+
+const conferenceOrganizerLabels: Record<ConferenceNoteFormInput['organizer'], string> = {
+  hospital: '病院',
+  care_manager: 'CM',
+  visiting_nurse: '訪看',
+  physician: '医師',
+  pharmacy: '薬局',
+  family: '家族',
+  facility: '施設',
+  other: 'その他',
+};
+
+const conferenceReportTypeLabels: Record<ConferenceNoteFormInput['reportType'], string> = {
+  physician_report: '医師向け報告書',
+  care_manager_report: 'ケアマネ向け報告書',
+  facility_handoff: '施設申し送り',
+  nurse_share: '訪看共有',
+  family_share: '家族共有',
+  internal_record: '薬局内記録',
+};
+
+function defaultConferenceReportType(
+  noteType: ConferenceNoteFormInput['noteType'],
+): ConferenceNoteFormInput['reportType'] {
+  if (noteType === 'pre_discharge' || noteType === 'emergency') return 'physician_report';
+  if (noteType === 'service_manager') return 'care_manager_report';
+  return 'internal_record';
+}
 
 const prescriptionReconciliationLabels: Record<
   PrescriptionOriginalManagementFormInput['reconciliationResult'],
@@ -1893,6 +1946,12 @@ function ConferenceNoteQuickForm({
 }) {
   const [noteType, setNoteType] = useState<ConferenceNoteFormInput['noteType']>('service_manager');
   const [conferenceDate, setConferenceDate] = useState(() => toLocalDateTimeInputValue(new Date()));
+  const [conferenceFormat, setConferenceFormat] =
+    useState<ConferenceNoteFormInput['conferenceFormat']>('in_person');
+  const [organizer, setOrganizer] = useState<ConferenceNoteFormInput['organizer']>('care_manager');
+  const [reportType, setReportType] = useState<ConferenceNoteFormInput['reportType']>(() =>
+    defaultConferenceReportType('service_manager'),
+  );
   const [title, setTitle] = useState(() => `${patientName}様 サービス担当者会議`);
   const [content, setContent] = useState('');
   const [visitScheduleChange, setVisitScheduleChange] = useState('');
@@ -1931,6 +1990,9 @@ function ConferenceNoteQuickForm({
           noteType,
           title: trimmedTitle,
           conferenceDate,
+          conferenceFormat,
+          organizer,
+          reportType,
           content: trimmedContent,
           visitScheduleChange: trimmedVisitScheduleChange,
           targetDischargeDate: trimmedTargetDischargeDate,
@@ -1947,9 +2009,11 @@ function ConferenceNoteQuickForm({
             <select
               id={`conference-type-${patientId}`}
               value={noteType}
-              onChange={(event) =>
-                setNoteType(event.target.value as ConferenceNoteFormInput['noteType'])
-              }
+              onChange={(event) => {
+                const nextType = event.target.value as ConferenceNoteFormInput['noteType'];
+                setNoteType(nextType);
+                setReportType(defaultConferenceReportType(nextType));
+              }}
               className="min-h-9 w-full rounded-lg border border-input bg-background px-2 text-xs"
             >
               <option value="pre_discharge">退院前</option>
@@ -1970,6 +2034,71 @@ function ConferenceNoteQuickForm({
               onChange={(event) => setConferenceDate(event.target.value)}
               className="min-h-9 text-xs"
             />
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <div className="space-y-1">
+            <Label htmlFor={`conference-format-${patientId}`} className="text-xs">
+              開催形式
+            </Label>
+            <select
+              id={`conference-format-${patientId}`}
+              value={conferenceFormat}
+              onChange={(event) =>
+                setConferenceFormat(
+                  event.target.value as ConferenceNoteFormInput['conferenceFormat'],
+                )
+              }
+              className="min-h-9 w-full rounded-lg border border-input bg-background px-2 text-xs"
+            >
+              <option value="in_person">対面</option>
+              <option value="phone">電話</option>
+              <option value="web">Web</option>
+              <option value="mcs">MCS</option>
+              <option value="written">書面</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor={`conference-organizer-${patientId}`} className="text-xs">
+              主催者
+            </Label>
+            <select
+              id={`conference-organizer-${patientId}`}
+              value={organizer}
+              onChange={(event) =>
+                setOrganizer(event.target.value as ConferenceNoteFormInput['organizer'])
+              }
+              className="min-h-9 w-full rounded-lg border border-input bg-background px-2 text-xs"
+            >
+              <option value="hospital">病院</option>
+              <option value="care_manager">CM</option>
+              <option value="visiting_nurse">訪看</option>
+              <option value="physician">医師</option>
+              <option value="pharmacy">薬局</option>
+              <option value="family">家族</option>
+              <option value="facility">施設</option>
+              <option value="other">その他</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor={`conference-report-type-${patientId}`} className="text-xs">
+              報告書用途
+            </Label>
+            <select
+              id={`conference-report-type-${patientId}`}
+              value={reportType}
+              onChange={(event) =>
+                setReportType(event.target.value as ConferenceNoteFormInput['reportType'])
+              }
+              className="min-h-9 w-full rounded-lg border border-input bg-background px-2 text-xs"
+            >
+              <option value="physician_report">医師向け</option>
+              <option value="care_manager_report">ケアマネ向け</option>
+              <option value="facility_handoff">施設申し送り</option>
+              <option value="nurse_share">訪看共有</option>
+              <option value="family_share">家族共有</option>
+              <option value="internal_record">薬局内記録</option>
+            </select>
           </div>
         </div>
         <div className="space-y-1">
@@ -2047,6 +2176,12 @@ function ConferenceNoteQuickForm({
           <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-muted-foreground">
             <dt>会議種別</dt>
             <dd className="text-foreground">{conferenceNoteTypeLabels[noteType]}</dd>
+            <dt>形式/主催</dt>
+            <dd className="text-foreground">
+              {conferenceFormatLabels[conferenceFormat]} / {conferenceOrganizerLabels[organizer]}
+            </dd>
+            <dt>報告書用途</dt>
+            <dd className="text-foreground">{conferenceReportTypeLabels[reportType]}</dd>
             <dt>報告書・薬局タスク</dt>
             <dd className="text-foreground">
               {actionItemCount > 0 ? `タスク ${actionItemCount}件` : '未入力'}
@@ -2622,6 +2757,11 @@ export function CardWorkspace({
           metadata: {
             visit_brief: {
               patient_id: input.patientId,
+            },
+            conference_operation: {
+              format: input.conferenceFormat,
+              organizer: input.organizer,
+              report_type: input.reportType,
             },
           },
           ...(structuredContent ? { structured_content: structuredContent } : {}),
