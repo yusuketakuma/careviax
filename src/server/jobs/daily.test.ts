@@ -718,6 +718,78 @@ describe('daily job local date keys', () => {
     );
   });
 
+  it('creates deduplicated patient foundation review tasks for active cases with foundation gaps', async () => {
+    careCaseFindManyMock.mockResolvedValue([
+      {
+        id: 'case_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        status: 'active',
+        primary_pharmacist_id: 'pharmacist_1',
+        patient: {
+          name: '山田 太郎',
+          contacts: [
+            {
+              relation: 'child',
+              is_primary: true,
+              is_emergency_contact: true,
+              phone: null,
+              email: null,
+              fax: null,
+            },
+          ],
+          scheduling_preference: {
+            preferred_contact_name: null,
+            preferred_contact_phone: null,
+            visit_before_contact_required: true,
+            parking_available: null,
+            care_level: null,
+          },
+        },
+        care_team_links: [
+          {
+            role: 'physician',
+            is_primary: true,
+            phone: '03-1111-1111',
+            email: null,
+            fax: null,
+          },
+        ],
+      },
+    ]);
+    firstVisitDocumentFindManyMock.mockResolvedValue([{ case_id: 'case_1' }]);
+    patientSelfReportFindManyMock.mockResolvedValue([]);
+    inquiryRecordFindManyMock.mockResolvedValue([]);
+    visitScheduleFindManyMock.mockResolvedValue([]);
+
+    const result = await syncVisitSupportFeatureTasks();
+
+    expect(result).toEqual({ processedCount: 1 });
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        taskType: 'patient_foundation_review',
+        title: '山田 太郎 の患者基盤を整備',
+        priority: 'high',
+        assignedTo: 'pharmacist_1',
+        relatedEntityType: 'patient',
+        relatedEntityId: 'patient_1',
+        dedupeKey: 'patient-foundation-review:patient_1',
+        metadata: expect.objectContaining({
+          patient_id: 'patient_1',
+          case_id: 'case_1',
+          action_href: '/patients/patient_1#patient-foundation',
+          missing_items: expect.arrayContaining([
+            '訪問前連絡が必要ですが電話可能な連絡先が未確認です。',
+            '駐車可否が未確認です。',
+            '介護度が未確認です。',
+          ]),
+        }),
+      }),
+    );
+  });
+
   it('uses local-calendar dates in facility standard expiry task descriptions', async () => {
     facilityStandardRegistrationFindManyMock.mockResolvedValue([
       {

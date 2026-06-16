@@ -1,6 +1,6 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
@@ -82,8 +82,13 @@ export const POST = withAuthContext<{ id: string }>(
     const resolvedAt = new Date();
 
     const updated = await withOrgContext(ctx.orgId, async (tx) => {
-      const result = await tx.handoffItem.update({
-        where: { id },
+      const claim = await tx.handoffItem.updateMany({
+        where: {
+          id,
+          consult_status: item.consult_status,
+          resolution_action: null,
+          resolved_at: null,
+        },
         data: {
           consult_status: nextConsultStatus,
           resolution_action: resolutionAction,
@@ -92,6 +97,16 @@ export const POST = withAuthContext<{ id: string }>(
           resolved_at: resolvedAt,
         },
       });
+      if (claim.count !== 1) {
+        return { error: 'state_changed' as const };
+      }
+
+      const result = await tx.handoffItem.findFirst({
+        where: { id },
+      });
+      if (!result) {
+        return { error: 'state_changed' as const };
+      }
 
       await createAuditLogEntry(tx, ctx, {
         action: 'handoff_consult_resolved',
@@ -107,6 +122,10 @@ export const POST = withAuthContext<{ id: string }>(
 
       return result;
     });
+
+    if ('error' in updated) {
+      return conflict('この相談は他のユーザーによって更新されています。再読み込みしてください');
+    }
 
     return success({ data: updated });
   },

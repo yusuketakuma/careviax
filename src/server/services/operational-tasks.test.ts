@@ -155,7 +155,7 @@ describe('describeOperationalTask', () => {
     });
 
     expect(result).toEqual({
-      actionHref: '/schedules',
+      actionHref: '/schedules?focus=schedule&schedule_id=vs-1',
       actionLabel: '予定を確認',
       queueLabel: '訪問',
     });
@@ -186,6 +186,20 @@ describe('describeOperationalTask', () => {
       actionHref: '/prescriptions/intake_1',
       actionLabel: '原本回収を記録',
       queueLabel: 'FAX原本',
+    });
+  });
+
+  it('deep-links patient foundation review tasks to the patient detail', () => {
+    const result = describeOperationalTask({
+      task_type: 'patient_foundation_review',
+      related_entity_type: 'patient',
+      related_entity_id: 'patient_1',
+    });
+
+    expect(result).toEqual({
+      actionHref: '/patients/patient_1#patient-foundation',
+      actionLabel: '患者基盤を整備',
+      queueLabel: '正本確認',
     });
   });
 });

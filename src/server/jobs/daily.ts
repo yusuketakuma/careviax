@@ -22,6 +22,7 @@ import {
   buildInquiryWorkbenchTaskKey,
   buildIntakeLinkageTaskKey,
   buildMobileVisitModeTaskKey,
+  buildPatientFoundationReviewTaskKey,
   buildPcaPumpReturnInspectionPendingTaskKey,
   buildPcaPumpRentalOverdueTaskKey,
   buildPreparationTaskKey,
@@ -56,6 +57,10 @@ import {
 import { queueOverdueReportResponseReminders } from '@/server/services/report-reminders';
 import { trackPatientStatusChanges } from '@/server/services/patient-status-tracker';
 import { buildVisitScheduleContactFollowupTask } from '@/server/services/visit-schedule-communication';
+import {
+  buildCareTeamReliabilitySummary,
+  buildPatientContactReadiness,
+} from '@/lib/patient/care-team-contact';
 
 const DOSAGE_SUPPORT_KEYWORDS = [
   '飲みにく',
@@ -1676,6 +1681,7 @@ export async function syncVisitSupportFeatureTasks() {
             id: true,
             org_id: true,
             patient_id: true,
+            status: true,
             primary_pharmacist_id: true,
             patient: {
               select: {
@@ -1683,9 +1689,31 @@ export async function syncVisitSupportFeatureTasks() {
                 contacts: {
                   select: {
                     relation: true,
+                    is_primary: true,
                     is_emergency_contact: true,
+                    phone: true,
+                    email: true,
+                    fax: true,
                   },
                 },
+                scheduling_preference: {
+                  select: {
+                    preferred_contact_name: true,
+                    preferred_contact_phone: true,
+                    visit_before_contact_required: true,
+                    parking_available: true,
+                    care_level: true,
+                  },
+                },
+              },
+            },
+            care_team_links: {
+              select: {
+                role: true,
+                is_primary: true,
+                phone: true,
+                email: true,
+                fax: true,
               },
             },
           },
@@ -1818,6 +1846,53 @@ export async function syncVisitSupportFeatureTasks() {
           patient_id: careCase.patient_id,
           patient_name: careCase.patient.name,
           missing_items: missingItems,
+        },
+      });
+    }
+
+    for (const careCase of activeCases) {
+      if (careCase.status === 'on_hold') continue;
+
+      const preference = careCase.patient.scheduling_preference;
+      const contactReadiness = buildPatientContactReadiness({
+        contacts: careCase.patient.contacts,
+        preferredContactName: preference?.preferred_contact_name,
+        preferredContactPhone: preference?.preferred_contact_phone,
+        visitBeforeContactRequired: preference?.visit_before_contact_required,
+      });
+      const careTeamReliability = buildCareTeamReliabilitySummary({
+        contacts: careCase.patient.contacts,
+        careTeamLinks: careCase.care_team_links,
+      });
+      const missingItems = [
+        contactReadiness.ready ? null : contactReadiness.detail,
+        preference?.parking_available == null ? '駐車可否が未確認です。' : null,
+        preference?.care_level ? null : '介護度が未確認です。',
+        careTeamReliability.needs_confirmation ? careTeamReliability.detail : null,
+      ].filter((value): value is string => Boolean(value));
+
+      if (missingItems.length === 0) continue;
+
+      const dueAt = addDays(startOfDay(), 2);
+      taskSpecs.push({
+        orgId: careCase.org_id,
+        taskType: 'patient_foundation_review',
+        dedupeKey: buildPatientFoundationReviewTaskKey(careCase.patient_id),
+        title: `${careCase.patient.name} の患者基盤を整備`,
+        description: missingItems.slice(0, 4).join(' / '),
+        priority: missingItems.length >= 3 ? 'high' : 'normal',
+        assignedTo: careCase.primary_pharmacist_id ?? null,
+        dueDate: dueAt,
+        slaDueAt: dueAt,
+        relatedEntityType: 'patient',
+        relatedEntityId: careCase.patient_id,
+        metadata: {
+          case_id: careCase.id,
+          patient_id: careCase.patient_id,
+          patient_name: careCase.patient.name,
+          missing_items: missingItems,
+          action_href: `/patients/${careCase.patient_id}#patient-foundation`,
+          action_label: '患者基盤を整備',
         },
       });
     }
@@ -1970,6 +2045,7 @@ export async function syncVisitSupportFeatureTasks() {
 
     await syncGeneratedOperationalTasks(taskSpecs, [
       'emergency_contact_review',
+      'patient_foundation_review',
       'dosage_form_support',
       'inquiry_workbench',
       'facility_batch_tracker',
