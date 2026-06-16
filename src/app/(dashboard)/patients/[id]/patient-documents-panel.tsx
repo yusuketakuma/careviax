@@ -569,6 +569,20 @@ function DocumentStatusSummary({ statuses }: { statuses: FirstVisitDocumentStatu
                 </dd>
               </div>
               <div className="flex justify-between gap-2">
+                <dt>最終印刷</dt>
+                <dd className="text-foreground">
+                  {status.latest_printed_at
+                    ? format(new Date(status.latest_printed_at), 'yyyy/MM/dd', { locale: ja })
+                    : '未記録'}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-2">
+                <dt>印刷バッチ</dt>
+                <dd className="max-w-[9rem] truncate text-right text-foreground">
+                  {status.latest_print_batch_id ?? '未記録'}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-2">
                 <dt>画像/PDF</dt>
                 <dd className="text-foreground">{status.has_file ? '保存済み' : '未保存'}</dd>
               </div>

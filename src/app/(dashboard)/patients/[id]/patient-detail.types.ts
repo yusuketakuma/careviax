@@ -402,6 +402,8 @@ export type PatientDocumentsSnapshot = {
     template_version: string | null;
     storage_location: string | null;
     latest_action_at: string | null;
+    latest_printed_at: string | null;
+    latest_print_batch_id: string | null;
     latest_document_id: string | null;
     has_file: boolean;
     delivered_at: string | null;

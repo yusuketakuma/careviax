@@ -62,6 +62,8 @@ type DocumentStatus = {
   template_version: string | null;
   storage_location: string | null;
   latest_action_at: Date | null;
+  latest_printed_at: Date | null;
+  latest_print_batch_id: string | null;
   latest_document_id: string | null;
   has_file: boolean;
   delivered_at: Date | null;
@@ -227,6 +229,7 @@ function deriveFirstVisitDocumentStatuses(args: {
       .filter((history) => history.document_type === documentType)
       .sort((left, right) => right.created_at.getTime() - left.created_at.getTime());
     const latest = matchingHistory[0] ?? null;
+    const latestPrint = matchingHistory.find((history) => history.action === 'printed') ?? null;
     const latestDocument = latest
       ? (args.documents.find((document) => document.id === latest.document_id) ?? null)
       : null;
@@ -263,6 +266,8 @@ function deriveFirstVisitDocumentStatuses(args: {
       template_version: latest?.template_version ?? null,
       storage_location: latest?.storage_location ?? null,
       latest_action_at: latest?.created_at ?? null,
+      latest_printed_at: latestPrint?.created_at ?? null,
+      latest_print_batch_id: latestPrint?.print_batch_id ?? null,
       latest_document_id: latest?.document_id ?? null,
       has_file: hasFile,
       delivered_at: deliveredAt,

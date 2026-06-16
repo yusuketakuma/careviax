@@ -42,6 +42,8 @@ describe('FirstVisitDocumentsPanel', () => {
               template_version: 'v1.1',
               storage_location: 'store',
               latest_action_at: '2026-06-17T00:00:00.000Z',
+              latest_printed_at: '2026-06-16T00:00:00.000Z',
+              latest_print_batch_id: 'print_20260616T013000Z_batch1',
               latest_document_id: 'doc_1',
               has_file: true,
               delivered_at: '2026-06-17T00:00:00.000Z',
@@ -56,6 +58,8 @@ describe('FirstVisitDocumentsPanel', () => {
               template_version: null,
               storage_location: null,
               latest_action_at: null,
+              latest_printed_at: null,
+              latest_print_batch_id: null,
               latest_document_id: null,
               has_file: false,
               delivered_at: null,
@@ -167,6 +171,9 @@ describe('FirstVisitDocumentsPanel', () => {
       screen.getByRole('heading', { level: 3, name: '契約・同意書類の現在状態' }),
     ).toBeTruthy();
     expect(screen.getByText('画像保存済み')).toBeTruthy();
+    expect(screen.getAllByText('最終印刷').length).toBeGreaterThan(0);
+    expect(screen.getByText('2026/06/16')).toBeTruthy();
+    expect(screen.getByText('print_20260616T013000Z_batch1')).toBeTruthy();
     expect(screen.getByText('重要事項説明書が未作成です')).toBeTruthy();
     expect(screen.getByLabelText('文書URL')).toHaveProperty(
       'value',
@@ -284,6 +291,8 @@ describe('FirstVisitDocumentsPanel', () => {
               template_version: null,
               storage_location: null,
               latest_action_at: null,
+              latest_printed_at: null,
+              latest_print_batch_id: null,
               latest_document_id: null,
               has_file: false,
               delivered_at: null,
@@ -298,6 +307,8 @@ describe('FirstVisitDocumentsPanel', () => {
               template_version: null,
               storage_location: null,
               latest_action_at: null,
+              latest_printed_at: null,
+              latest_print_batch_id: null,
               latest_document_id: null,
               has_file: false,
               delivered_at: null,
