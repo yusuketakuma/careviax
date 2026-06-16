@@ -81,7 +81,7 @@ export default function RealtimePage() {
   const workflowQuery = useQuery({
     queryKey: ['admin-realtime-workflow', orgId],
     queryFn: async () => {
-      const res = await fetch('/api/dashboard/workflow', {
+      const res = await fetch('/api/dashboard/workflow?view=realtime', {
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('ワークフローの取得に失敗しました');

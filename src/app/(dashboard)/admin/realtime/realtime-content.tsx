@@ -45,7 +45,7 @@ export function RealtimeContent() {
   const workflowQuery = useQuery({
     queryKey: ['admin-realtime-workflow', orgId],
     queryFn: async () => {
-      const response = await fetch('/api/dashboard/workflow', {
+      const response = await fetch('/api/dashboard/workflow?view=realtime', {
         headers: { 'x-org-id': orgId },
       });
       if (!response.ok) throw new Error('リアルタイム運用情報の取得に失敗しました');
@@ -70,7 +70,9 @@ export function RealtimeContent() {
 
   const workflow = workflowQuery.data?.data;
   const notifications = notificationsQuery.data?.data ?? [];
-  const urgentItems = (workflow?.unified_workbench ?? []).filter((item) => item.priority === 'urgent');
+  const urgentItems = (workflow?.unified_workbench ?? []).filter(
+    (item) => item.priority === 'urgent',
+  );
 
   return (
     <div className="space-y-6">
@@ -135,7 +137,10 @@ export function RealtimeContent() {
                 <p className="text-sm text-muted-foreground">未読通知はありません。</p>
               ) : (
                 notifications.map((notification) => (
-                  <div key={notification.id} className="rounded-md border border-border px-3 py-2 text-sm">
+                  <div
+                    key={notification.id}
+                    className="rounded-md border border-border px-3 py-2 text-sm"
+                  >
                     <div className="flex items-center justify-between gap-3">
                       <p className="font-medium text-foreground">{notification.title}</p>
                       <Badge variant="outline">{notification.type}</Badge>
@@ -150,7 +155,9 @@ export function RealtimeContent() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">滞留中の即応項目</CardTitle>
-              <CardDescription>再架電・セルフレポート・報告待ちをまとめて確認します</CardDescription>
+              <CardDescription>
+                再架電・セルフレポート・報告待ちをまとめて確認します
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <SummaryRow

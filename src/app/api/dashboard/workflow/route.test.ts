@@ -862,6 +862,45 @@ describe('/api/dashboard/workflow GET', () => {
     expect(firstVisitDocumentCountMock).not.toHaveBeenCalled();
   });
 
+  it('serves realtime admin data with open exception counts but without full dashboard aggregations', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }, '?view=realtime'));
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+
+    expect(payload.data).toMatchObject({
+      workflow_exceptions: {
+        open: 3,
+        items: [],
+      },
+      operations_queue: {
+        callback_followups: 1,
+        self_reports_triage: 1,
+      },
+      outcome_metrics: {
+        awaiting_reports: 5,
+      },
+      route_control: {
+        pending_override_requests: 1,
+        locked_schedules: 0,
+      },
+      unified_workbench: expect.arrayContaining([expect.objectContaining({ id: 'task:task_1' })]),
+    });
+    expect(workflowExceptionCountMock).toHaveBeenCalledTimes(1);
+    expect(workflowExceptionFindManyMock).not.toHaveBeenCalled();
+    expect(communicationQueueMock).not.toHaveBeenCalled();
+    expect(patientRiskQueueMock).not.toHaveBeenCalled();
+    expect(homeCareFeatureSummaryMock).not.toHaveBeenCalled();
+    expect(billingPreviewBatchMock).not.toHaveBeenCalled();
+    expect(conferenceNoteFindManyMock).not.toHaveBeenCalled();
+    expect(consentRecordFindManyMock).not.toHaveBeenCalled();
+    expect(managementPlanFindManyMock).not.toHaveBeenCalled();
+    expect(firstVisitDocumentCountMock).not.toHaveBeenCalled();
+  });
+
   it('keeps role-specific inbox state out of cross-role cache hits', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock
@@ -944,6 +983,16 @@ describe('/api/dashboard/workflow GET', () => {
         'phase',
       ),
     ).toBe(`workflow:org_1:clerk:user_1:2026-03-27:${fingerprint}:phase`);
+    expect(
+      buildWorkflowCacheKey(
+        'org_1',
+        'clerk',
+        'user_1',
+        new Date(2026, 2, 27, 12, 0, 0),
+        fingerprint,
+        'realtime',
+      ),
+    ).toBe(`workflow:org_1:clerk:user_1:2026-03-27:${fingerprint}:realtime`);
     expect(
       buildWorkflowAssignmentScopeFingerprint({
         assignedToUserId: 'user_1',

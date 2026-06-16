@@ -1347,6 +1347,38 @@ export async function fetchWorkflowPhaseCoreData(
   });
 }
 
+export async function fetchWorkflowRealtimeCoreData(
+  prisma: PrismaClient,
+  orgId: string,
+  today: Date,
+  upcomingWindow: Date,
+  sevenDaysFromNow: Date,
+  assignmentScope: DashboardAssignmentScope = {},
+): Promise<WorkflowCoreData> {
+  const [core, exceptionCount] = await Promise.all([
+    fetchWorkflowPhaseCoreData(
+      prisma,
+      orgId,
+      today,
+      upcomingWindow,
+      sevenDaysFromNow,
+      assignmentScope,
+    ),
+    prisma.workflowException.count({
+      where: {
+        org_id: orgId,
+        ...buildCycleRelationScope(assignmentScope),
+        status: 'open',
+      },
+    }),
+  ]);
+
+  return {
+    ...core,
+    exceptionCount,
+  };
+}
+
 export type WorkflowDependentData = {
   linkedInquiryRequests: Array<{
     id: string;

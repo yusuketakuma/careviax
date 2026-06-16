@@ -21,7 +21,7 @@ export function buildWorkflowCacheKey(
   userId: string,
   today: Date,
   assignmentScopeFingerprint?: string,
-  view?: 'full' | 'phase',
+  view?: 'full' | 'phase' | 'realtime',
 ) {
   const scopeKey = assignmentScopeFingerprint ? `:${assignmentScopeFingerprint}` : '';
   const viewKey = view && view !== 'full' ? `:${view}` : '';
