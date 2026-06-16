@@ -59,6 +59,12 @@ function compact(values: Array<string | null | undefined | false>) {
   return values.filter((value): value is string => Boolean(value && value.trim()));
 }
 
+function compactMetricText(value: string | null | undefined, maxLength = 32) {
+  if (!value) return '未入力';
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}…` : normalized;
+}
+
 function elapsedWholeDays(from: Date | null | undefined, to: Date) {
   if (!from) return null;
   return Math.max(0, Math.floor((to.getTime() - from.getTime()) / PRESCRIPTION_DAY_MS));
@@ -144,6 +150,13 @@ type ConferenceSyncSummarySnapshot = {
   visit_proposal_id: string | null;
   tasks_created: number;
   medication_issues_created: number;
+};
+
+type ConferenceOperationSnapshot = {
+  location: string | null;
+  agenda: string | null;
+  pharmacy_participants: string[];
+  participant_count: number | null;
 };
 
 type ConferenceActionItemSummary = {
@@ -526,6 +539,18 @@ function readConferenceSyncSummary(metadata: unknown): ConferenceSyncSummarySnap
     visit_proposal_id: readString(syncSummary.visit_proposal_id),
     tasks_created: readNonNegativeNumber(syncSummary.tasks_created),
     medication_issues_created: readNonNegativeNumber(syncSummary.medication_issues_created),
+  };
+}
+
+function readConferenceOperation(metadata: unknown): ConferenceOperationSnapshot | null {
+  const conferenceOperation = readJsonObject(readJsonObject(metadata)?.conference_operation);
+  if (!conferenceOperation) return null;
+
+  return {
+    location: readString(conferenceOperation.location),
+    agenda: readString(conferenceOperation.agenda),
+    pharmacy_participants: readStringArray(conferenceOperation.pharmacy_participants),
+    participant_count: readNonNegativeNumber(conferenceOperation.participant_count),
   };
 }
 
@@ -1188,6 +1213,7 @@ function buildConferenceItem(args: {
     null;
   const note = dueWorkNote ?? upcomingNote ?? args.conferences[0] ?? null;
   const syncSummary = readConferenceSyncSummary(note?.metadata);
+  const conferenceOperation = readConferenceOperation(note?.metadata);
   const actionItemSummary = readConferenceActionItemSummary(note?.action_items);
   const syncedActionTaskCount = Math.min(actionItemSummary.total, syncSummary?.tasks_created ?? 0);
   const convertedActionItemCount = Math.max(actionItemSummary.converted, syncedActionTaskCount);
@@ -1249,6 +1275,18 @@ function buildConferenceItem(args: {
             : note
               ? '完了/不要'
               : '未登録',
+      },
+      { label: '議題', value: note ? compactMetricText(conferenceOperation?.agenda) : '未登録' },
+      { label: '場所', value: note ? compactMetricText(conferenceOperation?.location) : '未登録' },
+      {
+        label: '参加者',
+        value: note
+          ? conferenceOperation?.participant_count != null
+            ? `${conferenceOperation.participant_count}名`
+            : conferenceOperation?.pharmacy_participants.length
+              ? `薬局 ${conferenceOperation.pharmacy_participants.length}名`
+              : '未入力'
+          : '未登録',
       },
       { label: 'タスク', value: `${args.openConferenceTasks}件` },
       {

@@ -170,6 +170,12 @@ function createDb(overrides: Record<string, unknown> = {}) {
           follow_up_completed: false,
           generated_report_id: null,
           metadata: {
+            conference_operation: {
+              location: 'MCS 山田太郎さん在宅チーム',
+              agenda: '退院後の服薬支援と訪問頻度を調整する',
+              pharmacy_participants: ['鈴木薬剤師', '田中事務'],
+              participant_count: 4,
+            },
             sync_summary: {
               report_draft_ids: ['report_1'],
               billing_candidate_id: 'candidate_1',
@@ -418,6 +424,9 @@ describe('getPatientHomeOperationsData', () => {
       ]),
       metrics: expect.arrayContaining([
         { label: '予定連動', value: '訪問提案あり' },
+        { label: '議題', value: '退院後の服薬支援と訪問頻度を調整する' },
+        { label: '場所', value: 'MCS 山田太郎さん在宅チーム' },
+        { label: '参加者', value: '4名' },
         { label: '自動生成', value: '2件' },
         { label: '薬剤課題', value: '1件' },
         { label: '薬局タスク', value: '2/2件変換' },
