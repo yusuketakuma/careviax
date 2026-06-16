@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { listPatientRiskSummariesMock } = vi.hoisted(() => ({
   listPatientRiskSummariesMock: vi.fn(),
@@ -50,11 +50,21 @@ function makeDb(previousStatusLogs: Array<{ target_id: string; changes: unknown 
     },
     notification: {
       create: vi.fn().mockResolvedValue({}),
+      createMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
   };
 }
 
 describe('trackPatientStatusChanges', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-16T09:00:00+09:00'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('skips malformed latest audit-log status values and uses the latest valid status', async () => {
     listPatientRiskSummariesMock.mockResolvedValue([highRiskPatientSummary()]);
     const db = makeDb([
@@ -87,12 +97,17 @@ describe('trackPatientStatusChanges', () => {
         }),
       }),
     );
-    expect(db.notification.create).toHaveBeenCalledWith(
+    expect(db.notification.create).not.toHaveBeenCalled();
+    expect(db.notification.createMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
-          event_type: 'patient_status_urgent',
-          message: '要確認 → 要対応',
-        }),
+        data: [
+          expect.objectContaining({
+            event_type: 'patient_status_urgent',
+            message: '要確認 → 要対応',
+            dedupe_key: 'patient-status:patient_1:attention:urgent:2026-06-16',
+          }),
+        ],
+        skipDuplicates: true,
       }),
     );
   });

@@ -224,6 +224,8 @@ export async function trackPatientStatusChanges(
     severity: string;
     title: string;
   }> = [];
+  const notificationRows: Prisma.NotificationCreateManyInput[] = [];
+  const statusChangeDateKey = localDateKey();
 
   for (const p of riskSummaries) {
     const currentStatus = derivePatientStatusIcon({
@@ -280,22 +282,27 @@ export async function trackPatientStatusChanges(
             title,
           });
 
-          // Create in-app notification
-          await db.notification.create({
-            data: {
-              org_id: args.orgId,
-              user_id: args.actorId,
-              event_type: `patient_status_${currentStatus}`,
-              type: trigger.severity === 'urgent' ? 'urgent' : 'business',
-              title,
-              message: `${STATUS_ICON_CONFIG[previousStatus].label} → ${STATUS_ICON_CONFIG[currentStatus].label}`,
-              link: `/patients/${p.patient_id}`,
-              is_read: false,
-            },
+          notificationRows.push({
+            org_id: args.orgId,
+            user_id: args.actorId,
+            event_type: `patient_status_${currentStatus}`,
+            type: trigger.severity === 'urgent' ? 'urgent' : 'business',
+            title,
+            message: `${STATUS_ICON_CONFIG[previousStatus].label} → ${STATUS_ICON_CONFIG[currentStatus].label}`,
+            link: `/patients/${p.patient_id}`,
+            is_read: false,
+            dedupe_key: `patient-status:${p.patient_id}:${previousStatus}:${currentStatus}:${statusChangeDateKey}`,
           });
         }
       }
     }
+  }
+
+  if (notificationRows.length > 0) {
+    await db.notification.createMany({
+      data: notificationRows,
+      skipDuplicates: true,
+    });
   }
 
   return { changed, notifications };
