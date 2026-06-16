@@ -1,9 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { dispatchNotificationEvent } from './notifications';
 
-const { sendSmsMock, sendLineMessageMock } = vi.hoisted(() => ({
+const { loggerWarnMock, sendSmsMock, sendLineMessageMock } = vi.hoisted(() => ({
+  loggerWarnMock: vi.fn(),
   sendSmsMock: vi.fn(),
   sendLineMessageMock: vi.fn(),
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    warn: loggerWarnMock,
+  },
 }));
 
 vi.mock('@/server/adapters/sms', () => ({
@@ -20,6 +27,7 @@ vi.mock('@/server/adapters/line', () => ({
 
 async function runScheduledDeliveries() {
   await vi.runOnlyPendingTimersAsync();
+  await Promise.resolve();
   await Promise.resolve();
 }
 
@@ -556,5 +564,53 @@ describe('dispatchNotificationEvent', () => {
     expect(releases).toHaveLength(1);
     releases.forEach((release) => release());
     await Promise.resolve();
+  });
+
+  it('logs background delivery failures without rejecting the dispatch', async () => {
+    vi.useFakeTimers();
+    loggerWarnMock.mockReset();
+    sendSmsMock.mockReset();
+    sendLineMessageMock.mockReset();
+    const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
+      createTx();
+
+    notificationRuleFindMany.mockResolvedValue([
+      {
+        id: 'rule_sms',
+        org_id: 'org_1',
+        event_type: 'patient_self_report_followup_due',
+        channel: 'sms',
+        recipients: {
+          user_ids: ['user_1'],
+        },
+        enabled: true,
+      },
+    ]);
+    membershipFindMany.mockResolvedValue([]);
+    userFindMany.mockResolvedValue([{ id: 'user_1', phone: '09000000001' }]);
+    notificationCreate.mockImplementation(async ({ data }) => ({
+      id: `notification_${data.user_id as string}`,
+      ...data,
+    }));
+    sendSmsMock.mockRejectedValue(new Error('sms unavailable'));
+
+    const notifications = await dispatchNotificationEvent(tx, {
+      orgId: 'org_1',
+      eventType: 'patient_self_report_followup_due',
+      type: 'urgent',
+      title: '折り返し依頼',
+      message: '至急対応してください',
+      explicitUserIds: ['user_1'],
+    });
+
+    expect(notifications).toHaveLength(1);
+    expect(loggerWarnMock).not.toHaveBeenCalled();
+
+    await runScheduledDeliveries();
+
+    expect(sendSmsMock).toHaveBeenCalledTimes(1);
+    expect(loggerWarnMock).toHaveBeenCalledWith('[notifications] background delivery failed', {
+      failedCount: 1,
+    });
   });
 });
