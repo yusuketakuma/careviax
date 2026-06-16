@@ -277,6 +277,31 @@ type VisitPreparationSnapshot = {
       intake_context?: {
         initial_transition_management_expected?: boolean | null;
       };
+      billing_collection_context?: {
+        candidate_id: string | null;
+        billing_month: string | null;
+        billing_name: string | null;
+        candidate_status: string | null;
+        current_billed_amount: number | null;
+        current_collection_amount: number | null;
+        previous_unpaid_amount: number | null;
+        total_collection_amount: number | null;
+        collected_amount: number | null;
+        payer_name: string | null;
+        payer_relation: string | null;
+        collection_method: string | null;
+        collection_method_label: string | null;
+        collection_timing: string | null;
+        collection_timing_label: string | null;
+        scheduled_collection_at: string | null;
+        collected_at: string | null;
+        receipt_issue: string | null;
+        receipt_issue_label: string | null;
+        receipt_issue_status: string | null;
+        receipt_issue_status_label: string | null;
+        receipt_number: string | null;
+        collector_user_id: string | null;
+      } | null;
     };
   };
 };
@@ -389,6 +414,17 @@ function buildDraftMetadata(values: FormValues, visitGeoLog: VisitGeoLog | null)
     residualMedications: values.residual_medications ?? [],
     visitGeoLog,
   };
+}
+
+function formatVisitBillingAmount(value: number | null | undefined) {
+  return value == null ? '未記録' : `${value.toLocaleString('ja-JP')}円`;
+}
+
+function formatVisitBillingDateTime(value: string | null | undefined) {
+  if (!value) return '未記録';
+  const parsed = parseISO(value);
+  if (Number.isNaN(parsed.getTime())) return '未記録';
+  return format(parsed, 'yyyy/MM/dd HH:mm');
 }
 
 export function VisitRecordForm({
@@ -883,6 +919,7 @@ export function VisitRecordForm({
   const previousVisitStructuredReuse =
     visitPreparationPack?.previous_visit?.structured_reuse ?? null;
   const facilityParallelContext = visitPreparationPack?.facility_parallel_context ?? null;
+  const billingCollectionContext = visitPreparationPack?.billing_collection_context ?? null;
   const effectiveFacilityVisitContext: FacilityVisitContext | null =
     facilityParallelContext && facilityParallelContext.patients.length > 1
       ? {
@@ -2025,7 +2062,121 @@ export function VisitRecordForm({
                     受領記録
                   </h3>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="space-y-4">
+                  {billingCollectionContext ? (
+                    <div
+                      className="rounded-md border border-border/70 bg-muted/30 p-3"
+                      data-testid="visit-billing-collection-context"
+                    >
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-foreground">集金確認</p>
+                          <p className="text-xs text-muted-foreground">
+                            {billingCollectionContext.billing_name ?? '請求候補'} /{' '}
+                            {billingCollectionContext.collection_timing_label ??
+                              '集金タイミング未設定'}
+                          </p>
+                        </div>
+                        {billingCollectionContext.candidate_id ? (
+                          <Button asChild variant="outline" size="sm">
+                            <Link
+                              href={`/billing/candidates?${new URLSearchParams({
+                                patient_id: schedule?.patient_id ?? '',
+                                candidate_id: billingCollectionContext.candidate_id,
+                                workflow_from: 'visit_record',
+                                schedule_id: id,
+                                ...(billingCollectionContext.billing_month
+                                  ? {
+                                      billing_month: billingCollectionContext.billing_month.slice(
+                                        0,
+                                        10,
+                                      ),
+                                    }
+                                  : {}),
+                              }).toString()}`}
+                            >
+                              請求候補を開く
+                            </Link>
+                          </Button>
+                        ) : null}
+                      </div>
+                      <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                        <div>
+                          <dt className="text-xs text-muted-foreground">今回徴収</dt>
+                          <dd className="font-medium text-foreground">
+                            {formatVisitBillingAmount(
+                              billingCollectionContext.current_collection_amount,
+                            )}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-muted-foreground">前回未収分</dt>
+                          <dd className="font-medium text-foreground">
+                            {formatVisitBillingAmount(
+                              billingCollectionContext.previous_unpaid_amount,
+                            )}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-muted-foreground">合計徴収額</dt>
+                          <dd className="font-medium text-foreground">
+                            {formatVisitBillingAmount(
+                              billingCollectionContext.total_collection_amount,
+                            )}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-muted-foreground">支払者</dt>
+                          <dd className="font-medium text-foreground">
+                            {[
+                              billingCollectionContext.payer_name,
+                              billingCollectionContext.payer_relation,
+                            ]
+                              .filter(Boolean)
+                              .join(' / ') || '未記録'}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-muted-foreground">集金方法</dt>
+                          <dd className="font-medium text-foreground">
+                            {billingCollectionContext.collection_method_label ?? '未記録'}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-muted-foreground">領収証</dt>
+                          <dd className="font-medium text-foreground">
+                            {[
+                              billingCollectionContext.receipt_issue_label,
+                              billingCollectionContext.receipt_issue_status_label,
+                              billingCollectionContext.receipt_number,
+                            ]
+                              .filter(Boolean)
+                              .join(' / ') || '未記録'}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-muted-foreground">次回集金予定</dt>
+                          <dd className="font-medium text-foreground">
+                            {formatVisitBillingDateTime(
+                              billingCollectionContext.scheduled_collection_at,
+                            )}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-muted-foreground">入金済み</dt>
+                          <dd className="font-medium text-foreground">
+                            {formatVisitBillingAmount(billingCollectionContext.collected_amount)}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-xs text-muted-foreground">集金記録者</dt>
+                          <dd className="font-medium text-foreground">
+                            {billingCollectionContext.collector_user_id ? '記録済み' : '未記録'}
+                          </dd>
+                        </div>
+                      </dl>
+                    </div>
+                  ) : null}
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                     <div className="space-y-1.5">
                       <Label htmlFor="receipt_person_name">受領者名</Label>
@@ -2216,7 +2367,10 @@ export function VisitRecordForm({
                       className="mt-0.5"
                     />
                     <span>
-                      <span id="patient-detail-reflect-label" className="font-medium text-foreground">
+                      <span
+                        id="patient-detail-reflect-label"
+                        className="font-medium text-foreground"
+                      >
                         この内容を患者詳細に反映する
                       </span>
                       <span className="block text-xs text-muted-foreground">

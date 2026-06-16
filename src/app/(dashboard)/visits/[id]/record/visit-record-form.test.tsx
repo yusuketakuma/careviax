@@ -262,6 +262,31 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
                   previous_visit: null,
                   facility_parallel_context: null,
                   intake_context: null,
+                  billing_collection_context: {
+                    candidate_id: 'candidate_current',
+                    billing_month: '2026-03-01T00:00:00.000Z',
+                    billing_name: '在宅患者訪問薬剤管理指導料',
+                    candidate_status: 'confirmed',
+                    current_billed_amount: 3240,
+                    current_collection_amount: 3240,
+                    previous_unpaid_amount: 1080,
+                    total_collection_amount: 4320,
+                    collected_amount: 0,
+                    payer_name: '山田 次郎',
+                    payer_relation: '長男',
+                    collection_method: 'cash',
+                    collection_method_label: '現金',
+                    collection_timing: 'per_visit',
+                    collection_timing_label: '毎回',
+                    scheduled_collection_at: '2026-03-27T01:00:00.000Z',
+                    collected_at: null,
+                    receipt_issue: 'paper',
+                    receipt_issue_label: '紙',
+                    receipt_issue_status: 'not_issued',
+                    receipt_issue_status_label: '未発行',
+                    receipt_number: null,
+                    collector_user_id: 'user_billing',
+                  },
                 },
               },
             }),
@@ -398,6 +423,40 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     expect(visitRecordPostBodies[0]).not.toHaveProperty('receipt_person_name');
     expect(visitRecordPostBodies[0]).not.toHaveProperty('receipt_person_relation');
     expect(visitRecordPostBodies[0]).not.toHaveProperty('receipt_at');
+  });
+
+  it('shows billing collection context without posting billing fields as visit record data', async () => {
+    renderVisitRecordForm();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('visit-billing-collection-context')).toBeTruthy();
+    });
+
+    expect(screen.getByText('集金確認')).toBeTruthy();
+    expect(screen.getByText('今回徴収')).toBeTruthy();
+    expect(screen.getByText('3,240円')).toBeTruthy();
+    expect(screen.getByText('前回未収分')).toBeTruthy();
+    expect(screen.getByText('1,080円')).toBeTruthy();
+    expect(screen.getByText('合計徴収額')).toBeTruthy();
+    expect(screen.getByText('4,320円')).toBeTruthy();
+    expect(screen.getByText('現金')).toBeTruthy();
+    expect(screen.getByText('紙 / 未発行')).toBeTruthy();
+    const billingCandidateHref = screen
+      .getByRole('link', { name: '請求候補を開く' })
+      .getAttribute('href');
+    expect(billingCandidateHref).toContain('candidate_id=candidate_current');
+    expect(billingCandidateHref).toContain('workflow_from=visit_record');
+    expect(billingCandidateHref).toContain('schedule_id=schedule_partial');
+
+    fireEvent.click(screen.getByRole('button', { name: '延期' }));
+    fireEvent.submit(document.querySelector('form')!);
+
+    await waitFor(() => {
+      expect(visitRecordPostBodies).toHaveLength(1);
+    });
+    expect(visitRecordPostBodies[0]).not.toHaveProperty('billing_collection_context');
+    expect(visitRecordPostBodies[0]).not.toHaveProperty('current_collection_amount');
+    expect(visitRecordPostBodies[0]).not.toHaveProperty('receipt_number');
   });
 });
 

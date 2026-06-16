@@ -9,11 +9,13 @@ const {
   visitRecordFindManyMock,
   medicationCycleFindManyMock,
   taskFindManyMock,
+  taskFindFirstMock,
   visitScheduleContactLogFindManyMock,
   peerVisitScheduleFindManyMock,
   prescriptionIntakeFindManyMock,
   firstVisitDocumentFindFirstMock,
   conferenceNoteFindManyMock,
+  billingCandidateFindManyMock,
   billingEvidenceBlockersMock,
   patientHomeCareFeatureSummaryMock,
   scheduleFeatureHighlightsMock,
@@ -33,11 +35,13 @@ const {
   visitRecordFindManyMock: vi.fn(),
   medicationCycleFindManyMock: vi.fn(),
   taskFindManyMock: vi.fn(),
+  taskFindFirstMock: vi.fn(),
   visitScheduleContactLogFindManyMock: vi.fn(),
   peerVisitScheduleFindManyMock: vi.fn(),
   prescriptionIntakeFindManyMock: vi.fn(),
   firstVisitDocumentFindFirstMock: vi.fn(),
   conferenceNoteFindManyMock: vi.fn(),
+  billingCandidateFindManyMock: vi.fn(),
   billingEvidenceBlockersMock: vi.fn(),
   patientHomeCareFeatureSummaryMock: vi.fn(),
   scheduleFeatureHighlightsMock: vi.fn(),
@@ -74,8 +78,12 @@ vi.mock('@/lib/db/client', () => ({
     medicationCycle: {
       findMany: medicationCycleFindManyMock,
     },
+    billingCandidate: {
+      findMany: billingCandidateFindManyMock,
+    },
     task: {
       findMany: taskFindManyMock,
+      findFirst: taskFindFirstMock,
     },
     visitScheduleContactLog: {
       findMany: visitScheduleContactLogFindManyMock,
@@ -320,6 +328,85 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
     });
     visitRecordFindManyMock.mockResolvedValue([{ id: 'record_1' }]);
     medicationCycleFindManyMock.mockResolvedValue([{ id: 'cycle_1' }]);
+    billingCandidateFindManyMock.mockResolvedValue([
+      {
+        id: 'candidate_current',
+        billing_month: new Date('2026-03-01T00:00:00Z'),
+        billing_name: '在宅患者訪問薬剤管理指導料',
+        points: 3240,
+        status: 'confirmed',
+        calculation_breakdown: {
+          collection: {
+            status: 'scheduled',
+            billed_amount: 3240,
+            collected_amount: 0,
+            unpaid_amount: 3240,
+            payment_method: 'cash',
+            payer_name: '山田 次郎',
+            scheduled_collection_at: '2026-03-27T01:00:00.000Z',
+            collected_at: null,
+            receipt_number: null,
+            receipt_issue_status: 'not_issued',
+            updated_by: 'user_billing',
+          },
+        },
+        updated_at: new Date('2026-03-26T00:00:00Z'),
+      },
+      {
+        id: 'candidate_current_addon',
+        billing_month: new Date('2026-03-01T00:00:00Z'),
+        billing_name: '麻薬管理指導加算',
+        points: 680,
+        status: 'confirmed',
+        calculation_breakdown: {
+          collection: {
+            status: 'scheduled',
+            billed_amount: 680,
+            collected_amount: 0,
+            unpaid_amount: 680,
+            payment_method: 'cash',
+            payer_name: '山田 次郎',
+            receipt_number: null,
+            receipt_issue_status: 'not_issued',
+            updated_by: 'user_billing',
+          },
+        },
+        updated_at: new Date('2026-03-25T00:00:00Z'),
+      },
+      {
+        id: 'candidate_previous',
+        billing_month: new Date('2026-02-01T00:00:00Z'),
+        billing_name: '居宅療養管理指導料',
+        points: 1080,
+        status: 'confirmed',
+        calculation_breakdown: {
+          collection: {
+            status: 'partial',
+            billed_amount: 2160,
+            collected_amount: 1080,
+            unpaid_amount: 1080,
+            payment_method: 'bank_transfer',
+            payer_name: '山田 次郎',
+            receipt_number: 'R202602-001',
+            receipt_issue_status: 'issued',
+            updated_by: 'user_billing',
+          },
+        },
+        updated_at: new Date('2026-02-28T00:00:00Z'),
+      },
+    ]);
+    taskFindFirstMock.mockResolvedValue({
+      metadata: {
+        payer_type: 'family',
+        payer_name: '山田 次郎',
+        payer_relation: '長男',
+        payment_method: 'cash',
+        collection_timing: 'per_visit',
+        receipt_issue: 'paper',
+        invoice_issue: 'yes',
+        unpaid_tolerance: 'one_month',
+      },
+    });
     taskFindManyMock.mockResolvedValue([
       {
         id: 'task_1',
@@ -649,6 +736,25 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
             prescription_start_date: '2026-03-27',
             prescription_end_date: '2026-04-09',
           },
+          billing_collection_context: {
+            candidate_id: 'candidate_current',
+            billing_name: '在宅患者訪問薬剤管理指導料',
+            current_billed_amount: 3920,
+            current_collection_amount: 3920,
+            previous_unpaid_amount: 1080,
+            total_collection_amount: 5000,
+            collection_method: 'cash',
+            collection_method_label: '現金',
+            collection_timing: 'per_visit',
+            collection_timing_label: '毎回',
+            payer_name: '山田 次郎',
+            payer_relation: '長男',
+            receipt_issue: 'paper',
+            receipt_issue_label: '紙',
+            receipt_issue_status: 'not_issued',
+            receipt_issue_status_label: '未発行',
+            collector_user_id: 'user_billing',
+          },
           prescription_changes: {
             added: ['アムロジピンOD錠5mg'],
             changed: [
@@ -703,6 +809,27 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
       cycleIds: ['cycle_1'],
       limit: 4,
     });
+    expect(billingCandidateFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+          cycle_id: { in: ['cycle_1'] },
+          status: { not: 'excluded' },
+        }),
+      }),
+    );
+    expect(billingCandidateFindManyMock.mock.calls[0]?.[0]).not.toHaveProperty('take');
+    expect(taskFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          task_type: 'patient_billing_payment_profile',
+          related_entity_type: 'patient',
+          related_entity_id: 'patient_1',
+        }),
+      }),
+    );
     expect(prescriptionIntakeFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -720,6 +847,33 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
         }),
       }),
     );
+  });
+
+  it('masks billing payer and receipt details for visit users without billing permission', async () => {
+    membershipFindFirstMock.mockResolvedValueOnce({ role: 'pharmacist_trainee' });
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ scheduleId: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        pack: {
+          billing_collection_context: {
+            current_collection_amount: 3920,
+            previous_unpaid_amount: 1080,
+            total_collection_amount: 5000,
+            collection_method_label: '現金',
+            payer_name: null,
+            payer_relation: null,
+            receipt_number: null,
+            collector_user_id: null,
+          },
+        },
+      },
+    });
   });
 
   it.each(['partial', 'blocked'] as const)(

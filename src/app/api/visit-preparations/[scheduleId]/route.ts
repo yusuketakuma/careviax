@@ -11,6 +11,7 @@ import { formatNullableDateKey } from '@/lib/date-key';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { success, validationError, notFound, forbiddenResponse } from '@/lib/api/response';
+import { hasPermission } from '@/lib/auth/permissions';
 import { upsertVisitPreparationSchema } from '@/lib/validations/visit-preparation';
 import {
   buildChecklistFromTemplate,
@@ -222,6 +223,52 @@ type ConferenceSyncSummary = {
   report_draft_ids?: string[];
   tasks_created?: number;
   medication_issues_created?: number;
+};
+
+type BillingCollectionSnapshot = {
+  status: string | null;
+  billed_amount: number | null;
+  collected_amount: number | null;
+  unpaid_amount: number | null;
+  payment_method: string | null;
+  payer_name: string | null;
+  scheduled_collection_at: string | null;
+  collected_at: string | null;
+  receipt_number: string | null;
+  receipt_issue_status: string | null;
+  updated_by: string | null;
+};
+
+const BILLING_PAYMENT_PROFILE_TASK_TYPE = 'patient_billing_payment_profile';
+
+const BILLING_PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cash: '現金',
+  bank_transfer: '振込',
+  bank_debit: '口座振替',
+  credit_card: 'クレカ',
+  facility_billing: '施設請求',
+  corporate_billing: '法人請求',
+  other: 'その他',
+};
+
+const BILLING_COLLECTION_TIMING_LABELS: Record<string, string> = {
+  per_visit: '毎回',
+  month_end: '月末',
+  next_month: '翌月',
+  facility_batch: '施設一括',
+  other: 'その他',
+};
+
+const BILLING_RECEIPT_ISSUE_LABELS: Record<string, string> = {
+  paper: '紙',
+  pdf: 'PDF',
+  none: '不要',
+};
+
+const BILLING_DOCUMENT_ISSUE_STATUS_LABELS: Record<string, string> = {
+  not_required: '不要',
+  not_issued: '未発行',
+  issued: '発行済',
 };
 
 const VISIT_PREPARATION_CONFERENCE_NOTE_TYPES = new Set(['pre_discharge', 'service_manager']);
@@ -533,6 +580,53 @@ function parseConferenceSyncSummary(value: Prisma.JsonValue | null): ConferenceS
   };
 }
 
+function readString(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function readNumber(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function readBillingCollection(calculationBreakdown: unknown): BillingCollectionSnapshot | null {
+  const collection = readJsonObject(readJsonObject(calculationBreakdown)?.collection);
+  if (!collection) return null;
+
+  return {
+    status: readString(collection.status),
+    billed_amount: readNumber(collection.billed_amount),
+    collected_amount: readNumber(collection.collected_amount),
+    unpaid_amount: readNumber(collection.unpaid_amount),
+    payment_method: readString(collection.payment_method),
+    payer_name: readString(collection.payer_name),
+    scheduled_collection_at: readString(collection.scheduled_collection_at),
+    collected_at: readString(collection.collected_at),
+    receipt_number: readString(collection.receipt_number),
+    receipt_issue_status: readString(collection.receipt_issue_status),
+    updated_by: readString(collection.updated_by),
+  };
+}
+
+function estimateBillingCandidateAmount(candidate: {
+  points: number | null;
+  calculation_breakdown: Prisma.JsonValue | null;
+}) {
+  const breakdown = readJsonObject(candidate.calculation_breakdown);
+  return readNumber(breakdown?.amount_yen) ?? candidate.points ?? null;
+}
+
+function resolveCollectionOutstandingAmount(
+  collection: BillingCollectionSnapshot | null,
+  estimatedAmount: number | null,
+) {
+  if (!collection) return estimatedAmount;
+  if (collection.unpaid_amount != null) return collection.unpaid_amount;
+  if (collection.billed_amount != null) {
+    return Math.max(collection.billed_amount - (collection.collected_amount ?? 0), 0);
+  }
+  return estimatedAmount;
+}
+
 function buildConferenceHighlights(
   noteType: VisitPreparationConferenceNoteType,
   sections: ConferenceSectionSummary[],
@@ -749,80 +843,120 @@ export async function GET(
   const scopedVisitRecordIds = scopedVisitRecords.map((item) => item.id);
   const scopedCycleIds = scopedMedicationCycles.map((item) => item.id);
 
-  const [billingEvidence, recentPrescriptionIntakes, firstVisitDoc, recentConferenceNotes] =
-    await Promise.all([
-      listBillingEvidenceBlockers(prisma, {
-        orgId: ctx.orgId,
-        patientId: schedule.case_.patient.id,
-        visitRecordIds: scopedVisitRecordIds,
-        cycleIds: scopedCycleIds,
-        limit: 4,
-      }),
-      prisma.prescriptionIntake.findMany({
-        where: {
-          org_id: ctx.orgId,
-          cycle: {
-            patient_id: schedule.case_.patient.id,
-            case_id: schedule.case_id,
-          },
+  const [
+    billingEvidence,
+    billingCandidates,
+    billingPaymentProfileTask,
+    recentPrescriptionIntakes,
+    firstVisitDoc,
+    recentConferenceNotes,
+  ] = await Promise.all([
+    listBillingEvidenceBlockers(prisma, {
+      orgId: ctx.orgId,
+      patientId: schedule.case_.patient.id,
+      visitRecordIds: scopedVisitRecordIds,
+      cycleIds: scopedCycleIds,
+      limit: 4,
+    }),
+    prisma.billingCandidate.findMany({
+      where: {
+        org_id: ctx.orgId,
+        patient_id: schedule.case_.patient.id,
+        ...(scopedCycleIds.length === 0
+          ? { id: { in: [] } }
+          : { cycle_id: { in: scopedCycleIds } }),
+        status: {
+          not: 'excluded',
         },
-        orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }],
-        take: 2,
-        select: {
-          id: true,
-          source_type: true,
-          prescribed_date: true,
-          lines: {
-            orderBy: { line_number: 'asc' },
-            select: {
-              drug_name: true,
-              drug_code: true,
-              dose: true,
-              frequency: true,
-              days: true,
-              start_date: true,
-              end_date: true,
-            },
-          },
-        },
-      }),
-      prisma.firstVisitDocument.findFirst({
-        where: {
-          org_id: ctx.orgId,
+      },
+      orderBy: [{ billing_month: 'desc' }, { updated_at: 'desc' }],
+      select: {
+        id: true,
+        billing_month: true,
+        billing_name: true,
+        points: true,
+        status: true,
+        calculation_breakdown: true,
+        updated_at: true,
+      },
+    }),
+    prisma.task.findFirst({
+      where: {
+        org_id: ctx.orgId,
+        task_type: BILLING_PAYMENT_PROFILE_TASK_TYPE,
+        related_entity_type: 'patient',
+        related_entity_id: schedule.case_.patient.id,
+      },
+      orderBy: [{ updated_at: 'desc' }],
+      select: {
+        metadata: true,
+      },
+    }),
+    prisma.prescriptionIntake.findMany({
+      where: {
+        org_id: ctx.orgId,
+        cycle: {
+          patient_id: schedule.case_.patient.id,
           case_id: schedule.case_id,
         },
-        orderBy: { created_at: 'desc' },
-        select: {
-          id: true,
-          delivered_at: true,
-          delivered_to: true,
-        },
-      }),
-      prisma.conferenceNote.findMany({
-        where: {
-          org_id: ctx.orgId,
-          note_type: {
-            in: ['pre_discharge', 'service_manager'],
+      },
+      orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }],
+      take: 2,
+      select: {
+        id: true,
+        source_type: true,
+        prescribed_date: true,
+        lines: {
+          orderBy: { line_number: 'asc' },
+          select: {
+            drug_name: true,
+            drug_code: true,
+            dose: true,
+            frequency: true,
+            days: true,
+            start_date: true,
+            end_date: true,
           },
-          OR: [
-            { case_id: schedule.case_id },
-            { patient_id: schedule.case_.patient.id, case_id: null },
-          ],
         },
-        orderBy: [{ conference_date: 'desc' }, { updated_at: 'desc' }],
-        take: 4,
-        select: {
-          id: true,
-          note_type: true,
-          title: true,
-          conference_date: true,
-          participants: true,
-          structured_content: true,
-          metadata: true,
-          action_items: true,
+      },
+    }),
+    prisma.firstVisitDocument.findFirst({
+      where: {
+        org_id: ctx.orgId,
+        case_id: schedule.case_id,
+      },
+      orderBy: { created_at: 'desc' },
+      select: {
+        id: true,
+        delivered_at: true,
+        delivered_to: true,
+      },
+    }),
+    prisma.conferenceNote.findMany({
+      where: {
+        org_id: ctx.orgId,
+        note_type: {
+          in: ['pre_discharge', 'service_manager'],
         },
-      }),
-    ]);
+        OR: [
+          { case_id: schedule.case_id },
+          { patient_id: schedule.case_.patient.id, case_id: null },
+        ],
+      },
+      orderBy: [{ conference_date: 'desc' }, { updated_at: 'desc' }],
+      take: 4,
+      select: {
+        id: true,
+        note_type: true,
+        title: true,
+        conference_date: true,
+        participants: true,
+        structured_content: true,
+        metadata: true,
+        action_items: true,
+      },
+    }),
+  ]);
 
   const [previousVisit, openTasks, recentContactLogs, sameDaySchedules] = await Promise.all([
     prisma.visitRecord.findFirst({
@@ -1068,6 +1202,99 @@ export async function GET(
         ?.toISOString()
         .slice(0, 10) ?? null,
   };
+  const billingPaymentProfile = readJsonObject(billingPaymentProfileTask?.metadata);
+  const canViewBillingDetails = hasPermission(ctx.role, 'canManageBilling');
+  const billingCandidateCollections = billingCandidates.map((candidate) => {
+    const collection = readBillingCollection(candidate.calculation_breakdown);
+    const estimatedAmount = estimateBillingCandidateAmount(candidate);
+    return {
+      candidate,
+      collection,
+      estimatedAmount,
+      outstandingAmount: resolveCollectionOutstandingAmount(collection, estimatedAmount),
+    };
+  });
+  const currentBillingMonth = billingCandidateCollections[0]?.candidate.billing_month ?? null;
+  const currentBillingRows = currentBillingMonth
+    ? billingCandidateCollections.filter(
+        (item) => item.candidate.billing_month.getTime() === currentBillingMonth.getTime(),
+      )
+    : [];
+  const previousBillingRows = currentBillingMonth
+    ? billingCandidateCollections.filter(
+        (item) => item.candidate.billing_month.getTime() < currentBillingMonth.getTime(),
+      )
+    : [];
+  const latestBilling = currentBillingRows[0] ?? null;
+  const previousUnpaidAmount = previousBillingRows.reduce(
+    (sum, item) => sum + Math.max(item.outstandingAmount ?? 0, 0),
+    0,
+  );
+  const currentCollectionAmount = currentBillingRows.length
+    ? currentBillingRows.reduce((sum, item) => sum + Math.max(item.outstandingAmount ?? 0, 0), 0)
+    : null;
+  const currentBilledAmount = currentBillingRows.length
+    ? currentBillingRows.reduce((sum, item) => {
+        const billedAmount = item.collection?.billed_amount ?? item.estimatedAmount ?? 0;
+        return sum + Math.max(billedAmount, 0);
+      }, 0)
+    : null;
+  const totalCollectionAmount =
+    latestBilling || previousUnpaidAmount > 0
+      ? (currentCollectionAmount ?? 0) + previousUnpaidAmount
+      : null;
+  const latestCollection = latestBilling?.collection ?? null;
+  const fallbackPaymentMethod = readString(billingPaymentProfile?.payment_method);
+  const collectionTiming = readString(billingPaymentProfile?.collection_timing);
+  const collectionMethod =
+    latestCollection?.payment_method ??
+    fallbackPaymentMethod ??
+    readString(intakeData?.collection_method) ??
+    null;
+  const receiptIssue = readString(billingPaymentProfile?.receipt_issue);
+  const billingCollectionContext =
+    latestBilling || billingPaymentProfile
+      ? {
+          candidate_id: latestBilling?.candidate.id ?? null,
+          billing_month: latestBilling?.candidate.billing_month.toISOString() ?? null,
+          billing_name: latestBilling?.candidate.billing_name ?? null,
+          candidate_status: latestBilling?.candidate.status ?? null,
+          current_billed_amount: currentBilledAmount,
+          current_collection_amount: currentCollectionAmount,
+          previous_unpaid_amount: previousUnpaidAmount,
+          total_collection_amount: totalCollectionAmount,
+          collected_amount: latestCollection?.collected_amount ?? null,
+          payer_name: canViewBillingDetails
+            ? (latestCollection?.payer_name ??
+              readString(billingPaymentProfile?.payer_name) ??
+              null)
+            : null,
+          payer_relation: canViewBillingDetails
+            ? readString(billingPaymentProfile?.payer_relation)
+            : null,
+          collection_method: collectionMethod,
+          collection_method_label: collectionMethod
+            ? (BILLING_PAYMENT_METHOD_LABELS[collectionMethod] ?? collectionMethod)
+            : null,
+          collection_timing: collectionTiming,
+          collection_timing_label: collectionTiming
+            ? (BILLING_COLLECTION_TIMING_LABELS[collectionTiming] ?? collectionTiming)
+            : null,
+          scheduled_collection_at: latestCollection?.scheduled_collection_at ?? null,
+          collected_at: latestCollection?.collected_at ?? null,
+          receipt_issue: receiptIssue,
+          receipt_issue_label: receiptIssue
+            ? (BILLING_RECEIPT_ISSUE_LABELS[receiptIssue] ?? receiptIssue)
+            : null,
+          receipt_issue_status: latestCollection?.receipt_issue_status ?? null,
+          receipt_issue_status_label: latestCollection?.receipt_issue_status
+            ? (BILLING_DOCUMENT_ISSUE_STATUS_LABELS[latestCollection.receipt_issue_status] ??
+              latestCollection.receipt_issue_status)
+            : null,
+          receipt_number: canViewBillingDetails ? (latestCollection?.receipt_number ?? null) : null,
+          collector_user_id: canViewBillingDetails ? (latestCollection?.updated_by ?? null) : null,
+        }
+      : null;
   const currentFacilitySchedule: FacilityParallelSchedule = {
     id: schedule.id,
     route_order: schedule.route_order,
@@ -1256,6 +1483,7 @@ export async function GET(
             ...blocker,
           })),
         ),
+        billing_collection_context: billingCollectionContext,
         prescription_changes: prescriptionChanges,
         medication_period: medicationPeriod,
         home_care_feature_highlights:
