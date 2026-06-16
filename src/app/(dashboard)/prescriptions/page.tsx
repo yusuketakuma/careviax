@@ -35,7 +35,7 @@ export default function PrescriptionsPage() {
         <PageShortcutLinks
           links={[
             { href: '/prescriptions/qr-drafts', label: 'QR下書き' },
-            { href: '/dispensing', label: '調剤キュー' },
+            { href: '/dispense', label: '調剤キュー' },
             { href: '/workflow', label: 'ワークフロー' },
           ]}
         />

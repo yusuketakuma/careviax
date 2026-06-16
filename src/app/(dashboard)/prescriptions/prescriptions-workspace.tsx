@@ -15,7 +15,7 @@ import {
   type ShortcutDefinition,
 } from '@/components/features/keyboard/use-keyboard-shortcuts';
 import { cn } from '@/lib/utils';
-import { useSelectableQueueState } from '../dispensing/dispense-work-queue.shared';
+import { useSelectableQueueState } from '../dispense/dispense-work-queue.shared';
 import { PrescriptionsTable, type PrescriptionIntakeRow } from './prescriptions-table';
 import { PrescriptionInlineDetail } from './prescription-inline-detail';
 
@@ -102,7 +102,7 @@ function PrescriptionFilterGroup({
 function PrescriptionShortcutRail() {
   const shortcuts = [
     { key: 'N', href: '/prescriptions/new', label: '新規受付' },
-    { key: 'D', href: '/dispensing', label: '調剤キュー' },
+    { key: 'D', href: '/dispense', label: '調剤キュー' },
     { key: 'Q', href: '/prescriptions/qr-drafts', label: 'QR下書き' },
   ];
 
@@ -271,7 +271,7 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
                 <Link href="/prescriptions/qr-drafts">QR下書き</Link>
               </Button>
               <Button variant="outline" size="sm" className="h-10 px-2 text-xs sm:h-7" asChild>
-                <Link href="/dispensing">調剤キュー</Link>
+                <Link href="/dispense">調剤キュー</Link>
               </Button>
             </ActionRail>
           }

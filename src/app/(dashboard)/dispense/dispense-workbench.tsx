@@ -28,6 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { MedicationFormatGrid } from '@/components/features/dispense/medication-format-grid';
 import { SafetyBoard } from '@/components/features/workspace/safety-board';
 import { MainWorkflowCompactNav } from '@/components/features/workflow/main-workflow-route';
 import {
@@ -44,6 +45,7 @@ import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import {
   buildChangeBadge,
   buildDispenseMedicationGroups,
+  buildMedicationFormatGroups,
   buildDispenseSafetySummary,
   buildDispenseQueueSubline,
   buildPausedLabel,
@@ -575,6 +577,10 @@ export function DispenseWorkbench() {
     () => (workbench ? buildDispenseMedicationGroups(workbench.count_rows) : []),
     [workbench],
   );
+  const medicationFormatGroups = React.useMemo(
+    () => (workbench ? buildMedicationFormatGroups(workbench.count_rows) : []),
+    [workbench],
+  );
 
   const checked = activeTaskId ? (checkedByTaskId[activeTaskId] ?? {}) : {};
   const groupSettings = activeTaskId ? (groupSettingsByTaskId[activeTaskId] ?? {}) : {};
@@ -883,6 +889,12 @@ export function DispenseWorkbench() {
                     />
                   </div>
                   <div className="min-w-0 space-y-3">
+                    <MedicationFormatGrid
+                      title="中央薬剤フォーマット"
+                      groups={medicationFormatGroups}
+                      mode="dispense"
+                    />
+
                     {/* 処方比較(前回 / 今回 / 差) */}
                     <ComparisonTable workbench={workbench} />
 

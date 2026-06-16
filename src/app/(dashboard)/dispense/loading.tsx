@@ -1,7 +1,7 @@
 import { Skeleton, SkeletonRows } from '@/components/ui/loading';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
-export default function DispensingLoading() {
+export default function DispenseLoading() {
   return (
     <PageScaffold aria-label="調剤キューを読み込み中">
       <div className="space-y-3">

@@ -46,7 +46,7 @@ const PROTECTED_ROUTE_PREFIXES = [
   '/communications',
   '/conferences',
   '/dashboard',
-  '/dispensing',
+  '/dispense',
   '/external',
   '/handoff',
   '/medication-sets',

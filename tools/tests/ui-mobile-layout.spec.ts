@@ -52,7 +52,7 @@ const MOBILE_ROUTES = [
 
 const MOBILE_WORKFLOW_ROUTES = [
   { name: 'prescriptions-workflow-mobile-layout', path: '/prescriptions' },
-  { name: 'dispensing-workflow-mobile-layout', path: '/dispensing' },
+  { name: 'dispensing-workflow-mobile-layout', path: '/dispense' },
   { name: 'reports-workflow-mobile-layout', path: '/reports' },
 ] as const;
 
@@ -104,7 +104,7 @@ const MOBILE_CROSS_SCREEN_ROUTES = [
   { name: 'prescriptions-cross-screen', path: '/prescriptions' },
   { name: 'prescriptions-new-cross-screen', path: '/prescriptions/new' },
   { name: 'qr-scan-cross-screen', path: '/qr-scan' },
-  { name: 'dispensing-cross-screen', path: '/dispensing' },
+  { name: 'dispensing-cross-screen', path: '/dispense' },
   { name: 'auditing-cross-screen', path: '/auditing' },
   { name: 'medication-sets-cross-screen', path: '/medication-sets' },
   { name: 'schedules-cross-screen', path: '/schedules' },

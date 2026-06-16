@@ -52,7 +52,7 @@ export const MAIN_WORKFLOW_STEPS: readonly MainWorkflowStep[] = [
     step: '02',
     title: '調剤',
     description: '調剤待ちキューから優先案件を処理し、実施結果を固めます。',
-    href: '/dispensing',
+    href: '/dispense',
     surfaceLabel: '調剤キュー',
     icon: Pill,
   },

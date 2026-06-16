@@ -157,7 +157,7 @@ export const INTAKE_ACTION_PRESENTATIONS: Record<
   compare: { label: '並べて比較', href: () => '/prescriptions' },
   to_dashboard: { label: '→ ダッシュボードへ', href: () => '/dashboard' },
   to_audit: { label: '→ 監査へ', href: () => '/auditing' },
-  to_dispensing: { label: '→ 調剤へ', href: () => '/dispensing' },
+  to_dispensing: { label: '→ 調剤へ', href: () => '/dispense' },
   to_set: { label: '→ セットへ', href: () => '/medication-sets' },
   to_card: { label: '→ カードへ', href: (row) => `/patients/${row.patient_id}` },
 };

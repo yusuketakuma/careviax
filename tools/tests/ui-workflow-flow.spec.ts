@@ -92,7 +92,7 @@ test.describe('prescription intake flow', () => {
     await openStableRoute(page, '/prescriptions');
     const main = page.locator('main');
 
-    await clickAndWaitForStableRoute(page, /\/dispensing/, () =>
+    await clickAndWaitForStableRoute(page, /\/dispense/, () =>
       main.getByRole('link', { name: '調剤キュー' }).first().click(),
     );
 
@@ -108,7 +108,7 @@ test.describe('dispensing queue', () => {
 
   test('dispensing queue page loads with header and shortcut links', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await openStableRoute(page, '/dispensing');
+    await openStableRoute(page, '/dispense');
 
     const main = page.locator('main');
     await expect(main.getByTestId('dispense-workbench')).toBeVisible();
@@ -123,7 +123,7 @@ test.describe('dispensing queue', () => {
 
   test('dispensing queue shows task list or empty state', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await openStableRoute(page, '/dispensing');
+    await openStableRoute(page, '/dispense');
 
     // Should show either task cards or an empty state message
     const hasContent = await page.locator('main').textContent();
@@ -136,7 +136,7 @@ test.describe('dispensing queue', () => {
 
   test('shortcut link from dispensing to auditing works', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await openStableRoute(page, '/dispensing');
+    await openStableRoute(page, '/dispense');
 
     const main = page.locator('main');
     await clickAndWaitForStableRoute(page, /\/auditing/, () =>
@@ -196,7 +196,7 @@ test.describe('workflow cross-navigation', () => {
     await expect(page.getByRole('heading', { name: '処方受付' })).toBeVisible();
 
     // Navigate to dispensing via shortcut
-    await clickAndWaitForStableRoute(page, /\/dispensing/, () =>
+    await clickAndWaitForStableRoute(page, /\/dispense/, () =>
       page.locator('main').getByRole('link', { name: '調剤キュー' }).first().click(),
     );
     await expect(page.getByRole('heading', { name: '調剤キュー', exact: true })).toBeVisible();
@@ -209,7 +209,7 @@ test.describe('workflow cross-navigation', () => {
     await expect(page.getByRole('heading', { name: '監査', exact: true })).toBeVisible();
 
     // Navigate back to dispensing via shortcut (scope to main)
-    await clickAndWaitForStableRoute(page, /\/dispensing/, () =>
+    await clickAndWaitForStableRoute(page, /\/dispense/, () =>
       main.getByRole('link', { name: '調剤', exact: true }).first().click(),
     );
     await expect(page.getByRole('heading', { name: '調剤キュー', exact: true })).toBeVisible();

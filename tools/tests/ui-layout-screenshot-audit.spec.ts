@@ -10,7 +10,7 @@ const screens = [
   { name: 'my-day', path: '/my-day', heading: 'My Day' },
   { name: 'patients', path: '/patients', heading: '患者一覧' },
   { name: 'schedules', path: '/schedules', heading: 'スケジュール' },
-  { name: 'dispensing', path: '/dispensing', heading: '調剤' },
+  { name: 'dispensing', path: '/dispense', heading: '調剤' },
 ] as const;
 
 const viewports = [

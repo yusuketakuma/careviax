@@ -313,13 +313,16 @@ export const GET = withAuthContext(async (_req, ctx, { params }) => {
     return {
       line_id: line.id,
       result_id: result?.id ?? null,
+      line_number: line.line_number,
       drug_name: result?.actual_drug_name ?? line.drug_name,
+      dose: line.dose,
       frequency: line.frequency,
       route: line.route,
       tags: line.packaging_instruction_tags as string[],
       is_narcotic: isNarcoticLine(line),
       prescribed_label: formatQuantityLabel(line),
       prescribed_quantity: line.quantity,
+      days: line.days,
       dispensed_label: result
         ? `${result.actual_quantity}${result.actual_unit ?? line.unit ?? ''}`
         : null,

@@ -121,7 +121,7 @@ export const DASHBOARD_TAB_FALLBACK_ACTIONS: Record<
     label: '処方受付を開く',
   },
   dispensing: {
-    href: '/dispensing',
+    href: '/dispense',
     label: '調剤キューを開く',
   },
   dispense_audit: {
@@ -186,7 +186,7 @@ export const DASHBOARD_WORKFLOW_LINKS: readonly DashboardNavigationLink[] = [
     key: 'dispensing',
     title: '調剤',
     description: '調剤待ちキューから優先案件を処理します。',
-    href: '/dispensing',
+    href: '/dispense',
   },
   {
     key: 'auditing',

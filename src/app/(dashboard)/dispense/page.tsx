@@ -9,10 +9,10 @@ export const metadata: Metadata = {
 };
 
 /**
- * /dispensing。ビューポート最上部は new_07_dispense の 3 ペイン調剤ワークベンチ
+ * /dispense。ビューポート最上部は new_07_dispense の 3 ペイン調剤ワークベンチ
  * (左キュー / いまの1件 / 右レール)のみを表示する。
  */
-export default function DispensingPage() {
+export default function DispensePage() {
   return (
     <PageScaffold variant="bare">
       <div className="rounded-xl border border-border/70 bg-background px-4 py-4 sm:px-6 sm:py-5">

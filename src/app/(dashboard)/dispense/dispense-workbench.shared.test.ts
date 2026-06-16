@@ -4,6 +4,7 @@ import {
   buildDispenseMedicationGroups,
   buildDispenseSafetySummary,
   buildDispenseQueueSubline,
+  buildMedicationFormatGroups,
   buildPausedLabel,
   canApproveCounts,
   familyName,
@@ -21,13 +22,16 @@ function countRow(overrides: Partial<WorkbenchCountRow> = {}): WorkbenchCountRow
   return {
     line_id: 'line_1',
     result_id: 'result_1',
+    line_number: 1,
     drug_name: 'オキシコドン 5mg',
+    dose: '1錠',
     frequency: '朝食後',
     route: 'internal',
     tags: ['narcotic'],
     is_narcotic: true,
     prescribed_label: '14錠',
     prescribed_quantity: 14,
+    days: 14,
     dispensed_label: '14錠',
     dispensed_quantity: 14,
     unit: '錠',
@@ -264,7 +268,7 @@ describe('dispense-workbench.shared', () => {
       lineIds: ['line_1', 'line_2'],
       lineNames: ['アムロジピン 5mg', 'ファモチジン 10mg'],
       crushProhibitedCount: 1,
-      cautionLabels: ['一包化'],
+      cautionLabels: ['一包化', '粉砕不可'],
     });
     expect(groups[1]).toMatchObject({
       id: 'group_evening',
@@ -272,6 +276,67 @@ describe('dispense-workbench.shared', () => {
       lineIds: ['line_1'],
     });
     expect(getDispenseMedicationGroupMethodLabel('calendar_pack')).toBe('カレンダーセット');
+  });
+
+  it('buildMedicationFormatGroups は包装判断と時点量をスタッフ確認用に整理する', () => {
+    const groups = buildMedicationFormatGroups([
+      countRow({
+        line_id: 'line_1',
+        line_number: 2,
+        drug_name: 'アムロジピン 5mg',
+        frequency: '朝夕食後',
+        tags: ['unit_dose'],
+        prescribed_quantity: 28,
+        days: 14,
+      }),
+      countRow({
+        line_id: 'line_2',
+        line_number: 1,
+        drug_name: 'ファモチジン 10mg',
+        frequency: '朝食後',
+        tags: ['separate_pack', 'crush_prohibited'],
+        packaging_instructions: '別包',
+      }),
+      countRow({
+        line_id: 'line_3',
+        line_number: 3,
+        drug_name: 'ロキソプロフェン 60mg',
+        frequency: '疼痛時',
+        tags: [],
+      }),
+      countRow({
+        line_id: 'line_4',
+        line_number: 4,
+        drug_name: 'インスリン',
+        frequency: '朝',
+        route: 'injection',
+        tags: ['cold_storage'],
+      }),
+    ]);
+
+    expect(groups.map((group) => group.kind)).toEqual([
+      'unit_dose',
+      'separate_pack',
+      'prn',
+      'non_internal',
+    ]);
+    expect(groups[0].lines[0]).toMatchObject({
+      lineId: 'line_1',
+      drugName: 'アムロジピン 5mg',
+      slots: {
+        morning: { text: '1錠', status: 'scheduled' },
+        evening: { text: '1錠', status: 'scheduled' },
+        noon: { text: '—', status: 'none' },
+      },
+      processingLabels: ['一包化'],
+    });
+    expect(groups[1].lines[0]).toMatchObject({
+      lineId: 'line_2',
+      cautionLabels: ['別包', '粉砕不可', '麻薬'],
+      processingLabels: ['別包'],
+    });
+    expect(groups[2].lines[0].notes).toContain('頓用・必要時');
+    expect(groups[3].lines[0].cautionLabels).toContain('冷所');
   });
 
   it('formatAgeMinutesLabel は日/時間/分に丸める', () => {

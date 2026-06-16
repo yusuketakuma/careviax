@@ -101,7 +101,7 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'new_07_dispense',
     targetImage: 'images/new/07_dispense.png',
-    route: '/dispensing',
+    route: '/dispense',
     setup: async (page) => {
       // 調剤キュー先頭を選択し、「いまの1件」(比較テーブル+チェックリスト)の描画まで待つ
       await page.getByTestId('dispense-queue-row').first().click();
@@ -321,7 +321,7 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p0_12_dispensing_workbench',
     targetImage: 'images/P0/p0_12_dispensing_workbench.png',
-    route: '/dispensing',
+    route: '/dispense',
     setup: async (page) => {
       await page.getByTestId('dispense-queue-row').first().click();
       await page.waitForSelector(

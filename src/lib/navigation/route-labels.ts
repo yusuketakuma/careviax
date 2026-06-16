@@ -20,7 +20,7 @@ export const PATH_LABELS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /^\/visits(\/.*)?$/, label: '訪問' },
   { pattern: /^\/reports\/analytics(\/.*)?$/, label: '送達分析' },
   { pattern: /^\/reports(\/.*)?$/, label: '報告' },
-  { pattern: /^\/dispensing(\/.*)?$/, label: '調剤' },
+  { pattern: /^\/dispense(\/.*)?$/, label: '調剤' },
   { pattern: /^\/auditing(\/.*)?$/, label: '調剤鑑査' },
   { pattern: /^\/medication-sets(\/.*)?$/, label: 'セット' },
   { pattern: /^\/conferences(\/.*)?$/, label: '多職種連携' },

@@ -346,7 +346,7 @@ test.describe('ARIA and keyboard contracts', () => {
       ['sidebar-nav-patients', '/patients'],
       ['sidebar-nav-prescriptions-intake', '/prescriptions/intake'],
       ['sidebar-nav-prescriptions', '/prescriptions'],
-      ['sidebar-nav-dispensing', '/dispensing'],
+      ['sidebar-nav-dispense', '/dispense'],
       ['sidebar-nav-auditing', '/auditing'],
       ['sidebar-nav-medication-sets', '/medication-sets'],
       ['sidebar-nav-reports', '/reports'],

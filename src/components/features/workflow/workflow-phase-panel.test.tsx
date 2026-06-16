@@ -29,17 +29,19 @@ describe('WorkflowPhasePanel', () => {
       <WorkflowPhasePanel
         currentPhase="dispensing"
         phaseKeys={['dispensing']}
-        phaseAccess={{
-          dispensing: {
-            key: 'dispensing',
-            label: '調剤',
-            href: '/dispensing',
-            summary: '調剤待ちの処方を確認します。',
-            pending_count: 2,
-            tone: 'default',
-            next_action: null,
-          },
-        } as never}
+        phaseAccess={
+          {
+            dispensing: {
+              key: 'dispensing',
+              label: '調剤',
+              href: '/dispense',
+              summary: '調剤待ちの処方を確認します。',
+              pending_count: 2,
+              tone: 'default',
+              next_action: null,
+            },
+          } as never
+        }
       />,
     );
 

@@ -3,7 +3,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
-import type { DispenseWorkbenchData } from '@/app/(dashboard)/dispensing/dispense-workbench.shared';
+import type { DispenseWorkbenchData } from '@/app/(dashboard)/dispense/dispense-workbench.shared';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
@@ -131,13 +131,16 @@ const WORKBENCH: DispenseWorkbenchData = {
     {
       line_id: 'line-oxycodone',
       result_id: 'result-1',
+      line_number: 1,
       drug_name: 'オキシコドン 5mg',
+      dose: '1錠',
       frequency: '疼痛時',
       route: '内服',
       tags: ['narcotic'],
       is_narcotic: true,
       prescribed_label: '14錠',
       prescribed_quantity: 14,
+      days: 14,
       dispensed_label: '14錠',
       dispensed_quantity: 14,
       unit: '錠',
@@ -149,13 +152,16 @@ const WORKBENCH: DispenseWorkbenchData = {
     {
       line_id: 'line-amlodipine',
       result_id: 'result-2',
+      line_number: 2,
       drug_name: 'アムロジピン 5mg',
+      dose: '1錠',
       frequency: '朝食後',
       route: '内服',
       tags: [],
       is_narcotic: false,
       prescribed_label: '28錠',
       prescribed_quantity: 28,
+      days: 28,
       dispensed_label: '28錠',
       dispensed_quantity: 28,
       unit: '錠',
@@ -167,13 +173,16 @@ const WORKBENCH: DispenseWorkbenchData = {
     {
       line_id: 'line-lansoprazole',
       result_id: 'result-3',
+      line_number: 3,
       drug_name: 'ランソプラゾール 15mg',
+      dose: '1錠',
       frequency: '朝食前',
       route: '内服',
       tags: [],
       is_narcotic: false,
       prescribed_label: '28錠',
       prescribed_quantity: 28,
+      days: 28,
       dispensed_label: '28錠',
       dispensed_quantity: 28,
       unit: '錠',
@@ -185,13 +194,16 @@ const WORKBENCH: DispenseWorkbenchData = {
     {
       line_id: 'line-insulin',
       result_id: 'result-4',
+      line_number: 4,
       drug_name: 'インスリン グラルギン',
+      dose: '1本',
       frequency: '眠前',
       route: '注射',
       tags: ['cold_storage'],
       is_narcotic: false,
       prescribed_label: '1本',
       prescribed_quantity: 1,
+      days: 1,
       dispensed_label: '1本',
       dispensed_quantity: 1,
       unit: '本',

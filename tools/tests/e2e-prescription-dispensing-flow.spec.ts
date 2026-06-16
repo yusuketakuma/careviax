@@ -130,7 +130,7 @@ test.describe('prescription intake flow', () => {
     const main = page.locator('main');
     await clickAndWaitForStableRoute(
       page,
-      /\/dispensing/,
+      /\/dispense/,
       () => main.getByRole('link', { name: '調剤キュー' }).first().click({ noWaitAfter: true }),
       { timeout: 45_000 },
     );
@@ -150,7 +150,7 @@ test.describe('dispensing → auditing flow', () => {
 
   test('dispensing queue loads and shows tasks or empty state', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await openStableRoute(page, '/dispensing');
+    await openStableRoute(page, '/dispense');
 
     await expect(page.getByRole('heading', { name: '調剤', exact: true })).toBeVisible();
 
@@ -163,7 +163,7 @@ test.describe('dispensing → auditing flow', () => {
   test('dispensing → auditing navigation works', async ({ context }) => {
     test.slow();
     const { page, errors } = await createInstrumentedPage(context);
-    await openStableRoute(page, '/dispensing');
+    await openStableRoute(page, '/dispense');
 
     const main = page.locator('main');
     await clickAndWaitForStableRoute(
@@ -204,7 +204,7 @@ test.describe('dispensing → auditing flow', () => {
     ).toBeVisible();
 
     // → dispensing
-    await clickAndWaitForStableRoute(page, /\/dispensing/, () =>
+    await clickAndWaitForStableRoute(page, /\/dispense/, () =>
       page.locator('main').getByRole('link', { name: '調剤キュー' }).first().click(),
     );
     await expect(page.getByRole('heading', { name: '調剤', exact: true })).toBeVisible();
@@ -222,7 +222,7 @@ test.describe('dispensing → auditing flow', () => {
     await expect(page.getByRole('heading', { name: '監査', exact: true })).toBeVisible();
 
     // → back to dispensing
-    await clickAndWaitForStableRoute(page, /\/dispensing/, () =>
+    await clickAndWaitForStableRoute(page, /\/dispense/, () =>
       page.locator('main').getByRole('link', { name: '調剤', exact: true }).first().click(),
     );
     await expect(page.getByRole('heading', { name: '調剤', exact: true })).toBeVisible();

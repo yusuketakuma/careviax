@@ -116,19 +116,64 @@ const WORKBENCH: DispenseWorkbenchData = {
     {
       line_id: 'line-famotidine',
       result_id: null,
+      line_number: 1,
       drug_name: 'ファモチジン',
+      dose: '1錠',
       frequency: '朝夕食後',
       route: 'internal',
       tags: [],
       is_narcotic: false,
       prescribed_label: '28錠',
       prescribed_quantity: 28,
+      days: 14,
       dispensed_label: null,
       dispensed_quantity: null,
       unit: '錠',
       dispensing_method: null,
       packaging_method: null,
       packaging_instructions: null,
+      packaging_group_id: null,
+    },
+    {
+      line_id: 'line-bedtime',
+      result_id: null,
+      line_number: 2,
+      drug_name: 'デエビゴ錠5mg',
+      dose: '1錠',
+      frequency: '寝る前',
+      route: 'internal',
+      tags: [],
+      is_narcotic: false,
+      prescribed_label: '14錠',
+      prescribed_quantity: 14,
+      days: 14,
+      dispensed_label: null,
+      dispensed_quantity: null,
+      unit: '錠',
+      dispensing_method: null,
+      packaging_method: 'blister_pack',
+      packaging_instructions: 'PTPで分包しない',
+      packaging_group_id: null,
+    },
+    {
+      line_id: 'line-crush',
+      result_id: null,
+      line_number: 3,
+      drug_name: 'ラメルテオン錠8mg',
+      dose: '0.125錠',
+      frequency: '寝る前',
+      route: 'internal',
+      tags: ['crush_prohibited'],
+      is_narcotic: false,
+      prescribed_label: '1.75錠',
+      prescribed_quantity: 1.75,
+      days: 14,
+      dispensed_label: null,
+      dispensed_quantity: null,
+      unit: '錠',
+      dispensing_method: null,
+      packaging_method: 'crush_and_pack',
+      packaging_instructions: '粉砕。0.2g/包になるよう賦形',
       packaging_group_id: null,
     },
   ],
@@ -252,8 +297,8 @@ describe('DispenseWorkbench', () => {
     expect(screen.getByText('取扱い注意')).toBeTruthy();
     expect(screen.getAllByText('1件').length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText('0件')).toBeTruthy();
-    expect(screen.getByText('実数量未入力 1件')).toBeTruthy();
-    expect(screen.getByText('該当なし')).toBeTruthy();
+    expect(screen.getByText('実数量未入力 3件')).toBeTruthy();
+    expect(screen.getAllByText('粉砕不可').length).toBeGreaterThanOrEqual(1);
 
     // セーフティボード
     expect(screen.getByTestId('safety-board')).toBeTruthy();
@@ -271,6 +316,15 @@ describe('DispenseWorkbench', () => {
     expect(screen.getByText('夕食後')).toBeTruthy();
     expect(screen.getByText('group_morning')).toBeTruthy();
     expect(screen.getByLabelText('朝食後の包装方法').className).toContain('min-h-[44px]');
+
+    // 中央薬剤フォーマット: 包装種別ごとに時点量と加工指示を見える化
+    expect(screen.getByTestId('medication-format-grid')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '中央薬剤フォーマット' })).toBeTruthy();
+    expect(screen.queryAllByText('一包化').length).toBeGreaterThan(0);
+    expect(screen.queryAllByText('PTP・分包しない').length).toBeGreaterThan(0);
+    expect(screen.queryAllByText('粉砕・混合').length).toBeGreaterThan(0);
+    expect(screen.queryAllByText('ラメルテオン錠8mg').length).toBeGreaterThan(0);
+    expect(screen.queryAllByText('0.125錠').length).toBeGreaterThan(0);
 
     // 処方比較(前回 / 今回 / 差)
     expect(screen.getByText('前回')).toBeTruthy();
@@ -379,7 +433,7 @@ describe('DispenseWorkbench', () => {
     render(<DispenseWorkbench />);
 
     fireEvent.click(screen.getByRole('button', { name: '医薬品グループを作成' }));
-    expect(screen.getByRole('button', { name: '作成済み 2件' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '作成済み 3件' })).toBeTruthy();
 
     const mutationFn = capturedMutationFns.at(-2) ?? capturedMutationFns[0];
     if (!mutationFn) throw new Error('mutationFn is required');

@@ -191,7 +191,7 @@ describe('/api/dispense-tasks POST', () => {
         orgId: 'org_1',
         eventType: 'dispense_task_emergency_created',
         type: 'urgent',
-        link: '/dispensing?taskId=task_1',
+        link: '/dispense?taskId=task_1',
         explicitUserIds: expect.arrayContaining([
           'pharmacist_1',
           'backup_1',

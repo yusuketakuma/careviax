@@ -124,7 +124,7 @@ export const SIDEBAR_MAIN_NAV_GROUPS: readonly LayoutNavGroup[] = [
         excludePrefixes: ['/prescriptions/new', '/prescriptions/intake'],
         excludeExact: ['/patients', '/patients/new'],
       },
-      { label: '調剤', href: '/dispensing', icon: Pill },
+      { label: '調剤', href: '/dispense', icon: Pill },
       { label: '監査', href: '/auditing', icon: ClipboardCheck, badgeTone: 'critical' },
       { label: 'セット', href: '/medication-sets', icon: Package },
       { label: '報告・共有', href: '/reports', icon: FileText },

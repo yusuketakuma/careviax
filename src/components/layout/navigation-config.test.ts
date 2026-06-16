@@ -32,7 +32,7 @@ describe('layout navigation config', () => {
       '/patients',
       '/prescriptions/intake',
       '/prescriptions',
-      '/dispensing',
+      '/dispense',
       '/auditing',
       '/medication-sets',
       '/reports',

@@ -25,9 +25,7 @@ import { Separator } from '@/components/ui/separator';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { WorkflowPageHeader } from '@/components/features/workflow/workflow-page-header';
 import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
-import {
-  JahisSupplementalRecordsCard,
-} from '@/components/features/prescriptions/jahis-supplemental-records-card';
+import { JahisSupplementalRecordsCard } from '@/components/features/prescriptions/jahis-supplemental-records-card';
 import {
   normalizeJahisSupplementalRecords,
   type JahisSupplementalRecordDbView,
@@ -205,7 +203,7 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
         <PageShortcutLinks
           links={[
             { href: `/patients/${patient.id}`, label: '患者詳細' },
-            { href: '/dispensing', label: '調剤キュー' },
+            { href: '/dispense', label: '調剤キュー' },
             { href: '/prescriptions/new', label: '新規受付' },
           ]}
         />
@@ -585,7 +583,7 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
             </Link>
           </Button>
           <Button variant="outline" size="sm" asChild>
-            <Link href="/dispensing">調剤キューへ</Link>
+            <Link href="/dispense">調剤キューへ</Link>
           </Button>
           <Button variant="outline" size="sm" asChild>
             <Link href={`/patients/${patient.id}`}>患者詳細</Link>

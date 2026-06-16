@@ -38,19 +38,19 @@ export const CYCLE_WORKSPACE_ACTIONS: Record<string, CycleWorkspaceAction> = {
     statusLabel: '照会反映待ち',
     description: '照会結果を反映して、調剤へ進めます。',
     actionLabel: '調剤へ進める',
-    actionHref: '/dispensing',
+    actionHref: '/dispense',
   },
   ready_to_dispense: {
     statusLabel: '調剤待ち',
     description: '処方の確認が済んでいます。調剤を始めます。',
     actionLabel: '調剤を始める',
-    actionHref: '/dispensing',
+    actionHref: '/dispense',
   },
   dispensing: {
     statusLabel: '調剤中',
     description: '調剤を仕上げて、鑑査へ進めます。',
     actionLabel: '調剤を続ける',
-    actionHref: '/dispensing',
+    actionHref: '/dispense',
   },
   dispensed: {
     statusLabel: '調剤鑑査待ち',

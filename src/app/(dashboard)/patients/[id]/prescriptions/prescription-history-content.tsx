@@ -1056,9 +1056,7 @@ function DiffReviewView({
               <TableBody>
                 {diff.rows.map((row) => (
                   <TableRow key={row.key}>
-                    <TableCell
-                      className={`font-medium ${DIFF_CHANGE_TEXT_COLOR[row.change_type]}`}
-                    >
+                    <TableCell className={`font-medium ${DIFF_CHANGE_TEXT_COLOR[row.change_type]}`}>
                       {row.change_label}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
@@ -1087,7 +1085,7 @@ function DiffReviewView({
               処方の変化を確認したら、調剤へ進みます。
             </p>
             <Button asChild className="w-full gap-1.5">
-              <Link href="/dispensing">
+              <Link href="/dispense">
                 <CheckCircle2 className="size-4" aria-hidden="true" />
                 確認して調剤へ
               </Link>
@@ -1143,9 +1141,7 @@ function DiffReviewView({
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-muted-foreground">
-                追加で確認したい項目はありません。
-              </p>
+              <p className="text-sm text-muted-foreground">追加で確認したい項目はありません。</p>
             )}
           </CardContent>
         </Card>

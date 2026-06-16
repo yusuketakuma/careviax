@@ -344,7 +344,7 @@ describe('/api/care-reports/today-workspace', () => {
 
     expect(json.data.resolved_today).toHaveLength(1);
     expect(json.data.resolved_today[0].title).toBe('佐々木 ハル 様 — 残薬照会(やまもと内科)');
-    expect(json.data.resolved_today[0].action).toEqual({ label: '→ 調剤へ', href: '/dispensing' });
+    expect(json.data.resolved_today[0].action).toEqual({ label: '→ 調剤へ', href: '/dispense' });
 
     expect(json.data.evidence).toEqual({ template_count: 3, monthly_delivery_count: 14 });
     expect(json.data.counts).toEqual({

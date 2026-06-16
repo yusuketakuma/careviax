@@ -93,7 +93,7 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
       received_at: '2026-06-11T00:31:00.000Z',
       title: '佐々木 ハル 様 — 残薬照会(やまもと内科)',
       subtitle: '回答は調剤画面に自動で反映済み。返信のお礼は不要の設定です。',
-      action: { label: '→ 調剤へ', href: '/dispensing' },
+      action: { label: '→ 調剤へ', href: '/dispense' },
     },
   ],
   created_reports: [

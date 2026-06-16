@@ -129,7 +129,7 @@ const WORKFLOW_DATA: WorkflowDashboardResponse['data'] = {
       title: 'RouteMock 訪問候補',
     },
     {
-      action_href: '/dispensing',
+      action_href: '/dispense',
       action_label: '調剤を開く',
       badges: ['調剤'],
       due_at: null,

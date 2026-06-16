@@ -31,7 +31,7 @@ vi.mock('@/components/features/keyboard/use-keyboard-shortcuts', () => ({
   useKeyboardShortcuts: vi.fn(),
 }));
 
-vi.mock('../dispensing/dispense-work-queue.shared', () => ({
+vi.mock('../dispense/dispense-work-queue.shared', () => ({
   useSelectableQueueState: (items: Array<{ id: string }>) => ({
     selectedItem: items[0] ?? null,
     handleMoveUp: vi.fn(),

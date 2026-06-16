@@ -83,7 +83,7 @@ function buildFixture(): PatientBoardResponse {
         status_text: '照会回答が届きました(09:31) — 調剤を再開できます',
         status_tone: 'positive',
         link_label: '調剤へ',
-        link_href: '/dispensing',
+        link_href: '/dispense',
       }),
       card({
         patient_id: 'pt_suzuki',

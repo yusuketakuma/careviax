@@ -29,10 +29,10 @@ setupDomTestEnv();
 
 describe('dispense-work-queue.shared', () => {
   it('renders patient links with kana when available', () => {
-    render(<QueuePatientLink href="/dispensing" name="山田花子" nameKana="ヤマダハナコ" />);
+    render(<QueuePatientLink href="/dispense" name="山田花子" nameKana="ヤマダハナコ" />);
 
     const link = screen.getByRole('link', { name: '山田花子(ヤマダハナコ)' });
-    expect(link.getAttribute('href')).toBe('/dispensing');
+    expect(link.getAttribute('href')).toBe('/dispense');
   });
 
   it('renders overdue due dates in compact auditing mode', () => {

@@ -50,7 +50,7 @@ import {
   type DispenseSafetySummary,
   type DispenseWorkbenchData,
   type WorkbenchCountRow,
-} from '@/app/(dashboard)/dispensing/dispense-workbench.shared';
+} from '@/app/(dashboard)/dispense/dispense-workbench.shared';
 
 /**
  * design/images/new 08_audit: 3 ペインの監査ワークベンチ。
@@ -642,7 +642,7 @@ export function AuditWorkbench() {
                 id: 'dispense-record',
                 label: `調剤記録(${familyName(workbench.dispenser.name)})`,
                 meta: workbench.dispenser.time_label ?? undefined,
-                href: `/dispensing?taskId=${encodeURIComponent(workbench.task.id)}`,
+                href: `/dispense?taskId=${encodeURIComponent(workbench.task.id)}`,
               },
             ]
           : []),
@@ -706,7 +706,7 @@ export function AuditWorkbench() {
           </p>
         </div>
         <nav className="flex flex-wrap gap-2" aria-label="監査関連導線">
-          <Link href="/dispensing" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+          <Link href="/dispense" className={buttonVariants({ variant: 'outline', size: 'sm' })}>
             調剤
           </Link>
           <Link

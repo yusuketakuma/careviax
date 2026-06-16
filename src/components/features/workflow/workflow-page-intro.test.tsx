@@ -84,7 +84,7 @@ describe('WorkflowPageIntro', () => {
   it('can render the compact main workflow navigator below the header', () => {
     render(
       <WorkflowPageIntro
-        backHref="/dispensing"
+        backHref="/dispense"
         backLabel="調剤へ戻る"
         title="調剤"
         description="調剤ワークベンチです。"

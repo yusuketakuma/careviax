@@ -527,7 +527,7 @@ export const GET = withAuthContext(
             title: patient ? `${patient} — ${response.request.subject}` : response.request.subject,
             // 回答反映と「お礼不要」は運用ポリシー(14_settings)由来の説明文
             subtitle: '回答は調剤画面に自動で反映済み。返信のお礼は不要の設定です。',
-            action: { label: '→ 調剤へ', href: '/dispensing' },
+            action: { label: '→ 調剤へ', href: '/dispense' },
           };
         });
 

@@ -26,7 +26,7 @@ const ROOT_ROUTES = [
   { name: 'prescriptions', route: '/prescriptions' },
   { name: 'prescriptions-new', route: '/prescriptions/new' },
   { name: 'qr-scan', route: '/qr-scan' },
-  { name: 'dispensing', route: '/dispensing' },
+  { name: 'dispensing', route: '/dispense' },
   { name: 'auditing', route: '/auditing' },
   { name: 'medication-sets', route: '/medication-sets' },
   { name: 'schedules', route: '/schedules' },

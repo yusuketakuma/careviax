@@ -73,7 +73,7 @@ const STEP_LINKS: Record<string, { label: string; href: string }> = {
   intake: { label: '取込へ', href: '/prescriptions' },
   entry: { label: '入力へ', href: '/prescriptions' },
   decision: { label: 'カードへ', href: '' }, // href は患者詳細(呼び出し側で補完)
-  dispense: { label: '調剤へ', href: '/dispensing' },
+  dispense: { label: '調剤へ', href: '/dispense' },
   audit: { label: '監査へ', href: '/auditing' },
   set: { label: 'セットへ', href: '/medication-sets' },
   visit: { label: '訪問へ', href: '/visits' },

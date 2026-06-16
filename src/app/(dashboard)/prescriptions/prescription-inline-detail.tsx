@@ -344,7 +344,7 @@ export function PrescriptionInlineDetail({ intakeId }: { intakeId: string }) {
       {/* ── フッタ: アクション ── */}
       <div className="flex items-center gap-2 border-t bg-muted/20 px-3 py-1.5">
         <Button variant="default" size="sm" className="h-6 px-3 text-[11px]" asChild>
-          <Link href="/dispensing">調剤キューへ</Link>
+          <Link href="/dispense">調剤キューへ</Link>
         </Button>
         <Button variant="outline" size="sm" className="h-6 px-3 text-[11px]" asChild>
           <Link href={`/prescriptions/${data.id}`}>全画面表示</Link>

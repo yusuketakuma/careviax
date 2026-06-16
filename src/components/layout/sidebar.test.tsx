@@ -111,7 +111,7 @@ describe('Sidebar', () => {
       '/patients',
       '/prescriptions/intake',
       '/prescriptions',
-      '/dispensing',
+      '/dispense',
       '/auditing',
       '/medication-sets',
       '/reports',
@@ -184,7 +184,7 @@ describe('Sidebar', () => {
 
     expect(screen.getByTestId('sidebar-nav-home').getAttribute('href')).toBe('/dashboard');
     expect(screen.getByTestId('sidebar-nav-patients').getAttribute('href')).toBe('/patients');
-    expect(screen.getByTestId('sidebar-nav-dispensing').getAttribute('href')).toBe('/dispensing');
+    expect(screen.getByTestId('sidebar-nav-dispense').getAttribute('href')).toBe('/dispense');
   });
 
   it('keeps admin analytics pages active under マスター after the report item removal', () => {

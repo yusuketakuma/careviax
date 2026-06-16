@@ -1,5 +1,5 @@
 import { differenceInMinutes, format, parseISO } from 'date-fns';
-import { generatePackagingGroups } from '@/lib/dispensing/packaging-group';
+import { generatePackagingGroups, parseFrequencyToSlots } from '@/lib/dispensing/packaging-group';
 
 /**
  * design/images/new 07_dispense / 08_audit ワークベンチ共通の純関数・型。
@@ -23,13 +23,16 @@ export type WorkbenchComparisonRow = {
 export type WorkbenchCountRow = {
   line_id: string;
   result_id: string | null;
+  line_number: number | null;
   drug_name: string;
+  dose: string | null;
   frequency: string;
   route: string | null;
   tags: string[];
   is_narcotic: boolean;
   prescribed_label: string;
   prescribed_quantity: number | null;
+  days: number | null;
   dispensed_label: string | null;
   dispensed_quantity: number | null;
   unit: string;
@@ -99,6 +102,50 @@ export type DispenseMedicationGroup = {
   lineNames: string[];
   crushProhibitedCount: number;
   cautionLabels: string[];
+};
+
+export type MedicationDoseSlotKey = 'morning' | 'noon' | 'evening' | 'bedtime';
+
+export type MedicationFormatDoseSlot = {
+  key: MedicationDoseSlotKey;
+  label: string;
+  text: string;
+  status: 'scheduled' | 'none' | 'needs_check';
+};
+
+export type MedicationFormatGroupKind =
+  | 'unit_dose'
+  | 'separate_pack'
+  | 'do_not_package'
+  | 'crush_and_pack'
+  | 'prn'
+  | 'non_internal'
+  | 'other';
+
+export type MedicationFormatLine = {
+  lineId: string;
+  lineNumber: number | null;
+  drugName: string;
+  usage: string;
+  doseText: string | null;
+  days: number | null;
+  quantityLabel: string;
+  dispensedLabel: string | null;
+  unit: string;
+  slots: Record<MedicationDoseSlotKey, MedicationFormatDoseSlot>;
+  processingLabels: string[];
+  cautionLabels: string[];
+  notes: string[];
+  statusLabel: string;
+};
+
+export type MedicationFormatGroup = {
+  id: string;
+  kind: MedicationFormatGroupKind;
+  label: string;
+  description: string;
+  sortOrder: number;
+  lines: MedicationFormatLine[];
 };
 
 // ── ラベル合成 ──
@@ -185,6 +232,9 @@ const HANDLING_TAG_LABELS: Record<string, string> = {
   high_risk: 'ハイリスク',
   lasa: 'LASA',
   unit_dose: '一包化',
+  crush_prohibited: '粉砕不可',
+  separate_pack: '別包',
+  half_tablet: '半割',
 };
 
 const PACKAGING_METHOD_LABELS: Record<DispenseMedicationGroupMethod, string> = {
@@ -220,6 +270,214 @@ function inferGroupMethod(rows: WorkbenchCountRow[]): DispenseMedicationGroupMet
 
 export function getDispenseMedicationGroupMethodLabel(method: DispenseMedicationGroupMethod) {
   return PACKAGING_METHOD_LABELS[method];
+}
+
+const MEDICATION_DOSE_SLOT_LABELS: Record<MedicationDoseSlotKey, string> = {
+  morning: '朝',
+  noon: '昼',
+  evening: '夕',
+  bedtime: '眠前',
+};
+
+const MEDICATION_DOSE_SLOT_KEYS: MedicationDoseSlotKey[] = [
+  'morning',
+  'noon',
+  'evening',
+  'bedtime',
+];
+
+const MEDICATION_GROUP_PRESENTATION: Record<
+  MedicationFormatGroupKind,
+  { label: string; description: string; sortOrder: number }
+> = {
+  unit_dose: {
+    label: '一包化',
+    description: '氏名・日付・用法の印字対象。朝昼夕眠前の包を同じ行で確認します。',
+    sortOrder: 10,
+  },
+  crush_and_pack: {
+    label: '粉砕・混合',
+    description: '粉砕、脱カプ、賦形など加工が必要な薬剤です。',
+    sortOrder: 20,
+  },
+  separate_pack: {
+    label: '別包',
+    description: '薬品名や条件を分けて印字・確認する薬剤です。',
+    sortOrder: 30,
+  },
+  do_not_package: {
+    label: 'PTP・分包しない',
+    description: '一包化から外し、PTPや個別管理で渡す薬剤です。',
+    sortOrder: 40,
+  },
+  prn: {
+    label: '頓用',
+    description: '必要時のみ。定時包に混ぜない薬剤です。',
+    sortOrder: 50,
+  },
+  non_internal: {
+    label: '外用・注射・非内服',
+    description: '内服包とは別管理。持参漏れと冷所管理を確認します。',
+    sortOrder: 60,
+  },
+  other: {
+    label: 'その他',
+    description: '包装方法が未確定、または個別確認が必要な薬剤です。',
+    sortOrder: 70,
+  },
+};
+
+function compactLabels(labels: Array<string | null | undefined>): string[] {
+  return [...new Set(labels.filter((label): label is string => Boolean(label?.trim())))];
+}
+
+function formatDoseNumber(value: number): string {
+  if (Number.isInteger(value)) return String(value);
+  return String(Number(value.toFixed(3))).replace(/\.0+$/, '');
+}
+
+function buildDoseSlotText(
+  row: WorkbenchCountRow,
+  scheduledSlots: string[],
+): { text: string; needsCheck: boolean } {
+  if (row.prescribed_quantity == null || row.days == null || row.days <= 0) {
+    return { text: '要確認', needsCheck: true };
+  }
+  if (scheduledSlots.length === 0) return { text: '—', needsCheck: false };
+  const perDose = row.prescribed_quantity / row.days / scheduledSlots.length;
+  if (!Number.isFinite(perDose) || perDose <= 0) {
+    return { text: '要確認', needsCheck: true };
+  }
+  const rounded = Number(perDose.toFixed(3));
+  const needsCheck = Math.abs(perDose - rounded) > Number.EPSILON;
+  return { text: `${formatDoseNumber(rounded)}${row.unit}`, needsCheck };
+}
+
+function includesInstruction(row: WorkbenchCountRow, pattern: RegExp): boolean {
+  return pattern.test(row.packaging_instructions ?? '') || pattern.test(row.packaging_method ?? '');
+}
+
+function classifyMedicationFormatGroup(row: WorkbenchCountRow): MedicationFormatGroupKind {
+  const frequencySlots = parseFrequencyToSlots(row.frequency);
+  if (row.route && !['internal', 'oral', '内服'].includes(row.route)) return 'non_internal';
+  if (frequencySlots.includes('prn')) return 'prn';
+  if (
+    row.packaging_method === 'crush_and_pack' ||
+    row.packaging_method === 'crushed' ||
+    includesInstruction(row, /粉砕|脱カプ|賦形|混合/)
+  ) {
+    return 'crush_and_pack';
+  }
+  if (row.tags.includes('separate_pack') || includesInstruction(row, /別包/))
+    return 'separate_pack';
+  if (
+    row.packaging_method === 'blister_pack' ||
+    includesInstruction(row, /PTP|分包しない|ヒート|シート/)
+  ) {
+    return 'do_not_package';
+  }
+  if (
+    row.tags.includes('unit_dose') ||
+    row.packaging_method === 'unit_dose' ||
+    row.packaging_method == null
+  ) {
+    return 'unit_dose';
+  }
+  return 'other';
+}
+
+function buildMedicationFormatLine(row: WorkbenchCountRow): MedicationFormatLine {
+  const rawSlots = parseFrequencyToSlots(row.frequency);
+  const scheduledSlots = rawSlots.filter((slot): slot is MedicationDoseSlotKey =>
+    MEDICATION_DOSE_SLOT_KEYS.includes(slot as MedicationDoseSlotKey),
+  );
+  const doseSlot = buildDoseSlotText(row, scheduledSlots);
+  const slots = Object.fromEntries(
+    MEDICATION_DOSE_SLOT_KEYS.map((key) => [
+      key,
+      {
+        key,
+        label: MEDICATION_DOSE_SLOT_LABELS[key],
+        text: scheduledSlots.includes(key) ? doseSlot.text : '—',
+        status: scheduledSlots.includes(key)
+          ? doseSlot.needsCheck
+            ? 'needs_check'
+            : 'scheduled'
+          : 'none',
+      } satisfies MedicationFormatDoseSlot,
+    ]),
+  ) as Record<MedicationDoseSlotKey, MedicationFormatDoseSlot>;
+
+  const processingLabels = compactLabels([
+    row.tags.includes('unit_dose') || row.packaging_method === 'unit_dose' ? '一包化' : null,
+    includesInstruction(row, /粉砕/) || row.packaging_method === 'crush_and_pack' ? '粉砕' : null,
+    includesInstruction(row, /脱カプ/) ? '脱カプ' : null,
+    includesInstruction(row, /賦形/) ? '賦形' : null,
+    row.tags.includes('half_tablet') || includesInstruction(row, /半割|0\.5/) ? '半割' : null,
+    row.tags.includes('separate_pack') || includesInstruction(row, /別包/) ? '別包' : null,
+    row.packaging_method === 'blister_pack' || includesInstruction(row, /PTP|分包しない/)
+      ? 'PTP・分包しない'
+      : null,
+  ]);
+  const cautionLabels = compactLabels(
+    row.tags.map((tag) => HANDLING_TAG_LABELS[tag] ?? null).concat(row.is_narcotic ? ['麻薬'] : []),
+  );
+  const notes = compactLabels([
+    rawSlots.includes('prn') ? '頓用・必要時' : null,
+    doseSlot.needsCheck ? '時点量を処方原本で確認' : null,
+    row.packaging_instructions,
+    row.packaging_group_id ? `包装グループ ${row.packaging_group_id}` : null,
+  ]);
+
+  return {
+    lineId: row.line_id,
+    lineNumber: row.line_number,
+    drugName: row.drug_name,
+    usage: row.frequency || '用法未登録',
+    doseText: row.dose,
+    days: row.days,
+    quantityLabel: row.prescribed_label,
+    dispensedLabel: row.dispensed_label,
+    unit: row.unit,
+    slots,
+    processingLabels,
+    cautionLabels,
+    notes,
+    statusLabel:
+      row.prescribed_quantity == null
+        ? '数量未確定'
+        : row.dispensed_quantity == null
+          ? '未調剤'
+          : '調剤済',
+  };
+}
+
+export function buildMedicationFormatGroups(rows: WorkbenchCountRow[]): MedicationFormatGroup[] {
+  const grouped = new Map<MedicationFormatGroupKind, MedicationFormatLine[]>();
+  for (const row of rows) {
+    const kind = classifyMedicationFormatGroup(row);
+    const lines = grouped.get(kind) ?? [];
+    lines.push(buildMedicationFormatLine(row));
+    grouped.set(kind, lines);
+  }
+
+  return Array.from(grouped.entries())
+    .map(([kind, lines]) => {
+      const presentation = MEDICATION_GROUP_PRESENTATION[kind];
+      return {
+        id: kind,
+        kind,
+        label: presentation.label,
+        description: presentation.description,
+        sortOrder: presentation.sortOrder,
+        lines: lines.sort((left, right) => {
+          if (left.lineNumber != null && right.lineNumber != null)
+            return left.lineNumber - right.lineNumber;
+          return left.drugName.localeCompare(right.drugName, 'ja');
+        }),
+      };
+    })
+    .sort((left, right) => left.sortOrder - right.sortOrder);
 }
 
 export function buildDispenseMedicationGroups(

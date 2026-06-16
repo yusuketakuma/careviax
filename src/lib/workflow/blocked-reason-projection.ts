@@ -66,9 +66,9 @@ const EXCEPTION_PRESENTATIONS: Record<string, BlockedReasonPresentation> = {
   dispense_audit_rejected: {
     category: '調剤',
     actionLabel: '状況を見る →',
-    actionHref: '/dispensing',
+    actionHref: '/dispense',
   },
-  partial_dispense: { category: '調剤', actionLabel: '状況を見る →', actionHref: '/dispensing' },
+  partial_dispense: { category: '調剤', actionLabel: '状況を見る →', actionHref: '/dispense' },
   set_audit_rejected: {
     category: '調剤',
     actionLabel: '状況を見る →',
@@ -87,9 +87,7 @@ const EXCEPTION_PRESENTATION_FALLBACK: BlockedReasonPresentation = {
  * exception_type を表示用 presentation(カテゴリ/アクション)へ解決する。
  * 未知のタイプはフォールバック(事務 / 状況を見る → / /workflow)を返す。
  */
-export function resolveBlockedReasonPresentation(
-  exceptionType: string,
-): BlockedReasonPresentation {
+export function resolveBlockedReasonPresentation(exceptionType: string): BlockedReasonPresentation {
   return EXCEPTION_PRESENTATIONS[exceptionType] ?? EXCEPTION_PRESENTATION_FALLBACK;
 }
 
@@ -119,10 +117,7 @@ export type BlockedReason = {
  * @param exceptions open な WorkflowException(id / exception_type / description / severity / created_at)
  * @param now 経過分(age_minutes)算出の基準時刻
  */
-export function buildBlockedReasons(
-  exceptions: BlockedReasonSource[],
-  now: Date,
-): BlockedReason[] {
+export function buildBlockedReasons(exceptions: BlockedReasonSource[], now: Date): BlockedReason[] {
   const nowMs = now.getTime();
   return exceptions.map((exception) => {
     const presentation = resolveBlockedReasonPresentation(exception.exception_type);

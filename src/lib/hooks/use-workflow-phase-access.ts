@@ -194,7 +194,7 @@ export function buildWorkflowPhaseAccess(
 ): Record<WorkflowPhaseKey, WorkflowPhaseAccessItem> {
   const workbench = normalizeWorkflowWorkbench(payload.unified_workbench) ?? [];
   const proposals = workbench.filter((item) => item.item_type === 'proposal');
-  const dispensing = workbench.filter((item) => item.action_href.startsWith('/dispensing'));
+  const dispensing = workbench.filter((item) => item.action_href.startsWith('/dispense'));
   const auditing = workbench.filter((item) => item.action_href.startsWith('/auditing'));
   const medicationSets = workbench.filter((item) =>
     item.action_href.startsWith('/medication-sets'),
@@ -261,7 +261,7 @@ export function buildWorkflowPhaseAccess(
     dispensing: {
       preview_items: dispensingNext ? [previewFromWorkbenchItem(dispensingNext)] : [],
       label: '調剤',
-      href: '/dispensing',
+      href: '/dispense',
       pending_count: dispensing.length,
       summary: dispensing.length > 0 ? `調剤待ち ${dispensing.length}件` : '調剤待ちはありません',
       tone: dispensing.length > 0 ? 'warning' : 'default',
