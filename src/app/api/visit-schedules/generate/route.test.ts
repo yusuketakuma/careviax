@@ -722,6 +722,54 @@ describe('/api/visit-schedules/generate POST', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it('rejects recurring generation ranges longer than 120 days before loading the case', async () => {
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
+        start_date: '2026-04-01',
+        end_date: '2026-08-01',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '訪問予定の一括生成期間は120日以内にしてください',
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(evaluateVisitWorkflowGateMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects recurring rules that would create more than 100 candidates before loading the case', async () => {
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,TU,WE,TH,FR,SA,SU',
+        start_date: '2026-04-01',
+        end_date: '2026-07-29',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '一度に生成できる訪問予定は100件までです',
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(evaluateVisitWorkflowGateMock).not.toHaveBeenCalled();
+    expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
   it('rejects non-object generate payloads before loading the case', async () => {
     const response = await POST(createRequest(['case_1']));
 

@@ -1,4 +1,4 @@
-import { format, startOfWeek } from 'date-fns';
+import { differenceInCalendarDays, format, startOfWeek } from 'date-fns';
 import { NextRequest } from 'next/server';
 import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -30,6 +30,9 @@ const WEEKLY_LIMITS: Record<string, number> = {
   medical: 1,
   care: 1,
 };
+
+const MAX_GENERATED_VISIT_SCHEDULE_RANGE_DAYS = 120;
+const MAX_GENERATED_VISIT_SCHEDULE_CANDIDATES = 100;
 
 function normalizeWeekdays(value: unknown) {
   if (!Array.isArray(value)) return [];
@@ -139,6 +142,20 @@ export const POST = withAuthContext(
       return validationError('開始日は終了日以前である必要があります');
     }
 
+    if (differenceInCalendarDays(endDate, startDate) > MAX_GENERATED_VISIT_SCHEDULE_RANGE_DAYS) {
+      return validationError('訪問予定の一括生成期間は120日以内にしてください');
+    }
+
+    const candidateDates = parseSimpleRruleDates(recurrence_rule, startDate, endDate);
+
+    if (candidateDates.length === 0) {
+      return validationError('指定されたRRULEから日程を生成できませんでした');
+    }
+
+    if (candidateDates.length > MAX_GENERATED_VISIT_SCHEDULE_CANDIDATES) {
+      return validationError('一度に生成できる訪問予定は100件までです');
+    }
+
     const careCase = await prisma.careCase.findFirst({
       where: {
         id: case_id,
@@ -165,12 +182,6 @@ export const POST = withAuthContext(
       })
     ) {
       return forbiddenResponse('このケースまたは担当薬剤師で訪問予定を生成する権限がありません');
-    }
-
-    const candidateDates = parseSimpleRruleDates(recurrence_rule, startDate, endDate);
-
-    if (candidateDates.length === 0) {
-      return validationError('指定されたRRULEから日程を生成できませんでした');
     }
 
     const workflowGates = await Promise.all(
