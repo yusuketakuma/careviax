@@ -19,6 +19,7 @@ export type PatientHomeOperationActionKey =
   | 'record_billing_payment_profile'
   | 'record_billing_collection'
   | 'record_conference_note'
+  | 'open_visit_proposal'
   | 'record_mcs_check_log';
 
 export type PatientHomeOperationQuickAction = {

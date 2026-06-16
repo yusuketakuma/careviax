@@ -1421,6 +1421,15 @@ function buildConferenceItem(args: {
     ],
     alerts,
     quick_actions: [
+      ...(syncSummary?.visit_proposal_id
+        ? [
+            {
+              key: 'open_visit_proposal' as const,
+              label: '予定候補を確認',
+              resource_id: syncSummary.visit_proposal_id,
+            },
+          ]
+        : []),
       {
         key: 'record_conference_note',
         label: note ? '会議要点を追記' : '会議要点を登録',

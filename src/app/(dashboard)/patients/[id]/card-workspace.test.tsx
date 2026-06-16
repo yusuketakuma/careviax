@@ -532,6 +532,11 @@ describe('CardWorkspace', () => {
           alerts: [],
           quick_actions: [
             {
+              key: 'open_visit_proposal',
+              label: '予定候補を確認',
+              resource_id: 'proposal_1',
+            },
+            {
               key: 'record_conference_note',
               label: '会議要点を追記',
               resource_id: 'case_1',
@@ -600,6 +605,13 @@ describe('CardWorkspace', () => {
     expect(within(homeOps).queryByText('支払者区分コード')).toBeNull();
     expect(within(homeOps).getByRole('button', { name: /支払設定を更新/ })).toBeTruthy();
     expect(within(homeOps).getByRole('button', { name: /集金記録を更新/ })).toBeTruthy();
+    expect(
+      within(homeOps)
+        .getByRole('link', { name: /予定候補を確認/ })
+        .getAttribute('href'),
+    ).toBe(
+      '/schedules/proposals?workspace=dashboard&patient_id=patient_1&case_id=case_1&focus=patient&detail=proposal_1',
+    );
     expect(within(homeOps).getByRole('button', { name: /会議要点を追記/ })).toBeTruthy();
     expect(within(homeOps).getByRole('button', { name: /原本到着を記録/ })).toBeTruthy();
     expect(within(homeOps).getByRole('button', { name: /画像\/PDFを保存/ })).toBeTruthy();

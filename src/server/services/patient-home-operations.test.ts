@@ -462,6 +462,11 @@ describe('getPatientHomeOperationsData', () => {
       ]),
       quick_actions: [
         {
+          key: 'open_visit_proposal',
+          label: '予定候補を確認',
+          resource_id: 'proposal_1',
+        },
+        {
           key: 'record_conference_note',
           label: '会議要点を追記',
           resource_id: 'case_1',

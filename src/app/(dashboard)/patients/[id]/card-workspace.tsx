@@ -651,6 +651,30 @@ function PatientHomeOperationsPanel({
                     />
                   );
                 }
+                if (action.key === 'open_visit_proposal') {
+                  const caseId = queryParamValue(item.href, 'case_id');
+                  const href = `/schedules/proposals?${new URLSearchParams({
+                    workspace: 'dashboard',
+                    patient_id: patient.id,
+                    ...(caseId ? { case_id: caseId } : {}),
+                    focus: 'patient',
+                    detail: action.resource_id,
+                  }).toString()}`;
+                  return (
+                    <Link
+                      key={action.key}
+                      href={href}
+                      className={buttonVariants({
+                        variant: 'outline',
+                        size: 'sm',
+                        className: 'mt-3 min-h-10 w-full justify-center bg-background/80',
+                      })}
+                    >
+                      <CalendarDays className="mr-1.5 size-4" aria-hidden="true" />
+                      {action.label}
+                    </Link>
+                  );
+                }
                 if (action.key === 'record_mcs_check_log') {
                   return (
                     <McsCheckLogQuickForm
