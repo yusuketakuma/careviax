@@ -734,20 +734,26 @@ export function AuditWorkbench() {
         />
       </div>
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)_minmax(250px,280px)] xl:items-start">
+      <div className="mt-4 grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)] xl:items-start 2xl:grid-cols-[260px_minmax(0,1fr)_minmax(250px,280px)]">
         {/* 左: 私の監査キュー */}
-        <AuditQueuePanel
-          rows={queueRows}
-          totalCount={queueRows.length}
-          teamTotal={workbench?.team_audit_total ?? null}
-          selectedTaskId={activeTaskId}
-          selectedSubline={selectedSubline}
-          onSelect={setSelectedTaskId}
-          isLoading={!orgId || queueQuery.isLoading}
-        />
+        <div className="order-2 xl:order-none">
+          <AuditQueuePanel
+            rows={queueRows}
+            totalCount={queueRows.length}
+            teamTotal={workbench?.team_audit_total ?? null}
+            selectedTaskId={activeTaskId}
+            selectedSubline={selectedSubline}
+            onSelect={setSelectedTaskId}
+            isLoading={!orgId || queueQuery.isLoading}
+          />
+        </div>
 
         {/* 中央: 監査詳細 */}
-        <WorkbenchCard aria-label="監査詳細" data-testid="audit-now-card" className="min-w-0">
+        <WorkbenchCard
+          aria-label="監査詳細"
+          data-testid="audit-now-card"
+          className="order-1 min-w-0 xl:order-none"
+        >
           {!activeTaskId ? (
             <p className="text-sm text-muted-foreground">
               監査待ちはありません。調剤が完了すると、ここに監査対象が表示されます。
@@ -823,14 +829,14 @@ export function AuditWorkbench() {
                 </p>
               )}
 
-              {auditHandoffSummary ? <AuditHandoffSummary summary={auditHandoffSummary} /> : null}
-
               <MedicationFormatGrid
                 title="監査薬剤フォーマット"
                 groups={medicationFormatGroups}
                 mode="dispenseAudit"
                 className="mt-3"
               />
+
+              {auditHandoffSummary ? <AuditHandoffSummary summary={auditHandoffSummary} /> : null}
 
               {/* 計数テーブル(麻薬ダブルカウント) */}
               <CountTable
@@ -931,6 +937,7 @@ export function AuditWorkbench() {
           blockedReasonsEmptyLabel="止まっている作業はありません"
           evidence={evidence}
           evidenceOpenLabel="開く"
+          className="order-3 xl:col-span-2 xl:order-none 2xl:col-span-1"
         />
       </div>
 

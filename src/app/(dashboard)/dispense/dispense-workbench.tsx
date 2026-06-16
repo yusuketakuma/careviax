@@ -782,19 +782,21 @@ export function DispenseWorkbench() {
         />
       </div>
 
-      <div className="mt-4 grid min-w-0 gap-4 xl:grid-cols-[260px_minmax(0,1fr)_minmax(250px,280px)] xl:items-start">
+      <div className="mt-4 grid min-w-0 gap-4 xl:grid-cols-[260px_minmax(0,1fr)] xl:items-start 2xl:grid-cols-[260px_minmax(0,1fr)_minmax(250px,280px)]">
         {/* 左: 調剤キュー */}
-        <DispenseQueuePanel
-          rows={queueRows}
-          totalCount={queueRows.length}
-          selectedTaskId={activeTaskId}
-          selectedHasInquiryChange={hasInquiryChange}
-          onSelect={setSelectedTaskId}
-          isLoading={!orgId || queueQuery.isLoading}
-        />
+        <div className="order-2 xl:order-none">
+          <DispenseQueuePanel
+            rows={queueRows}
+            totalCount={queueRows.length}
+            selectedTaskId={activeTaskId}
+            selectedHasInquiryChange={hasInquiryChange}
+            onSelect={setSelectedTaskId}
+            isLoading={!orgId || queueQuery.isLoading}
+          />
+        </div>
 
         {/* 中央: いまの1件 */}
-        <div className="min-w-0 space-y-3">
+        <div className="order-1 min-w-0 space-y-3 xl:order-none">
           <WorkbenchCard aria-label="いまの1件" data-testid="dispense-now-card">
             {!activeTaskId ? (
               <p className="text-sm text-muted-foreground">
@@ -832,6 +834,13 @@ export function DispenseWorkbench() {
                     割り込み防護 {guardOn ? 'ON' : 'OFF'}
                   </button>
                 </div>
+
+                <MedicationFormatGrid
+                  title="中央薬剤フォーマット"
+                  groups={medicationFormatGroups}
+                  mode="dispense"
+                  className="mt-3"
+                />
 
                 {safetySummary ? <SafetySummaryPanel summary={safetySummary} /> : null}
 
@@ -889,12 +898,6 @@ export function DispenseWorkbench() {
                     />
                   </div>
                   <div className="min-w-0 space-y-3">
-                    <MedicationFormatGrid
-                      title="中央薬剤フォーマット"
-                      groups={medicationFormatGroups}
-                      mode="dispense"
-                    />
-
                     {/* 処方比較(前回 / 今回 / 差) */}
                     <ComparisonTable workbench={workbench} />
 
@@ -985,6 +988,7 @@ export function DispenseWorkbench() {
           blockedReasonsEmptyLabel="止まっている作業はありません"
           evidence={evidence}
           evidenceOpenLabel="開く"
+          className="order-3 xl:col-span-2 xl:order-none 2xl:col-span-1"
         />
       </div>
 
