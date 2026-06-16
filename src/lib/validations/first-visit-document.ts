@@ -72,6 +72,13 @@ export const updateFirstVisitDocumentSchema = z
           .default('first_visit_document'),
         template_name: z.string().trim().max(120).optional().nullable(),
         template_version: z.string().trim().max(40).optional().nullable(),
+        print_batch_id: z
+          .string()
+          .trim()
+          .max(80)
+          .regex(/^[A-Za-z0-9_-]+$/, '印刷バッチIDは英数字、_、-で指定してください')
+          .optional()
+          .nullable(),
         storage_location: z
           .enum(['store', 'headquarters', 'patient_home_copy_only', 'electronic', 'unknown'])
           .optional()

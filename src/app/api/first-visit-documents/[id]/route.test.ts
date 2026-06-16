@@ -356,6 +356,7 @@ describe('/api/first-visit-documents/[id]', () => {
           document_type: 'first_visit_document',
           template_name: '契約・同意控え',
           template_version: 'print-preview',
+          print_batch_id: 'print_20260616T013000Z_batch1',
           note: '印刷ハブから印刷',
         },
       }),
@@ -380,6 +381,7 @@ describe('/api/first-visit-documents/[id]', () => {
           document_action: expect.objectContaining({
             action: 'printed',
             document_type: 'first_visit_document',
+            print_batch_id: 'print_20260616T013000Z_batch1',
             note: '印刷ハブから印刷',
           }),
           patient_id: 'patient_1',

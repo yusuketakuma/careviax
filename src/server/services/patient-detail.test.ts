@@ -1304,6 +1304,7 @@ describe('getPatientDocumentsData', () => {
         document_type: 'contract',
         template_name: '居宅療養管理指導契約書 2026年版',
         template_version: 'v1.1',
+        print_batch_id: null,
         storage_location: 'store',
         reason: '署名者を長女へ訂正',
         note: '本人同席',

@@ -70,6 +70,15 @@ function pickLatestFirstVisitHistory(document: FirstVisitDocumentForPrint) {
   )[0];
 }
 
+function buildPrintBatchId() {
+  const timestamp = new Date().toISOString().replace(/[^0-9A-Za-z]/g, '');
+  const random =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID().replace(/-/g, '').slice(0, 12)
+      : Math.random().toString(36).slice(2, 14);
+  return `print_${timestamp}_${random}`;
+}
+
 async function recordFirstVisitPrintHistory({
   orgId,
   patientId,
@@ -81,6 +90,7 @@ async function recordFirstVisitPrintHistory({
   documents: readonly FirstVisitDocumentForPrint[];
   saveCopy: boolean;
 }) {
+  const printBatchId = buildPrintBatchId();
   await Promise.all(
     documents.map(async (document) => {
       const latestHistory = pickLatestFirstVisitHistory(document);
@@ -101,6 +111,7 @@ async function recordFirstVisitPrintHistory({
             document_type: latestHistory?.document_type ?? 'first_visit_document',
             template_name: latestHistory?.template_name ?? '契約・同意控え',
             template_version: latestHistory?.template_version ?? 'print-preview',
+            print_batch_id: printBatchId,
             storage_location: latestHistory?.storage_location ?? null,
             note: documentUrl ? '印刷ハブから印刷し、控えリンクを保存' : '印刷ハブから印刷',
           },
@@ -588,6 +599,7 @@ function FirstVisitDocumentsSheet({
                 <th className="py-1.5 pr-2 font-medium">作成日</th>
                 <th className="py-1.5 pr-2 font-medium">交付</th>
                 <th className="py-1.5 pr-2 font-medium">最新履歴</th>
+                <th className="py-1.5 pr-2 font-medium">印刷</th>
                 <th className="py-1.5 font-medium">控え</th>
               </tr>
             </thead>
@@ -603,6 +615,10 @@ function FirstVisitDocumentsSheet({
                     <span className="block text-foreground">{row.latestActionLabel}</span>
                     <span className="block text-muted-foreground">{row.latestStorageLabel}</span>
                     <span className="block text-muted-foreground">{row.latestTemplateLabel}</span>
+                  </td>
+                  <td className="py-2 pr-2">
+                    <span className="block text-foreground">{row.latestPrintedAtLabel}</span>
+                    <span className="block text-muted-foreground">{row.latestPrintBatchLabel}</span>
                   </td>
                   <td className="py-2">{row.documentUrlLabel}</td>
                 </tr>

@@ -157,6 +157,7 @@ export type FirstVisitDocumentHistoryForPrint = {
   document_type: string | null;
   template_name: string | null;
   template_version: string | null;
+  print_batch_id?: string | null;
   storage_location: string | null;
   reason: string | null;
   note: string | null;
@@ -196,6 +197,8 @@ export type FirstVisitDocumentPrintRow = {
   deliveredToLabel: string;
   documentUrlLabel: string;
   latestActionLabel: string;
+  latestPrintedAtLabel: string;
+  latestPrintBatchLabel: string;
   latestStorageLabel: string;
   latestTemplateLabel: string;
 };
@@ -686,6 +689,12 @@ function formatTemplateLabel(history: FirstVisitDocumentHistoryForPrint | null):
   return [history.template_name, history.template_version].filter(Boolean).join(' ');
 }
 
+function pickLatestPrintedHistory(
+  histories: readonly FirstVisitDocumentHistoryForPrint[],
+): FirstVisitDocumentHistoryForPrint | null {
+  return pickLatestDocumentHistory(histories.filter((history) => history.action === 'printed'));
+}
+
 /** 患者文書スナップショット → 契約・同意控えの帳票データ */
 export function buildFirstVisitDocumentPrintSummary(
   patientName: string,
@@ -721,6 +730,7 @@ export function buildFirstVisitDocumentPrintSummary(
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       .map((document) => {
         const latestHistory = pickLatestDocumentHistory(document.history);
+        const latestPrintedHistory = pickLatestPrintedHistory(document.history);
         const latestAction = latestHistory?.action
           ? (FIRST_VISIT_DOCUMENT_ACTION_LABELS[latestHistory.action] ?? latestHistory.action)
           : '履歴未記録';
@@ -736,6 +746,10 @@ export function buildFirstVisitDocumentPrintSummary(
           deliveredToLabel: document.delivered_to ?? '交付先未記録',
           documentUrlLabel: document.document_url ? '控えあり' : '控え未登録',
           latestActionLabel: latestAction,
+          latestPrintedAtLabel: formatPrintDate(latestPrintedHistory?.created_at),
+          latestPrintBatchLabel: latestPrintedHistory?.print_batch_id
+            ? `一括ID ${latestPrintedHistory.print_batch_id}`
+            : '一括ID未記録',
           latestStorageLabel: latestStorage,
           latestTemplateLabel: formatTemplateLabel(latestHistory),
         };

@@ -433,6 +433,7 @@ export type PatientDocumentsSnapshot = {
       document_type: string | null;
       template_name: string | null;
       template_version: string | null;
+      print_batch_id?: string | null;
       storage_location: string | null;
       reason: string | null;
       note: string | null;

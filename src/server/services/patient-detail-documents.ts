@@ -32,6 +32,7 @@ type FirstVisitDocumentHistoryItem = {
   document_type: string | null;
   template_name: string | null;
   template_version: string | null;
+  print_batch_id: string | null;
   storage_location: string | null;
   reason: string | null;
   note: string | null;
@@ -181,6 +182,7 @@ function normalizeFirstVisitDocumentHistory(log: {
     document_type: readString(documentAction?.document_type),
     template_name: readString(documentAction?.template_name),
     template_version: readString(documentAction?.template_version),
+    print_batch_id: readString(documentAction?.print_batch_id),
     storage_location: readString(documentAction?.storage_location),
     reason: readString(documentAction?.reason),
     note: readString(documentAction?.note),

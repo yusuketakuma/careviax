@@ -314,6 +314,19 @@ describe('buildFirstVisitDocumentPrintSummary', () => {
             created_at: '2026-06-15T10:00:00+09:00',
           },
           {
+            id: 'audit_printed',
+            action: 'printed',
+            document_type: 'contract',
+            template_name: '居宅療養管理指導契約書',
+            template_version: 'v1.1',
+            print_batch_id: 'print_20260616T013000Z_batch1',
+            storage_location: 'headquarters',
+            reason: null,
+            note: '印刷ハブから印刷',
+            actor_id: 'user_1',
+            created_at: '2026-06-16T10:30:00+09:00',
+          },
+          {
             id: 'audit_new',
             action: 'recovered',
             document_type: 'contract',
@@ -337,6 +350,8 @@ describe('buildFirstVisitDocumentPrintSummary', () => {
       deliveredToLabel: '長女 田中花子',
       documentUrlLabel: '控えあり',
       latestActionLabel: '回収',
+      latestPrintedAtLabel: '2026/6/16',
+      latestPrintBatchLabel: '一括ID print_20260616T013000Z_batch1',
       latestStorageLabel: '本部',
       latestTemplateLabel: '居宅療養管理指導契約書 v1.1',
     });
