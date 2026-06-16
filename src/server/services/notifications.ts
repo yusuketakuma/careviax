@@ -2,6 +2,7 @@ import { Prisma, type MemberRole, type NotificationType } from '@prisma/client';
 import webpush from 'web-push';
 import { isMemberRole } from '@/lib/auth/member-roles';
 import { readJsonObject } from '@/lib/db/json';
+import { logger } from '@/lib/utils/logger';
 import { LineNotificationAdapter } from '@/server/adapters/line';
 import { SmsNotificationAdapter } from '@/server/adapters/sms';
 
@@ -70,7 +71,12 @@ function scheduleNotificationDeliveries(tasks: NotificationDeliveryTask[]) {
   if (tasks.length === 0) return;
 
   setTimeout(() => {
-    void Promise.allSettled(tasks.map((task) => Promise.resolve().then(task)));
+    void Promise.allSettled(tasks.map((task) => Promise.resolve().then(task))).then((results) => {
+      const failedCount = results.filter((result) => result.status === 'rejected').length;
+      if (failedCount > 0) {
+        logger.warn('[notifications] background delivery failed', { failedCount });
+      }
+    });
   }, 0);
 }
 
