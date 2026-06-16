@@ -1,7 +1,7 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { notFound, success, validationError } from '@/lib/api/response';
+import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { createFirstVisitDocumentSchema } from '@/lib/validations/first-visit-document';
@@ -15,6 +15,7 @@ import {
   listAccessibleCareCaseIds,
   listAccessiblePatientCaseIds,
 } from '@/server/services/patient-access';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
 import type { Prisma } from '@prisma/client';
 
 const FIRST_VISIT_TEMPLATE_TYPES = [
@@ -157,6 +158,11 @@ export const POST = withAuthContext(
       accessContext: ctx,
     });
     if (!canAccessScope) return notFound('患者またはケースが見つかりません');
+
+    const writable = await requireWritablePatient(prisma, ctx, parsed.data.patient_id);
+    if ('response' in writable) {
+      return writable.response ?? conflict('アーカイブ中の患者は復元するまで更新できません');
+    }
 
     const emergencyContacts =
       parsed.data.emergency_contacts && parsed.data.emergency_contacts.length > 0

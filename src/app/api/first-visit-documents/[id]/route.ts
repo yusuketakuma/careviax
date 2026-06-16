@@ -9,6 +9,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { updateFirstVisitDocumentSchema } from '@/lib/validations/first-visit-document';
 import { canAccessCareCase } from '@/server/services/patient-access';
 import { getPatientDocumentsData } from '@/server/services/patient-detail-documents';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
 import type { FirstVisitDocument } from '@prisma/client';
 
 type FirstVisitDocumentPatchResult =
@@ -96,6 +97,11 @@ export const PATCH = withAuthContext<{ id: string }>(
       accessContext: ctx,
     });
     if (!canAccessScope) return notFound('初回文書が見つかりません');
+
+    const writable = await requireWritablePatient(prisma, ctx, existing.patient_id);
+    if ('response' in writable) {
+      return writable.response ?? conflict('アーカイブ中の患者は復元するまで更新できません');
+    }
 
     const updateData = {
       ...(parsed.data.delivered_at !== undefined

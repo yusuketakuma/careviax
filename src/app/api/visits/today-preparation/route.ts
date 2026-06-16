@@ -6,6 +6,10 @@ import {
   buildVisitScheduleAssignmentWhere,
   type VisitScheduleAccessContext,
 } from '@/lib/auth/visit-schedule-access';
+import {
+  buildCareTeamReliabilitySummary,
+  buildPatientContactReadiness,
+} from '@/lib/patient/care-team-contact';
 import { buildBlockedReasons } from '@/lib/workflow/blocked-reason-projection';
 import type {
   VisitPrepBlockedReason,
@@ -92,11 +96,32 @@ type ScheduleQueryRow = {
     updated_at: Date;
   } | null;
   case_: {
+    care_team_links?: Array<{
+      role: string;
+      is_primary: boolean;
+      phone: string | null;
+      email: string | null;
+      fax: string | null;
+    }>;
     patient: {
       id: string;
       name: string;
       allergy_info: unknown;
-      scheduling_preference: { swallowing_route: string | null } | null;
+      contacts?: Array<{
+        is_primary: boolean;
+        is_emergency_contact: boolean;
+        phone: string | null;
+        email: string | null;
+        fax: string | null;
+      }>;
+      scheduling_preference: {
+        swallowing_route: string | null;
+        preferred_contact_name?: string | null;
+        preferred_contact_phone?: string | null;
+        visit_before_contact_required?: boolean | null;
+        parking_available?: boolean | null;
+        care_level?: string | null;
+      } | null;
     };
   };
   cycle: {
@@ -125,6 +150,29 @@ function collectSafetyTags(schedule: ScheduleQueryRow): Set<string> {
     tags.add('swallowing');
   }
   return tags;
+}
+
+function collectFoundationGapLabels(schedule: ScheduleQueryRow): string[] {
+  const patient = schedule.case_.patient;
+  const preference = patient.scheduling_preference;
+  const contacts = patient.contacts ?? [];
+  const contactReadiness = buildPatientContactReadiness({
+    contacts,
+    preferredContactName: preference?.preferred_contact_name,
+    preferredContactPhone: preference?.preferred_contact_phone,
+    visitBeforeContactRequired: preference?.visit_before_contact_required,
+  });
+  const careTeamReliability = buildCareTeamReliabilitySummary({
+    contacts,
+    careTeamLinks: schedule.case_.care_team_links ?? [],
+  });
+
+  return [
+    contactReadiness.ready ? null : '訪問前連絡先',
+    preference?.parking_available == null ? '駐車可否' : null,
+    preference?.care_level ? null : '介護度',
+    careTeamReliability.needs_confirmation ? '連携先' : null,
+  ].filter((label): label is string => Boolean(label));
 }
 
 function narcoticAuditPending(schedule: ScheduleQueryRow): { due: Date | null } | null {
@@ -162,6 +210,7 @@ function deriveHomeVisitCard(schedule: ScheduleQueryRow): VisitPreparationCard {
   const safetyTags = SAFETY_TAG_ORDER.filter((tag) => tags.has(tag));
   const audit = narcoticAuditPending(schedule);
   const cycleStatus = schedule.cycle?.overall_status ?? null;
+  const foundationGapLabels = collectFoundationGapLabels(schedule);
 
   const checks: VisitPrepCheck[] = [
     {
@@ -215,6 +264,11 @@ function deriveHomeVisitCard(schedule: ScheduleQueryRow): VisitPreparationCard {
     const fallback = new Date(schedule.time_window_start.getTime() + 60 * 60_000);
     note = `監査が間に合わない場合: ${formatTimeOfDay(fallback)}繰り下げ案を反映できます(スケジュールで調整)`;
     noteTone = 'warning';
+  } else if (foundationGapLabels.length > 0) {
+    note = `出発前に正本確認: ${foundationGapLabels.slice(0, 3).join('・')}${
+      foundationGapLabels.length > 3 ? ` ほか${foundationGapLabels.length - 3}件` : ''
+    }`;
+    noteTone = 'warning';
   }
 
   const patient = schedule.case_.patient;
@@ -230,12 +284,13 @@ function deriveHomeVisitCard(schedule: ScheduleQueryRow): VisitPreparationCard {
     meta_label: stayMinutes ? `在宅・滞在${stayMinutes}分` : '在宅',
     safety_tags: safetyTags,
     ...summary,
+    accent: foundationGapLabels.length > 0 ? 'caution' : summary.accent,
     checks,
     note,
     note_tone: noteTone,
     actions: audit
       ? [
-          { label: '監査へ', href: '/auditing' },
+          { label: '監査へ', href: '/audit' },
           { label: 'カードへ', href: `/patients/${patient.id}` },
         ]
       : [
@@ -288,6 +343,9 @@ function deriveFacilityVisitCard(
 
   const summary = summarizeChecks(checks);
   const remaining = setTotal - setDoneCount;
+  const foundationGapPatientCount = schedules.filter(
+    (schedule) => collectFoundationGapLabels(schedule).length > 0,
+  ).length;
 
   const name = facilityName ?? '施設一括訪問';
   const stayMinutes =
@@ -303,14 +361,18 @@ function deriveFacilityVisitCard(
     meta_label: stayMinutes ? `${patientCount}名・滞在${stayMinutes}分` : `${patientCount}名`,
     safety_tags: safetyTags,
     ...summary,
+    accent:
+      summary.accent === 'ready' && foundationGapPatientCount > 0 ? 'caution' : summary.accent,
     checks,
     note:
       remaining > 0
         ? `セット残り${remaining}名分の確認が残っています — 完了後に配薬カートへ積み込めます`
-        : null,
-    note_tone: remaining > 0 ? 'info' : null,
+        : foundationGapPatientCount > 0
+          ? `正本未確認の患者が${foundationGapPatientCount}名います — 出発前に患者カードで確認してください`
+          : null,
+    note_tone: remaining > 0 ? 'info' : foundationGapPatientCount > 0 ? 'warning' : null,
     actions: [
-      { label: 'セットへ', href: '/medication-sets' },
+      { label: 'セットへ', href: '/set' },
       { label: '施設パケット', href: '/schedules' },
     ],
   };
@@ -362,12 +424,39 @@ export const GET = withAuthContext(
           },
           case_: {
             select: {
+              care_team_links: {
+                select: {
+                  role: true,
+                  is_primary: true,
+                  phone: true,
+                  email: true,
+                  fax: true,
+                },
+              },
               patient: {
                 select: {
                   id: true,
                   name: true,
                   allergy_info: true,
-                  scheduling_preference: { select: { swallowing_route: true } },
+                  contacts: {
+                    select: {
+                      is_primary: true,
+                      is_emergency_contact: true,
+                      phone: true,
+                      email: true,
+                      fax: true,
+                    },
+                  },
+                  scheduling_preference: {
+                    select: {
+                      swallowing_route: true,
+                      preferred_contact_name: true,
+                      preferred_contact_phone: true,
+                      visit_before_contact_required: true,
+                      parking_available: true,
+                      care_level: true,
+                    },
+                  },
                 },
               },
             },
