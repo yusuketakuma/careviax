@@ -3,7 +3,7 @@ import { syncStructuredHomeCare } from './patient-structured-care';
 
 function createTx(
   existingProcedures: Array<{ id: string; procedure_type: string }> = [],
-  existingNarcotics: Array<{ id: string; narcotic_kind: string }> = []
+  existingNarcotics: Array<{ id: string; narcotic_kind: string }> = [],
 ) {
   const procCreate = vi.fn();
   const procUpdateMany = vi.fn();
@@ -63,16 +63,55 @@ describe('syncStructuredHomeCare', () => {
     expect(result.proceduresAdded).toEqual([]);
     expect(procCreate).not.toHaveBeenCalled();
     expect(procUpdateMany).toHaveBeenCalledWith({
-      where: { id: { in: ['mp_1'] } },
+      where: {
+        org_id: 'org_1',
+        patient_id: 'p1',
+        case_id: 'case_1',
+        id: { in: ['mp_1'] },
+      },
       data: { is_active: false, end_date: baseArgs.startDate },
     });
+  });
+
+  it('reconciles only rows for the edited case', async () => {
+    const { tx, procUpdateMany } = createTx([{ id: 'mp_case_1', procedure_type: 'tpn' }]);
+
+    await syncStructuredHomeCare(tx, {
+      ...baseArgs,
+      intake: { special_medical_procedures: [], narcotics_base: false, narcotics_rescue: false },
+    });
+
+    expect(
+      (tx as unknown as { patientMedicalProcedure: { findMany: ReturnType<typeof vi.fn> } })
+        .patientMedicalProcedure.findMany,
+    ).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        patient_id: 'p1',
+        case_id: 'case_1',
+        is_active: true,
+      },
+      select: { id: true, procedure_type: true },
+    });
+    expect(procUpdateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          case_id: 'case_1',
+          id: { in: ['mp_case_1'] },
+        }),
+      }),
+    );
   });
 
   it('既に在る処置は再作成しない(冪等)', async () => {
     const { tx, procCreate, procUpdateMany } = createTx([{ id: 'mp_1', procedure_type: 'tpn' }]);
     const result = await syncStructuredHomeCare(tx, {
       ...baseArgs,
-      intake: { special_medical_procedures: ['tpn'], narcotics_base: false, narcotics_rescue: false },
+      intake: {
+        special_medical_procedures: ['tpn'],
+        narcotics_base: false,
+        narcotics_rescue: false,
+      },
     });
     expect(result.proceduresAdded).toEqual([]);
     expect(procCreate).not.toHaveBeenCalled();
@@ -87,13 +126,16 @@ describe('syncStructuredHomeCare', () => {
     });
     expect(result.narcoticsAdded).toEqual(['base', 'rescue']);
     expect(narcCreate).toHaveBeenCalledTimes(2);
-    expect(narcCreate.mock.calls[0][0].data).toMatchObject({ narcotic_kind: 'base', is_active: true });
+    expect(narcCreate.mock.calls[0][0].data).toMatchObject({
+      narcotic_kind: 'base',
+      is_active: true,
+    });
   });
 
   it('intake が null なら既存行に触れず no-op(誤って end しない)', async () => {
     const { tx, procCreate, procUpdateMany, narcCreate } = createTx(
       [{ id: 'mp_1', procedure_type: 'tpn' }],
-      []
+      [],
     );
     const result = await syncStructuredHomeCare(tx, { ...baseArgs, intake: null });
     expect(result).toEqual({ proceduresAdded: [], narcoticsAdded: [] });

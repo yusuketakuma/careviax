@@ -358,6 +358,55 @@ export type PatientCommunicationsSnapshot = {
 };
 
 export type PatientDocumentsSnapshot = {
+  patient: {
+    id: string;
+    name: string;
+    name_kana: string;
+  };
+  print_readiness: {
+    overall_status: 'ready' | 'warning' | 'blocked';
+    missing_required_count: number;
+    warning_count: number;
+    template_versions: Array<{
+      document_type: string;
+      label: string;
+      template_id: string | null;
+      template_name: string | null;
+      template_version: string | null;
+      effective_from: string | null;
+      effective_to: string | null;
+    }>;
+    checks: Array<{
+      key: string;
+      label: string;
+      completed: boolean;
+      severity: 'required' | 'warning';
+      description: string;
+      action_href: string;
+      action_label: string;
+    }>;
+  };
+  document_statuses: Array<{
+    document_type: string;
+    label: string;
+    status:
+      | 'not_created'
+      | 'created'
+      | 'printed'
+      | 'recovered'
+      | 'image_saved'
+      | 'replaced'
+      | 'invalidated';
+    status_label: string;
+    template_name: string | null;
+    template_version: string | null;
+    storage_location: string | null;
+    latest_action_at: string | null;
+    latest_document_id: string | null;
+    has_file: boolean;
+    delivered_at: string | null;
+    alerts: string[];
+  }>;
   first_visit_documents: Array<{
     id: string;
     case_id: string;
@@ -378,6 +427,18 @@ export type PatientDocumentsSnapshot = {
     delivered_to: string | null;
     created_at: string;
     updated_at: string;
+    history: Array<{
+      id: string;
+      action: string;
+      document_type: string | null;
+      template_name: string | null;
+      template_version: string | null;
+      storage_location: string | null;
+      reason: string | null;
+      note: string | null;
+      actor_id: string;
+      created_at: string;
+    }>;
   }>;
 };
 
@@ -395,6 +456,7 @@ export type PatientTimelineEvent = {
     | 'first_visit_document'
     | 'conference_note'
     | 'billing_candidate'
+    | 'operation_history'
     | 'self_report'
     | 'communication'
     | 'external_share';

@@ -61,7 +61,12 @@ const baseArgs = {
 describe('buildPatientStateSnapshot', () => {
   it('訪問時点の患者現在値を JSON 安全な凍結オブジェクトとして返す', async () => {
     const { db, insuranceFindMany } = createDb(basePatient, [
-      { insurance_type: 'medical', copay_ratio: 30, valid_from: new Date('2026-01-01'), valid_until: null },
+      {
+        insurance_type: 'medical',
+        copay_ratio: 30,
+        valid_from: new Date('2026-01-01'),
+        valid_until: null,
+      },
     ]);
 
     const result = (await buildPatientStateSnapshot(db, baseArgs)) as Record<string, unknown>;
@@ -72,12 +77,18 @@ describe('buildPatientStateSnapshot', () => {
     expect(result.case_id).toBe('case_1');
 
     const patient = result.patient as Record<string, unknown>;
-    expect(patient.name).toBe('山田 太郎');
     // Date は ISO 文字列へ正規化される
     expect(patient.birth_date).toBe('1944-01-01T00:00:00.000Z');
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain('090-1111-2222');
+    expect(serialized).not.toContain('1234567890');
+    expect(serialized).not.toContain('東京都千代田区1-2-3');
+    expect(serialized).not.toContain('ペニシリン');
+    expect(serialized).not.toContain('メモ');
 
     // 居住情報は is_primary を優先採用
     expect((result.primary_residence as Record<string, unknown>).id).toBe('res_1');
+    expect((result.primary_residence as Record<string, unknown>).has_address).toBe(true);
     expect((result.scheduling_preference as Record<string, unknown>).care_level).toBe('要介護2');
     expect((result.conditions as unknown[]).length).toBe(1);
     // 訪問対象ケースの多職種(主治医)が採られる
@@ -103,7 +114,7 @@ describe('buildPatientStateSnapshot', () => {
   it('relations 欠落(最小データ)でも例外を投げず凍結する', async () => {
     const { db } = createDb({ id: 'patient_1', name: '患者A' });
     const result = (await buildPatientStateSnapshot(db, baseArgs)) as Record<string, unknown>;
-    expect((result.patient as Record<string, unknown>).name).toBe('患者A');
+    expect((result.patient as Record<string, unknown>).id).toBe('patient_1');
     expect(result.primary_residence).toBeNull();
     expect(result.care_team_links).toEqual([]);
     expect(result.conditions).toEqual([]);

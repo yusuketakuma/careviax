@@ -4,7 +4,7 @@ import { listPatientStructuredCare } from './patient-structured-care-list';
 function createDb(
   procedures: unknown[],
   narcotics: unknown[],
-  users: Array<{ id: string; name: string }>
+  users: Array<{ id: string; name: string }>,
 ) {
   const procFindMany = vi.fn().mockResolvedValue(procedures);
   const narcFindMany = vi.fn().mockResolvedValue(narcotics);
@@ -61,6 +61,7 @@ describe('listPatientStructuredCare', () => {
       confirmed_by: null,
       confirmed_by_name: null,
     });
+    expect(result.procedures[0]).not.toHaveProperty('notes');
   });
 
   it('既定では is_active=true のみ取得する', async () => {
@@ -71,10 +72,11 @@ describe('listPatientStructuredCare', () => {
     expect(procFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ org_id: 'org_1', patient_id: 'p1', is_active: true }),
-      })
+        select: expect.not.objectContaining({ notes: true }),
+      }),
     );
     expect(narcFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ is_active: true }) })
+      expect.objectContaining({ where: expect.objectContaining({ is_active: true }) }),
     );
   });
 

@@ -29,17 +29,25 @@ export interface PatientFieldRevisionListItem {
 
 type RevisionRow = Awaited<ReturnType<typeof prisma.patientFieldRevision.findMany>>[number];
 
-// 識別子系(電話/住所/建物)および PHI を含むカテゴリ(連絡先/住所/保険)は、
-// 変更履歴 API で生値(old/new/value_label)を返さない。
-// UI/UX ガイドライン: 履歴では「変更あり + 項目名」のみ。生値マスクは表示層だけでなく
-// API 応答境界でも行い、GET /patients/[id] のマスク方針と一致させる(防御の二重化)。
-const SENSITIVE_FIELD_KEYS = new Set(['phone', 'address', 'building_id']);
-const SENSITIVE_CATEGORIES = new Set(['contacts', 'residence', 'insurance']);
+// 変更履歴 API は PHI allowlist 方式にする。
+// 生値を返すのは低感度の定型値だけに限定し、病名/アレルギー/患者メモ/連絡先/住所/保険などは
+// API 応答境界で presence のみに落とす(表示層だけに頼らない)。
+const RAW_VALUE_ALLOWED_FIELD_KEYS = new Set([
+  'care_level',
+  'adl_level',
+  'dementia_level',
+  'swallowing_route',
+  'infection_isolation',
+  'billing_support_flag',
+  'gender',
+]);
 // 追加/解除/変更の判定(値の有無)だけに使う非PHIプレースホルダ。UI には表示されない。
 const MASKED_PRESENCE = '〔記録あり〕';
 
-function isSensitiveRevision(category: string, fieldKey: string): boolean {
-  return SENSITIVE_CATEGORIES.has(category) || SENSITIVE_FIELD_KEYS.has(fieldKey);
+function canExposeRawRevisionValue(category: string, fieldKey: string): boolean {
+  return category === 'clinical' || category === 'basic'
+    ? RAW_VALUE_ALLOWED_FIELD_KEYS.has(fieldKey)
+    : false;
 }
 
 // 生値を返さず、値の有無のみを保持する(変更種別バッジの算出を維持しつつ PHI を出さない)。
@@ -51,25 +59,25 @@ function maskPresence(value: Prisma.JsonValue | null): Prisma.JsonValue | null {
 async function shapeRevisionRows(
   db: DbClient,
   orgId: string,
-  rows: RevisionRow[]
+  rows: RevisionRow[],
 ): Promise<PatientFieldRevisionListItem[]> {
   const actorIds = Array.from(
     new Set(
-      rows.flatMap((row) => [row.updated_by, row.confirmed_by]).filter((id): id is string => !!id)
-    )
+      rows.flatMap((row) => [row.updated_by, row.confirmed_by]).filter((id): id is string => !!id),
+    ),
   );
   const nameMap = await batchResolveNames(db as typeof prisma, orgId, actorIds);
 
   return rows.map((row) => {
-    const sensitive = isSensitiveRevision(row.category, row.field_key);
+    const exposeRaw = canExposeRawRevisionValue(row.category, row.field_key);
     return {
       id: row.id,
       category: row.category,
       field_key: row.field_key,
       field_label: row.field_label,
-      value_label: sensitive ? null : row.value_label,
-      previous: sensitive ? maskPresence(row.old_value) : row.old_value,
-      current: sensitive ? maskPresence(row.new_value) : row.new_value,
+      value_label: exposeRaw ? row.value_label : null,
+      previous: exposeRaw ? row.old_value : maskPresence(row.old_value),
+      current: exposeRaw ? row.new_value : maskPresence(row.new_value),
       source: row.source,
       source_visit_record_id: row.source_visit_record_id,
       change_reason: row.change_reason,
@@ -101,7 +109,7 @@ interface ListArgs {
  */
 export async function listPatientFieldRevisions(
   db: DbClient,
-  args: ListArgs
+  args: ListArgs,
 ): Promise<PatientFieldRevisionListItem[]> {
   const rows = await db.patientFieldRevision.findMany({
     where: {
@@ -128,7 +136,7 @@ interface BySourceVisitRecordArgs {
  */
 export async function listFieldRevisionsBySourceVisitRecord(
   db: DbClient,
-  args: BySourceVisitRecordArgs
+  args: BySourceVisitRecordArgs,
 ): Promise<PatientFieldRevisionListItem[]> {
   const rows = await db.patientFieldRevision.findMany({
     where: {

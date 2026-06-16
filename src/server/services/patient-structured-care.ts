@@ -39,7 +39,7 @@ export interface SyncStructuredHomeCareResult {
 
 export async function syncStructuredHomeCare(
   tx: StructuredCareTxClient,
-  args: SyncStructuredHomeCareArgs
+  args: SyncStructuredHomeCareArgs,
 ): Promise<SyncStructuredHomeCareResult> {
   // intake が無い = 在宅情報を更新していない。既存の構造化行には触れない(誤って end しない)。
   if (!args.intake) {
@@ -49,7 +49,7 @@ export async function syncStructuredHomeCare(
   const source = args.source ?? 'patient_detail_edit';
 
   const desiredProcedures = Array.from(
-    new Set((args.intake?.special_medical_procedures ?? []).filter((p) => typeof p === 'string'))
+    new Set((args.intake?.special_medical_procedures ?? []).filter((p) => typeof p === 'string')),
   );
   const proceduresAdded = await reconcileSet(tx.patientMedicalProcedure, {
     orgId: args.orgId,
@@ -102,10 +102,15 @@ async function reconcileSet(
     source: string;
     confirmedBy: string | null;
     startDate: Date;
-  }
+  },
 ): Promise<string[]> {
   const existing = await delegate.findMany({
-    where: { org_id: args.orgId, patient_id: args.patientId, is_active: true },
+    where: {
+      org_id: args.orgId,
+      patient_id: args.patientId,
+      case_id: args.caseId,
+      is_active: true,
+    },
     select: { id: true, [args.column]: true },
   });
 
@@ -134,7 +139,12 @@ async function reconcileSet(
 
   if (removedIds.length > 0) {
     await delegate.updateMany({
-      where: { id: { in: removedIds } },
+      where: {
+        org_id: args.orgId,
+        patient_id: args.patientId,
+        case_id: args.caseId,
+        id: { in: removedIds },
+      },
       data: { is_active: false, end_date: args.startDate },
     });
   }

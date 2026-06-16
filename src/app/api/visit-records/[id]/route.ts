@@ -175,8 +175,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const visitBeforeContactRequired = patientSchedulePref?.visit_before_contact_required ?? null;
   const baselineContext = buildBaselineContext(intakeData, visitBeforeContactRequired);
 
+  const publicRecord = { ...record };
+  delete (publicRecord as { patient_state_snapshot?: unknown }).patient_state_snapshot;
+
   return success({
-    ...record,
+    ...publicRecord,
     attachments: parseStoredVisitRecordAttachments(record.attachments),
     pharmacist_name: userById.get(record.pharmacist_id) ?? null,
     last_modified_by_id: latestAudit?.actor_id ?? record.pharmacist_id,

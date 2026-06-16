@@ -42,7 +42,7 @@ describe('listPatientFieldRevisions', () => {
       [
         { id: 'user_u', name: '田中' },
         { id: 'user_c', name: '佐藤' },
-      ]
+      ],
     );
 
     const result = await listPatientFieldRevisions(db, { orgId: 'org_1', patientId: 'p1' });
@@ -68,7 +68,7 @@ describe('listPatientFieldRevisions', () => {
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ org_id: 'org_1', patient_id: 'p1', category: 'basic' }),
-      })
+      }),
     );
   });
 
@@ -86,7 +86,7 @@ describe('listPatientFieldRevisions', () => {
           new_value: '080-1111-2222',
         },
       ],
-      [{ id: 'user_u', name: '田中' }]
+      [{ id: 'user_u', name: '田中' }],
     );
     const result = await listPatientFieldRevisions(db, { orgId: 'org_1', patientId: 'p1' });
     // 生値(value_label/previous/current)は API 応答に出さない
@@ -112,7 +112,7 @@ describe('listPatientFieldRevisions', () => {
           new_value: [{ name: '家族', phone: '080-1111-2222' }],
         },
       ],
-      [{ id: 'user_u', name: '田中' }]
+      [{ id: 'user_u', name: '田中' }],
     );
     const result = await listPatientFieldRevisions(db, { orgId: 'org_1', patientId: 'p1' });
     expect(result[0].value_label).toBeNull();
@@ -120,10 +120,60 @@ describe('listPatientFieldRevisions', () => {
     expect(JSON.stringify(result[0].current)).not.toContain('080-1111-2222');
   });
 
+  it('患者メモ・アレルギー・病名問題はAPI境界でpresenceだけ返す', async () => {
+    const { db } = createDb(
+      [
+        {
+          ...baseRow,
+          id: 'rev_notes',
+          category: 'basic',
+          field_key: 'notes',
+          field_label: 'メモ',
+          value_label: '詳細な患者メモ → 別の患者メモ',
+          old_value: '詳細な患者メモ',
+          new_value: '別の患者メモ',
+        },
+        {
+          ...baseRow,
+          id: 'rev_allergy',
+          category: 'basic',
+          field_key: 'allergy_info',
+          field_label: 'アレルギー情報',
+          value_label: '内容変更',
+          old_value: [{ allergen: 'ペニシリン', reaction: '発疹' }],
+          new_value: [{ allergen: 'NSAIDs', reaction: '喘息' }],
+        },
+        {
+          ...baseRow,
+          id: 'rev_conditions',
+          category: 'conditions',
+          field_key: 'conditions',
+          field_label: '病名・問題',
+          value_label: '内容変更',
+          old_value: [{ name: '心不全', notes: '夜間呼吸苦あり' }],
+          new_value: [{ name: '腎不全', notes: '透析導入相談' }],
+        },
+      ],
+      [{ id: 'user_u', name: '田中' }],
+    );
+
+    const result = await listPatientFieldRevisions(db, { orgId: 'org_1', patientId: 'p1' });
+    const serialized = JSON.stringify(result);
+
+    expect(result.every((row) => row.value_label === null)).toBe(true);
+    expect(serialized).not.toContain('詳細な患者メモ');
+    expect(serialized).not.toContain('ペニシリン');
+    expect(serialized).not.toContain('心不全');
+    expect(serialized).not.toContain('透析導入相談');
+    expect(result.every((row) => row.previous === '〔記録あり〕')).toBe(true);
+    expect(result.every((row) => row.current === '〔記録あり〕')).toBe(true);
+  });
+
   it('confirmed_by が無い行は confirmed_by_name を null にする', async () => {
-    const { db } = createDb([{ ...baseRow, confirmed_by: null, confirmed_at: null }], [
-      { id: 'user_u', name: '田中' },
-    ]);
+    const { db } = createDb(
+      [{ ...baseRow, confirmed_by: null, confirmed_at: null }],
+      [{ id: 'user_u', name: '田中' }],
+    );
     const result = await listPatientFieldRevisions(db, { orgId: 'org_1', patientId: 'p1' });
     expect(result[0].confirmed_by_name).toBeNull();
     expect(result[0].confirmed_at).toBeNull();
@@ -134,7 +184,7 @@ describe('listFieldRevisionsBySourceVisitRecord', () => {
   it('source_visit_record_id でフィルタし、整形・氏名解決して返す', async () => {
     const { db, findMany } = createDb(
       [{ ...baseRow, source: 'visit_record', source_visit_record_id: 'vr_1' }],
-      [{ id: 'user_u', name: '田中' }]
+      [{ id: 'user_u', name: '田中' }],
     );
 
     const result = await listFieldRevisionsBySourceVisitRecord(db, {
@@ -145,7 +195,7 @@ describe('listFieldRevisionsBySourceVisitRecord', () => {
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ org_id: 'org_1', source_visit_record_id: 'vr_1' }),
-      })
+      }),
     );
     expect(result[0]).toMatchObject({
       field_key: 'care_level',

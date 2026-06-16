@@ -207,7 +207,7 @@ model Template {
   id              String          @id @default(cuid())
   org_id          String
   name            String
-  template_type   String // care_report/tracing_report/management_plan/medication_calendar/consent_form
+  template_type   String // care_report/tracing_report/management_plan/medication_calendar/contract_document/important_matters/privacy_consent/consent_form
   target_role     String?
   format          String          @default("html") // html/pdf
   version         Int             @default(1)

@@ -15,7 +15,6 @@ export interface PatientStructuredCareItem {
   confirmed_by: string | null;
   confirmed_by_name: string | null;
   confirmed_at: string | null;
-  notes: string | null;
 }
 
 export interface PatientStructuredCareList {
@@ -38,13 +37,12 @@ type StructuredRow = {
   source: string;
   confirmed_by: string | null;
   confirmed_at: Date | null;
-  notes: string | null;
 };
 
 function toItem(
   row: StructuredRow,
   kind: string,
-  nameMap: Map<string, string>
+  nameMap: Map<string, string>,
 ): PatientStructuredCareItem {
   return {
     id: row.id,
@@ -56,7 +54,6 @@ function toItem(
     confirmed_by: row.confirmed_by,
     confirmed_by_name: row.confirmed_by ? (nameMap.get(row.confirmed_by) ?? null) : null,
     confirmed_at: row.confirmed_at ? row.confirmed_at.toISOString() : null,
-    notes: row.notes,
   };
 }
 
@@ -67,7 +64,7 @@ function toItem(
  */
 export async function listPatientStructuredCare(
   db: DbClient,
-  args: ListArgs
+  args: ListArgs,
 ): Promise<PatientStructuredCareList> {
   const where = {
     org_id: args.orgId,
@@ -81,16 +78,42 @@ export async function listPatientStructuredCare(
   ];
 
   const [procedures, narcotics] = await Promise.all([
-    db.patientMedicalProcedure.findMany({ where, orderBy }),
-    db.patientNarcoticUse.findMany({ where, orderBy }),
+    db.patientMedicalProcedure.findMany({
+      where,
+      orderBy,
+      select: {
+        id: true,
+        procedure_type: true,
+        is_active: true,
+        start_date: true,
+        end_date: true,
+        source: true,
+        confirmed_by: true,
+        confirmed_at: true,
+      },
+    }),
+    db.patientNarcoticUse.findMany({
+      where,
+      orderBy,
+      select: {
+        id: true,
+        narcotic_kind: true,
+        is_active: true,
+        start_date: true,
+        end_date: true,
+        source: true,
+        confirmed_by: true,
+        confirmed_at: true,
+      },
+    }),
   ]);
 
   const actorIds = Array.from(
     new Set(
       [...procedures, ...narcotics]
         .map((row) => row.confirmed_by)
-        .filter((id): id is string => !!id)
-    )
+        .filter((id): id is string => !!id),
+    ),
   );
   const nameMap = await batchResolveNames(db as typeof prisma, args.orgId, actorIds);
 

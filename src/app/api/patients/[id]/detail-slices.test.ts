@@ -6,6 +6,7 @@ const {
   getPatientVisitsDataMock,
   getPatientCommunicationsDataMock,
   getPatientDocumentsDataMock,
+  getPatientHomeOperationsDataMock,
   getPatientTimelineDataMock,
   getPatientReadinessDataMock,
   getPatientWorkflowPreviewDataMock,
@@ -16,6 +17,7 @@ const {
   getPatientVisitsDataMock: vi.fn(),
   getPatientCommunicationsDataMock: vi.fn(),
   getPatientDocumentsDataMock: vi.fn(),
+  getPatientHomeOperationsDataMock: vi.fn(),
   getPatientTimelineDataMock: vi.fn(),
   getPatientReadinessDataMock: vi.fn(),
   getPatientWorkflowPreviewDataMock: vi.fn(),
@@ -47,6 +49,7 @@ vi.mock('@/server/services/patient-detail', () => ({
   getPatientVisitsData: getPatientVisitsDataMock,
   getPatientCommunicationsData: getPatientCommunicationsDataMock,
   getPatientDocumentsData: getPatientDocumentsDataMock,
+  getPatientHomeOperationsData: getPatientHomeOperationsDataMock,
   getPatientTimelineData: getPatientTimelineDataMock,
   getPatientReadinessData: getPatientReadinessDataMock,
   getPatientWorkflowPreviewData: getPatientWorkflowPreviewDataMock,
@@ -56,6 +59,7 @@ import { GET as overviewGet } from './overview/route';
 import { GET as visitsGet } from './visits/route';
 import { GET as communicationsGet } from './communications/route';
 import { GET as documentsGet } from './documents/route';
+import { GET as homeOperationsGet } from './home-operations/route';
 import { GET as timelineGet } from './timeline/route';
 import { GET as readinessGet } from './readiness/route';
 import { GET as workflowPreviewGet } from './workflow-preview/route';
@@ -104,9 +108,39 @@ const sliceRoutes = [
     get: documentsGet,
     serviceMock: getPatientDocumentsDataMock,
     successData: {
+      patient: { id: 'patient_1', name: '患者A', name_kana: 'カンジャエー' },
       first_visit_documents: [],
     },
-    expectedBody: { first_visit_documents: [] },
+    expectedBody: {
+      patient: { id: 'patient_1', name: '患者A', name_kana: 'カンジャエー' },
+      first_visit_documents: [],
+    },
+  },
+  {
+    name: 'home-operations',
+    path: 'home-operations',
+    get: homeOperationsGet,
+    serviceMock: getPatientHomeOperationsDataMock,
+    successData: {
+      generated_at: '2026-06-16T00:00:00.000Z',
+      attention_count: 1,
+      top_alerts: [
+        {
+          id: 'documents:0:未回収',
+          key: 'documents',
+          label: '契約・同意・書類',
+          message: '未回収',
+          href: '/patients/patient_1/consent',
+          action_label: '書類を確認',
+        },
+      ],
+      items: [{ key: 'documents', label: '契約・同意・書類', alerts: ['未回収'] }],
+    },
+    expectedBody: {
+      attention_count: 1,
+      top_alerts: [{ key: 'documents', message: '未回収' }],
+      items: [{ key: 'documents' }],
+    },
   },
   {
     name: 'timeline',
@@ -248,6 +282,7 @@ describe('patient detail slice routes', () => {
 
   it('returns patient documents data', async () => {
     getPatientDocumentsDataMock.mockResolvedValue({
+      patient: { id: 'patient_1', name: '患者A', name_kana: 'カンジャエー' },
       first_visit_documents: [],
     });
 
@@ -258,7 +293,41 @@ describe('patient detail slice routes', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ first_visit_documents: [] });
+    await expect(response.json()).resolves.toMatchObject({
+      patient: { id: 'patient_1', name: '患者A', name_kana: 'カンジャエー' },
+      first_visit_documents: [],
+    });
+  });
+
+  it('returns patient home operations data', async () => {
+    getPatientHomeOperationsDataMock.mockResolvedValue({
+      generated_at: '2026-06-16T00:00:00.000Z',
+      attention_count: 1,
+      top_alerts: [
+        {
+          id: 'documents:0:未回収',
+          key: 'documents',
+          label: '契約・同意・書類',
+          message: '未回収',
+          href: '/patients/patient_1/consent',
+          action_label: '書類を確認',
+        },
+      ],
+      items: [{ key: 'documents', label: '契約・同意・書類', alerts: ['未回収'] }],
+    });
+
+    const response = await homeOperationsGet(
+      createRequest('http://localhost/api/patients/patient_1/home-operations'),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      attention_count: 1,
+      top_alerts: [{ key: 'documents', message: '未回収' }],
+      items: [{ key: 'documents' }],
+    });
   });
 
   it('returns patient timeline data', async () => {

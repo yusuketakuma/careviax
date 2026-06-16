@@ -9,6 +9,9 @@ import { listPatientFieldRevisions } from '@/server/services/patient-field-revis
 import { z } from 'zod';
 
 const fieldRevisionQuerySchema = z.object({
+  category: z
+    .enum(['basic', 'residence', 'contacts', 'conditions', 'clinical', 'insurance'])
+    .optional(),
   limit: boundedIntegerSearchParam('limit', 1, 200, 50),
 });
 
@@ -25,7 +28,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!id) return validationError('患者IDが不正です');
 
   const url = new URL(req.url);
-  const category = url.searchParams.get('category') ?? undefined;
   const parsedQuery = parseSearchParams(fieldRevisionQuerySchema, url.searchParams);
   if (!parsedQuery.ok) {
     return validationError('クエリパラメータが不正です', parsedQuery.error.flatten().fieldErrors);
@@ -34,7 +36,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const patient = await prisma.patient.findFirst({
     where: applyPatientAssignmentWhere(
       { id, org_id: ctx.orgId },
-      { userId: ctx.userId, role: ctx.role }
+      { userId: ctx.userId, role: ctx.role },
     ),
     select: { id: true },
   });
@@ -43,7 +45,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const revisions = await listPatientFieldRevisions(prisma, {
     orgId: ctx.orgId,
     patientId: id,
-    category,
+    category: parsedQuery.data.category,
     limit: parsedQuery.data.limit,
   });
 

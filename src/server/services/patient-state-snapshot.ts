@@ -86,7 +86,7 @@ export async function findPatientOverviewBase(db: DbClient, args: DetailArgs) {
  */
 export async function buildPatientStateSnapshot(
   db: DbClient,
-  args: DetailArgs & { caseId: string; source?: string; capturedAt?: Date }
+  args: DetailArgs & { caseId: string; source?: string; capturedAt?: Date },
 ): Promise<Prisma.InputJsonValue | null> {
   const base = await findPatientOverviewBase(db, args);
   if (!base) return null;
@@ -117,25 +117,47 @@ export async function buildPatientStateSnapshot(
     case_id: visitedCase?.id ?? null,
     patient: {
       id: base.id,
-      name: base.name,
-      name_kana: base.name_kana,
       birth_date: base.birth_date,
       gender: base.gender,
-      phone: base.phone,
-      medical_insurance_number: base.medical_insurance_number,
-      care_insurance_number: base.care_insurance_number,
-      allergy_info: base.allergy_info ?? null,
-      notes: base.notes ?? null,
+      billing_support_flag: base.billing_support_flag,
     },
-    primary_residence: primaryResidence,
+    primary_residence: primaryResidence
+      ? {
+          id: primaryResidence.id,
+          facility_id: primaryResidence.facility_id ?? null,
+          facility_unit_id: primaryResidence.facility_unit_id ?? null,
+          has_address: Boolean(primaryResidence.address),
+          has_unit_name: Boolean(primaryResidence.unit_name),
+        }
+      : null,
     scheduling_preference: base.scheduling_preference ?? null,
-    conditions: base.conditions ?? [],
-    contacts: base.contacts ?? [],
-    care_team_links: visitedCase?.care_team_links ?? [],
+    conditions: (base.conditions ?? []).map((condition) => ({
+      condition_type: condition.condition_type,
+      name: condition.name,
+      is_primary: condition.is_primary,
+      is_active: condition.is_active,
+    })),
+    contacts: (base.contacts ?? []).map((contact) => ({
+      relation: contact.relation,
+      is_primary: contact.is_primary,
+      is_emergency_contact: contact.is_emergency_contact,
+    })),
+    care_team_links: (visitedCase?.care_team_links ?? []).map((link) => ({
+      role: link.role,
+      name: link.name,
+      is_primary: link.is_primary,
+    })),
     home_visit_intake: visitedCase
       ? (getHomeVisitIntake(visitedCase.required_visit_support) ?? null)
       : null,
-    insurances,
+    insurances: insurances.map((insurance) => ({
+      insurance_type: insurance.insurance_type,
+      application_status: insurance.application_status,
+      copay_ratio: insurance.copay_ratio,
+      valid_from: insurance.valid_from,
+      valid_until: insurance.valid_until,
+      confirmed_care_level: insurance.confirmed_care_level,
+    })),
   };
 
   // Date/Decimal を ISO 文字列等の JSON 安全値へ正規化してから凍結する(page.tsx と同じ手法)
