@@ -834,7 +834,7 @@ function parseCurrencyMetric(item: PatientHomeOperationItem, label: string) {
 
 function metricValue(item: PatientHomeOperationItem, label: string) {
   const value = item.metrics.find((metric) => metric.label === label)?.value;
-  return value && !['未記録', '未発行/未記録'].includes(value) ? value : '';
+  return value && !['未記録', '未発行/未記録', '未発行', '不要'].includes(value) ? value : '';
 }
 
 function toLocalDateTimeInputValue(value: Date) {
@@ -1292,6 +1292,19 @@ function BillingCollectionQuickForm({
     metricDateTimeValue(item, '次回集金予定'),
   );
   const [error, setError] = useState<string | null>(null);
+  const receiptIssueCode = metricValueOrDefault(item, '領収証発行コード', 'paper');
+  const receiptRequired = receiptIssueCode !== 'none';
+  const receiptRequiredForStatus = receiptRequired && ['collected', 'partial'].includes(status);
+  const collectionStatusLabel =
+    {
+      billed: '請求済',
+      scheduled: '集金予定',
+      collected: '集金済',
+      partial: '一部入金',
+      unpaid: '未収',
+      dunning: '督促中',
+      waived: '免除・公費',
+    }[status] ?? status;
 
   return (
     <form
@@ -1331,6 +1344,10 @@ function BillingCollectionQuickForm({
           collected > 0
         ) {
           setError('入金額がある場合は一部入金または集金済を選択してください。');
+          return;
+        }
+        if (receiptRequiredForStatus && !receiptNumber.trim()) {
+          setError('領収証発行が必要な集金では領収証番号を入力してください。');
           return;
         }
         setError(null);
@@ -1431,6 +1448,34 @@ function BillingCollectionQuickForm({
             onChange={(event) => setScheduledCollectionAt(event.target.value)}
             className="min-h-9 text-xs"
           />
+        </div>
+        <div className="rounded-lg border border-current/15 bg-muted/20 p-2 text-xs">
+          <p className="font-medium text-foreground">保存される集金履歴</p>
+          <dl className="mt-2 grid gap-1">
+            <div className="flex justify-between gap-2">
+              <dt className="text-muted-foreground">状態</dt>
+              <dd className="font-medium text-foreground">{collectionStatusLabel}</dd>
+            </div>
+            <div className="flex justify-between gap-2">
+              <dt className="text-muted-foreground">入金</dt>
+              <dd className="font-medium text-foreground">
+                {collectedAmount
+                  ? `${Number(collectedAmount).toLocaleString('ja-JP')}円`
+                  : '未記録'}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-2">
+              <dt className="text-muted-foreground">領収証</dt>
+              <dd className="font-medium text-foreground">
+                {receiptRequired ? receiptNumber.trim() || '番号未入力' : '発行不要'}
+              </dd>
+            </div>
+          </dl>
+          {receiptRequiredForStatus ? (
+            <p className="mt-2 text-muted-foreground">
+              支払設定では領収証発行が必要です。番号を入れてから保存してください。
+            </p>
+          ) : null}
         </div>
         {error ? <p className="text-xs text-destructive">{error}</p> : null}
         <Button type="submit" size="sm" className="min-h-9 w-full" disabled={isPending}>

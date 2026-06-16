@@ -529,8 +529,8 @@ describe('CardWorkspace', () => {
     expect(within(homeOps).getByText('未処理の算定候補が1件あります')).toBeTruthy();
     expect(within(homeOps).getAllByText('未収額 1,080円 があります').length).toBeGreaterThan(0);
     expect(within(homeOps).getByText('未収額')).toBeTruthy();
-    expect(within(homeOps).getByText('領収証')).toBeTruthy();
-    expect(within(homeOps).getByText('R20260616-001')).toBeTruthy();
+    expect(within(homeOps).getAllByText('領収証').length).toBeGreaterThan(0);
+    expect(within(homeOps).getAllByText('R20260616-001').length).toBeGreaterThan(0);
     expect(within(homeOps).queryByText('支払者区分コード')).toBeNull();
     const expandBillingMetricsButton = within(homeOps).getByRole('button', {
       name: '全指標を表示（残り10件）',
@@ -1054,6 +1054,53 @@ describe('CardWorkspace', () => {
 
     expect(
       await screen.findByText('一部入金では請求額未満の入金額を入力してください。'),
+    ).toBeTruthy();
+    expect(billingMutate).not.toHaveBeenCalled();
+  });
+
+  it('requires a receipt number before saving collected billing when receipt issuance is enabled', async () => {
+    const { billingMutate } = mockPatientQuery(buildWorkspace(), {
+      generated_at: '2026-06-16T00:00:00.000Z',
+      attention_count: 1,
+      top_alerts: [],
+      items: [
+        {
+          key: 'billing',
+          label: '請求・集金',
+          status: '確認待ち',
+          description: '2026/06 居宅療養管理指導 / confirmed',
+          href: '/billing/candidates?patient_id=patient_1&billing_month=2026-06-01',
+          action_label: '請求候補を確認',
+          tone: 'attention',
+          updated_at: '2026-06-10T00:00:00.000Z',
+          metrics: [
+            { label: '今月請求額', value: '3,240円' },
+            { label: '支払者', value: '長女' },
+            { label: '領収証', value: '未発行/未記録' },
+            { label: '領収証発行コード', value: 'paper' },
+            { label: '次回集金予定', value: '未設定' },
+          ],
+          alerts: ['領収証番号が未記録です'],
+          quick_actions: [
+            {
+              key: 'record_billing_collection',
+              label: '集金記録を更新',
+              resource_id: 'candidate_1',
+            },
+          ],
+        },
+      ],
+    });
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    expect(screen.getByText('保存される集金履歴')).toBeTruthy();
+    expect(screen.getByText('番号未入力')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('入金額'), { target: { value: '3240' } });
+    fireEvent.click(screen.getByRole('button', { name: /集金記録を更新/ }));
+
+    expect(
+      await screen.findByText('領収証発行が必要な集金では領収証番号を入力してください。'),
     ).toBeTruthy();
     expect(billingMutate).not.toHaveBeenCalled();
   });
