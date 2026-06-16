@@ -27,7 +27,10 @@ export const GET = withAuthContext(
     // scheduled_date / shift date(@db.Date)比較用: ローカル日付の UTC 深夜
     const today = utcDateFromLocalKey(localDateKey());
     const requestedView = new URL(req.url).searchParams.get('view');
-    const view = requestedView === 'phase' || requestedView === 'realtime' ? requestedView : 'full';
+    const view =
+      requestedView === 'phase' || requestedView === 'realtime' || requestedView === 'performance'
+        ? requestedView
+        : 'full';
     const assignmentScope = await resolveDashboardAssignmentScope({
       db: prisma,
       orgId: ctx.orgId,
@@ -51,7 +54,7 @@ export const GET = withAuthContext(
     const recentOutcomeWindow = addUtcDays(today, -RECENT_WINDOW_DAYS);
 
     const core =
-      view === 'phase'
+      view === 'phase' || view === 'performance'
         ? await fetchWorkflowPhaseCoreData(
             prisma,
             ctx.orgId,
@@ -79,7 +82,7 @@ export const GET = withAuthContext(
               assignmentScope,
             );
     const dependent =
-      view === 'phase' || view === 'realtime'
+      view === 'phase' || view === 'realtime' || view === 'performance'
         ? await fetchWorkflowPhaseDependentData(prisma, ctx.orgId, core)
         : await fetchWorkflowDependentData(prisma, ctx.orgId, today, core, assignmentScope);
 

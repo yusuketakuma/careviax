@@ -17,13 +17,7 @@ import {
 } from 'lucide-react';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminPerformanceShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { HelpPopover } from '@/components/ui/help-popover';
@@ -187,7 +181,7 @@ export default function PerformancePage() {
   const workflowQuery = useQuery({
     queryKey: ['admin-performance-workflow', orgId],
     queryFn: async () => {
-      const res = await fetch('/api/dashboard/workflow', {
+      const res = await fetch('/api/dashboard/workflow?view=performance', {
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('ワークフローの取得に失敗しました');
@@ -253,7 +247,7 @@ export default function PerformancePage() {
   const performance = useMemo(() => {
     const lockedSchedules = schedules.filter((schedule) => Boolean(schedule.confirmed_at)).length;
     const pendingOverrides = schedules.filter(
-      (schedule) => schedule.override_request?.status === 'pending'
+      (schedule) => schedule.override_request?.status === 'pending',
     ).length;
     const emergencyItems =
       schedules.filter((schedule) => schedule.priority === 'emergency').length +
@@ -262,13 +256,13 @@ export default function PerformancePage() {
       schedules.filter((schedule) => schedule.assignment_mode === 'fallback').length +
       proposals.filter((proposal) => proposal.assignment_mode === 'fallback').length;
     const contactConfirmed = proposals.filter(
-      (proposal) => proposal.patient_contact_status === 'confirmed'
+      (proposal) => proposal.patient_contact_status === 'confirmed',
     ).length;
     const avgRouteScore = proposals.length
       ? Math.round(
           (proposals.reduce((sum, proposal) => sum + (proposal.route_distance_score ?? 0), 0) /
             proposals.length) *
-            10
+            10,
         ) / 10
       : 0;
     const routeLockRate = schedules.length
@@ -295,7 +289,7 @@ export default function PerformancePage() {
       [...proposals]
         .sort((left, right) => (right.route_distance_score ?? 0) - (left.route_distance_score ?? 0))
         .slice(0, 6),
-    [proposals]
+    [proposals],
   );
 
   return (
@@ -323,7 +317,8 @@ export default function PerformancePage() {
             <div className="flex items-center justify-between text-sm">
               <span className="text-slate-500">対象期間</span>
               <span className="font-medium text-slate-900">
-                {format(weekStart, 'M/d', { locale: ja })} - {format(weekEnd, 'M/d', { locale: ja })}
+                {format(weekStart, 'M/d', { locale: ja })} -{' '}
+                {format(weekEnd, 'M/d', { locale: ja })}
               </span>
             </div>
             <div className="flex items-center justify-between text-sm">
@@ -331,7 +326,8 @@ export default function PerformancePage() {
               <span className="font-medium text-slate-900">30秒ごと</span>
             </div>
             <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
-              業務KPIに加えて、auth 配下 API の current-process latency snapshot も並べて確認します。
+              業務KPIに加えて、auth 配下 API の current-process latency snapshot
+              も並べて確認します。
             </div>
           </div>
         </CardContent>
@@ -543,9 +539,9 @@ export default function PerformancePage() {
                         ? '患者辞退'
                         : proposal.patient_contact_status === 'change_requested'
                           ? '変更希望'
-                        : proposal.patient_contact_status === 'unreachable'
-                          ? '不通'
-                          : '確認待ち'}
+                          : proposal.patient_contact_status === 'unreachable'
+                            ? '不通'
+                            : '確認待ち'}
                   </p>
                 </div>
               ))
@@ -620,7 +616,8 @@ export default function PerformancePage() {
             </div>
             {(runtime?.summary.total_requests ?? 0) === 0 ? (
               <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
-                まだ API サンプルがありません。通常画面を操作すると current-process の計測が蓄積されます。
+                まだ API サンプルがありません。通常画面を操作すると current-process
+                の計測が蓄積されます。
               </p>
             ) : null}
           </CardContent>
@@ -633,7 +630,9 @@ export default function PerformancePage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {(runtime?.routes.length ?? 0) === 0 ? (
-              <p className="text-sm text-muted-foreground">表示できる API latency sample はまだありません</p>
+              <p className="text-sm text-muted-foreground">
+                表示できる API latency sample はまだありません
+              </p>
             ) : (
               runtime?.routes.map((route) => (
                 <div
