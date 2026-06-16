@@ -4,14 +4,14 @@ import { NextRequest } from 'next/server';
 const {
   authMock,
   membershipFindFirstMock,
-  prescriptionIntakeFindManyMock,
+  prescriptionIntakeGroupByMock,
   prescriptionLineCountMock,
   pharmacistShiftFindManyMock,
   visitRecordCountMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
-  prescriptionIntakeFindManyMock: vi.fn(),
+  prescriptionIntakeGroupByMock: vi.fn(),
   prescriptionLineCountMock: vi.fn(),
   pharmacistShiftFindManyMock: vi.fn(),
   visitRecordCountMock: vi.fn(),
@@ -27,7 +27,7 @@ vi.mock('@/lib/db/client', () => ({
       findFirst: membershipFindFirstMock,
     },
     prescriptionIntake: {
-      findMany: prescriptionIntakeFindManyMock,
+      groupBy: prescriptionIntakeGroupByMock,
     },
     prescriptionLine: {
       count: prescriptionLineCountMock,
@@ -63,17 +63,9 @@ describe('/api/admin/metrics GET', () => {
   it('returns computed metrics for admins', async () => {
     authMock.mockResolvedValue({ user: { id: 'admin_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
-    prescriptionIntakeFindManyMock.mockResolvedValue([
-      { prescriber_institution: 'Aクリニック' },
-      { prescriber_institution: 'Aクリニック' },
-      { prescriber_institution: 'Aクリニック' },
-      { prescriber_institution: 'Aクリニック' },
-      { prescriber_institution: 'Aクリニック' },
-      { prescriber_institution: 'Aクリニック' },
-      { prescriber_institution: 'B医院' },
-      { prescriber_institution: 'B医院' },
-      { prescriber_institution: 'B医院' },
-      { prescriber_institution: 'B医院' },
+    prescriptionIntakeGroupByMock.mockResolvedValue([
+      { prescriber_institution: 'Aクリニック', _count: { id: 6 } },
+      { prescriber_institution: 'B医院', _count: { id: 4 } },
     ]);
     prescriptionLineCountMock.mockResolvedValueOnce(20).mockResolvedValueOnce(15);
     pharmacistShiftFindManyMock.mockResolvedValue([
@@ -96,6 +88,43 @@ describe('/api/admin/metrics GET', () => {
         reference_month: '2026-03',
         active_pharmacist_count: 2,
         business_days_elapsed: 20,
+      },
+    });
+    expect(prescriptionIntakeGroupByMock).toHaveBeenCalledWith({
+      by: ['prescriber_institution'],
+      where: {
+        org_id: 'org_1',
+        prescribed_date: {
+          gte: new Date('2026-02-28T15:00:00.000Z'),
+          lte: new Date('2026-03-28T09:00:00.000Z'),
+        },
+      },
+      _count: { id: true },
+    });
+  });
+
+  it('preserves unknown institution grouping for null and blank prescribers', async () => {
+    authMock.mockResolvedValue({ user: { id: 'admin_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    prescriptionIntakeGroupByMock.mockResolvedValue([
+      { prescriber_institution: null, _count: { id: 2 } },
+      { prescriber_institution: '   ', _count: { id: 3 } },
+      { prescriber_institution: 'Aクリニック', _count: { id: 5 } },
+    ]);
+    prescriptionLineCountMock.mockResolvedValueOnce(0).mockResolvedValueOnce(0);
+    pharmacistShiftFindManyMock.mockResolvedValue([]);
+    visitRecordCountMock.mockResolvedValue(0);
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), emptyRouteContext);
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        prescription_concentration_rate: 50,
+        generic_dispensing_rate: 0,
+        prescriptions_per_pharmacist: 0,
+        monthly_prescription_count: 10,
       },
     });
   });

@@ -25,13 +25,14 @@ export const GET = withAuthContext(
     const yearStart = startOfYear(now);
 
     const [
-      prescriptionIntakes,
+      prescriptionInstitutionGroups,
       totalPrescriptionLines,
       genericPrescriptionLines,
       activePharmacistCount,
       homeVisitCountYtd,
     ] = await Promise.all([
-      prisma.prescriptionIntake.findMany({
+      prisma.prescriptionIntake.groupBy({
+        by: ['prescriber_institution'],
         where: {
           org_id: ctx.orgId,
           prescribed_date: {
@@ -39,8 +40,8 @@ export const GET = withAuthContext(
             lte: now,
           },
         },
-        select: {
-          prescriber_institution: true,
+        _count: {
+          id: true,
         },
       }),
       prisma.prescriptionLine.count({
@@ -94,14 +95,17 @@ export const GET = withAuthContext(
       }),
     ]);
 
-    const monthlyPrescriptionCount = prescriptionIntakes.length;
-    const topInstitutionCount = prescriptionIntakes.reduce<Record<string, number>>(
-      (acc, intake) => {
-        const institution = intake.prescriber_institution?.trim() || '不明';
-        acc[institution] = (acc[institution] ?? 0) + 1;
+    const topInstitutionCount = prescriptionInstitutionGroups.reduce<Record<string, number>>(
+      (acc, group) => {
+        const institution = group.prescriber_institution?.trim() || '不明';
+        acc[institution] = (acc[institution] ?? 0) + group._count.id;
         return acc;
       },
       {},
+    );
+    const monthlyPrescriptionCount = Object.values(topInstitutionCount).reduce(
+      (sum, count) => sum + count,
+      0,
     );
     const highestInstitutionVolume =
       Object.values(topInstitutionCount).sort((left, right) => right - left)[0] ?? 0;
