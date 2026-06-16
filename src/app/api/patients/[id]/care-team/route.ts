@@ -4,13 +4,19 @@ import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withOrgContext } from '@/lib/db/rls';
-import { notFound, success, validationError } from '@/lib/api/response';
+import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { updatePatientCareTeamSchema } from '@/lib/validations/patient';
 import {
   applyPatientAssignmentWhere,
   buildCareCaseAssignmentWhere,
 } from '@/lib/auth/visit-schedule-access';
 import type { AuthContext } from '@/lib/auth/context';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
+import {
+  buildCareTeamReliabilitySummary,
+  normalizeCareTeamPrimaryByRole,
+} from '@/lib/patient/care-team-contact';
+import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 
 async function loadPatientCases(ctx: AuthContext, patientId: string) {
   const assignmentWhere = buildCareCaseAssignmentWhere(ctx);
@@ -92,6 +98,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
+  const normalizedLinks = normalizeCareTeamPrimaryByRole(parsed.data.links);
+
+  const writable = await requireWritablePatient(prisma, ctx, id);
+  if ('response' in writable) return writable.response;
 
   const caseAssignmentWhere = buildCareCaseAssignmentWhere(ctx);
   const careCase = await prisma.careCase.findFirst({
@@ -107,7 +117,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   try {
     const data = await withOrgContext(ctx.orgId, async (tx) => {
-      const externalProfessionalIds = parsed.data.links
+      const externalProfessionalIds = normalizedLinks
         .map((link) => link.external_professional_id)
         .filter((value): value is string => Boolean(value));
 
@@ -128,10 +138,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       await tx.careTeamLink.deleteMany({
         where: { org_id: ctx.orgId, case_id: careCase.id },
       });
-      if (parsed.data.links.length === 0) return [];
+      if (normalizedLinks.length === 0) return [];
 
       await tx.careTeamLink.createMany({
-        data: parsed.data.links.map((link) => ({
+        data: normalizedLinks.map((link) => ({
           org_id: ctx.orgId,
           case_id: careCase.id,
           external_professional_id: link.external_professional_id || null,
@@ -153,11 +163,43 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
       });
     });
+    const contacts = await prisma.contactParty.findMany({
+      where: { org_id: ctx.orgId, patient_id: id },
+      select: {
+        is_primary: true,
+        is_emergency_contact: true,
+        phone: true,
+        email: true,
+        fax: true,
+      },
+    });
+    const reliability = buildCareTeamReliabilitySummary({
+      contacts,
+      careTeamLinks: data,
+    });
 
-    return success({ case_id: careCase.id, data });
+    return success({
+      case_id: careCase.id,
+      data,
+      warnings: reliability.needs_confirmation
+        ? [
+            {
+              code: 'CARE_TEAM_RELIABILITY_UNREADY',
+              severity: 'warning',
+              message: reliability.detail,
+            },
+          ]
+        : [],
+      metadata: {
+        care_team_reliability: reliability,
+      },
+    });
   } catch (error) {
     if (error instanceof Error && error.message === 'INVALID_EXTERNAL_PROFESSIONAL') {
       return validationError('他組織の他職種はケアチームに登録できません');
+    }
+    if (isPrismaUniqueConstraintError(error)) {
+      return conflict('ケアチームが同時に更新されました。再読み込みしてください');
     }
     throw error;
   }

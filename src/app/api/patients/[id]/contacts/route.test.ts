@@ -178,6 +178,22 @@ describe('/api/patients/[id]/contacts PUT', () => {
   });
 
   it('replaces patient contacts with expanded fields', async () => {
+    findManyMock.mockResolvedValue([
+      {
+        id: 'contact_1',
+        name: '田中花子',
+        relation: 'care_manager',
+        phone: '03-1234-5678',
+        email: 'care@example.com',
+        fax: '03-9999-9999',
+        organization_name: '居宅支援事業所',
+        department: '在宅支援課',
+        address: '東京都千代田区4-5-6',
+        is_primary: true,
+        is_emergency_contact: false,
+        notes: '平日日中に連絡',
+      },
+    ]);
     const response = await PUT(
       createRequest(
         {
@@ -223,6 +239,277 @@ describe('/api/patients/[id]/contacts PUT', () => {
         },
       ],
     });
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        expect.objectContaining({
+          id: 'contact_1',
+          phone: '03-1234-5678',
+        }),
+      ],
+      warnings: [],
+      metadata: {
+        contact_readiness: {
+          ready: true,
+          detail: '電話可能な主連絡先または緊急連絡先があります。',
+        },
+      },
+    });
+  });
+
+  it('returns contact readiness warnings without raw contact values when saved contacts are still not callable', async () => {
+    patientFindFirstMock
+      .mockResolvedValueOnce({ id: 'patient_1', archived_at: null })
+      .mockResolvedValueOnce({
+        scheduling_preference: {
+          preferred_contact_name: '長男',
+          preferred_contact_phone: null,
+          visit_before_contact_required: true,
+        },
+      });
+    findManyMock.mockResolvedValue([
+      {
+        id: 'contact_1',
+        name: '長男',
+        relation: 'child',
+        phone: null,
+        email: 'family@example.com',
+        fax: null,
+        organization_name: null,
+        department: null,
+        address: '東京都千代田区1-2-3',
+        is_primary: true,
+        is_emergency_contact: false,
+        notes: null,
+      },
+    ]);
+
+    const response = await PUT(
+      createRequest(
+        {
+          contacts: [
+            {
+              relation: 'child',
+              name: '長男',
+              email: 'family@example.com',
+              address: '東京都千代田区1-2-3',
+              is_primary: true,
+              is_emergency_contact: false,
+            },
+          ],
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json).toMatchObject({
+      data: [expect.objectContaining({ id: 'contact_1', name: '長男' })],
+      warnings: [
+        {
+          code: 'PATIENT_CONTACT_UNREADY',
+          severity: 'warning',
+          message: '訪問前連絡が必要ですが電話可能な連絡先が未確認です。',
+        },
+      ],
+      metadata: {
+        contact_readiness: {
+          ready: false,
+          detail: '訪問前連絡が必要ですが電話可能な連絡先が未確認です。',
+        },
+      },
+    });
+    expect(JSON.stringify(json.warnings)).not.toMatch(
+      /family@example.com|東京都千代田区1-2-3|長男/,
+    );
+    expect(JSON.stringify(json.metadata)).not.toMatch(
+      /family@example.com|東京都千代田区1-2-3|長男/,
+    );
+  });
+
+  it('normalizes primary contact flags before replacing patient contacts', async () => {
+    const response = await PUT(
+      createRequest(
+        {
+          contacts: [
+            {
+              relation: 'child',
+              name: '長男',
+              phone: '090-1111-1111',
+              is_primary: true,
+              is_emergency_contact: true,
+            },
+            {
+              relation: 'child',
+              name: '長女',
+              phone: '090-2222-2222',
+              is_primary: true,
+              is_emergency_contact: false,
+            },
+          ],
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(createManyMock).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({ name: '長男', is_primary: true }),
+        expect.objectContaining({ name: '長女', is_primary: false }),
+      ],
+    });
+  });
+
+  it('assigns the first saved contact as primary when none is marked primary', async () => {
+    const response = await PUT(
+      createRequest(
+        {
+          contacts: [
+            {
+              relation: 'child',
+              name: '長男',
+              phone: '090-1111-1111',
+              is_primary: false,
+              is_emergency_contact: true,
+            },
+            {
+              relation: 'child',
+              name: '長女',
+              phone: '090-2222-2222',
+              is_primary: false,
+              is_emergency_contact: false,
+            },
+          ],
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(createManyMock).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({ name: '長男', is_primary: true }),
+        expect.objectContaining({ name: '長女', is_primary: false }),
+      ],
+    });
+  });
+
+  it('returns 409 when primary contact uniqueness is hit by a concurrent update', async () => {
+    createManyMock.mockRejectedValueOnce({ code: 'P2002' });
+
+    const response = await PUT(
+      createRequest(
+        {
+          contacts: [
+            {
+              relation: 'child',
+              name: '長男',
+              phone: '090-1111-1111',
+              is_primary: true,
+              is_emergency_contact: true,
+            },
+          ],
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '連絡先が同時に更新されました。再読み込みしてください',
+    });
+  });
+
+  it('returns duplicate contact warnings without raw contact values', async () => {
+    const response = await PUT(
+      createRequest(
+        {
+          contacts: [
+            {
+              relation: 'child',
+              name: '長男',
+              phone: '090-1111-1111',
+              is_primary: true,
+              is_emergency_contact: true,
+            },
+            {
+              relation: 'child',
+              name: '長男',
+              phone: '090-1111-1111',
+              is_primary: false,
+              is_emergency_contact: false,
+            },
+          ],
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'DUPLICATE_CONTACT',
+          severity: 'warning',
+          contact_indexes: [0, 1],
+        }),
+      ]),
+    );
+    expect(json.metadata.duplicate_contacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'DUPLICATE_CONTACT',
+          contact_indexes: [0, 1],
+        }),
+      ]),
+    );
+    expect(JSON.stringify(json.warnings)).not.toMatch(/090-1111-1111|長男/);
+    expect(JSON.stringify(json.metadata.duplicate_contacts)).not.toMatch(/090-1111-1111|長男/);
+  });
+
+  it('returns 409 for an archived patient before replacing contacts', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-04-01T00:00:00.000Z'),
+    });
+
+    const response = await PUT(
+      createRequest(
+        {
+          contacts: [
+            {
+              relation: 'care_manager',
+              name: '田中花子',
+              is_primary: true,
+              is_emergency_contact: false,
+            },
+          ],
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'アーカイブ中の患者は復元するまで更新できません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(deleteManyMock).not.toHaveBeenCalled();
+    expect(createManyMock).not.toHaveBeenCalled();
   });
 
   it('masks contact channels and address for external viewers on read', async () => {

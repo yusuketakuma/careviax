@@ -1,13 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { patientFindFirstMock, fieldRevisionFindManyMock, userFindManyMock, requireAuthContextMock } =
-  vi.hoisted(() => ({
-    patientFindFirstMock: vi.fn(),
-    fieldRevisionFindManyMock: vi.fn(),
-    userFindManyMock: vi.fn(),
-    requireAuthContextMock: vi.fn(),
-  }));
+const {
+  patientFindFirstMock,
+  fieldRevisionFindManyMock,
+  userFindManyMock,
+  requireAuthContextMock,
+} = vi.hoisted(() => ({
+  patientFindFirstMock: vi.fn(),
+  fieldRevisionFindManyMock: vi.fn(),
+  userFindManyMock: vi.fn(),
+  requireAuthContextMock: vi.fn(),
+}));
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
@@ -24,10 +28,9 @@ vi.mock('@/lib/db/client', () => ({
 import { GET } from './route';
 
 function createRequest(search = '') {
-  return new NextRequest(
-    `http://localhost/api/patients/patient_1/field-revisions${search}`,
-    { headers: { 'x-org-id': 'org_1' } }
-  );
+  return new NextRequest(`http://localhost/api/patients/patient_1/field-revisions${search}`, {
+    headers: { 'x-org-id': 'org_1' },
+  });
 }
 
 const params = { params: Promise.resolve({ id: 'patient_1' }) };
@@ -80,7 +83,16 @@ describe('GET /api/patients/[id]/field-revisions', () => {
     fieldRevisionFindManyMock.mockResolvedValue([]);
     await GET(createRequest('?category=basic'), params);
     expect(fieldRevisionFindManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ category: 'basic' }) })
+      expect.objectContaining({ where: expect.objectContaining({ category: 'basic' }) }),
+    );
+  });
+
+  it('医療処置カテゴリもUIフィルタと同じ定義で受け付ける', async () => {
+    fieldRevisionFindManyMock.mockResolvedValue([]);
+    const response = await GET(createRequest('?category=medical_care'), params);
+    expect(response.status).toBe(200);
+    expect(fieldRevisionFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ category: 'medical_care' }) }),
     );
   });
 

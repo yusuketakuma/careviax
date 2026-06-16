@@ -126,6 +126,59 @@ export type PatientOverview = {
     unit: string | null;
     abnormal_flag: string | null;
   }>;
+  foundation: {
+    summary: {
+      status: 'ready' | 'needs_confirmation' | 'missing';
+      label: string;
+      items: string[];
+    };
+    items: Array<{
+      key: string;
+      label: string;
+      status: 'ready' | 'needs_confirmation' | 'missing';
+      detail: string;
+      action_href: string;
+      action_label: string;
+      meta?: {
+        updated_at: string;
+        updated_by_name: string | null;
+        source: string;
+        confirmed_at: string | null;
+        confirmed_by_name: string | null;
+        confirmation_status: 'confirmed' | 'unconfirmed' | 'stale';
+        confirmation_detail: string;
+        stale: boolean;
+      } | null;
+    }>;
+    changes_since_last_visit: Array<{
+      id: string;
+      category: string;
+      field_label: string | null;
+      field_key: string;
+      source: string;
+      updated_by_name: string | null;
+      created_at: string;
+    }>;
+    latest_labs: Array<{
+      analyte_code: string;
+      value_label: string;
+      measured_at: string;
+      stale: boolean;
+      abnormal: boolean;
+    }>;
+    insurances: Array<{
+      insurance_type: string;
+      status_label: string;
+      period_label: string;
+      copay_label: string | null;
+      expires_soon: boolean;
+    }>;
+    archive: {
+      archived: boolean;
+      archived_at: string | null;
+      archived_by_name: string | null;
+    };
+  };
   jahis_supplemental_records: JahisSupplementalRecordDbView[];
   workspace: PatientWorkspace | null;
   privacy: {

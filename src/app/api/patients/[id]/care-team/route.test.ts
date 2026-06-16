@@ -10,6 +10,7 @@ const {
   deleteManyMock,
   createManyMock,
   findManyMock,
+  contactFindManyMock,
   externalProfessionalFindManyMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
@@ -20,6 +21,7 @@ const {
   deleteManyMock: vi.fn(),
   createManyMock: vi.fn(),
   findManyMock: vi.fn(),
+  contactFindManyMock: vi.fn(),
   externalProfessionalFindManyMock: vi.fn(),
 }));
 
@@ -35,6 +37,9 @@ vi.mock('@/lib/db/client', () => ({
     careCase: {
       findMany: careCaseFindManyMock,
       findFirst: careCaseFindFirstMock,
+    },
+    contactParty: {
+      findMany: contactFindManyMock,
     },
   },
 }));
@@ -101,6 +106,15 @@ describe('/api/patients/[id]/care-team', () => {
     ]);
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_active' });
     findManyMock.mockResolvedValue([{ id: 'link_1', role: 'physician', name: '佐藤医師' }]);
+    contactFindManyMock.mockResolvedValue([
+      {
+        is_primary: true,
+        is_emergency_contact: true,
+        phone: '090-1111-2222',
+        email: null,
+        fax: null,
+      },
+    ]);
     externalProfessionalFindManyMock.mockResolvedValue([{ id: 'external_1' }]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -233,6 +247,35 @@ describe('/api/patients/[id]/care-team', () => {
   });
 
   it('replaces care-team links for the selected case', async () => {
+    findManyMock.mockResolvedValue([
+      {
+        id: 'link_physician',
+        role: 'physician',
+        name: '佐藤医師',
+        phone: '03-1111-1111',
+        email: null,
+        fax: '03-1111-1112',
+        is_primary: true,
+      },
+      {
+        id: 'link_nurse',
+        role: 'nurse',
+        name: '山田看護師',
+        phone: '03-2222-3333',
+        email: 'nurse@example.com',
+        fax: '03-3333-4444',
+        is_primary: true,
+      },
+      {
+        id: 'link_cm',
+        role: 'care_manager',
+        name: '鈴木CM',
+        phone: '03-5555-6666',
+        email: null,
+        fax: '03-5555-6667',
+        is_primary: true,
+      },
+    ]);
     const response = await PUT(
       createRequest(
         'http://localhost/api/patients/patient_1/care-team',
@@ -290,6 +333,195 @@ describe('/api/patients/[id]/care-team', () => {
       },
       select: { id: true },
     });
+    await expect(response.json()).resolves.toMatchObject({
+      case_id: 'case_active',
+      data: [
+        expect.objectContaining({ id: 'link_physician' }),
+        expect.objectContaining({ id: 'link_nurse' }),
+        expect.objectContaining({ id: 'link_cm' }),
+      ],
+      warnings: [],
+      metadata: {
+        care_team_reliability: {
+          needs_confirmation: false,
+          alert_count: 0,
+          detail: '緊急連絡先と主要連携先の連絡手段があります。',
+        },
+      },
+    });
+  });
+
+  it('returns care-team reliability warnings without raw recipient values when required channels are missing', async () => {
+    findManyMock.mockResolvedValue([
+      {
+        id: 'link_physician',
+        role: 'physician',
+        name: '佐藤医師',
+        phone: '03-1111-1111',
+        email: 'doctor@example.com',
+        fax: null,
+        is_primary: true,
+      },
+    ]);
+
+    const response = await PUT(
+      createRequest(
+        'http://localhost/api/patients/patient_1/care-team',
+        {
+          case_id: 'case_active',
+          links: [
+            {
+              role: 'physician',
+              name: '佐藤医師',
+              phone: '03-1111-1111',
+              email: 'doctor@example.com',
+              is_primary: true,
+            },
+          ],
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    expect(json).toMatchObject({
+      case_id: 'case_active',
+      data: [expect.objectContaining({ id: 'link_physician' })],
+      warnings: [
+        {
+          code: 'CARE_TEAM_RELIABILITY_UNREADY',
+          severity: 'warning',
+          message: '緊急連絡先あり / 不足: 訪看、ケアマネ / 報告FAX未登録: 医師',
+        },
+      ],
+      metadata: {
+        care_team_reliability: {
+          needs_confirmation: true,
+          alert_count: 1,
+          detail: '緊急連絡先あり / 不足: 訪看、ケアマネ / 報告FAX未登録: 医師',
+          missing_role_labels: ['訪看', 'ケアマネ'],
+          phone_missing_role_labels: [],
+          fax_missing_role_labels: ['医師'],
+        },
+      },
+    });
+    expect(JSON.stringify(json.warnings)).not.toMatch(/03-1111-1111|doctor@example.com|佐藤医師/);
+    expect(JSON.stringify(json.metadata)).not.toMatch(/03-1111-1111|doctor@example.com|佐藤医師/);
+  });
+
+  it('normalizes care-team primary flags by role before replacing links', async () => {
+    const response = await PUT(
+      createRequest(
+        'http://localhost/api/patients/patient_1/care-team',
+        {
+          case_id: 'case_active',
+          links: [
+            {
+              role: 'physician',
+              name: '主治医A',
+              phone: '03-1111-1111',
+              fax: '03-1111-1112',
+              is_primary: true,
+            },
+            {
+              role: 'physician',
+              name: '主治医B',
+              phone: '03-2222-2222',
+              fax: '03-2222-2223',
+              is_primary: true,
+            },
+            {
+              role: 'nurse',
+              name: '訪看A',
+              phone: '03-3333-3333',
+              fax: '03-3333-3334',
+              is_primary: false,
+            },
+            {
+              role: 'nurse',
+              name: '訪看B',
+              phone: '03-4444-4444',
+              fax: '03-4444-4445',
+              is_primary: false,
+            },
+          ],
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(createManyMock).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({ role: 'physician', name: '主治医A', is_primary: true }),
+        expect.objectContaining({ role: 'physician', name: '主治医B', is_primary: false }),
+        expect.objectContaining({ role: 'nurse', name: '訪看A', is_primary: true }),
+        expect.objectContaining({ role: 'nurse', name: '訪看B', is_primary: false }),
+      ],
+    });
+  });
+
+  it('returns 409 when primary care-team uniqueness is hit by a concurrent update', async () => {
+    createManyMock.mockRejectedValueOnce({ code: 'P2002' });
+
+    const response = await PUT(
+      createRequest(
+        'http://localhost/api/patients/patient_1/care-team',
+        {
+          case_id: 'case_active',
+          links: [
+            {
+              role: 'physician',
+              name: '主治医A',
+              phone: '03-1111-1111',
+              fax: '03-1111-1112',
+              is_primary: true,
+            },
+          ],
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'ケアチームが同時に更新されました。再読み込みしてください',
+    });
+  });
+
+  it('returns 409 for an archived patient before replacing care-team links', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-04-01T00:00:00.000Z'),
+    });
+
+    const response = await PUT(
+      createRequest(
+        'http://localhost/api/patients/patient_1/care-team',
+        {
+          case_id: 'case_active',
+          links: [{ role: 'physician', name: '佐藤医師', is_primary: true }],
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'アーカイブ中の患者は復元するまで更新できません',
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(createManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects external professionals outside the current org', async () => {

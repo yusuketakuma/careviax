@@ -530,6 +530,34 @@ describe('/api/patients GET', () => {
     expect(payload.summary.total).toBe(1);
   });
 
+  it('supports foundation_issue filters for patient foundation gaps', async () => {
+    const response = (await GET(
+      createAuthenticatedRequest(
+        'http://localhost/api/patients?foundation_issue=missing_insurance',
+      ),
+    ))!;
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+
+    const payload = (await response.json()) as {
+      data: Array<{
+        id: string;
+        medical_insurance_number: string | null;
+        care_insurance_number: string | null;
+      }>;
+      summary: { total: number };
+    };
+
+    expect(payload.data).toHaveLength(1);
+    expect(payload.data[0]).toMatchObject({
+      id: 'patient_2',
+      medical_insurance_number: null,
+      care_insurance_number: null,
+    });
+    expect(payload.summary.total).toBe(1);
+  });
+
   it('uses the database cursor when paginating filtered results', async () => {
     patientFindManyMock.mockResolvedValueOnce([
       {
@@ -652,6 +680,7 @@ describe('/api/patients GET', () => {
   });
 
   it('persists rich intake payload into canonical tables and intake-only case metadata', async () => {
+    patientFindManyMock.mockResolvedValueOnce([]);
     patientCreateMock.mockResolvedValue({
       id: 'patient_new',
       name: '訪問 花子',
@@ -812,6 +841,79 @@ describe('/api/patients GET', () => {
     );
   });
 
+  it('returns 409 before creating when a patient identity duplicate is not acknowledged', async () => {
+    patientFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'patient_existing',
+        name: '訪問 花子',
+        name_kana: 'ホウモン ハナコ',
+        birth_date: new Date('1944-04-01'),
+        gender: 'female',
+      },
+    ]);
+
+    const response = (await POST(
+      createJsonRequest({
+        name: '訪問 花子',
+        name_kana: 'ホウモン ハナコ',
+        birth_date: '1944-04-01',
+        gender: 'female',
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        duplicate_type: 'patient_identity',
+        duplicates: [expect.objectContaining({ id: 'patient_existing' })],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('creates and returns a warning when an identity duplicate is acknowledged', async () => {
+    patientFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'patient_existing',
+        name: '訪問 花子',
+        name_kana: 'ホウモン ハナコ',
+        birth_date: new Date('1944-04-01'),
+        gender: 'female',
+      },
+    ]);
+    patientCreateMock.mockResolvedValue({
+      id: 'patient_new',
+      name: '訪問 花子',
+    });
+
+    const response = (await POST(
+      createJsonRequest({
+        name: '訪問 花子',
+        name_kana: 'ホウモン ハナコ',
+        birth_date: '1944-04-01',
+        gender: 'female',
+        duplicate_acknowledged: true,
+      }),
+    ))!;
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      id: 'patient_new',
+      warnings: [
+        {
+          code: 'PATIENT_DUPLICATE_ACKNOWLEDGED',
+          severity: 'warning',
+        },
+      ],
+      metadata: {
+        duplicate_candidates: [expect.objectContaining({ id: 'patient_existing' })],
+      },
+    });
+    expect(patientCreateMock).toHaveBeenCalled();
+  });
+
   it('rejects malformed patient contact numbers before creating a patient', async () => {
     const response = (await POST(
       createJsonRequest({
@@ -879,6 +981,7 @@ describe('/api/patients GET', () => {
   });
 
   it('copies facility acceptance window into schedule preferences on patient creation', async () => {
+    patientFindManyMock.mockResolvedValueOnce([]);
     getFacilityVisitDefaultsMock.mockResolvedValue({
       id: 'facility_1',
       acceptance_time_from: new Date('1970-01-01T09:00:00.000Z'),

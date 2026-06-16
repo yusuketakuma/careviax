@@ -9,6 +9,8 @@ import { withOrgContext } from '@/lib/db/rls';
 import { billingPaymentProfileSchema } from '@/lib/validations/billing-collection';
 import { buildPatientDetailWhere } from '@/server/services/patient-detail-scope';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
+import { prisma } from '@/lib/db/client';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
 
 const BILLING_PAYMENT_PROFILE_TASK_TYPE = 'patient_billing_payment_profile';
 
@@ -36,6 +38,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
+
+  const writable = await requireWritablePatient(prisma, ctx, patientId);
+  if ('response' in writable) return writable.response;
 
   const profile = {
     payer_type: parsed.data.payer_type,

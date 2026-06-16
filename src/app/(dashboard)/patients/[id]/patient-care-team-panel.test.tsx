@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
 const useQueryMock = vi.hoisted(() => vi.fn());
@@ -17,15 +17,21 @@ vi.mock('@tanstack/react-query', () => ({
 vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
+    warning: vi.fn(),
     error: vi.fn(),
   },
 }));
 
-import { careTeamContactBadges, PatientCareTeamPanel } from './patient-care-team-panel';
+import { PatientCareTeamPanel } from './patient-care-team-panel';
+import { toast } from 'sonner';
 
 setupDomTestEnv();
 
 describe('PatientCareTeamPanel', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('renders care team editing with a semantic section heading and shared actions', () => {
     useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
     useQueryMock.mockReturnValue({ data: { data: [] } });
@@ -66,41 +72,59 @@ describe('PatientCareTeamPanel', () => {
     expect(screen.getByRole('button', { name: /行追加/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
   });
-});
 
-describe('careTeamContactBadges', () => {
-  it('warns when a document-channel role is missing a fax number', () => {
-    expect(
-      careTeamContactBadges({ role: 'care_manager', fax: '', email: '', phone: '03-0000-0000' }),
-    ).toEqual([
-      { label: 'FAX未登録', tone: 'alert' },
-      { label: '電話のみ', tone: 'muted' },
-    ]);
-  });
+  it('shows reliability warnings returned by the care-team save API', () => {
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useQueryMock.mockReturnValue({ data: { data: [] } });
+    useMutationMock
+      .mockReturnValueOnce({ mutate: vi.fn(), isPending: false })
+      .mockImplementationOnce((config) => ({
+        mutate: () =>
+          config.onSuccess?.({
+            warnings: [
+              {
+                code: 'CARE_TEAM_RELIABILITY_UNREADY',
+                severity: 'warning',
+                message: '緊急連絡先あり / 不足: 訪看、ケアマネ / 報告FAX未登録: 医師',
+              },
+            ],
+          }),
+        isPending: false,
+      }));
 
-  it('marks registered fax and email channels as ok', () => {
-    expect(
-      careTeamContactBadges({
-        role: 'physician',
-        fax: '03-1234-5678',
-        email: 'doctor@example.jp',
-        phone: '',
-      }),
-    ).toEqual([
-      { label: 'FAX登録済', tone: 'ok' },
-      { label: 'メールOK', tone: 'ok' },
-    ]);
-  });
+    render(
+      <PatientCareTeamPanel
+        patientId="patient_1"
+        orgId="org_1"
+        cases={[
+          {
+            id: 'case_active_123456',
+            status: 'active',
+            care_team_links: [
+              {
+                id: 'link_1',
+                external_professional_id: null,
+                role: 'physician',
+                name: '佐藤医師',
+                organization_name: '千代田クリニック',
+                department: '在宅診療',
+                phone: '03-0000-0000',
+                email: null,
+                fax: null,
+                address: null,
+                is_primary: true,
+                notes: '主治医',
+              },
+            ],
+          },
+        ]}
+      />,
+    );
 
-  it('shows phone-only for family-like contacts without fax warning', () => {
-    expect(
-      careTeamContactBadges({ role: 'other', fax: '', email: '', phone: '090-0000-0000' }),
-    ).toEqual([{ label: '電話のみ', tone: 'muted' }]);
-  });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
 
-  it('alerts when no contact channel is registered at all', () => {
-    expect(careTeamContactBadges({ role: 'other', fax: '', email: '', phone: '' })).toEqual([
-      { label: '連絡先未登録', tone: 'alert' },
-    ]);
+    expect(toast.warning).toHaveBeenCalledWith(
+      '緊急連絡先あり / 不足: 訪看、ケアマネ / 報告FAX未登録: 医師',
+    );
   });
 });

@@ -1,13 +1,13 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
-import { conflict, error, forbidden, validationError, success, notFound } from '@/lib/api/response';
+import { conflict, error, forbidden, validationError, success } from '@/lib/api/response';
 import { syncPatientMcsSchema } from '@/lib/validations/patient-mcs';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { PatientMcsSyncError, syncPatientMcsTimeline } from '@/server/services/patient-mcs';
 import { canViewSensitivePatientData } from '@/lib/patient/sensitive';
-import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
 
 export const runtime = 'nodejs';
 
@@ -34,14 +34,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const patient = await prisma.patient.findFirst({
-    where: applyPatientAssignmentWhere(
-      { id, org_id: ctx.orgId },
-      { userId: ctx.userId, role: ctx.role },
-    ),
-    select: { id: true },
-  });
-  if (!patient) return notFound('患者が見つかりません');
+  const writable = await requireWritablePatient(prisma, ctx, id);
+  if ('response' in writable) return writable.response;
 
   try {
     const result = await syncPatientMcsTimeline({

@@ -57,6 +57,15 @@ interface DuplicatePatient {
   gender: string;
 }
 
+type PatientDuplicateConflictPayload = {
+  code?: string;
+  message?: string;
+  details?: {
+    duplicate_type?: string;
+    duplicates?: DuplicatePatient[];
+  };
+};
+
 type FacilityOption = {
   id: string;
   name: string;
@@ -149,6 +158,31 @@ const PATIENT_FORM_TABS = [
 ] as const;
 
 type PatientFormTab = (typeof PATIENT_FORM_TABS)[number]['value'];
+
+const PATIENT_FORM_HASH_TABS: Record<string, PatientFormTab> = {
+  '#patient-form-contact': 'contact',
+  '#patient-form-visit': 'visit',
+  '#patient-form-care': 'care',
+  '#patient-form-team': 'team',
+  '#phone': 'contact',
+  '#medical_insurance_number': 'contact',
+  '#care_insurance_number': 'contact',
+  '#intake.contact_phone': 'visit',
+  '#intake.contact_mobile': 'visit',
+  '#intake.parking_available': 'visit',
+  '#intake.care_level': 'care',
+  '#intake.care_manager.name': 'team',
+  '#intake.visiting_nurse.name': 'team',
+};
+
+const PATIENT_FORM_SECTION_TABS: Record<string, PatientFormTab> = {
+  basic: 'basic',
+  contact: 'contact',
+  requester: 'requester',
+  visit: 'visit',
+  care: 'care',
+  team: 'team',
+};
 
 function findFirstErrorTab(errors: FieldErrors<CreatePatientInput>): PatientFormTab {
   if (errors.name || errors.name_kana || errors.birth_date || errors.gender) {
@@ -263,7 +297,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
     }) ?? false;
   const previousFacilityIdRef = useRef<string>('');
   const duplicateLookupKey =
-    !patientId && watchedName?.trim() && watchedBirthDate && watchedGender
+    watchedName?.trim() && watchedBirthDate && watchedGender
       ? `${watchedName.trim()}::${watchedBirthDate}::${watchedGender}`
       : null;
   const duplicateConfirmed =
@@ -297,6 +331,34 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
     },
     [scrollToErrorSummary],
   );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const focusHashTarget = () => {
+      if (!window.location.hash || window.location.hash.startsWith('#patient-form-')) return;
+      const targetId = decodeURIComponent(window.location.hash.slice(1));
+      const target = document.getElementById(targetId);
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      target?.focus({ preventScroll: true });
+    };
+
+    const activateLocationTab = () => {
+      const section = new URLSearchParams(window.location.search).get('section');
+      const tab =
+        PATIENT_FORM_HASH_TABS[window.location.hash] ?? PATIENT_FORM_SECTION_TABS[section ?? ''];
+      if (tab) setActiveTab(tab);
+      window.requestAnimationFrame(focusHashTarget);
+    };
+
+    activateLocationTab();
+    window.addEventListener('hashchange', activateLocationTab);
+    window.addEventListener('popstate', activateLocationTab);
+    return () => {
+      window.removeEventListener('hashchange', activateLocationTab);
+      window.removeEventListener('popstate', activateLocationTab);
+    };
+  }, []);
 
   const toggleStringArrayField = useCallback(
     (
@@ -442,17 +504,28 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
   }, [facilitiesQuery.data, selectedFacilityId, setValue, watchedAddress]);
 
   async function onSubmit(data: CreatePatientInput) {
+    const payload = duplicateConfirmed ? { ...data, duplicate_acknowledged: true } : data;
     const res = await fetch(patientId ? `/api/patients/${patientId}` : '/api/patients', {
       method: patientId ? 'PATCH' : 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-org-id': orgId,
       },
-      body: JSON.stringify(data),
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
+      const err = (await res.json().catch(() => ({}))) as PatientDuplicateConflictPayload;
+      if (
+        res.status === 409 &&
+        err.details?.duplicate_type === 'patient_identity' &&
+        Array.isArray(err.details.duplicates)
+      ) {
+        setDuplicates(err.details.duplicates);
+        setDuplicateConfirmedKey(null);
+        toast.error(err.message ?? '重複している可能性がある患者が存在します');
+        return;
+      }
       toast.error(err.message ?? (patientId ? '更新に失敗しました' : '登録に失敗しました'));
       return;
     }
@@ -589,7 +662,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
           </Card>
         </TabsContent>
 
-        <TabsContent value="contact" className="mt-2">
+        <TabsContent id="patient-form-contact" value="contact" className="mt-2">
           <Card>
             <CardHeader className="py-4">
               <CardTitle className="text-base">連絡先・保険情報</CardTitle>
@@ -833,7 +906,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
           </Card>
         </TabsContent>
 
-        <TabsContent value="visit" className="mt-2">
+        <TabsContent id="patient-form-visit" value="visit" className="mt-2">
           <Card>
             <CardHeader className="py-4">
               <CardTitle className="text-base">訪問初期情報</CardTitle>
@@ -1188,7 +1261,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
           </Card>
         </TabsContent>
 
-        <TabsContent value="care" className="mt-2">
+        <TabsContent id="patient-form-care" value="care" className="mt-2">
           <Card>
             <CardHeader className="py-4">
               <CardTitle className="text-base">生活背景・薬学的管理</CardTitle>
@@ -2011,7 +2084,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
           </Card>
         </TabsContent>
 
-        <TabsContent value="team" className="mt-2">
+        <TabsContent id="patient-form-team" value="team" className="mt-2">
           <Card>
             <CardHeader className="py-4">
               <CardTitle className="text-base">多職種連携</CardTitle>

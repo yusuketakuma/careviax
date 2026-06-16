@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 
 const {
   requireAuthContextMock,
+  patientFindFirstMock,
   patientInsuranceFindFirstMock,
   patientInsuranceOverlapFindFirstMock,
   patientInsuranceUpdateMock,
@@ -10,6 +11,7 @@ const {
   withOrgContextMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
+  patientFindFirstMock: vi.fn(),
   patientInsuranceFindFirstMock: vi.fn(),
   patientInsuranceOverlapFindFirstMock: vi.fn(),
   patientInsuranceUpdateMock: vi.fn(),
@@ -23,6 +25,9 @@ vi.mock('@/lib/auth/context', () => ({
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
+    patient: {
+      findFirst: patientFindFirstMock,
+    },
     patientInsurance: {
       findFirst: patientInsuranceFindFirstMock,
     },
@@ -75,6 +80,7 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
       valid_until: new Date('2027-03-31'),
       is_active: true,
     });
+    patientFindFirstMock.mockResolvedValue({ id: 'patient_1', archived_at: null });
     patientInsuranceOverlapFindFirstMock.mockResolvedValue(null);
     patientInsuranceUpdateMock.mockResolvedValue({ id: 'insurance_1', is_active: false });
     patientInsuranceDeleteMock.mockResolvedValue({ id: 'insurance_1' });
@@ -159,6 +165,26 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
     expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
   });
 
+  it('PUT returns 409 for an archived patient before loading or updating insurance records', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-04-01T00:00:00.000Z'),
+    });
+
+    const response = await PUT(createPutRequest({ is_active: false }), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'アーカイブ中の患者は復元するまで更新できません',
+    });
+    expect(patientInsuranceFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientInsuranceUpdateMock).not.toHaveBeenCalled();
+  });
+
   it('deletes an insurance record', async () => {
     const response = await DELETE(createDeleteRequest(), {
       params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
@@ -173,6 +199,23 @@ describe('/api/patients/[id]/insurance/[insuranceId]', () => {
       id: 'insurance_1',
       deleted: true,
     });
+  });
+
+  it('DELETE returns 409 for an archived patient before deleting insurance records', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-04-01T00:00:00.000Z'),
+    });
+
+    const response = await DELETE(createDeleteRequest(), {
+      params: Promise.resolve({ id: 'patient_1', insuranceId: 'insurance_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(patientInsuranceFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientInsuranceDeleteMock).not.toHaveBeenCalled();
   });
 
   it('PUT rejects non-object payloads before loading the insurance record', async () => {

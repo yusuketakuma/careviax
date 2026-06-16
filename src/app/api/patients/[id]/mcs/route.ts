@@ -16,6 +16,7 @@ import {
 import { canViewSensitivePatientData } from '@/lib/patient/sensitive';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
 
 const mcsProfileSchema = z.object({
   linked_status: z.enum(['linked', 'unlinked', 'unknown']).default('unknown'),
@@ -118,9 +119,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const patientResult = await loadVisibleMcsPatient(id, ctx);
-  if ('response' in patientResult) return patientResult.response;
-  const { patient } = patientResult;
+  const writable = await requireWritablePatient(prisma, ctx, id);
+  if ('response' in writable) return writable.response;
+  const patient = await prisma.patient.findFirst({
+    where: { id, org_id: ctx.orgId },
+    select: { id: true, name: true },
+  });
+  if (!patient) return notFound('患者が見つかりません');
 
   const updatedAt = new Date();
   const profile = {

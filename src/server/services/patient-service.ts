@@ -29,6 +29,13 @@ import {
   buildCareCaseAssignmentWhere,
   type VisitScheduleAccessContext,
 } from '@/lib/auth/visit-schedule-access';
+import {
+  buildCareTeamReliabilitySummary,
+  buildPatientContactReadiness,
+  normalizeCareTeamPrimaryByRole,
+  normalizePatientPrimaryContacts,
+  selectPrimaryCareTeamCase,
+} from '@/lib/patient/care-team-contact';
 
 const DEFAULT_PATIENT_LIST_LIMIT = 50;
 const MAX_PATIENT_LIST_LIMIT = 500;
@@ -56,6 +63,13 @@ export type PatientListFilters = {
     | 'missing_emergency_contact'
     | 'missing_primary_physician'
     | 'missing_first_visit_doc';
+  foundation_issue?:
+    | 'needs_confirmation'
+    | 'missing_contact'
+    | 'missing_parking'
+    | 'missing_care_level'
+    | 'missing_insurance'
+    | 'missing_care_team';
 };
 
 function buildPatientSelect(referenceDate: Date, accessContext?: VisitScheduleAccessContext) {
@@ -85,11 +99,24 @@ function buildPatientSelect(referenceDate: Date, accessContext?: VisitScheduleAc
         contacts: true,
       },
     },
+    scheduling_preference: {
+      select: {
+        preferred_contact_name: true,
+        preferred_contact_phone: true,
+        visit_before_contact_required: true,
+        parking_available: true,
+        care_level: true,
+      },
+    },
     contacts: {
-      where: { is_emergency_contact: true },
-      take: 1,
+      take: 10,
       select: {
         id: true,
+        is_primary: true,
+        is_emergency_contact: true,
+        phone: true,
+        email: true,
+        fax: true,
       },
     },
     conditions: {
@@ -111,10 +138,14 @@ function buildPatientSelect(referenceDate: Date, accessContext?: VisitScheduleAc
         updated_at: true,
         primary_pharmacist_id: true,
         care_team_links: {
-          where: { role: 'physician' },
-          take: 1,
+          take: 10,
           select: {
             id: true,
+            role: true,
+            phone: true,
+            email: true,
+            fax: true,
+            is_primary: true,
           },
         },
       },
@@ -338,6 +369,54 @@ function matchesPatientPostFilters(patient: MappedPatientListItem, filters: Pati
         break;
       case 'missing_first_visit_doc':
         if (patient.readiness.has_first_visit_document) return false;
+        break;
+      default:
+        break;
+    }
+  }
+
+  if (filters.foundation_issue) {
+    const preference = patient.scheduling_preference;
+    const getContactReadiness = () =>
+      buildPatientContactReadiness({
+        contacts: patient.contacts,
+        preferredContactName: preference?.preferred_contact_name,
+        preferredContactPhone: preference?.preferred_contact_phone,
+        visitBeforeContactRequired: preference?.visit_before_contact_required,
+      });
+    const getCareTeamReliability = () =>
+      buildCareTeamReliabilitySummary({
+        contacts: patient.contacts,
+        careTeamLinks: selectPrimaryCareTeamCase(patient.cases)?.care_team_links ?? [],
+      });
+    const insuranceMissing = !patient.medical_insurance_number && !patient.care_insurance_number;
+
+    switch (filters.foundation_issue) {
+      case 'needs_confirmation':
+        if (
+          getContactReadiness().ready &&
+          preference?.parking_available != null &&
+          preference?.care_level &&
+          !insuranceMissing &&
+          !getCareTeamReliability().needs_confirmation
+        ) {
+          return false;
+        }
+        break;
+      case 'missing_contact':
+        if (getContactReadiness().ready) return false;
+        break;
+      case 'missing_parking':
+        if (preference?.parking_available != null) return false;
+        break;
+      case 'missing_care_level':
+        if (preference?.care_level) return false;
+        break;
+      case 'missing_insurance':
+        if (!insuranceMissing) return false;
+        break;
+      case 'missing_care_team':
+        if (!getCareTeamReliability().needs_confirmation) return false;
         break;
       default:
         break;
@@ -614,7 +693,7 @@ export type CreatePatientData = z.infer<typeof createPatientSchema>;
 export async function createPatientWithIntake(orgId: string, data: CreatePatientData) {
   const { address, birth_date, intake, requester, ...rest } = data;
 
-  const normalizedContacts =
+  const preparedContacts =
     rest.contacts?.map((contact) => ({
       name: contact.name,
       relation: contact.relation,
@@ -630,7 +709,7 @@ export async function createPatientWithIntake(orgId: string, data: CreatePatient
     })) ?? [];
 
   if (intake?.emergency_contact?.name) {
-    normalizedContacts.push({
+    preparedContacts.push({
       name: intake.emergency_contact.name,
       relation: 'other',
       phone: intake.emergency_contact.phone || null,
@@ -644,6 +723,7 @@ export async function createPatientWithIntake(orgId: string, data: CreatePatient
       notes: intake.emergency_contact.relation || null,
     });
   }
+  const normalizedContacts = normalizePatientPrimaryContacts(preparedContacts);
 
   const normalizedConditions =
     rest.conditions?.map((condition) => ({
@@ -937,26 +1017,30 @@ export async function createPatientWithIntake(orgId: string, data: CreatePatient
         },
       });
 
-      const careTeamLinks = [
-        intake?.care_manager?.name
-          ? {
-              role: 'care_manager',
-              name: intake.care_manager.name,
-              organization_name: intake.care_manager.organization_name || null,
-              phone: intake.care_manager.phone || null,
-              fax: intake.care_manager.fax || null,
-            }
-          : null,
-        intake?.visiting_nurse?.name
-          ? {
-              role: 'nurse',
-              name: intake.visiting_nurse.name,
-              organization_name: intake.visiting_nurse.organization_name || null,
-              phone: intake.visiting_nurse.phone || null,
-              fax: intake.visiting_nurse.fax || null,
-            }
-          : null,
-      ].filter((item): item is NonNullable<typeof item> => item != null);
+      const careTeamLinks = normalizeCareTeamPrimaryByRole(
+        [
+          intake?.care_manager?.name
+            ? {
+                role: 'care_manager',
+                name: intake.care_manager.name,
+                organization_name: intake.care_manager.organization_name || null,
+                phone: intake.care_manager.phone || null,
+                fax: intake.care_manager.fax || null,
+                is_primary: true,
+              }
+            : null,
+          intake?.visiting_nurse?.name
+            ? {
+                role: 'nurse',
+                name: intake.visiting_nurse.name,
+                organization_name: intake.visiting_nurse.organization_name || null,
+                phone: intake.visiting_nurse.phone || null,
+                fax: intake.visiting_nurse.fax || null,
+                is_primary: true,
+              }
+            : null,
+        ].filter((item): item is NonNullable<typeof item> => item != null),
+      );
 
       if (careTeamLinks.length > 0) {
         await tx.careTeamLink.createMany({
@@ -968,6 +1052,7 @@ export async function createPatientWithIntake(orgId: string, data: CreatePatient
             organization_name: link.organization_name,
             phone: link.phone,
             fax: link.fax,
+            is_primary: link.is_primary,
           })),
         });
       }

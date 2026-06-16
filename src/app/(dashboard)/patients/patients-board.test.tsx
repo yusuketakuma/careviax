@@ -44,8 +44,14 @@ function card(overrides: Partial<PatientBoardCard>): PatientBoardCard {
     status_text: 'セット作成中(通常レーン)',
     status_tone: 'neutral',
     operation_summary: ['連絡先未設定', '駐車未確認'],
+    foundation_summary: {
+      status: 'needs_confirmation',
+      label: '未確認2件',
+      items: ['連絡先未設定', '駐車未確認'],
+    },
+    foundation_href: '/patients/pt_default#patient-foundation',
     link_label: 'セットへ',
-    link_href: '/medication-sets',
+    link_href: '/set',
     ...overrides,
   };
 }
@@ -68,8 +74,14 @@ function buildFixture(): PatientBoardResponse {
         status_text: '麻薬監査 期限12:00 — 持参薬が未確定',
         status_tone: 'critical',
         operation_summary: ['連絡先あり', '駐車場なし', '要介護 3'],
+        foundation_summary: {
+          status: 'ready',
+          label: '安全確認あり',
+          items: ['安全タグ4件'],
+        },
+        foundation_href: '/patients/pt_tanaka#patient-foundation',
         link_label: '監査へ',
-        link_href: '/auditing',
+        link_href: '/audit',
       }),
       card({
         patient_id: 'pt_sasaki',
@@ -203,6 +215,7 @@ describe('PatientsBoard', () => {
     const chipBar = screen.getByRole('group', { name: '対応カテゴリの絞り込み' });
     expect(within(chipBar).getByRole('button', { name: /今すぐ対応/ })).toBeTruthy();
     expect(within(chipBar).getByRole('button', { name: /本日訪問 3＋施設12名/ })).toBeTruthy();
+    expect(within(chipBar).getByRole('button', { name: /正本未整備/ })).toBeTruthy();
     expect(within(chipBar).getByRole('button', { name: /休止/ })).toBeTruthy();
 
     expect(screen.getByTestId('patients-board-scope-note').textContent).toContain(
@@ -230,6 +243,13 @@ describe('PatientsBoard', () => {
     expect(within(urgent as HTMLElement).getByText('連絡先あり')).toBeTruthy();
     expect(within(urgent as HTMLElement).getByText('駐車場なし')).toBeTruthy();
     expect(within(urgent as HTMLElement).getByText('要介護 3')).toBeTruthy();
+    expect(within(urgent as HTMLElement).getByText('安全確認あり')).toBeTruthy();
+    expect(within(urgent as HTMLElement).getByText('安全タグ4件')).toBeTruthy();
+    expect(
+      within(urgent as HTMLElement)
+        .getByRole('link', { name: '正本確認' })
+        .getAttribute('href'),
+    ).toBe('/patients/pt_tanaka#patient-foundation');
     expect(
       within(urgent as HTMLElement).getByText('麻薬監査 期限12:00 — 持参薬が未確定'),
     ).toBeTruthy();
@@ -240,7 +260,7 @@ describe('PatientsBoard', () => {
       within(urgent as HTMLElement)
         .getByRole('link', { name: '患者詳細' })
         .getAttribute('href'),
-    ).toBe('/patients/pt_tanaka');
+    ).toBe('/patients/pt_tanaka#patient-foundation');
     expect(
       within(urgent as HTMLElement)
         .getByTestId('process-progress-dots')
@@ -250,6 +270,7 @@ describe('PatientsBoard', () => {
     // タグなしは「安全タグなし」を明示
     const acceptance = cards.find((node) => node.getAttribute('data-attention') === 'acceptance');
     expect(within(acceptance as HTMLElement).getByText('安全タグなし')).toBeTruthy();
+    expect(within(acceptance as HTMLElement).getByText('未確認2件')).toBeTruthy();
     expect(within(acceptance as HTMLElement).getByText('未定(調整中)')).toBeTruthy();
 
     // 休止カード: 全点灰ドット + 休止ラベル
@@ -273,6 +294,10 @@ describe('PatientsBoard', () => {
     expect(screen.getAllByTestId('patient-board-card')).toHaveLength(2);
     expect(screen.getByRole('link', { name: '田中 一郎' })).toBeTruthy();
     expect(screen.getByRole('link', { name: '伊藤 キヨ' })).toBeTruthy();
+
+    fireEvent.click(within(chipBar).getByRole('button', { name: /正本未整備/ }));
+    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(4);
+    expect(screen.queryByRole('link', { name: '田中 一郎' })).toBeNull();
 
     fireEvent.click(within(chipBar).getByRole('button', { name: /今すぐ対応/ }));
     expect(screen.getAllByTestId('patient-board-card')).toHaveLength(5);

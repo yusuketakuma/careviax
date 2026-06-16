@@ -14,6 +14,10 @@ import { getPatientVisitBrief } from '@/server/services/visit-brief';
 import { getPatientHomeCareFeatureSummary } from '@/server/services/home-care-ops';
 import { compactPreviewValues } from '@/server/services/patient-detail-helpers';
 import { buildPatientWorkspace } from '@/server/services/patient-detail-workspace';
+import {
+  buildPatientFoundationData,
+  type PatientFoundationData,
+} from '@/server/services/patient-detail-foundation';
 import { listPatientBillingCaseRefs } from '@/server/services/patient-detail-billing-refs';
 import { listPatientLabSummary } from '@/server/services/patient-detail-labs';
 import { runPatientDetailTasks } from '@/server/services/patient-detail-tasks';
@@ -36,6 +40,50 @@ export { getPatientReadinessData } from '@/server/services/patient-detail-readin
 export { getPatientWorkflowPreviewData } from '@/server/services/patient-detail-workflow-preview';
 
 type DbClient = typeof prisma | Prisma.TransactionClient;
+
+type JahisSupplementalRecordProjection = {
+  id: string;
+  record_type: string;
+  record_label: string | null;
+  line_number: number;
+  summary: string | null;
+  payload?: unknown;
+  raw_line?: string | null;
+};
+
+function maskJahisSupplementalRecords(
+  records: JahisSupplementalRecordProjection[],
+  options: { sensitiveFieldsMasked: boolean },
+) {
+  if (!options.sensitiveFieldsMasked) return records;
+  return records.map((record) => {
+    const { payload, raw_line: rawLine, ...safeRecord } = record;
+    void payload;
+    void rawLine;
+    return safeRecord;
+  });
+}
+
+function maskFoundationForExternalViewer(foundation: PatientFoundationData): PatientFoundationData {
+  return {
+    ...foundation,
+    items: foundation.items.map((item) => ({
+      ...item,
+      meta: item.meta
+        ? {
+            ...item.meta,
+            updated_by_name: null,
+            confirmed_by_name: null,
+          }
+        : item.meta,
+    })),
+    changes_since_last_visit: foundation.changes_since_last_visit.map((item) => ({
+      ...item,
+      updated_by_name: null,
+    })),
+  };
+}
+
 type PatientTimelineDb = {
   auditLog: Pick<Prisma.TransactionClient['auditLog'], 'findMany'>;
   billingCandidate: Pick<Prisma.TransactionClient['billingCandidate'], 'findMany'>;
@@ -89,7 +137,7 @@ export async function getPatientOverview(db: DbClient, args: DetailArgs) {
   if (!patient) return null;
 
   const caseIds = patient.cases.map((item) => item.id);
-  const [
+  const {
     visitSchedules,
     openTasksCount,
     riskSummary,
@@ -98,107 +146,134 @@ export async function getPatientOverview(db: DbClient, args: DetailArgs) {
     jahisSupplementalRecords,
     archivedByNameMap,
     workspace,
-  ] = await Promise.all([
-    caseIds.length === 0
-      ? Promise.resolve([])
-      : db.visitSchedule.findMany({
-          where: {
-            org_id: args.orgId,
-            case_id: { in: caseIds },
-          },
-          orderBy: [{ scheduled_date: 'desc' }, { time_window_start: 'desc' }],
-          take: 8,
-          select: {
-            id: true,
-            scheduled_date: true,
-            schedule_status: true,
-            time_window_start: true,
-            confirmed_at: true,
-            visit_record: {
-              select: {
-                id: true,
-                outcome_status: true,
+  } = await runPatientDetailTasks({
+    visitSchedules: () =>
+      caseIds.length === 0
+        ? Promise.resolve([])
+        : db.visitSchedule.findMany({
+            where: {
+              org_id: args.orgId,
+              case_id: { in: caseIds },
+            },
+            orderBy: [{ scheduled_date: 'desc' }, { time_window_start: 'desc' }],
+            take: 8,
+            select: {
+              id: true,
+              scheduled_date: true,
+              schedule_status: true,
+              time_window_start: true,
+              confirmed_at: true,
+              visit_record: {
+                select: {
+                  id: true,
+                  outcome_status: true,
+                },
               },
             },
+          }),
+    openTasksCount: () =>
+      db.task.count({
+        where: {
+          org_id: args.orgId,
+          status: {
+            in: ['pending', 'in_progress'],
           },
-        }),
-    db.task.count({
-      where: {
-        org_id: args.orgId,
-        status: {
-          in: ['pending', 'in_progress'],
-        },
-        OR: [
-          {
-            related_entity_type: 'patient',
-            related_entity_id: args.patientId,
-          },
-          ...(caseIds.length > 0
-            ? [
-                {
-                  related_entity_type: 'case',
-                  related_entity_id: {
-                    in: caseIds,
+          OR: [
+            {
+              related_entity_type: 'patient',
+              related_entity_id: args.patientId,
+            },
+            ...(caseIds.length > 0
+              ? [
+                  {
+                    related_entity_type: 'case',
+                    related_entity_id: {
+                      in: caseIds,
+                    },
                   },
-                },
-              ]
-            : []),
-        ],
-      },
-    }),
-    getPatientRiskSummary(db, {
-      orgId: args.orgId,
-      patientId: args.patientId,
-      caseIds,
-    }),
-    getPatientVisitBrief(db, {
-      orgId: args.orgId,
-      patientId: args.patientId,
-      context: 'patient',
-      caseIds,
-      role: args.role,
-      userId: args.userId,
-    }),
-    listPatientLabSummary(db, args),
-    db.jahisSupplementalRecord.findMany({
-      where: {
-        org_id: args.orgId,
-        patient_id: args.patientId,
-      },
-      orderBy: [{ created_at: 'desc' }, { line_number: 'asc' }],
-      take: 8,
-      select: {
-        id: true,
-        record_type: true,
-        record_label: true,
-        line_number: true,
-        summary: true,
-        payload: true,
-        raw_line: true,
-      },
-    }),
-    batchResolveNames(
-      db as typeof prisma,
-      args.orgId,
-      patient.archived_by ? [patient.archived_by] : [],
-    ),
-    buildPatientWorkspace(db, {
-      orgId: args.orgId,
-      patientId: args.patientId,
-      caseIds,
-      allergyInfo: patient.allergy_info,
-      conditions: patient.conditions,
-      swallowingRoute: patient.scheduling_preference?.swallowing_route ?? null,
-    }),
-  ]);
+                ]
+              : []),
+          ],
+        },
+      }),
+    riskSummary: () =>
+      getPatientRiskSummary(db, {
+        orgId: args.orgId,
+        patientId: args.patientId,
+        caseIds,
+      }),
+    visitBrief: () =>
+      getPatientVisitBrief(db, {
+        orgId: args.orgId,
+        patientId: args.patientId,
+        context: 'patient',
+        caseIds,
+        role: args.role,
+        userId: args.userId,
+      }),
+    labSummary: () => listPatientLabSummary(db, args),
+    jahisSupplementalRecords: () =>
+      db.jahisSupplementalRecord.findMany({
+        where: {
+          org_id: args.orgId,
+          patient_id: args.patientId,
+        },
+        orderBy: [{ created_at: 'desc' }, { line_number: 'asc' }],
+        take: 8,
+        select: {
+          id: true,
+          record_type: true,
+          record_label: true,
+          line_number: true,
+          summary: true,
+          payload: true,
+          raw_line: true,
+        },
+      }),
+    archivedByNameMap: () =>
+      batchResolveNames(
+        db as typeof prisma,
+        args.orgId,
+        patient.archived_by ? [patient.archived_by] : [],
+      ),
+    workspace: () =>
+      buildPatientWorkspace(db, {
+        orgId: args.orgId,
+        patientId: args.patientId,
+        caseIds,
+        allergyInfo: patient.allergy_info,
+        conditions: patient.conditions,
+        swallowingRoute: patient.scheduling_preference?.swallowing_route ?? null,
+      }),
+  });
+  const archivedByName = patient.archived_by
+    ? (archivedByNameMap.get(patient.archived_by) ?? null)
+    : null;
+  const foundation = await buildPatientFoundationData(db, {
+    orgId: args.orgId,
+    patientId: args.patientId,
+    role: args.role,
+    userId: args.userId,
+    patient: {
+      id: patient.id,
+      archived_at: patient.archived_at,
+      archived_by_name: archivedByName,
+      contacts: patient.contacts,
+      cases: patient.cases,
+      scheduling_preference: patient.scheduling_preference,
+    },
+    labSummary,
+    riskSummary,
+  });
 
   const privacy = getPatientPrivacyFlags(args.role);
+  const visibleFoundation = privacy.canViewDetail
+    ? foundation
+    : maskFoundationForExternalViewer(foundation);
 
   return {
     ...patient,
-    archived_by_name: patient.archived_by
-      ? (archivedByNameMap.get(patient.archived_by) ?? null)
-      : null,
+    archived_by_name: archivedByName,
     phone: privacy.sensitiveFieldsMasked ? maskPhoneNumber(patient.phone) : patient.phone,
     medical_insurance_number: privacy.sensitiveFieldsMasked
       ? maskInsuranceNumber(patient.medical_insurance_number)
@@ -221,7 +296,10 @@ export async function getPatientOverview(db: DbClient, args: DetailArgs) {
     risk_summary: riskSummary,
     visit_brief: visitBrief,
     lab_summary: labSummary,
-    jahis_supplemental_records: jahisSupplementalRecords,
+    foundation: visibleFoundation,
+    jahis_supplemental_records: maskJahisSupplementalRecords(jahisSupplementalRecords, {
+      sensitiveFieldsMasked: privacy.sensitiveFieldsMasked,
+    }),
     workspace,
     privacy: {
       sensitive_fields_masked: privacy.sensitiveFieldsMasked,

@@ -8,6 +8,7 @@ import { notFound, success, validationError } from '@/lib/api/response';
 import { updatePatientConditionsSchema } from '@/lib/validations/patient';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import type { AuthContext } from '@/lib/auth/context';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
 
 async function assertPatient(ctx: AuthContext, id: string) {
   const patient = await prisma.patient.findFirst({
@@ -67,11 +68,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  try {
-    await assertPatient(ctx, id);
-  } catch {
-    return notFound('患者が見つかりません');
-  }
+  const writable = await requireWritablePatient(prisma, ctx, id);
+  if ('response' in writable) return writable.response;
 
   const data = await withOrgContext(ctx.orgId, async (tx) => {
     await tx.patientCondition.deleteMany({

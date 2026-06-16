@@ -143,6 +143,24 @@ describe('/api/patients/[id]/qualification-check POST', () => {
     });
   });
 
+  it('rejects archived patients before insurance resolution, external checks, or webhooks', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    const response = await POST(createRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(patientInsuranceFindFirstMock).not.toHaveBeenCalled();
+    expect(createQualificationCheckAdapterMock).not.toHaveBeenCalled();
+    expect(checkInsuranceMock).not.toHaveBeenCalled();
+    expect(notifyWebhookEventForOrgMock).not.toHaveBeenCalled();
+  });
+
   it('prefers active structured medical PatientInsurance over legacy patient columns', async () => {
     patientFindFirstMock.mockResolvedValue({
       id: 'patient_1',

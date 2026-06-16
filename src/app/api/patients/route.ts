@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
-import { success, validationError } from '@/lib/api/response';
+import { conflict, success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { optionalBoundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
 import { createPatientSchema } from '@/lib/validations/patient';
@@ -16,6 +16,10 @@ import {
   createPatientWithIntake,
   deriveBirthDate,
 } from '@/server/services/patient-service';
+import {
+  findPatientDuplicateCandidates,
+  parsePatientDuplicateBirthDate,
+} from '@/lib/patient/duplicate-detection';
 
 const caseStatusQuerySchema = z
   .string()
@@ -58,6 +62,16 @@ const patientListQuerySchema = z.object({
       'missing_emergency_contact',
       'missing_primary_physician',
       'missing_first_visit_doc',
+    ])
+    .optional(),
+  foundation_issue: z
+    .enum([
+      'needs_confirmation',
+      'missing_contact',
+      'missing_parking',
+      'missing_care_level',
+      'missing_insurance',
+      'missing_care_team',
     ])
     .optional(),
 });
@@ -109,10 +123,47 @@ export const POST = withAuthContext(
     if (!parsed.success) {
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
+    const duplicateAcknowledged = raw.duplicate_acknowledged === true;
+    const birthDate = parsePatientDuplicateBirthDate(parsed.data.birth_date);
+    if (!birthDate) return validationError('生年月日の形式が不正です');
+    const duplicates = await findPatientDuplicateCandidates(prisma, {
+      orgId: ctx.orgId,
+      name: parsed.data.name,
+      birthDate,
+      gender: parsed.data.gender,
+      access: {
+        userId: ctx.userId,
+        role: ctx.role,
+      },
+    });
+    if (duplicates.length > 0 && !duplicateAcknowledged) {
+      return conflict('重複している可能性がある患者が存在します', {
+        duplicate_type: 'patient_identity',
+        duplicates,
+      });
+    }
 
     try {
       const patient = await createPatientWithIntake(ctx.orgId, parsed.data);
-      return success(patient, 201);
+      return success(
+        {
+          ...patient,
+          warnings:
+            duplicates.length > 0
+              ? [
+                  {
+                    code: 'PATIENT_DUPLICATE_ACKNOWLEDGED',
+                    severity: 'warning',
+                    message: '重複候補を確認済みとして患者を登録しました。',
+                  },
+                ]
+              : [],
+          metadata: {
+            duplicate_candidates: duplicates,
+          },
+        },
+        201,
+      );
     } catch (error) {
       if (
         error instanceof FacilityReferenceValidationError ||

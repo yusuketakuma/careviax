@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const {
+  patientFindFirstMock,
   patientLabObservationFindFirstMock,
   patientLabObservationUpdateMock,
   visitRecordFindFirstMock,
 } = vi.hoisted(() => ({
+  patientFindFirstMock: vi.fn(),
   patientLabObservationFindFirstMock: vi.fn(),
   patientLabObservationUpdateMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
@@ -34,6 +36,9 @@ vi.mock('@/lib/db/rls', () => ({
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
+    patient: {
+      findFirst: patientFindFirstMock,
+    },
     patientLabObservation: {
       findFirst: patientLabObservationFindFirstMock,
     },
@@ -68,6 +73,7 @@ function createMalformedJsonPatchRequest() {
 describe('/api/patients/[id]/labs/[labId] PATCH', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    patientFindFirstMock.mockResolvedValue({ id: 'patient_1', archived_at: null });
     patientLabObservationFindFirstMock.mockResolvedValue({
       id: 'lab_1',
       org_id: 'org_1',
@@ -133,6 +139,22 @@ describe('/api/patients/[id]/labs/[labId] PATCH', () => {
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
+    expect(patientLabObservationFindFirstMock).not.toHaveBeenCalled();
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(patientLabObservationUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects archived patients before loading the lab observation', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    const response = (await PATCH(createPatchRequest({ note: '再確認済み' }), {
+      params: Promise.resolve({ id: 'patient_1', labId: 'lab_1' }),
+    }))!;
+
+    expect(response.status).toBe(409);
     expect(patientLabObservationFindFirstMock).not.toHaveBeenCalled();
     expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
     expect(patientLabObservationUpdateMock).not.toHaveBeenCalled();

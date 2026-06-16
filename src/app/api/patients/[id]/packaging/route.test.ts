@@ -152,6 +152,28 @@ describe('/api/patients/[id]/packaging', () => {
     expect(txMock.patientPackagingProfile.upsert).not.toHaveBeenCalled();
   });
 
+  it('rejects archived patients before upserting packaging profile', async () => {
+    prismaMock.patient.findFirst.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    const response = await PUT(
+      createRequest({
+        default_packaging_method: 'unit_dose',
+        notes: '朝だけ別包',
+      }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(txMock.patientPackagingProfile.upsert).not.toHaveBeenCalled();
+  });
+
   it('upserts the patient packaging profile', async () => {
     prismaMock.patient.findFirst.mockResolvedValue({ id: 'patient_1' });
     txMock.patientPackagingProfile.upsert.mockResolvedValue({

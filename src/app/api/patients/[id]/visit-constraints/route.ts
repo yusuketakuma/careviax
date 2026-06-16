@@ -7,6 +7,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { upsertVisitConstraintsSchema } from '@/lib/validations/visit-constraints';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
 
 function toTimeValue(value?: string) {
   return value ? new Date(`1970-01-01T${value}`) : null;
@@ -68,11 +69,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
+  const writable = await requireWritablePatient(prisma, ctx, id);
+  if ('response' in writable) return writable.response;
   const patient = await prisma.patient.findFirst({
-    where: applyPatientAssignmentWhere(
-      { id, org_id: ctx.orgId },
-      { userId: ctx.userId, role: ctx.role },
-    ),
+    where: { id, org_id: ctx.orgId },
     select: {
       id: true,
       residences: {

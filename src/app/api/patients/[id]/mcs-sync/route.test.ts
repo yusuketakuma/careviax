@@ -184,6 +184,28 @@ describe('/api/patients/[id]/mcs-sync POST', () => {
     expect(syncPatientMcsTimelineMock).not.toHaveBeenCalled();
   });
 
+  it('rejects archived patients before starting MCS sync', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    const response = await POST(
+      createRequest({
+        source_url: 'https://www.medical-care.net/patients/2463520',
+      }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
+    if (!response) {
+      throw new Error('response was not returned');
+    }
+
+    expect(response.status).toBe(409);
+    expect(syncPatientMcsTimelineMock).not.toHaveBeenCalled();
+  });
+
   it('rejects users without sensitive patient access', async () => {
     requireAuthContextMock.mockResolvedValue({
       ctx: { orgId: 'org_1', userId: 'user_1', role: 'clerk' },

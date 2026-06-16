@@ -34,8 +34,8 @@ import { GET } from './route';
 
 const ORIGINAL_TZ = process.env.TZ;
 
-function createRequest() {
-  return new NextRequest('http://localhost/api/patients/board?scope=all');
+function createRequest(search = '?scope=all') {
+  return new NextRequest(`http://localhost/api/patients/board${search}`);
 }
 
 function buildPatientRow(scheduledDate: Date) {
@@ -48,15 +48,48 @@ function buildPatientRow(scheduledDate: Date) {
       swallowing_route: null,
       preferred_contact_name: null,
       preferred_contact_phone: '090-1111-2222',
+      visit_before_contact_required: false,
       parking_available: false,
       care_level: 'care_3',
     },
+    contacts: [
+      {
+        is_primary: true,
+        is_emergency_contact: true,
+        phone: '090-1111-2222',
+        email: null,
+        fax: null,
+      },
+    ],
     residences: [],
     lab_observations: [],
     cases: [
       {
         id: 'case_1',
         status: 'active',
+        care_team_links: [
+          {
+            role: 'physician',
+            phone: '03-1111-1111',
+            email: null,
+            fax: '03-1111-1112',
+            is_primary: true,
+          },
+          {
+            role: 'nurse',
+            phone: '03-2222-2222',
+            email: null,
+            fax: '03-2222-2223',
+            is_primary: true,
+          },
+          {
+            role: 'care_manager',
+            phone: '03-3333-3333',
+            email: null,
+            fax: '03-3333-3334',
+            is_primary: true,
+          },
+        ],
         medication_cycles: [],
         visit_schedules: [
           {
@@ -108,6 +141,20 @@ describe('/api/patients/board', () => {
     const select = patientFindManyMock.mock.calls[0][0].select;
     const scheduleWhere = select.cases.select.visit_schedules.where;
     expect(scheduleWhere.scheduled_date.gte.toISOString()).toBe('2026-06-12T00:00:00.000Z');
+    expect(select.contacts.select).toMatchObject({
+      is_primary: true,
+      is_emergency_contact: true,
+      phone: true,
+      email: true,
+      fax: true,
+    });
+    expect(select.cases.select.care_team_links.select).toMatchObject({
+      role: true,
+      phone: true,
+      email: true,
+      fax: true,
+      is_primary: true,
+    });
   });
 
   it('UTC 深夜で保存された当日の scheduled_date を「本日訪問」と判定する', async () => {
@@ -126,7 +173,152 @@ describe('/api/patients/board', () => {
       attention: 'visit_today',
       next_visit_date: '2026-06-12',
       operation_summary: ['準備未完', '連絡先あり', '駐車場なし', '要介護 3'],
+      foundation_summary: {
+        status: 'needs_confirmation',
+        label: '未確認1件',
+        items: ['訪問準備未完'],
+      },
+      foundation_href: '/patients/patient_1#patient-foundation',
     });
     expect(JSON.stringify(json.data.cards[0])).not.toContain('090-1111-2222');
+  });
+
+  it('希望連絡先名だけでは患者カードを連絡先あり扱いにせず、連携先信頼性も同じ基準で未確認にする', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
+    patientFindManyMock.mockResolvedValue([
+      {
+        ...buildPatientRow(new Date('2026-06-12T00:00:00.000Z')),
+        scheduling_preference: {
+          swallowing_route: null,
+          preferred_contact_name: '長男',
+          preferred_contact_phone: null,
+          visit_before_contact_required: false,
+          parking_available: true,
+          care_level: 'care_3',
+        },
+        contacts: [],
+        cases: [
+          {
+            id: 'case_newer_on_hold',
+            status: 'on_hold',
+            care_team_links: [
+              {
+                role: 'physician',
+                phone: '03-1111-1111',
+                email: null,
+                fax: '03-1111-1112',
+                is_primary: true,
+              },
+              {
+                role: 'nurse',
+                phone: '03-2222-2222',
+                email: null,
+                fax: '03-2222-2223',
+                is_primary: true,
+              },
+              {
+                role: 'care_manager',
+                phone: '03-3333-3333',
+                email: null,
+                fax: '03-3333-3334',
+                is_primary: true,
+              },
+            ],
+            medication_cycles: [],
+            visit_schedules: [],
+          },
+          {
+            id: 'case_active',
+            status: 'active',
+            care_team_links: [
+              {
+                role: 'physician',
+                phone: '03-1111-1111',
+                email: null,
+                fax: null,
+                is_primary: true,
+              },
+            ],
+            medication_cycles: [],
+            visit_schedules: [
+              {
+                scheduled_date: new Date('2026-06-12T00:00:00.000Z'),
+                time_window_start: null,
+                facility_batch_id: null,
+                facility_batch: null,
+                preparation: null,
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    patientCountMock.mockResolvedValue(1);
+
+    const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+    expect(response.status).toBe(200);
+
+    const json = await response.json();
+    expect(json.data.cards[0]).toMatchObject({
+      operation_summary: ['準備未完', '連絡先未設定', '駐車場あり', '要介護 3'],
+      foundation_summary: {
+        status: 'needs_confirmation',
+        label: '未確認3件',
+        items: ['連絡先未設定', '連携先1件', '訪問準備未完'],
+      },
+    });
+  });
+
+  it('filters board cards by foundation issue using the derived foundation summary', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
+    patientFindManyMock.mockResolvedValue([
+      buildPatientRow(new Date('2026-06-12T00:00:00.000Z')),
+      {
+        ...buildPatientRow(new Date('2026-06-13T00:00:00.000Z')),
+        id: 'patient_missing_contact',
+        name: '連絡 不足',
+        scheduling_preference: {
+          swallowing_route: null,
+          preferred_contact_name: '長男',
+          preferred_contact_phone: null,
+          visit_before_contact_required: false,
+          parking_available: true,
+          care_level: 'care_3',
+        },
+        contacts: [],
+      },
+    ]);
+    patientCountMock.mockResolvedValue(2);
+
+    const response = (await GET(createRequest('?scope=all&foundation_issue=missing_contact'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expect(patientFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 500,
+      }),
+    );
+    const json = await response.json();
+    expect(json.data.cards).toHaveLength(1);
+    expect(json.data.cards[0]).toMatchObject({
+      patient_id: 'patient_missing_contact',
+      foundation_summary: {
+        items: expect.arrayContaining(['連絡先未設定']),
+      },
+    });
+  });
+
+  it('rejects invalid board foundation issue values before querying patients', async () => {
+    const response = (await GET(createRequest('?scope=all&foundation_issue=unknown'), {
+      params: Promise.resolve({}),
+    }))!;
+
+    expect(response.status).toBe(400);
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(patientCountMock).not.toHaveBeenCalled();
   });
 });

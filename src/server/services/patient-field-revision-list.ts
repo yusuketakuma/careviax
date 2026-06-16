@@ -27,7 +27,32 @@ export interface PatientFieldRevisionListItem {
   created_at: string;
 }
 
+export interface PatientFieldRevisionMetadataItem {
+  id: string;
+  category: string;
+  field_key: string;
+  field_label: string | null;
+  source: string;
+  confirmed_by_name: string | null;
+  confirmed_at: string | null;
+  is_current: boolean;
+  updated_by_name: string | null;
+  created_at: string;
+}
+
 type RevisionRow = Awaited<ReturnType<typeof prisma.patientFieldRevision.findMany>>[number];
+type RevisionMetadataRow = {
+  id: string;
+  category: string;
+  field_key: string;
+  field_label: string | null;
+  source: string;
+  confirmed_by: string | null;
+  confirmed_at: Date | null;
+  is_current: boolean;
+  updated_by: string;
+  created_at: Date;
+};
 
 // 変更履歴 API は PHI allowlist 方式にする。
 // 生値を返すのは低感度の定型値だけに限定し、病名/アレルギー/患者メモ/連絡先/住所/保険などは
@@ -95,6 +120,32 @@ async function shapeRevisionRows(
   });
 }
 
+async function shapeRevisionMetadataRows(
+  db: DbClient,
+  orgId: string,
+  rows: RevisionMetadataRow[],
+): Promise<PatientFieldRevisionMetadataItem[]> {
+  const actorIds = Array.from(
+    new Set(
+      rows.flatMap((row) => [row.updated_by, row.confirmed_by]).filter((id): id is string => !!id),
+    ),
+  );
+  const nameMap = await batchResolveNames(db as typeof prisma, orgId, actorIds);
+
+  return rows.map((row) => ({
+    id: row.id,
+    category: row.category,
+    field_key: row.field_key,
+    field_label: row.field_label,
+    source: row.source,
+    confirmed_by_name: row.confirmed_by ? (nameMap.get(row.confirmed_by) ?? null) : null,
+    confirmed_at: row.confirmed_at ? row.confirmed_at.toISOString() : null,
+    is_current: row.is_current,
+    updated_by_name: nameMap.get(row.updated_by) ?? null,
+    created_at: row.created_at.toISOString(),
+  }));
+}
+
 interface ListArgs {
   orgId: string;
   patientId: string;
@@ -122,6 +173,40 @@ export async function listPatientFieldRevisions(
   });
 
   return shapeRevisionRows(db, args.orgId, rows);
+}
+
+/**
+ * 患者正本の項目メタ表示向けに、変更前後の raw 値を読まずに最小メタだけを取得する。
+ * foundation/カード表示では value_label/old_value/new_value/change_reason を不要とし、
+ * PHI の in-process exposure を避ける。
+ */
+export async function listPatientFieldRevisionMetadata(
+  db: DbClient,
+  args: ListArgs,
+): Promise<PatientFieldRevisionMetadataItem[]> {
+  const rows = await db.patientFieldRevision.findMany({
+    where: {
+      org_id: args.orgId,
+      patient_id: args.patientId,
+      ...(args.category ? { category: args.category } : {}),
+    },
+    orderBy: [{ created_at: 'desc' }],
+    take: args.limit ?? 50,
+    select: {
+      id: true,
+      category: true,
+      field_key: true,
+      field_label: true,
+      source: true,
+      confirmed_by: true,
+      confirmed_at: true,
+      is_current: true,
+      updated_by: true,
+      created_at: true,
+    },
+  });
+
+  return shapeRevisionMetadataRows(db, args.orgId, rows);
 }
 
 interface BySourceVisitRecordArgs {
