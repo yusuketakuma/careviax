@@ -1065,6 +1065,14 @@ describe('CardWorkspace', () => {
             { label: '支払者', value: '長女' },
             { label: '領収証', value: '未発行/未記録' },
             { label: '次回集金予定', value: '未設定' },
+            {
+              label: '領収証控えURL',
+              value: '/api/billing-candidates/candidate_1/documents/pdf?kind=receipt',
+            },
+            {
+              label: '請求書控えURL',
+              value: '/api/billing-candidates/candidate_1/documents/pdf?kind=invoice',
+            },
           ],
           alerts: ['集金ステータスが未記録です'],
           quick_actions: [
@@ -1093,6 +1101,12 @@ describe('CardWorkspace', () => {
     fireEvent.click(screen.getByLabelText('領収証控えを保存する'));
     expect(screen.getByText('領収証 発行済み / 請求書 発行済み')).toBeTruthy();
     expect(screen.getByText('保存する')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '領収証PDF' }).getAttribute('href')).toBe(
+      '/api/billing-candidates/candidate_1/documents/pdf?kind=receipt',
+    );
+    expect(screen.getByRole('link', { name: '請求書PDF' }).getAttribute('href')).toBe(
+      '/api/billing-candidates/candidate_1/documents/pdf?kind=invoice',
+    );
     fireEvent.click(screen.getByRole('button', { name: /集金記録を登録/ }));
 
     expect(billingMutate).toHaveBeenCalledWith({

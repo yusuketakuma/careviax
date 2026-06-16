@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 const {
   requireAuthContextMock,
   recordDataExportAuditMock,
+  buildBillingDocumentPdfMock,
   buildCareReportPdfMock,
   buildManagementPlanPdfMock,
   buildMedicationHistoryPdfMock,
@@ -14,6 +15,7 @@ const {
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   recordDataExportAuditMock: vi.fn(),
+  buildBillingDocumentPdfMock: vi.fn(),
   buildCareReportPdfMock: vi.fn(),
   buildManagementPlanPdfMock: vi.fn(),
   buildMedicationHistoryPdfMock: vi.fn(),
@@ -32,6 +34,7 @@ vi.mock('@/server/services/export-audit', () => ({
 }));
 
 vi.mock('@/server/services/pdf-documents', () => ({
+  buildBillingDocumentPdf: buildBillingDocumentPdfMock,
   buildCareReportPdf: buildCareReportPdfMock,
   buildManagementPlanPdf: buildManagementPlanPdfMock,
   buildMedicationHistoryPdf: buildMedicationHistoryPdfMock,
@@ -46,6 +49,7 @@ vi.mock('@/lib/db/client', () => ({
 }));
 
 import { GET as careReportPdfGet } from '../care-reports/[id]/pdf/route';
+import { GET as billingDocumentPdfGet } from '../billing-candidates/[id]/documents/pdf/route';
 import { GET as managementPlanPdfGet } from '../management-plans/[id]/pdf/route';
 import { GET as medicationHistoryPdfGet } from '../patients/[id]/medications/pdf/route';
 import { GET as medicationCalendarPdfGet } from '../patients/[id]/medication-calendar/pdf/route';
@@ -96,6 +100,31 @@ describe('PDF routes', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('application/pdf');
     expect(response.headers.get('content-disposition')).toContain('care-report.pdf');
+  });
+
+  it('returns a billing receipt pdf response', async () => {
+    buildBillingDocumentPdfMock.mockResolvedValue({
+      buffer: Buffer.from('%PDF-billing-receipt'),
+      fileName: 'billing-receipt.pdf',
+    });
+
+    const response = await billingDocumentPdfGet(
+      createRequest(
+        'http://localhost/api/billing-candidates/candidate_1/documents/pdf?kind=receipt',
+      ),
+      {
+        params: Promise.resolve({ id: 'candidate_1' }),
+      },
+    );
+
+    expect(response).toBeDefined();
+    if (!response) {
+      throw new Error('Expected a response from billing document pdf GET');
+    }
+    expect(buildBillingDocumentPdfMock).toHaveBeenCalledWith('org_1', 'candidate_1', 'receipt');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('application/pdf');
+    expect(response.headers.get('content-disposition')).toContain('billing-receipt.pdf');
   });
 
   it('returns a management plan pdf response', async () => {

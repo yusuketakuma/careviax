@@ -100,6 +100,8 @@ type BillingCollectionSnapshot = {
   receipt_issue_status: string | null;
   invoice_issue_status: string | null;
   save_receipt_copy: boolean;
+  receipt_copy_url: string | null;
+  invoice_copy_url: string | null;
 };
 
 type BillingPaymentProfileSnapshot = {
@@ -434,6 +436,8 @@ function readBillingCollection(calculationBreakdown: unknown): BillingCollection
     receipt_issue_status: readString(collection.receipt_issue_status),
     invoice_issue_status: readString(collection.invoice_issue_status),
     save_receipt_copy: readBoolean(collection.save_receipt_copy),
+    receipt_copy_url: readString(collection.receipt_copy_url),
+    invoice_copy_url: readString(collection.invoice_copy_url),
   };
 }
 
@@ -1052,7 +1056,15 @@ function buildBillingItem(args: {
       },
       {
         label: '領収証控え',
-        value: latestCollection?.save_receipt_copy ? '保存する' : '保存しない',
+        value: latestCollection?.receipt_copy_url
+          ? '保存済み'
+          : latestCollection?.save_receipt_copy
+            ? '保存予定'
+            : '保存しない',
+      },
+      {
+        label: '請求書控え',
+        value: latestCollection?.invoice_copy_url ? '保存済み' : '未保存',
       },
       {
         label: '領収証発行',
@@ -1086,6 +1098,8 @@ function buildBillingItem(args: {
       { label: '領収証状態コード', value: latestCollection?.receipt_issue_status ?? '' },
       { label: '請求書状態コード', value: latestCollection?.invoice_issue_status ?? '' },
       { label: '領収証控えコード', value: latestCollection?.save_receipt_copy ? 'yes' : 'no' },
+      { label: '領収証控えURL', value: latestCollection?.receipt_copy_url ?? '' },
+      { label: '請求書控えURL', value: latestCollection?.invoice_copy_url ?? '' },
       { label: '未収許容コード', value: paymentProfile?.unpaid_tolerance ?? '' },
       { label: '続柄', value: paymentProfile?.payer_relation ?? '' },
       { label: '請求先住所区分コード', value: paymentProfile?.billing_address_mode ?? '' },

@@ -6,6 +6,7 @@ const {
   fontRegisterMock,
   organizationFindUniqueMock,
   pharmacySiteFindFirstMock,
+  billingCandidateFindFirstMock,
   careReportFindFirstMock,
   patientFindFirstMock,
   medicationProfileFindManyMock,
@@ -15,6 +16,7 @@ const {
   fontRegisterMock: vi.fn(),
   organizationFindUniqueMock: vi.fn(),
   pharmacySiteFindFirstMock: vi.fn(),
+  billingCandidateFindFirstMock: vi.fn(),
   careReportFindFirstMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   medicationProfileFindManyMock: vi.fn(),
@@ -44,6 +46,9 @@ vi.mock('@/lib/db/client', () => ({
     pharmacySite: {
       findFirst: pharmacySiteFindFirstMock,
     },
+    billingCandidate: {
+      findFirst: billingCandidateFindFirstMock,
+    },
     careReport: {
       findFirst: careReportFindFirstMock,
     },
@@ -60,6 +65,7 @@ vi.mock('@/lib/db/client', () => ({
 }));
 
 import {
+  buildBillingDocumentPdf,
   buildCareReportPdf,
   buildMedicationCalendarPdf,
   buildMedicationHistoryPdf,
@@ -328,6 +334,86 @@ describe('buildCareReportPdf', () => {
     expect(text).toContain('外部提出用PDFとして表示できません');
     expect(text).not.toContain('施設向け服薬状況。');
     expect(text).not.toContain('施設向け依頼。');
+  });
+});
+
+describe('buildBillingDocumentPdf', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    renderToBufferMock.mockResolvedValue(Buffer.from('pdf'));
+    organizationFindUniqueMock.mockResolvedValue({ name: 'ケアビア薬局' });
+    pharmacySiteFindFirstMock.mockResolvedValue({ name: '本店' });
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '山田 太郎',
+    });
+    billingCandidateFindFirstMock.mockResolvedValue({
+      id: 'candidate_1',
+      patient_id: 'patient_1',
+      billing_domain: 'home_care',
+      billing_target_name: null,
+      billing_month: new Date('2026-06-01T00:00:00.000Z'),
+      billing_code: 'HC-001',
+      billing_name: '居宅療養管理指導',
+      source_snapshot: null,
+      calculation_breakdown: {
+        collection: {
+          status: 'collected',
+          billed_amount: 3240,
+          collected_amount: 3240,
+          unpaid_amount: 0,
+          payment_method: 'cash',
+          payer_name: '長女',
+          collected_at: '2026-06-16T01:00:00.000Z',
+          receipt_number: 'R20260616-001',
+          receipt_issue_status: 'issued',
+          invoice_issue_status: 'issued',
+          receipt_copy_url: '/api/billing-candidates/candidate_1/documents/pdf?kind=receipt',
+          invoice_copy_url: '/api/billing-candidates/candidate_1/documents/pdf?kind=invoice',
+          updated_at: '2026-06-16T01:00:00.000Z',
+        },
+      },
+    });
+  });
+
+  it('renders receipt information from the billing collection snapshot', async () => {
+    const result = await buildBillingDocumentPdf('org_1', 'candidate_1', 'receipt');
+
+    expect(result.fileName).toBe('billing-receipt-_-candidate_1.pdf');
+    expect(result.buffer).toEqual(Buffer.from('pdf'));
+    const text = collectPdfText(renderToBufferMock.mock.calls[0][0]).join('\n');
+    expect(text).toContain('領収証');
+    expect(text).toContain('R20260616-001');
+    expect(text).toContain('山田 太郎');
+    expect(text).toContain('居宅療養管理指導');
+    expect(text).toContain('3,240円');
+  });
+
+  it('rejects unissued invoice exports', async () => {
+    billingCandidateFindFirstMock.mockResolvedValueOnce({
+      id: 'candidate_1',
+      patient_id: 'patient_1',
+      billing_domain: 'home_care',
+      billing_target_name: null,
+      billing_month: new Date('2026-06-01T00:00:00.000Z'),
+      billing_code: 'HC-001',
+      billing_name: '居宅療養管理指導',
+      source_snapshot: null,
+      calculation_breakdown: {
+        collection: {
+          status: 'billed',
+          billed_amount: 3240,
+          collected_amount: 0,
+          unpaid_amount: 3240,
+          invoice_issue_status: 'not_issued',
+        },
+      },
+    });
+
+    await expect(buildBillingDocumentPdf('org_1', 'candidate_1', 'invoice')).rejects.toThrow(
+      'BILLING_DOCUMENT_NOT_ISSUED',
+    );
+    expect(renderToBufferMock).not.toHaveBeenCalled();
   });
 });
 

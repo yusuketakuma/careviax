@@ -8,6 +8,7 @@ const {
   txMock,
   patientVisitBriefMock,
   scheduleVisitBriefMock,
+  buildBillingDocumentPdfMock,
   buildPatientVisitRecordsPdfMock,
   buildVisitRecordPdfMock,
 } = vi.hoisted(() => {
@@ -62,6 +63,7 @@ const {
     withOrgContextMock: vi.fn(),
     patientVisitBriefMock: vi.fn(),
     scheduleVisitBriefMock: vi.fn(),
+    buildBillingDocumentPdfMock: vi.fn(),
     buildPatientVisitRecordsPdfMock: vi.fn(),
     buildVisitRecordPdfMock: vi.fn(),
   };
@@ -85,6 +87,7 @@ vi.mock('@/server/services/visit-brief', () => ({
 }));
 
 vi.mock('@/server/services/pdf-documents', () => ({
+  buildBillingDocumentPdf: buildBillingDocumentPdfMock,
   buildPatientVisitRecordsPdf: buildPatientVisitRecordsPdfMock,
   buildVisitRecordPdf: buildVisitRecordPdfMock,
 }));
@@ -92,6 +95,7 @@ vi.mock('@/server/services/pdf-documents', () => ({
 import { GET as auditLogsGet } from '../audit-logs/route';
 import { GET as auditLogsExportGet } from '../audit-logs/export/route';
 import { GET as billingCandidatesGet } from '../billing-candidates/route';
+import { GET as billingDocumentPdfGet } from '../billing-candidates/[id]/documents/pdf/route';
 import { GET as billingCandidatesExportGet } from '../billing-candidates/export/route';
 import { GET as businessHolidaysGet } from '../business-holidays/route';
 import { GET as careReportsGet } from '../care-reports/route';
@@ -170,6 +174,19 @@ const routes: Array<{ name: string; handler: Handler }> = [
       billingCandidatesExportGet(
         createRequest('http://localhost/api/billing-candidates/export', { 'x-org-id': 'org_1' }),
         emptyRouteContext,
+      ),
+  },
+  {
+    name: 'billing-candidates/[id]/documents/pdf GET',
+    handler: () =>
+      billingDocumentPdfGet(
+        createRequest(
+          'http://localhost/api/billing-candidates/candidate_1/documents/pdf?kind=receipt',
+          {
+            'x-org-id': 'org_1',
+          },
+        ),
+        { params: Promise.resolve({ id: 'candidate_1' }) },
       ),
   },
   {
@@ -540,6 +557,10 @@ describe('protected GET routes auth matrix', () => {
       },
     });
     withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(txMock));
+    buildBillingDocumentPdfMock.mockResolvedValue({
+      buffer: Buffer.from('%PDF-billing-receipt'),
+      fileName: 'billing-receipt.pdf',
+    });
     buildPatientVisitRecordsPdfMock.mockResolvedValue({
       buffer: Buffer.from('%PDF-patient-visits'),
       fileName: 'visit-records.pdf',

@@ -45,6 +45,11 @@ import {
   type ConferenceNotePdfRecord,
 } from '@/server/services/pdf-conference-note-record';
 import {
+  getBillingDocumentRecord,
+  type BillingDocumentKind,
+  type BillingDocumentRecord,
+} from '@/server/services/pdf-billing-document-record';
+import {
   formatPdfDate,
   getPdfBranding,
   renderPdf,
@@ -120,6 +125,34 @@ const VISIT_TYPE_LABELS: Record<string, string> = {
   delivery_only: '配薬のみ',
   emergency: '緊急',
   physician_co_visit: '医師同行',
+};
+
+const BILLING_DOCUMENT_KIND_LABELS: Record<BillingDocumentKind, string> = {
+  receipt: '領収証',
+  invoice: '請求書',
+};
+
+const BILLING_COLLECTION_STATUS_LABELS: Record<string, string> = {
+  unbilled: '未請求',
+  billed: '請求済',
+  scheduled: '集金予定',
+  collected: '集金済',
+  partial: '一部入金',
+  unpaid: '未収',
+  dunning: '督促中',
+  waived: '免除・公費',
+  refunded: '返金',
+  offset: '相殺',
+};
+
+const BILLING_PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cash: '現金',
+  bank_transfer: '銀行振込',
+  bank_debit: '口座振替',
+  credit_card: 'クレジットカード',
+  facility_billing: '施設請求',
+  corporate_billing: '法人請求',
+  other: 'その他',
 };
 
 const RELATION_LABELS: Record<string, string> = {
@@ -1330,6 +1363,98 @@ function renderConferenceNoteContent(record: ConferenceNotePdfRecord) {
   );
 }
 
+function formatPdfCurrency(value: number | null | undefined) {
+  return typeof value === 'number' ? `${value.toLocaleString('ja-JP')}円` : '—';
+}
+
+function formatPdfBillingMonth(value: Date) {
+  return `${value.getFullYear()}年${String(value.getMonth() + 1).padStart(2, '0')}月`;
+}
+
+function renderBillingDocumentContent(record: BillingDocumentRecord) {
+  const documentLabel = BILLING_DOCUMENT_KIND_LABELS[record.kind];
+  const collection = record.collection;
+  const patientOrTarget = record.patient?.name ?? record.billing_target_name ?? '未紐付け';
+  const documentNumber =
+    record.kind === 'receipt'
+      ? (collection.receipt_number ?? '—')
+      : `INV-${record.billing_month.getFullYear()}${String(
+          record.billing_month.getMonth() + 1,
+        ).padStart(2, '0')}-${record.id.slice(-6)}`;
+  const paidAmount =
+    record.kind === 'receipt' ? collection.collected_amount : collection.billed_amount;
+
+  return (
+    <>
+      <Section title={`${documentLabel}情報`}>
+        <KeyValueCards
+          rows={[
+            { label: `${documentLabel}番号`, value: documentNumber },
+            { label: '対象月', value: formatPdfBillingMonth(record.billing_month) },
+            { label: '患者/請求先', value: patientOrTarget },
+            { label: '支払者', value: collection.payer_name ?? patientOrTarget },
+            {
+              label: '発行日',
+              value: formatPdfDate(collection.collected_at ?? collection.updated_at, true),
+            },
+            {
+              label: '支払方法',
+              value: collection.payment_method
+                ? (BILLING_PAYMENT_METHOD_LABELS[collection.payment_method] ??
+                  collection.payment_method)
+                : '—',
+            },
+          ]}
+        />
+      </Section>
+
+      <Section title="金額">
+        <Table
+          headers={['項目', '請求額', '入金額', '未収額']}
+          widths={[40, 20, 20, 20]}
+          rows={[
+            [
+              record.billing_name,
+              formatPdfCurrency(collection.billed_amount),
+              formatPdfCurrency(collection.collected_amount),
+              formatPdfCurrency(collection.unpaid_amount),
+            ],
+            [
+              `${documentLabel}対象額`,
+              record.kind === 'invoice' ? formatPdfCurrency(paidAmount) : '—',
+              record.kind === 'receipt' ? formatPdfCurrency(paidAmount) : '—',
+              '—',
+            ],
+          ]}
+        />
+      </Section>
+
+      <Section title="請求根拠">
+        <KeyValueCards
+          rows={[
+            { label: '請求コード', value: record.billing_code },
+            { label: '請求領域', value: record.billing_domain },
+            {
+              label: '集金状態',
+              value: collection.status
+                ? (BILLING_COLLECTION_STATUS_LABELS[collection.status] ?? collection.status)
+                : '—',
+            },
+            { label: '請求候補ID', value: record.id },
+          ]}
+        />
+      </Section>
+
+      <Section title="控え">
+        <Text style={styles.paragraph}>
+          この{documentLabel}
+          はPH-OSの請求候補と集金記録から出力されています。紙控えまたはPDF控えとして保存する場合は、患者詳細の請求・集金履歴から同じ請求候補IDを確認してください。
+        </Text>
+      </Section>
+    </>
+  );
+}
+
 export async function buildCareReportPdf(
   orgId: string,
   reportId: string,
@@ -1352,6 +1477,35 @@ export async function buildCareReportPdf(
       generatedAt={new Date()}
     >
       {renderCareReportContent(report)}
+    </PdfShell>,
+    fileName,
+  );
+}
+
+export async function buildBillingDocumentPdf(
+  orgId: string,
+  candidateId: string,
+  kind: BillingDocumentKind,
+): Promise<PdfRenderResult> {
+  const [branding, record] = await Promise.all([
+    getPdfBranding(orgId),
+    getBillingDocumentRecord(orgId, candidateId, kind),
+  ]);
+  const documentLabel = BILLING_DOCUMENT_KIND_LABELS[kind];
+  const fileName = sanitizePdfFileName(
+    `billing-${kind}-${record.patient?.name ?? record.billing_target_name ?? 'target'}-${record.id}.pdf`,
+  );
+
+  return renderPdf(
+    <PdfShell
+      title={documentLabel}
+      subtitle={`${record.patient?.name ?? record.billing_target_name ?? '請求先未設定'} / ${formatPdfBillingMonth(
+        record.billing_month,
+      )}`}
+      pharmacyName={branding.pharmacyName}
+      generatedAt={new Date()}
+    >
+      {renderBillingDocumentContent(record)}
     </PdfShell>,
     fileName,
   );

@@ -493,6 +493,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/billing-candidates',
   '/api/billing-candidates/:id',
   '/api/billing-candidates/close',
+  '/api/billing-candidates/:id/documents/pdf',
   '/api/billing-candidates/export',
   '/api/billing-evidence/analytics',
   '/api/billing-evidence/check',

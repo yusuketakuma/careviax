@@ -1448,6 +1448,8 @@ function BillingCollectionQuickForm({
   const [error, setError] = useState<string | null>(null);
   const receiptIssueCode = metricValueOrDefault(item, '領収証発行コード', 'paper');
   const invoiceIssueCode = metricValueOrDefault(item, '請求書発行コード', 'yes');
+  const receiptCopyUrl = metricValue(item, '領収証控えURL');
+  const invoiceCopyUrl = metricValue(item, '請求書控えURL');
   const receiptRequired = receiptIssueCode !== 'none';
   const receiptRequiredForStatus = receiptRequired && ['collected', 'partial'].includes(status);
   const invoiceRequiredForStatus =
@@ -1712,6 +1714,32 @@ function BillingCollectionQuickForm({
               </dd>
             </div>
           </dl>
+          {receiptCopyUrl || invoiceCopyUrl ? (
+            <div className="mt-2 flex flex-wrap gap-2 border-t border-current/15 pt-2">
+              {receiptCopyUrl ? (
+                <Link
+                  href={receiptCopyUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex min-h-8 items-center gap-1 rounded-md border border-current/20 px-2 text-xs font-medium text-foreground hover:bg-muted/50"
+                >
+                  <ExternalLink className="size-3.5" aria-hidden="true" />
+                  領収証PDF
+                </Link>
+              ) : null}
+              {invoiceCopyUrl ? (
+                <Link
+                  href={invoiceCopyUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex min-h-8 items-center gap-1 rounded-md border border-current/20 px-2 text-xs font-medium text-foreground hover:bg-muted/50"
+                >
+                  <ExternalLink className="size-3.5" aria-hidden="true" />
+                  請求書PDF
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
           {receiptRequiredForStatus ? (
             <p className="mt-2 text-muted-foreground">
               支払設定では領収証発行が必要です。番号を入れてから保存してください。

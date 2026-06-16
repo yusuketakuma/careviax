@@ -14,6 +14,10 @@ class BillingCollectionConflictError extends Error {}
 const BILLING_PAYMENT_PROFILE_TASK_TYPE = 'patient_billing_payment_profile';
 const receiptNumberPlaceholders = new Set(['未記録', '未発行/未記録', '未発行', '不要']);
 
+function buildBillingDocumentPdfUrl(candidateId: string, kind: 'receipt' | 'invoice') {
+  return `/api/billing-candidates/${encodeURIComponent(candidateId)}/documents/pdf?kind=${kind}`;
+}
+
 function normalizeNullableText(value: string | null | undefined) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
@@ -162,6 +166,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     const unpaidAmount =
       billedAmount == null ? null : Math.max(billedAmount - (collectedAmount ?? 0), 0);
+    const receiptCopyUrl =
+      parsed.data.save_receipt_copy && receiptIssueStatus === 'issued'
+        ? buildBillingDocumentPdfUrl(candidateId, 'receipt')
+        : null;
+    const invoiceCopyUrl =
+      invoiceIssueStatus === 'issued' ? buildBillingDocumentPdfUrl(candidateId, 'invoice') : null;
     const collection = {
       status: parsed.data.status,
       billed_amount: billedAmount,
@@ -180,6 +190,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       receipt_issue_status: receiptIssueStatus,
       invoice_issue_status: invoiceIssueStatus,
       save_receipt_copy: parsed.data.save_receipt_copy,
+      receipt_copy_url: receiptCopyUrl,
+      invoice_copy_url: invoiceCopyUrl,
       unpaid_reason: normalizeNullableText(parsed.data.unpaid_reason),
       note: normalizeNullableText(parsed.data.note),
       updated_at: new Date().toISOString(),
