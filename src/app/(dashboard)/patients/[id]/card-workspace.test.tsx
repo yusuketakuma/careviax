@@ -528,6 +528,9 @@ describe('CardWorkspace', () => {
     ).toBeGreaterThan(0);
     expect(within(homeOps).getByText('未処理の算定候補が1件あります')).toBeTruthy();
     expect(within(homeOps).getAllByText('未収額 1,080円 があります').length).toBeGreaterThan(0);
+    expect(within(homeOps).getByText('未収額')).toBeTruthy();
+    expect(within(homeOps).getByText('領収証')).toBeTruthy();
+    expect(within(homeOps).getByText('R20260616-001')).toBeTruthy();
     expect(within(homeOps).getByRole('button', { name: /支払設定を更新/ })).toBeTruthy();
     expect(within(homeOps).getByRole('button', { name: /集金記録を更新/ })).toBeTruthy();
     expect(within(homeOps).getByRole('button', { name: /会議要点を追記/ })).toBeTruthy();

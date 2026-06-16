@@ -281,12 +281,45 @@ const HOME_OPS_ICONS: Record<PatientHomeOperationKey, typeof FileText> = {
 };
 
 const HOME_OPS_ALERT_LIMIT = 6;
+const HOME_OPS_METRIC_LIMIT = 4;
+
+const HOME_OPS_METRIC_PRIORITIES: Partial<Record<PatientHomeOperationKey, string[]>> = {
+  documents: ['PDF/画像', '回収/画像', '契約書', '重要事項説明書'],
+  mcs: ['最終確認', '参加状況', '主な連携先', '同期状態'],
+  prescription: ['原本', '照合', '保管', '疑義照会'],
+  billing: ['未収額', '次回集金予定', '支払者', '領収証'],
+  conference: ['報告書', 'フォロー', 'タスク', '薬局タスク'],
+};
 
 function withHomeOperationIcon(item: PatientHomeOperationItem): HomeOpsItem {
   return {
     ...item,
     icon: HOME_OPS_ICONS[item.key],
   };
+}
+
+function selectHomeOperationMetrics(item: PatientHomeOperationItem) {
+  const priority = HOME_OPS_METRIC_PRIORITIES[item.key] ?? [];
+  const selected: PatientHomeOperationItem['metrics'] = [];
+  const seen = new Set<string>();
+
+  for (const label of priority) {
+    const metric = item.metrics.find((candidate) => candidate.label === label);
+    if (metric && !seen.has(metric.label)) {
+      selected.push(metric);
+      seen.add(metric.label);
+    }
+  }
+
+  for (const metric of item.metrics) {
+    if (selected.length >= HOME_OPS_METRIC_LIMIT) break;
+    if (!seen.has(metric.label)) {
+      selected.push(metric);
+      seen.add(metric.label);
+    }
+  }
+
+  return selected.slice(0, HOME_OPS_METRIC_LIMIT);
 }
 
 function buildHomeOperationsItems(patient: PatientOverview): PatientHomeOperationItem[] {
@@ -504,7 +537,7 @@ function PatientHomeOperationsPanel({
                   <p className="mt-2 text-xs leading-5 text-muted-foreground">{item.description}</p>
                   {item.metrics.length > 0 ? (
                     <dl className="mt-3 grid gap-1 text-xs text-muted-foreground">
-                      {item.metrics.slice(0, 3).map((metric) => (
+                      {selectHomeOperationMetrics(item).map((metric) => (
                         <div key={metric.label} className="flex justify-between gap-2">
                           <dt>{metric.label}</dt>
                           <dd className="font-medium text-foreground">{metric.value}</dd>
