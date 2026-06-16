@@ -29,6 +29,10 @@ const documentUrlSchema = z
     }
   }, '文書URLは相対パス、HTTPS、またはローカル開発用HTTPで指定してください');
 
+const documentActionDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）');
+
 export const createFirstVisitDocumentSchema = z.object({
   patient_id: z.string().min(1, '患者IDは必須です'),
   case_id: z.string().min(1, 'ケースIDは必須です'),
@@ -83,6 +87,12 @@ export const updateFirstVisitDocumentSchema = z
           .enum(['store', 'headquarters', 'patient_home_copy_only', 'electronic', 'unknown'])
           .optional()
           .nullable(),
+        contract_date: documentActionDateSchema.optional().nullable(),
+        explanation_date: documentActionDateSchema.optional().nullable(),
+        explanation_staff_name: z.string().trim().max(80).optional().nullable(),
+        signer_type: z.enum(['self', 'family', 'proxy', 'guardian', 'other']).optional().nullable(),
+        signer_name: z.string().trim().max(80).optional().nullable(),
+        signer_relationship: z.string().trim().max(80).optional().nullable(),
         reason: z.string().trim().max(1000).optional().nullable(),
         note: z.string().trim().max(1000).optional().nullable(),
       })

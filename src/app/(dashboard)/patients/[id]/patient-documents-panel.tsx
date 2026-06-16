@@ -50,6 +50,14 @@ const DOCUMENT_STORAGE_LABELS: Record<string, string> = {
   unknown: '未確認',
 };
 
+const SIGNER_TYPE_LABELS: Record<string, string> = {
+  self: '本人',
+  family: '家族',
+  proxy: '代理人',
+  guardian: '後見人',
+  other: 'その他',
+};
+
 export function PatientDocumentsPanel({
   patientId,
   patientName,
@@ -282,6 +290,32 @@ export function FirstVisitDocumentsPanel({
                                 {history.template_name}
                                 {history.template_version ? ` ${history.template_version}` : ''}
                               </>
+                            ) : null}
+                            {history.contract_date ? (
+                              <span className="block">契約日: {history.contract_date}</span>
+                            ) : null}
+                            {history.explanation_date || history.explanation_staff_name ? (
+                              <span className="block">
+                                説明:{' '}
+                                {[history.explanation_date, history.explanation_staff_name]
+                                  .filter(Boolean)
+                                  .join(' / ')}
+                              </span>
+                            ) : null}
+                            {history.signer_name || history.signer_type ? (
+                              <span className="block">
+                                署名者:{' '}
+                                {[
+                                  history.signer_name,
+                                  history.signer_type
+                                    ? (SIGNER_TYPE_LABELS[history.signer_type] ??
+                                      history.signer_type)
+                                    : null,
+                                  history.signer_relationship,
+                                ]
+                                  .filter(Boolean)
+                                  .join(' / ')}
+                              </span>
                             ) : null}
                             {history.reason ? (
                               <span className="block text-amber-800">理由: {history.reason}</span>
@@ -578,11 +612,18 @@ function FirstVisitDocumentStatusForm({
   const [templateName, setTemplateName] = useState('');
   const [templateVersion, setTemplateVersion] = useState('');
   const [storageLocation, setStorageLocation] = useState('store');
+  const [contractDate, setContractDate] = useState('');
+  const [explanationDate, setExplanationDate] = useState('');
+  const [explanationStaffName, setExplanationStaffName] = useState('');
+  const [signerType, setSignerType] = useState('self');
+  const [signerName, setSignerName] = useState('');
+  const [signerRelationship, setSignerRelationship] = useState('');
   const [historyReason, setHistoryReason] = useState('');
   const [historyNote, setHistoryNote] = useState('');
   const selectedActionLabel = DOCUMENT_ACTION_LABELS[documentAction] ?? documentAction;
   const selectedDocumentTypeLabel = DOCUMENT_TYPE_LABELS[documentType] ?? documentType;
   const selectedStorageLabel = DOCUMENT_STORAGE_LABELS[storageLocation] ?? storageLocation;
+  const selectedSignerTypeLabel = SIGNER_TYPE_LABELS[signerType] ?? signerType;
   const requiresReason = ['replaced', 'invalidated'].includes(documentAction);
   const missingRequiredReason = requiresReason && !historyReason.trim();
   const requiresDocumentUrl = ['image_saved', 'replaced'].includes(documentAction);
@@ -610,6 +651,12 @@ function FirstVisitDocumentStatusForm({
             template_name: templateName.trim() || null,
             template_version: templateVersion.trim() || null,
             storage_location: storageLocation,
+            contract_date: contractDate || null,
+            explanation_date: explanationDate || null,
+            explanation_staff_name: explanationStaffName.trim() || null,
+            signer_type: signerType,
+            signer_name: signerName.trim() || null,
+            signer_relationship: signerRelationship.trim() || null,
             reason: historyReason.trim() || null,
             note: historyNote.trim() || null,
           },
@@ -764,6 +811,70 @@ function FirstVisitDocumentStatusForm({
             />
           </div>
         </div>
+        <div className="grid gap-3 lg:col-span-2 lg:grid-cols-3">
+          <div className="space-y-1.5">
+            <Label htmlFor={`first-visit-contract-date-${document.id}`}>契約日</Label>
+            <Input
+              id={`first-visit-contract-date-${document.id}`}
+              type="date"
+              value={contractDate}
+              onChange={(event) => setContractDate(event.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={`first-visit-explanation-date-${document.id}`}>説明日</Label>
+            <Input
+              id={`first-visit-explanation-date-${document.id}`}
+              type="date"
+              value={explanationDate}
+              onChange={(event) => setExplanationDate(event.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={`first-visit-explanation-staff-${document.id}`}>説明者</Label>
+            <Input
+              id={`first-visit-explanation-staff-${document.id}`}
+              value={explanationStaffName}
+              onChange={(event) => setExplanationStaffName(event.target.value)}
+              placeholder="佐藤薬剤師"
+            />
+          </div>
+        </div>
+        <div className="grid gap-3 lg:col-span-2 lg:grid-cols-[160px_minmax(0,1fr)_minmax(0,1fr)]">
+          <div className="space-y-1.5">
+            <Label htmlFor={`first-visit-signer-type-${document.id}`}>同意者</Label>
+            <select
+              id={`first-visit-signer-type-${document.id}`}
+              value={signerType}
+              onChange={(event) => setSignerType(event.target.value)}
+              className="min-h-10 w-full rounded-lg border border-input bg-background px-3 text-sm"
+            >
+              <option value="self">本人</option>
+              <option value="family">家族</option>
+              <option value="proxy">代理人</option>
+              <option value="guardian">後見人</option>
+              <option value="other">その他</option>
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={`first-visit-signer-name-${document.id}`}>署名者氏名</Label>
+            <Input
+              id={`first-visit-signer-name-${document.id}`}
+              value={signerName}
+              onChange={(event) => setSignerName(event.target.value)}
+              placeholder="山田 花子"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor={`first-visit-signer-relationship-${document.id}`}>続柄</Label>
+            <Input
+              id={`first-visit-signer-relationship-${document.id}`}
+              value={signerRelationship}
+              onChange={(event) => setSignerRelationship(event.target.value)}
+              placeholder="長女"
+            />
+          </div>
+        </div>
         <div className="space-y-1.5">
           <Label htmlFor={`first-visit-history-reason-${document.id}`}>理由</Label>
           <Textarea
@@ -812,6 +923,26 @@ function FirstVisitDocumentStatusForm({
           <div className="flex justify-between gap-2">
             <dt className="text-muted-foreground">保管</dt>
             <dd className="text-right font-medium text-foreground">{selectedStorageLabel}</dd>
+          </div>
+          <div className="flex justify-between gap-2">
+            <dt className="text-muted-foreground">説明</dt>
+            <dd className="text-right font-medium text-foreground">
+              {[explanationDate || null, explanationStaffName.trim() || null]
+                .filter(Boolean)
+                .join(' / ') || '未入力'}
+            </dd>
+          </div>
+          <div className="flex justify-between gap-2">
+            <dt className="text-muted-foreground">署名者</dt>
+            <dd className="text-right font-medium text-foreground">
+              {[
+                signerName.trim() || null,
+                selectedSignerTypeLabel,
+                signerRelationship.trim() || null,
+              ]
+                .filter(Boolean)
+                .join(' / ')}
+            </dd>
           </div>
           <div className="flex justify-between gap-2">
             <dt className="text-muted-foreground">控え</dt>

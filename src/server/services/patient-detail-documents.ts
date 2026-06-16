@@ -34,6 +34,12 @@ type FirstVisitDocumentHistoryItem = {
   template_version: string | null;
   print_batch_id: string | null;
   storage_location: string | null;
+  contract_date: string | null;
+  explanation_date: string | null;
+  explanation_staff_name: string | null;
+  signer_type: string | null;
+  signer_name: string | null;
+  signer_relationship: string | null;
   reason: string | null;
   note: string | null;
   actor_id: string;
@@ -184,6 +190,12 @@ function normalizeFirstVisitDocumentHistory(log: {
     template_version: readString(documentAction?.template_version),
     print_batch_id: readString(documentAction?.print_batch_id),
     storage_location: readString(documentAction?.storage_location),
+    contract_date: readString(documentAction?.contract_date),
+    explanation_date: readString(documentAction?.explanation_date),
+    explanation_staff_name: readString(documentAction?.explanation_staff_name),
+    signer_type: readString(documentAction?.signer_type),
+    signer_name: readString(documentAction?.signer_name),
+    signer_relationship: readString(documentAction?.signer_relationship),
     reason: readString(documentAction?.reason),
     note: readString(documentAction?.note),
     actor_id: log.actor_id,

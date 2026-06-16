@@ -134,6 +134,12 @@ describe('FirstVisitDocumentsPanel', () => {
                   template_name: '居宅療養管理指導契約書 2026年版',
                   template_version: 'v1.1',
                   storage_location: 'store',
+                  contract_date: '2026-06-10',
+                  explanation_date: '2026-06-10',
+                  explanation_staff_name: '佐藤薬剤師',
+                  signer_type: 'family',
+                  signer_name: '山田 花子',
+                  signer_relationship: '長女',
                   reason: '署名者を長女へ訂正',
                   note: '本人同席',
                   actor_id: 'user_1',
@@ -169,6 +175,12 @@ describe('FirstVisitDocumentsPanel', () => {
     expect(screen.getByLabelText('履歴操作')).toBeTruthy();
     expect(screen.getByLabelText('書類種別')).toBeTruthy();
     expect(screen.getByLabelText('原本保管場所')).toBeTruthy();
+    expect(screen.getByLabelText('契約日')).toBeTruthy();
+    expect(screen.getByLabelText('説明日')).toBeTruthy();
+    expect(screen.getByLabelText('説明者')).toBeTruthy();
+    expect(screen.getByLabelText('同意者')).toBeTruthy();
+    expect(screen.getByLabelText('署名者氏名')).toBeTruthy();
+    expect(screen.getByLabelText('続柄')).toBeTruthy();
     expect(screen.getByText('保存される履歴')).toBeTruthy();
     expect(screen.getAllByText('画像保存').length).toBeGreaterThan(0);
     expect(screen.getAllByText('控え').length).toBeGreaterThan(0);
@@ -194,6 +206,9 @@ describe('FirstVisitDocumentsPanel', () => {
     );
     expect(screen.getAllByText('差替え').length).toBeGreaterThan(0);
     expect(screen.getAllByText(/契約書/).length).toBeGreaterThan(0);
+    expect(screen.getByText('契約日: 2026-06-10')).toBeTruthy();
+    expect(screen.getByText('説明: 2026-06-10 / 佐藤薬剤師')).toBeTruthy();
+    expect(screen.getByText('署名者: 山田 花子 / 家族 / 長女')).toBeTruthy();
     expect(screen.getByText('理由: 署名者を長女へ訂正')).toBeTruthy();
     expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
   });

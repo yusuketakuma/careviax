@@ -435,6 +435,12 @@ export type PatientDocumentsSnapshot = {
       template_version: string | null;
       print_batch_id?: string | null;
       storage_location: string | null;
+      contract_date: string | null;
+      explanation_date: string | null;
+      explanation_staff_name: string | null;
+      signer_type: string | null;
+      signer_name: string | null;
+      signer_relationship: string | null;
       reason: string | null;
       note: string | null;
       actor_id: string;
