@@ -17,7 +17,11 @@ vi.mock('@/server/adapters/realtime', () => ({
   }),
 }));
 
-import { notifyWorkflowMutation, sanitizeWorkflowRealtimeSource } from './workflow-dashboard-cache';
+import {
+  notifyWorkflowMutation,
+  parseWorkflowDashboardView,
+  sanitizeWorkflowRealtimeSource,
+} from './workflow-dashboard-cache';
 
 describe('notifyWorkflowMutation', () => {
   beforeEach(() => {
@@ -115,5 +119,19 @@ describe('sanitizeWorkflowRealtimeSource', () => {
     [['medication_cycles_transition'], null],
   ])('returns %s for %s', (value, expected) => {
     expect(sanitizeWorkflowRealtimeSource(value)).toBe(expected);
+  });
+});
+
+describe('parseWorkflowDashboardView', () => {
+  it.each([
+    ['full', 'full'],
+    ['phase', 'phase'],
+    ['realtime', 'realtime'],
+    ['performance', 'performance'],
+    ['unknown', 'full'],
+    ['', 'full'],
+    [null, 'full'],
+  ])('returns %s for %s', (value, expected) => {
+    expect(parseWorkflowDashboardView(value)).toBe(expected);
   });
 });

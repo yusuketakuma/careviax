@@ -8,6 +8,13 @@ import type { DashboardAssignmentScope } from './dashboard-assignment-scope';
 
 export { sanitizeWorkflowRealtimeSource } from '@/server/services/org-realtime';
 
+export const WORKFLOW_DASHBOARD_VIEWS = ['full', 'phase', 'realtime', 'performance'] as const;
+export type WorkflowDashboardView = (typeof WORKFLOW_DASHBOARD_VIEWS)[number];
+
+export function parseWorkflowDashboardView(value: string | null): WorkflowDashboardView {
+  return WORKFLOW_DASHBOARD_VIEWS.find((view) => view === value) ?? 'full';
+}
+
 function formatCacheDay(value: Date) {
   const year = value.getFullYear();
   const month = String(value.getMonth() + 1).padStart(2, '0');
@@ -21,7 +28,7 @@ export function buildWorkflowCacheKey(
   userId: string,
   today: Date,
   assignmentScopeFingerprint?: string,
-  view?: 'full' | 'phase' | 'realtime' | 'performance',
+  view?: WorkflowDashboardView,
 ) {
   const scopeKey = assignmentScopeFingerprint ? `:${assignmentScopeFingerprint}` : '';
   const viewKey = view && view !== 'full' ? `:${view}` : '';

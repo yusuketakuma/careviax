@@ -17,6 +17,7 @@ import {
 import {
   buildWorkflowAssignmentScopeFingerprint,
   buildWorkflowCacheKey,
+  parseWorkflowDashboardView,
 } from '@/server/services/workflow-dashboard-cache';
 import { buildWorkflowDashboardData } from '@/server/services/workflow-dashboard-sections';
 import { resolveDashboardAssignmentScope } from '@/server/services/dashboard-assignment-scope';
@@ -26,11 +27,7 @@ export const GET = withAuthContext(
   async (req, ctx) => {
     // scheduled_date / shift date(@db.Date)比較用: ローカル日付の UTC 深夜
     const today = utcDateFromLocalKey(localDateKey());
-    const requestedView = new URL(req.url).searchParams.get('view');
-    const view =
-      requestedView === 'phase' || requestedView === 'realtime' || requestedView === 'performance'
-        ? requestedView
-        : 'full';
+    const view = parseWorkflowDashboardView(new URL(req.url).searchParams.get('view'));
     const assignmentScope = await resolveDashboardAssignmentScope({
       db: prisma,
       orgId: ctx.orgId,

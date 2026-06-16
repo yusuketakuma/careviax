@@ -940,6 +940,18 @@ describe('/api/dashboard/workflow GET', () => {
     expect(firstVisitDocumentCountMock).not.toHaveBeenCalled();
   });
 
+  it('falls back unknown workflow views to the full dashboard aggregate', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }, '?view=unknown'));
+
+    expect(response.status).toBe(200);
+    expect(communicationQueueMock).toHaveBeenCalled();
+    expect(patientRiskQueueMock).toHaveBeenCalled();
+    expect(billingPreviewBatchMock).toHaveBeenCalled();
+  });
+
   it('keeps role-specific inbox state out of cross-role cache hits', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock
