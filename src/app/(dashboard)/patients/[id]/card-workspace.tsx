@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import {
   differenceInYears,
   format,
@@ -11,9 +12,21 @@ import {
   parseISO,
 } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { FileQuestion } from 'lucide-react';
-import { buttonVariants } from '@/components/ui/button';
+import { toast } from 'sonner';
+import {
+  CalendarDays,
+  CheckCircle2,
+  CircleDollarSign,
+  ExternalLink,
+  FileQuestion,
+  FileText,
+  Link2,
+  Pill,
+} from 'lucide-react';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Loading } from '@/components/ui/loading';
 import {
   Table,
@@ -23,6 +36,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Textarea } from '@/components/ui/textarea';
 import {
   SafetyBoard,
   getHandlingTagBadgeClass,
@@ -63,10 +77,17 @@ import {
   visitFrequencyLabels,
 } from '@/lib/patient/home-visit-intake';
 import type {
+  PatientDocumentsSnapshot,
   PatientOverview,
   PatientWorkspaceActivity,
   PatientWorkspaceTodayTask,
 } from './patient-detail.types';
+import { FirstVisitDocumentsPanel } from './patient-documents-panel';
+import type {
+  PatientHomeOperationItem,
+  PatientHomeOperationKey,
+  PatientHomeOperationsSnapshot,
+} from '@/types/patient-home-operations';
 import type { VisitBriefUnresolvedItem } from '@/types/visit-brief';
 
 /**
@@ -240,6 +261,1424 @@ function SummaryTile({
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="mt-1 font-semibold text-foreground">{value}</dd>
     </div>
+  );
+}
+
+type HomeOpsItem = PatientHomeOperationItem & { icon: typeof FileText };
+
+const HOME_OPS_TONE_CLASSES: Record<HomeOpsItem['tone'], string> = {
+  ok: 'border-emerald-200 bg-emerald-50 text-emerald-950',
+  attention: 'border-amber-200 bg-amber-50 text-amber-950',
+  neutral: 'border-border/70 bg-muted/20 text-foreground',
+};
+
+const HOME_OPS_ICONS: Record<PatientHomeOperationKey, typeof FileText> = {
+  documents: FileText,
+  mcs: Link2,
+  prescription: Pill,
+  billing: CircleDollarSign,
+  conference: CalendarDays,
+};
+
+const HOME_OPS_ALERT_LIMIT = 6;
+
+function withHomeOperationIcon(item: PatientHomeOperationItem): HomeOpsItem {
+  return {
+    ...item,
+    icon: HOME_OPS_ICONS[item.key],
+  };
+}
+
+function buildHomeOperationsItems(patient: PatientOverview): PatientHomeOperationItem[] {
+  const activeCase =
+    patient.cases.find((careCase) => careCase.status === 'active') ?? patient.cases[0] ?? null;
+  const intake = getPrimaryHomeVisitIntake(patient);
+  const hasDocumentNote = Boolean(intake?.document_status_note?.trim());
+  const mcsLinked = patient.scheduling_preference?.mcs_linked === true;
+  const hasPrescription = Boolean(patient.workspace?.current_intake);
+  const hasConferenceContext = Boolean(patient.visit_brief?.conference_summary);
+  const hasBillingSupport = patient.billing_support_flag;
+
+  return [
+    {
+      key: 'documents',
+      label: '契約・同意・書類',
+      status: hasDocumentNote ? '書類メモあり' : '要確認',
+      description: hasDocumentNote
+        ? (intake?.document_status_note ?? '契約書類の状態を確認できます。')
+        : '契約書、重要事項説明書、同意書、初回訪問文書の作成・交付・回収状況を確認します。',
+      href: `/patients/${patient.id}#patient-documents`,
+      action_label: '文書状態へ',
+      tone: hasDocumentNote ? 'ok' : 'attention',
+      updated_at: null,
+      metrics: [],
+      alerts: hasDocumentNote ? [] : ['書類状態を確認してください'],
+    },
+    {
+      key: 'mcs',
+      label: 'MCS・外部連携',
+      status: mcsLinked ? '連携あり' : '未確認',
+      description: mcsLinked
+        ? 'MCS連携ページでURL、同期状況、共有要点、次アクションを確認します。'
+        : '患者別MCS URLの登録、最終確認日、外部連携ログの確認導線です。',
+      href: `/patients/${patient.id}/mcs`,
+      action_label: mcsLinked ? 'MCSを開く' : 'MCSを登録',
+      tone: mcsLinked ? 'ok' : 'neutral',
+      updated_at: null,
+      metrics: [],
+      alerts: [],
+    },
+    {
+      key: 'prescription',
+      label: '処方せん',
+      status: hasPrescription ? '受付あり' : '未受付',
+      description: hasPrescription
+        ? '処方受付、原本、電子処方せん、疑義照会、服薬管理への流れを確認します。'
+        : 'FAX先行、原本到着、電子処方せん、照合・保管状況の受付が必要です。',
+      href: `/patients/${patient.id}/prescriptions`,
+      action_label: '処方履歴へ',
+      tone: hasPrescription ? 'ok' : 'attention',
+      updated_at: null,
+      metrics: [],
+      alerts: hasPrescription ? [] : ['処方せん受付がまだありません'],
+    },
+    {
+      key: 'billing',
+      label: '請求・集金',
+      status: hasBillingSupport ? '支援対象' : '未設定',
+      description: hasBillingSupport
+        ? '算定候補、請求ブロック、未収・集金確認タスクを患者単位で追います。'
+        : '支払者、支払方法、未収許容、領収証・請求書の運用を確認します。',
+      href: `/billing/candidates?${new URLSearchParams({ patient_id: patient.id }).toString()}`,
+      action_label: '請求候補を確認',
+      tone: hasBillingSupport ? 'ok' : 'neutral',
+      updated_at: null,
+      metrics: [],
+      alerts: [],
+    },
+    {
+      key: 'conference',
+      label: 'カンファレンス',
+      status: hasConferenceContext ? '共有要点あり' : '未登録',
+      description: hasConferenceContext
+        ? '退院前カンファ、担当者会議、報告書作成、会議後タスクを訪問準備に接続します。'
+        : '退院前カンファ、担当者会議、デスカンファの予定・議事録・報告書を登録します。',
+      href: `/conferences?${new URLSearchParams({
+        patient_id: patient.id,
+        ...(activeCase ? { case_id: activeCase.id } : {}),
+        focus: 'notes',
+        context: 'patient_detail',
+      }).toString()}`,
+      action_label: hasConferenceContext ? '会議要点へ' : '会議を登録',
+      tone: hasConferenceContext ? 'ok' : 'attention',
+      updated_at: null,
+      metrics: [],
+      alerts: hasConferenceContext ? [] : ['カンファレンス記録が未登録です'],
+    },
+  ];
+}
+
+function PatientHomeOperationsPanel({
+  patient,
+  operations,
+  markingFaxOriginalIntakeId,
+  savingPrescriptionDocumentIntakeId,
+  recordingPrescriptionOriginalManagementIntakeId,
+  recordingBillingPaymentProfilePatientId,
+  recordingBillingCandidateId,
+  recordingConferenceScopeId,
+  onMarkFaxOriginalCollected,
+  onSavePrescriptionDocument,
+  onUploadPrescriptionDocument,
+  onRecordPrescriptionOriginalManagement,
+  onRecordBillingPaymentProfile,
+  onRecordBillingCollection,
+  onRecordConferenceNote,
+}: {
+  patient: PatientOverview;
+  operations?: PatientHomeOperationsSnapshot | null;
+  markingFaxOriginalIntakeId?: string | null;
+  savingPrescriptionDocumentIntakeId?: string | null;
+  recordingPrescriptionOriginalManagementIntakeId?: string | null;
+  recordingBillingPaymentProfilePatientId?: string | null;
+  recordingBillingCandidateId?: string | null;
+  recordingConferenceScopeId?: string | null;
+  onMarkFaxOriginalCollected?: (intakeId: string) => void;
+  onSavePrescriptionDocument?: (input: PrescriptionDocumentFormInput) => void;
+  onUploadPrescriptionDocument?: (file: File) => Promise<string>;
+  onRecordPrescriptionOriginalManagement?: (input: PrescriptionOriginalManagementFormInput) => void;
+  onRecordBillingPaymentProfile?: (input: BillingPaymentProfileFormInput) => void;
+  onRecordBillingCollection?: (input: BillingCollectionFormInput) => void;
+  onRecordConferenceNote?: (input: ConferenceNoteFormInput) => void;
+}) {
+  const items = (operations?.items ?? buildHomeOperationsItems(patient)).map(withHomeOperationIcon);
+  const attentionCount = items.filter((item) => item.tone === 'attention').length;
+  const topAlerts =
+    operations?.top_alerts ??
+    items.flatMap((item) =>
+      item.alerts.map((message, index) => ({
+        id: `${item.key}:${index}:${message}`,
+        key: item.key,
+        label: item.label,
+        message,
+        href: item.href,
+        action_label: item.action_label,
+      })),
+    );
+
+  return (
+    <SectionCard aria-label="在宅運用管理" data-testid="patient-home-operations-panel">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-base font-semibold text-foreground">在宅運用管理</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            契約、外部連携、処方せん、集金、会議を患者単位で確認し、既存の詳細画面へ移ります。
+          </p>
+        </div>
+        <span
+          className={cn(
+            'inline-flex min-h-8 items-center rounded-full border px-3 text-xs font-medium',
+            attentionCount > 0
+              ? 'border-amber-200 bg-amber-50 text-amber-800'
+              : 'border-emerald-200 bg-emerald-50 text-emerald-800',
+          )}
+        >
+          {attentionCount > 0 ? `要確認 ${attentionCount}件` : '主要項目 確認済み'}
+        </span>
+      </div>
+      {topAlerts.length > 0 ? (
+        <div
+          className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3"
+          data-testid="patient-home-operation-alerts"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h4 className="text-sm font-semibold text-amber-950">未処理アラート</h4>
+            <span className="text-xs font-medium text-amber-800">
+              {topAlerts.length}件を上から確認
+            </span>
+          </div>
+          <ul className="mt-2 divide-y divide-amber-200/70" role="list">
+            {topAlerts.slice(0, HOME_OPS_ALERT_LIMIT).map((alert) => (
+              <li key={alert.id} className="flex flex-wrap items-center gap-2 py-2">
+                <span className="rounded-full border border-amber-300 bg-background/70 px-2 py-0.5 text-xs font-medium text-amber-900">
+                  {alert.label}
+                </span>
+                <span className="min-w-0 flex-1 text-sm text-amber-950">{alert.message}</span>
+                <Link
+                  href={alert.href}
+                  className={buttonVariants({
+                    variant: 'outline',
+                    size: 'sm',
+                    className:
+                      'min-h-8 shrink-0 border-amber-300 bg-background/80 text-amber-950 hover:bg-amber-100',
+                  })}
+                >
+                  {alert.action_label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      <div className="mt-4 grid gap-3 lg:grid-cols-2 2xl:grid-cols-5">
+        {items.map((item) => {
+          const Icon = item.icon;
+          return (
+            <div
+              key={item.key}
+              className={cn('rounded-lg border p-3', HOME_OPS_TONE_CLASSES[item.tone])}
+            >
+              <div className="flex items-start gap-2">
+                <Icon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="text-sm font-semibold text-foreground">{item.label}</h4>
+                    <span className="rounded-full border border-current/20 px-2 py-0.5 text-xs">
+                      {item.status}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-muted-foreground">{item.description}</p>
+                  {item.metrics.length > 0 ? (
+                    <dl className="mt-3 grid gap-1 text-xs text-muted-foreground">
+                      {item.metrics.slice(0, 3).map((metric) => (
+                        <div key={metric.label} className="flex justify-between gap-2">
+                          <dt>{metric.label}</dt>
+                          <dd className="font-medium text-foreground">{metric.value}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  ) : null}
+                  {item.alerts.length > 0 ? (
+                    <ul className="mt-3 space-y-1 text-xs text-amber-800">
+                      {item.alerts.slice(0, 2).map((alert) => (
+                        <li key={alert}>{alert}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              </div>
+              {item.quick_actions?.map((action) => {
+                if (action.key === 'record_billing_payment_profile') {
+                  return (
+                    <BillingPaymentProfileQuickForm
+                      key={action.key}
+                      actionLabel={action.label}
+                      patientId={action.resource_id}
+                      item={item}
+                      isPending={recordingBillingPaymentProfilePatientId === action.resource_id}
+                      onSubmit={onRecordBillingPaymentProfile}
+                    />
+                  );
+                }
+                if (action.key === 'record_billing_collection') {
+                  return (
+                    <BillingCollectionQuickForm
+                      key={action.key}
+                      actionLabel={action.label}
+                      candidateId={action.resource_id}
+                      item={item}
+                      isPending={recordingBillingCandidateId === action.resource_id}
+                      onSubmit={onRecordBillingCollection}
+                    />
+                  );
+                }
+                if (action.key === 'save_prescription_document') {
+                  return (
+                    <PrescriptionDocumentQuickForm
+                      key={action.key}
+                      actionLabel={action.label}
+                      intakeId={action.resource_id}
+                      isPending={savingPrescriptionDocumentIntakeId === action.resource_id}
+                      onSubmit={onSavePrescriptionDocument}
+                      onUpload={onUploadPrescriptionDocument}
+                    />
+                  );
+                }
+                if (action.key === 'record_prescription_original_management') {
+                  return (
+                    <PrescriptionOriginalManagementQuickForm
+                      key={action.key}
+                      actionLabel={action.label}
+                      intakeId={action.resource_id}
+                      isPending={
+                        recordingPrescriptionOriginalManagementIntakeId === action.resource_id
+                      }
+                      onSubmit={onRecordPrescriptionOriginalManagement}
+                    />
+                  );
+                }
+                if (action.key === 'record_conference_note') {
+                  const caseId = queryParamValue(item.href, 'case_id');
+                  const scopeId = caseId ? `case:${caseId}` : `patient:${patient.id}`;
+                  return (
+                    <ConferenceNoteQuickForm
+                      key={action.key}
+                      actionLabel={action.label}
+                      patientName={patient.name}
+                      patientId={patient.id}
+                      caseId={caseId}
+                      isPending={recordingConferenceScopeId === scopeId}
+                      onSubmit={onRecordConferenceNote}
+                    />
+                  );
+                }
+                if (action.key !== 'mark_fax_original_collected') return null;
+                const pending = markingFaxOriginalIntakeId === action.resource_id;
+                return (
+                  <Button
+                    key={action.key}
+                    type="button"
+                    size="sm"
+                    className="mt-3 min-h-10 w-full justify-center"
+                    disabled={pending}
+                    onClick={() => onMarkFaxOriginalCollected?.(action.resource_id)}
+                  >
+                    <CheckCircle2 className="mr-1.5 size-4" aria-hidden="true" />
+                    {pending ? '記録中' : action.label}
+                  </Button>
+                );
+              })}
+              <Link
+                href={item.href}
+                className={buttonVariants({
+                  variant: 'outline',
+                  size: 'sm',
+                  className: 'mt-3 min-h-10 w-full justify-center bg-background/80',
+                })}
+              >
+                <ExternalLink className="mr-1.5 size-4" aria-hidden="true" />
+                {item.action_label}
+              </Link>
+            </div>
+          );
+        })}
+      </div>
+    </SectionCard>
+  );
+}
+
+function PatientCardDocumentsPanel({
+  patient,
+  orgId,
+}: {
+  patient: PatientOverview;
+  orgId: string | null;
+}) {
+  const documentsQuery = useQuery<PatientDocumentsSnapshot>({
+    queryKey: ['patient-documents', patient.id, orgId],
+    queryFn: async () => {
+      const response = await fetch(`/api/patients/${patient.id}/documents`, {
+        headers: { 'x-org-id': orgId ?? '' },
+      });
+      if (!response.ok) {
+        throw new Error('文書情報の取得に失敗しました');
+      }
+      return response.json();
+    },
+    enabled: Boolean(orgId && patient.id),
+  });
+
+  if (!orgId || documentsQuery.isLoading) {
+    return (
+      <SectionCard id="patient-documents" data-testid="patient-card-documents-panel">
+        <Loading label="文書情報を読み込み中..." />
+      </SectionCard>
+    );
+  }
+
+  if (documentsQuery.error instanceof Error || !documentsQuery.data) {
+    return (
+      <SectionCard id="patient-documents" data-testid="patient-card-documents-panel">
+        <h3 className="text-base font-semibold text-foreground">初回訪問文書・交付記録</h3>
+        <p className="mt-2 text-sm text-destructive">
+          {documentsQuery.error instanceof Error
+            ? documentsQuery.error.message
+            : '文書情報の取得に失敗しました'}
+        </p>
+      </SectionCard>
+    );
+  }
+
+  return (
+    <div id="patient-documents" data-testid="patient-card-documents-panel">
+      <FirstVisitDocumentsPanel
+        cases={patient.cases}
+        documents={documentsQuery.data.first_visit_documents}
+        documentStatuses={documentsQuery.data.document_statuses}
+        printReadiness={documentsQuery.data.print_readiness}
+        orgId={orgId}
+        patientId={patient.id}
+      />
+    </div>
+  );
+}
+
+type BillingCollectionFormInput = {
+  candidateId: string;
+  status: string;
+  billedAmount: number | null;
+  collectedAmount: number | null;
+  payerName: string | null;
+  paymentMethod: string | null;
+  scheduledCollectionAt: string | null;
+  receiptNumber: string | null;
+};
+
+type BillingPaymentProfileFormInput = {
+  patientId: string;
+  payerType: string;
+  payerName: string | null;
+  payerRelation: string | null;
+  billingAddressMode: string;
+  billingAddress: string | null;
+  paymentMethod: string;
+  collectionTiming: string;
+  receiptIssue: string;
+  invoiceIssue: string;
+  unpaidTolerance: string;
+  note: string | null;
+};
+
+type PrescriptionDocumentFormInput = {
+  intakeId: string;
+  documentUrl: string;
+};
+
+type PrescriptionOriginalManagementFormInput = {
+  intakeId: string;
+  reconciliationResult: 'not_checked' | 'matched' | 'discrepancy';
+  discrepancyNote: string | null;
+  storageLocation: 'not_stored' | 'store' | 'headquarters' | 'electronic' | 'patient_copy_only';
+  ePrescriptionExchangeNumber: string | null;
+  ePrescriptionAcquiredStatus: 'not_applicable' | 'pending' | 'acquired';
+  dispensingResultRegistration: 'not_applicable' | 'pending' | 'registered';
+  note: string | null;
+};
+
+type ConferenceNoteFormInput = {
+  patientId: string;
+  caseId: string | null;
+  noteType: 'pre_discharge' | 'service_manager' | 'care_team' | 'emergency' | 'death_conference';
+  title: string;
+  conferenceDate: string;
+  content: string;
+  visitScheduleChange: string;
+  targetDischargeDate: string;
+  actionItemsRaw: string;
+};
+
+type ConferenceStructuredSectionInput = {
+  key: string;
+  label: string;
+  body: string;
+};
+
+function queryParamValue(href: string, key: string) {
+  const query = href.split('?')[1];
+  if (!query) return null;
+  return new URLSearchParams(query).get(key);
+}
+
+function parseCurrencyMetric(item: PatientHomeOperationItem, label: string) {
+  const raw = item.metrics.find((metric) => metric.label === label)?.value;
+  if (!raw || raw === '未記録') return '';
+  const numeric = Number(raw.replace(/[^\d]/g, ''));
+  return Number.isFinite(numeric) && numeric > 0 ? String(numeric) : '';
+}
+
+function metricValue(item: PatientHomeOperationItem, label: string) {
+  const value = item.metrics.find((metric) => metric.label === label)?.value;
+  return value && !['未記録', '未発行/未記録'].includes(value) ? value : '';
+}
+
+function toLocalDateTimeInputValue(value: Date) {
+  const offsetMs = value.getTimezoneOffset() * 60_000;
+  return new Date(value.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function metricDateTimeValue(item: PatientHomeOperationItem, label: string) {
+  const value = metricValue(item, label);
+  if (!value || value === '未設定') return '';
+  const date = new Date(value.replaceAll('/', '-'));
+  if (Number.isNaN(date.getTime())) return '';
+  return toLocalDateTimeInputValue(date);
+}
+
+function parseConferenceActionItems(raw: string) {
+  return raw
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [titleValue, assignee] = line.split('/').map((part) => part.trim());
+      return {
+        title: titleValue || line,
+        ...(assignee ? { assignee } : {}),
+      };
+    });
+}
+
+export function buildConferenceStructuredContent(input: ConferenceNoteFormInput) {
+  const content = input.content.trim();
+  const visitScheduleChange = input.visitScheduleChange.trim();
+  const targetDischargeDate = input.targetDischargeDate.trim();
+  const sections: ConferenceStructuredSectionInput[] = [];
+
+  if (input.noteType === 'service_manager') {
+    sections.push({ key: 'meeting_purpose', label: '会議目的', body: content });
+    if (visitScheduleChange) {
+      sections.push({
+        key: 'service_adjustments',
+        label: 'サービス調整',
+        body: `訪問頻度を${visitScheduleChange}へ変更`,
+      });
+    }
+  } else if (input.noteType === 'pre_discharge') {
+    sections.push({ key: 'discharge_background', label: '退院背景', body: content });
+    if (targetDischargeDate) {
+      sections.push({
+        key: 'target_discharge_date',
+        label: '退院予定日',
+        body: targetDischargeDate,
+      });
+      if (visitScheduleChange) {
+        sections.push({
+          key: 'next_visit_plan',
+          label: '初回訪問計画',
+          body: `退院後の初回訪問を${visitScheduleChange}で調整`,
+        });
+      }
+    }
+  } else if (input.noteType === 'death_conference') {
+    sections.push({ key: 'billing_confirmation', label: '算定根拠確認', body: content });
+  } else if (input.noteType === 'emergency') {
+    sections.push({ key: 'emergency_context', label: '緊急背景', body: content });
+  } else {
+    sections.push({ key: 'discussion_summary', label: '議論要約', body: content });
+  }
+
+  const populatedSections = sections.filter((section) => section.body.trim().length > 0);
+  if (populatedSections.length === 0) return undefined;
+
+  return {
+    template: input.noteType,
+    sections: populatedSections,
+  };
+}
+
+function metricValueOrDefault(item: PatientHomeOperationItem, label: string, fallback: string) {
+  return metricValue(item, label) || fallback;
+}
+
+function BillingPaymentProfileQuickForm({
+  actionLabel,
+  patientId,
+  item,
+  isPending,
+  onSubmit,
+}: {
+  actionLabel: string;
+  patientId: string;
+  item: PatientHomeOperationItem;
+  isPending: boolean;
+  onSubmit?: (input: BillingPaymentProfileFormInput) => void;
+}) {
+  const [payerType, setPayerType] = useState(() =>
+    metricValueOrDefault(item, '支払者区分コード', 'family'),
+  );
+  const [payerName, setPayerName] = useState(() => metricValue(item, '支払者'));
+  const [payerRelation, setPayerRelation] = useState(() => metricValue(item, '続柄'));
+  const [billingAddressMode, setBillingAddressMode] = useState(() =>
+    metricValueOrDefault(item, '請求先住所区分コード', 'same_as_patient'),
+  );
+  const [billingAddress, setBillingAddress] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState(() =>
+    metricValueOrDefault(item, '支払方法コード', 'cash'),
+  );
+  const [collectionTiming, setCollectionTiming] = useState(() =>
+    metricValueOrDefault(item, '集金タイミングコード', 'month_end'),
+  );
+  const [receiptIssue, setReceiptIssue] = useState(() =>
+    metricValueOrDefault(item, '領収証発行コード', 'paper'),
+  );
+  const [invoiceIssue, setInvoiceIssue] = useState(() =>
+    metricValueOrDefault(item, '請求書発行コード', 'yes'),
+  );
+  const [unpaidTolerance, setUnpaidTolerance] = useState(() =>
+    metricValueOrDefault(item, '未収許容コード', 'none'),
+  );
+  const [note, setNote] = useState(() => metricValue(item, '備考'));
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <form
+      className="mt-3 rounded-lg border border-current/20 bg-background/80 p-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const trimmedPayerName = payerName.trim();
+        const trimmedPayerRelation = payerRelation.trim();
+        const trimmedBillingAddress = billingAddress.trim();
+        const trimmedNote = note.trim();
+        if (payerType !== 'self' && !trimmedPayerName) {
+          setError('本人以外の支払者では支払者氏名を入力してください。');
+          return;
+        }
+        if (['family', 'guardian', 'other'].includes(payerType) && !trimmedPayerRelation) {
+          setError('家族・後見人・その他の支払者では続柄を入力してください。');
+          return;
+        }
+        if (billingAddressMode !== 'same_as_patient' && !trimmedBillingAddress) {
+          setError('患者住所と異なる請求先では請求先住所を入力してください。');
+          return;
+        }
+        if (unpaidTolerance === 'custom' && !trimmedNote) {
+          setError('個別対応の未収許容条件は備考に入力してください。');
+          return;
+        }
+        setError(null);
+        onSubmit?.({
+          patientId,
+          payerType,
+          payerName: trimmedPayerName || null,
+          payerRelation: trimmedPayerRelation || null,
+          billingAddressMode,
+          billingAddress: trimmedBillingAddress || null,
+          paymentMethod,
+          collectionTiming,
+          receiptIssue,
+          invoiceIssue,
+          unpaidTolerance,
+          note: trimmedNote || null,
+        });
+      }}
+    >
+      <div className="grid gap-2">
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <Label htmlFor={`billing-payer-type-${patientId}`} className="text-xs">
+              支払者
+            </Label>
+            <select
+              id={`billing-payer-type-${patientId}`}
+              value={payerType}
+              onChange={(event) => setPayerType(event.target.value)}
+              className="min-h-9 w-full rounded-lg border border-input bg-background px-2 text-xs"
+            >
+              <option value="self">本人</option>
+              <option value="family">家族</option>
+              <option value="guardian">後見人</option>
+              <option value="facility">施設</option>
+              <option value="other">その他</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor={`billing-payment-method-${patientId}`} className="text-xs">
+              支払方法
+            </Label>
+            <select
+              id={`billing-payment-method-${patientId}`}
+              value={paymentMethod}
+              onChange={(event) => setPaymentMethod(event.target.value)}
+              className="min-h-9 w-full rounded-lg border border-input bg-background px-2 text-xs"
+            >
+              <option value="cash">現金</option>
+              <option value="bank_transfer">振込</option>
+              <option value="bank_debit">口座振替</option>
+              <option value="credit_card">クレカ</option>
+              <option value="facility_billing">施設請求</option>
+              <option value="corporate_billing">法人請求</option>
+              <option value="other">その他</option>
+            </select>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <Label htmlFor={`billing-profile-payer-name-${patientId}`} className="text-xs">
+              支払者氏名
+            </Label>
+            <Input
+              id={`billing-profile-payer-name-${patientId}`}
+              value={payerName}
+              onChange={(event) => setPayerName(event.target.value)}
+              className="min-h-9 text-xs"
+              placeholder="長女 山田花子"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor={`billing-payer-relation-${patientId}`} className="text-xs">
+              続柄
+            </Label>
+            <Input
+              id={`billing-payer-relation-${patientId}`}
+              value={payerRelation}
+              onChange={(event) => setPayerRelation(event.target.value)}
+              className="min-h-9 text-xs"
+              placeholder="長女"
+            />
+          </div>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor={`billing-address-mode-${patientId}`} className="text-xs">
+            請求先住所区分
+          </Label>
+          <select
+            id={`billing-address-mode-${patientId}`}
+            value={billingAddressMode}
+            onChange={(event) => setBillingAddressMode(event.target.value)}
+            className="min-h-9 w-full rounded-lg border border-input bg-background px-2 text-xs"
+          >
+            <option value="same_as_patient">患者住所と同じ</option>
+            <option value="different">別住所</option>
+            <option value="facility">施設宛</option>
+          </select>
+        </div>
+        {billingAddressMode !== 'same_as_patient' ? (
+          <div className="space-y-1">
+            <Label htmlFor={`billing-address-${patientId}`} className="text-xs">
+              請求先住所
+            </Label>
+            <Textarea
+              id={`billing-address-${patientId}`}
+              value={billingAddress}
+              onChange={(event) => setBillingAddress(event.target.value)}
+              className="min-h-16 text-xs"
+              placeholder="請求書・領収証の送付先"
+            />
+          </div>
+        ) : null}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <Label htmlFor={`billing-collection-timing-${patientId}`} className="text-xs">
+              集金タイミング
+            </Label>
+            <select
+              id={`billing-collection-timing-${patientId}`}
+              value={collectionTiming}
+              onChange={(event) => setCollectionTiming(event.target.value)}
+              className="min-h-9 w-full rounded-lg border border-input bg-background px-2 text-xs"
+            >
+              <option value="per_visit">毎回</option>
+              <option value="month_end">月末</option>
+              <option value="next_month">翌月</option>
+              <option value="facility_batch">施設一括</option>
+              <option value="other">その他</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor={`billing-unpaid-tolerance-${patientId}`} className="text-xs">
+              未収許容
+            </Label>
+            <select
+              id={`billing-unpaid-tolerance-${patientId}`}
+              value={unpaidTolerance}
+              onChange={(event) => setUnpaidTolerance(event.target.value)}
+              className="min-h-9 w-full rounded-lg border border-input bg-background px-2 text-xs"
+            >
+              <option value="none">なし</option>
+              <option value="one_month">1か月</option>
+              <option value="custom">個別対応</option>
+            </select>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <Label htmlFor={`billing-receipt-issue-${patientId}`} className="text-xs">
+              領収証発行
+            </Label>
+            <select
+              id={`billing-receipt-issue-${patientId}`}
+              value={receiptIssue}
+              onChange={(event) => setReceiptIssue(event.target.value)}
+              className="min-h-9 w-full rounded-lg border border-input bg-background px-2 text-xs"
+            >
+              <option value="paper">紙</option>
+              <option value="pdf">PDF</option>
+              <option value="none">不要</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor={`billing-invoice-issue-${patientId}`} className="text-xs">
+              請求書発行
+            </Label>
+            <select
+              id={`billing-invoice-issue-${patientId}`}
+              value={invoiceIssue}
+              onChange={(event) => setInvoiceIssue(event.target.value)}
+              className="min-h-9 w-full rounded-lg border border-input bg-background px-2 text-xs"
+            >
+              <option value="yes">あり</option>
+              <option value="no">なし</option>
+            </select>
+          </div>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor={`billing-profile-note-${patientId}`} className="text-xs">
+            備考
+          </Label>
+          <Textarea
+            id={`billing-profile-note-${patientId}`}
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            className="min-h-16 text-xs"
+            placeholder="月末に長女へ請求"
+          />
+        </div>
+        {error ? <p className="text-xs text-destructive">{error}</p> : null}
+        <Button type="submit" size="sm" className="min-h-9 w-full" disabled={isPending}>
+          <CheckCircle2 className="mr-1.5 size-4" aria-hidden="true" />
+          {isPending ? '保存中' : actionLabel}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function BillingCollectionQuickForm({
+  actionLabel,
+  candidateId,
+  item,
+  isPending,
+  onSubmit,
+}: {
+  actionLabel: string;
+  candidateId: string;
+  item: PatientHomeOperationItem;
+  isPending: boolean;
+  onSubmit?: (input: BillingCollectionFormInput) => void;
+}) {
+  const [status, setStatus] = useState('collected');
+  const [billedAmount, setBilledAmount] = useState(() => parseCurrencyMetric(item, '今月請求額'));
+  const [collectedAmount, setCollectedAmount] = useState(() =>
+    parseCurrencyMetric(item, '今月請求額'),
+  );
+  const [payerName, setPayerName] = useState(() => metricValue(item, '支払者'));
+  const [receiptNumber, setReceiptNumber] = useState(() => metricValue(item, '領収証'));
+  const [scheduledCollectionAt, setScheduledCollectionAt] = useState(() =>
+    metricDateTimeValue(item, '次回集金予定'),
+  );
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <form
+      className="mt-3 rounded-lg border border-current/20 bg-background/80 p-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const billed = billedAmount ? Number(billedAmount) : null;
+        const collected = collectedAmount ? Number(collectedAmount) : null;
+        if (
+          ['billed', 'scheduled', 'collected', 'partial', 'unpaid', 'dunning'].includes(status) &&
+          billed == null
+        ) {
+          setError('請求額を入力してください。');
+          return;
+        }
+        if (status === 'scheduled' && !scheduledCollectionAt) {
+          setError('集金予定では次回集金予定を入力してください。');
+          return;
+        }
+        if (
+          status === 'collected' &&
+          (billed == null || collected == null || collected !== billed)
+        ) {
+          setError('集金済では入金額を請求額と一致させてください。');
+          return;
+        }
+        if (
+          status === 'partial' &&
+          (billed == null || collected == null || collected <= 0 || collected >= billed)
+        ) {
+          setError('一部入金では請求額未満の入金額を入力してください。');
+          return;
+        }
+        if (
+          ['billed', 'scheduled', 'unpaid', 'dunning'].includes(status) &&
+          collected != null &&
+          collected > 0
+        ) {
+          setError('入金額がある場合は一部入金または集金済を選択してください。');
+          return;
+        }
+        setError(null);
+        onSubmit?.({
+          candidateId,
+          status,
+          billedAmount: billed,
+          collectedAmount: collected,
+          payerName: payerName.trim() || null,
+          paymentMethod: 'cash',
+          scheduledCollectionAt: scheduledCollectionAt
+            ? new Date(scheduledCollectionAt).toISOString()
+            : null,
+          receiptNumber: receiptNumber.trim() || null,
+        });
+      }}
+    >
+      <div className="grid gap-2">
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <Label htmlFor={`billing-status-${candidateId}`} className="text-xs">
+              状態
+            </Label>
+            <select
+              id={`billing-status-${candidateId}`}
+              value={status}
+              onChange={(event) => setStatus(event.target.value)}
+              className="min-h-9 w-full rounded-lg border border-input bg-background px-2 text-xs"
+            >
+              <option value="billed">請求済</option>
+              <option value="scheduled">集金予定</option>
+              <option value="collected">集金済</option>
+              <option value="partial">一部入金</option>
+              <option value="unpaid">未収</option>
+              <option value="dunning">督促中</option>
+              <option value="waived">免除・公費</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor={`billing-receipt-${candidateId}`} className="text-xs">
+              領収証番号
+            </Label>
+            <Input
+              id={`billing-receipt-${candidateId}`}
+              value={receiptNumber}
+              onChange={(event) => setReceiptNumber(event.target.value)}
+              className="min-h-9 text-xs"
+              placeholder="R202606..."
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <div className="space-y-1">
+            <Label htmlFor={`billing-billed-${candidateId}`} className="text-xs">
+              請求額
+            </Label>
+            <Input
+              id={`billing-billed-${candidateId}`}
+              inputMode="numeric"
+              value={billedAmount}
+              onChange={(event) => setBilledAmount(event.target.value.replace(/[^\d]/g, ''))}
+              className="min-h-9 text-xs"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor={`billing-collected-${candidateId}`} className="text-xs">
+              入金額
+            </Label>
+            <Input
+              id={`billing-collected-${candidateId}`}
+              inputMode="numeric"
+              value={collectedAmount}
+              onChange={(event) => setCollectedAmount(event.target.value.replace(/[^\d]/g, ''))}
+              className="min-h-9 text-xs"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor={`billing-payer-${candidateId}`} className="text-xs">
+              支払者
+            </Label>
+            <Input
+              id={`billing-payer-${candidateId}`}
+              value={payerName}
+              onChange={(event) => setPayerName(event.target.value)}
+              className="min-h-9 text-xs"
+              placeholder="本人/家族"
+            />
+          </div>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor={`billing-scheduled-${candidateId}`} className="text-xs">
+            次回集金予定
+          </Label>
+          <Input
+            id={`billing-scheduled-${candidateId}`}
+            type="datetime-local"
+            value={scheduledCollectionAt}
+            onChange={(event) => setScheduledCollectionAt(event.target.value)}
+            className="min-h-9 text-xs"
+          />
+        </div>
+        {error ? <p className="text-xs text-destructive">{error}</p> : null}
+        <Button type="submit" size="sm" className="min-h-9 w-full" disabled={isPending}>
+          <CheckCircle2 className="mr-1.5 size-4" aria-hidden="true" />
+          {isPending ? '保存中' : actionLabel}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function PrescriptionDocumentQuickForm({
+  actionLabel,
+  intakeId,
+  isPending,
+  onSubmit,
+  onUpload,
+}: {
+  actionLabel: string;
+  intakeId: string;
+  isPending: boolean;
+  onSubmit?: (input: PrescriptionDocumentFormInput) => void;
+  onUpload?: (file: File) => Promise<string>;
+}) {
+  const [documentUrl, setDocumentUrl] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  return (
+    <form
+      className="mt-3 rounded-lg border border-current/20 bg-background/80 p-2"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        setLocalError(null);
+        let nextDocumentUrl = documentUrl.trim();
+        if (file) {
+          if (!onUpload) {
+            setLocalError('ファイルアップロードを利用できません');
+            return;
+          }
+          setUploading(true);
+          try {
+            nextDocumentUrl = await onUpload(file);
+            setDocumentUrl(nextDocumentUrl);
+          } catch (error) {
+            setLocalError(
+              error instanceof Error
+                ? error.message
+                : '処方せん画像/PDFのアップロードに失敗しました',
+            );
+            return;
+          } finally {
+            setUploading(false);
+          }
+        }
+        onSubmit?.({
+          intakeId,
+          documentUrl: nextDocumentUrl,
+        });
+      }}
+    >
+      <div className="grid gap-2">
+        <div className="space-y-1">
+          <Label htmlFor={`prescription-document-file-${intakeId}`} className="text-xs">
+            ファイル
+          </Label>
+          <Input
+            id={`prescription-document-file-${intakeId}`}
+            type="file"
+            accept="image/*,application/pdf"
+            onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+            className="min-h-9 text-xs"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor={`prescription-document-${intakeId}`} className="text-xs">
+            画像/PDF URL
+          </Label>
+          <Input
+            id={`prescription-document-${intakeId}`}
+            type="url"
+            value={documentUrl}
+            onChange={(event) => setDocumentUrl(event.target.value)}
+            className="min-h-9 text-xs"
+            placeholder="https://..."
+          />
+        </div>
+        {localError ? <p className="text-xs text-red-700">{localError}</p> : null}
+        <Button
+          type="submit"
+          size="sm"
+          className="min-h-9 w-full"
+          disabled={isPending || uploading}
+        >
+          <CheckCircle2 className="mr-1.5 size-4" aria-hidden="true" />
+          {isPending || uploading ? '保存中' : actionLabel}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function PrescriptionOriginalManagementQuickForm({
+  actionLabel,
+  intakeId,
+  isPending,
+  onSubmit,
+}: {
+  actionLabel: string;
+  intakeId: string;
+  isPending: boolean;
+  onSubmit?: (input: PrescriptionOriginalManagementFormInput) => void;
+}) {
+  const [reconciliationResult, setReconciliationResult] =
+    useState<PrescriptionOriginalManagementFormInput['reconciliationResult']>('matched');
+  const [discrepancyNote, setDiscrepancyNote] = useState('');
+  const [storageLocation, setStorageLocation] =
+    useState<PrescriptionOriginalManagementFormInput['storageLocation']>('store');
+  const [ePrescriptionExchangeNumber, setEPrescriptionExchangeNumber] = useState('');
+  const [ePrescriptionAcquiredStatus, setEPrescriptionAcquiredStatus] =
+    useState<PrescriptionOriginalManagementFormInput['ePrescriptionAcquiredStatus']>(
+      'not_applicable',
+    );
+  const [dispensingResultRegistration, setDispensingResultRegistration] =
+    useState<PrescriptionOriginalManagementFormInput['dispensingResultRegistration']>('registered');
+  const [note, setNote] = useState('');
+
+  return (
+    <form
+      className="mt-3 rounded-lg border border-current/20 bg-background/80 p-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit?.({
+          intakeId,
+          reconciliationResult,
+          discrepancyNote: discrepancyNote.trim() || null,
+          storageLocation,
+          ePrescriptionExchangeNumber: ePrescriptionExchangeNumber.trim() || null,
+          ePrescriptionAcquiredStatus,
+          dispensingResultRegistration,
+          note: note.trim() || null,
+        });
+      }}
+    >
+      <div className="grid gap-2">
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <Label htmlFor={`prescription-reconcile-${intakeId}`} className="text-xs">
+              照合結果
+            </Label>
+            <select
+              id={`prescription-reconcile-${intakeId}`}
+              value={reconciliationResult}
+              onChange={(event) =>
+                setReconciliationResult(
+                  event.target
+                    .value as PrescriptionOriginalManagementFormInput['reconciliationResult'],
+                )
+              }
+              className="min-h-9 w-full rounded-lg border border-input bg-background px-2 text-xs"
+            >
+              <option value="matched">一致</option>
+              <option value="discrepancy">差異あり</option>
+              <option value="not_checked">未照合</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor={`prescription-storage-${intakeId}`} className="text-xs">
+              保管場所
+            </Label>
+            <select
+              id={`prescription-storage-${intakeId}`}
+              value={storageLocation}
+              onChange={(event) =>
+                setStorageLocation(
+                  event.target.value as PrescriptionOriginalManagementFormInput['storageLocation'],
+                )
+              }
+              className="min-h-9 w-full rounded-lg border border-input bg-background px-2 text-xs"
+            >
+              <option value="store">店舗保管</option>
+              <option value="headquarters">本部保管</option>
+              <option value="electronic">電子保管</option>
+              <option value="patient_copy_only">患者控えのみ</option>
+              <option value="not_stored">未保管</option>
+            </select>
+          </div>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor={`prescription-discrepancy-${intakeId}`} className="text-xs">
+            差異内容
+          </Label>
+          <Textarea
+            id={`prescription-discrepancy-${intakeId}`}
+            value={discrepancyNote}
+            onChange={(event) => setDiscrepancyNote(event.target.value)}
+            className="min-h-16 text-xs"
+            placeholder="差異ありの場合は内容を入力"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <Label htmlFor={`prescription-e-status-${intakeId}`} className="text-xs">
+              電子処方せん
+            </Label>
+            <select
+              id={`prescription-e-status-${intakeId}`}
+              value={ePrescriptionAcquiredStatus}
+              onChange={(event) =>
+                setEPrescriptionAcquiredStatus(
+                  event.target
+                    .value as PrescriptionOriginalManagementFormInput['ePrescriptionAcquiredStatus'],
+                )
+              }
+              className="min-h-9 w-full rounded-lg border border-input bg-background px-2 text-xs"
+            >
+              <option value="not_applicable">対象外</option>
+              <option value="pending">取得待ち</option>
+              <option value="acquired">取得済み</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor={`prescription-result-${intakeId}`} className="text-xs">
+              結果登録
+            </Label>
+            <select
+              id={`prescription-result-${intakeId}`}
+              value={dispensingResultRegistration}
+              onChange={(event) =>
+                setDispensingResultRegistration(
+                  event.target
+                    .value as PrescriptionOriginalManagementFormInput['dispensingResultRegistration'],
+                )
+              }
+              className="min-h-9 w-full rounded-lg border border-input bg-background px-2 text-xs"
+            >
+              <option value="registered">登録済み</option>
+              <option value="pending">登録待ち</option>
+              <option value="not_applicable">対象外</option>
+            </select>
+          </div>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor={`prescription-e-number-${intakeId}`} className="text-xs">
+            引換番号
+          </Label>
+          <Input
+            id={`prescription-e-number-${intakeId}`}
+            value={ePrescriptionExchangeNumber}
+            onChange={(event) => setEPrescriptionExchangeNumber(event.target.value)}
+            className="min-h-9 text-xs"
+            placeholder="電子処方せん対象時"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor={`prescription-management-note-${intakeId}`} className="text-xs">
+            備考
+          </Label>
+          <Textarea
+            id={`prescription-management-note-${intakeId}`}
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            className="min-h-14 text-xs"
+          />
+        </div>
+        <Button type="submit" size="sm" className="min-h-9 w-full" disabled={isPending}>
+          <CheckCircle2 className="mr-1.5 size-4" aria-hidden="true" />
+          {isPending ? '保存中' : actionLabel}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function ConferenceNoteQuickForm({
+  actionLabel,
+  patientName,
+  patientId,
+  caseId,
+  isPending,
+  onSubmit,
+}: {
+  actionLabel: string;
+  patientName: string;
+  patientId: string;
+  caseId: string | null;
+  isPending: boolean;
+  onSubmit?: (input: ConferenceNoteFormInput) => void;
+}) {
+  const [noteType, setNoteType] = useState<ConferenceNoteFormInput['noteType']>('service_manager');
+  const [conferenceDate, setConferenceDate] = useState(() => toLocalDateTimeInputValue(new Date()));
+  const [title, setTitle] = useState(() => `${patientName}様 サービス担当者会議`);
+  const [content, setContent] = useState('');
+  const [visitScheduleChange, setVisitScheduleChange] = useState('');
+  const [targetDischargeDate, setTargetDischargeDate] = useState('');
+  const [actionItemsRaw, setActionItemsRaw] = useState('');
+
+  return (
+    <form
+      className="mt-3 rounded-lg border border-current/20 bg-background/80 p-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit?.({
+          patientId,
+          caseId,
+          noteType,
+          title: title.trim(),
+          conferenceDate,
+          content: content.trim(),
+          visitScheduleChange,
+          targetDischargeDate,
+          actionItemsRaw,
+        });
+      }}
+    >
+      <div className="grid gap-2">
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <Label htmlFor={`conference-type-${patientId}`} className="text-xs">
+              会議種別
+            </Label>
+            <select
+              id={`conference-type-${patientId}`}
+              value={noteType}
+              onChange={(event) =>
+                setNoteType(event.target.value as ConferenceNoteFormInput['noteType'])
+              }
+              className="min-h-9 w-full rounded-lg border border-input bg-background px-2 text-xs"
+            >
+              <option value="pre_discharge">退院前</option>
+              <option value="service_manager">担当者会議</option>
+              <option value="care_team">担当者ミーティング</option>
+              <option value="emergency">緊急</option>
+              <option value="death_conference">デスカンファ</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor={`conference-date-${patientId}`} className="text-xs">
+              開催日時
+            </Label>
+            <Input
+              id={`conference-date-${patientId}`}
+              type="datetime-local"
+              value={conferenceDate}
+              onChange={(event) => setConferenceDate(event.target.value)}
+              className="min-h-9 text-xs"
+            />
+          </div>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor={`conference-title-${patientId}`} className="text-xs">
+            会議名
+          </Label>
+          <Input
+            id={`conference-title-${patientId}`}
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            className="min-h-9 text-xs"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor={`conference-content-${patientId}`} className="text-xs">
+            会議要点
+          </Label>
+          <Textarea
+            id={`conference-content-${patientId}`}
+            value={content}
+            onChange={(event) => setContent(event.target.value)}
+            className="min-h-20 text-xs"
+            placeholder="決定事項、薬局確認事項、報告書に残す要点"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <Label htmlFor={`conference-visit-schedule-change-${patientId}`} className="text-xs">
+              訪問頻度変更
+            </Label>
+            <select
+              id={`conference-visit-schedule-change-${patientId}`}
+              value={visitScheduleChange}
+              onChange={(event) => setVisitScheduleChange(event.target.value)}
+              className="min-h-9 w-full rounded-lg border border-input bg-background px-2 text-xs"
+            >
+              <option value="">変更なし</option>
+              <option value="月1回">月1回</option>
+              <option value="月2回">月2回</option>
+              <option value="週1回">週1回</option>
+              <option value="週2回">週2回</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor={`conference-target-discharge-${patientId}`} className="text-xs">
+              退院予定日
+            </Label>
+            <Input
+              id={`conference-target-discharge-${patientId}`}
+              type="date"
+              value={targetDischargeDate}
+              onChange={(event) => setTargetDischargeDate(event.target.value)}
+              className="min-h-9 text-xs"
+              disabled={noteType !== 'pre_discharge'}
+            />
+          </div>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor={`conference-actions-${patientId}`} className="text-xs">
+            薬局タスク
+          </Label>
+          <Textarea
+            id={`conference-actions-${patientId}`}
+            value={actionItemsRaw}
+            onChange={(event) => setActionItemsRaw(event.target.value)}
+            className="min-h-16 text-xs"
+            placeholder="1行1件。例: 報告書作成 / 薬剤師"
+          />
+        </div>
+        <Button type="submit" size="sm" className="min-h-9 w-full" disabled={isPending}>
+          <CheckCircle2 className="mr-1.5 size-4" aria-hidden="true" />
+          {isPending ? '保存中' : actionLabel}
+        </Button>
+      </div>
+    </form>
   );
 }
 
@@ -491,6 +1930,7 @@ export function CardWorkspace({
 }) {
   const orgId = useOrgId();
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   // P1-13 今だれが見ているか: このカードを開いていることを共有(ベストエフォート)
   usePresenceHeartbeat({
@@ -516,6 +1956,304 @@ export function CardWorkspace({
     },
     enabled: Boolean(orgId),
     initialData: initialPatient ?? undefined,
+  });
+
+  const { data: homeOperations } = useQuery<PatientHomeOperationsSnapshot>({
+    queryKey: ['patient-home-operations', patientId, orgId],
+    queryFn: async () => {
+      const res = await fetch(`/api/patients/${patientId}/home-operations`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('在宅運用管理の取得に失敗しました');
+      return res.json();
+    },
+    enabled: Boolean(orgId && patient),
+  });
+
+  const markFaxOriginalCollectedMutation = useMutation({
+    mutationFn: async (intakeId: string) => {
+      const response = await fetch(`/api/prescription-intakes/${intakeId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          original_collected_at: new Date().toISOString(),
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.message ?? 'FAX原本到着の記録に失敗しました');
+      }
+      return response.json();
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['patient-home-operations', patientId, orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['patient-overview', patientId, orgId] }),
+      ]);
+      toast.success('FAX原本の到着を記録しました');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const savePrescriptionDocumentMutation = useMutation({
+    mutationFn: async (input: PrescriptionDocumentFormInput) => {
+      if (!input.documentUrl) {
+        throw new Error('処方せん画像/PDF URLを入力してください');
+      }
+      const response = await fetch(`/api/prescription-intakes/${input.intakeId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          original_document_url: input.documentUrl,
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.message ?? '処方せん画像/PDFの保存に失敗しました');
+      }
+      return response.json();
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['patient-home-operations', patientId, orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['patient-overview', patientId, orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['prescription-intake-detail', orgId] }),
+      ]);
+      toast.success('処方せん画像/PDFを保存しました');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const uploadPrescriptionDocument = async (file: File) => {
+    const presignResponse = await fetch('/api/files/presigned-upload', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-org-id': orgId,
+      },
+      body: JSON.stringify({
+        purpose: 'prescription',
+        patient_id: patientId,
+        file_name: file.name,
+        mime_type: file.type || 'application/octet-stream',
+        size_bytes: file.size,
+      }),
+    });
+
+    const presignJson = await presignResponse.json().catch(() => null);
+    if (!presignResponse.ok) {
+      throw new Error(
+        presignJson?.message ?? '処方せん画像/PDFのアップロードURL取得に失敗しました',
+      );
+    }
+
+    const uploadResponse = await fetch(presignJson.data.uploadUrl, {
+      method: 'PUT',
+      headers: presignJson.data.headers,
+      body: file,
+    });
+    if (!uploadResponse.ok) {
+      throw new Error('処方せん画像/PDFのアップロードに失敗しました');
+    }
+
+    const completeResponse = await fetch('/api/files/complete', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-org-id': orgId,
+      },
+      body: JSON.stringify({
+        file_id: presignJson.data.id,
+        etag: uploadResponse.headers.get('etag') ?? undefined,
+      }),
+    });
+
+    const completeJson = await completeResponse.json().catch(() => null);
+    if (!completeResponse.ok) {
+      throw new Error(completeJson?.message ?? '処方せん画像/PDFのアップロード確定に失敗しました');
+    }
+
+    return new URL(
+      `/api/files/${completeJson.data.id}/download`,
+      window.location.origin,
+    ).toString();
+  };
+
+  const recordPrescriptionOriginalManagementMutation = useMutation({
+    mutationFn: async (input: PrescriptionOriginalManagementFormInput) => {
+      const response = await fetch(`/api/prescription-intakes/${input.intakeId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          original_management: {
+            reconciliation_result: input.reconciliationResult,
+            discrepancy_note: input.discrepancyNote,
+            storage_location: input.storageLocation,
+            e_prescription_exchange_number: input.ePrescriptionExchangeNumber,
+            e_prescription_acquired_status: input.ePrescriptionAcquiredStatus,
+            dispensing_result_registration: input.dispensingResultRegistration,
+            note: input.note,
+          },
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.message ?? '処方せん原本管理の保存に失敗しました');
+      }
+      return response.json();
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['patient-home-operations', patientId, orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['patient-overview', patientId, orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['prescription-intake-detail', orgId] }),
+      ]);
+      toast.success('処方せん原本管理を保存しました');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const recordBillingCollectionMutation = useMutation({
+    mutationFn: async (input: BillingCollectionFormInput) => {
+      const response = await fetch(`/api/billing-candidates/${input.candidateId}/collection`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          status: input.status,
+          billed_amount: input.billedAmount,
+          collected_amount: input.collectedAmount,
+          payment_method: input.paymentMethod,
+          payer_name: input.payerName,
+          scheduled_collection_at: input.scheduledCollectionAt,
+          collected_at: ['collected', 'partial'].includes(input.status)
+            ? new Date().toISOString()
+            : null,
+          receipt_number: input.receiptNumber,
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.message ?? '集金記録の保存に失敗しました');
+      }
+      return response.json();
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['patient-home-operations', patientId, orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['billing-candidates', orgId] }),
+      ]);
+      toast.success('集金記録を保存しました');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const recordBillingPaymentProfileMutation = useMutation({
+    mutationFn: async (input: BillingPaymentProfileFormInput) => {
+      const response = await fetch(`/api/patients/${input.patientId}/billing-profile`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          payer_type: input.payerType,
+          payer_name: input.payerName,
+          payer_relation: input.payerRelation,
+          billing_address_mode: input.billingAddressMode,
+          billing_address: input.billingAddress,
+          payment_method: input.paymentMethod,
+          collection_timing: input.collectionTiming,
+          receipt_issue: input.receiptIssue,
+          invoice_issue: input.invoiceIssue,
+          unpaid_tolerance: input.unpaidTolerance,
+          note: input.note,
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.message ?? '支払設定の保存に失敗しました');
+      }
+      return response.json();
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['patient-home-operations', patientId, orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['patient-overview', patientId, orgId] }),
+      ]);
+      toast.success('支払設定を保存しました');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const recordConferenceNoteMutation = useMutation({
+    mutationFn: async (input: ConferenceNoteFormInput) => {
+      if (!input.title || !input.conferenceDate || !input.content) {
+        throw new Error('会議名・開催日時・会議要点を入力してください');
+      }
+      const structuredContent = buildConferenceStructuredContent(input);
+      const response = await fetch('/api/conference-notes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          note_type: input.noteType,
+          conference_type: input.noteType,
+          title: input.title,
+          patient_id: input.patientId,
+          ...(input.caseId ? { case_id: input.caseId } : {}),
+          content: input.content,
+          conference_date: new Date(input.conferenceDate).toISOString(),
+          participants: [],
+          metadata: {
+            visit_brief: {
+              patient_id: input.patientId,
+            },
+          },
+          ...(structuredContent ? { structured_content: structuredContent } : {}),
+          action_items: parseConferenceActionItems(input.actionItemsRaw),
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.message ?? '会議要点の保存に失敗しました');
+      }
+      return response.json();
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['patient-home-operations', patientId, orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['conference-notes', orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['conference-notes-calendar', orgId] }),
+      ]);
+      toast.success('会議要点を保存しました');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
   });
 
   if (!orgId || isLoading) return <Loading />;
@@ -581,6 +2319,52 @@ export function CardWorkspace({
       <div className="space-y-6" data-testid="card-workspace">
         {headerRow}
         <PatientProfilePanel patient={patient} />
+        <PatientHomeOperationsPanel
+          patient={patient}
+          operations={homeOperations}
+          markingFaxOriginalIntakeId={
+            markFaxOriginalCollectedMutation.isPending
+              ? markFaxOriginalCollectedMutation.variables
+              : null
+          }
+          savingPrescriptionDocumentIntakeId={
+            savePrescriptionDocumentMutation.isPending
+              ? savePrescriptionDocumentMutation.variables?.intakeId
+              : null
+          }
+          recordingPrescriptionOriginalManagementIntakeId={
+            recordPrescriptionOriginalManagementMutation.isPending
+              ? recordPrescriptionOriginalManagementMutation.variables?.intakeId
+              : null
+          }
+          recordingBillingPaymentProfilePatientId={
+            recordBillingPaymentProfileMutation.isPending
+              ? recordBillingPaymentProfileMutation.variables?.patientId
+              : null
+          }
+          recordingBillingCandidateId={
+            recordBillingCollectionMutation.isPending
+              ? recordBillingCollectionMutation.variables?.candidateId
+              : null
+          }
+          recordingConferenceScopeId={
+            recordConferenceNoteMutation.isPending
+              ? recordConferenceNoteMutation.variables?.caseId
+                ? `case:${recordConferenceNoteMutation.variables.caseId}`
+                : `patient:${recordConferenceNoteMutation.variables?.patientId}`
+              : null
+          }
+          onMarkFaxOriginalCollected={markFaxOriginalCollectedMutation.mutate}
+          onSavePrescriptionDocument={savePrescriptionDocumentMutation.mutate}
+          onUploadPrescriptionDocument={uploadPrescriptionDocument}
+          onRecordPrescriptionOriginalManagement={
+            recordPrescriptionOriginalManagementMutation.mutate
+          }
+          onRecordBillingPaymentProfile={recordBillingPaymentProfileMutation.mutate}
+          onRecordBillingCollection={recordBillingCollectionMutation.mutate}
+          onRecordConferenceNote={recordConferenceNoteMutation.mutate}
+        />
+        <PatientCardDocumentsPanel patient={patient} orgId={orgId} />
         <PatientVisitPreparationPanel patient={patient} />
         <EmptyState
           icon={FileQuestion}
@@ -688,6 +2472,52 @@ export function CardWorkspace({
       <div className="space-y-4 xl:grid xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start xl:gap-6 xl:space-y-0 2xl:grid-cols-[minmax(0,1fr)_300px_320px]">
         <div className="min-w-0 space-y-4">
           <PatientProfilePanel patient={patient} />
+          <PatientHomeOperationsPanel
+            patient={patient}
+            operations={homeOperations}
+            markingFaxOriginalIntakeId={
+              markFaxOriginalCollectedMutation.isPending
+                ? markFaxOriginalCollectedMutation.variables
+                : null
+            }
+            savingPrescriptionDocumentIntakeId={
+              savePrescriptionDocumentMutation.isPending
+                ? savePrescriptionDocumentMutation.variables?.intakeId
+                : null
+            }
+            recordingPrescriptionOriginalManagementIntakeId={
+              recordPrescriptionOriginalManagementMutation.isPending
+                ? recordPrescriptionOriginalManagementMutation.variables?.intakeId
+                : null
+            }
+            recordingBillingPaymentProfilePatientId={
+              recordBillingPaymentProfileMutation.isPending
+                ? recordBillingPaymentProfileMutation.variables?.patientId
+                : null
+            }
+            recordingBillingCandidateId={
+              recordBillingCollectionMutation.isPending
+                ? recordBillingCollectionMutation.variables?.candidateId
+                : null
+            }
+            recordingConferenceScopeId={
+              recordConferenceNoteMutation.isPending
+                ? recordConferenceNoteMutation.variables?.caseId
+                  ? `case:${recordConferenceNoteMutation.variables.caseId}`
+                  : `patient:${recordConferenceNoteMutation.variables?.patientId}`
+                : null
+            }
+            onMarkFaxOriginalCollected={markFaxOriginalCollectedMutation.mutate}
+            onSavePrescriptionDocument={savePrescriptionDocumentMutation.mutate}
+            onUploadPrescriptionDocument={uploadPrescriptionDocument}
+            onRecordPrescriptionOriginalManagement={
+              recordPrescriptionOriginalManagementMutation.mutate
+            }
+            onRecordBillingPaymentProfile={recordBillingPaymentProfileMutation.mutate}
+            onRecordBillingCollection={recordBillingCollectionMutation.mutate}
+            onRecordConferenceNote={recordConferenceNoteMutation.mutate}
+          />
+          <PatientCardDocumentsPanel patient={patient} orgId={orgId} />
           <PatientVisitPreparationPanel patient={patient} />
 
           {/* セーフティボード: どの工程でも常時表示。危険タグは絶対に隠さない */}
