@@ -247,13 +247,20 @@ export const POST = withAuthContext(
       if (shiftValidationError) {
         return validationError(`${dateKey}: ${shiftValidationError}`);
       }
-      if (vehicle_resource_id) {
-        const vehicleValidation = await validateVisitVehicleResourceForSchedule(prisma, {
-          orgId: ctx.orgId,
-          vehicleResourceId: vehicle_resource_id,
-          siteId: shift.site_id ?? null,
-          scheduledDate: candidateDate,
-        });
+    }
+    if (vehicle_resource_id) {
+      const vehicleValidations = await Promise.all(
+        candidateDates.map((candidateDate) => {
+          const shift = shiftByDate.get(buildDateKey(candidateDate));
+          return validateVisitVehicleResourceForSchedule(prisma, {
+            orgId: ctx.orgId,
+            vehicleResourceId: vehicle_resource_id,
+            siteId: shift?.site_id ?? null,
+            scheduledDate: candidateDate,
+          });
+        }),
+      );
+      for (const vehicleValidation of vehicleValidations) {
         if (!vehicleValidation.ok) return vehicleValidation.response;
       }
     }
