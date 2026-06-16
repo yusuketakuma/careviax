@@ -20,6 +20,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { ReasonDialog } from '@/components/features/workflow/reason-dialog';
+import { MedicationFormatGrid } from '@/components/features/dispense/medication-format-grid';
 import { MainWorkflowCompactNav } from '@/components/features/workflow/main-workflow-route';
 import {
   getHandlingTagBadgeClass,
@@ -39,6 +40,7 @@ import { cn } from '@/lib/utils';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import {
   buildDispenseSafetySummary,
+  buildMedicationFormatGroups,
   canApproveCounts,
   familyName,
   findNextCountTarget,
@@ -559,8 +561,12 @@ export function AuditWorkbench() {
     },
   });
 
-  const countRows = workbench?.count_rows ?? [];
+  const countRows = React.useMemo(() => workbench?.count_rows ?? [], [workbench?.count_rows]);
   const auditHandoffSummary = workbench ? buildDispenseSafetySummary(workbench) : null;
+  const medicationFormatGroups = React.useMemo(
+    () => buildMedicationFormatGroups(countRows),
+    [countRows],
+  );
   const hasUnresolvedPrescriptionQuantities =
     (auditHandoffSummary?.unresolvedPrescriptionQuantityCount ?? 0) > 0;
   const approvable =
@@ -818,6 +824,13 @@ export function AuditWorkbench() {
               )}
 
               {auditHandoffSummary ? <AuditHandoffSummary summary={auditHandoffSummary} /> : null}
+
+              <MedicationFormatGrid
+                title="監査薬剤フォーマット"
+                groups={medicationFormatGroups}
+                mode="dispenseAudit"
+                className="mt-3"
+              />
 
               {/* 計数テーブル(麻薬ダブルカウント) */}
               <CountTable

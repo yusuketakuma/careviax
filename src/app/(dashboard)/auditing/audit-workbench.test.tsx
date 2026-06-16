@@ -323,11 +323,21 @@ describe('AuditWorkbench', () => {
     expect(screen.getByText('処方数量未確定')).toBeTruthy();
     expect(screen.getByText('実数量未入力 0件')).toBeTruthy();
 
+    // 中央薬剤フォーマット: 監査でも調剤と同じ行構造で時点量・特殊管理を確認する
+    expect(screen.getByTestId('medication-format-grid')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '監査薬剤フォーマット' })).toBeTruthy();
+    expect(screen.getByText('調剤監査 / 4品目')).toBeTruthy();
+    expect(screen.getAllByText('頓用').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('一包化').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('外用・注射・非内服').length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText('アムロジピン 5mg 朝 1錠').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('調剤済').length).toBeGreaterThan(0);
+
     // 計数テーブル
     expect(screen.getByText('計数(調剤者)')).toBeTruthy();
     expect(screen.getByText('計数 1回目')).toBeTruthy();
     expect(screen.getByText('計数 2回目')).toBeTruthy();
-    expect(screen.getByText('オキシコドン 5mg')).toBeTruthy();
+    expect(screen.getAllByText('オキシコドン 5mg').length).toBeGreaterThan(0);
     expect(screen.getAllByText('冷所').length).toBeGreaterThanOrEqual(2);
 
     // 工程チップ+確定メッセージ
