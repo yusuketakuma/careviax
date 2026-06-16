@@ -20,6 +20,7 @@ const {
   residenceFindFirstMock,
   facilityFindFirstMock,
   patientSchedulePreferenceUpsertMock,
+  auditLogCreateMock,
   withOrgContextMock,
   upsertOperationalTaskMock,
   resolveOperationalTasksMock,
@@ -42,6 +43,7 @@ const {
   residenceFindFirstMock: vi.fn(),
   facilityFindFirstMock: vi.fn(),
   patientSchedulePreferenceUpsertMock: vi.fn(),
+  auditLogCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   upsertOperationalTaskMock: vi.fn(),
   resolveOperationalTasksMock: vi.fn(),
@@ -207,6 +209,7 @@ describe('/api/conference-notes/[id] PATCH', () => {
       acceptance_time_to: new Date('1970-01-01T17:00:00.000Z'),
     });
     patientSchedulePreferenceUpsertMock.mockResolvedValue({ id: 'pref_1' });
+    auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
     upsertOperationalTaskMock.mockResolvedValue({});
     resolveOperationalTasksMock.mockResolvedValue({ count: 0 });
     visitScheduleFindManyMock.mockResolvedValue([]);
@@ -249,6 +252,9 @@ describe('/api/conference-notes/[id] PATCH', () => {
         },
         patientSchedulePreference: {
           upsert: patientSchedulePreferenceUpsertMock,
+        },
+        auditLog: {
+          create: auditLogCreateMock,
         },
       }),
     );
@@ -326,6 +332,30 @@ describe('/api/conference-notes/[id] PATCH', () => {
           }),
         }),
       }),
+    );
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: {
+        org_id: 'org_1',
+        actor_id: 'user_1',
+        action: 'conference_note.updated',
+        target_type: 'conference_note',
+        target_id: 'note_1',
+        changes: {
+          conference_note: {
+            note_type: 'service_manager',
+            report_type: null,
+            follow_up_date: '2026-04-15T00:00:00.000Z',
+            follow_up_completed: false,
+            action_item_count: 1,
+            billing_eligible: true,
+            billing_code: 'MED_INFO_PROVISION_2_HA',
+            changed_fields: ['title', 'structured_content'],
+          },
+        },
+      },
+    });
+    expect(JSON.stringify(auditLogCreateMock.mock.calls[0]?.[0])).not.toContain(
+      '月2回から月4回へ変更',
     );
     expect(careCaseUpdateMock).toHaveBeenCalledWith({
       where: { id: 'case_1' },
