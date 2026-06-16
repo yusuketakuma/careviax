@@ -726,7 +726,7 @@ describe('getPatientTimelineData', () => {
     expect(result?.timeline_events[0]).toMatchObject({
       id: 'operation_history:audit_1',
       event_type: 'operation_history',
-      category: 'document',
+      category: 'billing',
       occurred_at: new Date('2026-04-05T11:00:00.000Z'),
       title: '支払設定を更新',
       summary: '支払者 山田花子 / 方法 振込',
@@ -896,7 +896,7 @@ describe('getPatientTimelineData', () => {
         expect.objectContaining({
           id: 'operation_history:audit_prescription_1',
           event_type: 'operation_history',
-          category: 'document',
+          category: 'prescription',
           title: '処方せん原本管理を更新',
           summary:
             '照合 差異あり / 保管 電子保管 / 電子処方箋 取得済み / 引換番号 EP-12345 / 調剤結果 登録済み',

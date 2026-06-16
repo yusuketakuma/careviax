@@ -460,7 +460,7 @@ export type PatientTimelineEvent = {
     | 'self_report'
     | 'communication'
     | 'external_share';
-  category: 'visit' | 'prescription' | 'document' | 'communication';
+  category: 'visit' | 'prescription' | 'billing' | 'document' | 'communication';
   occurred_at: string;
   title: string;
   summary: string | null;

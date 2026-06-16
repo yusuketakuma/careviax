@@ -43,7 +43,7 @@ type TimelineEvent = {
     | 'self_report'
     | 'communication'
     | 'external_share';
-  category: 'visit' | 'prescription' | 'document' | 'communication';
+  category: 'visit' | 'prescription' | 'billing' | 'document' | 'communication';
   occurred_at: string;
   title: string;
   summary: string | null;
@@ -94,6 +94,11 @@ const CATEGORY_META: Record<
     label: '処方・調剤',
     className: 'border-emerald-200 bg-emerald-50 text-emerald-900',
     countClassName: 'bg-emerald-100 text-emerald-700',
+  },
+  billing: {
+    label: '請求・集金',
+    className: 'border-violet-200 bg-violet-50 text-violet-900',
+    countClassName: 'bg-violet-100 text-violet-700',
   },
   document: {
     label: '文書',
@@ -353,6 +358,7 @@ export function PatientActivityTimeline({
     all: timelineEvents.length,
     visit: timelineEvents.filter((event) => event.category === 'visit').length,
     prescription: timelineEvents.filter((event) => event.category === 'prescription').length,
+    billing: timelineEvents.filter((event) => event.category === 'billing').length,
     document: timelineEvents.filter((event) => event.category === 'document').length,
     communication: timelineEvents.filter((event) => event.category === 'communication').length,
   } satisfies Record<TimelineCategory, number>;

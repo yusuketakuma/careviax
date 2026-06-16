@@ -50,6 +50,20 @@ const timelineEvents = [
     actor_name: '薬剤師C',
     metadata: [],
   },
+  {
+    id: 'event_billing',
+    event_type: 'billing_candidate' as const,
+    category: 'billing' as const,
+    occurred_at: '2026-04-01T10:00:00.000Z',
+    title: '算定候補を更新',
+    summary: '居宅療養管理指導 / 650点',
+    href: '/billing/candidates?patient_id=patient_1',
+    action_label: '算定候補を開く',
+    status: 'confirmed',
+    status_label: '確定',
+    actor_name: null,
+    metadata: ['算定月 2026/04/01'],
+  },
 ];
 
 const selfReports = [
@@ -106,6 +120,16 @@ describe('PatientActivityTimeline', () => {
     fireEvent.click(screen.getByRole('button', { name: /訪問/ }));
 
     expect(screen.getAllByText('訪問記録を登録').length).toBeGreaterThan(0);
+    expect(screen.queryByText('管理計画書を承認')).toBeNull();
+    expect(screen.queryByText('調剤を記録')).toBeNull();
+  });
+
+  it('filters billing and collection events separately from documents', () => {
+    render(<PatientActivityTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /請求・集金/ }));
+
+    expect(screen.getAllByText('算定候補を更新').length).toBeGreaterThan(0);
     expect(screen.queryByText('管理計画書を承認')).toBeNull();
     expect(screen.queryByText('調剤を記録')).toBeNull();
   });

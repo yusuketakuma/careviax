@@ -499,6 +499,13 @@ function buildOperationHistorySummary(item: OperationHistoryTimelineSource) {
   );
 }
 
+function getOperationHistoryCategory(item: OperationHistoryTimelineSource) {
+  if (item.action.startsWith('billing_')) return 'billing';
+  if (item.action.startsWith('prescription_')) return 'prescription';
+  if (item.action.startsWith('patient_mcs_')) return 'communication';
+  return 'document';
+}
+
 function getCommunicationDirectionLabel(direction: string) {
   if (direction === 'inbound' || direction === 'incoming') return '受信';
   if (direction === 'outbound' || direction === 'outgoing') return '発信';
@@ -783,7 +790,7 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
     ...billingCandidates.map((item) => ({
       id: `billing_candidate:${item.id}`,
       event_type: 'billing_candidate',
-      category: 'document',
+      category: 'billing',
       occurred_at: item.updated_at,
       title: '算定候補を更新',
       summary:
@@ -825,7 +832,7 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
       return {
         id: `operation_history:${item.id}`,
         event_type: 'operation_history',
-        category: 'document',
+        category: getOperationHistoryCategory(item),
         occurred_at: item.created_at,
         title: meta.title,
         summary: buildOperationHistorySummary(item),
