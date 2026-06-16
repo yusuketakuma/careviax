@@ -51,6 +51,7 @@ prisma/generated/
 test-results/
 playwright-report/
 tools/tests/.artifacts/
+.playwright-mcp/
 
 # Claude Code internal state
 .claude/
