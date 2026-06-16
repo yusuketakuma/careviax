@@ -48,20 +48,42 @@ export const POST = withAuthContext(
       ).values(),
     );
 
-    const accessibleCases = await Promise.all(
-      accessChecks.map((item) => {
-        const caseAccessWhere = buildVisitScheduleProposalCaseAccessWhere(ctx, item.pharmacistId);
-        return prisma.careCase.findFirst({
-          where: {
-            id: item.caseId,
-            org_id: ctx.orgId,
-            ...(caseAccessWhere ? { AND: [caseAccessWhere] } : {}),
-          },
-          select: { id: true },
-        });
-      }),
-    );
-    if (accessibleCases.some((careCase) => careCase === null)) {
+    const accessWhereByCheck = accessChecks.map((item) => ({
+      ...item,
+      caseAccessWhere: buildVisitScheduleProposalCaseAccessWhere(ctx, item.pharmacistId),
+    }));
+    const allChecksUseOrgScope = accessWhereByCheck.every((item) => item.caseAccessWhere === null);
+    const accessibleCaseIds = allChecksUseOrgScope
+      ? new Set(
+          (
+            await prisma.careCase.findMany({
+              where: {
+                id: { in: accessWhereByCheck.map((item) => item.caseId) },
+                org_id: ctx.orgId,
+              },
+              select: { id: true },
+            })
+          ).map((careCase) => careCase.id),
+        )
+      : new Set(
+          (
+            await Promise.all(
+              accessWhereByCheck.map((item) =>
+                prisma.careCase.findFirst({
+                  where: {
+                    id: item.caseId,
+                    org_id: ctx.orgId,
+                    ...(item.caseAccessWhere ? { AND: [item.caseAccessWhere] } : {}),
+                  },
+                  select: { id: true },
+                }),
+              ),
+            )
+          )
+            .filter((careCase): careCase is { id: string } => careCase !== null)
+            .map((careCase) => careCase.id),
+        );
+    if (accessWhereByCheck.some((item) => !accessibleCaseIds.has(item.caseId))) {
       return notFound('ケースが見つかりません');
     }
 

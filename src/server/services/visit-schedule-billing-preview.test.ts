@@ -70,7 +70,10 @@ vi.mock('./billing-runtime-context', () => ({
   resolveBillingRuntimeContext: resolveBillingRuntimeContextMock,
 }));
 
-import { buildVisitScheduleBillingPreview } from './visit-schedule-billing-preview';
+import {
+  buildVisitScheduleBillingPreview,
+  buildVisitScheduleBillingPreviewBatch,
+} from './visit-schedule-billing-preview';
 
 function makeInsuranceRecord(overrides: Record<string, unknown> = {}) {
   return {
@@ -235,5 +238,37 @@ describe('buildVisitScheduleBillingPreview', () => {
         take: 1,
       }),
     );
+  });
+
+  it('deduplicates identical batch preview inputs while preserving all response keys', async () => {
+    const previews = await buildVisitScheduleBillingPreviewBatch(
+      [
+        {
+          key: 'proposal_1',
+          caseId: 'case_1',
+          proposedDate: '2026-04-03',
+          pharmacistId: 'pharm_1',
+          siteId: 'site_1',
+          visitType: 'regular',
+        },
+        {
+          key: 'schedule_1',
+          caseId: 'case_1',
+          proposedDate: '2026-04-03',
+          pharmacistId: 'pharm_1',
+          siteId: 'site_1',
+          visitType: 'regular',
+        },
+      ],
+      'org_1',
+    );
+
+    expect(careCaseFindFirstMock).toHaveBeenCalledTimes(1);
+    expect(findLatestPrescriptionIntakeClassificationMock).toHaveBeenCalledTimes(1);
+    expect(resolveBillingRuntimeContextMock).toHaveBeenCalledTimes(1);
+    expect(validateBillingRequirementsMock).toHaveBeenCalledTimes(1);
+    expect(getBillingCadencePreviewMock).toHaveBeenCalledTimes(1);
+    expect(Object.keys(previews).sort()).toEqual(['proposal_1', 'schedule_1']);
+    expect(previews.proposal_1).toBe(previews.schedule_1);
   });
 });

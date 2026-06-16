@@ -283,21 +283,31 @@ export async function buildVisitScheduleBillingPreviewBatch(
   }[],
   orgId: string,
 ) {
+  const previewByInput = new Map<string, Promise<VisitScheduleBillingPreview | null>>();
   const entries = await Promise.all(
-    args.map(
-      async (item) =>
-        [
-          item.key,
-          await buildVisitScheduleBillingPreview({
-            orgId,
-            caseId: item.caseId,
-            proposedDate: item.proposedDate,
-            pharmacistId: item.pharmacistId,
-            siteId: item.siteId,
-            visitType: item.visitType,
-          }),
-        ] as const,
-    ),
+    args.map(async (item) => {
+      const inputKey = JSON.stringify([
+        item.caseId,
+        item.proposedDate,
+        item.pharmacistId ?? null,
+        item.siteId ?? null,
+        item.visitType ?? null,
+      ]);
+      let preview = previewByInput.get(inputKey);
+      if (!preview) {
+        preview = buildVisitScheduleBillingPreview({
+          orgId,
+          caseId: item.caseId,
+          proposedDate: item.proposedDate,
+          pharmacistId: item.pharmacistId,
+          siteId: item.siteId,
+          visitType: item.visitType,
+        });
+        previewByInput.set(inputKey, preview);
+      }
+
+      return [item.key, await preview] as const;
+    }),
   );
 
   return Object.fromEntries(entries.filter(([, value]) => value != null));

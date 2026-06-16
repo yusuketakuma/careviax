@@ -1,33 +1,38 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { withAuthContextMock, careCaseFindFirstMock, buildVisitScheduleBillingPreviewBatchMock } =
-  vi.hoisted(() => ({
-    withAuthContextMock: vi.fn(
-      (
-        handler: (
-          req: NextRequest,
-          ctx: { orgId: string; userId: string; role: 'pharmacist' },
-          routeContext: { params: Promise<Record<string, string>> },
-        ) => Promise<Response>,
-        _options?: unknown,
-      ) => {
-        void _options;
-        return (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) =>
-          handler(
-            req,
-            {
-              orgId: 'org_1',
-              userId: 'user_1',
-              role: 'pharmacist',
-            },
-            routeContext,
-          );
-      },
-    ),
-    careCaseFindFirstMock: vi.fn(),
-    buildVisitScheduleBillingPreviewBatchMock: vi.fn(),
-  }));
+const {
+  withAuthContextMock,
+  careCaseFindFirstMock,
+  careCaseFindManyMock,
+  buildVisitScheduleBillingPreviewBatchMock,
+} = vi.hoisted(() => ({
+  withAuthContextMock: vi.fn(
+    (
+      handler: (
+        req: NextRequest,
+        ctx: { orgId: string; userId: string; role: 'pharmacist' },
+        routeContext: { params: Promise<Record<string, string>> },
+      ) => Promise<Response>,
+      _options?: unknown,
+    ) => {
+      void _options;
+      return (req: NextRequest, routeContext: { params: Promise<Record<string, string>> }) =>
+        handler(
+          req,
+          {
+            orgId: 'org_1',
+            userId: 'user_1',
+            role: 'pharmacist',
+          },
+          routeContext,
+        );
+    },
+  ),
+  careCaseFindFirstMock: vi.fn(),
+  careCaseFindManyMock: vi.fn(),
+  buildVisitScheduleBillingPreviewBatchMock: vi.fn(),
+}));
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: withAuthContextMock,
@@ -37,6 +42,7 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     careCase: {
       findFirst: careCaseFindFirstMock,
+      findMany: careCaseFindManyMock,
     },
   },
 }));
@@ -72,6 +78,7 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
     careCaseFindFirstMock.mockResolvedValue({
       id: 'case_1',
     });
+    careCaseFindManyMock.mockResolvedValue([{ id: 'case_1' }]);
     buildVisitScheduleBillingPreviewBatchMock.mockResolvedValue({
       proposal_1: {
         cadence: {
@@ -111,15 +118,17 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    // 組織横断アクセスロール(pharmacist)は担当割当スコープが撤廃され、
-    // ケースアクセスは org_id ベースの組織内検索のみ(AND 担当割当句なし)。
-    expect(careCaseFindFirstMock).toHaveBeenCalledWith({
+    // 組織横断アクセスロール(pharmacist)は担当割当スコープが撤廃されるため、
+    // ケースアクセスは batch 全体で org_id + id IN の 1 query に集約される。
+    expect(careCaseFindManyMock).toHaveBeenCalledTimes(1);
+    expect(careCaseFindManyMock).toHaveBeenCalledWith({
       where: {
-        id: 'case_1',
+        id: { in: ['case_1'] },
         org_id: 'org_1',
       },
       select: { id: true },
     });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(buildVisitScheduleBillingPreviewBatchMock).toHaveBeenCalledWith(
       [
         {
@@ -163,6 +172,7 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(buildVisitScheduleBillingPreviewBatchMock).not.toHaveBeenCalled();
   });
 
@@ -176,6 +186,7 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
       message: 'リクエストボディが不正です',
     });
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(buildVisitScheduleBillingPreviewBatchMock).not.toHaveBeenCalled();
   });
 
@@ -194,11 +205,12 @@ describe('/api/visit-schedule-proposals/billing-preview-batch POST', () => {
       message: '入力値が不正です',
     });
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(buildVisitScheduleBillingPreviewBatchMock).not.toHaveBeenCalled();
   });
 
   it('denies unassigned batch preview requests before calling the billing-preview service', async () => {
-    careCaseFindFirstMock.mockResolvedValueOnce(null);
+    careCaseFindManyMock.mockResolvedValueOnce([]);
 
     const response = await POST(
       createPostRequest({
