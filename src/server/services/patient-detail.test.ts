@@ -987,6 +987,95 @@ describe('getPatientTimelineData', () => {
     );
   });
 
+  it('adds prescription original document retention audits to the patient operation timeline', async () => {
+    const auditLogFindManyMock = vi.fn().mockResolvedValue([
+      {
+        id: 'audit_rx_doc_1',
+        action: 'prescription_original_document_saved',
+        target_type: 'prescription_intake',
+        target_id: 'intake_1',
+        actor_id: 'user_1',
+        changes: {
+          patient_id: 'patient_1',
+          case_id: 'case_1',
+          document_url_type: 'internal_file',
+          file_id: '11111111-1111-4111-8111-111111111111',
+          saved_at: '2026-04-05T11:00:00.000Z',
+          updated_by: 'user_1',
+        },
+        created_at: new Date('2026-04-05T11:00:00.000Z'),
+      },
+    ]);
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      prescriptionIntake: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'intake_1',
+            source_type: 'fax',
+            prescribed_date: new Date('2026-04-01T00:00:00.000Z'),
+            prescriber_name: '山田医師',
+            prescriber_institution: '山田内科',
+            original_collected_by: null,
+            created_at: new Date('2026-04-01T09:00:00.000Z'),
+            cycle: { overall_status: 'intake_received' },
+            lines: [{ id: 'line_1' }],
+          },
+        ]),
+      },
+      auditLog: {
+        findMany: auditLogFindManyMock,
+      },
+      user: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'user_1', name: '佐藤 薬剤師' }]),
+      },
+    });
+
+    const result = await getPatientTimelineData(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    expect(result?.timeline_events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'operation_history:audit_rx_doc_1',
+          event_type: 'operation_history',
+          category: 'prescription',
+          title: '処方せん画像/PDFを保存',
+          summary: 'ファイル 11111111-1111-4111-8111-111111111111 / 保存先 PH-OSファイル',
+          href: '/prescriptions/intake_1',
+          action_label: '処方受付を開く',
+          status: 'prescription_original_document_saved',
+          status_label: '画像保存',
+          actor_name: '佐藤 薬剤師',
+        }),
+      ]),
+    );
+    expect(auditLogFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              target_type: 'prescription_intake',
+              target_id: { in: ['intake_1'] },
+              action: expect.objectContaining({
+                in: expect.arrayContaining(['prescription_original_document_saved']),
+              }),
+            }),
+          ]),
+        }),
+      }),
+    );
+  });
+
   it('adds MCS check logs to the patient operation timeline', async () => {
     const auditLogFindManyMock = vi.fn().mockResolvedValue([
       {

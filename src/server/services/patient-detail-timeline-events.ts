@@ -299,6 +299,10 @@ const OPERATION_ACTION_LABELS: Record<string, { title: string; statusLabel: stri
     title: '処方せん原本管理を更新',
     statusLabel: '原本管理',
   },
+  prescription_original_document_saved: {
+    title: '処方せん画像/PDFを保存',
+    statusLabel: '画像保存',
+  },
 };
 
 const FIRST_VISIT_DOCUMENT_TYPE_LABELS: Record<string, string> = {
@@ -485,6 +489,15 @@ function buildOperationHistorySummary(item: OperationHistoryTimelineSource) {
   const conferenceNote = isRecord(changes.conference_note) ? changes.conference_note : {};
   const receiptNumber = readString(collection.receipt_number);
   const exchangeNumber = readString(changes.e_prescription_exchange_number);
+  const documentUrlType = readString(changes.document_url_type);
+  const documentUrlTypeLabel =
+    documentUrlType === 'internal_file'
+      ? 'PH-OSファイル'
+      : documentUrlType === 'external_url'
+        ? '外部URL'
+        : documentUrlType
+          ? '相対URL'
+          : null;
   const billedAmount =
     typeof collection.billed_amount === 'number'
       ? `請求 ${collection.billed_amount.toLocaleString('ja-JP')}円`
@@ -565,6 +578,8 @@ function buildOperationHistorySummary(item: OperationHistoryTimelineSource) {
       labelOf(DISPENSING_RESULT_REGISTRATION_LABELS, changes.dispensing_result_registration)
         ? `調剤結果 ${labelOf(DISPENSING_RESULT_REGISTRATION_LABELS, changes.dispensing_result_registration)}`
         : null,
+      readString(changes.file_id) ? `ファイル ${readString(changes.file_id)}` : null,
+      documentUrlTypeLabel ? `保存先 ${documentUrlTypeLabel}` : null,
       readString(conferenceNote.note_type)
         ? getConferenceTypeLabel(readString(conferenceNote.note_type) ?? '')
         : null,

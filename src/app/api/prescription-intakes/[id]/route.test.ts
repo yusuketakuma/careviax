@@ -207,6 +207,81 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
     expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
   });
 
+  it('records prescription original document retention evidence for uploaded files', async () => {
+    const originalDocumentUrl =
+      'http://localhost:3000/api/files/11111111-1111-4111-8111-111111111111/download';
+    prescriptionIntakeFindFirstMock.mockResolvedValue({
+      id: 'intake_doc_1',
+      org_id: 'org_1',
+      source_type: 'fax',
+      original_document_url: null,
+      prescription_category: 'regular',
+      emergency_category: null,
+      split_dispense_total: null,
+      split_dispense_current: null,
+      split_next_dispense_date: null,
+      cycle: {
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+      },
+    });
+
+    const updateMock = vi.fn().mockResolvedValue({
+      id: 'intake_doc_1',
+      source_type: 'fax',
+      original_document_url: originalDocumentUrl,
+      original_collected_at: null,
+      original_collected_by: null,
+      lines: [],
+    });
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        prescriptionIntake: {
+          update: updateMock,
+        },
+      }),
+    );
+
+    const response = await PATCH(
+      createRequest({
+        original_document_url: originalDocumentUrl,
+      }),
+      { params: Promise.resolve({ id: 'intake_doc_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          original_document_url: originalDocumentUrl,
+        }),
+      }),
+    );
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+      }),
+      {
+        action: 'prescription_original_document_saved',
+        targetType: 'prescription_intake',
+        targetId: 'intake_doc_1',
+        changes: expect.objectContaining({
+          patient_id: 'patient_1',
+          case_id: 'case_1',
+          document_url_type: 'internal_file',
+          file_id: '11111111-1111-4111-8111-111111111111',
+          saved_at: expect.any(String),
+          updated_by: 'user_1',
+        }),
+      },
+    );
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+  });
+
   it('does not resolve fax follow-up tasks for non-fax intakes', async () => {
     prescriptionIntakeFindFirstMock.mockResolvedValue({
       id: 'intake_2',

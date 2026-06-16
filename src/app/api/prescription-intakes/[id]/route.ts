@@ -18,6 +18,29 @@ import {
 } from '@/lib/prescriptions/prescriber-institutions';
 import { buildPrescriptionIntakeAssignmentWhere } from '@/server/services/prescription-access';
 
+function getPrescriptionDocumentPathname(value: string) {
+  if (value.startsWith('/')) return value;
+
+  try {
+    return new URL(value).pathname;
+  } catch {
+    return value;
+  }
+}
+
+function classifyPrescriptionDocumentUrl(value: string) {
+  const pathname = getPrescriptionDocumentPathname(value);
+  if (pathname.startsWith('/api/files/')) return 'internal_file';
+  if (value.startsWith('http')) return 'external_url';
+  return 'relative_url';
+}
+
+function extractInternalFileIdFromPrescriptionUrl(value: string) {
+  const pathname = getPrescriptionDocumentPathname(value);
+  const match = pathname.match(/^\/api\/files\/([^/]+)\/download$/);
+  return match?.[1] ?? null;
+}
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
@@ -247,6 +270,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           relatedEntityType: 'prescription_intake',
           relatedEntityId: id,
           status: 'completed',
+        });
+      }
+
+      const nextOriginalDocumentUrl = rest.original_document_url;
+      if (
+        nextOriginalDocumentUrl !== undefined &&
+        nextOriginalDocumentUrl !== existing.original_document_url
+      ) {
+        await createAuditLogEntry(tx, ctx, {
+          action: 'prescription_original_document_saved',
+          targetType: 'prescription_intake',
+          targetId: id,
+          changes: {
+            patient_id: existing.cycle.patient_id,
+            case_id: existing.cycle.case_id,
+            document_url_type: classifyPrescriptionDocumentUrl(nextOriginalDocumentUrl),
+            file_id: extractInternalFileIdFromPrescriptionUrl(nextOriginalDocumentUrl),
+            saved_at: new Date().toISOString(),
+            updated_by: ctx.userId,
+          },
         });
       }
 

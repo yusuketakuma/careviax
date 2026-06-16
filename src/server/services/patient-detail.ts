@@ -708,7 +708,9 @@ export async function getPatientTimelineData(db: PatientTimelineDb, args: Detail
     operationHistoryFilters.push({
       target_type: 'prescription_intake',
       target_id: { in: prescriptionIntakeIds },
-      action: { in: ['prescription_original_management_updated'] },
+      action: {
+        in: ['prescription_original_management_updated', 'prescription_original_document_saved'],
+      },
     });
   }
   const firstVisitDocumentIds = firstVisitDocuments.map((item) => item.id);
