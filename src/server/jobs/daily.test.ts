@@ -1193,6 +1193,9 @@ describe('checkPrescriptionOriginalRetention', () => {
       },
     ]);
     notificationCreateMock.mockResolvedValue({});
+    notificationCreateManyMock.mockImplementation(async ({ data }: { data: unknown[] }) => ({
+      count: data.length,
+    }));
     taskFindManyMock.mockResolvedValue([]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -1269,7 +1272,20 @@ describe('checkPrescriptionOriginalRetention', () => {
     const result = await checkPrescriptionOriginalRetention();
 
     expect(result).toMatchObject({ processedCount: 2 });
-    expect(notificationCreateMock).toHaveBeenCalledTimes(2);
+    expect(notificationCreateMock).not.toHaveBeenCalled();
+    expect(notificationCreateManyMock).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          user_id: 'admin_1',
+          dedupe_key: 'fax-original-followup:intake_fax_1:admin_1:high',
+        }),
+        expect.objectContaining({
+          user_id: 'pharmacist_1',
+          dedupe_key: 'fax-original-followup:intake_fax_1:pharmacist_1:high',
+        }),
+      ]),
+      skipDuplicates: true,
+    });
     expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -1340,7 +1356,7 @@ describe('checkPrescriptionOriginalRetention', () => {
     }
   });
 
-  it('creates prescription original notifications with bounded parallel workers', async () => {
+  it('batches prescription original notifications with duplicate-safe inserts', async () => {
     membershipFindManyMock.mockResolvedValue([]);
     prescriptionIntakeFindManyMock
       .mockResolvedValueOnce([
@@ -1376,20 +1392,26 @@ describe('checkPrescriptionOriginalRetention', () => {
         },
       ])
       .mockResolvedValueOnce([]);
-    const releases: Array<() => void> = [];
-    notificationCreateMock.mockImplementation(
-      () => new Promise((resolve) => releases.push(() => resolve({}))),
-    );
+    notificationCreateManyMock.mockResolvedValue({ count: 2 });
 
-    const resultPromise = checkPrescriptionOriginalRetention();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    const result = await checkPrescriptionOriginalRetention();
 
-    expect(notificationCreateMock).toHaveBeenCalledTimes(2);
-
-    releases.forEach((release) => release());
-    await expect(resultPromise).resolves.toMatchObject({ processedCount: 2 });
+    expect(result).toMatchObject({ processedCount: 2 });
+    expect(notificationCreateMock).not.toHaveBeenCalled();
+    expect(notificationCreateManyMock).toHaveBeenCalledTimes(1);
+    expect(notificationCreateManyMock).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          user_id: 'pharmacist_1',
+          dedupe_key: 'prescription-original-retention:intake_original_1:pharmacist_1:urgent',
+        }),
+        expect.objectContaining({
+          user_id: 'pharmacist_2',
+          dedupe_key: 'prescription-original-retention:intake_original_2:pharmacist_2:urgent',
+        }),
+      ]),
+      skipDuplicates: true,
+    });
   });
 
   it('clears stale fax follow-up tasks when nothing is overdue', async () => {

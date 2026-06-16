@@ -11,28 +11,13 @@ import {
 } from './daily-helpers';
 import { runJob } from './runner';
 
-const PRESCRIPTION_ORIGINAL_NOTIFICATION_CONCURRENCY = 8;
+async function createManyNotifications(notifications: Prisma.NotificationCreateManyInput[]) {
+  if (notifications.length === 0) return { count: 0 };
 
-type NotificationCreateData = Parameters<typeof prisma.notification.create>[0]['data'];
-
-async function createNotificationsWithConcurrency(
-  notifications: NotificationCreateData[],
-  concurrency = PRESCRIPTION_ORIGINAL_NOTIFICATION_CONCURRENCY,
-) {
-  if (notifications.length === 0) return;
-
-  const workerCount = Math.min(notifications.length, Math.max(1, Math.trunc(concurrency) || 1));
-  let nextIndex = 0;
-
-  await Promise.all(
-    Array.from({ length: workerCount }, async () => {
-      while (nextIndex < notifications.length) {
-        const currentIndex = nextIndex;
-        nextIndex += 1;
-        await prisma.notification.create({ data: notifications[currentIndex]! });
-      }
-    }),
-  );
+  return prisma.notification.createMany({
+    data: notifications,
+    skipDuplicates: true,
+  });
 }
 
 export async function checkPrescriptionOriginalRetention() {
@@ -127,7 +112,7 @@ export async function checkPrescriptionOriginalRetention() {
     }
 
     const taskSpecs: GeneratedTaskSpec[] = [];
-    const notifications: NotificationCreateData[] = [];
+    const notifications: Prisma.NotificationCreateManyInput[] = [];
 
     for (const intake of expiring) {
       const retentionUntil = startOfDay(addYears(intake.prescribed_date, 5));
@@ -226,14 +211,16 @@ export async function checkPrescriptionOriginalRetention() {
       });
     }
 
+    let notificationCount = 0;
     if (taskSpecs.length > 0) {
-      await createNotificationsWithConcurrency(notifications);
+      const notificationResult = await createManyNotifications(notifications);
+      notificationCount = notificationResult.count;
       await syncGeneratedOperationalTasks(taskSpecs, [
         'prescription_original_retention',
         'fax_original_followup',
       ]);
     }
 
-    return { processedCount: notifications.length };
+    return { processedCount: notificationCount };
   });
 }
