@@ -1447,8 +1447,12 @@ function BillingCollectionQuickForm({
   );
   const [error, setError] = useState<string | null>(null);
   const receiptIssueCode = metricValueOrDefault(item, '領収証発行コード', 'paper');
+  const invoiceIssueCode = metricValueOrDefault(item, '請求書発行コード', 'yes');
   const receiptRequired = receiptIssueCode !== 'none';
   const receiptRequiredForStatus = receiptRequired && ['collected', 'partial'].includes(status);
+  const invoiceRequiredForStatus =
+    invoiceIssueCode === 'yes' &&
+    ['billed', 'collected', 'partial', 'unpaid', 'dunning'].includes(status);
   const collectionStatusLabel =
     {
       billed: '請求済',
@@ -1506,6 +1510,10 @@ function BillingCollectionQuickForm({
         }
         if (receiptRequiredForStatus && receiptIssueStatus !== 'issued') {
           setError('領収証発行が必要な集金では発行状態を発行済みにしてください。');
+          return;
+        }
+        if (invoiceRequiredForStatus && invoiceIssueStatus !== 'issued') {
+          setError('請求書発行が必要な請求・集金では発行状態を発行済みにしてください。');
           return;
         }
         setError(null);

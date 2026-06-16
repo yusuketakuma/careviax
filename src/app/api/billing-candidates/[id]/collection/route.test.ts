@@ -223,6 +223,37 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
+  it('rejects billable collection history when invoice issuance is required but not issued', async () => {
+    taskFindFirstMock.mockResolvedValue({
+      metadata: {
+        receipt_issue: 'none',
+        invoice_issue: 'yes',
+      },
+    });
+
+    const response = await PATCH(
+      createRequest({
+        status: 'billed',
+        billed_amount: 3240,
+        collected_amount: 0,
+        invoice_issue_status: 'not_issued',
+      }),
+      { params: Promise.resolve({ id: 'candidate_1' }) },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '請求書の発行状態を入力してください',
+      details: {
+        invoice_issue_status: expect.arrayContaining([
+          '請求書発行が必要な患者では請求・集金時に発行済み状態が必須です',
+        ]),
+      },
+    });
+    expect(updateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
   it('allows collected payments without receipt numbers when receipt issuance is disabled', async () => {
     taskFindFirstMock.mockResolvedValue({
       metadata: {

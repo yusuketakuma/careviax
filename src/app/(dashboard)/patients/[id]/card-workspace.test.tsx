@@ -1247,6 +1247,53 @@ describe('CardWorkspace', () => {
     expect(billingMutate).not.toHaveBeenCalled();
   });
 
+  it('requires issued invoice status before saving invoice-managed billing collection', async () => {
+    const { billingMutate } = mockPatientQuery(buildWorkspace(), {
+      generated_at: '2026-06-16T00:00:00.000Z',
+      attention_count: 1,
+      top_alerts: [],
+      items: [
+        {
+          key: 'billing',
+          label: '請求・集金',
+          status: '確認待ち',
+          description: '2026/06 居宅療養管理指導 / confirmed',
+          href: '/billing/candidates?patient_id=patient_1&billing_month=2026-06-01',
+          action_label: '請求候補を確認',
+          tone: 'attention',
+          updated_at: '2026-06-10T00:00:00.000Z',
+          metrics: [
+            { label: '今月請求額', value: '3,240円' },
+            { label: '支払者', value: '長女' },
+            { label: '領収証', value: 'R20260616-001' },
+            { label: '領収証発行コード', value: 'none' },
+            { label: '請求書発行コード', value: 'yes' },
+            { label: '請求書状態コード', value: 'not_issued' },
+          ],
+          alerts: ['請求書が未発行です'],
+          quick_actions: [
+            {
+              key: 'record_billing_collection',
+              label: '集金記録を更新',
+              resource_id: 'candidate_1',
+            },
+          ],
+        },
+      ],
+    });
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    fireEvent.change(screen.getByLabelText('状態'), { target: { value: 'billed' } });
+    fireEvent.change(screen.getByLabelText('入金額'), { target: { value: '0' } });
+    fireEvent.click(screen.getByRole('button', { name: /集金記録を更新/ }));
+
+    expect(
+      await screen.findByText('請求書発行が必要な請求・集金では発行状態を発行済みにしてください。'),
+    ).toBeTruthy();
+    expect(billingMutate).not.toHaveBeenCalled();
+  });
+
   it('records patient billing payment profile metadata from the home operations panel', () => {
     const { billingProfileMutate } = mockPatientQuery(buildWorkspace(), {
       generated_at: '2026-06-16T00:00:00.000Z',

@@ -32,6 +32,12 @@ function readReceiptIssue(metadata: unknown) {
     : null;
 }
 
+function readInvoiceIssue(metadata: unknown) {
+  const value = readJsonObject(metadata);
+  const invoiceIssue = typeof value?.invoice_issue === 'string' ? value.invoice_issue : null;
+  return invoiceIssue === 'yes' || invoiceIssue === 'no' ? invoiceIssue : null;
+}
+
 function isReceiptManagedPayment(input: {
   status: string;
   collectedAmount: number | null;
@@ -53,6 +59,18 @@ function resolveReceiptIssueStatus(input: {
   if (input.receiptIssue === 'none') return 'not_required';
   if (input.requestedStatus) return input.requestedStatus;
   return input.receiptNumber ? 'issued' : 'not_issued';
+}
+
+function isInvoiceManagedBilling(input: {
+  status: string;
+  billedAmount: number | null;
+  invoiceIssue: string | null;
+}) {
+  return (
+    input.invoiceIssue === 'yes' &&
+    ['billed', 'collected', 'partial', 'unpaid', 'dunning'].includes(input.status) &&
+    (input.billedAmount ?? 0) > 0
+  );
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -111,6 +129,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         })
       : null;
     const receiptIssue = readReceiptIssue(billingPaymentProfileTask?.metadata);
+    const invoiceIssue = readInvoiceIssue(billingPaymentProfileTask?.metadata);
     const existingBreakdown = readJsonObject(candidate.calculation_breakdown) ?? {};
     const billedAmount = parsed.data.billed_amount ?? null;
     const collectedAmount = parsed.data.collected_amount ?? null;
@@ -130,6 +149,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       (!receiptNumber || receiptIssueStatus !== 'issued')
     ) {
       return 'missing-receipt-number' as const;
+    }
+    if (
+      isInvoiceManagedBilling({
+        status: parsed.data.status,
+        billedAmount,
+        invoiceIssue,
+      }) &&
+      invoiceIssueStatus !== 'issued'
+    ) {
+      return 'missing-invoice-issue-status' as const;
     }
     const unpaidAmount =
       billedAmount == null ? null : Math.max(billedAmount - (collectedAmount ?? 0), 0);
@@ -205,6 +234,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return validationError('領収証番号と発行状態を入力してください', {
       receipt_number: ['領収証発行が必要な患者では集金時に領収証番号が必須です'],
       receipt_issue_status: ['領収証発行が必要な患者では集金時に発行済み状態が必須です'],
+    });
+  }
+  if (result === 'missing-invoice-issue-status') {
+    return validationError('請求書の発行状態を入力してください', {
+      invoice_issue_status: ['請求書発行が必要な患者では請求・集金時に発行済み状態が必須です'],
     });
   }
   if (!result) return notFound('請求候補が見つかりません');
