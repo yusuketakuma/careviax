@@ -397,7 +397,9 @@ describe('CardWorkspace', () => {
           status: '連携あり',
           description: '田中一郎 在宅チーム / 最終同期 2026/06/01',
           href: '/patients/patient_1/mcs',
-          action_label: 'MCSを開く',
+          action_label: 'MCS連携を管理',
+          external_href: 'https://www.medical-care.net/projects/medical/57886227',
+          external_action_label: 'MCSを開く',
           tone: 'ok',
           updated_at: '2026-06-01T00:00:00.000Z',
           metrics: [{ label: '最終同期', value: '2026/06/01' }],
@@ -580,9 +582,14 @@ describe('CardWorkspace', () => {
     expect(
       within(documentsPanel).getByRole('link', { name: '印刷プレビュー' }).getAttribute('href'),
     ).toBe('/reports/print?type=first_visit_documents&patient_id=patient_1');
+    const mcsExternalLink = within(homeOps).getByRole('link', { name: /MCSを開く/ });
+    expect(mcsExternalLink.getAttribute('href')).toBe(
+      'https://www.medical-care.net/projects/medical/57886227',
+    );
+    expect(mcsExternalLink.getAttribute('target')).toBe('_blank');
     expect(
       within(homeOps)
-        .getByRole('link', { name: /MCSを開く/ })
+        .getByRole('link', { name: /MCS連携を管理/ })
         .getAttribute('href'),
     ).toBe('/patients/patient_1/mcs');
     expect(
@@ -729,7 +736,7 @@ describe('CardWorkspace', () => {
           status: '連携あり',
           description: '田中一郎 在宅チーム / 最終確認 2026/06/01',
           href: '/patients/patient_1/mcs',
-          action_label: 'MCSを開く',
+          action_label: 'MCS連携を管理',
           tone: 'ok',
           updated_at: '2026-06-01T00:00:00.000Z',
           metrics: [

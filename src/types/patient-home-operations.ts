@@ -43,6 +43,8 @@ export type PatientHomeOperationItem = {
   description: string;
   href: string;
   action_label: string;
+  external_href?: string | null;
+  external_action_label?: string | null;
   tone: PatientHomeOperationTone;
   updated_at: string | null;
   metrics: PatientHomeOperationMetric[];

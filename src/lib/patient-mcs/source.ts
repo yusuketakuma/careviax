@@ -56,11 +56,13 @@ type PatientMcsLinkSourceLike = {
 
 export function resolvePatientMcsOpenTargets(
   link: PatientMcsLinkSourceLike | null,
-  draftSourceUrl?: string | null
+  draftSourceUrl?: string | null,
 ) {
   const sourceUrl = resolvePatientMcsSyncSource(draftSourceUrl ?? '', link?.sourceUrl ?? null);
-  const projectUrl = link?.projectUrl?.trim() || null;
-  const patientUrl = link?.patientUrl?.trim() || null;
+  const projectUrl =
+    parseMedicalCareStationUrl(link?.projectUrl?.trim() ?? null)?.toString() ?? null;
+  const patientUrl =
+    parseMedicalCareStationUrl(link?.patientUrl?.trim() ?? null)?.toString() ?? null;
   const parsedSourceUrl = parseMedicalCareStationUrl(sourceUrl);
 
   return {

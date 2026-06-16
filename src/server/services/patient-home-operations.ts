@@ -2,6 +2,7 @@ import type { MemberRole, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
 import { formatOptionalDate } from '@/lib/patient/home-visit-intake';
+import { resolvePatientMcsOpenTargets } from '@/lib/patient-mcs/source';
 import { listPatientBillingCaseRefs } from '@/server/services/patient-detail-billing-refs';
 import { buildPatientDetailWhere } from '@/server/services/patient-detail-scope';
 import type {
@@ -612,6 +613,9 @@ function buildDocumentItem(args: {
 function buildMcsItem(args: {
   patientId: string;
   link: {
+    source_url: string | null;
+    mcs_patient_url: string | null;
+    mcs_project_url: string | null;
     project_title: string | null;
     last_synced_at: Date | null;
     last_sync_attempt_at: Date | null;
@@ -643,6 +647,16 @@ function buildMcsItem(args: {
     ? (MCS_PARTICIPATION_STATUS_LABELS[profile.participation_status] ??
       profile.participation_status)
     : '未記録';
+  const openTargets = resolvePatientMcsOpenTargets(
+    link
+      ? {
+          sourceUrl: link.source_url,
+          projectUrl: link.mcs_project_url,
+          patientUrl: link.mcs_patient_url,
+        }
+      : null,
+  );
+  const externalHref = openTargets.mcsUrl ?? null;
 
   return {
     key: 'mcs',
@@ -652,7 +666,9 @@ function buildMcsItem(args: {
       ? `${link.project_title ?? 'MCS患者タイムライン'} / 最終確認 ${formatDate(lastCheckedAtValid ? lastCheckedAt : null)}`
       : 'MCS URL、参加状況、最終確認日、連携ログを患者単位で管理します。',
     href: `/patients/${args.patientId}/mcs`,
-    action_label: link ? 'MCSを開く' : 'MCSを登録',
+    action_label: link ? 'MCS連携を管理' : 'MCSを登録',
+    external_href: externalHref,
+    external_action_label: externalHref ? 'MCSを開く' : null,
     tone: alerts.length > 0 ? (link ? 'attention' : 'neutral') : 'ok',
     updated_at: toIso(link?.updated_at ?? link?.last_sync_attempt_at),
     metrics: [
@@ -1304,6 +1320,9 @@ export async function getPatientHomeOperationsData(
       },
       orderBy: [{ updated_at: 'desc' }],
       select: {
+        source_url: true,
+        mcs_patient_url: true,
+        mcs_project_url: true,
         project_title: true,
         last_synced_at: true,
         last_sync_attempt_at: true,

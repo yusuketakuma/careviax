@@ -355,7 +355,7 @@ function buildHomeOperationsItems(patient: PatientOverview): PatientHomeOperatio
         ? 'MCS連携ページでURL、同期状況、共有要点、次アクションを確認します。'
         : '患者別MCS URLの登録、最終確認日、外部連携ログの確認導線です。',
       href: `/patients/${patient.id}/mcs`,
-      action_label: mcsLinked ? 'MCSを開く' : 'MCSを登録',
+      action_label: mcsLinked ? 'MCS連携を管理' : 'MCSを登録',
       tone: mcsLinked ? 'ok' : 'neutral',
       updated_at: null,
       metrics: [],
@@ -677,6 +677,21 @@ function PatientHomeOperationsPanel({
                   </Button>
                 );
               })}
+              {item.external_href ? (
+                <Link
+                  href={item.external_href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={buttonVariants({
+                    variant: 'outline',
+                    size: 'sm',
+                    className: 'mt-3 min-h-10 w-full justify-center bg-background/80',
+                  })}
+                >
+                  <ExternalLink className="mr-1.5 size-4" aria-hidden="true" />
+                  {item.external_action_label ?? '外部サービスを開く'}
+                </Link>
+              ) : null}
               <Link
                 href={item.href}
                 className={buttonVariants({

@@ -84,6 +84,9 @@ function createDb(overrides: Record<string, unknown> = {}) {
     },
     patientMcsLink: {
       findFirst: vi.fn().mockResolvedValue({
+        source_url: 'https://www.medical-care.net/patients/2463520',
+        mcs_patient_url: 'https://www.medical-care.net/patients/2463520',
+        mcs_project_url: 'https://www.medical-care.net/projects/medical/57886227',
         project_title: '田中一郎 在宅チーム',
         last_synced_at: new Date('2026-06-03T00:00:00.000Z'),
         last_sync_attempt_at: new Date('2026-06-03T00:00:00.000Z'),
@@ -291,6 +294,9 @@ describe('getPatientHomeOperationsData', () => {
     expect(result?.items.find((item) => item.key === 'mcs')).toMatchObject({
       status: '連携あり',
       tone: 'ok',
+      action_label: 'MCS連携を管理',
+      external_href: 'https://www.medical-care.net/projects/medical/57886227',
+      external_action_label: 'MCSを開く',
       metrics: expect.arrayContaining([
         { label: '最終確認', value: '2099/06/15' },
         { label: '参加状況', value: '参加済' },
@@ -592,6 +598,38 @@ describe('getPatientHomeOperationsData', () => {
         { label: '連携状態', value: '連携なし' },
         { label: '参加状況', value: '未参加' },
       ]),
+    });
+  });
+
+  it('does not return an external MCS action when the saved URL is invalid', async () => {
+    const db = createDb({
+      patientMcsLink: {
+        findFirst: vi.fn().mockResolvedValue({
+          source_url: 'https://www.evilmedical-care.net/patients/2463520',
+          mcs_patient_url: null,
+          mcs_project_url: 'http://www.medical-care.net/projects/medical/57886227',
+          project_title: '田中一郎 在宅チーム',
+          last_synced_at: new Date('2026-06-03T00:00:00.000Z'),
+          last_sync_attempt_at: new Date('2026-06-03T00:00:00.000Z'),
+          last_sync_status: 'success',
+          last_sync_error: null,
+          updated_at: new Date('2026-06-03T00:00:00.000Z'),
+        }),
+      },
+    });
+
+    const result = await getPatientHomeOperationsData(db as never, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    expect(result?.items.find((item) => item.key === 'mcs')).toMatchObject({
+      href: '/patients/patient_1/mcs',
+      action_label: 'MCS連携を管理',
+      external_href: null,
+      external_action_label: null,
     });
   });
 
