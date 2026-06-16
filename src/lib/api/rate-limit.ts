@@ -586,6 +586,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/files/complete',
   '/api/files/presigned-upload',
   '/api/first-visit-documents',
+  '/api/first-visit-documents/print-batch',
   '/api/handoff-board',
   '/api/handoff-board/items',
   '/api/handoff-board/items/:id/read',

@@ -351,7 +351,6 @@ describe('buildFirstVisitDocumentPrintSummary', () => {
       documentUrlLabel: '控えあり',
       latestActionLabel: '回収',
       latestPrintedAtLabel: '2026/6/16',
-      latestPrintBatchLabel: '一括ID print_20260616T013000Z_batch1',
       latestStorageLabel: '本部',
       latestTemplateLabel: '居宅療養管理指導契約書 v1.1',
     });

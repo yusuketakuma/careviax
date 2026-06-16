@@ -90,6 +90,14 @@ export const updateFirstVisitDocumentSchema = z
   })
   .superRefine((value, ctx) => {
     const action = value.document_action?.action;
+    if (value.document_action?.print_batch_id && action !== 'printed') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['document_action', 'print_batch_id'],
+        message: '印刷バッチIDは印刷履歴でのみ指定できます',
+      });
+    }
+
     if (!['replaced', 'invalidated'].includes(action ?? '')) return;
     if (value.document_action?.reason?.trim()) return;
 
@@ -103,3 +111,16 @@ export const updateFirstVisitDocumentSchema = z
 export type UpdateFirstVisitDocumentInput = z.infer<typeof updateFirstVisitDocumentSchema>;
 
 export type EmergencyContact = z.infer<typeof emergencyContactSchema>;
+
+export const recordFirstVisitDocumentPrintBatchSchema = z.object({
+  patient_id: z.string().min(1, '患者IDは必須です'),
+  document_ids: z
+    .array(z.string().min(1, '初回文書IDは必須です'))
+    .min(1, '印刷対象の初回文書を1件以上選択してください')
+    .max(50, '一度に印刷できる初回文書は50件までです'),
+  save_copy: z.boolean().default(true),
+});
+
+export type RecordFirstVisitDocumentPrintBatchInput = z.infer<
+  typeof recordFirstVisitDocumentPrintBatchSchema
+>;

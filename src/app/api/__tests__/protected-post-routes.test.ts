@@ -55,6 +55,7 @@ import { POST as inquiryRecordsPost } from '../inquiry-records/route';
 import { POST as residualMedicationsPost } from '../residual-medications/route';
 import { POST as billingCandidatesPost } from '../billing-candidates/route';
 import { POST as billingCandidatesClosePost } from '../billing-candidates/close/route';
+import { POST as firstVisitDocumentsPrintBatchPost } from '../first-visit-documents/print-batch/route';
 import { POST as businessHolidaysPost } from '../business-holidays/route';
 import { POST as cdsCheckPost } from '../cds/check/route';
 import { POST as pharmacistsPost } from '../pharmacists/route';
@@ -131,6 +132,10 @@ const routes: RouteEntry[] = [
     name: 'billing-candidates/close POST',
     handler: (req) => billingCandidatesClosePost(req),
     successBody: { billing_month: '2026-03-01' },
+  },
+  {
+    name: 'first-visit-documents/print-batch POST',
+    handler: (req) => firstVisitDocumentsPrintBatchPost(req, emptyRouteContext),
   },
   {
     name: 'business-holidays POST',

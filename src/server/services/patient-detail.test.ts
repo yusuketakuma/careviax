@@ -1241,6 +1241,24 @@ describe('getPatientDocumentsData', () => {
             },
             created_at: new Date('2026-06-17T00:00:00.000Z'),
           },
+          {
+            id: 'audit_print_1',
+            actor_id: 'user_1',
+            action: 'first_visit_document.printed',
+            target_id: 'doc_1',
+            changes: {
+              document_action: {
+                action: 'printed',
+                document_type: 'contract',
+                template_name: '居宅療養管理指導契約書 2026年版',
+                template_version: 'v1.1',
+                print_batch_id: 'print_20260616T013000Z_batch1',
+                storage_location: 'store',
+                note: '印刷ハブから一括印刷',
+              },
+            },
+            created_at: new Date('2026-06-16T00:00:00.000Z'),
+          },
         ]),
       },
     });
@@ -1310,6 +1328,19 @@ describe('getPatientDocumentsData', () => {
         note: '本人同席',
         actor_id: 'user_1',
         created_at: new Date('2026-06-17T00:00:00.000Z'),
+      },
+      {
+        id: 'audit_print_1',
+        action: 'printed',
+        document_type: 'contract',
+        template_name: '居宅療養管理指導契約書 2026年版',
+        template_version: 'v1.1',
+        print_batch_id: 'print_20260616T013000Z_batch1',
+        storage_location: 'store',
+        reason: null,
+        note: '印刷ハブから一括印刷',
+        actor_id: 'user_1',
+        created_at: new Date('2026-06-16T00:00:00.000Z'),
       },
     ]);
     expect(result?.document_statuses).toEqual(

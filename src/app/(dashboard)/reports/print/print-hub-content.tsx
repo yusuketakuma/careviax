@@ -11,7 +11,6 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import {
   buildDocumentReceiptRows,
-  buildFirstVisitPrintCopyUrl,
   buildFirstVisitDocumentPrintSummary,
   buildMedicationCalendarDocument,
   buildMedicationLabelCards,
@@ -63,22 +62,6 @@ type PatientDocumentsForPrintResponse = {
   first_visit_documents: FirstVisitDocumentForPrint[];
 };
 
-function pickLatestFirstVisitHistory(document: FirstVisitDocumentForPrint) {
-  if (document.history.length === 0) return null;
-  return [...document.history].sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-  )[0];
-}
-
-function buildPrintBatchId() {
-  const timestamp = new Date().toISOString().replace(/[^0-9A-Za-z]/g, '');
-  const random =
-    typeof crypto !== 'undefined' && 'randomUUID' in crypto
-      ? crypto.randomUUID().replace(/-/g, '').slice(0, 12)
-      : Math.random().toString(36).slice(2, 14);
-  return `print_${timestamp}_${random}`;
-}
-
 async function recordFirstVisitPrintHistory({
   orgId,
   patientId,
@@ -90,39 +73,23 @@ async function recordFirstVisitPrintHistory({
   documents: readonly FirstVisitDocumentForPrint[];
   saveCopy: boolean;
 }) {
-  const printBatchId = buildPrintBatchId();
-  await Promise.all(
-    documents.map(async (document) => {
-      const latestHistory = pickLatestFirstVisitHistory(document);
-      const documentUrl =
-        saveCopy && patientId
-          ? buildFirstVisitPrintCopyUrl({ patientId, documentId: document.id })
-          : undefined;
-      const res = await fetch(`/api/first-visit-documents/${document.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-org-id': orgId,
-        },
-        body: JSON.stringify({
-          ...(documentUrl ? { document_url: documentUrl } : {}),
-          document_action: {
-            action: 'printed',
-            document_type: latestHistory?.document_type ?? 'first_visit_document',
-            template_name: latestHistory?.template_name ?? '契約・同意控え',
-            template_version: latestHistory?.template_version ?? 'print-preview',
-            print_batch_id: printBatchId,
-            storage_location: latestHistory?.storage_location ?? null,
-            note: documentUrl ? '印刷ハブから印刷し、控えリンクを保存' : '印刷ハブから印刷',
-          },
-        }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.message ?? '初回文書の印刷履歴を記録できませんでした');
-      }
+  if (!patientId) throw new Error('患者IDがないため初回文書の印刷履歴を記録できません');
+  const res = await fetch('/api/first-visit-documents/print-batch', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-org-id': orgId,
+    },
+    body: JSON.stringify({
+      patient_id: patientId,
+      document_ids: documents.map((document) => document.id),
+      save_copy: saveCopy,
     }),
-  );
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message ?? '初回文書の印刷履歴を記録できませんでした');
+  }
 }
 
 function documentTypeNeedsSetPlan(documentType: PrintDocumentTypeKey) {
@@ -618,7 +585,6 @@ function FirstVisitDocumentsSheet({
                   </td>
                   <td className="py-2 pr-2">
                     <span className="block text-foreground">{row.latestPrintedAtLabel}</span>
-                    <span className="block text-muted-foreground">{row.latestPrintBatchLabel}</span>
                   </td>
                   <td className="py-2">{row.documentUrlLabel}</td>
                 </tr>

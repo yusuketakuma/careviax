@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { randomUUID } from 'crypto';
 import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
@@ -15,6 +16,12 @@ type FirstVisitDocumentPatchResult =
   | { error: 'not_found' | 'conflict' | 'print_blocked'; message?: string };
 
 class FirstVisitDocumentPatchConflictError extends Error {}
+
+function buildServerPrintBatchId(now = new Date()) {
+  return `print_${now.toISOString().replace(/[^0-9A-Za-z]/g, '')}_${randomUUID()
+    .replace(/-/g, '')
+    .slice(0, 12)}`;
+}
 
 function buildPrintBlockedMessage(
   readiness: NonNullable<Awaited<ReturnType<typeof getPatientDocumentsData>>>['print_readiness'],
@@ -170,15 +177,22 @@ export const PATCH = withAuthContext<{ id: string }>(
         if (!document) return { error: 'not_found' };
 
         if (parsed.data.document_action) {
+          const documentAction =
+            parsed.data.document_action.action === 'printed'
+              ? {
+                  ...parsed.data.document_action,
+                  print_batch_id: buildServerPrintBatchId(),
+                }
+              : parsed.data.document_action;
           await tx.auditLog.create({
             data: {
               org_id: ctx.orgId,
               actor_id: ctx.userId,
-              action: `first_visit_document.${parsed.data.document_action.action}`,
+              action: `first_visit_document.${documentAction.action}`,
               target_type: 'first_visit_document',
               target_id: id,
               changes: {
-                document_action: parsed.data.document_action,
+                document_action: documentAction,
                 patient_id: existing.patient_id,
                 case_id: existing.case_id,
                 previous: {

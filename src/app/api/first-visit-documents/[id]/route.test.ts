@@ -356,7 +356,7 @@ describe('/api/first-visit-documents/[id]', () => {
           document_type: 'first_visit_document',
           template_name: '契約・同意控え',
           template_version: 'print-preview',
-          print_batch_id: 'print_20260616T013000Z_batch1',
+          print_batch_id: 'print_client_forged_batch',
           note: '印刷ハブから印刷',
         },
       }),
@@ -381,7 +381,7 @@ describe('/api/first-visit-documents/[id]', () => {
           document_action: expect.objectContaining({
             action: 'printed',
             document_type: 'first_visit_document',
-            print_batch_id: 'print_20260616T013000Z_batch1',
+            print_batch_id: expect.stringMatching(/^print_[0-9A-Za-z]+_[0-9a-f]{12}$/),
             note: '印刷ハブから印刷',
           }),
           patient_id: 'patient_1',
@@ -389,6 +389,83 @@ describe('/api/first-visit-documents/[id]', () => {
         }),
       }),
     });
+  });
+
+  it('generates print batch ids server-side even when old clients omit them', async () => {
+    const response = (await PATCH(
+      createPatchRequest({
+        document_action: {
+          action: 'printed',
+          document_type: 'first_visit_document',
+          template_name: '契約・同意控え',
+          template_version: 'print-preview',
+          note: '印刷ハブから印刷',
+        },
+      }),
+    ))!;
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: expect.objectContaining({
+        id: 'doc_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+      }),
+    });
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'first_visit_document.printed',
+        changes: expect.objectContaining({
+          document_action: expect.objectContaining({
+            action: 'printed',
+            print_batch_id: expect.stringMatching(/^print_[0-9A-Za-z]+_[0-9a-f]{12}$/),
+          }),
+        }),
+      }),
+    });
+  });
+
+  it('rejects malformed print batch ids before writing audit history', async () => {
+    const response = (await PATCH(
+      createPatchRequest({
+        document_action: {
+          action: 'printed',
+          print_batch_id: 'print bad/../../x',
+        },
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects print batch ids on non-print document actions', async () => {
+    const response = (await PATCH(
+      createPatchRequest({
+        delivered_at: '2026-06-16T00:00:00.000Z',
+        delivered_to: '山田太郎',
+        document_action: {
+          action: 'recovered',
+          print_batch_id: 'print_20260616T013000Z_batch1',
+        },
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        document_action: expect.arrayContaining(['印刷バッチIDは印刷履歴でのみ指定できます']),
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('records print history and saves the print copy URL when requested', async () => {

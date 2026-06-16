@@ -198,7 +198,6 @@ export type FirstVisitDocumentPrintRow = {
   documentUrlLabel: string;
   latestActionLabel: string;
   latestPrintedAtLabel: string;
-  latestPrintBatchLabel: string;
   latestStorageLabel: string;
   latestTemplateLabel: string;
 };
@@ -747,9 +746,6 @@ export function buildFirstVisitDocumentPrintSummary(
           documentUrlLabel: document.document_url ? '控えあり' : '控え未登録',
           latestActionLabel: latestAction,
           latestPrintedAtLabel: formatPrintDate(latestPrintedHistory?.created_at),
-          latestPrintBatchLabel: latestPrintedHistory?.print_batch_id
-            ? `一括ID ${latestPrintedHistory.print_batch_id}`
-            : '一括ID未記録',
           latestStorageLabel: latestStorage,
           latestTemplateLabel: formatTemplateLabel(latestHistory),
         };
