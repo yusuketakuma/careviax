@@ -85,7 +85,10 @@ export function PrescriptionGrid({ view, phase, handlers, isPending }: Prescript
   const addGroup = () => (handlers ? handlers.onAddGroup() : storeAddGroup());
 
   return (
-    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+    <div
+      data-testid="dispense-checklist"
+      style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}
+    >
       {/* ===== 上部ツールバー（調剤区分・比較・新規グループ・D&Dヒント・賦形ルール）===== */}
       <div
         style={{

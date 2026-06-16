@@ -87,6 +87,7 @@ export function PatientListPanel({ view }: PatientListPanelProps) {
           <button
             key={p.id}
             type="button"
+            data-testid="dispense-queue-row"
             onClick={() => setPatient(p.id)}
             aria-current={p.selected ? 'true' : undefined}
             className={styles.patientRow}

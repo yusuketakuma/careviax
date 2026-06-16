@@ -314,6 +314,10 @@ model DispenseAudit {
   reject_detail      String?
   audited_by         String // User ID
   audited_at         DateTime
+  // --- 単独薬剤師の自己監査=限定例外 (D1=B)。既存行は NULL で後方互換。---
+  // two-person rule の限定例外。調剤者=監査者の場合のみ admin 承認 + 理由必須。
+  same_operator_reason      String? // 自己監査を要した理由 (必須入力, サーバ検証)
+  same_operator_approved_by String? // 例外を承認した admin の User ID
   created_at         DateTime            @default(now())
   updated_at         DateTime            @updatedAt
 
@@ -433,6 +437,10 @@ model SetAudit {
   photo_asset_ids String[]       @default([]) // 確認した写真 (FileAsset.id, purpose=set-photo)
   audited_by      String // User ID
   audited_at      DateTime
+  // --- 単独薬剤師の自己監査=限定例外 (D1=B)。既存行は NULL で後方互換。---
+  // two-person rule の限定例外。実施者=監査者の場合のみ admin 承認 + 理由必須。
+  same_operator_reason      String? // 自己監査を要した理由 (必須入力, サーバ検証)
+  same_operator_approved_by String? // 例外を承認した admin の User ID
   created_at      DateTime       @default(now())
   updated_at      DateTime       @updatedAt
 

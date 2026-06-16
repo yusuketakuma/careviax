@@ -21,6 +21,7 @@ import {
   createSetBatchChangeLog,
 } from '@/lib/dispensing/set-batch-history';
 import { RejectCode, SetAuditCellState, type ScheduleStatus } from '@prisma/client';
+import { ADMIN_MEMBER_ROLES } from '@/lib/auth/member-roles';
 import { z } from 'zod';
 import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
 
@@ -55,7 +56,10 @@ const createSetAuditSchema = z.object({
   reject_reason: z.string().optional(),
   // 差戻し/部分承認時の構造化 NG 分類 (RejectCode, 14種)。rejected では必須。
   reject_reason_code: z.enum(REJECT_CODE_VALUES).optional(),
-  audited_at: z.string().datetime().optional(),
+  // D6: 監査時刻はサーバ信頼時刻 (new Date()) に統一する (§12-5 14.3)。
+  // クライアントが監査時刻を偽造できないよう audited_at は受け付けない。
+  // D1=B: 単独薬剤師の自己監査=限定例外。セット実施者=監査者の場合のみ、理由必須 + admin 承認で許可する。
+  same_operator_reason: z.string().trim().min(1).max(1000).optional(),
   // p0_15 セット監査 3ペイン: チェックリストと写真資産(セット前/セット後/設置予定)。
   checklist: checklistSchema,
   photo_asset_ids: z.array(z.string().min(1)).max(50).optional(),
@@ -296,7 +300,7 @@ export const POST = withAuthContext(
       approved_scope,
       reject_reason,
       reject_reason_code,
-      audited_at,
+      same_operator_reason,
       checklist,
       photo_asset_ids,
       cell_audits,
@@ -358,7 +362,8 @@ export const POST = withAuthContext(
 
       if (!plan) return null;
 
-      const now = audited_at ? new Date(audited_at) : new Date();
+      // D6: 監査時刻はサーバ信頼時刻に統一 (クライアント audited_at は不採用)。
+      const now = new Date();
       const setBatches = await tx.setBatch.findMany({
         where: { plan_id, org_id: ctx.orgId },
         include: {
@@ -390,6 +395,9 @@ export const POST = withAuthContext(
 
       // セル単位監査の事前検証 (職務分離 + バッチ所属確認)。
       // 確定 (SetBatch.audit_state/ng_code 更新) は監査記録作成後にまとめて行う。
+      // D1=B: セット実施者=監査者 (自己監査) を検出する。two-person rule の原則は維持し、
+      // 自己監査は「理由必須 + admin 承認」を満たした限定例外でのみ許可する。
+      let selfAuditDetected = false;
       if (cell_audits && cell_audits.length > 0) {
         const batchById = new Map(setBatches.map((batch) => [batch.id, batch]));
 
@@ -403,11 +411,34 @@ export const POST = withAuthContext(
           if (cell.expected_version !== batch.version) {
             return { error: 'cell_version_conflict' as const, conflict: true };
           }
-          // 職務分離 (§12-5): セット実施者は自身がセットしたセルを監査できない。
+          // 職務分離 (§12-5): セット実施者は自身がセットしたセルを監査できない (原則)。
           if (batch.set_by && batch.set_by === ctx.userId) {
-            return { error: 'self_audit' as const };
+            selfAuditDetected = true;
           }
         }
+      }
+
+      // D1=B: 自己監査の限定例外ガード。
+      // ① 理由 (same_operator_reason) 必須。② admin 承認権限 (owner/admin) 必須。
+      // いずれかを欠く場合は従来どおり職務分離違反として拒否する。
+      let selfAuditApprovedBy: string | null = null;
+      if (selfAuditDetected) {
+        if (!same_operator_reason) {
+          return { error: 'self_audit' as const };
+        }
+        const adminMembership = await tx.membership.findFirst({
+          where: {
+            org_id: ctx.orgId,
+            user_id: ctx.userId,
+            is_active: true,
+            role: { in: [...ADMIN_MEMBER_ROLES] },
+          },
+          select: { id: true },
+        });
+        if (!adminMembership) {
+          return { error: 'self_audit_not_approved' as const };
+        }
+        selfAuditApprovedBy = ctx.userId;
       }
 
       const effectiveSetBatches = applyCellAuditPreview(setBatches, cell_audits);
@@ -730,6 +761,9 @@ export const POST = withAuthContext(
           photo_asset_ids: photo_asset_ids ?? [],
           audited_by: ctx.userId,
           audited_at: now,
+          // D1=B: 自己監査の限定例外を満たした場合のみ理由 + 承認者を記録 (それ以外は NULL)。
+          same_operator_reason: selfAuditDetected ? same_operator_reason : null,
+          same_operator_approved_by: selfAuditApprovedBy,
         },
       });
 
@@ -748,6 +782,23 @@ export const POST = withAuthContext(
           photo_asset_ids: photo_asset_ids ?? [],
         },
       });
+
+      // D1=B: 自己監査の限定例外を発動した場合は append-only で別途記録する。
+      // two-person rule の例外行使を監査証跡で追跡可能にする (§12-5)。
+      if (selfAuditDetected) {
+        await createAuditLogEntry(tx, ctx, {
+          action: 'set_audit.self_audit_exception',
+          targetType: 'set_audit',
+          targetId: audit.id,
+          changes: {
+            plan_id,
+            cycle_id: plan.cycle_id,
+            result,
+            same_operator_reason: same_operator_reason ?? null,
+            same_operator_approved_by: selfAuditApprovedBy,
+          },
+        });
+      }
 
       return audit;
     }).catch((err: unknown) => {
@@ -779,7 +830,12 @@ export const POST = withAuthContext(
         });
       }
       if (auditResult.error === 'self_audit') {
-        return validationError('ご自身がセットしたセルの監査はできません');
+        return validationError(
+          'ご自身がセットしたセルの監査はできません。自己監査の例外には理由(same_operator_reason)の入力が必要です',
+        );
+      }
+      if (auditResult.error === 'self_audit_not_approved') {
+        return validationError('自己監査の例外承認は管理者のみ実行できます');
       }
       if (auditResult.error === 'cell_version_conflict') {
         return conflict('セルが他のユーザーによって更新されています。再読み込みしてください');

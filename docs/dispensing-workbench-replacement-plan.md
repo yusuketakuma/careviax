@@ -431,3 +431,44 @@ QRスキャン (qr-scan/page.tsx, @zxing/browser)
 - ~~主取込対象~~ → **確定: お薬手帳QR(JAHISTC08, 保険なし)**（§14-0）。
 - 調剤ワークベンチ**以外**の調剤系UI（`prescription-detail-content.tsx`/`jahis-supplemental-records-card.tsx`）で医療機関名・処方医・後発品が既に表示されている可能性（要件が「調剤ワークベンチ画面」限定か「調剤系全般」かで範囲が変わる）。
 - `decodeShiftJIS`（jahis-qr.ts:221-230）が実スキャンUIで明示的に呼ばれず zxing の `getText()` 依存。Shift-JIS 文字化け検証の要否。
+
+---
+
+## 15. 残フォローアップ 実行計画（2026-06-17・調査で前提を裏取り）
+
+> 重要な前提修正: ① **rename href は `9a8f33c0` に全面取込済み・page-route 残骸0・working tree クリーン**（「未コミット取込」は実質完了。真の残=Notification.link backfill のみ）。② §13 のうち **D3/D4 は実装済み（批准のみ）**、D2/D5 は現状維持で defer、D1 はビジネス判断、**D6 は要修正（稼働中の回帰）**。
+
+### 推奨実行順（クリティカルパス: task3→task4）
+| # | タスク | 工数 | 依存 | 要点 |
+|---|---|---|---|---|
+| **1** | **S13-D6 修正**（set-audits の client `audited_at` 受入撤去→サーバ時刻） | S | なし | `set-audits/route.ts:58` の zod `audited_at` 削除、`:361` を `const now = new Date()` に、`route.test.ts` 同時修正。**クライアントが監査時刻を偽造可能な回帰**＝最優先。スキーマ/RBAC変更なし |
+| **2** | **Notification.link バックフィル** | S | なし | 新 migration で `UPDATE "Notification" SET link=regexp_replace(link,'^/auditing','/audit')`（+`/medication-sets`→`/set`）。撤去済ルートの既存通知404回避。併用案: next.config 308リダイレクト。rename本体は取込済（再コミット不要） |
+| **3** | **design-fidelity セレクタ是正＋撮影** | M | task4とセレクタ共有 | **絶対前提**: `design-screen-map.ts` の `new_07_dispense`/`p0_12` setup が待つ旧 testid（`dispense-queue-row` 等）が新workbenchに0件→撮影必ず失敗。(A)新workbenchに data-testid 付与 or (B)setup を `a[aria-current=page]`/`role=checkbox` へ書換。→ `:3012`起動→対象8 screenId 限定撮影→`design/images` と目視突合（`--update-snapshots` 不在＝手動承認）→`design-fidelity-mapping.md` 更新 |
+| **4** | **real-data 結線検証**（`NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA=1`） | M | task3とセレクタ共有 | フラグはどのスクリプトにも無い→`dev:e2e:local:realdata` 追加（ビルド時焼込のため起動時固定必須）。owner(demo)で認証→Network で patients/workbench/calendar API 200+data非空を確認（**未認証だと seed フォールバックで実データに見える罠**）。**田中cycleは SetBatch seed 0件**→set検証は施設居室101-103 患者で（or generate-batches/seed補完）。書込: 完了→409→楽観更新を Network 確認 |
+| **5** | **S13 残5項目 批准/決定** | S | D3はtask4と共通事実 | D3(競合アンカー)/D4(永続タイミング)=実装済**批准のみ**。D2(補助者0402)/D5(オフライン調剤)=現状維持**defer**。**D1(単独薬剤師の自己監査例外)=ビジネス判断**（現状ハード禁止） |
+
+### 要ユーザー判断（コード変更前に必要）
+- **D1（必須・ビジネス）**: 単独管理薬剤師の薬局で「調剤者=監査者」の自己監査例外を設けるか。A=ハード禁止維持（現状・追加作業ゼロ）/ B=admin承認+sameOperatorReason+サーバ時刻の限定例外 / C=org単位の単独薬局モード。推奨A（顧客に単独薬剤師薬局が含まれる場合のみB）
+- **D6（推奨確認）**: set-audits 監査時刻をサーバ時刻に統一（=セキュリティ回帰修正）。推奨=即修正(A)
+- 技術選択（推奨で進行可）: design-fidelity セレクタ=**A(testid付与)**、田中set検証=**C(施設患者で検証)+A(seed恒久化)**、フラグ=**A(専用スクリプト)**
+
+### 主要リスク
+- design-fidelity: 旧testid待ちで撮影失敗（セレクタ是正が絶対前提）
+- real-data: 未認証フォールバックの罠（API 200+data を Network で確認必須）／田中 SetBatch 0件
+- D6: `route.test.ts` が `audited_at` を渡すため実装とテストを同時修正しないと red
+- `/set`↔`/set-audit` 前方一致は厳密化済み・回帰テストで固定
+
+---
+
+## 16. フォローアップ実行結果（2026-06-17・全完了）
+
+| タスク | 結果 |
+|---|---|
+| **FW1-D6** set-audits サーバ時刻統一 | ✅ client `audited_at` 撤去・`new Date()` 統一。監査時刻偽造の回帰を解消 |
+| **FW1-D1=B** 自己監査限定例外 | ✅ `DispenseAudit`/`SetAudit` に `same_operator_reason`/`same_operator_approved_by` 追加(migration)。**4条件で two-person rule 非形骸化**: 理由必須(欠如→422)＋admin(owner/admin membership)承認(欠如→403)＋サーバ時刻＋append-only `self_audit_exception` AuditLog。拒否経路は副作用ゼロ。39 tests pass |
+| **FW1** Notification.link backfill | ✅ migration `..70000` で `/auditing→/audit`・`/medication-sets→/set`(path-boundary・冪等)。撤去済ルートの既存通知404を回避 |
+| **FW2** design-fidelity 撮影 | ✅ 新workbench に testid付与(`dispense-queue-row`/`dispense-checklist`)→ 8画面撮影 PASS(`new_07-09`/`p0_12-15`/`p0_36`)→ **視覚確認で新レセコンUI描画を確認**→ design-fidelity-mapping.md を 完了/撮影済 に更新 |
+| **FW3** real-data 結線検証 | ✅ `dev:e2e:local:realdata` 追加。フラグONで4画面 renders cleanly + サーバログで `GET /api/dispense-workbench/patients 200`・`/api/set-plans 200`(401/403/500なし=モックフォールバックでない)。実API結線が runtime 動作 |
+| **§13 批准** | D1=B=実装済(上記)。D3(競合アンカー=MedicationCycle.version+count zero / SetBatch.version)=実装済**批准**。D4(永続タイミング: cell都度/bulk/audit確定のハイブリッド・append-only)=実装済**批准**。D2(PHARMACIST_ASSISTANT 0402スコープ)=現状維持**defer**(pharmacist_trainee流用・supervising_pharmacist_id は P1)。D5(オフライン調剤完了)=現状維持**defer**(OfflineSyncQueue 未拡張・オンライン専用)。D6=修正済 |
+
+検証総括: typecheck 0(全体) / FW1 audit 39 tests + workbench 74 + 横断 254 / lint clean / design-fidelity 8撮影 PASS / real-data e2e 4 PASS(実API 200)。残: design画像ターゲットPNGが旧版なら設計成果物更新(別)、田中cycleの SetBatch seed 補完(施設患者で検証は成立済)、本番RDSへの migration 適用(運用)。

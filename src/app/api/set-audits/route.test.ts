@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 const {
   authMock,
   membershipFindFirstMock,
+  membershipTxFindFirstMock,
   withOrgContextMock,
   setPlanFindFirstMock,
   setPlanFindManyMock,
@@ -24,6 +25,7 @@ const {
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
+  membershipTxFindFirstMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   setPlanFindFirstMock: vi.fn(),
   setPlanFindManyMock: vi.fn(),
@@ -131,6 +133,8 @@ describe('/api/set-audits POST', () => {
     vi.clearAllMocks();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+    // D1=B: 既定では自己監査の admin 承認権限なし (非管理者)。例外許可テストでのみ承認者を返す。
+    membershipTxFindFirstMock.mockResolvedValue(null);
     setPlanFindFirstMock.mockResolvedValue({
       id: 'plan_1',
       cycle_id: 'cycle_1',
@@ -175,6 +179,9 @@ describe('/api/set-audits POST', () => {
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
+        membership: {
+          findFirst: membershipTxFindFirstMock,
+        },
         setPlan: {
           findFirst: setPlanFindFirstMock,
         },
@@ -957,9 +964,9 @@ describe('/api/set-audits POST', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
-  it('enforces separation of duties: the setter cannot audit their own cell', async () => {
-    // batch.set_by === ctx.userId (user_1) → 職務分離違反
-    setBatchFindManyMock.mockResolvedValue([
+  function selfAuditBatch() {
+    // batch.set_by === ctx.userId (user_1) → 自己監査 (職務分離の原則違反)。
+    return [
       {
         id: 'batch_1',
         line_id: 'line_1',
@@ -979,7 +986,11 @@ describe('/api/set-audits POST', () => {
           unit: '錠',
         },
       },
-    ]);
+    ];
+  }
+
+  it('enforces separation of duties: the setter cannot audit their own cell without the exception', async () => {
+    setBatchFindManyMock.mockResolvedValue(selfAuditBatch());
 
     const response = await POST(
       createRequest(
@@ -996,10 +1007,144 @@ describe('/api/set-audits POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
-      message: 'ご自身がセットしたセルの監査はできません',
+      message: 'ご自身がセットしたセルの監査はできません。自己監査の例外には理由(same_operator_reason)の入力が必要です',
     });
     expect(setBatchUpdateManyMock).not.toHaveBeenCalled();
     expect(setAuditCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects the self-audit exception for non-admins even with a reason (D1=B)', async () => {
+    // 理由はあるが admin 承認権限なし (既定 membership=null) → two-person rule を維持して拒否。
+    setBatchFindManyMock.mockResolvedValue(selfAuditBatch());
+
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'approved',
+          checklist: completeSetAuditChecklist(),
+          same_operator_reason: '単独管理薬剤師のため自己監査を実施',
+          cell_audits: [{ batch_id: 'batch_1', audit_state: 'ok', expected_version: 1 }],
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '自己監査の例外承認は管理者のみ実行できます',
+    });
+    expect(membershipTxFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          user_id: 'user_1',
+          is_active: true,
+          role: { in: ['owner', 'admin'] },
+        }),
+      }),
+    );
+    expect(setBatchUpdateManyMock).not.toHaveBeenCalled();
+    expect(setAuditCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('allows the self-audit limited exception with a reason and admin approval, recording the trail (D1=B)', async () => {
+    setBatchFindManyMock.mockResolvedValue(selfAuditBatch());
+    // admin 承認権限あり → 限定例外を許可。
+    membershipTxFindFirstMock.mockResolvedValue({ id: 'membership_admin' });
+
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'approved',
+          checklist: completeSetAuditChecklist(),
+          same_operator_reason: '単独管理薬剤師のため自己監査を実施',
+          cell_audits: [{ batch_id: 'batch_1', audit_state: 'ok', expected_version: 1 }],
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(setBatchUpdateManyMock).toHaveBeenCalledTimes(1);
+    // 自己監査の理由 + 承認者 (= 当該 admin user) を SetAudit に記録する。
+    expect(setAuditCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        same_operator_reason: '単独管理薬剤師のため自己監査を実施',
+        same_operator_approved_by: 'user_1',
+      }),
+    });
+    // append-only: 自己監査の限定例外発動を AuditLog に記録する。
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        action: 'set_audit.self_audit_exception',
+        targetType: 'set_audit',
+        changes: expect.objectContaining({
+          same_operator_reason: '単独管理薬剤師のため自己監査を実施',
+          same_operator_approved_by: 'user_1',
+        }),
+      }),
+    );
+  });
+
+  it('does not record self-operator fields for normal two-person audits (D1=B)', async () => {
+    // 通常監査 (set_by !== ctx.userId) では same_operator_* は記録しない。
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'rejected',
+          reject_reason: '数量誤り',
+          reject_reason_code: 'quantity_short',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(setAuditCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        same_operator_reason: null,
+        same_operator_approved_by: null,
+      }),
+    });
+    expect(membershipTxFindFirstMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ action: 'set_audit.self_audit_exception' }),
+    );
+  });
+
+  it('ignores any client-supplied audit timestamp and uses server time (D6)', async () => {
+    setBatchFindManyMock.mockResolvedValue(selfAuditBatch());
+
+    const before = Date.now();
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'rejected',
+          reject_reason: '数量誤り',
+          reject_reason_code: 'quantity_short',
+          // クライアントが過去日時を偽装しても無視され、サーバ時刻が使われる。
+          audited_at: '2000-01-01T00:00:00.000Z',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    const auditedAt = setAuditCreateMock.mock.calls[0][0].data.audited_at as Date;
+    expect(auditedAt).toBeInstanceOf(Date);
+    expect(auditedAt.getTime()).toBeGreaterThanOrEqual(before);
   });
 
   it('returns 409 before audit writes when the auditor submits a stale cell version', async () => {

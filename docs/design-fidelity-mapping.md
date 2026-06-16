@@ -73,10 +73,10 @@ pnpm test:e2e:local -- ui-design-fidelity
 | 09  | p0_09_prescription_import           | `/prescriptions/new`                 | 改修 | 未着手 |                                                                   |
 | 10  | p0_10_prescription_entry_period     | `/prescriptions/new`(期間入力)       | 改修 | 未着手 |                                                                   |
 | 11  | p0_11_prescription_diff_review      | `/patients/[id]/prescriptions`(差分) | 改修 | 未着手 |                                                                   |
-| 12  | p0_12_dispensing_workbench          | `/dispensing`                        | 改修 | 未着手 |                                                                   |
-| 13  | p0_13_dispensing_audit              | `/auditing`                          | 改修 | 未着手 |                                                                   |
-| 14  | p0_14_set_preparation               | `/medication-sets`                   | 改修 | 未着手 |                                                                   |
-| 15  | p0_15_set_audit                     | `/medication-sets`(鑑査)             | 改修 | 未着手 |                                                                   |
+| 12  | p0_12_dispensing_workbench          | `/dispense`                          | 完了 | 撮影済 | レセコン風 DispensingWorkbench(phase=dispense)へ完全置換・design-fidelity 撮影済 |
+| 13  | p0_13_dispensing_audit              | `/audit`                             | 完了 | 撮影済 | phase=audit。撮影済                                                |
+| 14  | p0_14_set_preparation               | `/set`                               | 完了 | 撮影済 | phase=setp(お薬カレンダー)。撮影済                                 |
+| 15  | p0_15_set_audit                     | `/set-audit`                         | 完了 | 撮影済 | phase=seta(独立ルート新設)。撮影済                                 |
 | 16  | p0_16_schedule_gantt_all_staff      | `/schedules`                         | 改修 | 未着手 | 全スタッフ横断ガント                                              |
 | 17  | p0_17_schedule_confirmation_flow    | `/schedules/proposals`               | 改修 | 未着手 |                                                                   |
 | 18  | p0_18_schedule_create_edit_drawer   | `/schedules`(作成/編集ドロワー)      | 部品 | 未着手 |                                                                   |
