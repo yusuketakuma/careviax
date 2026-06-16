@@ -20,6 +20,7 @@ const {
   consentRecordFindManyMock,
   patientInsuranceFindManyMock,
   medicationCycleFindManyMock,
+  pharmacistCredentialFindManyMock,
   notificationCreateMock,
   dispatchNotificationEventMock,
   taskFindManyMock,
@@ -49,6 +50,7 @@ const {
   consentRecordFindManyMock: vi.fn(),
   patientInsuranceFindManyMock: vi.fn(),
   medicationCycleFindManyMock: vi.fn(),
+  pharmacistCredentialFindManyMock: vi.fn(),
   notificationCreateMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
   taskFindManyMock: vi.fn(),
@@ -107,6 +109,9 @@ vi.mock('@/lib/db', () => ({
     },
     medicationCycle: {
       findMany: medicationCycleFindManyMock,
+    },
+    pharmacistCredential: {
+      findMany: pharmacistCredentialFindManyMock,
     },
     visitRecord: {
       findMany: visitRecordFindManyMock,
@@ -185,6 +190,7 @@ import {
   checkConferenceMeetingReminders,
   checkEmergencyCoverageGaps,
   checkFacilityStandardExpiry,
+  checkCredentialExpiry,
   checkInitialHomeVisitAssessmentBacklog,
   checkPcaPumpReturnInspectionPending,
   checkPcaPumpRentalOverdues,
@@ -664,7 +670,7 @@ describe('daily job local date keys', () => {
         site: { name: '本店' },
       },
     ]);
-    membershipFindManyMock.mockResolvedValue([{ user_id: 'admin_1' }]);
+    membershipFindManyMock.mockResolvedValue([{ org_id: 'org_1', user_id: 'admin_1' }]);
 
     const result = await checkFacilityStandardExpiry();
 
@@ -678,6 +684,96 @@ describe('daily job local date keys', () => {
         dedupeKey: 'facility-standard-expiry:facility_standard_1',
       }),
     );
+  });
+
+  it('prefetches facility standard expiry admins once per affected org set', async () => {
+    facilityStandardRegistrationFindManyMock.mockResolvedValue([
+      {
+        id: 'facility_standard_1',
+        org_id: 'org_1',
+        standard_type: '在宅患者訪問薬剤管理指導料',
+        expiry_date: new Date('2026-06-14T15:30:00.000Z'),
+        site: { name: '本店' },
+      },
+      {
+        id: 'facility_standard_2',
+        org_id: 'org_1',
+        standard_type: '地域支援体制加算',
+        expiry_date: new Date('2026-06-20T15:30:00.000Z'),
+        site: { name: '本店' },
+      },
+    ]);
+    membershipFindManyMock.mockResolvedValue([{ org_id: 'org_1', user_id: 'admin_1' }]);
+
+    const result = await checkFacilityStandardExpiry();
+
+    expect(result).toEqual({ processedCount: 2 });
+    expect(membershipFindManyMock).toHaveBeenCalledTimes(1);
+    expect(membershipFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: { in: ['org_1'] },
+        role: { in: ['admin', 'owner'] },
+        is_active: true,
+      },
+      select: { org_id: true, user_id: true },
+    });
+    expect(notificationCreateMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('prefetches credential expiry admins once and skips duplicate self-admin notices', async () => {
+    pharmacistCredentialFindManyMock.mockResolvedValue([
+      {
+        id: 'credential_1',
+        org_id: 'org_1',
+        user_id: 'admin_1',
+        certification_type: '認定薬剤師',
+        expiry_date: new Date('2026-06-20T15:30:00.000Z'),
+        user: { id: 'admin_1', org_id: 'org_1', name: '管理 薬剤師' },
+      },
+      {
+        id: 'credential_2',
+        org_id: 'org_1',
+        user_id: 'pharmacist_1',
+        certification_type: '実務実習指導薬剤師',
+        expiry_date: new Date('2026-06-25T15:30:00.000Z'),
+        user: { id: 'pharmacist_1', org_id: 'org_1', name: '担当 薬剤師' },
+      },
+    ]);
+    membershipFindManyMock.mockResolvedValue([
+      { org_id: 'org_1', user_id: 'admin_1' },
+      { org_id: 'org_1', user_id: 'owner_1' },
+    ]);
+
+    const result = await checkCredentialExpiry();
+
+    expect(result).toEqual({ processedCount: 5 });
+    expect(membershipFindManyMock).toHaveBeenCalledTimes(1);
+    expect(membershipFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: { in: ['org_1'] },
+        role: { in: ['admin', 'owner'] },
+        is_active: true,
+      },
+      select: { org_id: true, user_id: true },
+    });
+    expect(notificationCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        user_id: 'admin_1',
+        dedupe_key: 'credential-expiry:credential_1:30',
+      }),
+    });
+    expect(notificationCreateMock).not.toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        user_id: 'admin_1',
+        dedupe_key: 'credential-expiry-admin:credential_1:admin_1:30',
+      }),
+    });
+    expect(notificationCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        user_id: 'owner_1',
+        dedupe_key: 'credential-expiry-admin:credential_2:owner_1:30',
+      }),
+    });
   });
 
   it('uses local-calendar dates in consent expiry notifications and tasks', async () => {

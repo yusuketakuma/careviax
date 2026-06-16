@@ -80,6 +80,24 @@ type DailyOperationResult = {
   errors?: string[];
 };
 
+async function findAdminUserIdsByOrg(orgIds: Iterable<string>) {
+  const uniqueOrgIds = [...new Set([...orgIds].filter(Boolean))];
+  if (uniqueOrgIds.length === 0) return new Map<string, string[]>();
+
+  const memberships = await prisma.membership.findMany({
+    where: { org_id: { in: uniqueOrgIds }, role: { in: ['admin', 'owner'] }, is_active: true },
+    select: { org_id: true, user_id: true },
+  });
+  const adminIdsByOrg = new Map<string, string[]>();
+  for (const membership of memberships) {
+    const list = adminIdsByOrg.get(membership.org_id) ?? [];
+    list.push(membership.user_id);
+    adminIdsByOrg.set(membership.org_id, list);
+  }
+
+  return adminIdsByOrg;
+}
+
 type DailyOperationTask = () => Promise<DailyOperationResult>;
 
 const DEFAULT_DAILY_OPERATION_CONCURRENCY = 4;
@@ -1912,6 +1930,7 @@ export async function checkFacilityStandardExpiry() {
 
     const taskSpecs: GeneratedTaskSpec[] = [];
     let notificationCount = 0;
+    const adminUserIdsByOrg = await findAdminUserIdsByOrg(expiring.map((reg) => reg.org_id));
 
     for (const reg of expiring) {
       if (!reg.expiry_date) continue;
@@ -1922,18 +1941,11 @@ export async function checkFacilityStandardExpiry() {
       const threshold = thresholds.find((t) => daysUntilExpiry <= t.days);
       if (!threshold) continue;
 
-      // Find admin users for the org to notify
-      const adminMemberships = await prisma.membership.findMany({
-        where: { org_id: reg.org_id, role: { in: ['admin', 'owner'] }, is_active: true },
-        select: { user_id: true },
-      });
-      const admins = adminMemberships.map((m) => ({ id: m.user_id }));
-
-      for (const admin of admins) {
+      for (const adminId of adminUserIdsByOrg.get(reg.org_id) ?? []) {
         await prisma.notification.create({
           data: {
             org_id: reg.org_id,
-            user_id: admin.id,
+            user_id: adminId,
             type: threshold.priority === 'urgent' ? 'urgent' : 'business',
             title: '施設基準の有効期限',
             message: `${reg.standard_type}（${reg.site?.name ?? '不明'}）の有効期限が${threshold.label}に迫っています。`,
@@ -1988,6 +2000,7 @@ export async function checkCredentialExpiry() {
     ];
 
     let notificationCount = 0;
+    const adminUserIdsByOrg = await findAdminUserIdsByOrg(expiring.map((cred) => cred.org_id));
 
     for (const cred of expiring) {
       if (!cred.expiry_date) continue;
@@ -2012,24 +2025,17 @@ export async function checkCredentialExpiry() {
       });
       notificationCount++;
 
-      // Also notify admins
-      const adminMemberships = await prisma.membership.findMany({
-        where: { org_id: cred.org_id, role: { in: ['admin', 'owner'] }, is_active: true },
-        select: { user_id: true },
-      });
-      const admins = adminMemberships.map((m) => ({ id: m.user_id }));
-
-      for (const admin of admins) {
-        if (admin.id === cred.user_id) continue; // skip if admin is the pharmacist
+      for (const adminId of adminUserIdsByOrg.get(cred.org_id) ?? []) {
+        if (adminId === cred.user_id) continue; // skip if admin is the pharmacist
         await prisma.notification.create({
           data: {
             org_id: cred.org_id,
-            user_id: admin.id,
+            user_id: adminId,
             type: 'business',
             title: '薬剤師資格の有効期限',
             message: `${cred.user?.name ?? '薬剤師'} の ${cred.certification_type} が${threshold.label}に期限切れ。`,
             link: '/admin/staff',
-            dedupe_key: `credential-expiry-admin:${cred.id}:${admin.id}:${threshold.days}`,
+            dedupe_key: `credential-expiry-admin:${cred.id}:${adminId}:${threshold.days}`,
           },
         });
         notificationCount++;
