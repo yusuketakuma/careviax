@@ -199,6 +199,9 @@ function createDb(overrides: Record<string, unknown> = {}) {
         },
       ]),
     },
+    careReport: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
     task: {
       count: vi.fn().mockResolvedValue(1),
       findFirst: vi
@@ -251,7 +254,25 @@ describe('getPatientHomeOperationsData', () => {
   it('summarizes the five home-care operation domains from existing patient records', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-16T00:00:00.000Z'));
-    const db = createDb();
+    const db = createDb({
+      careReport: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'report_1',
+            delivery_records: [
+              {
+                recipient_name: '田中ケアマネ',
+                status: 'draft',
+              },
+              {
+                recipient_name: '山本医師',
+                status: 'sent',
+              },
+            ],
+          },
+        ]),
+      },
+    });
 
     const result = await getPatientHomeOperationsData(db as never, {
       orgId: 'org_1',
@@ -423,6 +444,10 @@ describe('getPatientHomeOperationsData', () => {
       ]),
       metrics: expect.arrayContaining([
         { label: '報告書', value: 'ドラフト1件' },
+        { label: '送付先', value: '2件 / 待ち1件' },
+        { label: '送付済み', value: '1/2件' },
+        { label: '送付失敗', value: 'なし' },
+        { label: '送付先名', value: '田中ケアマネ / 山本医師' },
         { label: '予定連動', value: '訪問提案あり' },
         { label: '議題', value: '退院後の服薬支援と訪問頻度を調整する' },
         { label: '場所', value: 'MCS 山田太郎さん在宅チーム' },
@@ -451,6 +476,78 @@ describe('getPatientHomeOperationsData', () => {
     );
     expect(vi.mocked(db.billingCandidate.findMany).mock.calls[0]?.[0]).not.toHaveProperty('take');
     expect(vi.mocked(db.conferenceNote.findMany).mock.calls[0]?.[0]).toHaveProperty('take', 16);
+    expect(db.careReport.findMany).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        id: { in: ['report_1'] },
+      },
+      select: {
+        id: true,
+        delivery_records: {
+          select: {
+            recipient_name: true,
+            status: true,
+          },
+        },
+      },
+    });
+  });
+
+  it('raises conference report delivery alerts when generated drafts still need sending or failed', async () => {
+    const db = createDb({
+      careReport: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'report_1',
+            delivery_records: [
+              { recipient_name: '田中ケアマネ', status: 'draft' },
+              { recipient_name: '山本医師', status: 'failed' },
+              { recipient_name: '佐藤訪看', status: 'confirmed' },
+            ],
+          },
+        ]),
+      },
+      task: {
+        count: vi.fn().mockResolvedValue(0),
+        findFirst: vi
+          .fn()
+          .mockResolvedValueOnce({
+            metadata: {
+              linked_status: 'linked',
+              participation_status: 'joined',
+              last_checked_at: '2099-06-15T00:00:00.000Z',
+            },
+          })
+          .mockResolvedValueOnce({
+            metadata: {
+              payer_type: 'family',
+              payment_method: 'bank_transfer',
+            },
+          })
+          .mockResolvedValueOnce(null),
+      },
+    });
+
+    const result = await getPatientHomeOperationsData(db as never, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    expect(result?.items.find((item) => item.key === 'conference')).toMatchObject({
+      alerts: expect.arrayContaining([
+        '会議報告書の送付ドラフトが1件残っています',
+        '会議報告書の送付失敗が1件あります',
+      ]),
+      metrics: expect.arrayContaining([
+        { label: '送付先', value: '3件 / 待ち1件' },
+        { label: '送付済み', value: '1/3件' },
+        { label: '送付失敗', value: '1件' },
+        { label: '送付先名', value: '田中ケアマネ / 山本医師 / 佐藤訪看' },
+      ]),
+    });
   });
 
   it('returns null without loading operational rows when the patient is not visible', async () => {

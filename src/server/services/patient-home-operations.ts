@@ -159,6 +159,15 @@ type ConferenceOperationSnapshot = {
   participant_count: number | null;
 };
 
+type ConferenceReportDeliverySummary = {
+  report_count: number;
+  recipient_count: number;
+  pending_count: number;
+  sent_count: number;
+  failed_count: number;
+  recipient_names: string[];
+};
+
 type ConferenceActionItemSummary = {
   total: number;
   converted: number;
@@ -559,6 +568,42 @@ function hasConferenceReportDraft(conference: ConferenceOperationNote) {
     conference.generated_report_id ||
     (readConferenceSyncSummary(conference.metadata)?.report_draft_ids.length ?? 0) > 0,
   );
+}
+
+function collectConferenceReportDraftIds(conferences: ConferenceOperationNote[]) {
+  return Array.from(
+    new Set(
+      conferences.flatMap((conference) => [
+        ...(readConferenceSyncSummary(conference.metadata)?.report_draft_ids ?? []),
+        ...(conference.generated_report_id ? [conference.generated_report_id] : []),
+      ]),
+    ),
+  );
+}
+
+function summarizeConferenceReportDeliveries(
+  careReports: Array<{
+    id: string;
+    delivery_records: Array<{
+      recipient_name: string;
+      status: string;
+    }>;
+  }>,
+): ConferenceReportDeliverySummary {
+  const records = careReports.flatMap((report) => report.delivery_records);
+  const recipientNames = Array.from(
+    new Set(records.map((record) => record.recipient_name).filter(Boolean)),
+  );
+
+  return {
+    report_count: careReports.length,
+    recipient_count: records.length,
+    pending_count: records.filter((record) => ['draft', 'response_waiting'].includes(record.status))
+      .length,
+    sent_count: records.filter((record) => ['sent', 'confirmed'].includes(record.status)).length,
+    failed_count: records.filter((record) => record.status === 'failed').length,
+    recipient_names: recipientNames,
+  };
 }
 
 function readConferenceActionItemSummary(actionItems: unknown): ConferenceActionItemSummary {
@@ -1195,6 +1240,7 @@ function buildConferenceItem(args: {
   activeCaseId: string | null;
   conferences: ConferenceOperationNote[];
   openConferenceTasks: number;
+  reportDeliverySummary: ConferenceReportDeliverySummary;
 }): PatientHomeOperationItem {
   const now = new Date();
   const upcomingNote =
@@ -1231,6 +1277,7 @@ function buildConferenceItem(args: {
     ...(syncSummary?.report_draft_ids ?? []),
     ...(note?.generated_report_id ? [note.generated_report_id] : []),
   ]).size;
+  const deliverySummary = args.reportDeliverySummary;
   const reportMissing = Boolean(dueWorkNote && !hasConferenceReportDraft(dueWorkNote));
   const followUpOpen = Boolean(note?.follow_up_date && !note.follow_up_completed);
   const followUpOverdue = Boolean(
@@ -1244,6 +1291,10 @@ function buildConferenceItem(args: {
     followUpOpen && '会議後フォローアップが未完了です',
     args.openConferenceTasks > 0 && `会議関連タスクが${args.openConferenceTasks}件残っています`,
     openActionItemCount > 0 && `薬局タスク${openActionItemCount}件が運用タスクへ未変換です`,
+    deliverySummary.pending_count > 0 &&
+      `会議報告書の送付ドラフトが${deliverySummary.pending_count}件残っています`,
+    deliverySummary.failed_count > 0 &&
+      `会議報告書の送付失敗が${deliverySummary.failed_count}件あります`,
   ]);
 
   return {
@@ -1277,6 +1328,30 @@ function buildConferenceItem(args: {
             : !dueWorkNote && conferenceUpcoming
               ? '予定前'
               : '未作成',
+      },
+      {
+        label: '送付先',
+        value: deliverySummary.recipient_count
+          ? `${deliverySummary.recipient_count}件 / 待ち${deliverySummary.pending_count}件`
+          : reportDraftCount > 0
+            ? '未設定'
+            : '未作成',
+      },
+      {
+        label: '送付済み',
+        value: deliverySummary.recipient_count
+          ? `${deliverySummary.sent_count}/${deliverySummary.recipient_count}件`
+          : '未設定',
+      },
+      {
+        label: '送付失敗',
+        value: deliverySummary.failed_count ? `${deliverySummary.failed_count}件` : 'なし',
+      },
+      {
+        label: '送付先名',
+        value: deliverySummary.recipient_names.length
+          ? compactMetricText(deliverySummary.recipient_names.join(' / '))
+          : '未設定',
       },
       {
         label: 'フォロー',
@@ -1655,6 +1730,28 @@ export async function getPatientHomeOperationsData(
       ]),
     ).values(),
   ];
+  const conferenceReportDraftIds = collectConferenceReportDraftIds(conferenceNotes);
+  const conferenceReportDeliverySummary =
+    conferenceReportDraftIds.length === 0
+      ? summarizeConferenceReportDeliveries([])
+      : summarizeConferenceReportDeliveries(
+          await db.careReport.findMany({
+            where: {
+              org_id: args.orgId,
+              patient_id: args.patientId,
+              id: { in: conferenceReportDraftIds },
+            },
+            select: {
+              id: true,
+              delivery_records: {
+                select: {
+                  recipient_name: true,
+                  status: true,
+                },
+              },
+            },
+          }),
+        );
 
   const items = [
     buildDocumentItem({
@@ -1687,6 +1784,7 @@ export async function getPatientHomeOperationsData(
       activeCaseId,
       conferences: conferenceNotes,
       openConferenceTasks,
+      reportDeliverySummary: conferenceReportDeliverySummary,
     }),
   ];
 
