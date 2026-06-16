@@ -776,6 +776,9 @@ type BillingCollectionFormInput = {
   paymentMethod: string | null;
   scheduledCollectionAt: string | null;
   receiptNumber: string | null;
+  receiptIssueStatus: 'not_required' | 'not_issued' | 'issued';
+  invoiceIssueStatus: 'not_required' | 'not_issued' | 'issued';
+  saveReceiptCopy: boolean;
 };
 
 type BillingPaymentProfileFormInput = {
@@ -1406,6 +1409,39 @@ function BillingCollectionQuickForm({
   );
   const [payerName, setPayerName] = useState(() => metricValue(item, '支払者'));
   const [receiptNumber, setReceiptNumber] = useState(() => metricValue(item, '領収証'));
+  const [receiptIssueStatus, setReceiptIssueStatus] = useState<
+    BillingCollectionFormInput['receiptIssueStatus']
+  >(() => {
+    const savedStatus = metricValue(item, '領収証状態コード');
+    if (
+      savedStatus === 'issued' ||
+      savedStatus === 'not_issued' ||
+      savedStatus === 'not_required'
+    ) {
+      return savedStatus;
+    }
+    return metricValueOrDefault(item, '領収証発行コード', 'paper') === 'none'
+      ? 'not_required'
+      : 'issued';
+  });
+  const [invoiceIssueStatus, setInvoiceIssueStatus] = useState<
+    BillingCollectionFormInput['invoiceIssueStatus']
+  >(() => {
+    const savedStatus = metricValue(item, '請求書状態コード');
+    if (
+      savedStatus === 'issued' ||
+      savedStatus === 'not_issued' ||
+      savedStatus === 'not_required'
+    ) {
+      return savedStatus;
+    }
+    return metricValueOrDefault(item, '請求書発行コード', 'yes') === 'no'
+      ? 'not_required'
+      : 'not_issued';
+  });
+  const [saveReceiptCopy, setSaveReceiptCopy] = useState(
+    () => metricValue(item, '領収証控えコード') === 'yes',
+  );
   const [scheduledCollectionAt, setScheduledCollectionAt] = useState(() =>
     metricDateTimeValue(item, '次回集金予定'),
   );
@@ -1468,6 +1504,10 @@ function BillingCollectionQuickForm({
           setError('領収証発行が必要な集金では領収証番号を入力してください。');
           return;
         }
+        if (receiptRequiredForStatus && receiptIssueStatus !== 'issued') {
+          setError('領収証発行が必要な集金では発行状態を発行済みにしてください。');
+          return;
+        }
         setError(null);
         onSubmit?.({
           candidateId,
@@ -1480,6 +1520,9 @@ function BillingCollectionQuickForm({
             ? new Date(scheduledCollectionAt).toISOString()
             : null,
           receiptNumber: receiptNumber.trim() || null,
+          receiptIssueStatus,
+          invoiceIssueStatus,
+          saveReceiptCopy,
         });
       }}
     >
@@ -1567,6 +1610,55 @@ function BillingCollectionQuickForm({
             className="min-h-9 text-xs"
           />
         </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <Label htmlFor={`billing-receipt-status-${candidateId}`} className="text-xs">
+              領収証状態
+            </Label>
+            <select
+              id={`billing-receipt-status-${candidateId}`}
+              value={receiptIssueStatus}
+              onChange={(event) =>
+                setReceiptIssueStatus(
+                  event.target.value as BillingCollectionFormInput['receiptIssueStatus'],
+                )
+              }
+              className="min-h-9 w-full rounded-lg border border-input bg-background px-2 text-xs"
+            >
+              <option value="issued">発行済み</option>
+              <option value="not_issued">未発行</option>
+              <option value="not_required">発行不要</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor={`billing-invoice-status-${candidateId}`} className="text-xs">
+              請求書状態
+            </Label>
+            <select
+              id={`billing-invoice-status-${candidateId}`}
+              value={invoiceIssueStatus}
+              onChange={(event) =>
+                setInvoiceIssueStatus(
+                  event.target.value as BillingCollectionFormInput['invoiceIssueStatus'],
+                )
+              }
+              className="min-h-9 w-full rounded-lg border border-input bg-background px-2 text-xs"
+            >
+              <option value="not_issued">未発行</option>
+              <option value="issued">発行済み</option>
+              <option value="not_required">発行不要</option>
+            </select>
+          </div>
+        </div>
+        <label className="inline-flex min-h-9 items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={saveReceiptCopy}
+            onChange={(event) => setSaveReceiptCopy(event.target.checked)}
+            className="size-4"
+          />
+          領収証控えを保存する
+        </label>
         <div className="rounded-lg border border-current/15 bg-muted/20 p-2 text-xs">
           <p className="font-medium text-foreground">保存される集金履歴</p>
           <dl className="mt-2 grid gap-1">
@@ -1586,6 +1678,29 @@ function BillingCollectionQuickForm({
               <dt className="text-muted-foreground">領収証</dt>
               <dd className="font-medium text-foreground">
                 {receiptRequired ? receiptNumber.trim() || '番号未入力' : '発行不要'}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-2">
+              <dt className="text-muted-foreground">発行状態</dt>
+              <dd className="font-medium text-foreground">
+                領収証{' '}
+                {receiptIssueStatus === 'issued'
+                  ? '発行済み'
+                  : receiptIssueStatus === 'not_required'
+                    ? '不要'
+                    : '未発行'}{' '}
+                / 請求書{' '}
+                {invoiceIssueStatus === 'issued'
+                  ? '発行済み'
+                  : invoiceIssueStatus === 'not_required'
+                    ? '不要'
+                    : '未発行'}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-2">
+              <dt className="text-muted-foreground">控え保存</dt>
+              <dd className="font-medium text-foreground">
+                {saveReceiptCopy ? '保存する' : '保存しない'}
               </dd>
             </div>
           </dl>
@@ -2673,6 +2788,9 @@ export function CardWorkspace({
             ? new Date().toISOString()
             : null,
           receipt_number: input.receiptNumber,
+          receipt_issue_status: input.receiptIssueStatus,
+          invoice_issue_status: input.invoiceIssueStatus,
+          save_receipt_copy: input.saveReceiptCopy,
         }),
       });
       if (!response.ok) {

@@ -109,6 +109,9 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
         scheduled_collection_at: '2026-06-25T00:00:00.000Z',
         collected_at: '2026-06-16T00:00:00.000Z',
         receipt_number: 'R20260616-001',
+        receipt_issue_status: 'issued',
+        invoice_issue_status: 'issued',
+        save_receipt_copy: true,
         unpaid_reason: '次回訪問時に残額集金',
       }),
       { params: Promise.resolve({ id: ' candidate_1 ' }) },
@@ -137,6 +140,9 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
             payer_name: '長女',
             scheduled_collection_at: '2026-06-25T00:00:00.000Z',
             receipt_number: 'R20260616-001',
+            receipt_issue_status: 'issued',
+            invoice_issue_status: 'issued',
+            save_receipt_copy: true,
             updated_by: 'user_1',
           }),
         }),
@@ -172,10 +178,13 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
-      message: '領収証番号を入力してください',
+      message: '領収証番号と発行状態を入力してください',
       details: {
         receipt_number: expect.arrayContaining([
           '領収証発行が必要な患者では集金時に領収証番号が必須です',
+        ]),
+        receipt_issue_status: expect.arrayContaining([
+          '領収証発行が必要な患者では集金時に発行済み状態が必須です',
         ]),
       },
     });
@@ -188,6 +197,27 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
       },
       orderBy: [{ updated_at: 'desc' }],
       select: { metadata: true },
+    });
+    expect(updateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects collected payments when receipt status is not issued', async () => {
+    const response = await PATCH(
+      createRequest({
+        status: 'collected',
+        billed_amount: 3240,
+        collected_amount: 3240,
+        collected_at: '2026-06-16T00:00:00.000Z',
+        receipt_number: 'R20260616-001',
+        receipt_issue_status: 'not_issued',
+      }),
+      { params: Promise.resolve({ id: 'candidate_1' }) },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '領収証番号と発行状態を入力してください',
     });
     expect(updateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
@@ -218,6 +248,7 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
             collection: expect.objectContaining({
               status: 'collected',
               receipt_number: null,
+              receipt_issue_status: 'not_required',
             }),
           }),
         },

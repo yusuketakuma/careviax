@@ -45,6 +45,16 @@ function isReceiptManagedPayment(input: {
   );
 }
 
+function resolveReceiptIssueStatus(input: {
+  requestedStatus: string | undefined;
+  receiptIssue: string | null;
+  receiptNumber: string | null;
+}) {
+  if (input.receiptIssue === 'none') return 'not_required';
+  if (input.requestedStatus) return input.requestedStatus;
+  return input.receiptNumber ? 'issued' : 'not_issued';
+}
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canManageBilling',
@@ -105,13 +115,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const billedAmount = parsed.data.billed_amount ?? null;
     const collectedAmount = parsed.data.collected_amount ?? null;
     const receiptNumber = normalizeReceiptNumber(parsed.data.receipt_number);
+    const receiptIssueStatus = resolveReceiptIssueStatus({
+      requestedStatus: parsed.data.receipt_issue_status,
+      receiptIssue,
+      receiptNumber,
+    });
+    const invoiceIssueStatus = parsed.data.invoice_issue_status ?? 'not_issued';
     if (
       isReceiptManagedPayment({
         status: parsed.data.status,
         collectedAmount,
         receiptIssue,
       }) &&
-      !receiptNumber
+      (!receiptNumber || receiptIssueStatus !== 'issued')
     ) {
       return 'missing-receipt-number' as const;
     }
@@ -132,6 +148,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         ? new Date(parsed.data.collected_at).toISOString()
         : null,
       receipt_number: receiptNumber,
+      receipt_issue_status: receiptIssueStatus,
+      invoice_issue_status: invoiceIssueStatus,
+      save_receipt_copy: parsed.data.save_receipt_copy,
       unpaid_reason: normalizeNullableText(parsed.data.unpaid_reason),
       note: normalizeNullableText(parsed.data.note),
       updated_at: new Date().toISOString(),
@@ -183,8 +202,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     );
   }
   if (result === 'missing-receipt-number') {
-    return validationError('領収証番号を入力してください', {
+    return validationError('領収証番号と発行状態を入力してください', {
       receipt_number: ['領収証発行が必要な患者では集金時に領収証番号が必須です'],
+      receipt_issue_status: ['領収証発行が必要な患者では集金時に発行済み状態が必須です'],
     });
   }
   if (!result) return notFound('請求候補が見つかりません');

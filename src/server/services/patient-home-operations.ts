@@ -97,6 +97,9 @@ type BillingCollectionSnapshot = {
   scheduled_collection_at: string | null;
   collected_at: string | null;
   receipt_number: string | null;
+  receipt_issue_status: string | null;
+  invoice_issue_status: string | null;
+  save_receipt_copy: boolean;
 };
 
 type BillingPaymentProfileSnapshot = {
@@ -248,6 +251,12 @@ const BILLING_RECEIPT_ISSUE_LABELS: Record<string, string> = {
   none: '不要',
 };
 
+const BILLING_DOCUMENT_ISSUE_STATUS_LABELS: Record<string, string> = {
+  issued: '発行済み',
+  not_issued: '未発行',
+  not_required: '不要',
+};
+
 const BILLING_INVOICE_ISSUE_LABELS: Record<string, string> = {
   yes: 'あり',
   no: 'なし',
@@ -296,6 +305,10 @@ function readNumber(value: unknown) {
 
 function readString(value: unknown) {
   return typeof value === 'string' && value.trim() ? value : null;
+}
+
+function readBoolean(value: unknown) {
+  return typeof value === 'boolean' ? value : false;
 }
 
 type FirstVisitDocumentHomeSource = {
@@ -418,6 +431,9 @@ function readBillingCollection(calculationBreakdown: unknown): BillingCollection
     scheduled_collection_at: readString(collection.scheduled_collection_at),
     collected_at: readString(collection.collected_at),
     receipt_number: readString(collection.receipt_number),
+    receipt_issue_status: readString(collection.receipt_issue_status),
+    invoice_issue_status: readString(collection.invoice_issue_status),
+    save_receipt_copy: readBoolean(collection.save_receipt_copy),
   };
 }
 
@@ -1021,6 +1037,24 @@ function buildBillingItem(args: {
       },
       { label: '領収証', value: latestCollection?.receipt_number ?? '未発行/未記録' },
       {
+        label: '領収証状態',
+        value: latestCollection?.receipt_issue_status
+          ? (BILLING_DOCUMENT_ISSUE_STATUS_LABELS[latestCollection.receipt_issue_status] ??
+            latestCollection.receipt_issue_status)
+          : '未記録',
+      },
+      {
+        label: '請求書状態',
+        value: latestCollection?.invoice_issue_status
+          ? (BILLING_DOCUMENT_ISSUE_STATUS_LABELS[latestCollection.invoice_issue_status] ??
+            latestCollection.invoice_issue_status)
+          : '未記録',
+      },
+      {
+        label: '領収証控え',
+        value: latestCollection?.save_receipt_copy ? '保存する' : '保存しない',
+      },
+      {
         label: '領収証発行',
         value: paymentProfile
           ? (BILLING_RECEIPT_ISSUE_LABELS[paymentProfile.receipt_issue ?? ''] ??
@@ -1049,6 +1083,9 @@ function buildBillingItem(args: {
       { label: '集金タイミングコード', value: paymentProfile?.collection_timing ?? '' },
       { label: '領収証発行コード', value: paymentProfile?.receipt_issue ?? '' },
       { label: '請求書発行コード', value: paymentProfile?.invoice_issue ?? '' },
+      { label: '領収証状態コード', value: latestCollection?.receipt_issue_status ?? '' },
+      { label: '請求書状態コード', value: latestCollection?.invoice_issue_status ?? '' },
+      { label: '領収証控えコード', value: latestCollection?.save_receipt_copy ? 'yes' : 'no' },
       { label: '未収許容コード', value: paymentProfile?.unpaid_tolerance ?? '' },
       { label: '続柄', value: paymentProfile?.payer_relation ?? '' },
       { label: '請求先住所区分コード', value: paymentProfile?.billing_address_mode ?? '' },

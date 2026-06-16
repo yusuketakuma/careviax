@@ -1077,6 +1077,12 @@ describe('CardWorkspace', () => {
     fireEvent.change(screen.getByLabelText('次回集金予定'), {
       target: { value: '2026-06-25T10:30' },
     });
+    fireEvent.change(screen.getByLabelText('請求書状態'), {
+      target: { value: 'issued' },
+    });
+    fireEvent.click(screen.getByLabelText('領収証控えを保存する'));
+    expect(screen.getByText('領収証 発行済み / 請求書 発行済み')).toBeTruthy();
+    expect(screen.getByText('保存する')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /集金記録を登録/ }));
 
     expect(billingMutate).toHaveBeenCalledWith({
@@ -1088,6 +1094,9 @@ describe('CardWorkspace', () => {
       paymentMethod: 'cash',
       scheduledCollectionAt: new Date('2026-06-25T10:30').toISOString(),
       receiptNumber: 'R20260616-001',
+      receiptIssueStatus: 'issued',
+      invoiceIssueStatus: 'issued',
+      saveReceiptCopy: true,
     });
   });
 
@@ -1179,6 +1188,51 @@ describe('CardWorkspace', () => {
 
     expect(
       await screen.findByText('領収証発行が必要な集金では領収証番号を入力してください。'),
+    ).toBeTruthy();
+    expect(billingMutate).not.toHaveBeenCalled();
+  });
+
+  it('requires issued receipt status before saving receipt-managed collection', async () => {
+    const { billingMutate } = mockPatientQuery(buildWorkspace(), {
+      generated_at: '2026-06-16T00:00:00.000Z',
+      attention_count: 1,
+      top_alerts: [],
+      items: [
+        {
+          key: 'billing',
+          label: '請求・集金',
+          status: '確認待ち',
+          description: '2026/06 居宅療養管理指導 / confirmed',
+          href: '/billing/candidates?patient_id=patient_1&billing_month=2026-06-01',
+          action_label: '請求候補を確認',
+          tone: 'attention',
+          updated_at: '2026-06-10T00:00:00.000Z',
+          metrics: [
+            { label: '今月請求額', value: '3,240円' },
+            { label: '支払者', value: '長女' },
+            { label: '領収証', value: 'R20260616-001' },
+            { label: '領収証発行コード', value: 'paper' },
+            { label: '領収証状態コード', value: 'not_issued' },
+          ],
+          alerts: ['領収証が未発行です'],
+          quick_actions: [
+            {
+              key: 'record_billing_collection',
+              label: '集金記録を更新',
+              resource_id: 'candidate_1',
+            },
+          ],
+        },
+      ],
+    });
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    fireEvent.change(screen.getByLabelText('入金額'), { target: { value: '3240' } });
+    fireEvent.click(screen.getByRole('button', { name: /集金記録を更新/ }));
+
+    expect(
+      await screen.findByText('領収証発行が必要な集金では発行状態を発行済みにしてください。'),
     ).toBeTruthy();
     expect(billingMutate).not.toHaveBeenCalled();
   });

@@ -13,6 +13,12 @@ export const billingCollectionStatusSchema = z.enum([
   'offset',
 ]);
 
+export const billingCollectionDocumentIssueStatusSchema = z.enum([
+  'not_required',
+  'not_issued',
+  'issued',
+]);
+
 const optionalAmountSchema = z.number().int().min(0).max(99_999_999).optional().nullable();
 const optionalTextSchema = z.string().trim().max(200).optional().nullable();
 
@@ -36,6 +42,9 @@ export const updateBillingCollectionSchema = z
     scheduled_collection_at: z.string().datetime().optional().nullable(),
     collected_at: z.string().datetime().optional().nullable(),
     receipt_number: optionalTextSchema,
+    receipt_issue_status: billingCollectionDocumentIssueStatusSchema.optional(),
+    invoice_issue_status: billingCollectionDocumentIssueStatusSchema.optional(),
+    save_receipt_copy: z.boolean().optional().default(false),
     unpaid_reason: z.string().trim().max(500).optional().nullable(),
     note: z.string().trim().max(1000).optional().nullable(),
   })
@@ -150,6 +159,9 @@ export const updateBillingCollectionSchema = z
   });
 
 export type BillingCollectionStatus = z.infer<typeof billingCollectionStatusSchema>;
+export type BillingCollectionDocumentIssueStatus = z.infer<
+  typeof billingCollectionDocumentIssueStatusSchema
+>;
 export type UpdateBillingCollectionInput = z.infer<typeof updateBillingCollectionSchema>;
 
 export const billingPaymentProfileSchema = z
