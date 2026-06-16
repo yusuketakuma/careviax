@@ -683,6 +683,9 @@ export function PrintHubContent() {
   const explicitPatientId = searchParams.get('patient_id');
   const [settings, setSettings] = useState<PrintOutputSettings>(DEFAULT_PRINT_OUTPUT_SETTINGS);
   const [printError, setPrintError] = useState<string | null>(null);
+  const [firstVisitPrintConfirmationKey, setFirstVisitPrintConfirmationKey] = useState<
+    string | null
+  >(null);
 
   const {
     plan,
@@ -706,6 +709,20 @@ export function PrintHubContent() {
   const firstVisitDocumentSummary = useMemo(
     () => buildFirstVisitDocumentPrintSummary(firstVisitPatientName, firstVisitDocuments),
     [firstVisitPatientName, firstVisitDocuments],
+  );
+  const firstVisitDocumentIdsKey = useMemo(
+    () => firstVisitDocuments.map((document) => document.id).join('\0'),
+    [firstVisitDocuments],
+  );
+  const currentFirstVisitPrintConfirmationKey = useMemo(
+    () =>
+      [
+        documentType,
+        explicitPatientId ?? '',
+        firstVisitDocumentIdsKey,
+        settings.saveCopy ? 'save-copy' : 'no-copy',
+      ].join('\0'),
+    [documentType, explicitPatientId, firstVisitDocumentIdsKey, settings.saveCopy],
   );
   const firstVisitPrintReadinessSummary = useMemo(
     () => summarizeFirstVisitPrintReadiness(firstVisitPrintReadiness),
@@ -756,16 +773,23 @@ export function PrintHubContent() {
       return;
     }
     if (documentType === 'first_visit_documents' && firstVisitDocuments.length > 0) {
-      try {
-        await firstVisitPrintHistoryMutation.mutateAsync();
-      } catch (error) {
-        setPrintError(
-          error instanceof Error ? error.message : '初回文書の印刷履歴を記録できませんでした',
-        );
-        return;
-      }
+      setFirstVisitPrintConfirmationKey(currentFirstVisitPrintConfirmationKey);
+      window.print();
+      return;
     }
     window.print();
+  };
+
+  const handleConfirmFirstVisitPrint = async () => {
+    setPrintError(null);
+    try {
+      await firstVisitPrintHistoryMutation.mutateAsync();
+      setFirstVisitPrintConfirmationKey(null);
+    } catch (error) {
+      setPrintError(
+        error instanceof Error ? error.message : '初回文書の印刷履歴を記録できませんでした',
+      );
+    }
   };
 
   const renderSheetBody = () => {
@@ -806,6 +830,9 @@ export function PrintHubContent() {
     { key: 'saveCopy', id: 'print-option-save-copy', label: '控えを保存' },
   ];
   const isFirstVisitPrint = documentType === 'first_visit_documents';
+  const shouldConfirmFirstVisitPrint = isFirstVisitPrint && firstVisitDocuments.length > 0;
+  const awaitingFirstVisitPrintConfirmation =
+    firstVisitPrintConfirmationKey === currentFirstVisitPrintConfirmationKey;
   const printDisabled =
     firstVisitPrintHistoryMutation.isPending ||
     (isFirstVisitPrint && Boolean(firstVisitPrintBlockMessage));
@@ -904,8 +931,25 @@ export function PrintHubContent() {
             onClick={() => void handlePrint()}
             disabled={printDisabled}
           >
-            {firstVisitPrintHistoryMutation.isPending ? '履歴記録中...' : '印刷する'}
+            {awaitingFirstVisitPrintConfirmation ? 'もう一度印刷する' : '印刷する'}
           </Button>
+          {shouldConfirmFirstVisitPrint && awaitingFirstVisitPrintConfirmation ? (
+            <div className="mt-3 space-y-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
+              <p className="text-xs leading-5 text-amber-900">
+                紙またはPDFの出力が完了してから、印刷履歴を記録してください。
+              </p>
+              <Button
+                type="button"
+                variant="secondary"
+                className="min-h-11 w-full"
+                data-testid="first-visit-print-confirm-button"
+                onClick={() => void handleConfirmFirstVisitPrint()}
+                disabled={firstVisitPrintHistoryMutation.isPending}
+              >
+                {firstVisitPrintHistoryMutation.isPending ? '履歴記録中...' : '印刷完了を記録'}
+              </Button>
+            </div>
+          ) : null}
           {printError ? (
             <p className="mt-2 text-xs leading-5 text-destructive" role="alert">
               {printError}
@@ -913,7 +957,7 @@ export function PrintHubContent() {
           ) : null}
           {settings.saveCopy && (
             <p className="mt-2 text-xs leading-5 text-muted-foreground">
-              印刷後、患者文書にこの印刷プレビューの控えリンクを保存します。紙控えが必要な場合は印刷ダイアログでPDF保存してください。
+              印刷完了を記録すると、患者文書にこの印刷プレビューの控えリンクを保存します。紙控えが必要な場合は印刷ダイアログでPDF保存してください。
             </p>
           )}
         </div>
