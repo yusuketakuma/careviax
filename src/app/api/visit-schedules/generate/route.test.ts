@@ -1,12 +1,14 @@
 import { format } from 'date-fns';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 
 const {
   authMock,
   membershipFindFirstMock,
   withOrgContextMock,
   careCaseFindFirstMock,
+  medicationCycleFindFirstMock,
   pharmacistShiftFindManyMock,
   visitVehicleResourceFindFirstMock,
   visitScheduleCountMock,
@@ -23,6 +25,7 @@ const {
   membershipFindFirstMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
+  medicationCycleFindFirstMock: vi.fn(),
   pharmacistShiftFindManyMock: vi.fn(),
   visitVehicleResourceFindFirstMock: vi.fn(),
   visitScheduleCountMock: vi.fn(),
@@ -48,6 +51,9 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     careCase: {
       findFirst: careCaseFindFirstMock,
+    },
+    medicationCycle: {
+      findFirst: medicationCycleFindFirstMock,
     },
     pharmacistShift: {
       findMany: pharmacistShiftFindManyMock,
@@ -102,6 +108,13 @@ function createMalformedJsonRequest() {
       'content-type': 'application/json',
       'x-org-id': 'org_1',
     },
+  });
+}
+
+function buildSerializableConflictError() {
+  return new Prisma.PrismaClientKnownRequestError('Serializable transaction conflict', {
+    code: 'P2034',
+    clientVersion: 'test',
   });
 }
 
@@ -175,6 +188,10 @@ describe('/api/visit-schedules/generate POST', () => {
     );
 
     careCaseFindFirstMock.mockResolvedValue(buildCareCase());
+    medicationCycleFindFirstMock.mockResolvedValue({
+      id: 'cycle_1',
+      overall_status: 'set_audited',
+    });
     evaluateVisitWorkflowGatesMock.mockImplementation((_prisma, args) =>
       Promise.resolve(args.asOfDates.map(() => ({ ok: true, issues: [] }))),
     );
@@ -200,6 +217,7 @@ describe('/api/visit-schedules/generate POST', () => {
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         visitSchedule: {
+          count: visitScheduleCountMock,
           findMany: visitScheduleFindManyMock,
           create: visitScheduleCreateMock,
         },
@@ -230,6 +248,7 @@ describe('/api/visit-schedules/generate POST', () => {
     const firstCall = visitScheduleCreateMock.mock.calls[0][0].data;
     const secondCall = visitScheduleCreateMock.mock.calls[1][0].data;
     expect(firstCall.case_id).toBe('case_1');
+    expect(firstCall.cycle_id).toBe('cycle_1');
     expect(format(firstCall.scheduled_date, 'yyyy-MM-dd')).toBe('2026-04-07');
     expect(format(firstCall.time_window_start, 'HH:mm')).toBe('11:00');
     expect(format(firstCall.time_window_end, 'HH:mm')).toBe('12:00');
@@ -237,6 +256,9 @@ describe('/api/visit-schedules/generate POST', () => {
     expect(firstCall.route_order).toBe(1);
     expect(format(secondCall.scheduled_date, 'yyyy-MM-dd')).toBe('2026-04-21');
     expect(secondCall.route_order).toBe(1);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
   });
 
   it('assigns route order after the existing schedule order for the same pharmacist and date', async () => {
@@ -359,6 +381,106 @@ describe('/api/visit-schedules/generate POST', () => {
     );
   });
 
+  it('returns conflict instead of creating duplicate schedules for the same case, cycle, type, and date', async () => {
+    visitScheduleCountMock.mockResolvedValueOnce(1);
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
+        start_date: '2026-04-07',
+        end_date: '2026-04-07',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同一ケース・同一日付の訪問予定が既に存在します。再読み込みしてください',
+    });
+    expect(visitScheduleCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        case_id: 'case_1',
+        cycle_id: 'cycle_1',
+        visit_type: 'regular',
+        scheduled_date: { in: [new Date('2026-04-07T00:00:00.000Z')] },
+        schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+      },
+    });
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('retries serializable generation conflicts and rejects when the competing request created the same schedule', async () => {
+    withOrgContextMock
+      .mockRejectedValueOnce(buildSerializableConflictError())
+      .mockImplementationOnce(async (_orgId, callback) =>
+        callback({
+          visitSchedule: {
+            count: visitScheduleCountMock,
+            findMany: visitScheduleFindManyMock,
+            create: visitScheduleCreateMock,
+          },
+          visitScheduleProposal: {
+            findMany: visitScheduleProposalFindManyMock,
+          },
+        }),
+      );
+    visitScheduleCountMock.mockResolvedValueOnce(1);
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
+        start_date: '2026-04-07',
+        end_date: '2026-04-07',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(withOrgContextMock).toHaveBeenCalledTimes(2);
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(1, 'org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(2, 'org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns conflict when serializable generation conflicts exceed the retry limit', async () => {
+    withOrgContextMock.mockRejectedValue(buildSerializableConflictError());
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
+        start_date: '2026-04-07',
+        end_date: '2026-04-07',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '訪問予定の生成が同時に更新されました。再読み込みしてください',
+    });
+    expect(withOrgContextMock).toHaveBeenCalledTimes(3);
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('assigns selected vehicle resources to generated recurring schedules', async () => {
     const response = await POST(
       createRequest({
@@ -388,7 +510,16 @@ describe('/api/visit-schedules/generate POST', () => {
       },
     });
     expect(visitVehicleResourceFindFirstMock).toHaveBeenCalledTimes(1);
-    expect(visitScheduleCountMock).not.toHaveBeenCalled();
+    expect(visitScheduleCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        case_id: 'case_1',
+        cycle_id: 'cycle_1',
+        visit_type: 'regular',
+        scheduled_date: { in: [new Date('2026-04-07T00:00:00.000Z')] },
+        schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+      },
+    });
     expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -723,6 +854,41 @@ describe('/api/visit-schedules/generate POST', () => {
       patientId: 'patient_1',
       caseId: 'case_1',
       asOfDates: [new Date('2026-04-07T00:00:00.000Z'), new Date('2026-04-14T00:00:00.000Z')],
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects recurring generation when no schedulable medication cycle exists for the case', async () => {
+    medicationCycleFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=TU',
+        start_date: '2026-04-07',
+        end_date: '2026-04-07',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message:
+        '訪問予定に紐付けられる処方サイクルがありません。セット監査まで完了した処方を確認してください',
+    });
+    expect(medicationCycleFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        case_id: 'case_1',
+        overall_status: { in: ['audited', 'setting', 'set_audited', 'visit_ready'] },
+      },
+      orderBy: [{ updated_at: 'desc' }, { created_at: 'desc' }],
+      select: { id: true, overall_status: true },
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(visitScheduleCreateMock).not.toHaveBeenCalled();

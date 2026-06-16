@@ -3,11 +3,17 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { success, notFound, validationError } from '@/lib/api/response';
+import { success, notFound, validationError, conflict } from '@/lib/api/response';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
 import { resolveOperationalTasks } from '@/server/services/operational-tasks';
 import { fetchEmergencyContacts } from '@/lib/patient/emergency-contacts';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
+
+class RescheduleApprovalStateChangedError extends Error {
+  constructor() {
+    super('RESCHEDULE_APPROVAL_STATE_CHANGED');
+  }
+}
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
@@ -33,6 +39,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           id: true,
           pharmacist_id: true,
           case_id: true,
+          schedule_status: true,
           case_: {
             select: {
               patient_id: true,
@@ -50,68 +57,99 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return success({ data: override });
   }
 
-  const approved = await withOrgContext(
-    ctx.orgId,
-    async (tx) => {
-      const updated = await tx.visitScheduleOverride.update({
-        where: {
-          id: override.id,
-        },
-        data: {
-          approved_by: ctx.userId,
-          approved_at: new Date(),
-        },
-      });
+  let approved;
+  try {
+    approved = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        const approvedAt = new Date();
+        const claim = await tx.visitScheduleOverride.updateMany({
+          where: {
+            id: override.id,
+            org_id: ctx.orgId,
+            status: 'pending',
+            approved_at: null,
+          },
+          data: {
+            approved_by: ctx.userId,
+            approved_at: approvedAt,
+          },
+        });
+        if (claim.count !== 1) {
+          throw new RescheduleApprovalStateChangedError();
+        }
 
-      await tx.visitSchedule.update({
-        where: {
-          id,
-        },
-        data: {
-          schedule_status: 'rescheduled',
-          version: { increment: 1 },
-        },
-      });
+        const scheduleClaim = await tx.visitSchedule.updateMany({
+          where: {
+            id,
+            org_id: ctx.orgId,
+            schedule_status: { notIn: ['completed', 'cancelled', 'rescheduled'] },
+          },
+          data: {
+            schedule_status: 'rescheduled',
+            version: { increment: 1 },
+          },
+        });
+        if (scheduleClaim.count !== 1) {
+          throw new RescheduleApprovalStateChangedError();
+        }
 
-      await resolveOperationalTasks(tx, {
-        orgId: ctx.orgId,
-        dedupeKey: `visit-reschedule-approval:${id}`,
-        status: 'completed',
-      });
+        await resolveOperationalTasks(tx, {
+          orgId: ctx.orgId,
+          dedupeKey: `visit-reschedule-approval:${id}`,
+          status: 'completed',
+        });
 
-      await resolveOperationalTasks(tx, {
-        orgId: ctx.orgId,
-        dedupeKey: `visit-reschedule-approval:${override.source_schedule_id}`,
-        status: 'completed',
-      });
+        await resolveOperationalTasks(tx, {
+          orgId: ctx.orgId,
+          dedupeKey: `visit-reschedule-approval:${override.source_schedule_id}`,
+          status: 'completed',
+        });
 
-      await dispatchNotificationEvent(tx, {
-        orgId: ctx.orgId,
-        eventType: 'visit_schedule_reschedule_approved',
-        type: 'business',
-        title: 'リスケ要求が承認されました',
-        message: '確定済み訪問の変更要求が承認され、代替候補の確定待ちになりました。',
-        link: `/schedules`,
-        explicitUserIds: [override.requested_by, override.source_schedule.pharmacist_id],
-        dedupeKey: `visit-reschedule-approval:${override.id}`,
-        metadata: {
-          override_id: override.id,
-          case_id: override.source_schedule.case_id,
-          patient_id: override.source_schedule.case_.patient_id,
-        },
-      });
+        await dispatchNotificationEvent(tx, {
+          orgId: ctx.orgId,
+          eventType: 'visit_schedule_reschedule_approved',
+          type: 'business',
+          title: 'リスケ要求が承認されました',
+          message: '確定済み訪問の変更要求が承認され、代替候補の確定待ちになりました。',
+          link: `/schedules`,
+          explicitUserIds: [override.requested_by, override.source_schedule.pharmacist_id],
+          dedupeKey: `visit-reschedule-approval:${override.id}`,
+          metadata: {
+            override_id: override.id,
+            case_id: override.source_schedule.case_id,
+            patient_id: override.source_schedule.case_.patient_id,
+          },
+        });
 
-      // FVD-01C: Fetch emergency contacts as default recipients for post-approval notification
-      const emergencyContacts = await fetchEmergencyContacts(
-        tx,
-        ctx.orgId,
-        override.source_schedule.case_.patient_id,
-      );
+        // FVD-01C: Fetch emergency contacts as default recipients for post-approval notification
+        const emergencyContacts = await fetchEmergencyContacts(
+          tx,
+          ctx.orgId,
+          override.source_schedule.case_.patient_id,
+        );
 
-      return { updated, emergencyContacts };
-    },
-    { requestContext: ctx },
-  );
+        return {
+          updated: {
+            ...override,
+            approved_by: ctx.userId,
+            approved_at: approvedAt,
+          },
+          emergencyContacts,
+        };
+      },
+      { requestContext: ctx },
+    );
+  } catch (error) {
+    if (error instanceof RescheduleApprovalStateChangedError) {
+      return conflict('リスケ承認が同時に更新されました。再読み込みしてください');
+    }
+    throw error;
+  }
+
+  if (!approved) {
+    return conflict('リスケ承認が同時に更新されました。再読み込みしてください');
+  }
 
   await notifyWorkflowMutation({
     orgId: ctx.orgId,

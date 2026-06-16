@@ -504,6 +504,7 @@ describe('/api/visit-schedules/reorder PATCH', () => {
       where: {
         org_id: 'org_1',
         id: { notIn: ['schedule_1'] },
+        schedule_status: { notIn: ['cancelled', 'rescheduled'] },
         OR: [
           {
             pharmacist_id: 'pharmacist_1',
@@ -1081,6 +1082,40 @@ describe('/api/visit-schedules/reorder PATCH', () => {
     });
     expectNoWriteAuditOrNotify();
   });
+
+  it.each(['cancelled', 'rescheduled'] as const)(
+    'rejects route order payloads for %s visits even when the route_order is unchanged',
+    async (scheduleStatus) => {
+      scheduleFindManyMock.mockResolvedValueOnce([
+        {
+          id: 'schedule_1',
+          case_id: 'case_1',
+          pharmacist_id: 'pharmacist_1',
+          scheduled_date: new Date('2026-04-09T00:00:00.000Z'),
+          time_window_start: new Date('1970-01-01T09:00:00'),
+          time_window_end: new Date('1970-01-01T10:00:00'),
+          confirmed_at: null,
+          route_order: 1,
+          site_id: 'site_1',
+          schedule_status: scheduleStatus,
+          vehicle_resource_id: null,
+          version: 1,
+        },
+      ]);
+
+      const response = (await PATCH(
+        createRequest({
+          updates: [{ schedule_id: 'schedule_1', route_order: 1 }],
+        }),
+      ))!;
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        message: '完了済みまたは中止済みの訪問予定は順路を変更できません',
+      });
+      expectNoWriteAuditOrNotify();
+    },
+  );
 
   it('rejects moving a schedule outside the target pharmacist shift', async () => {
     authRoleRef.current = 'admin';
