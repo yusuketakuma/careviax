@@ -11,9 +11,38 @@ import { updateBillingCollectionSchema } from '@/lib/validations/billing-collect
 
 class BillingCollectionConflictError extends Error {}
 
+const BILLING_PAYMENT_PROFILE_TASK_TYPE = 'patient_billing_payment_profile';
+const receiptNumberPlaceholders = new Set(['未記録', '未発行/未記録', '未発行', '不要']);
+
 function normalizeNullableText(value: string | null | undefined) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
+}
+
+function normalizeReceiptNumber(value: string | null | undefined) {
+  const normalized = normalizeNullableText(value);
+  return normalized && !receiptNumberPlaceholders.has(normalized) ? normalized : null;
+}
+
+function readReceiptIssue(metadata: unknown) {
+  const value = readJsonObject(metadata);
+  const receiptIssue = typeof value?.receipt_issue === 'string' ? value.receipt_issue : null;
+  return receiptIssue === 'paper' || receiptIssue === 'pdf' || receiptIssue === 'none'
+    ? receiptIssue
+    : null;
+}
+
+function isReceiptManagedPayment(input: {
+  status: string;
+  collectedAmount: number | null;
+  receiptIssue: string | null;
+}) {
+  return (
+    input.receiptIssue != null &&
+    input.receiptIssue !== 'none' &&
+    ['collected', 'partial'].includes(input.status) &&
+    (input.collectedAmount ?? 0) > 0
+  );
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -44,6 +73,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       },
       select: {
         id: true,
+        patient_id: true,
+        billing_target_type: true,
+        billing_target_id: true,
         status: true,
         calculation_breakdown: true,
         updated_at: true,
@@ -51,9 +83,38 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
     if (!candidate) return null;
 
+    const candidatePatientId =
+      candidate.patient_id ??
+      (candidate.billing_target_type === 'patient' ? candidate.billing_target_id : null);
+    const billingPaymentProfileTask = candidatePatientId
+      ? await tx.task.findFirst({
+          where: {
+            org_id: ctx.orgId,
+            task_type: BILLING_PAYMENT_PROFILE_TASK_TYPE,
+            related_entity_type: 'patient',
+            related_entity_id: candidatePatientId,
+          },
+          orderBy: [{ updated_at: 'desc' }],
+          select: {
+            metadata: true,
+          },
+        })
+      : null;
+    const receiptIssue = readReceiptIssue(billingPaymentProfileTask?.metadata);
     const existingBreakdown = readJsonObject(candidate.calculation_breakdown) ?? {};
     const billedAmount = parsed.data.billed_amount ?? null;
     const collectedAmount = parsed.data.collected_amount ?? null;
+    const receiptNumber = normalizeReceiptNumber(parsed.data.receipt_number);
+    if (
+      isReceiptManagedPayment({
+        status: parsed.data.status,
+        collectedAmount,
+        receiptIssue,
+      }) &&
+      !receiptNumber
+    ) {
+      return 'missing-receipt-number' as const;
+    }
     const unpaidAmount =
       billedAmount == null ? null : Math.max(billedAmount - (collectedAmount ?? 0), 0);
     const collection = {
@@ -70,7 +131,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       collected_at: parsed.data.collected_at
         ? new Date(parsed.data.collected_at).toISOString()
         : null,
-      receipt_number: normalizeNullableText(parsed.data.receipt_number),
+      receipt_number: receiptNumber,
       unpaid_reason: normalizeNullableText(parsed.data.unpaid_reason),
       note: normalizeNullableText(parsed.data.note),
       updated_at: new Date().toISOString(),
@@ -120,6 +181,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return conflict(
       '請求候補が他のユーザーによって更新されています。最新のデータを取得してください。',
     );
+  }
+  if (result === 'missing-receipt-number') {
+    return validationError('領収証番号を入力してください', {
+      receipt_number: ['領収証発行が必要な患者では集金時に領収証番号が必須です'],
+    });
   }
   if (!result) return notFound('請求候補が見つかりません');
 

@@ -7,6 +7,7 @@ const {
   findFirstMock,
   updateManyMock,
   findUniqueMock,
+  taskFindFirstMock,
   auditLogCreateMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
@@ -14,6 +15,7 @@ const {
   findFirstMock: vi.fn(),
   updateManyMock: vi.fn(),
   findUniqueMock: vi.fn(),
+  taskFindFirstMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
 }));
 
@@ -52,6 +54,9 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     });
     findFirstMock.mockResolvedValue({
       id: 'candidate_1',
+      patient_id: 'patient_1',
+      billing_target_type: 'patient',
+      billing_target_id: 'patient_1',
       status: 'confirmed',
       calculation_breakdown: { amount_yen: 3240 },
       updated_at: updatedAt,
@@ -69,6 +74,11 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
         },
       },
     });
+    taskFindFirstMock.mockResolvedValue({
+      metadata: {
+        receipt_issue: 'paper',
+      },
+    });
     auditLogCreateMock.mockResolvedValue({});
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -76,6 +86,9 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
           findFirst: findFirstMock,
           updateMany: updateManyMock,
           findUnique: findUniqueMock,
+        },
+        task: {
+          findFirst: taskFindFirstMock,
         },
         auditLog: {
           create: auditLogCreateMock,
@@ -143,6 +156,73 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     await expect(response.json()).resolves.toMatchObject({
       data: { id: 'candidate_1' },
     });
+  });
+
+  it('rejects collected payments without receipt numbers when receipt issuance is required', async () => {
+    const response = await PATCH(
+      createRequest({
+        status: 'collected',
+        billed_amount: 3240,
+        collected_amount: 3240,
+        collected_at: '2026-06-16T00:00:00.000Z',
+        receipt_number: '未発行',
+      }),
+      { params: Promise.resolve({ id: 'candidate_1' }) },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '領収証番号を入力してください',
+      details: {
+        receipt_number: expect.arrayContaining([
+          '領収証発行が必要な患者では集金時に領収証番号が必須です',
+        ]),
+      },
+    });
+    expect(taskFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        task_type: 'patient_billing_payment_profile',
+        related_entity_type: 'patient',
+        related_entity_id: 'patient_1',
+      },
+      orderBy: [{ updated_at: 'desc' }],
+      select: { metadata: true },
+    });
+    expect(updateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('allows collected payments without receipt numbers when receipt issuance is disabled', async () => {
+    taskFindFirstMock.mockResolvedValue({
+      metadata: {
+        receipt_issue: 'none',
+      },
+    });
+
+    const response = await PATCH(
+      createRequest({
+        status: 'collected',
+        billed_amount: 3240,
+        collected_amount: 3240,
+        collected_at: '2026-06-16T00:00:00.000Z',
+      }),
+      { params: Promise.resolve({ id: 'candidate_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(updateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          calculation_breakdown: expect.objectContaining({
+            collection: expect.objectContaining({
+              status: 'collected',
+              receipt_number: null,
+            }),
+          }),
+        },
+      }),
+    );
   });
 
   it('rejects collected amounts greater than billed amounts', async () => {
