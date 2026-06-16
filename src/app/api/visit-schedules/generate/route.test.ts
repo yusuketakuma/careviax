@@ -14,6 +14,7 @@ const {
   visitScheduleCreateMock,
   visitScheduleProposalFindManyMock,
   patientInsuranceFindFirstMock,
+  patientInsuranceFindManyMock,
   evaluateVisitWorkflowGateMock,
   notifyWorkflowMutationMock,
   authRoleRef,
@@ -29,6 +30,7 @@ const {
   visitScheduleCreateMock: vi.fn(),
   visitScheduleProposalFindManyMock: vi.fn(),
   patientInsuranceFindFirstMock: vi.fn(),
+  patientInsuranceFindManyMock: vi.fn(),
   evaluateVisitWorkflowGateMock: vi.fn(),
   notifyWorkflowMutationMock: vi.fn(),
   authRoleRef: { current: 'pharmacist' },
@@ -58,6 +60,7 @@ vi.mock('@/lib/db/client', () => ({
     },
     patientInsurance: {
       findFirst: patientInsuranceFindFirstMock,
+      findMany: patientInsuranceFindManyMock,
     },
     membership: {
       findFirst: membershipFindFirstMock,
@@ -149,14 +152,16 @@ function buildInsuranceRecord(insuranceType: 'medical' | 'care', number = `${ins
     provisional_care_level: null,
     confirmed_care_level: null,
     is_active: true,
+    valid_from: null,
+    valid_until: null,
+    created_at: new Date('2026-01-01T00:00:00.000Z'),
   };
 }
 
 function mockPatientInsuranceTypes(types: Array<'medical' | 'care'>) {
-  patientInsuranceFindFirstMock.mockImplementation(async ({ where }) => {
-    const insuranceType = where?.insurance_type;
-    return types.includes(insuranceType) ? buildInsuranceRecord(insuranceType) : null;
-  });
+  patientInsuranceFindManyMock.mockResolvedValue(
+    types.map((insuranceType) => buildInsuranceRecord(insuranceType)),
+  );
 }
 
 describe('/api/visit-schedules/generate POST', () => {
@@ -188,6 +193,7 @@ describe('/api/visit-schedules/generate POST', () => {
       ...data,
     }));
     patientInsuranceFindFirstMock.mockResolvedValue(null);
+    patientInsuranceFindManyMock.mockResolvedValue([]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         visitSchedule: {
@@ -488,6 +494,50 @@ describe('/api/visit-schedules/generate POST', () => {
       message: '週次訪問回数の上限を超えています（医療保険: 週1回まで）',
     });
     expect(visitScheduleCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('resolves visit-limit insurance with one range query for recurring candidates', async () => {
+    careCaseFindFirstMock.mockResolvedValue(
+      buildCareCase({
+        patient: {
+          scheduling_preference: {
+            preferred_weekdays: [1],
+            preferred_time_from: null,
+            preferred_time_to: null,
+            facility_time_from: null,
+            facility_time_to: null,
+          },
+        },
+      }),
+    );
+    mockPatientInsuranceTypes(['medical']);
+
+    const response = await POST(
+      createRequest({
+        case_id: 'case_1',
+        visit_type: 'regular',
+        pharmacist_id: 'pharmacist_1',
+        recurrence_rule: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=MO',
+        start_date: '2026-03-30',
+        end_date: '2026-04-06',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(visitScheduleCreateMock).toHaveBeenCalledTimes(2);
+    expect(patientInsuranceFindManyMock).toHaveBeenCalledTimes(1);
+    expect(patientInsuranceFindFirstMock).not.toHaveBeenCalled();
+    expect(patientInsuranceFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+          insurance_type: { in: ['medical', 'care'] },
+          is_active: true,
+        }),
+      }),
+    );
   });
 
   it('ignores client-supplied insurance_type when applying server-resolved visit limits', async () => {

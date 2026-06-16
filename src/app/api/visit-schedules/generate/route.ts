@@ -15,10 +15,10 @@ import {
   formatVisitWorkflowGateIssues,
 } from '@/server/services/management-plans';
 import { resolveBillingPayerBasis } from '@/server/services/billing-payer-basis';
-import { resolvePatientInsurance } from '@/server/services/patient-insurance';
 import { validateScheduleTimeStringsFitShift } from '@/server/services/visit-schedule-shift';
 import { validateVisitVehicleResourceForSchedule } from '@/server/services/visit-schedule-service';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
+import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 
 // Insurance visit frequency limits: medical=4/month, care=2/month
 const MONTHLY_LIMITS: Record<string, number> = {
@@ -83,34 +83,87 @@ function formatInsuranceLimitLabel(value: LimitInsuranceType) {
   return value === 'medical' ? '医療' : '介護';
 }
 
-async function resolveScheduleLimitInsuranceType(args: {
+type ScheduleLimitInsuranceRecord = {
+  insurance_type: LimitInsuranceType;
+  number: string | null;
+  valid_from: Date | null;
+  valid_until: Date | null;
+  created_at: Date;
+};
+
+function isInsuranceRecordEffective(record: ScheduleLimitInsuranceRecord, asOf: Date) {
+  return (
+    (record.valid_from == null || record.valid_from <= asOf) &&
+    (record.valid_until == null || record.valid_until >= asOf)
+  );
+}
+
+function compareEffectiveInsuranceRecords(
+  left: ScheduleLimitInsuranceRecord,
+  right: ScheduleLimitInsuranceRecord,
+) {
+  const leftValidFrom = left.valid_from?.getTime() ?? Number.NEGATIVE_INFINITY;
+  const rightValidFrom = right.valid_from?.getTime() ?? Number.NEGATIVE_INFINITY;
+  if (leftValidFrom !== rightValidFrom) return rightValidFrom - leftValidFrom;
+  return right.created_at.getTime() - left.created_at.getTime();
+}
+
+async function resolveScheduleLimitInsuranceTypes(args: {
   orgId: string;
   patientId: string;
   visitType: string;
-  asOf: Date;
-}) {
-  const [medicalInsurance, careInsurance] = await Promise.all([
-    resolvePatientInsurance(prisma, {
-      orgId: args.orgId,
-      patientId: args.patientId,
-      type: 'medical',
-      asOf: args.asOf,
-    }),
-    resolvePatientInsurance(prisma, {
-      orgId: args.orgId,
-      patientId: args.patientId,
-      type: 'care',
-      asOf: args.asOf,
-    }),
-  ]);
+  dates: Date[];
+}): Promise<Array<LimitInsuranceType | null>> {
+  if (args.dates.length === 0) return [];
 
-  const payerBasis = resolveBillingPayerBasis({
-    medicalInsuranceNumber: medicalInsurance?.number ?? null,
-    careInsuranceNumber: careInsurance?.number ?? null,
-    visitType: args.visitType,
+  const normalizedDates = args.dates.map((date) => utcDateFromLocalKey(localDateKey(date)));
+  const minDate = new Date(Math.min(...normalizedDates.map((date) => date.getTime())));
+  const maxDate = new Date(Math.max(...normalizedDates.map((date) => date.getTime())));
+
+  const insuranceRecords = (await prisma.patientInsurance.findMany({
+    where: {
+      org_id: args.orgId,
+      patient_id: args.patientId,
+      insurance_type: { in: ['medical', 'care'] },
+      is_active: true,
+      OR: [{ valid_from: null }, { valid_from: { lte: maxDate } }],
+      AND: [{ OR: [{ valid_until: null }, { valid_until: { gte: minDate } }] }],
+    },
+    select: {
+      insurance_type: true,
+      number: true,
+      valid_from: true,
+      valid_until: true,
+      created_at: true,
+    },
+  })) as ScheduleLimitInsuranceRecord[];
+
+  const recordsByType = new Map<LimitInsuranceType, ScheduleLimitInsuranceRecord[]>();
+  for (const record of insuranceRecords) {
+    if (!isLimitInsuranceType(record.insurance_type)) continue;
+    const records = recordsByType.get(record.insurance_type) ?? [];
+    records.push(record);
+    recordsByType.set(record.insurance_type, records);
+  }
+  for (const records of recordsByType.values()) {
+    records.sort(compareEffectiveInsuranceRecords);
+  }
+
+  return normalizedDates.map((date) => {
+    const medicalInsurance =
+      recordsByType.get('medical')?.find((record) => isInsuranceRecordEffective(record, date)) ??
+      null;
+    const careInsurance =
+      recordsByType.get('care')?.find((record) => isInsuranceRecordEffective(record, date)) ?? null;
+
+    const payerBasis = resolveBillingPayerBasis({
+      medicalInsuranceNumber: medicalInsurance?.number ?? null,
+      careInsuranceNumber: careInsurance?.number ?? null,
+      visitType: args.visitType,
+    });
+
+    return isLimitInsuranceType(payerBasis) ? payerBasis : null;
   });
-
-  return isLimitInsuranceType(payerBasis) ? payerBasis : null;
 }
 
 export const POST = withAuthContext(
@@ -276,16 +329,12 @@ export const POST = withAuthContext(
       }
     }
 
-    const scheduleLimitTypes = await Promise.all(
-      candidateDates.map((date) =>
-        resolveScheduleLimitInsuranceType({
-          orgId: ctx.orgId,
-          patientId: careCase.patient_id,
-          visitType: visit_type,
-          asOf: date,
-        }),
-      ),
-    );
+    const scheduleLimitTypes = await resolveScheduleLimitInsuranceTypes({
+      orgId: ctx.orgId,
+      patientId: careCase.patient_id,
+      visitType: visit_type,
+      dates: candidateDates,
+    });
 
     const monthCounts: Record<string, number> = {};
     const weekCounts: Record<string, number> = {};
