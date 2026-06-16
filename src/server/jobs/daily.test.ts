@@ -1284,6 +1284,58 @@ describe('checkPrescriptionOriginalRetention', () => {
     }
   });
 
+  it('creates prescription original notifications with bounded parallel workers', async () => {
+    membershipFindManyMock.mockResolvedValue([]);
+    prescriptionIntakeFindManyMock
+      .mockResolvedValueOnce([
+        {
+          id: 'intake_original_1',
+          org_id: 'org_1',
+          source_type: 'paper',
+          prescribed_date: new Date('2021-04-01T00:00:00.000Z'),
+          original_document_url: 's3://bucket/original-1.pdf',
+          cycle: {
+            patient_id: 'patient_1',
+            case_: {
+              patient_id: 'patient_1',
+              primary_pharmacist_id: 'pharmacist_1',
+              patient: { name: '山田 太郎' },
+            },
+          },
+        },
+        {
+          id: 'intake_original_2',
+          org_id: 'org_1',
+          source_type: 'paper',
+          prescribed_date: new Date('2021-04-02T00:00:00.000Z'),
+          original_document_url: 's3://bucket/original-2.pdf',
+          cycle: {
+            patient_id: 'patient_2',
+            case_: {
+              patient_id: 'patient_2',
+              primary_pharmacist_id: 'pharmacist_2',
+              patient: { name: '佐藤 花子' },
+            },
+          },
+        },
+      ])
+      .mockResolvedValueOnce([]);
+    const releases: Array<() => void> = [];
+    notificationCreateMock.mockImplementation(
+      () => new Promise((resolve) => releases.push(() => resolve({}))),
+    );
+
+    const resultPromise = checkPrescriptionOriginalRetention();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(notificationCreateMock).toHaveBeenCalledTimes(2);
+
+    releases.forEach((release) => release());
+    await expect(resultPromise).resolves.toMatchObject({ processedCount: 2 });
+  });
+
   it('clears stale fax follow-up tasks when nothing is overdue', async () => {
     prescriptionIntakeFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
     taskFindManyMock.mockResolvedValue([

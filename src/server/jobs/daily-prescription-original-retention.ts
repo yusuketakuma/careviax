@@ -11,6 +11,30 @@ import {
 } from './daily-helpers';
 import { runJob } from './runner';
 
+const PRESCRIPTION_ORIGINAL_NOTIFICATION_CONCURRENCY = 8;
+
+type NotificationCreateData = Parameters<typeof prisma.notification.create>[0]['data'];
+
+async function createNotificationsWithConcurrency(
+  notifications: NotificationCreateData[],
+  concurrency = PRESCRIPTION_ORIGINAL_NOTIFICATION_CONCURRENCY,
+) {
+  if (notifications.length === 0) return;
+
+  const workerCount = Math.min(notifications.length, Math.max(1, Math.trunc(concurrency) || 1));
+  let nextIndex = 0;
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < notifications.length) {
+        const currentIndex = nextIndex;
+        nextIndex += 1;
+        await prisma.notification.create({ data: notifications[currentIndex]! });
+      }
+    }),
+  );
+}
+
 export async function checkPrescriptionOriginalRetention() {
   return runJob('prescription_original_retention_check', async () => {
     const now = startOfDay(new Date());
@@ -103,7 +127,7 @@ export async function checkPrescriptionOriginalRetention() {
     }
 
     const taskSpecs: GeneratedTaskSpec[] = [];
-    let notificationCount = 0;
+    const notifications: NotificationCreateData[] = [];
 
     for (const intake of expiring) {
       const retentionUntil = startOfDay(addYears(intake.prescribed_date, 5));
@@ -120,18 +144,15 @@ export async function checkPrescriptionOriginalRetention() {
       }
 
       for (const userId of notificationTargets) {
-        await prisma.notification.create({
-          data: {
-            org_id: intake.org_id,
-            user_id: userId,
-            type: priority === 'urgent' ? 'urgent' : 'business',
-            title: '処方箋原本スキャンの保存期限',
-            message: `${patientName} さんの原本スキャンが${thresholdLabel}に5年保存期限を迎えます。保全状況を確認してください。`,
-            link: '/workflow',
-            dedupe_key: `prescription-original-retention:${intake.id}:${userId}:${priority}`,
-          },
+        notifications.push({
+          org_id: intake.org_id,
+          user_id: userId,
+          type: priority === 'urgent' ? 'urgent' : 'business',
+          title: '処方箋原本スキャンの保存期限',
+          message: `${patientName} さんの原本スキャンが${thresholdLabel}に5年保存期限を迎えます。保全状況を確認してください。`,
+          link: '/workflow',
+          dedupe_key: `prescription-original-retention:${intake.id}:${userId}:${priority}`,
         });
-        notificationCount += 1;
       }
 
       taskSpecs.push({
@@ -171,18 +192,15 @@ export async function checkPrescriptionOriginalRetention() {
       const patientId = intake.cycle?.case_?.patient_id ?? intake.cycle?.patient_id ?? null;
 
       for (const userId of notificationTargets) {
-        await prisma.notification.create({
-          data: {
-            org_id: intake.org_id,
-            user_id: userId,
-            type: priority === 'urgent' ? 'urgent' : 'business',
-            title: 'FAX処方箋の原本未回収',
-            message: `${patientName} さんの FAX 処方箋は受付から${overdueDays}日経過しています。訪問時の原本回収を確認してください。`,
-            link: patientId ? `/patients/${patientId}/prescriptions` : '/workflow',
-            dedupe_key: `fax-original-followup:${intake.id}:${userId}:${priority}`,
-          },
+        notifications.push({
+          org_id: intake.org_id,
+          user_id: userId,
+          type: priority === 'urgent' ? 'urgent' : 'business',
+          title: 'FAX処方箋の原本未回収',
+          message: `${patientName} さんの FAX 処方箋は受付から${overdueDays}日経過しています。訪問時の原本回収を確認してください。`,
+          link: patientId ? `/patients/${patientId}/prescriptions` : '/workflow',
+          dedupe_key: `fax-original-followup:${intake.id}:${userId}:${priority}`,
         });
-        notificationCount += 1;
       }
 
       taskSpecs.push({
@@ -209,12 +227,13 @@ export async function checkPrescriptionOriginalRetention() {
     }
 
     if (taskSpecs.length > 0) {
+      await createNotificationsWithConcurrency(notifications);
       await syncGeneratedOperationalTasks(taskSpecs, [
         'prescription_original_retention',
         'fax_original_followup',
       ]);
     }
 
-    return { processedCount: notificationCount };
+    return { processedCount: notifications.length };
   });
 }
