@@ -20,7 +20,7 @@ describe('layout navigation config', () => {
     expect(SIDEBAR_MAIN_NAV_GROUPS.map((group) => group.items.map((item) => item.label))).toEqual([
       ['ダッシュボード', 'スケジュール', '訪問'],
       ['患者一覧'],
-      ['処方取込', 'カード', '調剤', '監査', 'セット', '報告・共有', '算定チェック'],
+      ['処方取込', 'カード', '調剤', '監査', 'セット', 'セット監査', '報告・共有', '算定チェック'],
       ['ハンドオフ'],
       ['マスター', '設定'],
     ]);
@@ -33,8 +33,9 @@ describe('layout navigation config', () => {
       '/prescriptions/intake',
       '/prescriptions',
       '/dispense',
-      '/auditing',
-      '/medication-sets',
+      '/audit',
+      '/set',
+      '/set-audit',
       '/reports',
       '/billing',
       '/handoff',

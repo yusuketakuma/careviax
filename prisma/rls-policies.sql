@@ -430,6 +430,12 @@ CREATE POLICY tenant_isolation ON "VisitScheduleProposal"
   USING (org_id = current_setting('app.current_org_id', true))
   WITH CHECK (org_id = current_setting('app.current_org_id', true));
 
+ALTER TABLE "VisitScheduleProposalBatch" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "VisitScheduleProposalBatch";
+CREATE POLICY tenant_isolation ON "VisitScheduleProposalBatch"
+  USING (org_id = public.app_enforced_org_id())
+  WITH CHECK (org_id = public.app_enforced_org_id());
+
 -- ─── Drug Domain (org-scoped only) ─────────────────────────────────────────
 -- Note: DrugMaster, DrugPackageInsert, DrugInteraction, DrugAlertRule,
 -- GenericDrugMapping, DrugMasterImportLog are global (no org_id) = NO RLS
@@ -552,6 +558,7 @@ ALTER TABLE "CycleTransitionLog" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "SetBatchChangeLog" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "QrScanDraft" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "VisitScheduleProposal" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "VisitScheduleProposalBatch" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "PcaPump" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "PcaPumpRental" FORCE ROW LEVEL SECURITY;
 ALTER TABLE "PcaPumpRentalAccessory" FORCE ROW LEVEL SECURITY;
@@ -580,3 +587,18 @@ CREATE POLICY tenant_isolation ON "PatientNarcoticUse"
   USING ("org_id" = public.app_enforced_org_id())
   WITH CHECK ("org_id" = public.app_enforced_org_id());
 ALTER TABLE "PatientNarcoticUse" FORCE ROW LEVEL SECURITY;
+
+-- ─── PackagingGroup / CycleHold (調剤ワークベンチ P0) ─────────────────────────
+ALTER TABLE "PackagingGroup" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "PackagingGroup";
+CREATE POLICY tenant_isolation ON "PackagingGroup"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "PackagingGroup" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "CycleHold" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "CycleHold";
+CREATE POLICY tenant_isolation ON "CycleHold"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "CycleHold" FORCE ROW LEVEL SECURITY;

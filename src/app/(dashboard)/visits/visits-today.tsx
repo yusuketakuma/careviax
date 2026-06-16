@@ -211,7 +211,7 @@ function buildNextAction(data: VisitPreparationBoardResponse): NextActionPanelPr
       description: `${data.next_action.patient_name} 様の${
         data.next_action.has_narcotic ? '持参薬の麻薬監査' : '調剤監査'
       }が待ちです。完了で午後の予定がすべて確定します。`,
-      actionHref: '/auditing',
+      actionHref: '/audit',
     };
   }
   return {

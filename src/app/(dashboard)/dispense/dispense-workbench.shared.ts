@@ -1,4 +1,5 @@
 import { differenceInMinutes, format, parseISO } from 'date-fns';
+import type { MedicationCycleStatus } from '@prisma/client';
 import { generatePackagingGroups, parseFrequencyToSlots } from '@/lib/dispensing/packaging-group';
 
 /**
@@ -30,10 +31,12 @@ export type WorkbenchCountRow = {
   route: string | null;
   tags: string[];
   is_narcotic: boolean;
+  is_generic: boolean;
   prescribed_label: string;
   prescribed_quantity: number | null;
   days: number | null;
   dispensed_label: string | null;
+  dispensed_at: string | null;
   dispensed_quantity: number | null;
   unit: string;
   dispensing_method: string | null;
@@ -44,9 +47,14 @@ export type WorkbenchCountRow = {
 
 export type DispenseWorkbenchData = {
   task: { id: string; status: string; priority: string; due_date: string | null };
-  cycle: { id: string; overall_status: string };
+  cycle: { id: string; overall_status: string; version: number };
   patient: { id: string; name: string };
-  intake: { id: string; prescribed_date: string } | null;
+  intake: {
+    id: string;
+    prescribed_date: string;
+    prescriber_institution: string | null;
+    prescriber_name: string | null;
+  } | null;
   previous_intake: { prescribed_date: string } | null;
   safety: {
     allergy: string | null;
@@ -203,6 +211,57 @@ export function buildDispenseQueueSubline(args: {
   }
   if (args.overallStatus === 'dispensing') return '調剤の続きから';
   return '定期・変更なし';
+}
+
+// ── 患者中心リスト(/api/dispense-workbench/patients) 共通型・純関数 ──
+
+/** 状態バッジ3値: 監査済 / 作業中 / 未着手 (MedicationCycle.overall_status 16値の畳み込み)。 */
+export type DispenseWorkbenchListBadge = 'audited' | 'in_progress' | 'not_started';
+
+/** 患者×最新サイクルの一覧行(API レスポンス公開型)。 */
+export type DispenseWorkbenchPatientRow = {
+  patient_id: string;
+  cycle_id: string | null;
+  name: string;
+  name_kana: string;
+  /** 最新サイクルの overall_status (サイクル未生成なら null)。 */
+  overall_status: string | null;
+  badge: DispenseWorkbenchListBadge;
+  /** 服用開始日 'yyyy-MM-dd' (CareCase.start_date 優先、無ければ最古の処方行 start_date)。 */
+  start_date: string | null;
+  /** 登録日 'yyyy-MM-dd' (Patient.created_at)。 */
+  registered_date: string;
+};
+
+export type DispenseWorkbenchPatientsResponse = {
+  data: DispenseWorkbenchPatientRow[];
+};
+
+/**
+ * MedicationCycle.overall_status(16値) → 一覧バッジ3値。
+ * 監査完了以降(audited〜reported)=audited、調剤着手以降〜監査前=in_progress、
+ * それ以前(intake_received〜ready_to_dispense)と例外(on_hold/cancelled)=not_started。
+ */
+export function deriveListBadge(
+  status: MedicationCycleStatus | string | null,
+): DispenseWorkbenchListBadge {
+  switch (status) {
+    case 'audited':
+    case 'setting':
+    case 'set_audited':
+    case 'visit_ready':
+    case 'visit_completed':
+    case 'reported':
+      return 'audited';
+    case 'dispensing':
+    case 'dispensed':
+    case 'audit_pending':
+      return 'in_progress';
+    default:
+      // intake_received / structuring / inquiry_pending / inquiry_resolved /
+      // ready_to_dispense / on_hold / cancelled / null
+      return 'not_started';
+  }
 }
 
 /** 07 比較テーブル「差」列のバッジ文言。 */

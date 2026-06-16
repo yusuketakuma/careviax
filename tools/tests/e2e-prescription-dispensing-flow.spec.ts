@@ -122,7 +122,7 @@ test.describe('prescription intake flow', () => {
     expect(errors).toEqual([]);
   });
 
-  test('prescription intake navigates to dispensing queue via shortcut', async ({ context }) => {
+  test('prescription intake navigates to dispense workbench via shortcut', async ({ context }) => {
     test.slow();
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/prescriptions');
@@ -135,7 +135,8 @@ test.describe('prescription intake flow', () => {
       { timeout: 45_000 },
     );
 
-    await expect(page.getByRole('heading', { name: '調剤', exact: true })).toBeVisible({
+    // 新 DispensingWorkbench のメニューバーが安定アンカー（旧「調剤」見出しは撤去済み）。
+    await expect(main.getByRole('navigation', { name: 'メインメニュー' })).toBeVisible({
       timeout: 45_000,
     });
 
@@ -143,16 +144,17 @@ test.describe('prescription intake flow', () => {
   });
 });
 
-test.describe('dispensing → auditing flow', () => {
+test.describe('dispense → audit flow', () => {
   test.beforeEach(async ({ context }) => {
     await attachLocalSession(context);
   });
 
-  test('dispensing queue loads and shows tasks or empty state', async ({ context }) => {
+  test('dispense workbench loads and shows content', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/dispense');
 
-    await expect(page.getByRole('heading', { name: '調剤', exact: true })).toBeVisible();
+    // 新 DispensingWorkbench のメニューバーが安定アンカー（旧「調剤」見出しは撤去済み）。
+    await expect(page.locator('main').getByRole('navigation', { name: 'メインメニュー' })).toBeVisible();
 
     const content = await page.locator('main').textContent();
     expect(content?.trim().length).toBeGreaterThan(0);
@@ -160,32 +162,37 @@ test.describe('dispensing → auditing flow', () => {
     expect(errors).toEqual([]);
   });
 
-  test('dispensing → auditing navigation works', async ({ context }) => {
+  test('dispense → audit navigation works', async ({ context }) => {
     test.slow();
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/dispense');
 
     const main = page.locator('main');
+    // 新ワークベンチは工程タブ（調剤監査 → /audit）の <Link> で遷移する。
     await clickAndWaitForStableRoute(
       page,
-      /\/auditing/,
+      /\/audit/,
       () =>
-        main.getByRole('link', { name: '監査', exact: true }).first().click({ noWaitAfter: true }),
+        main
+          .getByRole('link', { name: '調剤監査', exact: true })
+          .first()
+          .click({ noWaitAfter: true }),
       { timeout: 45_000 },
     );
 
-    await expect(page.getByRole('heading', { name: '監査', exact: true })).toBeVisible({
+    // 遷移後は調剤監査工程タブが active（aria-current="page"）。
+    await expect(main.locator('a[aria-current="page"]')).toBeVisible({
       timeout: 45_000,
     });
 
     expect(errors).toEqual([]);
   });
 
-  test('auditing queue loads with task list or empty state', async ({ context }) => {
+  test('audit workbench loads with content', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await openStableRoute(page, '/auditing');
+    await openStableRoute(page, '/audit');
 
-    await expect(page.getByRole('heading', { name: '監査', exact: true })).toBeVisible();
+    await expect(page.locator('main').getByRole('navigation', { name: 'メインメニュー' })).toBeVisible();
 
     const content = await page.locator('main').textContent();
     expect(content?.trim().length).toBeGreaterThan(0);
@@ -193,7 +200,7 @@ test.describe('dispensing → auditing flow', () => {
     expect(errors).toEqual([]);
   });
 
-  test('full prescription → dispensing → auditing round trip', async ({ context }) => {
+  test('full prescription → dispense → audit round trip', async ({ context }) => {
     test.slow();
     const { page, errors } = await createInstrumentedPage(context);
 
@@ -203,29 +210,30 @@ test.describe('dispensing → auditing flow', () => {
       page.locator('main').getByRole('heading', { name: '処方受付' }).first(),
     ).toBeVisible();
 
-    // → dispensing
+    // → dispense（/prescriptions 側の「調剤キュー」ショートカットは維持）
     await clickAndWaitForStableRoute(page, /\/dispense/, () =>
       page.locator('main').getByRole('link', { name: '調剤キュー' }).first().click(),
     );
-    await expect(page.getByRole('heading', { name: '調剤', exact: true })).toBeVisible();
+    const main = page.locator('main');
+    await expect(main.getByRole('navigation', { name: 'メインメニュー' })).toBeVisible();
 
-    // → auditing
+    // → audit via 工程タブ（調剤監査 → /audit）
     await clickAndWaitForStableRoute(
       page,
-      /\/auditing/,
+      /\/audit/,
       () =>
-        page.locator('main').getByRole('link', { name: '監査', exact: true }).first().click({
+        main.getByRole('link', { name: '調剤監査', exact: true }).first().click({
           noWaitAfter: true,
         }),
       { timeout: 90_000 },
     );
-    await expect(page.getByRole('heading', { name: '監査', exact: true })).toBeVisible();
+    await expect(main.locator('a[aria-current="page"]')).toBeVisible();
 
-    // → back to dispensing
+    // → back to dispense via 工程タブ（調剤 → /dispense）
     await clickAndWaitForStableRoute(page, /\/dispense/, () =>
-      page.locator('main').getByRole('link', { name: '調剤', exact: true }).first().click(),
+      main.getByRole('link', { name: '調剤', exact: true }).first().click(),
     );
-    await expect(page.getByRole('heading', { name: '調剤', exact: true })).toBeVisible();
+    await expect(main.getByRole('navigation', { name: 'メインメニュー' })).toBeVisible();
 
     expect(errors).toEqual([]);
   });

@@ -71,7 +71,7 @@ export function useNavBadges(): NavBadgeCounts {
   });
 
   return {
-    '/auditing': toBadgeCount(auditingQuery.data),
+    '/audit': toBadgeCount(auditingQuery.data),
     '/handoff': toBadgeCount(handoffQuery.data),
   };
 }

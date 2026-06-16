@@ -106,7 +106,7 @@ function buildNextAction(
     const description = visit?.time_start
       ? `${format(visit.time_start, 'HH:mm')}訪問(${familyName(topAudit.patientName)}様)の持参薬です。完了で午後の予定がすべて確定します。`
       : `${topAudit.patientName} 様の調剤監査が待ちです。完了で次の工程が動き出します。`;
-    return { label, description, href: '/auditing' };
+    return { label, description, href: '/audit' };
   }
   if (todayVisits.length > 0) {
     return {

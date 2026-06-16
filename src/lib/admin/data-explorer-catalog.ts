@@ -78,6 +78,8 @@ const COVERAGE_CATEGORY_ENTRIES = {
     'DispenseAudit',
     'DispensingDecision',
     'SetBatch',
+    'PackagingGroup',
+    'CycleHold',
     'WorkflowException',
     'VisitSchedule',
     'FacilityVisitBatch',

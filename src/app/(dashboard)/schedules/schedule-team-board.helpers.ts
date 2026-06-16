@@ -416,7 +416,7 @@ export function buildScheduleRiskAlert(args: {
   return {
     message: `リスクのある予定: ${visitTime} ${riskVisit.patient_name}様 — 持参薬の麻薬監査が未完了(期限${dueTime})。間に合わない場合は訪問を${fallbackHour}:00へ繰り下げ${fallbackTail}`,
     actionLabel: '→ 監査へ',
-    actionHref: '/auditing',
+    actionHref: '/audit',
   };
 }
 

@@ -23,7 +23,7 @@ const createCommentSchema = z.object({
 const ENTITY_TYPE_LINK_PREFIX: Record<string, string> = {
   dispense_task: '/dispense',
   medication_cycle: '/patients',
-  set_plan: '/medication-sets',
+  set_plan: '/set',
   visit_record: '/visits',
   care_report: '/reports',
 };

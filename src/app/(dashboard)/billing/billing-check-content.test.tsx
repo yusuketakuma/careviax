@@ -73,7 +73,7 @@ function buildFixture(): BillingCheckResponse {
       next_action: {
         label: '麻薬監査を開始 — 12:00期限',
         description: '14:00訪問(田中様)の持参薬です。完了で午後の予定がすべて確定します。',
-        href: '/auditing',
+        href: '/audit',
       },
       blocked_reasons: [
         {

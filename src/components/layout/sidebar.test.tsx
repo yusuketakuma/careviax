@@ -96,6 +96,7 @@ describe('Sidebar', () => {
       '調剤',
       '監査',
       'セット',
+      'セット監査',
       '報告・共有',
       '算定チェック',
       'ハンドオフ',
@@ -112,8 +113,9 @@ describe('Sidebar', () => {
       '/prescriptions/intake',
       '/prescriptions',
       '/dispense',
-      '/auditing',
-      '/medication-sets',
+      '/audit',
+      '/set',
+      '/set-audit',
       '/reports',
       '/billing',
       '/handoff',
@@ -185,6 +187,9 @@ describe('Sidebar', () => {
     expect(screen.getByTestId('sidebar-nav-home').getAttribute('href')).toBe('/dashboard');
     expect(screen.getByTestId('sidebar-nav-patients').getAttribute('href')).toBe('/patients');
     expect(screen.getByTestId('sidebar-nav-dispense').getAttribute('href')).toBe('/dispense');
+    expect(screen.getByTestId('sidebar-nav-audit').getAttribute('href')).toBe('/audit');
+    expect(screen.getByTestId('sidebar-nav-set').getAttribute('href')).toBe('/set');
+    expect(screen.getByTestId('sidebar-nav-set-audit').getAttribute('href')).toBe('/set-audit');
   });
 
   it('keeps admin analytics pages active under マスター after the report item removal', () => {
@@ -197,11 +202,11 @@ describe('Sidebar', () => {
     );
   });
 
-  it('renders dynamic badges for auditing (red) and handoff (amber)', () => {
-    mockNavBadges = { '/auditing': 6, '/handoff': 3 };
+  it('renders dynamic badges for audit (red) and handoff (amber)', () => {
+    mockNavBadges = { '/audit': 6, '/handoff': 3 };
     render(<Sidebar />);
 
-    const auditingBadge = screen.getByTestId('sidebar-nav-badge--auditing');
+    const auditingBadge = screen.getByTestId('sidebar-nav-badge--audit');
     expect(auditingBadge.textContent).toBe('6');
     expect(auditingBadge.className).toContain('bg-red-500');
 
@@ -211,11 +216,11 @@ describe('Sidebar', () => {
   });
 
   it('hides the badge on the active item', () => {
-    mockNavBadges = { '/auditing': 6, '/handoff': 3 };
-    mockPathname = '/auditing';
+    mockNavBadges = { '/audit': 6, '/handoff': 3 };
+    mockPathname = '/audit';
     render(<Sidebar />);
 
-    expect(screen.queryByTestId('sidebar-nav-badge--auditing')).toBeNull();
+    expect(screen.queryByTestId('sidebar-nav-badge--audit')).toBeNull();
     expect(screen.getByTestId('sidebar-nav-badge--handoff')).toBeTruthy();
   });
 
@@ -223,7 +228,7 @@ describe('Sidebar', () => {
     mockNavBadges = {};
     render(<Sidebar />);
 
-    expect(screen.queryByTestId('sidebar-nav-badge--auditing')).toBeNull();
+    expect(screen.queryByTestId('sidebar-nav-badge--audit')).toBeNull();
     expect(screen.queryByTestId('sidebar-nav-badge--handoff')).toBeNull();
   });
 });

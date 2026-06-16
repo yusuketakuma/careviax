@@ -8,6 +8,8 @@ export const ORG_REALTIME_EVENT_TYPES = [
 ] as const;
 
 export const WORKFLOW_REALTIME_SOURCES = [
+  'cycle_holds_create',
+  'cycle_holds_resolve',
   'dispense_audits',
   'dispense_results',
   'dispense_results_rework',

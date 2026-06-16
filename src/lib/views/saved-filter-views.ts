@@ -240,7 +240,7 @@ export type SavedViewPreset = {
  * - 朝の確認 → /my-day(私の今日): focus=visits & visit_filter=unprepared
  *   (担当=自分の本日訪問+準備未完了。「薬切れ近い」は既存一覧に
  *    対応するクエリが無いため未反映 = known difference)
- * - セット担当 → /medication-sets(セット準備ワークスペース+鑑査待ち一覧が同一ページ)
+ * - セット担当 → /set(セット準備ワークスペース+鑑査待ち一覧が同一ページ)
  * - 事務で確認 → /clerk-support(KPI: 日程確認=患者確認待ち相当 / 送付先未設定)
  * - 管理者用 → /dashboard(コックピット: 工程の今=滞留 / 止まっている理由=ブロッカー /
  *   チームの余白=負荷)
@@ -256,7 +256,7 @@ export const SAVED_VIEW_PRESETS: SavedViewPreset[] = [
     id: 'set_team',
     title: 'セット担当',
     conditionSummary: 'セット準備 / セット監査待ち',
-    href: '/medication-sets',
+    href: '/set',
   },
   {
     id: 'clerk_check',

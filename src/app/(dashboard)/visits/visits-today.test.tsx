@@ -77,7 +77,7 @@ function buildCards(): VisitPreparationCard[] {
       note: '監査が間に合わない場合: 15:00繰り下げ案を反映できます(スケジュールで調整)',
       note_tone: 'warning',
       actions: [
-        { label: '監査へ', href: '/auditing' },
+        { label: '監査へ', href: '/audit' },
         { label: 'カードへ', href: '/patients/pt_tanaka' },
       ],
     },
@@ -102,7 +102,7 @@ function buildCards(): VisitPreparationCard[] {
       note: 'セット残り3名分の確認が残っています — 完了後に配薬カートへ積み込めます',
       note_tone: 'info',
       actions: [
-        { label: 'セットへ', href: '/medication-sets' },
+        { label: 'セットへ', href: '/set' },
         { label: '施設パケット', href: '/schedules' },
       ],
     },

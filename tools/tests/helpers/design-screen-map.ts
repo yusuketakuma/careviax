@@ -117,13 +117,13 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'new_08_audit',
     targetImage: 'images/new/08_audit.png',
-    route: '/auditing',
+    route: '/audit',
     setup: async (page) => {
-      // 私の監査キュー先頭(麻薬・田中)を選択して中央の監査詳細を開く
-      await page.getByTestId('audit-queue-row').first().click();
-      // workbench API 取得 → 二人制バナー/計数テーブルの描画まで待つ
+      // 新 DispensingWorkbench（phase="audit"）の工程タブが active になった状態の描画を待つ。
+      // active な工程タブは aria-current="page" の <Link> 1 件のみ（route 別に一意）。
+      // 旧 audit-workbench の audit-queue-row / audit-count-table / two-person-banner は撤去済み。
       await page
-        .waitForSelector('[data-testid="audit-count-table"], [data-testid="two-person-banner"]', {
+        .waitForSelector('a[aria-current="page"]', {
           timeout: 20_000,
         })
         .catch(() => {});
@@ -133,10 +133,12 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'new_09_set',
     targetImage: 'images/new/09_set.png',
-    route: '/medication-sets',
+    route: '/set',
     setup: async (page) => {
+      // 新 DispensingWorkbench（phase="setp"）の工程タブが active になった状態の描画を待つ。
+      // 旧 set-workspace の set-workspace-row / set-pending-card は撤去済み。
       await page
-        .waitForSelector('[data-testid="set-workspace-row"], [data-testid="set-pending-card"]', {
+        .waitForSelector('a[aria-current="page"]', {
           timeout: 30_000,
         })
         .catch(() => {});
@@ -334,11 +336,11 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p0_13_dispensing_audit',
     targetImage: 'images/P0/p0_13_dispensing_audit.png',
-    route: '/auditing',
+    route: '/audit',
     setup: async (page) => {
-      await page.getByTestId('audit-queue-row').first().click();
+      // 新 DispensingWorkbench（phase="audit"）の工程タブ active 描画を待つ。
       await page
-        .waitForSelector('[data-testid="audit-count-table"], [data-testid="two-person-banner"]', {
+        .waitForSelector('a[aria-current="page"]', {
           timeout: 90_000,
         })
         .catch(() => {});
@@ -348,13 +350,12 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p0_14_set_preparation',
     targetImage: 'images/P0/p0_14_set_preparation.png',
-    route: '/medication-sets',
+    route: '/set',
   },
   {
     screenId: 'p0_15_set_audit',
     targetImage: 'images/P0/p0_15_set_audit.png',
-    route: '/medication-sets',
-    note: 'セット鑑査タブ/ビューの切替操作は実装フェーズで追加',
+    route: '/set-audit',
   },
   // ── スケジュール・ルート ────────────────────────────────────
   {
@@ -661,24 +662,13 @@ export const DESIGN_SCREENS: DesignScreenEntry[] = [
   {
     screenId: 'p0_36_reject_reason_modal',
     targetImage: 'images/P0/p0_36_reject_reason_modal.png',
-    route: '/auditing',
+    route: '/audit',
+    note: '要確認: 新 DispensingWorkbench の差戻し/NG分類は right-pane.tsx にインライン実装され、旧 audit-reject-button / 共通 ReasonDialog(reason-dialog/reason-option) は使用しない。差戻しモーダル相当の操作・testid は実装フェーズで再設計する。現状は工程タブ active の描画のみ待つ。',
     setup: async (page) => {
-      // 監査ワークベンチの差戻しボタンから共通理由モーダル(ReasonDialog)を開く
+      // 旧 audit-workbench の差戻しボタン → 共通 ReasonDialog 経路は撤去済み。
+      // 新 workbench（phase="audit"）の工程タブ active 描画のみ待機する。
       await page
-        .waitForSelector('[data-testid="audit-reject-button"]', { timeout: 30_000 })
-        .catch(() => {});
-      await page
-        .getByTestId('audit-reject-button')
-        .click()
-        .catch(() => {});
-      await page
-        .waitForSelector('[data-testid="reason-dialog"]', { timeout: 20_000 })
-        .catch(() => {});
-      // target は先頭チップが選択済みの状態
-      await page
-        .getByTestId('reason-option')
-        .first()
-        .click()
+        .waitForSelector('a[aria-current="page"]', { timeout: 30_000 })
         .catch(() => {});
       await page.waitForTimeout(400);
     },

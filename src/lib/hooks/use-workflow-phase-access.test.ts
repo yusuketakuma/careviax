@@ -118,10 +118,18 @@ describe('buildWorkflowPhaseAccess', () => {
 
     expect(phaseAccess.medication_sets.pending_count).toBe(2);
     expect(phaseAccess.medication_sets.summary).toBe('セット 2件');
+    // セット準備は /set へ。/set-audit には振り分けない。
+    expect(phaseAccess.medication_sets.href).toBe('/set');
+    expect(phaseAccess.medication_sets.next_action).toEqual({
+      href: '/set',
+      label: 'セット管理を開く',
+    });
     expect(phaseAccess.set_audit.pending_count).toBe(1);
     expect(phaseAccess.set_audit.summary).toBe('セット監査 1件');
+    // セット監査は独立ルート /set-audit へ。
+    expect(phaseAccess.set_audit.href).toBe('/set-audit');
     expect(phaseAccess.set_audit.next_action).toEqual({
-      href: '/medication-sets',
+      href: '/set-audit',
       label: 'セット監査を確認',
     });
     expect(phaseAccess.schedules.pending_count).toBe(3);

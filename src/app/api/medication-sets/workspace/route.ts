@@ -9,7 +9,7 @@ import type {
   SetWorkspaceFacilityGroup,
   SetWorkspaceResponse,
   SetWorkspaceRow,
-} from '@/app/(dashboard)/medication-sets/set-workspace.shared';
+} from '@/app/(dashboard)/set/set-workspace.shared';
 import { deriveRowStatus, deriveSlotMarks } from './set-derivations';
 
 /**
@@ -366,7 +366,7 @@ export const GET = withAuthContext(
         subtitle: `監査合格と同時にここへ自動で現れます。${directSetSentence}`,
         meta_label: `所要${SET_MINUTES_PER_PATIENT}分`,
         action_label: '→ 監査へ',
-        action_href: '/auditing',
+        action_href: '/audit',
       });
     }
 

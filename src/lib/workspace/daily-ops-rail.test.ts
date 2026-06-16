@@ -76,7 +76,7 @@ describe('buildDailyOpsNextAction', () => {
     });
 
     expect(nextAction.actionLabel).toBe('麻薬監査を開始 — 12:00期限');
-    expect(nextAction.actionHref).toBe('/auditing');
+    expect(nextAction.actionHref).toBe('/audit');
     expect(nextAction.description).toBe(
       '14:00訪問(田中様)の持参薬です。完了で午後の予定がすべて確定します。',
     );
@@ -88,12 +88,12 @@ describe('buildDailyOpsNextAction', () => {
 
     const nextAction = buildDailyOpsNextAction(fixture, {
       actionLabel: 'セット監査を始める',
-      actionHref: '/medication-sets',
+      actionHref: '/set',
       description: 'いま期限で止まっている監査はありません。',
     });
 
     expect(nextAction.actionLabel).toBe('セット監査を始める');
-    expect(nextAction.actionHref).toBe('/medication-sets');
+    expect(nextAction.actionHref).toBe('/set');
   });
 
   it('当日訪問が無い患者は患者名ベースの説明文になる', () => {

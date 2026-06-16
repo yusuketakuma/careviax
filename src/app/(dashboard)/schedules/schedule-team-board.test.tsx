@@ -315,7 +315,7 @@ describe('buildScheduleRiskAlert', () => {
     expect(alert?.message).toContain('麻薬監査が未完了(期限12:00)');
     expect(alert?.message).toContain('訪問を15:00へ繰り下げ');
     expect(alert?.message).toContain('施設グリーンヒルを16:00開始に変更する案を準備済み');
-    expect(alert?.actionHref).toBe('/auditing');
+    expect(alert?.actionHref).toBe('/audit');
   });
 
   it('returns null when no narcotic audit with deadline exists', () => {
@@ -413,7 +413,7 @@ describe('ScheduleTeamBoard', () => {
     // 右レール: 次にやること(青主操作はこの1つ)/止まっている理由/根拠・記録
     expect(screen.getByRole('heading', { name: '次にやること' })).toBeTruthy();
     const nextAction = screen.getByRole('link', { name: '麻薬監査を開始 — 12:00期限' });
-    expect(nextAction.getAttribute('href')).toBe('/auditing');
+    expect(nextAction.getAttribute('href')).toBe('/audit');
     expect(screen.getByText(/14:00訪問\(田中 一郎様\)の持参薬です/)).toBeTruthy();
     expect(screen.getByRole('heading', { name: '止まっている理由' })).toBeTruthy();
     expect(screen.getByText('ご家族の同意待ち(新規契約)')).toBeTruthy();

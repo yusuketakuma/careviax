@@ -1,0 +1,236 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { NextRequest } from 'next/server';
+
+const { authMock, prismaMock, withOrgContextMock, txMock, notifyWorkflowMutationMock } =
+  vi.hoisted(() => ({
+    authMock: vi.fn(),
+    prismaMock: {
+      membership: { findFirst: vi.fn() },
+    },
+    withOrgContextMock: vi.fn(),
+    txMock: {
+      setPlan: { findFirst: vi.fn() },
+      setBatch: {
+        findFirst: vi.fn(),
+        updateMany: vi.fn(),
+      },
+      setBatchChangeLog: { create: vi.fn() },
+      auditLog: { create: vi.fn() },
+    },
+    notifyWorkflowMutationMock: vi.fn(),
+  }));
+
+vi.mock('@/lib/auth/config', () => ({
+  auth: authMock,
+}));
+
+vi.mock('@/lib/db/client', () => ({
+  prisma: prismaMock,
+}));
+
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/server/services/workflow-dashboard-cache', () => ({
+  notifyWorkflowMutation: notifyWorkflowMutationMock,
+}));
+
+import { PATCH } from './route';
+
+function createRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/set-plans/plan_1/batches/cell', {
+    method: 'PATCH',
+    headers: {
+      'x-org-id': 'org_1',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+const params = { params: Promise.resolve({ id: 'plan_1' }) };
+
+function buildBatch(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'batch_1',
+    org_id: 'org_1',
+    plan_id: 'plan_1',
+    line_id: 'line_1',
+    slot: 'morning',
+    day_number: 1,
+    quantity: 1,
+    carry_type: 'carry',
+    packaging_method_snapshot: null,
+    packaging_instructions_snapshot: null,
+    packaging_instruction_tags_snapshot: [],
+    set_state: 'pending',
+    audit_state: 'unaudited',
+    held_reason: null,
+    held_by: null,
+    held_at: null,
+    set_by: null,
+    set_at: null,
+    version: 1,
+    line: { id: 'line_1', drug_name: 'Drug', dose: '1T', frequency: '朝', unit: '錠' },
+    ...overrides,
+  };
+}
+
+describe('set-plans/[id]/batches/cell PATCH', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    prismaMock.membership.findFirst.mockResolvedValue({ role: 'pharmacist' });
+    withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(txMock));
+    txMock.setPlan.findFirst.mockResolvedValue({ id: 'plan_1' });
+    txMock.setBatch.updateMany.mockResolvedValue({ count: 1 });
+    txMock.setBatchChangeLog.create.mockResolvedValue({});
+    txMock.auditLog.create.mockResolvedValue({});
+  });
+
+  it('rejects malformed JSON before any read or write', async () => {
+    const badRequest = new NextRequest('http://localhost/api/set-plans/plan_1/batches/cell', {
+      method: 'PATCH',
+      headers: { 'x-org-id': 'org_1', 'content-type': 'application/json' },
+      body: '{"action":',
+    });
+
+    const response = await PATCH(badRequest, params);
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'リクエストボディが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unknown action via schema validation', async () => {
+    const response = await PATCH(createRequest({ action: 'nope', batch_id: 'batch_1' }), params);
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('requires held_reason for hold action', async () => {
+    const response = await PATCH(createRequest({ action: 'hold', batch_id: 'batch_1' }), params);
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when the plan is not accessible', async () => {
+    txMock.setPlan.findFirst.mockResolvedValue(null);
+    const response = await PATCH(createRequest({ action: 'set', batch_id: 'batch_1' }), params);
+    expect(response.status).toBe(404);
+    expect(txMock.setBatch.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when the cell is not found', async () => {
+    txMock.setBatch.findFirst.mockResolvedValueOnce(null);
+    const response = await PATCH(createRequest({ action: 'set', batch_id: 'batch_x' }), params);
+    expect(response.status).toBe(404);
+    expect(txMock.setBatch.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('sets a cell with server timestamp and records audit + change log', async () => {
+    txMock.setBatch.findFirst
+      .mockResolvedValueOnce(buildBatch())
+      .mockResolvedValueOnce(
+        buildBatch({ set_state: 'set', set_by: 'user_1', set_at: new Date(), version: 2 }),
+      );
+
+    const response = await PATCH(createRequest({ action: 'set', batch_id: 'batch_1' }), params);
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.data.set_state).toBe('set');
+
+    // OCC: updateMany guarded by version, with server-side set_by/set_at.
+    const updateArgs = txMock.setBatch.updateMany.mock.calls[0][0];
+    expect(updateArgs.where).toMatchObject({ id: 'batch_1', version: 1 });
+    expect(updateArgs.data).toMatchObject({ set_state: 'set', set_by: 'user_1' });
+    expect(updateArgs.data.set_at).toBeInstanceOf(Date);
+    expect(updateArgs.data.version).toEqual({ increment: 1 });
+
+    // 監査証跡(append-only): AuditLog + SetBatchChangeLog
+    expect(txMock.auditLog.create).toHaveBeenCalledTimes(1);
+    expect(txMock.auditLog.create.mock.calls[0][0].data).toMatchObject({
+      action: 'set_batch.cell_set',
+      target_type: 'SetBatch',
+      actor_id: 'user_1',
+    });
+    expect(txMock.setBatchChangeLog.create).toHaveBeenCalledTimes(1);
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('holds a cell with reason and detail', async () => {
+    txMock.setBatch.findFirst
+      .mockResolvedValueOnce(buildBatch())
+      .mockResolvedValueOnce(
+        buildBatch({ set_state: 'hold', held_reason: 'stock_shortage', version: 2 }),
+      );
+
+    const response = await PATCH(
+      createRequest({
+        action: 'hold',
+        batch_id: 'batch_1',
+        held_reason: 'stock_shortage',
+        held_detail: '在庫不足',
+      }),
+      params,
+    );
+    expect(response.status).toBe(200);
+
+    const updateArgs = txMock.setBatch.updateMany.mock.calls[0][0];
+    expect(updateArgs.data).toMatchObject({
+      set_state: 'hold',
+      held_reason: 'stock_shortage',
+      held_by: 'user_1',
+    });
+    expect(txMock.auditLog.create.mock.calls[0][0].data.changes).toMatchObject({
+      held_reason: 'stock_shortage',
+      held_detail: '在庫不足',
+    });
+  });
+
+  it('returns 409 with details when expected_version mismatches', async () => {
+    txMock.setBatch.findFirst.mockResolvedValueOnce(buildBatch({ version: 3 }));
+
+    const response = await PATCH(
+      createRequest({ action: 'set', batch_id: 'batch_1', expected_version: 1 }),
+      params,
+    );
+    expect(response.status).toBe(409);
+    const payload = await response.json();
+    expect(payload.code).toBe('WORKFLOW_CONFLICT');
+    expect(payload.details).toMatchObject({
+      current: { id: 'batch_1', version: 3 },
+      expected_version: 1,
+    });
+    expect(txMock.setBatch.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when the optimistic update loses the race (count===0)', async () => {
+    txMock.setBatch.findFirst.mockResolvedValueOnce(buildBatch());
+    txMock.setBatch.updateMany.mockResolvedValue({ count: 0 });
+
+    const response = await PATCH(createRequest({ action: 'set', batch_id: 'batch_1' }), params);
+    expect(response.status).toBe(409);
+    const payload = await response.json();
+    expect(payload.code).toBe('WORKFLOW_CONFLICT');
+    expect(txMock.auditLog.create).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('clears a held cell back to pending', async () => {
+    txMock.setBatch.findFirst
+      .mockResolvedValueOnce(buildBatch({ set_state: 'hold', held_reason: 'stock_shortage' }))
+      .mockResolvedValueOnce(buildBatch({ set_state: 'pending', version: 2 }));
+
+    const response = await PATCH(createRequest({ action: 'clear', batch_id: 'batch_1' }), params);
+    expect(response.status).toBe(200);
+    const updateArgs = txMock.setBatch.updateMany.mock.calls[0][0];
+    expect(updateArgs.data).toMatchObject({
+      set_state: 'pending',
+      set_by: null,
+      held_reason: null,
+    });
+  });
+});

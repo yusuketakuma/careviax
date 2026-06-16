@@ -29,7 +29,7 @@ describe('saved-filter-views', () => {
         SAVED_VIEW_PRESETS.map((preset) => [preset.id, preset.href]),
       );
       expect(hrefById.morning_check).toBe('/my-day?focus=visits&visit_filter=unprepared');
-      expect(hrefById.set_team).toBe('/medication-sets');
+      expect(hrefById.set_team).toBe('/set');
       expect(hrefById.clerk_check).toBe('/clerk-support');
       expect(hrefById.manager).toBe('/dashboard');
     });

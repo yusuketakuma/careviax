@@ -260,7 +260,7 @@ describe('/api/medication-sets/workspace', () => {
     expect(item.subtitle).toContain('監査合格と同時にここへ自動で現れます。');
     expect(item.subtitle).toContain('麻薬・冷所のため山田が直接セットします。');
     expect(item.meta_label).toBe('所要15分');
-    expect(item.action_href).toBe('/auditing');
+    expect(item.action_href).toBe('/audit');
   });
 
   it('不正な scope はバリデーションエラー', async () => {

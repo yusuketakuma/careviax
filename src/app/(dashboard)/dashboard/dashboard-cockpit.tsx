@@ -214,14 +214,14 @@ function UrgentNowCard({
       <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
         {isPrimary ? (
           <Button asChild className="min-h-[40px]">
-            <Link href="/auditing">監査を開始する</Link>
+            <Link href="/audit">監査を開始する</Link>
           </Button>
         ) : (
           <Button asChild variant="outline" className="min-h-[40px]">
-            <Link href="/auditing">監査を開く</Link>
+            <Link href="/audit">監査を開く</Link>
           </Button>
         )}
-        <Link href="/auditing" className="text-sm font-medium text-primary hover:underline">
+        <Link href="/audit" className="text-sm font-medium text-primary hover:underline">
           → 監査へ
         </Link>
       </div>
@@ -564,7 +564,7 @@ function buildNextAction(
         ? `${auditLabel}を開始 — ${formatTimeOfDay(topAudit.due_at)}期限`
         : `${auditLabel}を開始する`,
       description: `${topAudit.patient_name} 様の調剤監査が待ちです。完了で次の工程が動き出します。`,
-      actionHref: '/auditing',
+      actionHref: '/audit',
     };
   }
   if (visitCount > 0) {

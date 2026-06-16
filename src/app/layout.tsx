@@ -5,7 +5,7 @@ import { RootProvider } from '@/components/providers/root-provider';
 import './globals.css';
 
 const notoSansJP = Noto_Sans_JP({
-  variable: '--font-sans',
+  variable: '--font-noto-jp',
   subsets: ['latin'],
   weight: ['400', '500', '700'],
 });

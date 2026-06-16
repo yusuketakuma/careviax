@@ -9,13 +9,17 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
 import { batchResolveNames } from '@/lib/utils/name-resolver';
-import { detectMedicationChanges } from '@/lib/prescription/medication-diff';
+import {
+  detectMedicationChanges,
+  matchMedicationDiffLines,
+} from '@/lib/prescription/medication-diff';
 import {
   buildWorkbenchAllergyLabel,
   buildWorkbenchRenalLabel,
   detectDoseDirection,
 } from '@/lib/dispensing/workbench-projection';
 import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
+import { findPreviousPrescriptionIntakeForMedicationDiff } from '@/server/services/prescription-intake-pair';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
 
@@ -87,6 +91,7 @@ export const GET = withAuthContext(async (_req, ctx, { params }) => {
         select: {
           id: true,
           overall_status: true,
+          version: true,
           case_id: true,
           case_: {
             select: {
@@ -125,7 +130,9 @@ export const GET = withAuthContext(async (_req, ctx, { params }) => {
             select: {
               id: true,
               prescribed_date: true,
+              created_at: true,
               prescriber_institution: true,
+              prescriber_name: true,
               lines: {
                 orderBy: { line_number: 'asc' },
                 select: {
@@ -133,6 +140,7 @@ export const GET = withAuthContext(async (_req, ctx, { params }) => {
                   line_number: true,
                   drug_name: true,
                   drug_code: true,
+                  is_generic: true,
                   dose: true,
                   frequency: true,
                   days: true,
@@ -165,7 +173,17 @@ export const GET = withAuthContext(async (_req, ctx, { params }) => {
   if (!task) return notFound('タスクが見つかりません');
 
   const patient = task.cycle.case_.patient;
-  const [currentIntake, previousIntake] = task.cycle.prescription_intakes;
+  const [currentIntake] = task.cycle.prescription_intakes;
+  const previousIntake = currentIntake
+    ? await findPreviousPrescriptionIntakeForMedicationDiff(prisma, {
+        orgId: ctx.orgId,
+        patientId: patient.id,
+        caseId: task.cycle.case_id,
+        currentIntakeId: currentIntake.id,
+        currentPrescribedDate: currentIntake.prescribed_date,
+        currentCreatedAt: currentIntake.created_at,
+      })
+    : null;
   const currentLines = currentIntake?.lines ?? [];
   const previousLines = previousIntake?.lines ?? [];
 
@@ -257,8 +275,12 @@ export const GET = withAuthContext(async (_req, ctx, { params }) => {
 
   // ── 処方比較(前回 / 今回 / 差)──
   const changes = detectMedicationChanges(currentLines, previousLines);
-  const changeByName = new Map(changes.map((change) => [change.drug_name, change]));
-  const previousByName = new Map(previousLines.map((line) => [line.drug_name, line]));
+  const changeQueuesByName = new Map<string, typeof changes>();
+  for (const change of changes) {
+    const queue = changeQueuesByName.get(change.drug_name) ?? [];
+    queue.push(change);
+    changeQueuesByName.set(change.drug_name, queue);
+  }
   const resolvedChangeInquiries = task.cycle.inquiries.filter(
     (inquiry) => inquiry.result === 'changed',
   );
@@ -271,39 +293,74 @@ export const GET = withAuthContext(async (_req, ctx, { params }) => {
     (inquiry) => inquiry.line_id == null,
   );
 
-  const comparison = [
-    ...currentLines.map((line) => {
-      const change = changeByName.get(line.drug_name) ?? null;
-      const previousLine = previousByName.get(line.drug_name) ?? null;
+  type ComparisonRow = {
+    key: string;
+    drug_name: string;
+    previous_label: string | null;
+    current_label: string | null;
+    change_type: 'added' | 'removed' | 'dose_changed' | 'frequency_changed' | 'days_changed' | null;
+    direction: 'increase' | 'decrease' | null;
+    inquiry_origin: boolean;
+  };
+  const comparison: ComparisonRow[] = matchMedicationDiffLines(
+    currentLines,
+    previousLines,
+  ).flatMap<ComparisonRow>((match) => {
+    const line = match.current;
+    const previousLine = match.previous;
+    if (line) {
+      const changeQueue = changeQueuesByName.get(line.drug_name) ?? [];
+      const change =
+        changeQueue.find((item) =>
+          previousLine
+            ? item.previous === doseFrequencyLabel(previousLine) &&
+              item.current === doseFrequencyLabel(line)
+            : item.current === doseFrequencyLabel(line),
+        ) ??
+        changeQueue.shift() ??
+        null;
+      if (change) {
+        const nextQueue = changeQueue.filter((item) => item !== change);
+        if (nextQueue.length > 0) {
+          changeQueuesByName.set(line.drug_name, nextQueue);
+        } else {
+          changeQueuesByName.delete(line.drug_name);
+        }
+      }
       const previousLabel = previousLine ? doseFrequencyLabel(previousLine) : null;
       const currentLabel = doseFrequencyLabel(line);
       const changeType = change?.change_type ?? null;
-      return {
-        key: line.id,
-        drug_name: line.drug_name,
-        previous_label: previousLabel,
-        current_label: currentLabel,
-        change_type: changeType,
-        direction:
-          changeType === 'dose_changed'
-            ? detectDoseDirection(previousLine?.dose ?? null, line.dose)
-            : null,
-        inquiry_origin:
-          changeType != null && (changedLineIds.has(line.id) || hasCycleLevelChangeInquiry),
-      };
-    }),
-    ...previousLines
-      .filter((line) => !currentLines.some((current) => current.drug_name === line.drug_name))
-      .map((line) => ({
-        key: `removed-${line.id}`,
-        drug_name: line.drug_name,
-        previous_label: doseFrequencyLabel(line),
+      return [
+        {
+          key: line.id,
+          drug_name: line.drug_name,
+          previous_label: previousLabel,
+          current_label: currentLabel,
+          change_type: changeType,
+          direction:
+            changeType === 'dose_changed'
+              ? detectDoseDirection(previousLine?.dose ?? null, line.dose)
+              : null,
+          inquiry_origin:
+            changeType != null && (changedLineIds.has(line.id) || hasCycleLevelChangeInquiry),
+        },
+      ];
+    }
+
+    if (!previousLine) return [];
+
+    return [
+      {
+        key: `removed-${previousLine.id}`,
+        drug_name: previousLine.drug_name,
+        previous_label: doseFrequencyLabel(previousLine),
         current_label: null,
         change_type: 'removed' as const,
         direction: null,
-        inquiry_origin: changedLineIds.has(line.id) || hasCycleLevelChangeInquiry,
-      })),
-  ];
+        inquiry_origin: changedLineIds.has(previousLine.id) || hasCycleLevelChangeInquiry,
+      },
+    ];
+  });
 
   // ── 計数テーブル(監査ワークベンチ)。麻薬行を先頭に(最優先で計数する)──
   const resultByLineId = new Map(task.results.map((result) => [result.line_id, result]));
@@ -320,12 +377,14 @@ export const GET = withAuthContext(async (_req, ctx, { params }) => {
       route: line.route,
       tags: line.packaging_instruction_tags as string[],
       is_narcotic: isNarcoticLine(line),
+      is_generic: line.is_generic,
       prescribed_label: formatQuantityLabel(line),
       prescribed_quantity: line.quantity,
       days: line.days,
       dispensed_label: result
         ? `${result.actual_quantity}${result.actual_unit ?? line.unit ?? ''}`
         : null,
+      dispensed_at: result?.dispensed_at ? format(result.dispensed_at, 'yyyy-MM-dd') : null,
       dispensed_quantity: result?.actual_quantity ?? null,
       unit: result?.actual_unit ?? line.unit ?? '',
       dispensing_method: decision?.dispensing_method ?? line.dispensing_method ?? null,
@@ -360,12 +419,18 @@ export const GET = withAuthContext(async (_req, ctx, { params }) => {
       priority: task.priority,
       due_date: task.due_date?.toISOString() ?? null,
     },
-    cycle: { id: task.cycle.id, overall_status: task.cycle.overall_status },
+    cycle: {
+      id: task.cycle.id,
+      overall_status: task.cycle.overall_status,
+      version: task.cycle.version,
+    },
     patient: { id: patient.id, name: patient.name },
     intake: currentIntake
       ? {
           id: currentIntake.id,
           prescribed_date: format(currentIntake.prescribed_date, 'yyyy-MM-dd'),
+          prescriber_institution: currentIntake.prescriber_institution,
+          prescriber_name: currentIntake.prescriber_name,
         }
       : null,
     previous_intake: previousIntake

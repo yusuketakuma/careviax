@@ -465,7 +465,7 @@ export function OperationalPolicyContent() {
         description: auditVisit?.time_start
           ? `${formatTimeOfDay(auditVisit.time_start)}訪問(${topAudit.patient_name}様)の持参薬です。完了で午後の予定がすべて確定します。`
           : `${topAudit.patient_name}様の監査が待ちです。完了で次の工程が動き出します。`,
-        actionHref: '/auditing',
+        actionHref: '/audit',
       }
     : {
         actionLabel: '今日の予定を確認する',

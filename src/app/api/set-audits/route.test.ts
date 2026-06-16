@@ -6,7 +6,10 @@ const {
   membershipFindFirstMock,
   withOrgContextMock,
   setPlanFindFirstMock,
+  setPlanFindManyMock,
   setBatchFindManyMock,
+  setBatchUpdateManyMock,
+  setBatchChangeLogCreateMock,
   setAuditFindFirstMock,
   setAuditCreateMock,
   medicationCycleFindFirstMock,
@@ -17,12 +20,16 @@ const {
   taskCreateMock,
   workflowExceptionCreateMock,
   notifyWorkflowMutationMock,
+  createAuditLogEntryMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   setPlanFindFirstMock: vi.fn(),
+  setPlanFindManyMock: vi.fn(),
   setBatchFindManyMock: vi.fn(),
+  setBatchUpdateManyMock: vi.fn(),
+  setBatchChangeLogCreateMock: vi.fn(),
   setAuditFindFirstMock: vi.fn(),
   setAuditCreateMock: vi.fn(),
   medicationCycleFindFirstMock: vi.fn(),
@@ -33,6 +40,7 @@ const {
   taskCreateMock: vi.fn(),
   workflowExceptionCreateMock: vi.fn(),
   notifyWorkflowMutationMock: vi.fn(),
+  createAuditLogEntryMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -40,13 +48,16 @@ vi.mock('@/lib/auth/config', () => ({
 }));
 
 vi.mock('@/lib/audit/audit-entry', () => ({
-  createAuditLogEntry: vi.fn(),
+  createAuditLogEntry: createAuditLogEntryMock,
 }));
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
     membership: {
       findFirst: membershipFindFirstMock,
+    },
+    setPlan: {
+      findMany: setPlanFindManyMock,
     },
   },
 }));
@@ -59,10 +70,28 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
   notifyWorkflowMutation: notifyWorkflowMutationMock,
 }));
 
-import { POST as rawPOST } from './route';
+vi.mock('@/lib/dispensing/set-batch-history', () => ({
+  buildSetBatchHistorySnapshot: (target: {
+    id?: string | null;
+    line_id: string;
+    audit_state?: string | null;
+    ng_code?: string | null;
+    version?: number | null;
+  }) => ({
+    batch_id: target.id ?? null,
+    line_id: target.line_id,
+    audit_state: target.audit_state ?? null,
+    ng_code: target.ng_code ?? null,
+    version: target.version ?? null,
+  }),
+  createSetBatchChangeLog: setBatchChangeLogCreateMock,
+}));
+
+import { GET as rawGET, POST as rawPOST } from './route';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
 const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 
 function createRequest(body: unknown, headers?: Record<string, string>) {
   return new NextRequest('http://localhost/api/set-audits', {
@@ -113,6 +142,9 @@ describe('/api/set-audits POST', () => {
         day_number: 1,
         quantity: 1,
         carry_type: 'carry',
+        set_state: 'set',
+        audit_state: 'ok',
+        ng_code: null,
         line: {
           id: 'line_1',
           drug_name: 'アムロジピン錠5mg',
@@ -124,6 +156,10 @@ describe('/api/set-audits POST', () => {
     ]);
     setAuditCreateMock.mockResolvedValue({ id: 'audit_1' });
     setAuditFindFirstMock.mockResolvedValue(null);
+    setBatchUpdateManyMock.mockResolvedValue({ count: 1 });
+    setBatchChangeLogCreateMock.mockResolvedValue(undefined);
+    createAuditLogEntryMock.mockResolvedValue(undefined);
+    setPlanFindManyMock.mockResolvedValue([]);
     // Default cycle state: 'setting' (valid source for approved/partial_approved → set_audited)
     medicationCycleFindFirstMock.mockResolvedValue({
       id: 'cycle_1',
@@ -144,6 +180,7 @@ describe('/api/set-audits POST', () => {
         },
         setBatch: {
           findMany: setBatchFindManyMock,
+          updateMany: setBatchUpdateManyMock,
         },
         setAudit: {
           findFirst: setAuditFindFirstMock,
@@ -328,6 +365,79 @@ describe('/api/set-audits POST', () => {
     expect(setAuditCreateMock).not.toHaveBeenCalled();
   });
 
+  it('rejects approved audits when any batch is not set and audited OK', async () => {
+    setBatchFindManyMock.mockResolvedValue([
+      {
+        id: 'batch_1',
+        line_id: 'line_1',
+        slot: 'morning',
+        day_number: 1,
+        quantity: 1,
+        carry_type: 'carry',
+        set_state: 'set',
+        audit_state: 'ok',
+        ng_code: null,
+        version: 1,
+        line: {
+          id: 'line_1',
+          drug_name: 'アムロジピン錠5mg',
+          dose: '1回1錠',
+          frequency: '朝食後',
+          unit: '錠',
+        },
+      },
+      {
+        id: 'batch_2',
+        line_id: 'line_2',
+        slot: 'evening',
+        day_number: 1,
+        quantity: 1,
+        carry_type: 'carry',
+        set_state: 'hold',
+        audit_state: 'unaudited',
+        ng_code: null,
+        version: 1,
+        line: {
+          id: 'line_2',
+          drug_name: 'タケプロンOD錠15mg',
+          dose: '1回1錠',
+          frequency: '夕食後',
+          unit: '錠',
+        },
+      },
+    ]);
+
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'approved',
+          checklist: completeSetAuditChecklist(),
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '未セットまたは未監査のセルがあるため監査OKにはできません',
+      details: {
+        blockers: [
+          {
+            batch_id: 'batch_2',
+            set_state: 'hold',
+            audit_state: 'unaudited',
+          },
+        ],
+      },
+    });
+    expect(setAuditCreateMock).not.toHaveBeenCalled();
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(cycleTransitionLogCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+  });
+
   it('returns 404 for unassigned pharmacist set audits before writes or downstream side effects', async () => {
     setPlanFindFirstMock.mockResolvedValue(null);
 
@@ -450,6 +560,9 @@ describe('/api/set-audits POST', () => {
         day_number: 1,
         quantity: 1,
         carry_type: 'carry',
+        set_state: 'set',
+        audit_state: 'ok',
+        ng_code: null,
         line: {
           id: 'line_1',
           drug_name: 'アムロジピン錠5mg',
@@ -464,6 +577,9 @@ describe('/api/set-audits POST', () => {
         day_number: 2,
         quantity: 2,
         carry_type: 'carry',
+        set_state: 'set',
+        audit_state: 'ok',
+        ng_code: null,
         line: {
           id: 'line_2',
           drug_name: 'タケプロンOD錠15mg',
@@ -530,6 +646,7 @@ describe('/api/set-audits POST', () => {
           plan_id: 'plan_1',
           result: 'rejected',
           reject_reason: '数量誤り',
+          reject_reason_code: 'quantity_short',
         },
         { 'x-org-id': 'org_1' },
       ),
@@ -614,5 +731,452 @@ describe('/api/set-audits POST', () => {
     expect(taskCreateMock).not.toHaveBeenCalled();
     expect(workflowExceptionCreateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('requires a structured NG reason code on rejected audits before any writes', async () => {
+    medicationCycleFindFirstMock.mockResolvedValue({
+      id: 'cycle_1',
+      overall_status: 'set_audited',
+      version: 1,
+    });
+
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'rejected',
+          reject_reason: '数量誤り',
+          // reject_reason_code を欠く → 差戻し不可
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '差戻し時はNG分類コード(reject_reason_code)が必須です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(setAuditCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects unknown NG reason codes via the RejectCode enum', async () => {
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'rejected',
+          reject_reason_code: 'not_a_real_code',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(setAuditCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('persists cell-level OK/NG audit states with version-checked optimistic locking', async () => {
+    setBatchFindManyMock.mockResolvedValue([
+      {
+        id: 'batch_1',
+        line_id: 'line_1',
+        slot: 'morning',
+        day_number: 1,
+        quantity: 1,
+        carry_type: 'carry',
+        set_state: 'set',
+        audit_state: 'unaudited',
+        set_by: 'setter_1',
+        version: 3,
+        line: {
+          id: 'line_1',
+          drug_name: 'アムロジピン錠5mg',
+          dose: '1回1錠',
+          frequency: '朝食後',
+          unit: '錠',
+        },
+      },
+      {
+        id: 'batch_2',
+        line_id: 'line_2',
+        slot: 'evening',
+        day_number: 1,
+        quantity: 2,
+        carry_type: 'carry',
+        set_state: 'set',
+        audit_state: 'unaudited',
+        set_by: 'setter_1',
+        version: 5,
+        line: {
+          id: 'line_2',
+          drug_name: 'タケプロンOD錠15mg',
+          dose: '1回1錠',
+          frequency: '夕食後',
+          unit: '錠',
+        },
+      },
+    ]);
+
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'partial_approved',
+          approved_scope: {
+            '1-morning': true,
+          },
+          cell_audits: [
+            { batch_id: 'batch_1', audit_state: 'ok', expected_version: 3 },
+            {
+              batch_id: 'batch_2',
+              audit_state: 'ng',
+              ng_code: 'quantity_over',
+              expected_version: 5,
+            },
+          ],
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(setBatchUpdateManyMock).toHaveBeenCalledTimes(2);
+    expect(setBatchUpdateManyMock).toHaveBeenNthCalledWith(1, {
+      where: { id: 'batch_1', org_id: 'org_1', version: 3 },
+      data: expect.objectContaining({
+        audit_state: 'ok',
+        ng_code: null,
+        audited_by: 'user_1',
+        version: { increment: 1 },
+      }),
+    });
+    expect(setBatchUpdateManyMock).toHaveBeenNthCalledWith(2, {
+      where: { id: 'batch_2', org_id: 'org_1', version: 5 },
+      data: expect.objectContaining({
+        audit_state: 'ng',
+        ng_code: 'quantity_over',
+        audited_by: 'user_1',
+        version: { increment: 1 },
+      }),
+    });
+    // 変更履歴 (SetBatchChangeLog) と監査ログ (AuditLog) を各セルで記録する。
+    expect(setBatchChangeLogCreateMock).toHaveBeenCalledTimes(2);
+    expect(setBatchChangeLogCreateMock).toHaveBeenNthCalledWith(
+      1,
+      expect.anything(),
+      expect.objectContaining({
+        beforeSnapshot: [
+          expect.objectContaining({ batch_id: 'batch_1', audit_state: 'unaudited', version: 3 }),
+        ],
+        afterSnapshot: [
+          expect.objectContaining({ batch_id: 'batch_1', audit_state: 'ok', version: 4 }),
+        ],
+      }),
+    );
+    expect(setBatchChangeLogCreateMock).toHaveBeenNthCalledWith(
+      2,
+      expect.anything(),
+      expect.objectContaining({
+        beforeSnapshot: [
+          expect.objectContaining({ batch_id: 'batch_2', audit_state: 'unaudited', version: 5 }),
+        ],
+        afterSnapshot: [
+          expect.objectContaining({
+            batch_id: 'batch_2',
+            audit_state: 'ng',
+            ng_code: 'quantity_over',
+            version: 6,
+          }),
+        ],
+      }),
+    );
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ action: 'set_audit.cell', targetId: 'batch_2' }),
+    );
+  });
+
+  it('rejects NG cells without an NG reason code before any writes', async () => {
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'approved',
+          checklist: completeSetAuditChecklist(),
+          cell_audits: [{ batch_id: 'batch_1', audit_state: 'ng', expected_version: 1 }],
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'NGセルにはNG分類コード(ng_code)が必須です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(setBatchUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate batch ids in cell audits before any writes', async () => {
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'approved',
+          checklist: completeSetAuditChecklist(),
+          cell_audits: [
+            { batch_id: 'batch_1', audit_state: 'ok', expected_version: 1 },
+            {
+              batch_id: 'batch_1',
+              audit_state: 'ng',
+              ng_code: 'drug_mismatch',
+              expected_version: 1,
+            },
+          ],
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'セル監査のバッチIDが重複しています',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('enforces separation of duties: the setter cannot audit their own cell', async () => {
+    // batch.set_by === ctx.userId (user_1) → 職務分離違反
+    setBatchFindManyMock.mockResolvedValue([
+      {
+        id: 'batch_1',
+        line_id: 'line_1',
+        slot: 'morning',
+        day_number: 1,
+        quantity: 1,
+        carry_type: 'carry',
+        set_state: 'set',
+        audit_state: 'unaudited',
+        set_by: 'user_1',
+        version: 1,
+        line: {
+          id: 'line_1',
+          drug_name: 'アムロジピン錠5mg',
+          dose: '1回1錠',
+          frequency: '朝食後',
+          unit: '錠',
+        },
+      },
+    ]);
+
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'approved',
+          checklist: completeSetAuditChecklist(),
+          cell_audits: [{ batch_id: 'batch_1', audit_state: 'ok', expected_version: 1 }],
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'ご自身がセットしたセルの監査はできません',
+    });
+    expect(setBatchUpdateManyMock).not.toHaveBeenCalled();
+    expect(setAuditCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 before audit writes when the auditor submits a stale cell version', async () => {
+    setBatchFindManyMock.mockResolvedValue([
+      {
+        id: 'batch_1',
+        line_id: 'line_1',
+        slot: 'morning',
+        day_number: 1,
+        quantity: 1,
+        carry_type: 'carry',
+        set_state: 'set',
+        audit_state: 'unaudited',
+        set_by: 'setter_1',
+        version: 2,
+        line: {
+          id: 'line_1',
+          drug_name: 'アムロジピン錠5mg',
+          dose: '1回1錠',
+          frequency: '朝食後',
+          unit: '錠',
+        },
+      },
+    ]);
+
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'approved',
+          checklist: completeSetAuditChecklist(),
+          cell_audits: [{ batch_id: 'batch_1', audit_state: 'ok', expected_version: 1 }],
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'セルが他のユーザーによって更新されています。再読み込みしてください',
+    });
+    expect(setBatchUpdateManyMock).not.toHaveBeenCalled();
+    expect(setAuditCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when a cell audit targets a batch outside the plan', async () => {
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'approved',
+          checklist: completeSetAuditChecklist(),
+          cell_audits: [{ batch_id: 'ghost_batch', audit_state: 'ok', expected_version: 1 }],
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '指定されたセルが当該プランに存在しません',
+    });
+    expect(setBatchUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when a cell update loses the optimistic lock race', async () => {
+    setBatchFindManyMock.mockResolvedValue([
+      {
+        id: 'batch_1',
+        line_id: 'line_1',
+        slot: 'morning',
+        day_number: 1,
+        quantity: 1,
+        carry_type: 'carry',
+        set_state: 'set',
+        audit_state: 'unaudited',
+        set_by: 'setter_1',
+        version: 2,
+        line: {
+          id: 'line_1',
+          drug_name: 'アムロジピン錠5mg',
+          dose: '1回1錠',
+          frequency: '朝食後',
+          unit: '錠',
+        },
+      },
+    ]);
+    setBatchUpdateManyMock.mockResolvedValue({ count: 0 });
+
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'approved',
+          checklist: completeSetAuditChecklist(),
+          cell_audits: [{ batch_id: 'batch_1', audit_state: 'ok', expected_version: 2 }],
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+    });
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitPreparationUpdateManyMock).not.toHaveBeenCalled();
+    expect(setAuditCreateMock).not.toHaveBeenCalled();
+    expect(setBatchChangeLogCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('/api/set-audits GET', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+    setPlanFindManyMock.mockResolvedValue([
+      {
+        id: 'plan_1',
+        cycle_id: 'cycle_1',
+        target_period_start: new Date('2026-06-01'),
+        target_period_end: new Date('2026-06-14'),
+        set_method: 'four_times_daily',
+        created_at: new Date('2026-06-01'),
+        updated_at: new Date('2026-06-01'),
+        cycle: {
+          id: 'cycle_1',
+          overall_status: 'setting',
+          patient_id: 'patient_1',
+          case_: { patient: { id: 'patient_1', name: '山田太郎', name_kana: 'ヤマダタロウ' } },
+        },
+        batches: [
+          { id: 'batch_1', audit_state: 'ok' },
+          { id: 'batch_2', audit_state: 'ng' },
+          { id: 'batch_3', audit_state: 'unaudited' },
+        ],
+        audits: [],
+      },
+    ]);
+  });
+
+  function createGetRequest(query = '') {
+    return new NextRequest(`http://localhost/api/set-audits${query}`, {
+      method: 'GET',
+      headers: { 'x-org-id': 'org_1' },
+    });
+  }
+
+  it('lists set plans pending audit with per-state cell summaries', async () => {
+    const response = await GET(createGetRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].cell_summary).toEqual({ total: 3, unaudited: 1, ok: 1, ng: 1 });
+    expect(setPlanFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          cycle: { overall_status: 'setting' },
+        }),
+      }),
+    );
+  });
+
+  it('filters by plan_id when provided', async () => {
+    await GET(createGetRequest('?plan_id=plan_1'));
+
+    expect(setPlanFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: 'plan_1' }),
+      }),
+    );
   });
 });

@@ -95,7 +95,7 @@ export const SYSTEM_SETTING_CANDIDATES: readonly SystemSettingCandidate[] = [
     recommendation: '理由コード、表示ラベル、監査証跡への保存要否をジャンル別設定として統一する。',
     status: 'partial',
     evidence: [
-      'src/app/(dashboard)/auditing/audit-workbench.tsx',
+      'src/components/features/dispense-workbench/dispensing-workbench.tsx',
       'src/components/features/workflow/reason-dialog.tsx',
       'docs/design-gap-analysis.md',
     ],

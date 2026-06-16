@@ -1,12 +1,12 @@
 import { Skeleton, SkeletonRows } from '@/components/ui/loading';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
-export default function MedicationSetsLoading() {
+export default function AuditLoading() {
   return (
-    <PageScaffold aria-label="セットを読み込み中">
+    <PageScaffold aria-label="監査ワークベンチを読み込み中">
       <div className="space-y-3">
         <Skeleton className="h-3 w-28" />
-        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-8 w-40" />
         <Skeleton className="h-4 w-96 max-w-full" />
       </div>
 

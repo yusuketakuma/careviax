@@ -19,10 +19,22 @@ describe('route labels', () => {
     expect(labelForSegment('prescriptions')).toBe('処方受付');
     expect(labelForSegment('prescriptions', 'patients')).toBe('処方履歴');
     expect(labelForSegment('print', 'reports')).toBe('印刷');
-    expect(labelForSegment('full', 'medication-sets')).toBe('一覧');
+    expect(labelForSegment('full', 'set')).toBe('一覧');
     expect(labelForSegment('record', 'visits')).toBe('記録入力');
     expect(labelForSegment('settings', 'admin')).toBe('管理設定');
     expect(labelForSegment('mcs', 'patients')).toBe('MCS連携');
     expect(labelForSegment('collaboration')).toBe('今だれが見ているか');
+  });
+
+  it('labels the renamed dispensing workbench segments (audit/set/set-audit)', () => {
+    // breadcrumb セグメント単体
+    expect(labelForSegment('audit')).toBe('監査');
+    expect(labelForSegment('set')).toBe('セット');
+    expect(labelForSegment('set-audit')).toBe('セット監査');
+
+    // パス全体ラベル(/set-audit を /set より先に評価し誤包含を防ぐ)
+    expect(labelForPath('/audit')).toBe('調剤鑑査');
+    expect(labelForPath('/set')).toBe('セット');
+    expect(labelForPath('/set-audit')).toBe('セット監査');
   });
 });

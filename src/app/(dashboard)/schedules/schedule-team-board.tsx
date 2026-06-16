@@ -875,7 +875,7 @@ function buildNextAction(
       description: riskVisit?.time_start
         ? `${formatTimeOfDayIso(riskVisit.time_start)}訪問(${topAudit.patient_name}様)の持参薬です。完了で午後の予定がすべて確定します。`
         : `${topAudit.patient_name}様の${auditLabel}が待ちです。完了で今後の予定が確定します。`,
-      actionHref: '/auditing',
+      actionHref: '/audit',
     };
   }
   return {

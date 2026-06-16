@@ -31,7 +31,7 @@ function buildBoardCard(overrides: Partial<CompareBoardCardInput> = {}): Compare
     attention: 'urgent_now',
     status_text: '麻薬監査 期限12:00 — 持参薬が未確定',
     link_label: '監査へ',
-    link_href: '/auditing',
+    link_href: '/audit',
     current_step: 'audit',
     ...overrides,
   };
@@ -127,7 +127,7 @@ describe('deriveCompareCardView', () => {
     expect(view.nextAction).toEqual({
       description: '調剤鑑査をして、セット作業へ進めます。',
       actionLabel: '調剤鑑査を始める — 12:00期限',
-      actionHref: '/auditing',
+      actionHref: '/audit',
     });
   });
 

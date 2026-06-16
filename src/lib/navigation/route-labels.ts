@@ -21,8 +21,9 @@ export const PATH_LABELS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /^\/reports\/analytics(\/.*)?$/, label: '送達分析' },
   { pattern: /^\/reports(\/.*)?$/, label: '報告' },
   { pattern: /^\/dispense(\/.*)?$/, label: '調剤' },
-  { pattern: /^\/auditing(\/.*)?$/, label: '調剤鑑査' },
-  { pattern: /^\/medication-sets(\/.*)?$/, label: 'セット' },
+  { pattern: /^\/audit(\/.*)?$/, label: '調剤鑑査' },
+  { pattern: /^\/set-audit(\/.*)?$/, label: 'セット監査' },
+  { pattern: /^\/set(\/.*)?$/, label: 'セット' },
   { pattern: /^\/conferences(\/.*)?$/, label: '多職種連携' },
   { pattern: /^\/handoff(\/.*)?$/, label: '申し送り' },
   { pattern: /^\/external(\/.*)?$/, label: '外部連携' },
@@ -67,7 +68,6 @@ const SEGMENT_LABELS: Record<string, string> = {
   analytics: '分析',
   audit: '監査',
   'audit-logs': '監査ログ',
-  auditing: '調剤鑑査',
   billing: '請求',
   'billing-rules': '請求ルール',
   'business-holidays': '休日カレンダー',
@@ -95,7 +95,8 @@ const SEGMENT_LABELS: Record<string, string> = {
   login: 'ログイン',
   medications: '服薬中薬剤',
   'medication-calendar': '服薬カレンダー',
-  'medication-sets': 'セット',
+  set: 'セット',
+  'set-audit': 'セット監査',
   metrics: '経営指標',
   mcs: 'MCS連携',
   'my-day': 'My Day',
@@ -148,7 +149,8 @@ export function labelForSegment(segment: string, previous?: string): string {
   if (previous === 'visits') return '訪問詳細';
   if (previous === 'reports') return '報告詳細';
   if (previous === 'dispensing') return '調剤';
-  if (previous === 'auditing') return '監査';
-  if (previous === 'medication-sets') return 'セット詳細';
+  if (previous === 'audit') return '監査';
+  if (previous === 'set-audit') return 'セット監査';
+  if (previous === 'set') return 'セット詳細';
   return '詳細';
 }

@@ -41,7 +41,7 @@ const IS_DEV = process.env.NODE_ENV === 'development';
 const IS_E2E = process.env.PLAYWRIGHT === '1';
 const PROTECTED_ROUTE_PREFIXES = [
   '/admin',
-  '/auditing',
+  '/audit',
   '/billing',
   '/communications',
   '/conferences',
@@ -49,7 +49,6 @@ const PROTECTED_ROUTE_PREFIXES = [
   '/dispense',
   '/external',
   '/handoff',
-  '/medication-sets',
   '/my-day',
   '/notifications',
   '/patients',
@@ -58,6 +57,8 @@ const PROTECTED_ROUTE_PREFIXES = [
   '/referrals',
   '/reports',
   '/schedules',
+  '/set',
+  '/set-audit',
   '/settings',
   '/tasks',
   '/visits',

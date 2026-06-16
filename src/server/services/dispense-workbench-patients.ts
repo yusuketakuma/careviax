@@ -1,0 +1,147 @@
+import { format } from 'date-fns';
+import type { Prisma, PrismaClient } from '@prisma/client';
+import {
+  deriveListBadge,
+  type DispenseWorkbenchPatientRow,
+} from '@/app/(dashboard)/dispense/dispense-workbench.shared';
+import {
+  buildMedicationCycleAssignmentWhere,
+  type PrescriptionAccessContext,
+} from '@/server/services/prescription-access';
+
+/**
+ * 調剤ワークベンチ左ペインの患者中心リスト(計画 §11-2 共通行 / §11-3-1)。
+ *
+ * `/api/dispense-queue` が DispenseTask(pending/in_progress) 中心なのに対し、本サービスは
+ * MedicationCycle を起点に intake_received〜reported 全域を対象とし、患者ごとに「最新サイクル」を
+ * 1件選ぶ。状態バッジ3値は overall_status(16値)を `deriveListBadge` で畳み込む。
+ *
+ * 服用開始日 = CareCase.start_date を優先し、無ければ当該サイクルの最古の処方行 start_date。
+ * 登録日 = Patient.created_at。要配慮個人情報は氏名・カナのみに最小化する。
+ */
+
+export type DispenseWorkbenchPatientsSort = 'start_date' | 'registered_date' | 'name_kana';
+
+export type DispenseWorkbenchPatientsFilters = {
+  sort?: DispenseWorkbenchPatientsSort;
+  order?: 'asc' | 'desc';
+};
+
+const MAX_CYCLES = 500;
+
+function formatDate(value: Date | null | undefined): string | null {
+  return value ? format(value, 'yyyy-MM-dd') : null;
+}
+
+export async function listDispenseWorkbenchPatients(
+  prisma: PrismaClient,
+  orgId: string,
+  ctx: PrescriptionAccessContext,
+  filters: DispenseWorkbenchPatientsFilters = {},
+): Promise<DispenseWorkbenchPatientRow[]> {
+  const assignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
+  const where: Prisma.MedicationCycleWhereInput = {
+    org_id: orgId,
+    overall_status: { notIn: ['cancelled'] },
+    ...(assignmentWhere ?? {}),
+  };
+
+  // 最新サイクルを患者ごとに選びたいので、新しい順に取得して patient_id 初出のみ残す。
+  const cycles = await prisma.medicationCycle.findMany({
+    where,
+    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+    take: MAX_CYCLES,
+    select: {
+      id: true,
+      patient_id: true,
+      overall_status: true,
+      case_: {
+        select: {
+          start_date: true,
+          patient: {
+            select: {
+              id: true,
+              name: true,
+              name_kana: true,
+              created_at: true,
+            },
+          },
+        },
+      },
+      prescription_intakes: {
+        select: {
+          lines: {
+            where: { start_date: { not: null } },
+            orderBy: { start_date: 'asc' },
+            take: 1,
+            select: { start_date: true },
+          },
+        },
+      },
+    },
+  });
+
+  const seenPatients = new Set<string>();
+  const rows: DispenseWorkbenchPatientRow[] = [];
+
+  for (const cycle of cycles) {
+    if (seenPatients.has(cycle.patient_id)) continue;
+    seenPatients.add(cycle.patient_id);
+
+    const patient = cycle.case_.patient;
+
+    // 服用開始日: CareCase.start_date 優先、無ければ最古の処方行 start_date。
+    const earliestLineStart = cycle.prescription_intakes
+      .flatMap((intake) => intake.lines.map((line) => line.start_date))
+      .filter((value): value is Date => value != null)
+      .sort((left, right) => left.getTime() - right.getTime())[0];
+    const startDate = cycle.case_.start_date ?? earliestLineStart ?? null;
+
+    rows.push({
+      patient_id: patient.id,
+      cycle_id: cycle.id,
+      name: patient.name,
+      name_kana: patient.name_kana,
+      overall_status: cycle.overall_status,
+      badge: deriveListBadge(cycle.overall_status),
+      start_date: formatDate(startDate),
+      registered_date: format(patient.created_at, 'yyyy-MM-dd'),
+    });
+  }
+
+  return sortDispenseWorkbenchPatients(rows, filters);
+}
+
+function sortDispenseWorkbenchPatients(
+  rows: DispenseWorkbenchPatientRow[],
+  filters: DispenseWorkbenchPatientsFilters,
+): DispenseWorkbenchPatientRow[] {
+  const sort = filters.sort ?? 'name_kana';
+  const order = filters.order ?? (sort === 'name_kana' ? 'asc' : 'desc');
+  const directionFactor = order === 'asc' ? 1 : -1;
+
+  const compareKana = (left: DispenseWorkbenchPatientRow, right: DispenseWorkbenchPatientRow) =>
+    left.name_kana.localeCompare(right.name_kana, 'ja');
+
+  // null は常に末尾に寄せる(昇順・降順いずれでも最後)。
+  const compareNullableDate = (left: string | null, right: string | null): number => {
+    if (left === right) return 0;
+    if (left == null) return 1;
+    if (right == null) return -1;
+    return (left < right ? -1 : 1) * directionFactor;
+  };
+
+  return [...rows].sort((left, right) => {
+    if (sort === 'name_kana') {
+      const result = compareKana(left, right);
+      return (result !== 0 ? result : left.patient_id.localeCompare(right.patient_id)) * directionFactor;
+    }
+
+    const key = sort === 'start_date' ? 'start_date' : 'registered_date';
+    const primary = compareNullableDate(left[key], right[key]);
+    if (primary !== 0) return primary;
+    // 同日はカナ昇順で安定化。
+    const tieByKana = compareKana(left, right);
+    return tieByKana !== 0 ? tieByKana : left.patient_id.localeCompare(right.patient_id);
+  });
+}

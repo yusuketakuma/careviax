@@ -2,4 +2,4 @@
 
 import { createRouteErrorBoundary } from '@/components/ui/route-error-boundary';
 
-export default createRouteErrorBoundary('MedicationSetsError');
+export default createRouteErrorBoundary('SetError');

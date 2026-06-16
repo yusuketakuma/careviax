@@ -229,8 +229,8 @@ export function buildItemSubText(item: HandoffBoardItem): string | null {
 /** 新デザインで使う戻り先(ダッシュボード/セット/報告・共有)+既存 entity 種別 */
 const WORKSPACE_ENTITY_ACTIONS: Record<string, { href: string; label: string }> = {
   dashboard: { href: '/dashboard', label: '→ ダッシュボードへ' },
-  medication_set: { href: '/medication-sets', label: '→ セットへ' },
-  set_plan: { href: '/medication-sets', label: '→ セットへ' },
+  medication_set: { href: '/set', label: '→ セットへ' },
+  set_plan: { href: '/set', label: '→ セットへ' },
   reports: { href: '/reports', label: '→ 報告・共有へ' },
 };
 
@@ -265,7 +265,7 @@ export function buildWorkspaceNextAction(
       description: visit?.time_start
         ? `${formatTimeOfDay(visit.time_start)}訪問(${familyNameOf(topAudit.patient_name)}様)の持参薬です。完了で午後の予定がすべて確定します。`
         : `${topAudit.patient_name} 様の監査待ちです。完了で次の工程が動き出します。`,
-      actionHref: '/auditing',
+      actionHref: '/audit',
     };
   }
   if ((cockpit?.today_visits.length ?? 0) > 0) {

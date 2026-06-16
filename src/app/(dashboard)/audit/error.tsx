@@ -2,4 +2,4 @@
 
 import { createRouteErrorBoundary } from '@/components/ui/route-error-boundary';
 
-export default createRouteErrorBoundary('AuditingError');
+export default createRouteErrorBoundary('AuditError');
