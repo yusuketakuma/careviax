@@ -246,5 +246,8 @@ describe('ConferencesContent', () => {
 
     expect(screen.getByText('会議目的: 訪問頻度の見直し')).toBeTruthy();
     expect(screen.getByText('サービス調整を反映')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'ドラフト1' }).getAttribute('href')).toBe(
+      '/reports/report_1',
+    );
   });
 });

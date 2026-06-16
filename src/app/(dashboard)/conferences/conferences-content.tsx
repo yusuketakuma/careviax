@@ -171,6 +171,17 @@ const PROFESSION_LABELS: Record<string, string> = {
   other: 'その他',
 };
 
+function getConferenceReportDraftIds(
+  note: Pick<ConferenceNote, 'sync_summary' | 'generated_report_id'>,
+) {
+  return Array.from(
+    new Set([
+      ...(note.sync_summary?.report_draft_ids ?? []),
+      ...(note.generated_report_id ? [note.generated_report_id] : []),
+    ]),
+  );
+}
+
 function NoteCard({
   note,
   onConvertToTask,
@@ -190,6 +201,7 @@ function NoteCard({
     (item) => !item.converted_task_id,
   ).length;
   const hasPending = pendingActionCount > 0;
+  const reportDraftIds = getConferenceReportDraftIds(note);
 
   return (
     <Card>
@@ -275,16 +287,7 @@ function NoteCard({
               <div className="rounded-md border border-sky-200 bg-sky-50/50 p-3">
                 <p className="text-xs font-medium text-sky-900">保存後アクション</p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  <Badge variant="outline">
-                    報告書ドラフト{' '}
-                    {
-                      new Set([
-                        ...(note.sync_summary?.report_draft_ids ?? []),
-                        ...(note.generated_report_id ? [note.generated_report_id] : []),
-                      ]).size
-                    }
-                    件
-                  </Badge>
+                  <Badge variant="outline">報告書ドラフト {reportDraftIds.length}件</Badge>
                   <Badge variant="outline">
                     タスク化 {note.sync_summary?.tasks_created ?? 0}件
                   </Badge>
@@ -293,7 +296,7 @@ function NoteCard({
                   </Badge>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {note.generated_report_id || note.sync_summary?.report_draft_ids?.length ? (
+                  {reportDraftIds.length > 0 ? (
                     <Link
                       href="/reports"
                       className="inline-flex min-h-[44px] items-center rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted sm:min-h-0"
@@ -301,6 +304,15 @@ function NoteCard({
                       報告書を確認
                     </Link>
                   ) : null}
+                  {reportDraftIds.map((reportId, index) => (
+                    <Link
+                      key={reportId}
+                      href={`/reports/${reportId}`}
+                      className="inline-flex min-h-[44px] items-center rounded-lg border border-sky-200 bg-background px-3 py-1.5 text-xs font-medium text-sky-900 hover:bg-sky-50 sm:min-h-0"
+                    >
+                      ドラフト{index + 1}
+                    </Link>
+                  ))}
                   {note.sync_summary?.billing_candidate_id ? (
                     <Link
                       href="/billing/candidates"
@@ -1481,7 +1493,8 @@ export function ConferencesContent({
               </p>
               <div className="flex flex-wrap gap-2">
                 <Badge variant="outline">
-                  報告書ドラフト {lastSyncSummary.reportDraftIds?.length ?? 0}件
+                  報告書ドラフト {Array.from(new Set(lastSyncSummary.reportDraftIds ?? [])).length}
+                  件
                 </Badge>
                 <Badge variant="outline">タスク化 {lastSyncSummary.tasksCreated ?? 0}件</Badge>
                 <Badge variant="outline">
@@ -1495,6 +1508,17 @@ export function ConferencesContent({
                 >
                   報告書を確認
                 </Link>
+                {Array.from(new Set(lastSyncSummary.reportDraftIds ?? [])).map(
+                  (reportId, index) => (
+                    <Link
+                      key={reportId}
+                      href={`/reports/${reportId}`}
+                      className="inline-flex rounded-lg border border-sky-200 bg-background px-3 py-2 text-sm font-medium text-sky-900 hover:bg-sky-50"
+                    >
+                      ドラフト{index + 1}
+                    </Link>
+                  ),
+                )}
                 {lastSyncSummary.billingCandidateId ? (
                   <Link
                     href="/billing/candidates"
