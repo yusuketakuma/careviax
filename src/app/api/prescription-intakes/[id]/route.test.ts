@@ -487,4 +487,61 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
+
+  it('rejects electronic prescription management without exchange number', async () => {
+    const response = await PATCH(
+      createRequest({
+        original_management: {
+          reconciliation_result: 'matched',
+          storage_location: 'electronic',
+          e_prescription_acquired_status: 'acquired',
+          dispensing_result_registration: 'registered',
+        },
+      }),
+      { params: Promise.resolve({ id: 'intake_9' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        original_management: expect.arrayContaining([
+          '電子処方せん対象では引換番号を入力してください',
+        ]),
+      },
+    });
+    expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects dispensing result registration while electronic prescription acquisition is pending', async () => {
+    const response = await PATCH(
+      createRequest({
+        original_management: {
+          reconciliation_result: 'matched',
+          storage_location: 'electronic',
+          e_prescription_exchange_number: 'EP-12345',
+          e_prescription_acquired_status: 'pending',
+          dispensing_result_registration: 'registered',
+        },
+      }),
+      { params: Promise.resolve({ id: 'intake_10' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        original_management: expect.arrayContaining([
+          '電子処方せん取得待ちでは調剤結果登録済みにできません',
+        ]),
+      },
+    });
+    expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
 });

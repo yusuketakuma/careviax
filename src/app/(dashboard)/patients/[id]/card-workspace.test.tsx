@@ -932,6 +932,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    expect(screen.getByText('保存される原本管理')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('照合結果'), { target: { value: 'discrepancy' } });
     fireEvent.change(screen.getByLabelText('差異内容'), {
       target: { value: 'FAX記載の日数と原本の日数が異なる' },
@@ -943,6 +944,7 @@ describe('CardWorkspace', () => {
     fireEvent.change(screen.getByLabelText('備考'), {
       target: { value: '医師確認済み' },
     });
+    expect(screen.getByText('取得済み / EP-12345')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /原本管理を記録/ }));
 
     expect(prescriptionOriginalManagementMutate).toHaveBeenCalledWith({
@@ -955,6 +957,65 @@ describe('CardWorkspace', () => {
       dispensingResultRegistration: 'registered',
       note: '医師確認済み',
     });
+  });
+
+  it('blocks incomplete prescription original management before mutation', async () => {
+    const { prescriptionOriginalManagementMutate } = mockPatientQuery(buildWorkspace(), {
+      generated_at: '2026-06-16T00:00:00.000Z',
+      attention_count: 1,
+      top_alerts: [],
+      items: [
+        {
+          key: 'prescription',
+          label: '処方せん',
+          status: '受付あり',
+          description: 'FAX先行 / やまもと内科 / 2026/06/09',
+          href: '/patients/patient_1/prescriptions',
+          action_label: '処方履歴へ',
+          tone: 'attention',
+          updated_at: '2026-06-09T00:00:00.000Z',
+          metrics: [
+            { label: '照合', value: '未照合' },
+            { label: '保管', value: '未保管' },
+          ],
+          alerts: ['原本到着後の照合結果が未記録です'],
+          quick_actions: [
+            {
+              key: 'record_prescription_original_management',
+              label: '原本管理を記録',
+              resource_id: 'intake_0500',
+            },
+          ],
+        },
+      ],
+    });
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    fireEvent.change(screen.getByLabelText('照合結果'), { target: { value: 'discrepancy' } });
+    fireEvent.click(screen.getByRole('button', { name: /原本管理を記録/ }));
+    expect(screen.getByRole('alert').textContent).toContain(
+      '差異ありの場合は差異内容を入力してください。',
+    );
+    expect(prescriptionOriginalManagementMutate).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('差異内容'), {
+      target: { value: 'FAX記載の日数と原本の日数が異なる' },
+    });
+    fireEvent.change(screen.getByLabelText('電子処方せん'), { target: { value: 'pending' } });
+    expect(screen.getByText('取得待ち / 引換番号未入力')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /原本管理を記録/ }));
+    expect(screen.getByRole('alert').textContent).toContain(
+      '電子処方せん対象では引換番号を入力してください。',
+    );
+    expect(prescriptionOriginalManagementMutate).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('引換番号'), { target: { value: 'EP-12345' } });
+    fireEvent.click(screen.getByRole('button', { name: /原本管理を記録/ }));
+    expect(screen.getByRole('alert').textContent).toContain(
+      '電子処方せん取得待ちでは調剤結果登録済みにできません。',
+    );
+    expect(prescriptionOriginalManagementMutate).not.toHaveBeenCalled();
   });
 
   it('records billing collection metadata from the home operations panel', () => {

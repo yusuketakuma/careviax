@@ -827,6 +827,44 @@ const conferenceNoteTypeLabels: Record<ConferenceNoteFormInput['noteType'], stri
   death_conference: 'デスカンファ',
 };
 
+const prescriptionReconciliationLabels: Record<
+  PrescriptionOriginalManagementFormInput['reconciliationResult'],
+  string
+> = {
+  matched: '一致',
+  discrepancy: '差異あり',
+  not_checked: '未照合',
+};
+
+const prescriptionStorageLabels: Record<
+  PrescriptionOriginalManagementFormInput['storageLocation'],
+  string
+> = {
+  store: '店舗保管',
+  headquarters: '本部保管',
+  electronic: '電子保管',
+  patient_copy_only: '患者控えのみ',
+  not_stored: '未保管',
+};
+
+const ePrescriptionAcquiredLabels: Record<
+  PrescriptionOriginalManagementFormInput['ePrescriptionAcquiredStatus'],
+  string
+> = {
+  not_applicable: '対象外',
+  pending: '取得待ち',
+  acquired: '取得済み',
+};
+
+const dispensingResultRegistrationLabels: Record<
+  PrescriptionOriginalManagementFormInput['dispensingResultRegistration'],
+  string
+> = {
+  not_applicable: '対象外',
+  pending: '登録待ち',
+  registered: '登録済み',
+};
+
 function queryParamValue(href: string, key: string) {
   const query = href.split('?')[1];
   if (!query) return null;
@@ -1615,21 +1653,42 @@ function PrescriptionOriginalManagementQuickForm({
   const [dispensingResultRegistration, setDispensingResultRegistration] =
     useState<PrescriptionOriginalManagementFormInput['dispensingResultRegistration']>('registered');
   const [note, setNote] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const ePrescriptionRequiresExchangeNumber = ePrescriptionAcquiredStatus !== 'not_applicable';
+  const trimmedExchangeNumber = ePrescriptionExchangeNumber.trim();
 
   return (
     <form
       className="mt-3 rounded-lg border border-current/20 bg-background/80 p-2"
       onSubmit={(event) => {
         event.preventDefault();
+        const trimmedDiscrepancyNote = discrepancyNote.trim();
+        const trimmedNote = note.trim();
+        if (reconciliationResult === 'discrepancy' && !trimmedDiscrepancyNote) {
+          setError('差異ありの場合は差異内容を入力してください。');
+          return;
+        }
+        if (ePrescriptionRequiresExchangeNumber && !trimmedExchangeNumber) {
+          setError('電子処方せん対象では引換番号を入力してください。');
+          return;
+        }
+        if (
+          ePrescriptionAcquiredStatus === 'pending' &&
+          dispensingResultRegistration === 'registered'
+        ) {
+          setError('電子処方せん取得待ちでは調剤結果登録済みにできません。');
+          return;
+        }
+        setError(null);
         onSubmit?.({
           intakeId,
           reconciliationResult,
-          discrepancyNote: discrepancyNote.trim() || null,
+          discrepancyNote: trimmedDiscrepancyNote || null,
           storageLocation,
-          ePrescriptionExchangeNumber: ePrescriptionExchangeNumber.trim() || null,
+          ePrescriptionExchangeNumber: trimmedExchangeNumber || null,
           ePrescriptionAcquiredStatus,
           dispensingResultRegistration,
-          note: note.trim() || null,
+          note: trimmedNote || null,
         });
       }}
     >
@@ -1686,6 +1745,7 @@ function PrescriptionOriginalManagementQuickForm({
             value={discrepancyNote}
             onChange={(event) => setDiscrepancyNote(event.target.value)}
             className="min-h-16 text-xs"
+            aria-invalid={error?.includes('差異内容') ? true : undefined}
             placeholder="差異ありの場合は内容を入力"
           />
         </div>
@@ -1740,6 +1800,7 @@ function PrescriptionOriginalManagementQuickForm({
             value={ePrescriptionExchangeNumber}
             onChange={(event) => setEPrescriptionExchangeNumber(event.target.value)}
             className="min-h-9 text-xs"
+            aria-invalid={error?.includes('引換番号') ? true : undefined}
             placeholder="電子処方せん対象時"
           />
         </div>
@@ -1754,6 +1815,43 @@ function PrescriptionOriginalManagementQuickForm({
             className="min-h-14 text-xs"
           />
         </div>
+        <div className="rounded-lg border border-current/15 bg-muted/20 p-2 text-xs">
+          <p className="font-medium text-foreground">保存される原本管理</p>
+          <dl className="mt-2 grid gap-1">
+            <div className="flex justify-between gap-2">
+              <dt className="text-muted-foreground">照合</dt>
+              <dd className="font-medium text-foreground">
+                {prescriptionReconciliationLabels[reconciliationResult]}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-2">
+              <dt className="text-muted-foreground">保管</dt>
+              <dd className="font-medium text-foreground">
+                {prescriptionStorageLabels[storageLocation]}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-2">
+              <dt className="text-muted-foreground">電子処方せん</dt>
+              <dd className="font-medium text-foreground">
+                {ePrescriptionAcquiredLabels[ePrescriptionAcquiredStatus]}
+                {ePrescriptionRequiresExchangeNumber
+                  ? ` / ${trimmedExchangeNumber || '引換番号未入力'}`
+                  : ''}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-2">
+              <dt className="text-muted-foreground">調剤結果</dt>
+              <dd className="font-medium text-foreground">
+                {dispensingResultRegistrationLabels[dispensingResultRegistration]}
+              </dd>
+            </div>
+          </dl>
+        </div>
+        {error ? (
+          <p role="alert" className="text-xs text-destructive">
+            {error}
+          </p>
+        ) : null}
         <Button type="submit" size="sm" className="min-h-9 w-full" disabled={isPending}>
           <CheckCircle2 className="mr-1.5 size-4" aria-hidden="true" />
           {isPending ? '保存中' : actionLabel}

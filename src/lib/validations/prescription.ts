@@ -261,6 +261,27 @@ export const updatePrescriptionIntakeSchema = z
         path: ['original_management', 'discrepancy_note'],
       });
     }
+    if (
+      value.original_management &&
+      ['pending', 'acquired'].includes(value.original_management.e_prescription_acquired_status) &&
+      !value.original_management.e_prescription_exchange_number?.trim()
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '電子処方せん対象では引換番号を入力してください',
+        path: ['original_management', 'e_prescription_exchange_number'],
+      });
+    }
+    if (
+      value.original_management?.e_prescription_acquired_status === 'pending' &&
+      value.original_management.dispensing_result_registration === 'registered'
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '電子処方せん取得待ちでは調剤結果登録済みにできません',
+        path: ['original_management', 'dispensing_result_registration'],
+      });
+    }
   });
 
 export const createInquiryRecordSchema = z.object({
