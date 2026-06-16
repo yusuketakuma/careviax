@@ -138,7 +138,7 @@ describe('dispatchNotificationEvent', () => {
         enabled: true,
       },
     ]);
-    membershipFindMany.mockResolvedValue([{ user_id: 'user_3' }]);
+    membershipFindMany.mockResolvedValue([{ user_id: 'user_3', role: 'admin' }]);
     userFindMany.mockResolvedValue([]);
     notificationCreate.mockImplementation(async ({ data }) => ({
       id: `notification_${data.user_id as string}`,
@@ -179,7 +179,7 @@ describe('dispatchNotificationEvent', () => {
         enabled: true,
       },
     ]);
-    membershipFindMany.mockResolvedValue([{ user_id: 'user_3' }]);
+    membershipFindMany.mockResolvedValue([{ user_id: 'user_3', role: 'admin' }]);
     userFindMany.mockResolvedValue([]);
     notificationCreate.mockImplementation(async ({ data }) => ({
       id: `notification_${data.user_id as string}`,
@@ -269,7 +269,7 @@ describe('dispatchNotificationEvent', () => {
         enabled: true,
       },
     ]);
-    membershipFindMany.mockResolvedValue([{ user_id: 'user_3' }]);
+    membershipFindMany.mockResolvedValue([{ user_id: 'user_3', role: 'admin' }]);
     userFindMany.mockResolvedValue([
       { id: 'user_1', phone: '09000000001' },
       { id: 'user_2', phone: null },
@@ -345,5 +345,133 @@ describe('dispatchNotificationEvent', () => {
       '折り返し依頼\n至急対応してください',
     );
     expect(sendSmsMock).not.toHaveBeenCalled();
+  });
+
+  it('reuses role membership lookups across notification channels', async () => {
+    sendSmsMock.mockReset();
+    sendLineMessageMock.mockReset();
+    const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
+      createTx();
+
+    notificationRuleFindMany.mockResolvedValue([
+      {
+        id: 'rule_in_app',
+        org_id: 'org_1',
+        event_type: 'patient_self_report_followup_due',
+        channel: 'in_app',
+        recipients: {
+          roles: ['admin'],
+        },
+        enabled: true,
+      },
+      {
+        id: 'rule_sms',
+        org_id: 'org_1',
+        event_type: 'patient_self_report_followup_due',
+        channel: 'sms',
+        recipients: {
+          roles: ['admin'],
+        },
+        enabled: true,
+      },
+      {
+        id: 'rule_line',
+        org_id: 'org_1',
+        event_type: 'patient_self_report_followup_due',
+        channel: 'line',
+        recipients: {
+          roles: ['admin'],
+        },
+        enabled: true,
+      },
+    ]);
+    membershipFindMany.mockResolvedValue([{ user_id: 'user_admin', role: 'admin' }]);
+    userFindMany.mockResolvedValue([{ id: 'user_admin', phone: '09000000000' }]);
+    notificationCreate.mockImplementation(async ({ data }) => ({
+      id: `notification_${data.user_id as string}`,
+      ...data,
+    }));
+
+    await dispatchNotificationEvent(tx, {
+      orgId: 'org_1',
+      eventType: 'patient_self_report_followup_due',
+      type: 'urgent',
+      title: '折り返し依頼',
+      message: '至急対応してください',
+    });
+
+    expect(membershipFindMany).toHaveBeenCalledTimes(1);
+    expect(membershipFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          role: { in: ['admin'] },
+        }),
+        select: {
+          user_id: true,
+          role: true,
+        },
+      }),
+    );
+    expect(notificationCreate).toHaveBeenCalledTimes(1);
+    expect(sendSmsMock).toHaveBeenCalledTimes(1);
+    expect(sendLineMessageMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('shares pending role membership lookups across concurrent external channels', async () => {
+    sendSmsMock.mockReset();
+    sendLineMessageMock.mockReset();
+    const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
+      createTx();
+
+    notificationRuleFindMany.mockResolvedValue([
+      {
+        id: 'rule_in_app',
+        org_id: 'org_1',
+        event_type: 'patient_self_report_followup_due',
+        channel: 'in_app',
+        recipients: {},
+        enabled: true,
+      },
+      {
+        id: 'rule_sms',
+        org_id: 'org_1',
+        event_type: 'patient_self_report_followup_due',
+        channel: 'sms',
+        recipients: {
+          roles: ['admin'],
+        },
+        enabled: true,
+      },
+      {
+        id: 'rule_line',
+        org_id: 'org_1',
+        event_type: 'patient_self_report_followup_due',
+        channel: 'line',
+        recipients: {
+          roles: ['admin'],
+        },
+        enabled: true,
+      },
+    ]);
+    membershipFindMany.mockResolvedValue([{ user_id: 'user_admin', role: 'admin' }]);
+    userFindMany.mockResolvedValue([{ id: 'user_admin', phone: '09000000000' }]);
+    notificationCreate.mockImplementation(async ({ data }) => ({
+      id: `notification_${data.user_id as string}`,
+      ...data,
+    }));
+
+    await dispatchNotificationEvent(tx, {
+      orgId: 'org_1',
+      eventType: 'patient_self_report_followup_due',
+      type: 'urgent',
+      title: '折り返し依頼',
+      message: '至急対応してください',
+      explicitUserIds: ['user_explicit'],
+    });
+
+    expect(membershipFindMany).toHaveBeenCalledTimes(1);
+    expect(notificationCreate).toHaveBeenCalledTimes(1);
+    expect(sendSmsMock).toHaveBeenCalledTimes(1);
+    expect(sendLineMessageMock).toHaveBeenCalledTimes(1);
   });
 });

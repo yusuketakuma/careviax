@@ -76,8 +76,67 @@ function getEnabledRulesForChannel(
   return rules.filter((rule) => rule.channel === channel && rule.enabled);
 }
 
+type MembershipRecipientResolver = (roles: MemberRole[]) => Promise<Array<{ user_id: string }>>;
+
+function createMembershipRecipientResolver(tx: Tx, orgId: string): MembershipRecipientResolver {
+  const rowsByRole = new Map<MemberRole, Array<{ user_id: string }>>();
+  const loadedRoles = new Set<MemberRole>();
+  const pendingLoadsByRole = new Map<MemberRole, Promise<void>>();
+
+  return async (roles) => {
+    const uniqueRoles = uniqueMemberRoles(roles);
+    const missingRoles = uniqueRoles.filter(
+      (role) => !loadedRoles.has(role) && !pendingLoadsByRole.has(role),
+    );
+
+    if (missingRoles.length > 0) {
+      const loadPromise = tx.membership
+        .findMany({
+          where: {
+            org_id: orgId,
+            is_active: true,
+            role: { in: missingRoles },
+            user: {
+              is_active: true,
+            },
+          },
+          select: {
+            user_id: true,
+            role: true,
+          },
+        })
+        .then((memberships) => {
+          for (const role of missingRoles) {
+            rowsByRole.set(role, []);
+            loadedRoles.add(role);
+          }
+
+          for (const membership of memberships) {
+            rowsByRole.get(membership.role)?.push({ user_id: membership.user_id });
+          }
+        })
+        .finally(() => {
+          for (const role of missingRoles) {
+            pendingLoadsByRole.delete(role);
+          }
+        });
+
+      for (const role of missingRoles) {
+        pendingLoadsByRole.set(role, loadPromise);
+      }
+    }
+
+    await Promise.all(
+      uniqueRoles
+        .map((role) => pendingLoadsByRole.get(role))
+        .filter((loadPromise): loadPromise is Promise<void> => Boolean(loadPromise)),
+    );
+
+    return uniqueRoles.flatMap((role) => rowsByRole.get(role) ?? []);
+  };
+}
+
 async function resolveTargetUserIds(
-  tx: Tx,
   input: Pick<DispatchNotificationEventInput, 'orgId' | 'explicitUserIds'>,
   rules: Array<{
     channel: string;
@@ -85,6 +144,7 @@ async function resolveTargetUserIds(
     recipients: Prisma.JsonValue;
   }>,
   channel: NotificationChannel,
+  resolveMembershipRecipients: MembershipRecipientResolver,
 ) {
   const channelRules = rules.filter((rule) => rule.channel === channel);
   const enabledRules = getEnabledRulesForChannel(rules, channel);
@@ -100,21 +160,7 @@ async function resolveTargetUserIds(
   );
 
   const membershipRecipients =
-    roleRecipients.length === 0
-      ? []
-      : await tx.membership.findMany({
-          where: {
-            org_id: input.orgId,
-            is_active: true,
-            role: { in: roleRecipients },
-            user: {
-              is_active: true,
-            },
-          },
-          select: {
-            user_id: true,
-          },
-        });
+    roleRecipients.length === 0 ? [] : await resolveMembershipRecipients(roleRecipients);
 
   const allowExplicitRecipients =
     channel === 'in_app'
@@ -135,11 +181,22 @@ export async function dispatchNotificationEvent(tx: Tx, input: DispatchNotificat
       event_type: input.eventType,
     },
   });
-  const targetUserIds = await resolveTargetUserIds(tx, input, rules, 'in_app');
+  const resolveMembershipRecipients = createMembershipRecipientResolver(tx, input.orgId);
+  const targetUserIds = await resolveTargetUserIds(
+    input,
+    rules,
+    'in_app',
+    resolveMembershipRecipients,
+  );
 
   if (targetUserIds.length === 0) {
-    const smsUserIds = await resolveTargetUserIds(tx, input, rules, 'sms');
-    const lineUserIds = await resolveTargetUserIds(tx, input, rules, 'line');
+    const smsUserIds = await resolveTargetUserIds(input, rules, 'sms', resolveMembershipRecipients);
+    const lineUserIds = await resolveTargetUserIds(
+      input,
+      rules,
+      'line',
+      resolveMembershipRecipients,
+    );
     if (smsUserIds.length === 0 && lineUserIds.length === 0) {
       return [];
     }
@@ -195,10 +252,10 @@ export async function dispatchNotificationEvent(tx: Tx, input: DispatchNotificat
   );
 
   const [smsUserIds, lineUserIds, faxUserIds, mcsUserIds] = await Promise.all([
-    resolveTargetUserIds(tx, input, rules, 'sms'),
-    resolveTargetUserIds(tx, input, rules, 'line'),
-    resolveTargetUserIds(tx, input, rules, 'fax'),
-    resolveTargetUserIds(tx, input, rules, 'mcs'),
+    resolveTargetUserIds(input, rules, 'sms', resolveMembershipRecipients),
+    resolveTargetUserIds(input, rules, 'line', resolveMembershipRecipients),
+    resolveTargetUserIds(input, rules, 'fax', resolveMembershipRecipients),
+    resolveTargetUserIds(input, rules, 'mcs', resolveMembershipRecipients),
   ]);
   const externalUserIds = uniqueStrings([
     ...smsUserIds,
