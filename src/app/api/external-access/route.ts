@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, type NextResponse } from 'next/server';
 import { createHash, randomInt, randomUUID } from 'crypto';
 import bcrypt from 'bcryptjs';
 import { withAuthContext } from '@/lib/auth/context';
@@ -24,6 +24,7 @@ import {
 } from '@/lib/auth/visit-schedule-access';
 import { hasPermission } from '@/lib/auth/permissions';
 import { canAccessPatient, listAccessiblePatientCaseIds } from '@/server/services/patient-access';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
 import { z } from 'zod';
 
 const requiredTrimmedStringSchema = (message: string) => z.string().trim().min(1, message);
@@ -294,7 +295,7 @@ export const GET = withAuthContext(
 );
 
 export const POST = withAuthContext(
-  async (req: NextRequest, ctx) => {
+  async (req: NextRequest, ctx): Promise<NextResponse> => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) return validationError('リクエストボディが不正です');
 
@@ -328,6 +329,8 @@ export const POST = withAuthContext(
     if (!canAccessTargetPatient) {
       return forbidden('患者への外部共有権限がありません');
     }
+    const writable = await requireWritablePatient(prisma, ctx, patient_id);
+    if ('response' in writable) return writable.response;
     const requiresCaseBoundary = externalAccessScopeRequiresCaseBoundary(scope);
     const allowedCaseIds = requiresCaseBoundary
       ? await listAccessiblePatientCaseIds({
@@ -350,59 +353,63 @@ export const POST = withAuthContext(
     const provisionalToken = `provisional:${randomUUID()}`;
     const provisionalTokenHash = createHash('sha256').update(provisionalToken).digest('hex');
 
-    let grant;
-    try {
-      grant = await withOrgContext(ctx.orgId, async (tx) => {
-        const created = await tx.externalAccessGrant.create({
-          data: {
-            org_id: ctx.orgId,
-            patient_id,
-            token_hash: provisionalTokenHash,
-            otp_hash: otpHash,
-            granted_to_name,
-            granted_to_contact: normalizedGrantedToContact,
-            scope: toPrismaJsonInput(storedScope),
-            expires_at: expiresAt,
-          },
-          select: {
-            id: true,
-            patient_id: true,
-            granted_to_name: true,
-            granted_to_contact: true,
-            scope: true,
-            expires_at: true,
-            created_at: true,
-          },
-        });
-
-        const jwtToken = await issueExternalAccessToken({
-          grantId: created.id,
-          orgId: ctx.orgId,
-          patientId: patient_id,
-          expiresHours: expires_hours,
-        });
-
-        const finalTokenHash = createHash('sha256').update(jwtToken).digest('hex');
-        await tx.externalAccessGrant.update({
-          where: { id: created.id },
-          data: { token_hash: finalTokenHash },
-        });
-
-        return {
-          ...created,
-          token: jwtToken,
-        };
+    const grantResult = await withOrgContext(ctx.orgId, async (tx) => {
+      const created = await tx.externalAccessGrant.create({
+        data: {
+          org_id: ctx.orgId,
+          patient_id,
+          token_hash: provisionalTokenHash,
+          otp_hash: otpHash,
+          granted_to_name,
+          granted_to_contact: normalizedGrantedToContact,
+          scope: toPrismaJsonInput(storedScope),
+          expires_at: expiresAt,
+        },
+        select: {
+          id: true,
+          patient_id: true,
+          granted_to_name: true,
+          granted_to_contact: true,
+          scope: true,
+          expires_at: true,
+          created_at: true,
+        },
       });
-    } catch (errorValue) {
-      if (errorValue instanceof MissingExternalAccessSecretError) {
-        return error(
-          'EXTERNAL_ACCESS_SECRET_MISSING',
-          '外部共有リンクの署名設定が不足しています',
-          500,
-        );
-      }
-      throw errorValue;
-    }
+
+      const jwtToken = await issueExternalAccessToken({
+        grantId: created.id,
+        orgId: ctx.orgId,
+        patientId: patient_id,
+        expiresHours: expires_hours,
+      });
+
+      const finalTokenHash = createHash('sha256').update(jwtToken).digest('hex');
+      await tx.externalAccessGrant.update({
+        where: { id: created.id },
+        data: { token_hash: finalTokenHash },
+      });
+
+      return {
+        ...created,
+        token: jwtToken,
+      };
+    })
+      .then((grant) => ({ ok: true as const, grant }))
+      .catch((errorValue) => {
+        if (errorValue instanceof MissingExternalAccessSecretError) {
+          return {
+            ok: false as const,
+            response: error(
+              'EXTERNAL_ACCESS_SECRET_MISSING',
+              '外部共有リンクの署名設定が不足しています',
+              500,
+            ),
+          };
+        }
+        throw errorValue;
+      });
+    if (!grantResult.ok) return grantResult.response;
+    const grant = grantResult.grant;
 
     let otpDelivery: 'sms' | 'manual' = 'manual';
     let otpDeliveryDestination: string | null = null;

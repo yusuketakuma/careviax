@@ -103,6 +103,7 @@ type WebhookDeliveryStore = {
   findMany?(args: unknown): Promise<WebhookDeliveryRetryRecord[]>;
   upsert(args: unknown): Promise<unknown>;
   update(args: unknown): Promise<unknown>;
+  updateMany?(args: unknown): Promise<{ count: number }>;
 };
 
 type WebhookDeliveryPersistenceClient = {
@@ -478,6 +479,29 @@ async function listDueWebhookDeliveries(args: {
   });
 }
 
+async function claimDueWebhookDelivery(record: WebhookDeliveryRetryRecord, now: Date) {
+  const db = await loadWebhookDeliveryPersistenceClient();
+  if (!db.webhookDelivery?.updateMany) return true;
+
+  const claim = await db.webhookDelivery.updateMany({
+    where: {
+      id: record.id,
+      org_id: record.org_id,
+      status: 'failed',
+      attempt_count: record.attempt_count,
+      next_attempt_at: { lte: now },
+    },
+    data: {
+      status: 'pending',
+      status_code: null,
+      error: null,
+      next_attempt_at: null,
+    },
+  });
+
+  return claim.count === 1;
+}
+
 async function retryStoredWebhookDelivery(
   record: WebhookDeliveryRetryRecord,
 ): Promise<WebhookDeliveryRetryAttempt> {
@@ -729,8 +753,26 @@ export async function retryDueWebhookDeliveries(
     };
   }
 
+  const claimedDeliveries = (
+    await mapWithConcurrency(
+      deliveries,
+      normalizeWebhookRetryConcurrency(options.concurrency),
+      (record) => claimDueWebhookDelivery(record, now).then((claimed) => (claimed ? record : null)),
+    )
+  ).filter((record): record is WebhookDeliveryRetryRecord => record !== null);
+
+  if (claimedDeliveries.length === 0) {
+    return {
+      processedCount: 0,
+      scannedCount: deliveries.length,
+      succeededCount: 0,
+      failedCount: 0,
+      blockedCount: 0,
+    };
+  }
+
   const attempts = await mapWithConcurrency(
-    deliveries,
+    claimedDeliveries,
     normalizeWebhookRetryConcurrency(options.concurrency),
     retryStoredWebhookDelivery,
   );

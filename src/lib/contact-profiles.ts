@@ -1,58 +1,65 @@
 import type { CommunicationChannel, Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
+import { buildCareTeamContactChannelReadiness } from '@/lib/patient/care-team-contact';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
 type ChannelStatsDbClient = {
   deliveryRecord: {
-    findMany(args: unknown): Promise<Array<{
-      recipient_name: string;
-      channel: CommunicationChannel;
-      status: string;
-    }>>;
+    findMany(args: unknown): Promise<
+      Array<{
+        recipient_name: string;
+        channel: CommunicationChannel;
+        status: string;
+      }>
+    >;
   };
   communicationEvent: {
-    findMany(args: unknown): Promise<Array<{
-      counterpart_name: string | null;
-      channel: CommunicationChannel;
-      event_type: string;
-    }>>;
+    findMany(args: unknown): Promise<
+      Array<{
+        counterpart_name: string | null;
+        channel: CommunicationChannel;
+        event_type: string;
+      }>
+    >;
   };
 };
 
 type ExternalProfessionalSuggestionsDbClient = ChannelStatsDbClient & {
   careCase: {
-    findMany(args: unknown): Promise<Array<{
-      id: string;
-      care_team_links: Array<{
+    findMany(args: unknown): Promise<
+      Array<{
         id: string;
-        is_primary: boolean;
-        role: string | null;
-        name: string | null;
-        organization_name: string | null;
-        department: string | null;
-        phone: string | null;
-        email: string | null;
-        fax: string | null;
-        address: string | null;
-        external_professional_id: string | null;
-        external_professional: {
+        care_team_links: Array<{
           id: string;
-          name: string;
-          profession_type: string;
+          is_primary: boolean;
+          role: string | null;
+          name: string | null;
           organization_name: string | null;
           department: string | null;
           phone: string | null;
           email: string | null;
           fax: string | null;
           address: string | null;
-          preferred_contact_method: CommunicationChannel | null;
-          preferred_contact_time: string | null;
-          last_contacted_at: Date | null;
-          last_success_channel: CommunicationChannel | null;
-        } | null;
-      }>;
-    }>>;
+          external_professional_id: string | null;
+          external_professional: {
+            id: string;
+            name: string;
+            profession_type: string;
+            organization_name: string | null;
+            department: string | null;
+            phone: string | null;
+            email: string | null;
+            fax: string | null;
+            address: string | null;
+            preferred_contact_method: CommunicationChannel | null;
+            preferred_contact_time: string | null;
+            last_contacted_at: Date | null;
+            last_success_channel: CommunicationChannel | null;
+          } | null;
+        }>;
+      }>
+    >;
   };
 };
 
@@ -71,6 +78,7 @@ type ExternalProfessionalSuggestion = {
   last_contacted_at: Date | null;
   last_success_channel: CommunicationChannel | null;
   recommended_channels: CommunicationChannel[];
+  contact_reliability: ContactProfileReliability;
   is_primary: boolean;
   source: 'patient_care_team' | 'external_professional_master';
 };
@@ -121,8 +129,15 @@ type ContactProfileRow = {
   last_contacted_at: Date | null;
   last_success_channel: CommunicationChannel | null;
   recommended_channels: CommunicationChannel[];
+  contact_reliability: ContactProfileReliability;
   active_patient_count: number;
   pending_response_count: number;
+};
+
+type ContactProfileReliability = {
+  ready: boolean;
+  warnings: string[];
+  missing_channel_labels: string[];
 };
 
 const CHANNEL_PRIORITY: CommunicationChannel[] = [
@@ -133,6 +148,10 @@ const CHANNEL_PRIORITY: CommunicationChannel[] = [
   'postal',
   'in_person',
 ];
+
+function hasText(value: string | null | undefined) {
+  return Boolean(value?.trim());
+}
 
 type ChannelStats = Record<
   CommunicationChannel,
@@ -162,22 +181,22 @@ function deriveAvailableChannels(input: {
   preferred?: CommunicationChannel | null;
 }) {
   const available = new Set<CommunicationChannel>();
-  if (input.phone) available.add('phone');
-  if (input.email) {
+  if (hasText(input.phone)) available.add('phone');
+  if (hasText(input.email)) {
     available.add('email');
     available.add('ses');
   }
-  if (input.fax) available.add('fax');
-  if (input.address) {
+  if (hasText(input.fax)) available.add('fax');
+  if (hasText(input.address)) {
     available.add('postal');
     available.add('in_person');
   }
   if (
     input.preferred &&
-    ((input.preferred === 'phone' && input.phone) ||
-      ((input.preferred === 'email' || input.preferred === 'ses') && input.email) ||
-      (input.preferred === 'fax' && input.fax) ||
-      ((input.preferred === 'postal' || input.preferred === 'in_person') && input.address))
+    ((input.preferred === 'phone' && hasText(input.phone)) ||
+      ((input.preferred === 'email' || input.preferred === 'ses') && hasText(input.email)) ||
+      (input.preferred === 'fax' && hasText(input.fax)) ||
+      ((input.preferred === 'postal' || input.preferred === 'in_person') && hasText(input.address)))
   ) {
     available.add(input.preferred);
   }
@@ -211,30 +230,44 @@ export function getRecommendedChannels(input: {
         return leftStats.failure - rightStats.failure;
       }
       return CHANNEL_PRIORITY.indexOf(left) - CHANNEL_PRIORITY.indexOf(right);
-    }
+    },
   );
 
   return ranked;
 }
 
+function buildContactProfileReliability(input: {
+  role?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  fax?: string | null;
+}): ContactProfileReliability {
+  return buildCareTeamContactChannelReadiness({
+    role: input.role ?? 'other',
+    phone: input.phone,
+    email: input.email,
+    fax: input.fax,
+  });
+}
+
 export async function getChannelStatsByName(
   db: DbClient,
   orgId: string,
-  names: string[]
+  names: string[],
 ): Promise<Map<string, ChannelStats>>;
 export async function getChannelStatsByName(
   db: ChannelStatsDbClient,
   orgId: string,
-  names: string[]
+  names: string[],
 ): Promise<Map<string, ChannelStats>>;
 export async function getChannelStatsByName(
   db: DbClient | ChannelStatsDbClient,
   orgId: string,
-  names: string[]
+  names: string[],
 ) {
   const reader = db as ChannelStatsDbClient;
   const uniqueNames = Array.from(
-    new Set(names.map((name) => name.trim()).filter((name) => name.length > 0))
+    new Set(names.map((name) => name.trim()).filter((name) => name.length > 0)),
   );
   const statsMap = new Map<string, ChannelStats>();
   if (uniqueNames.length === 0) return statsMap;
@@ -308,7 +341,7 @@ export async function findExternalProfessionalSuggestions(
   input: {
     patientId?: string | null;
     caseId?: string | null;
-  }
+  },
 ): Promise<ExternalProfessionalSuggestion[]>;
 export async function findExternalProfessionalSuggestions(
   db: ExternalProfessionalSuggestionsDbClient,
@@ -316,7 +349,7 @@ export async function findExternalProfessionalSuggestions(
   input: {
     patientId?: string | null;
     caseId?: string | null;
-  }
+  },
 ): Promise<ExternalProfessionalSuggestion[]>;
 export async function findExternalProfessionalSuggestions(
   db: DbClient | ExternalProfessionalSuggestionsDbClient,
@@ -324,7 +357,7 @@ export async function findExternalProfessionalSuggestions(
   input: {
     patientId?: string | null;
     caseId?: string | null;
-  }
+  },
 ): Promise<ExternalProfessionalSuggestion[]> {
   if (!input.patientId && !input.caseId) return [];
 
@@ -401,8 +434,16 @@ export async function findExternalProfessionalSuggestions(
         last_contacted_at: professional?.last_contacted_at ?? null,
         last_success_channel: professional?.last_success_channel ?? null,
         recommended_channels: [],
+        contact_reliability: buildContactProfileReliability({
+          role: link.role || professional?.profession_type,
+          phone: link.phone ?? professional?.phone,
+          email: link.email ?? professional?.email,
+          fax: link.fax ?? professional?.fax,
+        }),
         is_primary: link.is_primary,
-        source: link.external_professional_id ? 'external_professional_master' : 'patient_care_team',
+        source: link.external_professional_id
+          ? 'external_professional_master'
+          : 'patient_care_team',
       });
     }
   }
@@ -410,7 +451,7 @@ export async function findExternalProfessionalSuggestions(
   const channelStatsByName = await getChannelStatsByName(
     reader,
     orgId,
-    Array.from(deduped.values()).map((item) => item.name)
+    Array.from(deduped.values()).map((item) => item.name),
   );
 
   for (const [id, suggestion] of deduped.entries()) {
@@ -423,6 +464,12 @@ export async function findExternalProfessionalSuggestions(
         email: suggestion.email,
         fax: suggestion.fax,
         address: suggestion.address,
+      }),
+      contact_reliability: buildContactProfileReliability({
+        role: suggestion.profession_type,
+        phone: suggestion.phone,
+        email: suggestion.email,
+        fax: suggestion.fax,
       }),
     });
   }
@@ -442,7 +489,7 @@ export async function pickCommunicationRecipientCandidate(
     patientId?: string | null;
     caseId?: string | null;
     requestType?: string | null;
-  }
+  },
 ) {
   const suggestions = await findExternalProfessionalSuggestions(db, orgId, input);
   if (suggestions.length === 0) return null;
@@ -465,7 +512,7 @@ export async function learnContactProfileFromCommunication(
     channel: CommunicationChannel;
     occurredAt: Date;
     markSuccess?: boolean;
-  }
+  },
 ) {
   const counterpartName = input.counterpartName?.trim() || null;
   const counterpartContact = input.counterpartContact?.trim() || null;
@@ -496,7 +543,7 @@ export async function learnContactProfileFromCommunication(
           ],
         },
         data: nextData,
-      })
+      }),
     );
   }
 
@@ -517,7 +564,7 @@ export async function learnContactProfileFromCommunication(
           ],
         },
         data: nextData,
-      })
+      }),
     );
   }
 
@@ -538,7 +585,7 @@ export async function learnContactProfileFromCommunication(
           ],
         },
         data: nextData,
-      })
+      }),
     );
   }
 
@@ -551,12 +598,11 @@ export async function listContactProfiles(
   input: {
     kind?: ContactProfileRow['kind'] | 'all' | null;
     query?: string | null;
-  }
+  },
 ): Promise<ContactProfileRow[]> {
   const query = input.query?.trim() || null;
   const matchesQuery = (fields: Array<string | null | undefined>) =>
-    !query ||
-    fields.some((field) => field?.toLowerCase().includes(query.toLowerCase()));
+    !query || fields.some((field) => field?.toLowerCase().includes(query.toLowerCase()));
 
   const [facilityContacts, externalProfessionals, prescriberInstitutions] = await Promise.all([
     input.kind && input.kind !== 'all' && input.kind !== 'facility_contact'
@@ -615,15 +661,11 @@ export async function listContactProfiles(
         }),
   ]);
 
-  const channelStatsByName = await getChannelStatsByName(
-    db,
-    orgId,
-    [
-      ...facilityContacts.map((item) => item.name),
-      ...externalProfessionals.map((item) => item.name),
-      ...prescriberInstitutions.map((item) => item.name),
-    ]
-  );
+  const channelStatsByName = await getChannelStatsByName(db, orgId, [
+    ...facilityContacts.map((item) => item.name),
+    ...externalProfessionals.map((item) => item.name),
+    ...prescriberInstitutions.map((item) => item.name),
+  ]);
 
   const [facilityPending, externalPending, prescriberPending] = await Promise.all([
     facilityContacts.length === 0
@@ -680,13 +722,13 @@ export async function listContactProfiles(
   ]);
 
   const facilityPendingMap = new Map(
-    facilityPending.map((item) => [item.recipient_name, item._count._all])
+    facilityPending.map((item) => [item.recipient_name, item._count._all]),
   );
   const externalPendingMap = new Map(
-    externalPending.map((item) => [item.recipient_name, item._count._all])
+    externalPending.map((item) => [item.recipient_name, item._count._all]),
   );
   const prescriberPendingMap = new Map(
-    prescriberPending.map((item) => [item.recipient_name, item._count._all])
+    prescriberPending.map((item) => [item.recipient_name, item._count._all]),
   );
 
   const rows: ContactProfileRow[] = [
@@ -710,7 +752,15 @@ export async function listContactProfiles(
         fax: item.fax,
         address: item.facility.address,
       }),
-      active_patient_count: new Set(item.facility.residences.map((residence) => residence.patient_id)).size,
+      contact_reliability: buildContactProfileReliability({
+        role: item.role,
+        phone: item.phone,
+        email: item.email,
+        fax: item.fax,
+      }),
+      active_patient_count: new Set(
+        item.facility.residences.map((residence) => residence.patient_id),
+      ).size,
       pending_response_count: facilityPendingMap.get(item.name) ?? 0,
     })),
     ...externalProfessionals.map((item) => ({
@@ -733,11 +783,17 @@ export async function listContactProfiles(
         fax: item.fax,
         address: item.address,
       }),
+      contact_reliability: buildContactProfileReliability({
+        role: item.profession_type,
+        phone: item.phone,
+        email: item.email,
+        fax: item.fax,
+      }),
       active_patient_count: new Set(
         item.care_team_links
           .filter((link) => link.case_?.status !== 'terminated')
           .map((link) => link.case_?.patient_id)
-          .filter((value): value is string => Boolean(value))
+          .filter((value): value is string => Boolean(value)),
       ).size,
       pending_response_count: externalPendingMap.get(item.name) ?? 0,
     })),
@@ -760,19 +816,23 @@ export async function listContactProfiles(
         fax: item.fax,
         address: item.address,
       }),
+      contact_reliability: buildContactProfileReliability({
+        role: 'physician',
+        phone: item.phone,
+        email: null,
+        fax: item.fax,
+      }),
       active_patient_count: new Set(
         item.prescription_intakes
           .map((intake) => intake.cycle?.patient_id)
-          .filter((value): value is string => Boolean(value))
+          .filter((value): value is string => Boolean(value)),
       ).size,
       pending_response_count: prescriberPendingMap.get(item.name) ?? 0,
     })),
   ];
 
   return rows
-    .filter((row) =>
-      matchesQuery([row.name, row.subtitle, row.phone, row.email, row.fax])
-    )
+    .filter((row) => matchesQuery([row.name, row.subtitle, row.phone, row.email, row.fax]))
     .sort((left, right) => {
       const kindOrder = ['facility_contact', 'external_professional', 'prescriber_institution'];
       const kindDelta = kindOrder.indexOf(left.kind) - kindOrder.indexOf(right.kind);
@@ -801,7 +861,7 @@ export async function updateContactProfile(
   orgId: string,
   kind: ContactProfileKind,
   id: string,
-  input: ContactProfileUpdateInput
+  input: ContactProfileUpdateInput,
 ): Promise<{ before: Record<string, unknown>; after: Record<string, unknown> } | null> {
   const has = <K extends keyof ContactProfileUpdateInput>(key: K) =>
     Object.prototype.hasOwnProperty.call(input, key);

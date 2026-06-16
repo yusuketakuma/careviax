@@ -9,6 +9,7 @@ const {
   conferenceNoteUpdateMock,
   careCaseFindManyMock,
   patientFindFirstMock,
+  requireWritablePatientMock,
   // sync-related mocks
   taskFindManyMock,
   taskCreateManyMock,
@@ -41,6 +42,7 @@ const {
   conferenceNoteUpdateMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
+  requireWritablePatientMock: vi.fn(),
   taskFindManyMock: vi.fn(),
   taskCreateManyMock: vi.fn(),
   billingCandidateUpsertMock: vi.fn(),
@@ -89,6 +91,10 @@ vi.mock('@/lib/db/rls', () => ({
 vi.mock('@/server/services/operational-tasks', () => ({
   upsertOperationalTask: upsertOperationalTaskMock,
   resolveOperationalTasks: resolveOperationalTasksMock,
+}));
+
+vi.mock('@/server/services/patient-write-guard', () => ({
+  requireWritablePatient: requireWritablePatientMock,
 }));
 
 import { GET as rawGET, POST as rawPOST } from './route';
@@ -198,6 +204,9 @@ describe('/api/conference-notes', () => {
       required_visit_support: null,
     });
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
+    requireWritablePatientMock.mockResolvedValue({
+      patient: { id: 'patient_1', archived_at: null },
+    });
     careCaseUpdateMock.mockResolvedValue({
       id: 'case_1',
       required_visit_support: {
@@ -619,6 +628,48 @@ describe('/api/conference-notes', () => {
         },
       },
     });
+  });
+
+  it('rejects archived patients before creating notes or sync side effects', async () => {
+    requireWritablePatientMock.mockResolvedValue({
+      response: Response.json(
+        { message: 'アーカイブ中の患者は復元するまで更新できません' },
+        { status: 409 },
+      ),
+    });
+
+    const response = await POST(
+      createRequest({
+        method: 'POST',
+        body: {
+          note_type: 'pre_discharge',
+          patient_id: 'patient_1',
+          title: '退院前カンファ',
+          structured_content: {
+            sections: [
+              {
+                key: 'discharge_background',
+                label: '退院背景',
+                body: '来週火曜に退院予定',
+              },
+            ],
+          },
+          participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
+          conference_date: '2026-03-28T01:00:00.000Z',
+        },
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(conferenceNoteCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
+    expect(taskCreateManyMock).not.toHaveBeenCalled();
+    expect(billingCandidateUpsertMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(careReportCreateManyMock).not.toHaveBeenCalled();
+    expect(medicationIssueCreateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object request bodies before transaction or sync side effects', async () => {

@@ -33,6 +33,11 @@ const profiles = [
     last_contacted_at: '2026-06-12T09:30:00.000Z',
     last_success_channel: 'fax',
     recommended_channels: ['fax', 'phone'],
+    contact_reliability: {
+      ready: true,
+      warnings: [],
+      missing_channel_labels: [],
+    },
     active_patient_count: 4,
     pending_response_count: 1,
   },
@@ -49,6 +54,11 @@ const profiles = [
     last_contacted_at: null,
     last_success_channel: null,
     recommended_channels: ['ph_os_share'],
+    contact_reliability: {
+      ready: false,
+      warnings: ['FAX未確認'],
+      missing_channel_labels: ['FAX'],
+    },
     active_patient_count: 9,
     pending_response_count: 0,
   },
@@ -99,6 +109,7 @@ describe('ContactProfilesContent', () => {
     expect((screen.getByLabelText('FAX') as HTMLInputElement).value).toBe('03-1111-2223');
     expect((screen.getByLabelText('電話') as HTMLInputElement).value).toBe('03-1111-2222');
     expect(screen.getByText('未完了連携 1件')).toBeTruthy();
+    expect(screen.getByText('要整備: FAX')).toBeTruthy();
   });
 
   it('shows delivery target review details in the current workspace', async () => {

@@ -165,6 +165,7 @@ function mockStoredFile(overrides: Record<string, unknown> = {}) {
 function mockVisitRecordAssignment(userId: string) {
   visitRecordFindFirstMock.mockResolvedValue({
     id: 'visit_1',
+    patient_id: 'patient_1',
     schedule: {
       pharmacist_id: userId,
       case_: {
@@ -1155,6 +1156,148 @@ describe('file-storage', () => {
       );
     },
   );
+
+  it('rejects completion for archived prescription patients while keeping downloads read-only', async () => {
+    mockStoredFile({
+      purpose: 'prescription',
+      patientId: 'patient_1',
+      visitRecordId: null,
+      storageKey: 'prescriptions/org_1/patient_1/file_1-prescription.pdf',
+      originalName: 'prescription.pdf',
+      status: 'pending_upload',
+      completedAt: null,
+    });
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    await expect(
+      completeUploadedFile({
+        orgId: 'org_1',
+        fileId: 'file_1',
+        uploadedBy: 'user_1',
+        accessContext: assignedAccessContext,
+      }),
+    ).rejects.toMatchObject({
+      code: 'PATIENT_ARCHIVED',
+      status: 409,
+    });
+
+    expect(s3SendMock).not.toHaveBeenCalled();
+    expect(settingUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects completion for archived patients linked through visit photos', async () => {
+    mockStoredFile({
+      purpose: 'visit-photo',
+      visitRecordId: 'visit_1',
+      patientId: null,
+      reportId: null,
+      storageKey: 'visit-photos/org_1/visit_1/file_1-note.pdf',
+      status: 'pending_upload',
+      completedAt: null,
+    });
+    mockVisitRecordAssignment('user_1');
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    await expect(
+      completeUploadedFile({
+        orgId: 'org_1',
+        fileId: 'file_1',
+        uploadedBy: 'user_1',
+        accessContext: assignedAccessContext,
+      }),
+    ).rejects.toMatchObject({
+      code: 'PATIENT_ARCHIVED',
+      status: 409,
+    });
+
+    expect(s3SendMock).not.toHaveBeenCalled();
+    expect(settingUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects completion for archived patients linked through report visit records', async () => {
+    mockStoredFile({
+      purpose: 'report',
+      reportId: 'report_1',
+      visitRecordId: null,
+      patientId: null,
+      storageKey: 'reports/org_1/report_1/file_1-report.pdf',
+      originalName: 'report.pdf',
+      status: 'pending_upload',
+      completedAt: null,
+    });
+    mockReportLinkedToVisitRecord();
+    mockVisitRecordAssignment('user_1');
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    await expect(
+      completeUploadedFile({
+        orgId: 'org_1',
+        fileId: 'file_1',
+        uploadedBy: 'user_1',
+        accessContext: assignedAccessContext,
+      }),
+    ).rejects.toMatchObject({
+      code: 'PATIENT_ARCHIVED',
+      status: 409,
+    });
+
+    expect(s3SendMock).not.toHaveBeenCalled();
+    expect(settingUpdateMock).not.toHaveBeenCalled();
+    expect(careReportUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects completion for archived patients linked through report cases even for bypass roles', async () => {
+    mockStoredFile({
+      purpose: 'report',
+      reportId: 'report_1',
+      visitRecordId: null,
+      patientId: null,
+      storageKey: 'reports/org_1/report_1/file_1-report.pdf',
+      originalName: 'report.pdf',
+      status: 'pending_upload',
+      completedAt: null,
+    });
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      patient_id: null,
+      case_id: 'case_1',
+      visit_record_id: null,
+    });
+    careCaseFindFirstMock.mockResolvedValue({
+      patient_id: 'patient_1',
+      primary_pharmacist_id: 'other_user',
+      backup_pharmacist_id: null,
+    });
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    await expect(
+      completeUploadedFile({
+        orgId: 'org_1',
+        fileId: 'file_1',
+        uploadedBy: 'owner_1',
+        accessContext: { userId: 'owner_1', role: 'owner' },
+      }),
+    ).rejects.toMatchObject({
+      code: 'PATIENT_ARCHIVED',
+      status: 409,
+    });
+
+    expect(s3SendMock).not.toHaveBeenCalled();
+    expect(settingUpdateMock).not.toHaveBeenCalled();
+    expect(careReportUpdateManyMock).not.toHaveBeenCalled();
+  });
 
   it.each(fileAccessCases)(
     'allows presigned downloads for an org-wide pharmacist regardless of assignment on $purpose files',

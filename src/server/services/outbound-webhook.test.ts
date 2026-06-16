@@ -4,6 +4,7 @@ import { createHmac } from 'node:crypto';
 const {
   lookupMock,
   webhookDeliveryFindManyMock,
+  webhookDeliveryUpdateManyMock,
   webhookDeliveryUpdateMock,
   webhookDeliveryUpsertMock,
   webhookRegistrationFindManyMock,
@@ -11,6 +12,7 @@ const {
 } = vi.hoisted(() => ({
   lookupMock: vi.fn(),
   webhookDeliveryFindManyMock: vi.fn(),
+  webhookDeliveryUpdateManyMock: vi.fn(),
   webhookDeliveryUpdateMock: vi.fn(),
   webhookDeliveryUpsertMock: vi.fn(),
   webhookRegistrationFindManyMock: vi.fn(),
@@ -28,6 +30,7 @@ vi.mock('@/lib/db/client', () => ({
     },
     webhookDelivery: {
       findMany: webhookDeliveryFindManyMock,
+      updateMany: webhookDeliveryUpdateManyMock,
       upsert: webhookDeliveryUpsertMock,
       update: webhookDeliveryUpdateMock,
     },
@@ -52,6 +55,7 @@ describe('outbound-webhook', () => {
     delete process.env.WEBHOOK_SECRET_ENCRYPTION_KEY;
     vi.stubGlobal('fetch', fetchMock);
     webhookDeliveryFindManyMock.mockResolvedValue([]);
+    webhookDeliveryUpdateManyMock.mockResolvedValue({ count: 1 });
     webhookDeliveryUpsertMock.mockResolvedValue({});
     webhookDeliveryUpdateMock.mockResolvedValue({});
   });
@@ -414,6 +418,21 @@ describe('outbound-webhook', () => {
         take: 10,
       }),
     );
+    expect(webhookDeliveryUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'delivery_row_1',
+        org_id: 'org_1',
+        status: 'failed',
+        attempt_count: 1,
+        next_attempt_at: { lte: new Date('2026-04-06T00:00:00.000Z') },
+      },
+      data: {
+        status: 'pending',
+        status_code: null,
+        error: null,
+        next_attempt_at: null,
+      },
+    });
     expect(fetchMock).toHaveBeenCalledWith(
       'https://hooks.example.com/patient',
       expect.objectContaining({
@@ -450,6 +469,52 @@ describe('outbound-webhook', () => {
       processedCount: 1,
       scannedCount: 1,
       succeededCount: 1,
+      failedCount: 0,
+      blockedCount: 0,
+    });
+  });
+
+  it('skips retry when another worker already claimed the failed delivery', async () => {
+    webhookDeliveryFindManyMock.mockResolvedValue([
+      {
+        id: 'delivery_row_1',
+        org_id: 'org_1',
+        webhook_registration_id: 'webhook_1',
+        delivery_id: 'delivery_1',
+        event: 'patient.created',
+        payload: {
+          id: 'delivery_1',
+          event: 'patient.created',
+          orgId: 'org_1',
+          occurredAt: '2026-04-05T00:00:00.000Z',
+          data: { patientId: 'patient_1' },
+        },
+        url: 'https://hooks.example.com/patient',
+        attempt_count: 1,
+        registration: {
+          id: 'webhook_1',
+          org_id: 'org_1',
+          url: 'https://hooks.example.com/patient',
+          secret: 'secret_1',
+          events: ['patient.created'],
+          is_active: true,
+          created_at: new Date('2026-04-05T00:00:00.000Z'),
+        },
+      },
+    ]);
+    webhookDeliveryUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const summary = await retryDueWebhookDeliveries({
+      now: new Date('2026-04-06T00:00:00.000Z'),
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(webhookDeliveryUpsertMock).not.toHaveBeenCalled();
+    expect(webhookDeliveryUpdateMock).not.toHaveBeenCalled();
+    expect(summary).toEqual({
+      processedCount: 0,
+      scannedCount: 1,
+      succeededCount: 0,
       failedCount: 0,
       blockedCount: 0,
     });

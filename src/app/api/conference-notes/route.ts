@@ -1,11 +1,12 @@
 import { Prisma } from '@prisma/client';
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError } from '@/lib/api/response';
+import { conflict, success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { parseSearchParams } from '@/lib/api/validation';
 import { ConferenceDataSyncService } from '@/server/services/conference-data-sync';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
 import {
   buildConferenceContent,
   buildConferenceMetadata,
@@ -327,6 +328,14 @@ export const POST = withAuthContext(
         : null;
       if (resolvedPatientId && !resolvedPatient) {
         return { error: validationError('患者が見つかりません') };
+      }
+      if (resolvedPatientId) {
+        const writable = await requireWritablePatient(tx, ctx, resolvedPatientId);
+        if ('response' in writable) {
+          return {
+            error: writable.response ?? conflict('アーカイブ中の患者は復元するまで更新できません'),
+          };
+        }
       }
       const primaryResidence = resolvedPatientId
         ? await tx.residence.findFirst({
