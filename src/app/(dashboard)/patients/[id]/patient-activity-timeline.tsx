@@ -69,6 +69,7 @@ type SelfReport = {
 };
 
 type TimelineCategory = 'all' | TimelineEvent['category'];
+type HomeOperationFocus = 'documents' | 'mcs' | 'prescription' | 'billing' | 'conference';
 
 type TimelineGroup = {
   key: string;
@@ -109,6 +110,37 @@ const CATEGORY_META: Record<
     label: '共有・連絡',
     className: 'border-slate-200 bg-slate-50 text-slate-900',
     countClassName: 'bg-slate-100 text-slate-700',
+  },
+};
+
+const HOME_OPERATION_FOCUS_META: Record<
+  HomeOperationFocus,
+  { label: string; className: string; summaryLabel: string }
+> = {
+  documents: {
+    label: '契約・同意',
+    className: 'border-amber-200 bg-amber-50 text-amber-900',
+    summaryLabel: '契約・同意・書類',
+  },
+  mcs: {
+    label: 'MCS',
+    className: 'border-cyan-200 bg-cyan-50 text-cyan-900',
+    summaryLabel: 'MCS・外部連携',
+  },
+  prescription: {
+    label: '処方せん',
+    className: 'border-emerald-200 bg-emerald-50 text-emerald-900',
+    summaryLabel: '処方せん管理',
+  },
+  billing: {
+    label: '請求・集金',
+    className: 'border-violet-200 bg-violet-50 text-violet-900',
+    summaryLabel: '請求・集金管理',
+  },
+  conference: {
+    label: 'カンファレンス',
+    className: 'border-sky-200 bg-sky-50 text-sky-900',
+    summaryLabel: 'カンファレンス',
   },
 };
 
@@ -223,14 +255,37 @@ function previewText(value: string | null | undefined, maxLength = 96) {
   return normalized.length > maxLength ? `${normalized.slice(0, maxLength)}...` : normalized;
 }
 
+function workflowHaystack(event: TimelineEvent) {
+  return [event.title, event.summary, event.status_label, ...event.metadata]
+    .filter(Boolean)
+    .join(' ');
+}
+
+function getHomeOperationFocus(event: TimelineEvent): HomeOperationFocus | null {
+  const haystack = workflowHaystack(event);
+  if (haystack.includes('MCS')) return 'mcs';
+  if (event.event_type === 'conference_note' || haystack.includes('カンファレンス')) {
+    return 'conference';
+  }
+  if (event.category === 'billing') return 'billing';
+  if (event.category === 'prescription') return 'prescription';
+  if (event.category === 'document') return 'documents';
+  return null;
+}
+
 function matchesQuery(event: TimelineEvent, query: string) {
   if (!query) return true;
+  const workflowFocus = getHomeOperationFocus(event);
 
   const haystack = [
     event.title,
     event.summary,
     event.status_label,
     event.actor_name,
+    EVENT_META[event.event_type].label,
+    CATEGORY_META[event.category].label,
+    workflowFocus ? HOME_OPERATION_FOCUS_META[workflowFocus].label : null,
+    workflowFocus ? HOME_OPERATION_FOCUS_META[workflowFocus].summaryLabel : null,
     ...event.metadata,
   ]
     .filter(Boolean)
@@ -264,6 +319,7 @@ function buildGroups(events: TimelineEvent[]) {
 
 function TimelineEntry({ event, isLast }: { event: TimelineEvent; isLast: boolean }) {
   const meta = EVENT_META[event.event_type];
+  const workflowFocus = getHomeOperationFocus(event);
   const Icon = meta.icon;
 
   return (
@@ -294,6 +350,14 @@ function TimelineEntry({ event, isLast }: { event: TimelineEvent; isLast: boolea
                 <Badge variant="outline" className={meta.className}>
                   {meta.label}
                 </Badge>
+                {workflowFocus ? (
+                  <Badge
+                    variant="outline"
+                    className={HOME_OPERATION_FOCUS_META[workflowFocus].className}
+                  >
+                    {HOME_OPERATION_FOCUS_META[workflowFocus].label}
+                  </Badge>
+                ) : null}
                 {event.status_label ? (
                   <Badge variant="secondary">{event.status_label}</Badge>
                 ) : null}
@@ -362,6 +426,16 @@ export function PatientActivityTimeline({
     document: timelineEvents.filter((event) => event.category === 'document').length,
     communication: timelineEvents.filter((event) => event.category === 'communication').length,
   } satisfies Record<TimelineCategory, number>;
+  const homeOperationCounts = {
+    documents: timelineEvents.filter((event) => getHomeOperationFocus(event) === 'documents')
+      .length,
+    mcs: timelineEvents.filter((event) => getHomeOperationFocus(event) === 'mcs').length,
+    prescription: timelineEvents.filter((event) => getHomeOperationFocus(event) === 'prescription')
+      .length,
+    billing: timelineEvents.filter((event) => getHomeOperationFocus(event) === 'billing').length,
+    conference: timelineEvents.filter((event) => getHomeOperationFocus(event) === 'conference')
+      .length,
+  } satisfies Record<HomeOperationFocus, number>;
   const latestEvent = filteredEvents[0] ?? null;
   const recentSelfReports = selfReports.slice(0, 3);
 
@@ -394,7 +468,7 @@ export function PatientActivityTimeline({
                 id="patient-activity-search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="例: 調剤、報告書、主治医、共有"
+                placeholder="例: MCS、契約、処方せん、集金、カンファレンス"
               />
             </div>
 
@@ -478,14 +552,34 @@ export function PatientActivityTimeline({
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-2">
-              {(['visit', 'prescription', 'document', 'communication'] as const).map((key) => (
-                <div key={key} className="rounded-xl border border-border/70 bg-muted/10 p-3">
-                  <p className="text-xs text-muted-foreground">{CATEGORY_META[key].label}</p>
-                  <p className="mt-1 text-lg font-semibold text-foreground">
-                    {categoryCounts[key]}
-                  </p>
-                </div>
-              ))}
+              {(['visit', 'prescription', 'billing', 'document', 'communication'] as const).map(
+                (key) => (
+                  <div key={key} className="rounded-xl border border-border/70 bg-muted/10 p-3">
+                    <p className="text-xs text-muted-foreground">{CATEGORY_META[key].label}</p>
+                    <p className="mt-1 text-lg font-semibold text-foreground">
+                      {categoryCounts[key]}
+                    </p>
+                  </div>
+                ),
+              )}
+            </div>
+
+            <div className="rounded-xl border border-border/70 bg-muted/10 p-3">
+              <p className="text-xs font-medium text-muted-foreground">在宅運用履歴</p>
+              <div className="mt-3 grid gap-2">
+                {(['documents', 'mcs', 'prescription', 'billing', 'conference'] as const).map(
+                  (key) => (
+                    <div key={key} className="flex items-center justify-between gap-3 text-sm">
+                      <span className="min-w-0 text-muted-foreground">
+                        {HOME_OPERATION_FOCUS_META[key].summaryLabel}
+                      </span>
+                      <span className="font-medium text-foreground">
+                        {homeOperationCounts[key]}
+                      </span>
+                    </div>
+                  ),
+                )}
+              </div>
             </div>
 
             {latestEvent ? (

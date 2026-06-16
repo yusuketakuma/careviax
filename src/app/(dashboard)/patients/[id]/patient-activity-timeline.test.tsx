@@ -96,6 +96,36 @@ const selfReportTimelineEvent = {
   metadata: ['関係 家族', '折返し希望', '希望時間 18時以降'],
 };
 
+const mcsTimelineEvent = {
+  id: 'event_mcs',
+  event_type: 'operation_history' as const,
+  category: 'communication' as const,
+  occurred_at: '2026-04-03T08:30:00.000Z',
+  title: 'MCS確認ログを登録',
+  summary: '報告確認 / 訪看投稿を確認 / 次 医師へ返信',
+  href: '/patients/patient_1/mcs',
+  action_label: 'MCS連携を開く',
+  status: 'patient_mcs_check_log_created',
+  status_label: 'MCS確認',
+  actor_name: '薬剤師D',
+  metadata: ['patient_external_link', 'patient_1'],
+};
+
+const conferenceTimelineEvent = {
+  id: 'event_conference',
+  event_type: 'conference_note' as const,
+  category: 'communication' as const,
+  occurred_at: '2026-04-02T15:00:00.000Z',
+  title: '退院前カンファレンスを記録',
+  summary: '初回訪問前確認 / 合意事項 3件 / 報告ドラフトあり',
+  href: '/conferences?patient_id=patient_1',
+  action_label: '会議を開く',
+  status: 'open',
+  status_label: 'フォロー中',
+  actor_name: null,
+  metadata: ['フォロー期限 2026/04/04'],
+};
+
 describe('PatientActivityTimeline', () => {
   it('groups actions by day and renders patient-originated updates separately', () => {
     render(<PatientActivityTimeline timelineEvents={timelineEvents} selfReports={selfReports} />);
@@ -109,6 +139,16 @@ describe('PatientActivityTimeline', () => {
     expect(screen.getAllByText('管理計画書を承認').length).toBeGreaterThan(0);
     expect(screen.getByText('夕方にふらつきあり')).toBeTruthy();
     expect(screen.getByText(/未対応/)).toBeTruthy();
+    expect(screen.getByText('在宅運用履歴')).toBeTruthy();
+    for (const label of [
+      '契約・同意・書類',
+      'MCS・外部連携',
+      '処方せん管理',
+      '請求・集金管理',
+      'カンファレンス',
+    ]) {
+      expect(screen.getByText(label)).toBeTruthy();
+    }
     expect(
       screen.getByText('立ち上がり時にふらつきがあり、折り返し連絡を希望しています。'),
     ).toBeTruthy();
@@ -171,5 +211,36 @@ describe('PatientActivityTimeline', () => {
 
     expect(screen.getAllByText('患者から自己申告を受信').length).toBeGreaterThan(0);
     expect(screen.queryByText('訪問記録を登録')).toBeNull();
+  });
+
+  it('marks MCS and conference history inside the communication category', async () => {
+    render(
+      <PatientActivityTimeline
+        timelineEvents={[mcsTimelineEvent, conferenceTimelineEvent, ...timelineEvents]}
+        selfReports={[]}
+      />,
+    );
+
+    expect(screen.getAllByText('MCS').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('カンファレンス').length).toBeGreaterThan(0);
+    expect(screen.getByText('MCS・外部連携')).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('タイムライン検索'), {
+      target: { value: '外部連携' },
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText('MCS確認ログを登録').length).toBeGreaterThan(0);
+      expect(screen.queryByText('退院前カンファレンスを記録')).toBeNull();
+    });
+
+    fireEvent.change(screen.getByLabelText('タイムライン検索'), {
+      target: { value: 'カンファレンス' },
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText('退院前カンファレンスを記録').length).toBeGreaterThan(0);
+      expect(screen.queryByText('MCS確認ログを登録')).toBeNull();
+    });
   });
 });
