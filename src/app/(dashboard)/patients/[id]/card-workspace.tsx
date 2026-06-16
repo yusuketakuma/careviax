@@ -819,6 +819,14 @@ type ConferenceStructuredSectionInput = {
   body: string;
 };
 
+const conferenceNoteTypeLabels: Record<ConferenceNoteFormInput['noteType'], string> = {
+  pre_discharge: '退院前',
+  service_manager: '担当者会議',
+  care_team: '担当者ミーティング',
+  emergency: '緊急',
+  death_conference: 'デスカンファ',
+};
+
 function queryParamValue(href: string, key: string) {
   const query = href.split('?')[1];
   if (!query) return null;
@@ -951,6 +959,10 @@ function parseConferenceActionItems(raw: string) {
         ...(assignee ? { assignee } : {}),
       };
     });
+}
+
+function countConferenceActionItems(raw: string) {
+  return parseConferenceActionItems(raw).length;
 }
 
 export function buildConferenceStructuredContent(input: ConferenceNoteFormInput) {
@@ -1773,22 +1785,43 @@ function ConferenceNoteQuickForm({
   const [visitScheduleChange, setVisitScheduleChange] = useState('');
   const [targetDischargeDate, setTargetDischargeDate] = useState('');
   const [actionItemsRaw, setActionItemsRaw] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const actionItemCount = countConferenceActionItems(actionItemsRaw);
+  const requiresDischargeDate = noteType === 'pre_discharge';
 
   return (
     <form
       className="mt-3 rounded-lg border border-current/20 bg-background/80 p-2"
       onSubmit={(event) => {
         event.preventDefault();
+        const trimmedTitle = title.trim();
+        const trimmedContent = content.trim();
+        const trimmedVisitScheduleChange = visitScheduleChange.trim();
+        const trimmedTargetDischargeDate = targetDischargeDate.trim();
+        const trimmedActionItemsRaw = actionItemsRaw.trim();
+        if (!trimmedTitle || !conferenceDate || !trimmedContent) {
+          setError('会議名・開催日時・会議要点を入力してください。');
+          return;
+        }
+        if (requiresDischargeDate && !trimmedTargetDischargeDate) {
+          setError('退院前カンファレンスでは退院予定日を入力してください。');
+          return;
+        }
+        if (countConferenceActionItems(trimmedActionItemsRaw) === 0) {
+          setError('会議後の薬局タスクを1件以上入力してください。');
+          return;
+        }
+        setError(null);
         onSubmit?.({
           patientId,
           caseId,
           noteType,
-          title: title.trim(),
+          title: trimmedTitle,
           conferenceDate,
-          content: content.trim(),
-          visitScheduleChange,
-          targetDischargeDate,
-          actionItemsRaw,
+          content: trimmedContent,
+          visitScheduleChange: trimmedVisitScheduleChange,
+          targetDischargeDate: trimmedTargetDischargeDate,
+          actionItemsRaw: trimmedActionItemsRaw,
         });
       }}
     >
@@ -1846,6 +1879,7 @@ function ConferenceNoteQuickForm({
             value={content}
             onChange={(event) => setContent(event.target.value)}
             className="min-h-20 text-xs"
+            aria-invalid={error?.includes('会議要点') ? true : undefined}
             placeholder="決定事項、薬局確認事項、報告書に残す要点"
           />
         </div>
@@ -1878,6 +1912,7 @@ function ConferenceNoteQuickForm({
               onChange={(event) => setTargetDischargeDate(event.target.value)}
               className="min-h-9 text-xs"
               disabled={noteType !== 'pre_discharge'}
+              aria-invalid={error?.includes('退院予定日') ? true : undefined}
             />
           </div>
         </div>
@@ -1890,9 +1925,32 @@ function ConferenceNoteQuickForm({
             value={actionItemsRaw}
             onChange={(event) => setActionItemsRaw(event.target.value)}
             className="min-h-16 text-xs"
+            aria-invalid={error?.includes('薬局タスク') ? true : undefined}
             placeholder="1行1件。例: 報告書作成 / 薬剤師"
           />
         </div>
+        <div className="rounded-md border border-border/70 bg-muted/30 p-2 text-xs">
+          <p className="font-medium text-foreground">保存される会議連動</p>
+          <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-muted-foreground">
+            <dt>会議種別</dt>
+            <dd className="text-foreground">{conferenceNoteTypeLabels[noteType]}</dd>
+            <dt>報告書・薬局タスク</dt>
+            <dd className="text-foreground">
+              {actionItemCount > 0 ? `タスク ${actionItemCount}件` : '未入力'}
+            </dd>
+            <dt>訪問頻度</dt>
+            <dd className="text-foreground">{visitScheduleChange || '変更なし'}</dd>
+            <dt>退院予定</dt>
+            <dd className="text-foreground">
+              {noteType === 'pre_discharge' ? targetDischargeDate || '未入力' : '対象外'}
+            </dd>
+          </dl>
+        </div>
+        {error ? (
+          <p role="alert" className="text-xs text-destructive">
+            {error}
+          </p>
+        ) : null}
         <Button type="submit" size="sm" className="min-h-9 w-full" disabled={isPending}>
           <CheckCircle2 className="mr-1.5 size-4" aria-hidden="true" />
           {isPending ? '保存中' : actionLabel}

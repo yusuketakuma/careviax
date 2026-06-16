@@ -1316,6 +1316,7 @@ describe('CardWorkspace', () => {
 
     render(<CardWorkspace patientId="patient_1" />);
 
+    expect(screen.getByText('保存される会議連動')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('会議要点'), {
       target: { value: '退院後の服薬支援と残薬確認を合意した' },
     });
@@ -1325,6 +1326,7 @@ describe('CardWorkspace', () => {
     fireEvent.change(screen.getByLabelText('薬局タスク'), {
       target: { value: '報告書作成 / 薬剤師' },
     });
+    expect(screen.getByText('タスク 1件')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /会議要点を登録/ }));
 
     expect(conferenceMutate).toHaveBeenCalledWith({
@@ -1338,6 +1340,68 @@ describe('CardWorkspace', () => {
       targetDischargeDate: '',
       actionItemsRaw: '報告書作成 / 薬剤師',
     });
+  });
+
+  it('blocks incomplete conference quick-note submissions before mutation', () => {
+    const { conferenceMutate } = mockPatientQuery(buildWorkspace(), {
+      generated_at: '2026-06-16T00:00:00.000Z',
+      attention_count: 1,
+      top_alerts: [],
+      items: [
+        {
+          key: 'conference',
+          label: 'カンファレンス',
+          status: '未登録',
+          description:
+            '退院前カンファ、担当者会議、デスカンファの予定・議事録・報告書を管理します。',
+          href: '/conferences?patient_id=patient_1&case_id=case_1&focus=notes&context=patient_detail',
+          action_label: '会議を登録',
+          tone: 'attention',
+          updated_at: null,
+          metrics: [
+            { label: '報告書', value: '未作成' },
+            { label: 'タスク', value: '0件' },
+          ],
+          alerts: ['カンファレンス予定・記録が未登録です'],
+          quick_actions: [
+            {
+              key: 'record_conference_note',
+              label: '会議要点を登録',
+              resource_id: 'case_1',
+            },
+          ],
+        },
+      ],
+    });
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /会議要点を登録/ }));
+    expect(screen.getByRole('alert').textContent).toContain(
+      '会議名・開催日時・会議要点を入力してください。',
+    );
+    expect(conferenceMutate).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('会議要点'), {
+      target: { value: '退院後の服薬支援と残薬確認を合意した' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /会議要点を登録/ }));
+    expect(screen.getByRole('alert').textContent).toContain(
+      '会議後の薬局タスクを1件以上入力してください。',
+    );
+    expect(conferenceMutate).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('薬局タスク'), {
+      target: { value: '報告書作成 / 薬剤師' },
+    });
+    fireEvent.change(screen.getByLabelText('会議種別'), {
+      target: { value: 'pre_discharge' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /会議要点を登録/ }));
+    expect(screen.getByRole('alert').textContent).toContain(
+      '退院前カンファレンスでは退院予定日を入力してください。',
+    );
+    expect(conferenceMutate).not.toHaveBeenCalled();
   });
 
   it('maps conference quick-form fields to structured sync sections', () => {
