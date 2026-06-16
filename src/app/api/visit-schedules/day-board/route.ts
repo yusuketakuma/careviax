@@ -311,53 +311,63 @@ export const GET = withAuthContext(
             },
           });
 
-    const pendingProposals: DayBoardPendingProposal[] = await Promise.all(
-      proposals.map(async (proposal) => {
-        const proposedDateTime = proposal.proposed_date.getTime();
-        // @db.Date は UTC midnight 保存なので表示キーも UTC 日付部分を使う
-        const proposedDateKey = proposal.proposed_date.toISOString().slice(0, 10);
-        const sameDayVisits = impactSchedules.filter(
-          (schedule) =>
-            schedule.pharmacist_id === proposal.proposed_pharmacist_id &&
-            schedule.scheduled_date.getTime() === proposedDateTime,
-        );
-        const occupied = sameDayVisits.reduce(
-          (sum, schedule) =>
-            sum +
-            visitOccupiedMinutes(schedule.time_window_start, schedule.time_window_end) +
-            TRAVEL_MINUTES_PER_VISIT,
-          0,
-        );
-        const idleBefore = Math.max(0, WORKDAY_MINUTES - LUNCH_MINUTES - occupied);
-        const proposalMinutes =
-          visitOccupiedMinutes(proposal.time_window_start, proposal.time_window_end) +
-          TRAVEL_MINUTES_PER_VISIT;
-        const idleAfter = Math.max(0, idleBefore - proposalMinutes);
+    const proposalIds = proposals.map((proposal) => proposal.id);
+    const proposalContactLogs =
+      proposalIds.length === 0
+        ? []
+        : await prisma.visitScheduleContactLog.findMany({
+            where: { org_id: ctx.orgId, proposal_id: { in: proposalIds } },
+            orderBy: [{ proposal_id: 'asc' }, { called_at: 'desc' }],
+            select: { proposal_id: true, callback_due_at: true },
+          });
+    const latestContactLogByProposalId = new Map<string, (typeof proposalContactLogs)[number]>();
+    for (const contactLog of proposalContactLogs) {
+      if (contactLog.proposal_id && !latestContactLogByProposalId.has(contactLog.proposal_id)) {
+        latestContactLogByProposalId.set(contactLog.proposal_id, contactLog);
+      }
+    }
 
-        const latestContactLog = await prisma.visitScheduleContactLog.findFirst({
-          where: { org_id: ctx.orgId, proposal_id: proposal.id },
-          orderBy: { called_at: 'desc' },
-          select: { callback_due_at: true },
-        });
+    const pendingProposals: DayBoardPendingProposal[] = proposals.map((proposal) => {
+      const proposedDateTime = proposal.proposed_date.getTime();
+      // @db.Date は UTC midnight 保存なので表示キーも UTC 日付部分を使う
+      const proposedDateKey = proposal.proposed_date.toISOString().slice(0, 10);
+      const sameDayVisits = impactSchedules.filter(
+        (schedule) =>
+          schedule.pharmacist_id === proposal.proposed_pharmacist_id &&
+          schedule.scheduled_date.getTime() === proposedDateTime,
+      );
+      const occupied = sameDayVisits.reduce(
+        (sum, schedule) =>
+          sum +
+          visitOccupiedMinutes(schedule.time_window_start, schedule.time_window_end) +
+          TRAVEL_MINUTES_PER_VISIT,
+        0,
+      );
+      const idleBefore = Math.max(0, WORKDAY_MINUTES - LUNCH_MINUTES - occupied);
+      const proposalMinutes =
+        visitOccupiedMinutes(proposal.time_window_start, proposal.time_window_end) +
+        TRAVEL_MINUTES_PER_VISIT;
+      const idleAfter = Math.max(0, idleBefore - proposalMinutes);
 
-        return {
-          id: proposal.id,
-          patient_name: proposal.case_.patient.name,
-          pharmacist_name: pharmacistNameById.get(proposal.proposed_pharmacist_id) ?? null,
-          proposed_date: proposedDateKey,
-          time_start: proposal.time_window_start?.toISOString() ?? null,
-          badge_label:
-            proposal.proposal_status === 'reschedule_pending'
-              ? '再調整'
-              : proposal.visit_type === 'initial'
-                ? '受入判断'
-                : '確定待ち',
-          response_due_at: latestContactLog?.callback_due_at?.toISOString() ?? null,
-          idle_before_minutes: idleBefore,
-          idle_after_minutes: idleAfter,
-        } satisfies DayBoardPendingProposal;
-      }),
-    );
+      const latestContactLog = latestContactLogByProposalId.get(proposal.id);
+
+      return {
+        id: proposal.id,
+        patient_name: proposal.case_.patient.name,
+        pharmacist_name: pharmacistNameById.get(proposal.proposed_pharmacist_id) ?? null,
+        proposed_date: proposedDateKey,
+        time_start: proposal.time_window_start?.toISOString() ?? null,
+        badge_label:
+          proposal.proposal_status === 'reschedule_pending'
+            ? '再調整'
+            : proposal.visit_type === 'initial'
+              ? '受入判断'
+              : '確定待ち',
+        response_due_at: latestContactLog?.callback_due_at?.toISOString() ?? null,
+        idle_before_minutes: idleBefore,
+        idle_after_minutes: idleAfter,
+      } satisfies DayBoardPendingProposal;
+    });
 
     const auditPendingCount = auditTaskGroups.reduce((sum, group) => sum + group._count.id, 0);
     const assignedVehicleCounts = new Map<string, number>();

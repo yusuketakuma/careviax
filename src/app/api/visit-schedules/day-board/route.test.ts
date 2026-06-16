@@ -10,7 +10,7 @@ const {
   medicationCycleCountMock,
   proposalFindManyMock,
   facilityFindManyMock,
-  contactLogFindFirstMock,
+  contactLogFindManyMock,
   pharmacistShiftFindManyMock,
   visitVehicleResourceFindManyMock,
 } = vi.hoisted(() => ({
@@ -22,7 +22,7 @@ const {
   medicationCycleCountMock: vi.fn(),
   proposalFindManyMock: vi.fn(),
   facilityFindManyMock: vi.fn(),
-  contactLogFindFirstMock: vi.fn(),
+  contactLogFindManyMock: vi.fn(),
   pharmacistShiftFindManyMock: vi.fn(),
   visitVehicleResourceFindManyMock: vi.fn(),
 }));
@@ -43,7 +43,7 @@ vi.mock('@/lib/db/client', () => ({
     medicationCycle: { count: medicationCycleCountMock },
     visitScheduleProposal: { findMany: proposalFindManyMock },
     facility: { findMany: facilityFindManyMock },
-    visitScheduleContactLog: { findFirst: contactLogFindFirstMock },
+    visitScheduleContactLog: { findMany: contactLogFindManyMock },
     pharmacistShift: { findMany: pharmacistShiftFindManyMock },
     visitVehicleResource: { findMany: visitVehicleResourceFindManyMock },
   },
@@ -72,7 +72,7 @@ describe('/api/visit-schedules/day-board', () => {
     medicationCycleCountMock.mockResolvedValue(0);
     proposalFindManyMock.mockResolvedValue([]);
     facilityFindManyMock.mockResolvedValue([]);
-    contactLogFindFirstMock.mockResolvedValue(null);
+    contactLogFindManyMock.mockResolvedValue([]);
     pharmacistShiftFindManyMock.mockResolvedValue([]);
     visitVehicleResourceFindManyMock.mockResolvedValue([]);
   });
@@ -163,6 +163,67 @@ describe('/api/visit-schedules/day-board', () => {
     // 同日訪問 1 件(60分 + 移動30分)が余白試算に乗る = UTC 日付キー同士の一致が機能
     expect(proposal.idle_before_minutes).toBe(480 - 90);
     expect(proposal.proposed_date).toBe('2026-06-13');
+  });
+
+  it('loads latest pending proposal callback logs in one query', async () => {
+    proposalFindManyMock.mockResolvedValue([
+      {
+        id: 'proposal_1',
+        visit_type: 'regular',
+        proposal_status: 'patient_contact_pending',
+        proposed_date: new Date('2026-06-13T00:00:00.000Z'),
+        time_window_start: null,
+        time_window_end: null,
+        proposed_pharmacist_id: 'user_1',
+        case_: { patient: { name: '鈴木 修' } },
+      },
+      {
+        id: 'proposal_2',
+        visit_type: 'initial',
+        proposal_status: 'proposed',
+        proposed_date: new Date('2026-06-14T00:00:00.000Z'),
+        time_window_start: null,
+        time_window_end: null,
+        proposed_pharmacist_id: 'user_1',
+        case_: { patient: { name: '佐藤 花子' } },
+      },
+    ]);
+    visitScheduleFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    contactLogFindManyMock.mockResolvedValue([
+      {
+        proposal_id: 'proposal_1',
+        callback_due_at: new Date('2026-06-12T04:00:00.000Z'),
+      },
+      {
+        proposal_id: 'proposal_1',
+        callback_due_at: new Date('2026-06-11T04:00:00.000Z'),
+      },
+      {
+        proposal_id: 'proposal_2',
+        callback_due_at: new Date('2026-06-13T05:00:00.000Z'),
+      },
+    ]);
+
+    const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+    expect(response.status).toBe(200);
+    const json = await response.json();
+
+    expect(contactLogFindManyMock).toHaveBeenCalledTimes(1);
+    expect(contactLogFindManyMock).toHaveBeenCalledWith({
+      where: { org_id: 'org_1', proposal_id: { in: ['proposal_1', 'proposal_2'] } },
+      orderBy: [{ proposal_id: 'asc' }, { called_at: 'desc' }],
+      select: { proposal_id: true, callback_due_at: true },
+    });
+    expect(json.data.pending_proposals).toEqual([
+      expect.objectContaining({
+        id: 'proposal_1',
+        response_due_at: '2026-06-12T04:00:00.000Z',
+      }),
+      expect.objectContaining({
+        id: 'proposal_2',
+        response_due_at: '2026-06-13T05:00:00.000Z',
+      }),
+    ]);
   });
 
   it('returns visit route order and recommended vehicle resources for the day board', async () => {
