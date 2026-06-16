@@ -4,11 +4,13 @@ import { NextRequest } from 'next/server';
 const {
   requireAuthContextMock,
   withOrgContextMock,
+  requireWritablePatientMock,
   upsertOperationalTaskMock,
   createAuditLogEntryMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  requireWritablePatientMock: vi.fn(),
   upsertOperationalTaskMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
 }));
@@ -23,6 +25,10 @@ vi.mock('@/lib/db/rls', () => ({
 
 vi.mock('@/server/services/operational-tasks', () => ({
   upsertOperationalTask: upsertOperationalTaskMock,
+}));
+
+vi.mock('@/server/services/patient-write-guard', () => ({
+  requireWritablePatient: requireWritablePatientMock,
 }));
 
 vi.mock('@/lib/audit/audit-entry', () => ({
@@ -47,6 +53,9 @@ describe('/api/patients/[id]/billing-profile PATCH', () => {
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue({
       ctx: { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' },
+    });
+    requireWritablePatientMock.mockResolvedValue({
+      patient: { id: 'patient_1', archived_at: null },
     });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -82,6 +91,7 @@ describe('/api/patients/[id]/billing-profile PATCH', () => {
       { params: Promise.resolve({ id: 'patient_1' }) },
     );
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(requireAuthContextMock).toHaveBeenCalledWith(expect.anything(), {
       permission: 'canManageBilling',
@@ -141,6 +151,7 @@ describe('/api/patients/[id]/billing-profile PATCH', () => {
       { params: Promise.resolve({ id: 'patient_1' }) },
     );
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
@@ -162,6 +173,7 @@ describe('/api/patients/[id]/billing-profile PATCH', () => {
       { params: Promise.resolve({ id: 'patient_1' }) },
     );
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
       details: {
@@ -188,6 +200,7 @@ describe('/api/patients/[id]/billing-profile PATCH', () => {
       { params: Promise.resolve({ id: 'patient_1' }) },
     );
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
       details: {
@@ -213,6 +226,7 @@ describe('/api/patients/[id]/billing-profile PATCH', () => {
       { params: Promise.resolve({ id: 'patient_1' }) },
     );
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
       details: {
@@ -244,7 +258,35 @@ describe('/api/patients/[id]/billing-profile PATCH', () => {
       { params: Promise.resolve({ id: 'patient_1' }) },
     );
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects archived patients before writing payment profiles', async () => {
+    requireWritablePatientMock.mockResolvedValue({
+      response: Response.json(
+        { message: 'アーカイブ中の患者は復元するまで更新できません' },
+        { status: 409 },
+      ),
+    });
+
+    const response = await PATCH(
+      createRequest({
+        payer_type: 'self',
+        payment_method: 'cash',
+        collection_timing: 'per_visit',
+        receipt_issue: 'paper',
+        invoice_issue: 'no',
+        unpaid_tolerance: 'none',
+      }),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 });

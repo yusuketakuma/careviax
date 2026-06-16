@@ -31,6 +31,10 @@ import {
 } from '@/server/services/file-storage';
 import { getHomeVisitIntake, buildBaselineContext } from '@/lib/patient/home-visit-intake';
 import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence';
+import {
+  replaceVisitRecordResidualMedications,
+  syncVisitRecordLabObservations,
+} from '@/server/services/visit-record-derived-data';
 
 function normalizeInputJsonArray(value: unknown): Prisma.InputJsonArray {
   const normalized = normalizeJsonInput(value);
@@ -235,6 +239,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           id: true,
           version: true,
           patient_id: true,
+          visit_date: true,
           outcome_status: true,
           structured_soap: true,
           schedule: {
@@ -334,7 +339,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }
       }
 
-      return tx.visitRecord.update({
+      const record = await tx.visitRecord.update({
         where: { id },
         data: {
           ...rest,
@@ -348,6 +353,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           version: { increment: 1 },
         } as Prisma.VisitRecordUncheckedUpdateInput,
       });
+
+      if (residual_medications !== undefined) {
+        await replaceVisitRecordResidualMedications(tx, ctx.orgId, id, residual_medications);
+      }
+
+      if (rest.structured_soap !== undefined) {
+        await syncVisitRecordLabObservations(
+          tx,
+          ctx.orgId,
+          existing.patient_id,
+          id,
+          visit_date ? new Date(visit_date) : existing.visit_date,
+          rest.structured_soap,
+        );
+      }
+
+      return record;
     },
     { requestContext: ctx },
   );

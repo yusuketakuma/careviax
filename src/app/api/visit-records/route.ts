@@ -11,7 +11,7 @@ import {
   type CreateVisitRecordInput,
 } from '@/lib/validations/visit-record';
 import { prisma } from '@/lib/db/client';
-import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
+import { normalizeJsonInput } from '@/lib/db/json';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { getRequestAuthContext } from '@/lib/auth/request-context';
 import {
@@ -26,7 +26,7 @@ import {
   isHomeVisit2026CompletionOutcome,
 } from '@/lib/visits/home-visit-2026-evidence';
 import type { StructuredSoap } from '@/types/structured-soap';
-import type { Prisma, LabAnalyteCode } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import {
   listBillingEvidenceBlockers,
   upsertBillingEvidenceForVisit,
@@ -36,6 +36,10 @@ import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import { buildPatientStateSnapshot } from '@/server/services/patient-state-snapshot';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
+import {
+  replaceVisitRecordResidualMedications,
+  syncVisitRecordLabObservations,
+} from '@/server/services/visit-record-derived-data';
 
 const scheduleStatusByOutcome: Record<
   CreateVisitRecordInput['outcome_status'],
@@ -183,106 +187,6 @@ async function loadExistingVisitRecordConflict(
       prescribed_daily_dose: null,
     })),
   };
-}
-
-const LAB_ANALYTE_CODES = new Set([
-  'wbc',
-  'neut',
-  'hb',
-  'plt',
-  'pt_inr',
-  'ast',
-  'alt',
-  't_bil',
-  'scr',
-  'egfr',
-  'bun',
-  'ck',
-  'bnp',
-  'nt_pro_bnp',
-  'na',
-  'k',
-  'cl',
-  'hba1c',
-  'blood_glucose',
-  'alb',
-  'tp',
-  'crp',
-]);
-
-async function syncLabObservations(
-  tx: Prisma.TransactionClient,
-  orgId: string,
-  patientId: string,
-  visitRecordId: string,
-  visitDate: Date,
-  labValues: Record<string, unknown>,
-) {
-  const entries = Object.entries(labValues).filter(
-    ([key, val]) => LAB_ANALYTE_CODES.has(key) && typeof val === 'number',
-  ) as [string, number][];
-
-  if (entries.length === 0) return;
-
-  // Remove previous observations from this visit record on re-save
-  await tx.patientLabObservation.deleteMany({
-    where: { org_id: orgId, source_visit_record_id: visitRecordId },
-  });
-
-  await tx.patientLabObservation.createMany({
-    data: entries.map(([key, val]) => ({
-      org_id: orgId,
-      patient_id: patientId,
-      analyte_code: key as LabAnalyteCode,
-      measured_at: visitDate,
-      value_numeric: val,
-      source_type: 'visit_record',
-      source_visit_record_id: visitRecordId,
-    })),
-  });
-}
-
-async function replaceResidualMedications(
-  tx: Prisma.TransactionClient,
-  orgId: string,
-  visitRecordId: string,
-  residualMedications: CreateVisitRecordInput['residual_medications'],
-) {
-  await tx.residualMedication.deleteMany({
-    where: {
-      org_id: orgId,
-      visit_record_id: visitRecordId,
-    },
-  });
-
-  if (!residualMedications || residualMedications.length === 0) return;
-
-  await Promise.all(
-    residualMedications.map((medication) => {
-      let excessDays: number | undefined;
-      if (
-        medication.prescribed_daily_dose &&
-        medication.prescribed_daily_dose > 0 &&
-        medication.remaining_quantity > 0
-      ) {
-        excessDays = Math.floor(medication.remaining_quantity / medication.prescribed_daily_dose);
-      }
-
-      return tx.residualMedication.create({
-        data: {
-          org_id: orgId,
-          visit_record_id: visitRecordId,
-          drug_name: medication.drug_name,
-          drug_code: medication.drug_code,
-          prescribed_quantity: medication.prescribed_quantity,
-          remaining_quantity: medication.remaining_quantity,
-          excess_days: excessDays ?? null,
-          is_reduction_target: excessDays !== undefined && excessDays > 7,
-          is_prohibited_reduction: medication.is_prohibited_reduction,
-        },
-      });
-    }),
-  );
 }
 
 type ResidualReductionCandidate = {
@@ -1022,22 +926,15 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
             } as Prisma.VisitRecordUncheckedCreateInput,
           });
 
-    await replaceResidualMedications(tx, ctx.orgId, record.id, residual_medications);
-
-    // Sync structured lab values to PatientLabObservation
-    const structuredSoapObject = readJsonObject(structured_soap);
-    const objective = readJsonObject(structuredSoapObject?.objective);
-    const labValues = readJsonObject(objective?.lab_values);
-    if (labValues) {
-      await syncLabObservations(
-        tx,
-        ctx.orgId,
-        careCase.patient_id,
-        record.id,
-        visitRecordedAt,
-        labValues,
-      );
-    }
+    await replaceVisitRecordResidualMedications(tx, ctx.orgId, record.id, residual_medications);
+    await syncVisitRecordLabObservations(
+      tx,
+      ctx.orgId,
+      careCase.patient_id,
+      record.id,
+      visitRecordedAt,
+      structured_soap,
+    );
 
     if (schedule.visit_type === 'initial' && firstVisitDocumentOutcomes.has(outcome_status)) {
       await upsertFirstVisitDocument({

@@ -32,6 +32,8 @@ const {
   residualMedicationFindManyMock,
   residualMedicationDeleteManyMock,
   residualMedicationCreateMock,
+  patientLabObservationDeleteManyMock,
+  patientLabObservationCreateManyMock,
   contactPartyFindManyMock,
   firstVisitDocumentFindFirstMock,
   firstVisitDocumentCreateMock,
@@ -72,6 +74,8 @@ const {
   residualMedicationFindManyMock: vi.fn(),
   residualMedicationDeleteManyMock: vi.fn(),
   residualMedicationCreateMock: vi.fn(),
+  patientLabObservationDeleteManyMock: vi.fn(),
+  patientLabObservationCreateManyMock: vi.fn(),
   contactPartyFindManyMock: vi.fn(),
   firstVisitDocumentFindFirstMock: vi.fn(),
   firstVisitDocumentCreateMock: vi.fn(),
@@ -539,6 +543,8 @@ describe('/api/visit-records POST', () => {
     residualMedicationFindManyMock.mockResolvedValue([]);
     residualMedicationDeleteManyMock.mockResolvedValue({ count: 0 });
     residualMedicationCreateMock.mockResolvedValue({ id: 'residual_1' });
+    patientLabObservationDeleteManyMock.mockResolvedValue({ count: 0 });
+    patientLabObservationCreateManyMock.mockResolvedValue({ count: 1 });
     contactPartyFindManyMock.mockResolvedValue([]);
     firstVisitDocumentFindFirstMock.mockResolvedValue(null);
     firstVisitDocumentCreateMock.mockResolvedValue({ id: 'first_visit_1' });
@@ -597,6 +603,10 @@ describe('/api/visit-records POST', () => {
           findMany: residualMedicationFindManyMock,
           deleteMany: residualMedicationDeleteManyMock,
           create: residualMedicationCreateMock,
+        },
+        patientLabObservation: {
+          deleteMany: patientLabObservationDeleteManyMock,
+          createMany: patientLabObservationCreateManyMock,
         },
         contactParty: {
           findMany: contactPartyFindManyMock,

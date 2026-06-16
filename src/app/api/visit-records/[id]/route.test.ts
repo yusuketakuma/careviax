@@ -7,6 +7,10 @@ const {
   visitRecordUpdateMock,
   visitRecordFindManyMock,
   medicationCycleFindManyMock,
+  residualMedicationDeleteManyMock,
+  residualMedicationCreateMock,
+  patientLabObservationDeleteManyMock,
+  patientLabObservationCreateManyMock,
   auditLogFindFirstMock,
   userFindManyMock,
   careCaseFindFirstMock,
@@ -21,6 +25,10 @@ const {
   visitRecordUpdateMock: vi.fn(),
   visitRecordFindManyMock: vi.fn(),
   medicationCycleFindManyMock: vi.fn(),
+  residualMedicationDeleteManyMock: vi.fn(),
+  residualMedicationCreateMock: vi.fn(),
+  patientLabObservationDeleteManyMock: vi.fn(),
+  patientLabObservationCreateManyMock: vi.fn(),
   auditLogFindFirstMock: vi.fn(),
   userFindManyMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
@@ -113,6 +121,10 @@ describe('/api/visit-records/[id]', () => {
     patientSchedulePreferenceFindFirstMock.mockResolvedValue(null);
     visitRecordFindManyMock.mockResolvedValue([{ id: 'visit_1' }]);
     medicationCycleFindManyMock.mockResolvedValue([{ id: 'cycle_1' }]);
+    residualMedicationDeleteManyMock.mockResolvedValue({ count: 1 });
+    residualMedicationCreateMock.mockResolvedValue({ id: 'residual_1' });
+    patientLabObservationDeleteManyMock.mockResolvedValue({ count: 1 });
+    patientLabObservationCreateManyMock.mockResolvedValue({ count: 1 });
     listBillingEvidenceBlockersMock.mockResolvedValue([]);
     toVisitRecordAttachmentMock.mockImplementation((record) => ({
       file_id: record.id,
@@ -130,6 +142,7 @@ describe('/api/visit-records/[id]', () => {
             id: 'visit_1',
             version: 1,
             patient_id: 'patient_1',
+            visit_date: new Date('2026-03-28T00:00:00.000Z'),
             outcome_status: 'delivery_only',
             structured_soap: null,
             schedule: {
@@ -151,6 +164,12 @@ describe('/api/visit-records/[id]', () => {
         },
         residualMedication: {
           count: vi.fn().mockResolvedValue(0),
+          deleteMany: residualMedicationDeleteManyMock,
+          create: residualMedicationCreateMock,
+        },
+        patientLabObservation: {
+          deleteMany: patientLabObservationDeleteManyMock,
+          createMany: patientLabObservationCreateManyMock,
         },
       }),
     );
@@ -411,6 +430,79 @@ describe('/api/visit-records/[id]', () => {
       Record<string, unknown>
     >;
     expect(savedAttachments[0].legacy_debug).toBeUndefined();
+  });
+
+  it('resyncs derived labs and residual medications when structured visit data is patched', async () => {
+    visitRecordUpdateMock.mockResolvedValue({
+      id: 'visit_1',
+      version: 2,
+      structured_soap: {},
+    });
+
+    const response = await PATCH(
+      createRequest({
+        version: 1,
+        structured_soap: {
+          objective: {
+            lab_values: {
+              egfr: 42,
+              scr: 1.2,
+              ignored_text: 'high',
+            },
+          },
+        },
+        residual_medications: [
+          {
+            drug_name: 'アムロジピン錠5mg',
+            drug_code: 'drug_amlodipine',
+            prescribed_quantity: 28,
+            prescribed_daily_dose: 1,
+            remaining_quantity: 10,
+            is_prohibited_reduction: false,
+          },
+        ],
+      }),
+      {
+        params: Promise.resolve({ id: 'visit_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(residualMedicationDeleteManyMock).toHaveBeenCalledWith({
+      where: { org_id: 'org_1', visit_record_id: 'visit_1' },
+    });
+    expect(residualMedicationCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          org_id: 'org_1',
+          visit_record_id: 'visit_1',
+          drug_name: 'アムロジピン錠5mg',
+          excess_days: 10,
+          is_reduction_target: true,
+        }),
+      }),
+    );
+    expect(patientLabObservationDeleteManyMock).toHaveBeenCalledWith({
+      where: { org_id: 'org_1', source_visit_record_id: 'visit_1' },
+    });
+    expect(patientLabObservationCreateManyMock).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: 'patient_1',
+          analyte_code: 'egfr',
+          value_numeric: 42,
+          source_type: 'visit_record',
+          source_visit_record_id: 'visit_1',
+        }),
+        expect.objectContaining({
+          analyte_code: 'scr',
+          value_numeric: 1.2,
+        }),
+      ]),
+    });
+    expect(patientLabObservationCreateManyMock.mock.calls[0][0].data).toHaveLength(2);
   });
 
   it('rejects schedule and patient reassignment on PATCH before updating', async () => {

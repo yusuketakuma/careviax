@@ -25,7 +25,6 @@ import {
 } from 'lucide-react';
 import { z } from 'zod';
 import { visitRecordBaseSchema } from '@/lib/validations/visit-record';
-import { formatDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useSpeechRecognition } from '@/lib/hooks/use-speech-recognition';
 import { useSoapDraft } from '@/lib/hooks/use-soap-draft';
@@ -1006,44 +1005,7 @@ export function VisitRecordForm({
       }
 
       const { record } = await res.json();
-
-      // Persist lab values from wizard to PatientLabObservation (fire-and-forget)
-      const labValues = buildStructuredSoap(values).objective?.lab_values;
       const labPatientId = schedule?.patient_id ?? values.patient_id;
-      if (labValues && labPatientId) {
-        const analyteMap: Array<[string, number | undefined]> = [
-          ['hba1c', labValues.hba1c],
-          ['egfr', labValues.egfr],
-          ['k', labValues.k],
-          ['na', labValues.na],
-          ['alb', labValues.alb],
-          ['plt', labValues.plt],
-          ['pt_inr', labValues.pt_inr],
-        ];
-        const measuredAt =
-          typeof values.visit_date === 'string' ? values.visit_date : formatDateKey(new Date());
-        void Promise.allSettled(
-          analyteMap
-            .filter((entry): entry is [string, number] => entry[1] != null)
-            .map(([code, value]) =>
-              fetch(`/api/patients/${labPatientId}/labs`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
-                body: JSON.stringify({
-                  analyte_code: code,
-                  measured_at: measuredAt,
-                  value_numeric: value,
-                  source_type: 'visit_record',
-                  source_visit_record_id: record.id,
-                }),
-              }),
-            ),
-        ).then((results) => {
-          if (results.some((r) => r.status === 'rejected')) {
-            toast.warning('検査値の一部が保存できませんでした');
-          }
-        });
-      }
 
       // ⑤ 反映導線: 確認した患者情報を正本(患者詳細)へ反映する(任意・オンライン時のみ・非ブロッキング)。
       // source_visit_record_id を付けることで変更履歴の source が visit_record になる。

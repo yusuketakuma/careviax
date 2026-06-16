@@ -21,6 +21,7 @@ const {
   toastErrorMock,
   toastSuccessMock,
   toastInfoMock,
+  fetchUrls,
 } = vi.hoisted(() => ({
   routerBackMock: vi.fn(),
   routerPushMock: vi.fn(),
@@ -35,6 +36,7 @@ const {
   toastErrorMock: vi.fn(),
   toastSuccessMock: vi.fn(),
   toastInfoMock: vi.fn(),
+  fetchUrls: [] as string[],
 }));
 
 vi.mock('next/navigation', () => ({
@@ -221,6 +223,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     setupAutoSyncMock.mockReturnValue(vi.fn());
     refreshSyncStateMock.mockResolvedValue(undefined);
     visitRecordPostBodies.length = 0;
+    fetchUrls.length = 0;
 
     Object.defineProperty(window, 'requestAnimationFrame', {
       configurable: true,
@@ -234,6 +237,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
+        fetchUrls.push(url);
         if (url === '/api/visit-schedules/schedule_partial') {
           return new Response(
             JSON.stringify({
@@ -423,6 +427,7 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     expect(visitRecordPostBodies[0]).not.toHaveProperty('receipt_person_name');
     expect(visitRecordPostBodies[0]).not.toHaveProperty('receipt_person_relation');
     expect(visitRecordPostBodies[0]).not.toHaveProperty('receipt_at');
+    expect(fetchUrls.some((url) => url.includes('/labs'))).toBe(false);
   });
 
   it('shows billing collection context without posting billing fields as visit record data', async () => {
