@@ -1756,10 +1756,26 @@ export async function getScheduleVisitBriefsForSchedules(
   db: DbClient,
   args: { schedules: ScheduleBriefRequest[] },
 ): Promise<Map<string, VisitBrief>> {
-  const entries = await mapWithConcurrency(
-    args.schedules,
+  const requestByKey = new Map<string, ScheduleBriefRequest>();
+  const keyByScheduleId = new Map<string, string>();
+  for (const schedule of args.schedules) {
+    const key = JSON.stringify([
+      schedule.orgId,
+      schedule.patientId,
+      schedule.caseId,
+      schedule.limit ?? null,
+      schedule.actorId ?? null,
+    ]);
+    keyByScheduleId.set(schedule.scheduleId, key);
+    if (!requestByKey.has(key)) {
+      requestByKey.set(key, schedule);
+    }
+  }
+
+  const briefEntries = await mapWithConcurrency(
+    [...requestByKey.entries()],
     getVisitBriefBatchConcurrency(),
-    async (schedule) => {
+    async ([key, schedule]) => {
       const brief = await getScheduleVisitBrief(db, {
         orgId: schedule.orgId,
         patientId: schedule.patientId,
@@ -1767,9 +1783,16 @@ export async function getScheduleVisitBriefsForSchedules(
         limit: schedule.limit,
         actorId: schedule.actorId,
       });
-      return [schedule.scheduleId, brief] as const;
+      return [key, brief] as const;
     },
   );
 
-  return new Map(entries);
+  const briefByKey = new Map(briefEntries);
+  return new Map(
+    args.schedules.flatMap((schedule) => {
+      const key = keyByScheduleId.get(schedule.scheduleId);
+      const brief = key ? briefByKey.get(key) : undefined;
+      return brief ? ([[schedule.scheduleId, brief]] as const) : [];
+    }),
+  );
 }

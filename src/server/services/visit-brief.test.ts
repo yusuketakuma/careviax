@@ -91,7 +91,11 @@ const previousPatientSnapshot = {
   conditions: [],
   contacts: [],
   care_team_links: [],
-  home_visit_intake: { special_medical_procedures: [], narcotics_base: false, narcotics_rescue: false },
+  home_visit_intake: {
+    special_medical_procedures: [],
+    narcotics_base: false,
+    narcotics_rescue: false,
+  },
   insurances: [],
 };
 const currentPatientSnapshot = {
@@ -874,5 +878,50 @@ describe('getScheduleVisitBriefsForSchedules', () => {
         where: expect.objectContaining({ case_id: { in: ['case_2'] } }),
       }),
     );
+  });
+
+  it('deduplicates schedule briefs for the same patient and case scope', async () => {
+    const db = {
+      careCase: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'case_1' }]),
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
+      billingEvidence: { findMany: vi.fn().mockResolvedValue([]) },
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({ id: 'patient_1', name: '患者A' }),
+      },
+      prescriptionIntake: { findMany: vi.fn().mockResolvedValue([]) },
+      medicationProfile: { findMany: vi.fn().mockResolvedValue([]) },
+      setPlan: { findFirst: vi.fn().mockResolvedValue(null) },
+      patientSelfReport: { findMany: vi.fn().mockResolvedValue([]) },
+      communicationEvent: { findMany: vi.fn().mockResolvedValue([]) },
+      communicationRequest: { findMany: vi.fn().mockResolvedValue([]) },
+      visitScheduleContactLog: { findMany: vi.fn().mockResolvedValue([]) },
+      task: { findMany: vi.fn().mockResolvedValue([]) },
+      medicationIssue: { findMany: vi.fn().mockResolvedValue([]) },
+      inquiryRecord: { findMany: vi.fn().mockResolvedValue([]) },
+      visitRecord: {
+        findMany: vi.fn().mockResolvedValue([]),
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
+      medicationCycle: { findMany: vi.fn().mockResolvedValue([]) },
+      conferenceNote: { findMany: vi.fn().mockResolvedValue([]) },
+      residence: { findFirst: vi.fn().mockResolvedValue(null) },
+      drugPackageInsert: { findMany: vi.fn().mockResolvedValue([]) },
+      drugMaster: { findMany: vi.fn().mockResolvedValue([]) },
+    };
+
+    const result = await getScheduleVisitBriefsForSchedules(db, {
+      schedules: [
+        { scheduleId: 'schedule_1', orgId: 'org_1', patientId: 'patient_1', caseId: 'case_1' },
+        { scheduleId: 'schedule_2', orgId: 'org_1', patientId: 'patient_1', caseId: 'case_1' },
+      ],
+    });
+
+    expect([...result.keys()]).toEqual(['schedule_1', 'schedule_2']);
+    expect(result.get('schedule_1')).toBe(result.get('schedule_2'));
+    expect(db.patient.findFirst).toHaveBeenCalledTimes(1);
+    expect(db.visitScheduleContactLog.findMany).toHaveBeenCalledTimes(1);
+    expect(generateVisitBriefAiSummaryMock).toHaveBeenCalledTimes(1);
   });
 });
