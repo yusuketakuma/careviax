@@ -36,6 +36,8 @@ const {
   firstVisitDocumentFindFirstMock,
   firstVisitDocumentCreateMock,
   firstVisitDocumentUpdateMock,
+  templateFindFirstMock,
+  auditLogCreateMock,
   taskUpsertMock,
   billingEvidenceUpsertMock,
   listBillingEvidenceBlockersMock,
@@ -74,6 +76,8 @@ const {
   firstVisitDocumentFindFirstMock: vi.fn(),
   firstVisitDocumentCreateMock: vi.fn(),
   firstVisitDocumentUpdateMock: vi.fn(),
+  templateFindFirstMock: vi.fn(),
+  auditLogCreateMock: vi.fn(),
   taskUpsertMock: vi.fn(),
   billingEvidenceUpsertMock: vi.fn(),
   listBillingEvidenceBlockersMock: vi.fn(),
@@ -539,6 +543,13 @@ describe('/api/visit-records POST', () => {
     firstVisitDocumentFindFirstMock.mockResolvedValue(null);
     firstVisitDocumentCreateMock.mockResolvedValue({ id: 'first_visit_1' });
     firstVisitDocumentUpdateMock.mockResolvedValue({ id: 'first_visit_1' });
+    templateFindFirstMock.mockResolvedValue({
+      id: 'template_contract_2026',
+      name: '居宅療養管理指導契約書 2026年版',
+      template_type: 'contract_document',
+      version: 2,
+    });
+    auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
     visitScheduleUpdateMock.mockResolvedValue({ id: 'schedule_1' });
     consentRecordFindFirstMock.mockResolvedValue({ id: 'consent_1' });
     medicationCycleFindFirstMock.mockResolvedValue({
@@ -622,6 +633,12 @@ describe('/api/visit-records POST', () => {
           findFirst: firstVisitDocumentFindFirstMock,
           create: firstVisitDocumentCreateMock,
           update: firstVisitDocumentUpdateMock,
+        },
+        template: {
+          findFirst: templateFindFirstMock,
+        },
+        auditLog: {
+          create: auditLogCreateMock,
         },
         task: {
           upsert: taskUpsertMock,
@@ -1428,6 +1445,89 @@ describe('/api/visit-records POST', () => {
       }),
     });
     expect(firstVisitDocumentUpdateMock).not.toHaveBeenCalled();
+    expect(templateFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          template_type: {
+            in: ['contract_document', 'important_matters', 'privacy_consent', 'consent_form'],
+          },
+          is_default: true,
+        }),
+      }),
+    );
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        actor_id: 'user_1',
+        action: 'first_visit_document.generated',
+        target_type: 'first_visit_document',
+        target_id: 'first_visit_1',
+        changes: expect.objectContaining({
+          document_action: expect.objectContaining({
+            action: 'generated',
+            document_type: 'contract',
+            template_id: 'template_contract_2026',
+            template_name: '居宅療養管理指導契約書 2026年版',
+            template_version: '2',
+            source: 'initial_visit_record',
+          }),
+          visit_record_id: 'record_1',
+          delivered_to: '長男 山田',
+        }),
+      }),
+    });
+  });
+
+  it('updates existing first-visit documents without duplicating generated history', async () => {
+    visitScheduleFindFirstMock.mockResolvedValue({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      schedule_status: 'ready',
+      recurrence_rule: null,
+      cycle_id: 'cycle_1',
+      visit_type: 'initial',
+      pharmacist_id: 'user_1',
+      site_id: 'site_1',
+      time_window_start: null,
+      time_window_end: null,
+      medication_end_date: null,
+      visit_deadline_date: null,
+    });
+    firstVisitDocumentFindFirstMock.mockResolvedValue({
+      id: 'first_visit_existing',
+      document_url: '/reports/print?type=first_visit_documents&patient_id=patient_1',
+      delivered_at: new Date('2026-03-20T09:00:00.000Z'),
+      delivered_to: '長女 山田',
+    });
+
+    const response = await POST(
+      createRequest(
+        {
+          schedule_id: 'schedule_1',
+          patient_id: 'patient_1',
+          visit_date: '2026-03-26',
+          outcome_status: 'completed',
+          soap_subjective: '服薬状況問題なし',
+          structured_soap: completedInitialVisitStructuredSoap,
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(firstVisitDocumentUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'first_visit_existing' },
+      data: expect.objectContaining({
+        document_url: '/reports/print?type=first_visit_documents&patient_id=patient_1',
+        delivered_at: new Date('2026-03-20T09:00:00.000Z'),
+        delivered_to: '長女 山田',
+      }),
+    });
+    expect(firstVisitDocumentCreateMock).not.toHaveBeenCalled();
+    expect(templateFindFirstMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('kicks off handoff extraction without blocking the save response when structured SOAP is provided', async () => {

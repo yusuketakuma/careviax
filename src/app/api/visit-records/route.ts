@@ -12,6 +12,7 @@ import {
 } from '@/lib/validations/visit-record';
 import { prisma } from '@/lib/db/client';
 import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { getRequestAuthContext } from '@/lib/auth/request-context';
 import {
   buildVisitRecordScheduleAssignmentWhere,
@@ -60,6 +61,23 @@ const firstVisitDocumentOutcomes = new Set<CreateVisitRecordInput['outcome_statu
   'revisit_needed',
   'delivery_only',
 ]);
+
+const FIRST_VISIT_DOCUMENT_TEMPLATE_TYPES = [
+  'contract_document',
+  'important_matters',
+  'privacy_consent',
+  'consent_form',
+] as const;
+
+const FIRST_VISIT_DOCUMENT_TYPE_BY_TEMPLATE: Record<
+  (typeof FIRST_VISIT_DOCUMENT_TEMPLATE_TYPES)[number],
+  'contract' | 'important_matters' | 'privacy_consent' | 'consent'
+> = {
+  contract_document: 'contract',
+  important_matters: 'important_matters',
+  privacy_consent: 'privacy_consent',
+  consent_form: 'consent',
+};
 
 type VisitRecordConflictDetail = {
   id: string;
@@ -303,6 +321,7 @@ function collectResidualReductionCandidates(
 
 async function upsertFirstVisitDocument(args: {
   tx: Prisma.TransactionClient;
+  ctx: AuthContext;
   orgId: string;
   patientId: string;
   caseId: string;
@@ -375,7 +394,24 @@ async function upsertFirstVisitDocument(args: {
     return;
   }
 
-  await args.tx.firstVisitDocument.create({
+  const template = await args.tx.template.findFirst({
+    where: {
+      org_id: args.orgId,
+      template_type: { in: [...FIRST_VISIT_DOCUMENT_TEMPLATE_TYPES] },
+      is_default: true,
+      OR: [{ effective_from: null }, { effective_from: { lte: new Date() } }],
+      AND: [{ OR: [{ effective_to: null }, { effective_to: { gte: new Date() } }] }],
+    },
+    orderBy: [{ template_type: 'asc' }, { version: 'desc' }, { updated_at: 'desc' }],
+    select: {
+      id: true,
+      name: true,
+      template_type: true,
+      version: true,
+    },
+  });
+
+  const created = await args.tx.firstVisitDocument.create({
     data: {
       org_id: args.orgId,
       patient_id: args.patientId,
@@ -384,6 +420,32 @@ async function upsertFirstVisitDocument(args: {
       document_url: documentUrl,
       delivered_at: deliveredAt,
       delivered_to: deliveredTo,
+    },
+  });
+
+  await createAuditLogEntry(args.tx, args.ctx, {
+    action: 'first_visit_document.generated',
+    targetType: 'first_visit_document',
+    targetId: created.id,
+    changes: {
+      document_action: {
+        action: 'generated',
+        document_type: template
+          ? FIRST_VISIT_DOCUMENT_TYPE_BY_TEMPLATE[
+              template.template_type as (typeof FIRST_VISIT_DOCUMENT_TEMPLATE_TYPES)[number]
+            ]
+          : 'first_visit_document',
+        template_id: template?.id ?? null,
+        template_name: template?.name ?? null,
+        template_version: template ? String(template.version) : null,
+        source: 'initial_visit_record',
+      },
+      patient_id: args.patientId,
+      case_id: args.caseId,
+      visit_record_id: args.recordId,
+      delivered_at: deliveredAt?.toISOString() ?? null,
+      delivered_to: deliveredTo,
+      document_url: documentUrl,
     },
   });
 }
@@ -980,6 +1042,7 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
     if (schedule.visit_type === 'initial' && firstVisitDocumentOutcomes.has(outcome_status)) {
       await upsertFirstVisitDocument({
         tx,
+        ctx,
         orgId: ctx.orgId,
         patientId: careCase.patient_id,
         caseId: schedule.case_id,

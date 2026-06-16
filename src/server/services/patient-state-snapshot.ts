@@ -117,6 +117,7 @@ export async function buildPatientStateSnapshot(
     case_id: visitedCase?.id ?? null,
     patient: {
       id: base.id,
+      name: base.name,
       birth_date: base.birth_date,
       gender: base.gender,
       billing_support_flag: base.billing_support_flag,
