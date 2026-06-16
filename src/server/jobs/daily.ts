@@ -80,6 +80,15 @@ type DailyOperationResult = {
   errors?: string[];
 };
 
+async function createManyNotifications(data: Prisma.NotificationCreateManyInput[]) {
+  if (data.length === 0) return { count: 0 };
+
+  return prisma.notification.createMany({
+    data,
+    skipDuplicates: true,
+  });
+}
+
 async function findAdminUserIdsByOrg(orgIds: Iterable<string>) {
   const uniqueOrgIds = [...new Set([...orgIds].filter(Boolean))];
   if (uniqueOrgIds.length === 0) return new Map<string, string[]>();
@@ -747,21 +756,13 @@ export async function checkVisitRecordRetention() {
       });
     }
 
+    const notificationResult = await createManyNotifications(notificationData);
+
     if (taskSpecs.length > 0) {
       await syncGeneratedOperationalTasks(taskSpecs, ['visit_record_retention']);
     }
 
-    const notificationResult =
-      notificationData.length === 0
-        ? { count: 0 }
-        : await prisma.notification.createMany({
-            data: notificationData,
-            skipDuplicates: true,
-          });
-
-    const notificationCount = notificationResult.count;
-
-    return { processedCount: notificationCount };
+    return { processedCount: notificationResult.count };
   });
 }
 
@@ -1998,7 +1999,7 @@ export async function checkFacilityStandardExpiry() {
     ];
 
     const taskSpecs: GeneratedTaskSpec[] = [];
-    let notificationCount = 0;
+    const notificationData: Prisma.NotificationCreateManyInput[] = [];
     const adminUserIdsByOrg = await findAdminUserIdsByOrg(expiring.map((reg) => reg.org_id));
 
     for (const reg of expiring) {
@@ -2011,18 +2012,15 @@ export async function checkFacilityStandardExpiry() {
       if (!threshold) continue;
 
       for (const adminId of adminUserIdsByOrg.get(reg.org_id) ?? []) {
-        await prisma.notification.create({
-          data: {
-            org_id: reg.org_id,
-            user_id: adminId,
-            type: threshold.priority === 'urgent' ? 'urgent' : 'business',
-            title: '施設基準の有効期限',
-            message: `${reg.standard_type}（${reg.site?.name ?? '不明'}）の有効期限が${threshold.label}に迫っています。`,
-            link: '/admin/facility-standards',
-            dedupe_key: `facility-std-expiry:${reg.id}:${threshold.days}`,
-          },
+        notificationData.push({
+          org_id: reg.org_id,
+          user_id: adminId,
+          type: threshold.priority === 'urgent' ? 'urgent' : 'business',
+          title: '施設基準の有効期限',
+          message: `${reg.standard_type}（${reg.site?.name ?? '不明'}）の有効期限が${threshold.label}に迫っています。`,
+          link: '/admin/facility-standards',
+          dedupe_key: `facility-std-expiry:${reg.id}:${threshold.days}`,
         });
-        notificationCount++;
       }
 
       taskSpecs.push({
@@ -2038,11 +2036,13 @@ export async function checkFacilityStandardExpiry() {
       });
     }
 
+    const notificationResult = await createManyNotifications(notificationData);
+
     if (taskSpecs.length > 0) {
       await syncGeneratedOperationalTasks(taskSpecs, ['facility_standard_expiry']);
     }
 
-    return { processedCount: notificationCount };
+    return { processedCount: notificationResult.count };
   });
 }
 
@@ -2068,7 +2068,7 @@ export async function checkCredentialExpiry() {
       { days: 90, priority: 'high' as const, label: '90日以内' },
     ];
 
-    let notificationCount = 0;
+    const notificationData: Prisma.NotificationCreateManyInput[] = [];
     const adminUserIdsByOrg = await findAdminUserIdsByOrg(expiring.map((cred) => cred.org_id));
 
     for (const cred of expiring) {
@@ -2081,37 +2081,33 @@ export async function checkCredentialExpiry() {
       if (!threshold) continue;
 
       // Notify the pharmacist themselves
-      await prisma.notification.create({
-        data: {
-          org_id: cred.org_id,
-          user_id: cred.user_id,
-          type: threshold.priority === 'urgent' ? 'urgent' : 'reminder',
-          title: '資格・認定の有効期限',
-          message: `${cred.certification_type} の有効期限が${threshold.label}に迫っています。更新手続きを行ってください。`,
-          link: '/settings/credentials',
-          dedupe_key: `credential-expiry:${cred.id}:${threshold.days}`,
-        },
+      notificationData.push({
+        org_id: cred.org_id,
+        user_id: cred.user_id,
+        type: threshold.priority === 'urgent' ? 'urgent' : 'reminder',
+        title: '資格・認定の有効期限',
+        message: `${cred.certification_type} の有効期限が${threshold.label}に迫っています。更新手続きを行ってください。`,
+        link: '/settings/credentials',
+        dedupe_key: `credential-expiry:${cred.id}:${threshold.days}`,
       });
-      notificationCount++;
 
       for (const adminId of adminUserIdsByOrg.get(cred.org_id) ?? []) {
         if (adminId === cred.user_id) continue; // skip if admin is the pharmacist
-        await prisma.notification.create({
-          data: {
-            org_id: cred.org_id,
-            user_id: adminId,
-            type: 'business',
-            title: '薬剤師資格の有効期限',
-            message: `${cred.user?.name ?? '薬剤師'} の ${cred.certification_type} が${threshold.label}に期限切れ。`,
-            link: '/admin/staff',
-            dedupe_key: `credential-expiry-admin:${cred.id}:${adminId}:${threshold.days}`,
-          },
+        notificationData.push({
+          org_id: cred.org_id,
+          user_id: adminId,
+          type: 'business',
+          title: '薬剤師資格の有効期限',
+          message: `${cred.user?.name ?? '薬剤師'} の ${cred.certification_type} が${threshold.label}に期限切れ。`,
+          link: '/admin/staff',
+          dedupe_key: `credential-expiry-admin:${cred.id}:${adminId}:${threshold.days}`,
         });
-        notificationCount++;
       }
     }
 
-    return { processedCount: notificationCount };
+    const notificationResult = await createManyNotifications(notificationData);
+
+    return { processedCount: notificationResult.count };
   });
 }
 
@@ -2131,7 +2127,7 @@ export async function checkConsentExpiry() {
     });
 
     const taskSpecs: GeneratedTaskSpec[] = [];
-    let notificationCount = 0;
+    const notificationData: Prisma.NotificationCreateManyInput[] = [];
     const activeCasePharmacists = await findPrimaryPharmacistIdsForActiveCases({
       caseIds: expiring.map((consent) => consent.case_id),
       orgPatientPairs: expiring.map((consent) => ({
@@ -2153,18 +2149,15 @@ export async function checkConsentExpiry() {
         ? activeCasePharmacists.byCaseId.get(consent.case_id)
         : activeCasePharmacists.byOrgPatient.get(orgPatientKey(consent.org_id, consent.patient_id));
       if (pharmacistId) {
-        await prisma.notification.create({
-          data: {
-            org_id: consent.org_id,
-            user_id: pharmacistId,
-            type: priority === 'urgent' ? 'urgent' : 'business',
-            title: '同意書の有効期限',
-            message: `${patientName} さんの ${consent.consent_type} 同意が ${formatDateKey(consent.expiry_date)} に期限切れ。再取得が必要です。`,
-            link: `/patients/${consent.patient_id}`,
-            dedupe_key: `consent-expiry:${consent.id}:${daysUntilExpiry <= 7 ? '7' : '30'}`,
-          },
+        notificationData.push({
+          org_id: consent.org_id,
+          user_id: pharmacistId,
+          type: priority === 'urgent' ? 'urgent' : 'business',
+          title: '同意書の有効期限',
+          message: `${patientName} さんの ${consent.consent_type} 同意が ${formatDateKey(consent.expiry_date)} に期限切れ。再取得が必要です。`,
+          link: `/patients/${consent.patient_id}`,
+          dedupe_key: `consent-expiry:${consent.id}:${daysUntilExpiry <= 7 ? '7' : '30'}`,
         });
-        notificationCount++;
       }
 
       taskSpecs.push({
@@ -2181,11 +2174,13 @@ export async function checkConsentExpiry() {
       });
     }
 
+    const notificationResult = await createManyNotifications(notificationData);
+
     if (taskSpecs.length > 0) {
       await syncGeneratedOperationalTasks(taskSpecs, ['consent_expiry']);
     }
 
-    return { processedCount: notificationCount };
+    return { processedCount: notificationResult.count };
   });
 }
 
@@ -2211,7 +2206,7 @@ export async function checkPublicSubsidyExpiry(context: JobExecutionContext = {}
       });
 
       const taskSpecs: GeneratedTaskSpec[] = [];
-      let notificationCount = 0;
+      const notificationData: Prisma.NotificationCreateManyInput[] = [];
       const activeCasePharmacists = await findPrimaryPharmacistIdsForActiveCases({
         orgPatientPairs: expiring.map((insurance) => ({
           orgId: insurance.org_id,
@@ -2231,18 +2226,15 @@ export async function checkPublicSubsidyExpiry(context: JobExecutionContext = {}
           orgPatientKey(insurance.org_id, insurance.patient_id),
         );
         if (pharmacistId) {
-          await prisma.notification.create({
-            data: {
-              org_id: insurance.org_id,
-              user_id: pharmacistId,
-              type: priority === 'urgent' ? 'urgent' : 'business',
-              title: '公費の有効期限',
-              message: `${patientName} さんの公費受給者証が ${formatDateKey(insurance.valid_until)} に期限切れ。証書の確認が必要です。`,
-              link: `/patients/${insurance.patient_id}`,
-              dedupe_key: `public-subsidy-expiry:${insurance.id}:${daysUntilExpiry <= 7 ? '7' : '30'}`,
-            },
+          notificationData.push({
+            org_id: insurance.org_id,
+            user_id: pharmacistId,
+            type: priority === 'urgent' ? 'urgent' : 'business',
+            title: '公費の有効期限',
+            message: `${patientName} さんの公費受給者証が ${formatDateKey(insurance.valid_until)} に期限切れ。証書の確認が必要です。`,
+            link: `/patients/${insurance.patient_id}`,
+            dedupe_key: `public-subsidy-expiry:${insurance.id}:${daysUntilExpiry <= 7 ? '7' : '30'}`,
           });
-          notificationCount++;
         }
 
         taskSpecs.push({
@@ -2259,11 +2251,13 @@ export async function checkPublicSubsidyExpiry(context: JobExecutionContext = {}
         });
       }
 
+      const notificationResult = await createManyNotifications(notificationData);
+
       await syncGeneratedOperationalTasks(taskSpecs, ['public_subsidy_expiry'], {
         scopeOrgIds: context.orgId ? [context.orgId] : undefined,
       });
 
-      return { processedCount: notificationCount };
+      return { processedCount: notificationResult.count };
     },
     context.orgId,
   );

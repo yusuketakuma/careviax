@@ -530,6 +530,9 @@ describe('daily job local date keys', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-08T09:00:00+09:00'));
     notificationCreateMock.mockResolvedValue({});
+    notificationCreateManyMock.mockImplementation(async ({ data }: { data: unknown[] }) => ({
+      count: data.length,
+    }));
     taskFindManyMock.mockResolvedValue([]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -674,10 +677,24 @@ describe('daily job local date keys', () => {
       },
     ]);
     membershipFindManyMock.mockResolvedValue([{ org_id: 'org_1', user_id: 'admin_1' }]);
+    notificationCreateManyMock.mockResolvedValue({ count: 1 });
 
     const result = await checkFacilityStandardExpiry();
 
     expect(result).toEqual({ processedCount: 1 });
+    expect(notificationCreateMock).not.toHaveBeenCalled();
+    expect(notificationCreateManyMock).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          org_id: 'org_1',
+          user_id: 'admin_1',
+          title: '施設基準の有効期限',
+          link: '/admin/facility-standards',
+          dedupe_key: 'facility-std-expiry:facility_standard_1:7',
+        }),
+      ],
+      skipDuplicates: true,
+    });
     expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -707,6 +724,7 @@ describe('daily job local date keys', () => {
       },
     ]);
     membershipFindManyMock.mockResolvedValue([{ org_id: 'org_1', user_id: 'admin_1' }]);
+    notificationCreateManyMock.mockResolvedValue({ count: 2 });
 
     const result = await checkFacilityStandardExpiry();
 
@@ -720,7 +738,19 @@ describe('daily job local date keys', () => {
       },
       select: { org_id: true, user_id: true },
     });
-    expect(notificationCreateMock).toHaveBeenCalledTimes(2);
+    expect(notificationCreateMock).not.toHaveBeenCalled();
+    expect(notificationCreateManyMock).toHaveBeenCalledTimes(1);
+    expect(notificationCreateManyMock).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          dedupe_key: 'facility-std-expiry:facility_standard_1:7',
+        }),
+        expect.objectContaining({
+          dedupe_key: 'facility-std-expiry:facility_standard_2:30',
+        }),
+      ]),
+      skipDuplicates: true,
+    });
   });
 
   it('prefetches credential expiry admins once and skips duplicate self-admin notices', async () => {
@@ -746,6 +776,7 @@ describe('daily job local date keys', () => {
       { org_id: 'org_1', user_id: 'admin_1' },
       { org_id: 'org_1', user_id: 'owner_1' },
     ]);
+    notificationCreateManyMock.mockResolvedValue({ count: 5 });
 
     const result = await checkCredentialExpiry();
 
@@ -759,24 +790,30 @@ describe('daily job local date keys', () => {
       },
       select: { org_id: true, user_id: true },
     });
-    expect(notificationCreateMock).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        user_id: 'admin_1',
-        dedupe_key: 'credential-expiry:credential_1:30',
-      }),
+    expect(notificationCreateMock).not.toHaveBeenCalled();
+    expect(notificationCreateManyMock).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          user_id: 'admin_1',
+          dedupe_key: 'credential-expiry:credential_1:30',
+        }),
+        expect.objectContaining({
+          user_id: 'owner_1',
+          dedupe_key: 'credential-expiry-admin:credential_2:owner_1:30',
+        }),
+      ]),
+      skipDuplicates: true,
     });
-    expect(notificationCreateMock).not.toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        user_id: 'admin_1',
-        dedupe_key: 'credential-expiry-admin:credential_1:admin_1:30',
-      }),
-    });
-    expect(notificationCreateMock).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        user_id: 'owner_1',
-        dedupe_key: 'credential-expiry-admin:credential_2:owner_1:30',
-      }),
-    });
+    const [{ data: credentialNotifications }] = notificationCreateManyMock.mock.calls[0] as [
+      { data: Array<{ dedupe_key: string }>; skipDuplicates: boolean },
+    ];
+    expect(credentialNotifications).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          dedupe_key: 'credential-expiry-admin:credential_1:admin_1:30',
+        }),
+      ]),
+    );
   });
 
   it('uses local-calendar dates in consent expiry notifications and tasks', async () => {
@@ -799,16 +836,21 @@ describe('daily job local date keys', () => {
         primary_pharmacist_id: 'pharmacist_1',
       },
     ]);
+    notificationCreateManyMock.mockResolvedValue({ count: 1 });
 
     const result = await checkConsentExpiry();
 
     expect(result).toEqual({ processedCount: 1 });
-    expect(notificationCreateMock).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        user_id: 'pharmacist_1',
-        message:
-          '山田 太郎 さんの 居宅療養管理指導 同意が 2026-06-15 に期限切れ。再取得が必要です。',
-      }),
+    expect(notificationCreateMock).not.toHaveBeenCalled();
+    expect(notificationCreateManyMock).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          user_id: 'pharmacist_1',
+          message:
+            '山田 太郎 さんの 居宅療養管理指導 同意が 2026-06-15 に期限切れ。再取得が必要です。',
+        }),
+      ],
+      skipDuplicates: true,
     });
     expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
       expect.anything(),
@@ -856,6 +898,7 @@ describe('daily job local date keys', () => {
         primary_pharmacist_id: 'pharmacist_2',
       },
     ]);
+    notificationCreateManyMock.mockResolvedValue({ count: 2 });
 
     const result = await checkConsentExpiry();
 
@@ -876,17 +919,19 @@ describe('daily job local date keys', () => {
         primary_pharmacist_id: true,
       },
     });
-    expect(notificationCreateMock).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        user_id: 'pharmacist_1',
-        dedupe_key: 'consent-expiry:consent_1:7',
-      }),
-    });
-    expect(notificationCreateMock).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        user_id: 'pharmacist_2',
-        dedupe_key: 'consent-expiry:consent_2:30',
-      }),
+    expect(notificationCreateMock).not.toHaveBeenCalled();
+    expect(notificationCreateManyMock).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          user_id: 'pharmacist_1',
+          dedupe_key: 'consent-expiry:consent_1:7',
+        }),
+        expect.objectContaining({
+          user_id: 'pharmacist_2',
+          dedupe_key: 'consent-expiry:consent_2:30',
+        }),
+      ]),
+      skipDuplicates: true,
     });
   });
 
@@ -909,16 +954,21 @@ describe('daily job local date keys', () => {
         primary_pharmacist_id: 'pharmacist_1',
       },
     ]);
+    notificationCreateManyMock.mockResolvedValue({ count: 1 });
 
     const result = await checkPublicSubsidyExpiry();
 
     expect(result).toEqual({ processedCount: 1 });
-    expect(notificationCreateMock).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        user_id: 'pharmacist_1',
-        title: '公費の有効期限',
-        link: '/patients/patient_1',
-      }),
+    expect(notificationCreateMock).not.toHaveBeenCalled();
+    expect(notificationCreateManyMock).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          user_id: 'pharmacist_1',
+          title: '公費の有効期限',
+          link: '/patients/patient_1',
+        }),
+      ],
+      skipDuplicates: true,
     });
     expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
       expect.anything(),
@@ -965,6 +1015,7 @@ describe('daily job local date keys', () => {
         primary_pharmacist_id: 'pharmacist_2',
       },
     ]);
+    notificationCreateManyMock.mockResolvedValue({ count: 2 });
 
     const result = await checkPublicSubsidyExpiry();
 
@@ -982,17 +1033,19 @@ describe('daily job local date keys', () => {
         primary_pharmacist_id: true,
       },
     });
-    expect(notificationCreateMock).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        user_id: 'pharmacist_1',
-        dedupe_key: 'public-subsidy-expiry:insurance_1:7',
-      }),
-    });
-    expect(notificationCreateMock).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        user_id: 'pharmacist_2',
-        dedupe_key: 'public-subsidy-expiry:insurance_2:30',
-      }),
+    expect(notificationCreateMock).not.toHaveBeenCalled();
+    expect(notificationCreateManyMock).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          user_id: 'pharmacist_1',
+          dedupe_key: 'public-subsidy-expiry:insurance_1:7',
+        }),
+        expect.objectContaining({
+          user_id: 'pharmacist_2',
+          dedupe_key: 'public-subsidy-expiry:insurance_2:30',
+        }),
+      ]),
+      skipDuplicates: true,
     });
   });
 });
