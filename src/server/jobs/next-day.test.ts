@@ -5,12 +5,14 @@ const {
   businessHolidayFindManyMock,
   careReportFindManyMock,
   notificationCreateMock,
+  notificationCreateManyMock,
   runJobMock,
 } = vi.hoisted(() => ({
   visitRecordFindManyMock: vi.fn(),
   businessHolidayFindManyMock: vi.fn(),
   careReportFindManyMock: vi.fn(),
   notificationCreateMock: vi.fn(),
+  notificationCreateManyMock: vi.fn(),
   runJobMock: vi.fn(async (_jobType: string, fn: () => Promise<unknown>) => fn()),
 }));
 
@@ -27,6 +29,7 @@ vi.mock('@/lib/db', () => ({
     },
     notification: {
       create: notificationCreateMock,
+      createMany: notificationCreateManyMock,
     },
   },
 }));
@@ -45,6 +48,9 @@ describe('checkUnsentReports', () => {
     businessHolidayFindManyMock.mockResolvedValue([]);
     careReportFindManyMock.mockResolvedValue([]);
     notificationCreateMock.mockResolvedValue({});
+    notificationCreateManyMock.mockImplementation(async ({ data }: { data: unknown[] }) => ({
+      count: data.length,
+    }));
   });
 
   afterEach(() => {
@@ -77,7 +83,23 @@ describe('checkUnsentReports', () => {
       processedCount: 2,
       overdueVisitRecordIds: ['vr_friday', 'vr_saturday'],
     });
-    expect(notificationCreateMock).toHaveBeenCalledTimes(2);
+    expect(notificationCreateMock).not.toHaveBeenCalled();
+    expect(notificationCreateManyMock).toHaveBeenCalledTimes(1);
+    expect(notificationCreateManyMock).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          user_id: 'pharmacist_1',
+          link: '/patients/patient_1/reports',
+          dedupe_key: 'unsent-report:vr_friday',
+        }),
+        expect.objectContaining({
+          user_id: 'pharmacist_2',
+          link: '/patients/patient_2/reports',
+          dedupe_key: 'unsent-report:vr_saturday',
+        }),
+      ]),
+      skipDuplicates: true,
+    });
   });
 
   it('defers reminders when the upcoming weekday is an org holiday', async () => {
@@ -105,6 +127,7 @@ describe('checkUnsentReports', () => {
       overdueVisitRecordIds: [],
     });
     expect(notificationCreateMock).not.toHaveBeenCalled();
+    expect(notificationCreateManyMock).not.toHaveBeenCalled();
   });
 
   it('matches holidays stored at local midnight without shifting the date key', async () => {
@@ -132,5 +155,6 @@ describe('checkUnsentReports', () => {
       overdueVisitRecordIds: [],
     });
     expect(notificationCreateMock).not.toHaveBeenCalled();
+    expect(notificationCreateManyMock).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { dispatchNotificationEvent } from './notifications';
 
 const { sendSmsMock, sendLineMessageMock } = vi.hoisted(() => ({
@@ -17,6 +17,11 @@ vi.mock('@/server/adapters/line', () => ({
     sendMessage = sendLineMessageMock;
   },
 }));
+
+async function runScheduledDeliveries() {
+  await vi.runOnlyPendingTimersAsync();
+  await Promise.resolve();
+}
 
 function createTx() {
   const notificationRuleFindMany = vi.fn();
@@ -55,6 +60,10 @@ function createTx() {
 }
 
 describe('dispatchNotificationEvent', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('delivers to explicit users when no notification rules exist', async () => {
     sendSmsMock.mockReset();
     sendLineMessageMock.mockReset();
@@ -251,6 +260,7 @@ describe('dispatchNotificationEvent', () => {
   });
 
   it('routes sms notifications to users with phone numbers when sms rules are enabled', async () => {
+    vi.useFakeTimers();
     sendSmsMock.mockReset();
     sendLineMessageMock.mockReset();
     const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
@@ -287,6 +297,11 @@ describe('dispatchNotificationEvent', () => {
 
     expect(notifications).toHaveLength(1);
     expect(notificationCreate).toHaveBeenCalledTimes(1);
+    expect(sendSmsMock).not.toHaveBeenCalled();
+    expect(sendLineMessageMock).not.toHaveBeenCalled();
+
+    await runScheduledDeliveries();
+
     expect(sendSmsMock).toHaveBeenCalledTimes(2);
     expect(sendSmsMock).toHaveBeenNthCalledWith(
       1,
@@ -302,6 +317,7 @@ describe('dispatchNotificationEvent', () => {
   });
 
   it('routes line notifications to explicit and rule-based user ids', async () => {
+    vi.useFakeTimers();
     sendSmsMock.mockReset();
     sendLineMessageMock.mockReset();
     const { tx, notificationRuleFindMany, membershipFindMany, userFindMany } = createTx();
@@ -333,6 +349,11 @@ describe('dispatchNotificationEvent', () => {
       explicitUserIds: ['user_1'],
     });
 
+    expect(sendLineMessageMock).not.toHaveBeenCalled();
+    expect(sendSmsMock).not.toHaveBeenCalled();
+
+    await runScheduledDeliveries();
+
     expect(sendLineMessageMock).toHaveBeenCalledTimes(2);
     expect(sendLineMessageMock).toHaveBeenNthCalledWith(
       1,
@@ -348,6 +369,7 @@ describe('dispatchNotificationEvent', () => {
   });
 
   it('reuses role membership lookups across notification channels', async () => {
+    vi.useFakeTimers();
     sendSmsMock.mockReset();
     sendLineMessageMock.mockReset();
     const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
@@ -413,11 +435,17 @@ describe('dispatchNotificationEvent', () => {
       }),
     );
     expect(notificationCreate).toHaveBeenCalledTimes(1);
+    expect(sendSmsMock).not.toHaveBeenCalled();
+    expect(sendLineMessageMock).not.toHaveBeenCalled();
+
+    await runScheduledDeliveries();
+
     expect(sendSmsMock).toHaveBeenCalledTimes(1);
     expect(sendLineMessageMock).toHaveBeenCalledTimes(1);
   });
 
   it('shares pending role membership lookups across concurrent external channels', async () => {
+    vi.useFakeTimers();
     sendSmsMock.mockReset();
     sendLineMessageMock.mockReset();
     const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
@@ -471,7 +499,62 @@ describe('dispatchNotificationEvent', () => {
 
     expect(membershipFindMany).toHaveBeenCalledTimes(1);
     expect(notificationCreate).toHaveBeenCalledTimes(1);
+    expect(sendSmsMock).not.toHaveBeenCalled();
+    expect(sendLineMessageMock).not.toHaveBeenCalled();
+
+    await runScheduledDeliveries();
+
     expect(sendSmsMock).toHaveBeenCalledTimes(1);
     expect(sendLineMessageMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not wait for external delivery promises before returning persisted notifications', async () => {
+    vi.useFakeTimers();
+    sendSmsMock.mockReset();
+    sendLineMessageMock.mockReset();
+    const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
+      createTx();
+    const releases: Array<() => void> = [];
+
+    notificationRuleFindMany.mockResolvedValue([
+      {
+        id: 'rule_sms',
+        org_id: 'org_1',
+        event_type: 'patient_self_report_followup_due',
+        channel: 'sms',
+        recipients: {
+          user_ids: ['user_1'],
+        },
+        enabled: true,
+      },
+    ]);
+    membershipFindMany.mockResolvedValue([]);
+    userFindMany.mockResolvedValue([{ id: 'user_1', phone: '09000000001' }]);
+    notificationCreate.mockImplementation(async ({ data }) => ({
+      id: `notification_${data.user_id as string}`,
+      ...data,
+    }));
+    sendSmsMock.mockImplementation(
+      () => new Promise((resolve) => releases.push(() => resolve(undefined))),
+    );
+
+    const notifications = await dispatchNotificationEvent(tx, {
+      orgId: 'org_1',
+      eventType: 'patient_self_report_followup_due',
+      type: 'urgent',
+      title: '折り返し依頼',
+      message: '至急対応してください',
+      explicitUserIds: ['user_1'],
+    });
+
+    expect(notifications).toHaveLength(1);
+    expect(sendSmsMock).not.toHaveBeenCalled();
+
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(sendSmsMock).toHaveBeenCalledTimes(1);
+    expect(releases).toHaveLength(1);
+    releases.forEach((release) => release());
+    await Promise.resolve();
   });
 });

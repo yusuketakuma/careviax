@@ -25,6 +25,7 @@ type Tx = {
   user: Pick<Prisma.TransactionClient['user'], 'findMany'>;
 };
 type NotificationChannel = 'in_app' | 'sms' | 'line' | 'email' | 'fax' | 'mcs';
+type NotificationDeliveryTask = () => Promise<unknown>;
 
 type DispatchNotificationEventInput = {
   orgId: string;
@@ -64,6 +65,14 @@ function readRecipientUserIds(recipients: Prisma.JsonValue) {
 
 const smsAdapter = new SmsNotificationAdapter();
 const lineAdapter = new LineNotificationAdapter();
+
+function scheduleNotificationDeliveries(tasks: NotificationDeliveryTask[]) {
+  if (tasks.length === 0) return;
+
+  setTimeout(() => {
+    void Promise.allSettled(tasks.map((task) => Promise.resolve().then(task)));
+  }, 0);
+}
 
 function getEnabledRulesForChannel(
   rules: Array<{
@@ -277,12 +286,13 @@ export async function dispatchNotificationEvent(tx: Tx, input: DispatchNotificat
       link: input.link ?? null,
     });
 
-    await Promise.allSettled(
-      pushSubscriptions.map((sub) =>
-        webpush.sendNotification(
-          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-          pushPayload,
-        ),
+    scheduleNotificationDeliveries(
+      pushSubscriptions.map(
+        (sub) => () =>
+          webpush.sendNotification(
+            { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+            pushPayload,
+          ),
       ),
     );
   }
@@ -301,15 +311,16 @@ export async function dispatchNotificationEvent(tx: Tx, input: DispatchNotificat
     });
     const usersById = new Map(users.map((user) => [user.id, user]));
 
-    await Promise.all([
+    scheduleNotificationDeliveries([
       ...smsUserIds
         .filter((userId) => usersById.get(userId)?.phone)
-        .map((userId) =>
-          smsAdapter.sendSms(usersById.get(userId)!.phone!, `${input.title}\n${input.message}`),
+        .map(
+          (userId) => () =>
+            smsAdapter.sendSms(usersById.get(userId)!.phone!, `${input.title}\n${input.message}`),
         ),
       ...lineUserIds
         .filter((userId) => usersById.has(userId))
-        .map((userId) => lineAdapter.sendMessage(userId, `${input.title}\n${input.message}`)),
+        .map((userId) => () => lineAdapter.sendMessage(userId, `${input.title}\n${input.message}`)),
     ]);
   }
 
