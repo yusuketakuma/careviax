@@ -397,6 +397,8 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
     const updateMock = vi.fn().mockResolvedValue({
       id: 'intake_7',
       source_type: 'fax',
+      original_collected_at: new Date('2026-03-28T09:30:00.000Z'),
+      original_collected_by: 'user_1',
       lines: [],
     });
 
@@ -410,6 +412,7 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
 
     const response = await PATCH(
       createRequest({
+        original_collected_at: '2026-03-28T09:30:00.000Z',
         original_management: {
           reconciliation_result: 'discrepancy',
           discrepancy_note: 'FAXは28日分、原本は14日分',
@@ -441,7 +444,17 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
           storage_location: 'store',
           patient_id: 'patient_1',
           case_id: 'case_1',
+          original_collected_at: '2026-03-28T09:30:00.000Z',
+          original_collected_by: 'user_1',
           updated_by: 'user_1',
+        }),
+      }),
+    );
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          original_collected_at: new Date('2026-03-28T09:30:00.000Z'),
+          original_collected_by: 'user_1',
         }),
       }),
     );
@@ -461,6 +474,8 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
           storage_location: 'store',
           patient_id: 'patient_1',
           case_id: 'case_1',
+          original_collected_at: '2026-03-28T09:30:00.000Z',
+          original_collected_by: 'user_1',
           updated_by: 'user_1',
         }),
       },

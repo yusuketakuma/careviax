@@ -803,6 +803,7 @@ type PrescriptionDocumentFormInput = {
 
 type PrescriptionOriginalManagementFormInput = {
   intakeId: string;
+  originalCollectedAt: string;
   reconciliationResult: 'not_checked' | 'matched' | 'discrepancy';
   discrepancyNote: string | null;
   storageLocation: 'not_stored' | 'store' | 'headquarters' | 'electronic' | 'patient_copy_only';
@@ -1859,6 +1860,9 @@ function PrescriptionOriginalManagementQuickForm({
   isPending: boolean;
   onSubmit?: (input: PrescriptionOriginalManagementFormInput) => void;
 }) {
+  const [originalCollectedAt, setOriginalCollectedAt] = useState(() =>
+    toLocalDateTimeInputValue(new Date()),
+  );
   const [reconciliationResult, setReconciliationResult] =
     useState<PrescriptionOriginalManagementFormInput['reconciliationResult']>('matched');
   const [discrepancyNote, setDiscrepancyNote] = useState('');
@@ -1883,6 +1887,10 @@ function PrescriptionOriginalManagementQuickForm({
         event.preventDefault();
         const trimmedDiscrepancyNote = discrepancyNote.trim();
         const trimmedNote = note.trim();
+        if (!originalCollectedAt) {
+          setError('原本到着日時を入力してください。');
+          return;
+        }
         if (reconciliationResult === 'discrepancy' && !trimmedDiscrepancyNote) {
           setError('差異ありの場合は差異内容を入力してください。');
           return;
@@ -1908,6 +1916,7 @@ function PrescriptionOriginalManagementQuickForm({
         setError(null);
         onSubmit?.({
           intakeId,
+          originalCollectedAt: new Date(originalCollectedAt).toISOString(),
           reconciliationResult,
           discrepancyNote: trimmedDiscrepancyNote || null,
           storageLocation,
@@ -1919,6 +1928,19 @@ function PrescriptionOriginalManagementQuickForm({
       }}
     >
       <div className="grid gap-2">
+        <div className="space-y-1">
+          <Label htmlFor={`prescription-original-collected-${intakeId}`} className="text-xs">
+            原本到着日時
+          </Label>
+          <Input
+            id={`prescription-original-collected-${intakeId}`}
+            type="datetime-local"
+            value={originalCollectedAt}
+            onChange={(event) => setOriginalCollectedAt(event.target.value)}
+            className="min-h-9 text-xs"
+            aria-invalid={error?.includes('原本到着日時') ? true : undefined}
+          />
+        </div>
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1">
             <Label htmlFor={`prescription-reconcile-${intakeId}`} className="text-xs">
@@ -2044,6 +2066,14 @@ function PrescriptionOriginalManagementQuickForm({
         <div className="rounded-lg border border-current/15 bg-muted/20 p-2 text-xs">
           <p className="font-medium text-foreground">保存される原本管理</p>
           <dl className="mt-2 grid gap-1">
+            <div className="flex justify-between gap-2">
+              <dt className="text-muted-foreground">到着</dt>
+              <dd className="font-medium text-foreground">
+                {originalCollectedAt
+                  ? format(new Date(originalCollectedAt), 'yyyy/MM/dd HH:mm')
+                  : '未入力'}
+              </dd>
+            </div>
             <div className="flex justify-between gap-2">
               <dt className="text-muted-foreground">照合</dt>
               <dd className="font-medium text-foreground">
@@ -2782,6 +2812,7 @@ export function CardWorkspace({
           'x-org-id': orgId,
         },
         body: JSON.stringify({
+          original_collected_at: input.originalCollectedAt,
           original_management: {
             reconciliation_result: input.reconciliationResult,
             discrepancy_note: input.discrepancyNote,

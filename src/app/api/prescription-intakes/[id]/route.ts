@@ -255,6 +255,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           ...original_management,
           patient_id: existing.cycle.patient_id,
           case_id: existing.cycle.case_id,
+          original_collected_at:
+            (original_collected_at
+              ? new Date(original_collected_at)
+              : updated.original_collected_at
+            )?.toISOString() ?? null,
+          original_collected_by: updated.original_collected_by ?? null,
           updated_by: ctx.userId,
           updated_at: new Date().toISOString(),
         };

@@ -950,6 +950,7 @@ describe('CardWorkspace', () => {
     render(<CardWorkspace patientId="patient_1" />);
 
     expect(screen.getByText('保存される原本管理')).toBeTruthy();
+    expect(screen.getByLabelText('原本到着日時')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('照合結果'), { target: { value: 'discrepancy' } });
     fireEvent.change(screen.getByLabelText('差異内容'), {
       target: { value: 'FAX記載の日数と原本の日数が異なる' },
@@ -966,6 +967,7 @@ describe('CardWorkspace', () => {
 
     expect(prescriptionOriginalManagementMutate).toHaveBeenCalledWith({
       intakeId: 'intake_0500',
+      originalCollectedAt: expect.any(String),
       reconciliationResult: 'discrepancy',
       discrepancyNote: 'FAX記載の日数と原本の日数が異なる',
       storageLocation: 'headquarters',

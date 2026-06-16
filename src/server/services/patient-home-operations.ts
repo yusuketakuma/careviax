@@ -732,6 +732,7 @@ function buildPrescriptionItem(args: {
     prescribed_date: Date;
     prescription_expiry_date: Date | null;
     original_collected_at: Date | null;
+    original_collected_by: string | null;
     original_document_url: string | null;
     prescriber_name: string | null;
     prescriber_institution: string | null;
@@ -846,6 +847,8 @@ function buildPrescriptionItem(args: {
         value: formatExpiryMetric({ expiresAt, now: args.now, dispensingCompleted }),
       },
       { label: '原本', value: intake?.original_collected_at ? '到着済み' : '未着/未記録' },
+      { label: '原本到着日', value: formatDate(intake?.original_collected_at ?? null) },
+      { label: '原本受領者', value: intake?.original_collected_by ?? '未記録' },
       {
         label: 'FAX経過',
         value:
@@ -1411,6 +1414,7 @@ export async function getPatientHomeOperationsData(
             prescribed_date: true,
             prescription_expiry_date: true,
             original_collected_at: true,
+            original_collected_by: true,
             original_document_url: true,
             prescriber_name: true,
             prescriber_institution: true,

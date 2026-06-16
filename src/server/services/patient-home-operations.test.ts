@@ -103,6 +103,7 @@ function createDb(overrides: Record<string, unknown> = {}) {
         prescribed_date: new Date('2026-06-09T00:00:00.000Z'),
         prescription_expiry_date: new Date('2099-06-12T00:00:00.000Z'),
         original_collected_at: null,
+        original_collected_by: null,
         original_document_url: null,
         prescriber_name: '山本医師',
         prescriber_institution: 'やまもと内科',
@@ -324,6 +325,8 @@ describe('getPatientHomeOperationsData', () => {
       ]),
       metrics: expect.arrayContaining([
         { label: '期限', value: '2099/06/12 / 残り26659日' },
+        { label: '原本到着日', value: '未設定' },
+        { label: '原本受領者', value: '未記録' },
         { label: 'FAX経過', value: '7日未着' },
         { label: '照合', value: '一致' },
         { label: '保管', value: '店舗保管' },
