@@ -8,6 +8,7 @@ const {
   visitScheduleFindManyMock,
   visitScheduleCountMock,
   userFindFirstMock,
+  userFindManyMock,
   pharmacySiteInsuranceConfigFindFirstMock,
   resolvePatientInsuranceMock,
   findLatestPrescriptionIntakeClassificationMock,
@@ -22,6 +23,7 @@ const {
   visitScheduleFindManyMock: vi.fn(),
   visitScheduleCountMock: vi.fn(),
   userFindFirstMock: vi.fn(),
+  userFindManyMock: vi.fn(),
   pharmacySiteInsuranceConfigFindFirstMock: vi.fn(),
   resolvePatientInsuranceMock: vi.fn(),
   findLatestPrescriptionIntakeClassificationMock: vi.fn(),
@@ -49,6 +51,7 @@ vi.mock('@/lib/db/client', () => ({
     },
     user: {
       findFirst: userFindFirstMock,
+      findMany: userFindManyMock,
     },
     pharmacySiteInsuranceConfig: {
       findFirst: pharmacySiteInsuranceConfigFindFirstMock,
@@ -140,6 +143,7 @@ describe('buildVisitScheduleBillingPreview', () => {
       },
     );
     patientInsuranceFindManyMock.mockResolvedValue([]);
+    userFindManyMock.mockResolvedValue([{ id: 'pharm_1', max_weekly_visits: 24 }]);
     validateBillingRequirementsMock.mockResolvedValue([]);
     getBillingCadencePreviewMock.mockResolvedValue({
       monthly_cap: 4,
@@ -305,6 +309,12 @@ describe('buildVisitScheduleBillingPreview', () => {
     expect(findLatestPrescriptionIntakeClassificationMock).toHaveBeenCalledTimes(1);
     expect(resolveBillingRuntimeContextMock).toHaveBeenCalledTimes(1);
     expect(validateBillingRequirementsMock).toHaveBeenCalledTimes(1);
+    expect(validateBillingRequirementsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pharmacistId: 'pharm_1',
+        pharmacistWeeklyCap: 24,
+      }),
+    );
     expect(getBillingCadencePreviewMock).toHaveBeenCalledTimes(1);
     expect(Object.keys(previews).sort()).toEqual(['proposal_1', 'schedule_1']);
     expect(previews.proposal_1).toBe(previews.schedule_1);
@@ -492,5 +502,92 @@ describe('buildVisitScheduleBillingPreview', () => {
       }),
     );
     expect(Object.keys(previews).sort()).toEqual(['proposal_1', 'proposal_2']);
+  });
+
+  it('prefetches pharmacist weekly caps once for batch validation', async () => {
+    careCaseFindManyMock.mockResolvedValue([
+      {
+        id: 'case_1',
+        patient_id: 'patient_1',
+        primary_pharmacist_id: 'pharm_1',
+        required_visit_support: null,
+        patient: {
+          id: 'patient_1',
+        },
+      },
+      {
+        id: 'case_2',
+        patient_id: 'patient_2',
+        primary_pharmacist_id: 'pharm_1',
+        required_visit_support: null,
+        patient: {
+          id: 'patient_2',
+        },
+      },
+    ]);
+    patientInsuranceFindManyMock.mockResolvedValue([
+      makeInsuranceRecord({
+        id: 'insurance_medical_1',
+        patient_id: 'patient_1',
+        insurance_type: 'medical',
+        number: 'MED-001',
+      }),
+      makeInsuranceRecord({
+        id: 'insurance_medical_2',
+        patient_id: 'patient_2',
+        insurance_type: 'medical',
+        number: 'MED-002',
+      }),
+    ]);
+    userFindManyMock.mockResolvedValue([{ id: 'pharm_1', max_weekly_visits: 18 }]);
+
+    await buildVisitScheduleBillingPreviewBatch(
+      [
+        {
+          key: 'proposal_1',
+          caseId: 'case_1',
+          proposedDate: '2026-04-03',
+          siteId: 'site_1',
+          visitType: 'regular',
+        },
+        {
+          key: 'proposal_2',
+          caseId: 'case_2',
+          proposedDate: '2026-04-10',
+          siteId: 'site_1',
+          visitType: 'regular',
+        },
+      ],
+      'org_1',
+    );
+
+    expect(userFindManyMock).toHaveBeenCalledTimes(1);
+    expect(userFindManyMock).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['pharm_1'] },
+      },
+      select: {
+        id: true,
+        max_weekly_visits: true,
+      },
+    });
+    expect(userFindFirstMock).not.toHaveBeenCalled();
+    expect(validateBillingRequirementsMock).toHaveBeenCalledTimes(2);
+    expect(validateBillingRequirementsMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        caseId: 'case_1',
+        pharmacistId: 'pharm_1',
+        pharmacistWeeklyCap: 18,
+      }),
+    );
+    expect(validateBillingRequirementsMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        caseId: 'case_2',
+        pharmacistId: 'pharm_1',
+        pharmacistWeeklyCap: 18,
+      }),
+    );
   });
 });

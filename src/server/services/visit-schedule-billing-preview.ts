@@ -95,6 +95,7 @@ type BillingPreviewInsurancePrefetch = {
 };
 
 type BillingPreviewRuntimeContextCache = Map<string, Promise<BillingRuntimeContextResult>>;
+type BillingPreviewPharmacistWeeklyCapById = Map<string, number | null>;
 
 const BILLING_PREVIEW_CARE_CASE_SELECT = {
   id: true,
@@ -300,6 +301,44 @@ async function prefetchBillingPreviewPatientInsurance(args: {
   return buildBillingPreviewInsurancePrefetch(records);
 }
 
+async function prefetchBillingPreviewPharmacistWeeklyCaps(args: {
+  items: {
+    caseId: string;
+    pharmacistId?: string | null;
+  }[];
+  careCaseById: Map<string, BillingPreviewCareCase>;
+}): Promise<BillingPreviewPharmacistWeeklyCapById> {
+  const pharmacistIds = [
+    ...new Set(
+      args.items
+        .map((item) => {
+          const careCase = args.careCaseById.get(item.caseId) ?? null;
+          return item.pharmacistId ?? careCase?.primary_pharmacist_id ?? null;
+        })
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  if (pharmacistIds.length === 0) return new Map();
+
+  const users = await prisma.user.findMany({
+    where: {
+      id: { in: pharmacistIds },
+    },
+    select: {
+      id: true,
+      max_weekly_visits: true,
+    },
+  });
+  const capById: BillingPreviewPharmacistWeeklyCapById = new Map(
+    users.map((user) => [user.id, user.max_weekly_visits]),
+  );
+  for (const pharmacistId of pharmacistIds) {
+    if (!capById.has(pharmacistId)) capById.set(pharmacistId, null);
+  }
+
+  return capById;
+}
+
 async function findPendingPublicSubsidyInsurance(args: {
   orgId: string;
   patientId: string;
@@ -433,6 +472,7 @@ async function buildVisitScheduleBillingPreviewForCareCase(
     latestIntake?: LatestPrescriptionIntakeClassification;
     insurancePrefetch?: BillingPreviewInsurancePrefetch;
     runtimeContextCache?: BillingPreviewRuntimeContextCache;
+    pharmacistWeeklyCapById?: BillingPreviewPharmacistWeeklyCapById;
   },
   careCase: BillingPreviewCareCase,
 ): Promise<VisitScheduleBillingPreview | null> {
@@ -506,11 +546,12 @@ async function buildVisitScheduleBillingPreviewForCareCase(
     specialProcedures.includes('central_venous') ||
     specialProcedures.includes('terminal_pain');
 
+  const previewPharmacistId = args.pharmacistId ?? careCase.primary_pharmacist_id ?? '';
   const previewArgs = {
     orgId: args.orgId,
     caseId: args.caseId,
     patientId: careCase.patient_id,
-    pharmacistId: args.pharmacistId ?? careCase.primary_pharmacist_id ?? '',
+    pharmacistId: previewPharmacistId,
     visitType,
     proposedDate,
     prescriptionCategory:
@@ -530,7 +571,12 @@ async function buildVisitScheduleBillingPreviewForCareCase(
 
   const [alerts, cadence] = await Promise.all([
     args.pharmacistId || careCase.primary_pharmacist_id
-      ? validateBillingRequirements(previewArgs)
+      ? validateBillingRequirements({
+          ...previewArgs,
+          ...(args.pharmacistWeeklyCapById
+            ? { pharmacistWeeklyCap: args.pharmacistWeeklyCapById.get(previewPharmacistId) ?? null }
+            : {}),
+        })
       : Promise.resolve([]),
     getBillingCadencePreview(previewArgs),
   ]);
@@ -574,6 +620,7 @@ export async function buildVisitScheduleBillingPreviewBatch(
     typeof prisma.visitSchedule?.findMany !== 'function' ||
     typeof prisma.visitSchedule?.count !== 'function' ||
     typeof prisma.user?.findFirst !== 'function' ||
+    typeof prisma.user?.findMany !== 'function' ||
     typeof prisma.pharmacySiteInsuranceConfig?.findFirst !== 'function' ||
     typeof prisma.patientInsurance?.findFirst !== 'function' ||
     typeof prisma.patientInsurance?.findMany !== 'function'
@@ -608,6 +655,10 @@ export async function buildVisitScheduleBillingPreviewBatch(
     careCases,
     proposedDates: args.map((item) => item.proposedDate),
   });
+  const pharmacistWeeklyCapById = await prefetchBillingPreviewPharmacistWeeklyCaps({
+    items: args,
+    careCaseById,
+  });
   const runtimeContextCache: BillingPreviewRuntimeContextCache = new Map();
   const previewByInput = new Map<string, Promise<VisitScheduleBillingPreview | null>>();
   const entries = await Promise.all(
@@ -634,6 +685,7 @@ export async function buildVisitScheduleBillingPreviewBatch(
                 latestIntake: latestIntakeByCaseId.get(item.caseId) ?? null,
                 insurancePrefetch,
                 runtimeContextCache,
+                pharmacistWeeklyCapById,
               },
               careCase,
             )

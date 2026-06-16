@@ -145,6 +145,20 @@ describe('validateBillingRequirements', () => {
     expect(capAlert).toBeDefined();
   });
 
+  it('uses prefetched pharmacist weekly cap without loading the user row', async () => {
+    prismaMock.visitSchedule.count.mockResolvedValueOnce(0).mockResolvedValueOnce(17);
+
+    const alerts = await validateBillingRequirements({
+      ...baseArgs,
+      pharmacistWeeklyCap: 18,
+    });
+
+    const capAlert = alerts.find((a) => a.type === 'pharmacist_weekly_capacity');
+    expect(capAlert).toBeDefined();
+    expect(capAlert!.details.cap).toBe(18);
+    expect(prismaMock.user.findFirst).not.toHaveBeenCalled();
+  });
+
   it('does not warn when pharmacist capacity is below threshold', async () => {
     // baseArgs → 2 count calls
     prismaMock.visitSchedule.count

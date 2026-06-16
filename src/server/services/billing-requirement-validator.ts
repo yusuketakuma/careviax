@@ -50,6 +50,7 @@ export type ValidateBillingRequirementsArgs = {
   prescriptionCategory?: 'regular' | 'emergency';
   payerBasis: 'medical' | 'care' | 'mixed';
   specialCapEligible?: boolean;
+  pharmacistWeeklyCap?: number | null;
 };
 
 export type BillingCadencePreview = {
@@ -258,14 +259,18 @@ export async function validateBillingRequirements(
     }),
   ]);
 
-  // Also fetch pharmacist capacity setting
-  const pharmacist = await prisma.user.findFirst({
-    where: { id: args.pharmacistId },
-    select: { max_weekly_visits: true },
-  });
+  const pharmacist =
+    args.pharmacistWeeklyCap === undefined
+      ? await prisma.user.findFirst({
+          where: { id: args.pharmacistId },
+          select: { max_weekly_visits: true },
+        })
+      : null;
 
   const pharmacistWeeklyCap =
-    pharmacist?.max_weekly_visits ?? cadencePolicy.weeklyPharmacistCapDefault;
+    args.pharmacistWeeklyCap ??
+    pharmacist?.max_weekly_visits ??
+    cadencePolicy.weeklyPharmacistCapDefault;
 
   // ── Alert #1: Monthly cap exceeded ──
   const monthlyCap = args.specialCapEligible
