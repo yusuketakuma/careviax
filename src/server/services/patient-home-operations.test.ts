@@ -219,6 +219,8 @@ function createDb(overrides: Record<string, unknown> = {}) {
 
 describe('getPatientHomeOperationsData', () => {
   it('summarizes the five home-care operation domains from existing patient records', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-16T00:00:00.000Z'));
     const db = createDb();
 
     const result = await getPatientHomeOperationsData(db as never, {
@@ -248,7 +250,7 @@ describe('getPatientHomeOperationsData', () => {
         expect.objectContaining({
           key: 'prescription',
           label: '処方せん',
-          message: 'FAX先行受付の原本到着が未記録です',
+          message: 'FAX受信から7日経過しても原本到着が未記録です',
           href: '/patients/patient_1/prescriptions',
           action_label: '処方履歴へ',
         }),
@@ -306,10 +308,12 @@ describe('getPatientHomeOperationsData', () => {
     expect(result?.items.find((item) => item.key === 'prescription')).toMatchObject({
       status: '原本未着',
       alerts: expect.arrayContaining([
-        'FAX先行受付の原本到着が未記録です',
+        'FAX受信から7日経過しても原本到着が未記録です',
         '処方せん画像/PDFが未保存です',
       ]),
       metrics: expect.arrayContaining([
+        { label: '期限', value: '2099/06/12 / 残り26659日' },
+        { label: 'FAX経過', value: '7日未着' },
         { label: '照合', value: '一致' },
         { label: '保管', value: '店舗保管' },
         { label: '結果登録', value: '登録済み' },
@@ -592,20 +596,22 @@ describe('getPatientHomeOperationsData', () => {
   });
 
   it('raises a prescription alert when an undispensed prescription expires within 24 hours', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-16T00:00:00.000Z'));
     const db = createDb({
       prescriptionIntake: {
         findFirst: vi.fn().mockResolvedValue({
           id: 'intake_expiring',
           cycle_id: 'cycle_expiring',
           source_type: 'paper',
-          prescribed_date: new Date(),
-          prescription_expiry_date: new Date(Date.now() + 12 * 60 * 60 * 1000),
-          original_collected_at: new Date(),
+          prescribed_date: new Date('2026-06-16T00:00:00.000Z'),
+          prescription_expiry_date: new Date('2026-06-16T12:00:00.000Z'),
+          original_collected_at: new Date('2026-06-16T00:00:00.000Z'),
           original_document_url: 's3://prescription.pdf',
           prescriber_name: '山本医師',
           prescriber_institution: 'やまもと内科',
-          created_at: new Date(),
-          updated_at: new Date(),
+          created_at: new Date('2026-06-16T00:00:00.000Z'),
+          updated_at: new Date('2026-06-16T00:00:00.000Z'),
           cycle: { overall_status: 'dispensing' },
         }),
       },
@@ -648,6 +654,7 @@ describe('getPatientHomeOperationsData', () => {
       status: '期限間近',
       tone: 'attention',
       alerts: expect.arrayContaining(['処方せん有効期限が24時間以内です']),
+      metrics: expect.arrayContaining([{ label: '期限', value: '2026/06/16 / 残り12時間' }]),
       quick_actions: [
         {
           key: 'record_prescription_original_management',
@@ -769,7 +776,7 @@ describe('getPatientHomeOperationsData', () => {
     expect(result?.items.find((item) => item.key === 'prescription')).toMatchObject({
       status: '期限切れ',
       alerts: expect.arrayContaining([
-        'FAX先行受付の原本到着が未記録です',
+        'FAX受信から15日経過しても原本到着が未記録です',
         '疑義照会が未完了です (1件)',
         '処方せん有効期限を過ぎています',
       ]),

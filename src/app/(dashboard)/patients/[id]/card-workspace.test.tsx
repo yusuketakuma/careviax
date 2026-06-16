@@ -359,10 +359,10 @@ describe('CardWorkspace', () => {
           action_label: '文書状態へ',
         },
         {
-          id: 'prescription:0:FAX先行受付の原本到着が未記録です',
+          id: 'prescription:0:FAX受信から7日経過しても原本到着が未記録です',
           key: 'prescription',
           label: '処方せん',
-          message: 'FAX先行受付の原本到着が未記録です',
+          message: 'FAX受信から7日経過しても原本到着が未記録です',
           href: '/patients/patient_1/prescriptions',
           action_label: '処方履歴へ',
         },
@@ -412,8 +412,14 @@ describe('CardWorkspace', () => {
           action_label: '処方履歴へ',
           tone: 'attention',
           updated_at: '2026-06-09T00:00:00.000Z',
-          metrics: [{ label: '原本', value: '未着/未記録' }],
-          alerts: ['FAX先行受付の原本到着が未記録です'],
+          metrics: [
+            { label: '期限', value: '2026/06/12 / 4日超過' },
+            { label: '原本', value: '未着/未記録' },
+            { label: 'FAX経過', value: '7日未着' },
+            { label: '疑義照会', value: '未解決なし' },
+            { label: '照合', value: '未照合' },
+          ],
+          alerts: ['FAX受信から7日経過しても原本到着が未記録です'],
           quick_actions: [
             {
               key: 'mark_fax_original_collected',
@@ -524,8 +530,12 @@ describe('CardWorkspace', () => {
       within(homeOps).getAllByText('作成済み書類の交付・回収が未記録です').length,
     ).toBeGreaterThan(0);
     expect(
-      within(homeOps).getAllByText('FAX先行受付の原本到着が未記録です').length,
+      within(homeOps).getAllByText('FAX受信から7日経過しても原本到着が未記録です').length,
     ).toBeGreaterThan(0);
+    expect(within(homeOps).getByText('期限')).toBeTruthy();
+    expect(within(homeOps).getByText('2026/06/12 / 4日超過')).toBeTruthy();
+    expect(within(homeOps).getByText('FAX経過')).toBeTruthy();
+    expect(within(homeOps).getByText('7日未着')).toBeTruthy();
     expect(within(homeOps).getByText('未処理の算定候補が1件あります')).toBeTruthy();
     expect(within(homeOps).getAllByText('未収額 1,080円 があります').length).toBeGreaterThan(0);
     expect(within(homeOps).getByText('未収額')).toBeTruthy();

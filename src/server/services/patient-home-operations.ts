@@ -58,6 +58,33 @@ function compact(values: Array<string | null | undefined | false>) {
   return values.filter((value): value is string => Boolean(value && value.trim()));
 }
 
+function elapsedWholeDays(from: Date | null | undefined, to: Date) {
+  if (!from) return null;
+  return Math.max(0, Math.floor((to.getTime() - from.getTime()) / PRESCRIPTION_DAY_MS));
+}
+
+function formatExpiryMetric(args: {
+  expiresAt: Date | null;
+  now: Date;
+  dispensingCompleted: boolean;
+}) {
+  if (!args.expiresAt) return '未設定';
+  const dateLabel = formatDate(args.expiresAt);
+  if (args.dispensingCompleted) return `${dateLabel} / 調剤完了`;
+
+  const remainingMs = args.expiresAt.getTime() - args.now.getTime();
+  if (remainingMs < 0) {
+    const overdueDays = Math.max(1, Math.ceil(Math.abs(remainingMs) / PRESCRIPTION_DAY_MS));
+    return `${dateLabel} / ${overdueDays}日超過`;
+  }
+  if (remainingMs <= PRESCRIPTION_EXPIRY_SOON_MS) {
+    const remainingHours = Math.max(1, Math.ceil(remainingMs / (60 * 60 * 1000)));
+    return `${dateLabel} / 残り${remainingHours}時間`;
+  }
+  const remainingDays = Math.max(1, Math.ceil(remainingMs / PRESCRIPTION_DAY_MS));
+  return `${dateLabel} / 残り${remainingDays}日`;
+}
+
 type BillingCollectionSnapshot = {
   status: string | null;
   billed_amount: number | null;
@@ -185,6 +212,8 @@ const PRESCRIPTION_COMPLETED_STATUSES = new Set([
   'closed',
 ]);
 const PRESCRIPTION_EXPIRY_SOON_MS = 24 * 60 * 60 * 1000;
+const PRESCRIPTION_DAY_MS = 24 * 60 * 60 * 1000;
+const PRESCRIPTION_FAX_ORIGINAL_OVERDUE_DAYS = 2;
 
 const BILLING_PAYER_TYPE_LABELS: Record<string, string> = {
   self: '本人',
@@ -697,6 +726,13 @@ function buildPrescriptionItem(args: {
   const inquiryPending =
     intake?.cycle.overall_status === 'inquiry_pending' || args.unresolvedInquiryCount > 0;
   const faxOriginalMissing = intake?.source_type === 'fax' && !intake.original_collected_at;
+  const faxElapsedDays =
+    intake?.source_type === 'fax' ? elapsedWholeDays(intake.created_at, args.now) : null;
+  const faxOriginalOverdue = Boolean(
+    faxOriginalMissing &&
+    faxElapsedDays != null &&
+    faxElapsedDays >= PRESCRIPTION_FAX_ORIGINAL_OVERDUE_DAYS,
+  );
   const reconciliationResult = originalManagement?.reconciliation_result ?? null;
   const reconciliationLabel = reconciliationResult
     ? (PRESCRIPTION_RECONCILIATION_LABELS[reconciliationResult] ?? reconciliationResult)
@@ -717,7 +753,8 @@ function buildPrescriptionItem(args: {
     : '未登録';
   const alerts = compact([
     !intake && '処方せん受付がまだありません',
-    faxOriginalMissing && 'FAX先行受付の原本到着が未記録です',
+    faxOriginalOverdue && `FAX受信から${faxElapsedDays}日経過しても原本到着が未記録です`,
+    faxOriginalMissing && !faxOriginalOverdue && 'FAX先行受付の原本到着が未記録です',
     inquiryPending &&
       `疑義照会が未完了です${args.unresolvedInquiryCount > 0 ? ` (${args.unresolvedInquiryCount}件)` : ''}`,
     expired && '処方せん有効期限を過ぎています',
@@ -768,8 +805,22 @@ function buildPrescriptionItem(args: {
     tone: alerts.length > 0 ? 'attention' : 'ok',
     updated_at: toIso(intake?.updated_at ?? intake?.created_at),
     metrics: [
-      { label: '期限', value: formatDate(expiresAt) },
+      {
+        label: '期限',
+        value: formatExpiryMetric({ expiresAt, now: args.now, dispensingCompleted }),
+      },
       { label: '原本', value: intake?.original_collected_at ? '到着済み' : '未着/未記録' },
+      {
+        label: 'FAX経過',
+        value:
+          intake?.source_type === 'fax'
+            ? intake.original_collected_at
+              ? '到着済み'
+              : faxElapsedDays == null
+                ? '未記録'
+                : `${faxElapsedDays}日未着`
+            : '対象外',
+      },
       { label: '照合', value: reconciliationLabel },
       { label: '保管', value: storageLabel },
       { label: '電子処方', value: ePrescriptionLabel },
