@@ -1862,6 +1862,13 @@ function PrescriptionOriginalManagementQuickForm({
           setError('電子処方せん取得待ちでは調剤結果登録済みにできません。');
           return;
         }
+        if (
+          storageLocation === 'not_stored' &&
+          (reconciliationResult !== 'not_checked' || dispensingResultRegistration === 'registered')
+        ) {
+          setError('照合済みまたは調剤結果登録済みでは保管場所を記録してください。');
+          return;
+        }
         setError(null);
         onSubmit?.({
           intakeId,

@@ -1033,6 +1033,16 @@ describe('CardWorkspace', () => {
       '電子処方せん取得待ちでは調剤結果登録済みにできません。',
     );
     expect(prescriptionOriginalManagementMutate).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('電子処方せん'), {
+      target: { value: 'not_applicable' },
+    });
+    fireEvent.change(screen.getByLabelText('保管場所'), { target: { value: 'not_stored' } });
+    fireEvent.click(screen.getByRole('button', { name: /原本管理を記録/ }));
+    expect(screen.getByRole('alert').textContent).toContain(
+      '照合済みまたは調剤結果登録済みでは保管場所を記録してください。',
+    );
+    expect(prescriptionOriginalManagementMutate).not.toHaveBeenCalled();
   });
 
   it('records billing collection metadata from the home operations panel', () => {

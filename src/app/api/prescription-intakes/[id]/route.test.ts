@@ -544,4 +544,32 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
+
+  it('rejects completed original management while the original is still not stored', async () => {
+    const response = await PATCH(
+      createRequest({
+        original_management: {
+          reconciliation_result: 'matched',
+          storage_location: 'not_stored',
+          e_prescription_acquired_status: 'not_applicable',
+          dispensing_result_registration: 'registered',
+        },
+      }),
+      { params: Promise.resolve({ id: 'intake_11' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        original_management: expect.arrayContaining([
+          '照合済みまたは調剤結果登録済みでは保管場所を記録してください',
+        ]),
+      },
+    });
+    expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
 });

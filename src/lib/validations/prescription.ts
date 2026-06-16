@@ -282,6 +282,18 @@ export const updatePrescriptionIntakeSchema = z
         path: ['original_management', 'dispensing_result_registration'],
       });
     }
+    if (
+      value.original_management &&
+      value.original_management.storage_location === 'not_stored' &&
+      (value.original_management.reconciliation_result !== 'not_checked' ||
+        value.original_management.dispensing_result_registration === 'registered')
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '照合済みまたは調剤結果登録済みでは保管場所を記録してください',
+        path: ['original_management', 'storage_location'],
+      });
+    }
   });
 
 export const createInquiryRecordSchema = z.object({
