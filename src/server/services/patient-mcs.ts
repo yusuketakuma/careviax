@@ -29,6 +29,7 @@ const MCS_BROWSER_CONNECT_ERROR_MESSAGE =
   'MCS 連携用ブラウザに接続できません。ローカル端末で MCS にログインした Chrome を開いてから再試行してください。';
 const MCS_BROWSER_SCRAPE_ERROR_MESSAGE =
   'MCS からデータを取得できませんでした。MCS を開き直してから再試行してください。';
+export const PATIENT_MCS_PROFILE_TASK_TYPE = 'patient_mcs_profile';
 
 export type PatientMcsLinkRecord = {
   id: string;
@@ -63,10 +64,31 @@ export type PatientMcsMessageRecord = {
   synced_at: Date;
 };
 
+export type PatientMcsCheckLogRecord = {
+  id: string;
+  subject: string | null;
+  content: string | null;
+  counterpart_name: string | null;
+  occurred_at: Date;
+  created_at: Date;
+};
+
+export type PatientMcsProfileRecord = {
+  linked_status: string | null;
+  participation_status: string | null;
+  pharmacy_participants: string[];
+  counterpart_roles: string[];
+  last_checked_at: Date | null;
+  note: string | null;
+  updated_at: Date | null;
+};
+
 export type PatientMcsOverview = {
   link: PatientMcsLinkRecord | null;
+  profile: PatientMcsProfileRecord | null;
   summary: PatientMcsSummaryRecord | null;
   messages: PatientMcsMessageRecord[];
+  checkLogs: PatientMcsCheckLogRecord[];
 };
 
 export type PatientMcsSyncResult = {
@@ -289,6 +311,39 @@ function isNullableString(value: unknown): value is string | null {
 
 function readFiniteNumber(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function readStringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === 'string')
+    : [];
+}
+
+function readNullableIsoDate(value: unknown) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'string') return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function normalizePatientMcsProfileRecord(
+  task: { metadata: unknown; updated_at: Date } | null,
+): PatientMcsProfileRecord | null {
+  if (!task) return null;
+  const metadata = readJsonObject(task.metadata);
+  if (!metadata) return null;
+
+  return {
+    linked_status: isNullableString(metadata.linked_status) ? metadata.linked_status : null,
+    participation_status: isNullableString(metadata.participation_status)
+      ? metadata.participation_status
+      : null,
+    pharmacy_participants: readStringArray(metadata.pharmacy_participants),
+    counterpart_roles: readStringArray(metadata.counterpart_roles),
+    last_checked_at: readNullableIsoDate(metadata.last_checked_at),
+    note: isNullableString(metadata.note) ? metadata.note : null,
+    updated_at: task.updated_at,
+  };
 }
 
 export function normalizeMcsActivationPayload(
@@ -1076,7 +1131,7 @@ export async function getPatientMcsOverview(args: {
         last_sync_error: true,
       },
     });
-    const [summary, messages] = await Promise.all([
+    const [summary, messages, checkLogs, profileTask] = await Promise.all([
       link
         ? txWithSummary.patientMcsSummary.findFirst({
             where: { patient_id: args.patientId },
@@ -1106,9 +1161,45 @@ export async function getPatientMcsOverview(args: {
             },
           })
         : [],
+      tx.communicationEvent.findMany({
+        where: {
+          org_id: args.orgId,
+          patient_id: args.patientId,
+          event_type: 'mcs_check',
+        },
+        orderBy: [{ occurred_at: 'desc' }, { created_at: 'desc' }],
+        take: 5,
+        select: {
+          id: true,
+          subject: true,
+          content: true,
+          counterpart_name: true,
+          occurred_at: true,
+          created_at: true,
+        },
+      }),
+      tx.task.findFirst({
+        where: {
+          org_id: args.orgId,
+          task_type: PATIENT_MCS_PROFILE_TASK_TYPE,
+          related_entity_type: 'patient',
+          related_entity_id: args.patientId,
+        },
+        orderBy: { updated_at: 'desc' },
+        select: {
+          metadata: true,
+          updated_at: true,
+        },
+      }),
     ]);
 
-    return { link, summary, messages };
+    return {
+      link,
+      profile: normalizePatientMcsProfileRecord(profileTask),
+      summary,
+      messages,
+      checkLogs,
+    };
   });
 }
 

@@ -5,11 +5,13 @@ import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
+  Clipboard,
   ExternalLink,
   Link2,
   MessageSquareText,
   RefreshCw,
   RotateCcw,
+  Save,
   Sparkles,
   Users,
 } from 'lucide-react';
@@ -21,12 +23,15 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader } from '@/co
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Loading } from '@/components/ui/loading';
+import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
   parsePatientMcsSyncResult,
   type PatientMcsViewData,
+  type PatientMcsViewCheckLog,
   type PatientMcsViewLink,
   type PatientMcsViewMessage,
+  type PatientMcsViewProfile,
 } from '@/lib/patient-mcs/dto';
 import { groupPatientMcsMessagesByDay, orderPatientMcsMessages } from '@/lib/patient-mcs/messages';
 import {
@@ -64,6 +69,79 @@ async function syncPatientMcs(patientId: string, orgId: string, sourceUrl?: stri
   }
 
   return parsePatientMcsSyncResult(await response.json());
+}
+
+async function createPatientMcsCheckLog(
+  patientId: string,
+  orgId: string,
+  input: {
+    contentType: string;
+    summary: string;
+    nextAction: string;
+  },
+) {
+  const response = await fetch(`/api/patients/${patientId}/mcs/logs`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-org-id': orgId,
+    },
+    body: JSON.stringify({
+      content_type: input.contentType,
+      summary: input.summary,
+      next_action: input.nextAction.trim() || undefined,
+    }),
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(payload?.message ?? 'MCS 確認ログの登録に失敗しました');
+  }
+
+  return response.json();
+}
+
+async function updatePatientMcsProfile(
+  patientId: string,
+  orgId: string,
+  input: {
+    linkedStatus: string;
+    participationStatus: string;
+    pharmacyParticipants: string[];
+    counterpartRoles: string[];
+    lastCheckedAt: string | null;
+    note: string | null;
+  },
+) {
+  const response = await fetch(`/api/patients/${patientId}/mcs`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-org-id': orgId,
+    },
+    body: JSON.stringify({
+      linked_status: input.linkedStatus,
+      participation_status: input.participationStatus,
+      pharmacy_participants: input.pharmacyParticipants,
+      counterpart_roles: input.counterpartRoles,
+      last_checked_at: input.lastCheckedAt,
+      note: input.note,
+    }),
+  });
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(payload?.message ?? 'MCS 連携プロフィールの保存に失敗しました');
+  }
+
+  return response.json();
+}
+
+async function copyTextToClipboard(value: string) {
+  if (!navigator.clipboard?.writeText) {
+    throw new Error('クリップボードにコピーできませんでした');
+  }
+  await navigator.clipboard.writeText(value);
 }
 
 function PatientMcsSyncPanel({
@@ -190,6 +268,28 @@ function PatientMcsSyncPanel({
                   MCS で開く
                 </Button>
               )}
+              {openTargets.mcsUrl ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const mcsUrl = openTargets.mcsUrl;
+                    if (!mcsUrl) return;
+                    copyTextToClipboard(mcsUrl)
+                      .then(() => toast.success('MCS URLをコピーしました'))
+                      .catch((error: Error) => toast.error(error.message));
+                  }}
+                >
+                  <Clipboard className="mr-1.5 size-4" aria-hidden="true" />
+                  URLをコピー
+                </Button>
+              ) : (
+                <Button type="button" variant="outline" size="sm" disabled>
+                  <Clipboard className="mr-1.5 size-4" aria-hidden="true" />
+                  URLをコピー
+                </Button>
+              )}
               {openTargets.patientUrl ? (
                 <Link
                   href={openTargets.patientUrl}
@@ -251,6 +351,233 @@ function PatientMcsSyncPanel({
             <p>{link.lastSyncError}</p>
           </div>
         ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+const MCS_LINKED_STATUS_OPTIONS = [
+  { value: 'unknown', label: '未確認' },
+  { value: 'linked', label: '連携あり' },
+  { value: 'unlinked', label: '連携なし' },
+];
+
+const MCS_PARTICIPATION_STATUS_OPTIONS = [
+  { value: 'unknown', label: '未確認' },
+  { value: 'invited', label: '招待済み' },
+  { value: 'joined', label: '参加済み' },
+  { value: 'not_joined', label: '未参加' },
+];
+
+const MCS_COUNTERPART_ROLE_OPTIONS = [
+  { value: 'physician', label: '医師' },
+  { value: 'visiting_nurse', label: '訪問看護' },
+  { value: 'care_manager', label: 'ケアマネ' },
+  { value: 'family', label: '家族' },
+  { value: 'facility', label: '施設' },
+  { value: 'other', label: 'その他' },
+];
+
+function toDateTimeLocalValue(value: string | null) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return offsetDate.toISOString().slice(0, 16);
+}
+
+function fromDateTimeLocalValue(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const date = new Date(trimmed);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function currentDateTimeLocalValue() {
+  return toDateTimeLocalValue(new Date().toISOString());
+}
+
+function splitParticipants(value: string) {
+  return value
+    .split(/[\n,、]/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function PatientMcsProfilePanel({
+  profile,
+  isSaving,
+  onSave,
+}: {
+  profile: PatientMcsViewProfile | null;
+  isSaving: boolean;
+  onSave: (input: {
+    linkedStatus: string;
+    participationStatus: string;
+    pharmacyParticipants: string[];
+    counterpartRoles: string[];
+    lastCheckedAt: string | null;
+    note: string | null;
+  }) => void;
+}) {
+  const [linkedStatus, setLinkedStatus] = useState(profile?.linkedStatus ?? 'unknown');
+  const [participationStatus, setParticipationStatus] = useState(
+    profile?.participationStatus ?? 'unknown',
+  );
+  const [pharmacyParticipants, setPharmacyParticipants] = useState(
+    profile?.pharmacyParticipants.join('\n') ?? '',
+  );
+  const [counterpartRoles, setCounterpartRoles] = useState<string[]>(
+    profile?.counterpartRoles ?? [],
+  );
+  const [lastCheckedAt, setLastCheckedAt] = useState(
+    toDateTimeLocalValue(profile?.lastCheckedAt ?? null),
+  );
+  const [note, setNote] = useState(profile?.note ?? '');
+
+  const toggleCounterpartRole = (value: string) => {
+    setCounterpartRoles((current) =>
+      current.includes(value) ? current.filter((entry) => entry !== value) : [...current, value],
+    );
+  };
+  const buildInput = (lastCheckedAtValue = lastCheckedAt) => ({
+    linkedStatus,
+    participationStatus,
+    pharmacyParticipants: splitParticipants(pharmacyParticipants),
+    counterpartRoles,
+    lastCheckedAt: fromDateTimeLocalValue(lastCheckedAtValue),
+    note: note.trim() || null,
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <h2 className="flex items-center gap-2 font-heading text-base leading-snug font-medium">
+          <Users className="size-4" aria-hidden="true" />
+          MCS 参加情報
+        </h2>
+        <CardDescription>
+          MCS の連携有無、参加状態、薬局側参加者、主な連携先を保存します。
+        </CardDescription>
+        {profile?.updatedAt ? (
+          <CardAction>
+            <span className="text-xs text-muted-foreground">
+              更新 {formatDateTimeLabel(profile.updatedAt, { fallback: '未記録' })}
+            </span>
+          </CardAction>
+        ) : null}
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-1.5">
+            <label htmlFor="mcs-linked-status" className="text-sm font-medium">
+              MCS連携
+            </label>
+            <select
+              id="mcs-linked-status"
+              className="min-h-10 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
+              value={linkedStatus}
+              onChange={(event) => setLinkedStatus(event.target.value)}
+            >
+              {MCS_LINKED_STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="mcs-participation-status" className="text-sm font-medium">
+              参加状況
+            </label>
+            <select
+              id="mcs-participation-status"
+              className="min-h-10 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
+              value={participationStatus}
+              onChange={(event) => setParticipationStatus(event.target.value)}
+            >
+              {MCS_PARTICIPATION_STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="mcs-pharmacy-participants" className="text-sm font-medium">
+              薬局側参加者
+            </label>
+            <Textarea
+              id="mcs-pharmacy-participants"
+              value={pharmacyParticipants}
+              onChange={(event) => setPharmacyParticipants(event.target.value)}
+              placeholder="例: 薬剤師 佐藤、事務 鈴木"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="mcs-last-checked-at" className="text-sm font-medium">
+              最終確認日時
+            </label>
+            <Input
+              id="mcs-last-checked-at"
+              type="datetime-local"
+              value={lastCheckedAt}
+              onChange={(event) => setLastCheckedAt(event.target.value)}
+            />
+          </div>
+        </div>
+
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium">主な連携先</legend>
+          <div className="flex flex-wrap gap-2">
+            {MCS_COUNTERPART_ROLE_OPTIONS.map((option) => (
+              <label
+                key={option.value}
+                className="inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 text-sm"
+              >
+                <input
+                  type="checkbox"
+                  className="size-4"
+                  checked={counterpartRoles.includes(option.value)}
+                  onChange={() => toggleCounterpartRole(option.value)}
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        <div className="space-y-1.5">
+          <label htmlFor="mcs-profile-note" className="text-sm font-medium">
+            備考
+          </label>
+          <Textarea
+            id="mcs-profile-note"
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder="例: 招待は完了。訪問看護とケアマネの投稿を毎朝確認。"
+          />
+        </div>
+
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            className="mr-2"
+            onClick={() => {
+              const now = currentDateTimeLocalValue();
+              setLastCheckedAt(now);
+              onSave(buildInput(now));
+            }}
+            disabled={isSaving}
+          >
+            最終確認を今に更新
+          </Button>
+          <Button type="button" onClick={() => onSave(buildInput())} disabled={isSaving}>
+            <Save className="mr-1.5 size-4" aria-hidden="true" />
+            {isSaving ? '保存中...' : '参加情報を保存'}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
@@ -334,7 +661,8 @@ function PatientMcsMessagesPanel({
                           ) : null}
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          {message.postedAtLabel || formatDateTimeLabel(message.postedAt, { fallback: '未記録' })}
+                          {message.postedAtLabel ||
+                            formatDateTimeLabel(message.postedAt, { fallback: '未記録' })}
                         </p>
                       </div>
 
@@ -364,6 +692,130 @@ function PatientMcsMessagesPanel({
             ))}
           </div>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+const MCS_LOG_CATEGORY_OPTIONS = [
+  { value: 'report', label: '報告確認' },
+  { value: 'consultation', label: '相談確認' },
+  { value: 'instruction_check', label: '指示確認' },
+  { value: 'photo_review', label: '写真確認' },
+  { value: 'urgent', label: '緊急確認' },
+  { value: 'other', label: 'その他' },
+];
+
+function PatientMcsCheckLogPanel({
+  logs,
+  isSaving,
+  onCreate,
+}: {
+  logs: PatientMcsViewCheckLog[];
+  isSaving: boolean;
+  onCreate: (input: { contentType: string; summary: string; nextAction: string }) => void;
+}) {
+  const [contentType, setContentType] = useState('report');
+  const [summary, setSummary] = useState('');
+  const [nextAction, setNextAction] = useState('');
+  const canSubmit = summary.trim().length > 0 && !isSaving;
+
+  return (
+    <Card>
+      <CardHeader>
+        <h2 className="flex items-center gap-2 font-heading text-base leading-snug font-medium">
+          <Clipboard className="size-4" aria-hidden="true" />
+          MCS 確認ログ
+        </h2>
+        <CardDescription>
+          MCS を開いて確認した内容、区分、次アクションを PH-OS 側に残します。
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 lg:grid-cols-[180px_minmax(0,1fr)]">
+          <div className="space-y-1.5">
+            <label htmlFor="mcs-log-content-type" className="text-sm font-medium">
+              内容区分
+            </label>
+            <select
+              id="mcs-log-content-type"
+              className="min-h-10 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
+              value={contentType}
+              onChange={(event) => setContentType(event.target.value)}
+            >
+              {MCS_LOG_CATEGORY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="mcs-log-summary" className="text-sm font-medium">
+              要約
+            </label>
+            <Textarea
+              id="mcs-log-summary"
+              value={summary}
+              onChange={(event) => setSummary(event.target.value)}
+              placeholder="例: 訪看から食欲低下の共有。次回訪問時に水分量を確認する。"
+            />
+          </div>
+          <div className="space-y-1.5 lg:col-start-2">
+            <label htmlFor="mcs-log-next-action" className="text-sm font-medium">
+              次アクション
+            </label>
+            <Input
+              id="mcs-log-next-action"
+              value={nextAction}
+              onChange={(event) => setNextAction(event.target.value)}
+              placeholder="例: 医師へ服薬状況を確認"
+            />
+          </div>
+        </div>
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            onClick={() => {
+              onCreate({ contentType, summary, nextAction });
+              setSummary('');
+              setNextAction('');
+            }}
+            disabled={!canSubmit}
+          >
+            {isSaving ? '登録中...' : '確認ログを登録'}
+          </Button>
+        </div>
+
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold">直近の確認ログ</h3>
+          {logs.length === 0 ? (
+            <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+              MCS 確認ログはまだありません。
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {logs.map((log) => (
+                <li key={log.id} className="rounded-lg border p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-medium">{log.subject ?? 'MCS 確認'}</p>
+                    <span className="text-xs text-muted-foreground">
+                      {formatDateTimeLabel(log.occurredAt, { fallback: '未記録' })}
+                    </span>
+                  </div>
+                  {log.content ? (
+                    <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">
+                      {log.content}
+                    </p>
+                  ) : null}
+                  {log.counterpartName ? (
+                    <p className="mt-2 text-xs text-muted-foreground">{log.counterpartName}</p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
@@ -454,6 +906,36 @@ export function PatientMcsContent({ patientId }: { patientId: string }) {
     },
   });
 
+  const checkLogMutation = useMutation({
+    mutationFn: (input: { contentType: string; summary: string; nextAction: string }) =>
+      createPatientMcsCheckLog(patientId, orgId, input),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeyPrefix });
+      toast.success('MCS 確認ログを登録しました');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const profileMutation = useMutation({
+    mutationFn: (input: {
+      linkedStatus: string;
+      participationStatus: string;
+      pharmacyParticipants: string[];
+      counterpartRoles: string[];
+      lastCheckedAt: string | null;
+      note: string | null;
+    }) => updatePatientMcsProfile(patientId, orgId, input),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeyPrefix });
+      toast.success('MCS 参加情報を保存しました');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
   if (orgId.length === 0) {
     return <Loading label="MCS 連携情報を読み込み中..." />;
   }
@@ -473,8 +955,10 @@ export function PatientMcsContent({ patientId }: { patientId: string }) {
   }
 
   const link = mcsQuery.data?.link ?? null;
+  const profile = mcsQuery.data?.profile ?? null;
   const summary = mcsQuery.data?.summary ?? null;
   const messages = orderPatientMcsMessages(mcsQuery.data?.messages ?? [], 'asc');
+  const checkLogs = mcsQuery.data?.checkLogs ?? [];
   const canSync = Boolean(link?.sourceUrl);
 
   return (
@@ -486,7 +970,18 @@ export function PatientMcsContent({ patientId }: { patientId: string }) {
         isSyncing={syncMutation.isPending}
         onSync={(sourceUrl) => syncMutation.mutate(sourceUrl)}
       />
+      <PatientMcsProfilePanel
+        key={profile?.updatedAt ?? 'empty'}
+        profile={profile}
+        isSaving={profileMutation.isPending}
+        onSave={(input) => profileMutation.mutate(input)}
+      />
       <PatientMcsSummaryPanel summary={summary} link={link} />
+      <PatientMcsCheckLogPanel
+        logs={checkLogs}
+        isSaving={checkLogMutation.isPending}
+        onCreate={(input) => checkLogMutation.mutate(input)}
+      />
       <PatientMcsMessagesPanel
         messages={messages}
         isLoading={mcsQuery.isLoading}

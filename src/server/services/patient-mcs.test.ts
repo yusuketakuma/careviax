@@ -332,6 +332,31 @@ describe('patient-mcs service helpers', () => {
       patientMcsMessage: {
         findMany: vi.fn().mockResolvedValue([]),
       },
+      communicationEvent: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'mcs_log_1',
+            subject: 'MCS 報告確認',
+            content: '食欲低下の共有を確認',
+            counterpart_name: '青葉 花子：年長者の里',
+            occurred_at: new Date('2026-04-02T09:00:00.000Z'),
+            created_at: new Date('2026-04-02T09:01:00.000Z'),
+          },
+        ]),
+      },
+      task: {
+        findFirst: vi.fn().mockResolvedValue({
+          metadata: {
+            linked_status: 'linked',
+            participation_status: 'joined',
+            pharmacy_participants: ['薬剤師 佐藤'],
+            counterpart_roles: ['visiting_nurse'],
+            last_checked_at: '2026-04-02T09:00:00.000Z',
+            note: '訪問看護投稿を毎朝確認',
+          },
+          updated_at: new Date('2026-04-02T09:02:00.000Z'),
+        }),
+      },
     };
     vi.mocked(withOrgContext).mockImplementationOnce(async (_orgId, callback) =>
       callback(tx as unknown as TransactionClient),
@@ -345,12 +370,38 @@ describe('patient-mcs service helpers', () => {
       }),
     ).resolves.toMatchObject({
       link: { id: 'link_1' },
+      profile: {
+        linked_status: 'linked',
+        participation_status: 'joined',
+        pharmacy_participants: ['薬剤師 佐藤'],
+        counterpart_roles: ['visiting_nurse'],
+        note: '訪問看護投稿を毎朝確認',
+      },
       messages: [],
+      checkLogs: [{ id: 'mcs_log_1' }],
     });
 
     expect(tx.patientMcsMessage.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         take: PATIENT_MCS_MAX_MESSAGE_LIMIT,
+      }),
+    );
+    expect(tx.communicationEvent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          event_type: 'mcs_check',
+          patient_id: 'patient_1',
+        }),
+        take: 5,
+      }),
+    );
+    expect(tx.task.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          task_type: 'patient_mcs_profile',
+          related_entity_type: 'patient',
+          related_entity_id: 'patient_1',
+        }),
       }),
     );
   });

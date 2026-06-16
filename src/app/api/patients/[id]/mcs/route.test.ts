@@ -1,13 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { requireAuthContextMock, patientFindFirstMock, getPatientMcsOverviewMock } = vi.hoisted(
-  () => ({
-    requireAuthContextMock: vi.fn(),
-    patientFindFirstMock: vi.fn(),
-    getPatientMcsOverviewMock: vi.fn(),
-  }),
-);
+const {
+  requireAuthContextMock,
+  patientFindFirstMock,
+  getPatientMcsOverviewMock,
+  createAuditLogEntryMock,
+  withOrgContextMock,
+  upsertOperationalTaskMock,
+} = vi.hoisted(() => ({
+  requireAuthContextMock: vi.fn(),
+  patientFindFirstMock: vi.fn(),
+  getPatientMcsOverviewMock: vi.fn(),
+  createAuditLogEntryMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
+  upsertOperationalTaskMock: vi.fn(),
+}));
 
 vi.mock('@/lib/auth/context', () => ({
   requireAuthContext: requireAuthContextMock,
@@ -21,19 +29,42 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/audit/audit-entry', () => ({
+  createAuditLogEntry: createAuditLogEntryMock,
+}));
+
 vi.mock('@/server/services/patient-mcs', () => ({
   getPatientMcsOverview: getPatientMcsOverviewMock,
   PATIENT_MCS_MAX_MESSAGE_LIMIT: 100,
+  PATIENT_MCS_PROFILE_TASK_TYPE: 'patient_mcs_profile',
 }));
 
-import { GET } from './route';
+vi.mock('@/server/services/operational-tasks', () => ({
+  upsertOperationalTask: upsertOperationalTaskMock,
+}));
 
-function createRequest(patientId = 'patient_1', query = '') {
+import { GET, PATCH } from './route';
+
+function createRequest(
+  patientId = 'patient_1',
+  query = '',
+  init?: {
+    method?: string;
+    body?: BodyInit;
+    headers?: HeadersInit;
+  },
+) {
   return new NextRequest(
     `http://localhost/api/patients/${patientId}/mcs${query ? `?${query}` : ''}`,
     {
+      ...init,
       headers: {
         'x-org-id': 'org_1',
+        ...init?.headers,
       },
     },
   );
@@ -49,6 +80,11 @@ describe('/api/patients/[id]/mcs GET', () => {
       id: 'patient_1',
       name: '青葉 花子',
     });
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({ task: { upsert: vi.fn() } }),
+    );
+    upsertOperationalTaskMock.mockResolvedValue({ id: 'task_1' });
+    createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
     getPatientMcsOverviewMock.mockResolvedValue({
       link: {
         id: 'link_1',
@@ -83,6 +119,15 @@ describe('/api/patients/[id]/mcs GET', () => {
         latest_posted_at: new Date('2026-04-02T08:00:00.000Z'),
         generated_at: new Date('2026-04-02T08:05:00.000Z'),
         duration_ms: 820,
+      },
+      profile: {
+        linked_status: 'linked',
+        participation_status: 'joined',
+        pharmacy_participants: ['薬剤師 佐藤'],
+        counterpart_roles: ['visiting_nurse'],
+        last_checked_at: new Date('2026-06-16T00:00:00.000Z'),
+        note: '毎朝確認',
+        updated_at: new Date('2026-06-16T00:05:00.000Z'),
       },
       messages: [
         {
@@ -135,6 +180,13 @@ describe('/api/patients/[id]/mcs GET', () => {
         link: {
           id: 'link_1',
           mcs_project_id: '57886227',
+        },
+        profile: {
+          linked_status: 'linked',
+          participation_status: 'joined',
+          pharmacy_participants: ['薬剤師 佐藤'],
+          counterpart_roles: ['visiting_nurse'],
+          note: '毎朝確認',
         },
         summary: {
           id: 'summary_1',
@@ -239,5 +291,104 @@ describe('/api/patients/[id]/mcs GET', () => {
     expect(response.status).toBe(400);
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(getPatientMcsOverviewMock).not.toHaveBeenCalled();
+  });
+
+  it('saves the MCS participation profile as an operational task sidecar', async () => {
+    const response = await PATCH(
+      createRequest('patient_1', '', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          linked_status: 'linked',
+          participation_status: 'joined',
+          pharmacy_participants: ['薬剤師 佐藤', '事務 鈴木'],
+          counterpart_roles: ['physician', 'visiting_nurse'],
+          last_checked_at: '2026-06-16T00:00:00.000Z',
+          note: '訪問看護投稿を毎朝確認',
+        }),
+      }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
+    if (!response) {
+      throw new Error('response was not returned');
+    }
+
+    expect(response.status).toBe(200);
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        taskType: 'patient_mcs_profile',
+        status: 'completed',
+        dedupeKey: 'patient_mcs_profile:patient_1',
+        relatedEntityType: 'patient',
+        relatedEntityId: 'patient_1',
+        metadata: {
+          linked_status: 'linked',
+          participation_status: 'joined',
+          pharmacy_participants: ['薬剤師 佐藤', '事務 鈴木'],
+          counterpart_roles: ['physician', 'visiting_nurse'],
+          last_checked_at: '2026-06-16T00:00:00.000Z',
+          note: '訪問看護投稿を毎朝確認',
+        },
+      }),
+    );
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+      }),
+      {
+        action: 'patient_mcs_profile_updated',
+        targetType: 'Patient',
+        targetId: 'patient_1',
+        changes: {
+          linked_status: 'linked',
+          participation_status: 'joined',
+          pharmacy_participants: ['薬剤師 佐藤', '事務 鈴木'],
+          counterpart_roles: ['physician', 'visiting_nurse'],
+          last_checked_at: '2026-06-16T00:00:00.000Z',
+          note: '訪問看護投稿を毎朝確認',
+        },
+      },
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        profile: {
+          linked_status: 'linked',
+          participation_status: 'joined',
+          pharmacy_participants: ['薬剤師 佐藤', '事務 鈴木'],
+          counterpart_roles: ['physician', 'visiting_nurse'],
+          note: '訪問看護投稿を毎朝確認',
+        },
+      },
+    });
+  });
+
+  it('rejects malformed MCS profile payloads before writing tasks', async () => {
+    const response = await PATCH(
+      createRequest('patient_1', '', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          linked_status: 'linked',
+          participation_status: 'joined',
+          pharmacy_participants: ['薬剤師 佐藤'],
+          counterpart_roles: ['unknown_role'],
+          last_checked_at: 'not-a-date',
+        }),
+      }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
+    if (!response) {
+      throw new Error('response was not returned');
+    }
+
+    expect(response.status).toBe(400);
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 });

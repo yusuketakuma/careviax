@@ -53,6 +53,25 @@ export type PatientMcsApiMessage = {
   synced_at: string;
 };
 
+export type PatientMcsApiCheckLog = {
+  id: string;
+  subject: string | null;
+  content: string | null;
+  counterpart_name: string | null;
+  occurred_at: string;
+  created_at: string;
+};
+
+export type PatientMcsApiProfile = {
+  linked_status: string | null;
+  participation_status: string | null;
+  pharmacy_participants: string[];
+  counterpart_roles: string[];
+  last_checked_at: string | null;
+  note: string | null;
+  updated_at: string | null;
+};
+
 export type PatientMcsViewLink = {
   id: string;
   sourceUrl: string;
@@ -105,14 +124,35 @@ export type PatientMcsViewMessage = {
   syncedAt: string;
 };
 
+export type PatientMcsViewCheckLog = {
+  id: string;
+  subject: string | null;
+  content: string | null;
+  counterpartName: string | null;
+  occurredAt: string;
+  createdAt: string;
+};
+
+export type PatientMcsViewProfile = {
+  linkedStatus: string | null;
+  participationStatus: string | null;
+  pharmacyParticipants: string[];
+  counterpartRoles: string[];
+  lastCheckedAt: string | null;
+  note: string | null;
+  updatedAt: string | null;
+};
+
 export type PatientMcsViewData = {
   patient: {
     id: string;
     name: string;
   };
   link: PatientMcsViewLink | null;
+  profile: PatientMcsViewProfile | null;
   summary: PatientMcsViewSummary | null;
   messages: PatientMcsViewMessage[];
+  checkLogs: PatientMcsViewCheckLog[];
 };
 
 export type PatientMcsSyncViewResult = {
@@ -328,6 +368,76 @@ function isPatientMcsViewMessage(
   return message !== null;
 }
 
+function parsePatientMcsViewCheckLog(log: unknown): PatientMcsViewCheckLog | null {
+  const object = readJsonObject(log);
+  if (!object) return null;
+
+  const id = readString(object.id);
+  const subject = readNullableString(object.subject);
+  const content = readNullableString(object.content);
+  const counterpartName = readNullableString(object.counterpart_name);
+  const occurredAt = readString(object.occurred_at);
+  const createdAt = readString(object.created_at);
+
+  if (
+    !id ||
+    subject === undefined ||
+    content === undefined ||
+    counterpartName === undefined ||
+    !occurredAt ||
+    !createdAt
+  ) {
+    return null;
+  }
+
+  return {
+    id,
+    subject,
+    content,
+    counterpartName,
+    occurredAt,
+    createdAt,
+  };
+}
+
+function isPatientMcsViewCheckLog(
+  log: PatientMcsViewCheckLog | null,
+): log is PatientMcsViewCheckLog {
+  return log !== null;
+}
+
+function parsePatientMcsViewProfile(profile: unknown): PatientMcsViewProfile | null | undefined {
+  if (profile === null || profile === undefined) return null;
+  const object = readJsonObject(profile);
+  if (!object) return undefined;
+
+  const linkedStatus = readNullableString(object.linked_status);
+  const participationStatus = readNullableString(object.participation_status);
+  const lastCheckedAt = readNullableString(object.last_checked_at);
+  const note = readNullableString(object.note);
+  const updatedAt = readNullableString(object.updated_at);
+
+  if (
+    linkedStatus === undefined ||
+    participationStatus === undefined ||
+    lastCheckedAt === undefined ||
+    note === undefined ||
+    updatedAt === undefined
+  ) {
+    return undefined;
+  }
+
+  return {
+    linkedStatus,
+    participationStatus,
+    pharmacyParticipants: toStringArray(object.pharmacy_participants),
+    counterpartRoles: toStringArray(object.counterpart_roles),
+    lastCheckedAt,
+    note,
+    updatedAt,
+  };
+}
+
 export function parsePatientMcsViewData(payload: unknown): PatientMcsViewData {
   const root = readJsonObject(payload);
   const data = readJsonObject(root?.data);
@@ -335,16 +445,28 @@ export function parsePatientMcsViewData(payload: unknown): PatientMcsViewData {
 
   const patient = readPatient(data.patient);
   const link = parsePatientMcsViewLink(data.link);
+  const profile = parsePatientMcsViewProfile(data.profile);
   const messages = data.messages.map(parsePatientMcsViewMessage);
-  if (!patient || link === undefined || !messages.every(isPatientMcsViewMessage)) {
+  const checkLogs = Array.isArray(data.checkLogs)
+    ? data.checkLogs.map(parsePatientMcsViewCheckLog)
+    : [];
+  if (
+    !patient ||
+    link === undefined ||
+    profile === undefined ||
+    !messages.every(isPatientMcsViewMessage) ||
+    !checkLogs.every(isPatientMcsViewCheckLog)
+  ) {
     return failInvalidPatientMcsPayload();
   }
 
   return {
     patient,
     link,
+    profile,
     summary: parsePatientMcsViewSummary(data.summary),
     messages,
+    checkLogs,
   };
 }
 
