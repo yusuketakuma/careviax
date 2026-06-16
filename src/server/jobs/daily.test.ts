@@ -566,13 +566,65 @@ describe('daily job local date keys', () => {
     const result = await checkPrescriptionExpiry();
 
     expect(result).toEqual({ processedCount: 1 });
-    expect(notificationCreateMock).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        org_id: 'org_1',
-        user_id: 'pharmacist_1',
-        message: '処方箋の有効期限が 2026-06-10 です。早急に対応してください。',
-        dedupe_key: 'prescription-expiry:intake_1',
-      }),
+    expect(notificationCreateMock).not.toHaveBeenCalled();
+    expect(notificationCreateManyMock).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          org_id: 'org_1',
+          user_id: 'pharmacist_1',
+          message: '処方箋の有効期限が 2026-06-10 です。早急に対応してください。',
+          dedupe_key: 'prescription-expiry:intake_1',
+        }),
+      ],
+      skipDuplicates: true,
+    });
+  });
+
+  it('batches prescription expiry notifications and reports inserted count', async () => {
+    prescriptionIntakeFindManyMock.mockResolvedValue([
+      {
+        id: 'intake_1',
+        prescription_expiry_date: new Date('2026-06-09T15:30:00.000Z'),
+        cycle: {
+          case_: {
+            org_id: 'org_1',
+            patient_id: 'patient_1',
+            primary_pharmacist_id: 'pharmacist_1',
+          },
+        },
+      },
+      {
+        id: 'intake_2',
+        prescription_expiry_date: new Date('2026-06-09T15:30:00.000Z'),
+        cycle: {
+          case_: {
+            org_id: 'org_1',
+            patient_id: 'patient_2',
+            primary_pharmacist_id: null,
+          },
+        },
+      },
+      {
+        id: 'intake_3',
+        prescription_expiry_date: new Date('2026-06-09T15:30:00.000Z'),
+        cycle: null,
+      },
+    ]);
+    notificationCreateManyMock.mockResolvedValue({ count: 1 });
+
+    const result = await checkPrescriptionExpiry();
+
+    expect(result).toEqual({ processedCount: 1 });
+    expect(notificationCreateMock).not.toHaveBeenCalled();
+    expect(notificationCreateManyMock).toHaveBeenCalledTimes(1);
+    expect(notificationCreateManyMock).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          user_id: 'pharmacist_1',
+          dedupe_key: 'prescription-expiry:intake_1',
+        }),
+      ],
+      skipDuplicates: true,
     });
   });
 

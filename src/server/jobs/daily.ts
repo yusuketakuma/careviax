@@ -630,6 +630,8 @@ export async function checkPrescriptionExpiry() {
       },
     });
 
+    const notificationData: Prisma.NotificationCreateManyInput[] = [];
+
     for (const intake of expiring) {
       if (!intake.cycle?.case_) continue;
       const orgId = intake.cycle.case_.org_id;
@@ -637,21 +639,21 @@ export async function checkPrescriptionExpiry() {
       // Notify the case pharmacist
       const caseRecord = intake.cycle.case_;
       if (caseRecord.primary_pharmacist_id) {
-        await prisma.notification.create({
-          data: {
-            org_id: orgId,
-            user_id: caseRecord.primary_pharmacist_id,
-            type: 'urgent',
-            title: '処方箋有効期限切れ間近',
-            message: `処方箋の有効期限が ${intake.prescription_expiry_date ? formatDateKey(intake.prescription_expiry_date) : '不明'} です。早急に対応してください。`,
-            link: `/patients/${caseRecord.patient_id}`,
-            dedupe_key: `prescription-expiry:${intake.id}`,
-          },
+        notificationData.push({
+          org_id: orgId,
+          user_id: caseRecord.primary_pharmacist_id,
+          type: 'urgent',
+          title: '処方箋有効期限切れ間近',
+          message: `処方箋の有効期限が ${intake.prescription_expiry_date ? formatDateKey(intake.prescription_expiry_date) : '不明'} です。早急に対応してください。`,
+          link: `/patients/${caseRecord.patient_id}`,
+          dedupe_key: `prescription-expiry:${intake.id}`,
         });
       }
     }
 
-    return { processedCount: expiring.length };
+    const notificationResult = await createManyNotifications(notificationData);
+
+    return { processedCount: notificationResult.count };
   });
 }
 
