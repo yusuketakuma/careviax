@@ -98,6 +98,63 @@ async function findAdminUserIdsByOrg(orgIds: Iterable<string>) {
   return adminIdsByOrg;
 }
 
+function orgPatientKey(orgId: string, patientId: string) {
+  return JSON.stringify([orgId, patientId]);
+}
+
+async function findPrimaryPharmacistIdsForActiveCases(args: {
+  caseIds?: Iterable<string | null | undefined>;
+  orgPatientPairs?: Iterable<{ orgId: string; patientId: string }>;
+}) {
+  const caseIds = [...new Set([...(args.caseIds ?? [])].filter((id): id is string => Boolean(id)))];
+  const orgPatientPairs = [
+    ...new Map(
+      [...(args.orgPatientPairs ?? [])]
+        .filter((pair) => pair.orgId && pair.patientId)
+        .map((pair) => [orgPatientKey(pair.orgId, pair.patientId), pair]),
+    ).values(),
+  ];
+
+  if (caseIds.length === 0 && orgPatientPairs.length === 0) {
+    return {
+      byCaseId: new Map<string, string | null>(),
+      byOrgPatient: new Map<string, string | null>(),
+    };
+  }
+
+  const patientOrgIds = [...new Set(orgPatientPairs.map((pair) => pair.orgId))];
+  const patientIds = [...new Set(orgPatientPairs.map((pair) => pair.patientId))];
+  const cases = await prisma.careCase.findMany({
+    where: {
+      status: { notIn: ['discharged', 'terminated'] },
+      OR: [
+        ...(caseIds.length > 0 ? [{ id: { in: caseIds } }] : []),
+        ...(orgPatientPairs.length > 0
+          ? [{ org_id: { in: patientOrgIds }, patient_id: { in: patientIds } }]
+          : []),
+      ],
+    },
+    select: {
+      id: true,
+      org_id: true,
+      patient_id: true,
+      primary_pharmacist_id: true,
+    },
+  });
+
+  const byCaseId = new Map<string, string | null>();
+  const byOrgPatient = new Map<string, string | null>();
+  for (const careCase of cases) {
+    byCaseId.set(careCase.id, careCase.primary_pharmacist_id);
+    const key = orgPatientKey(careCase.org_id, careCase.patient_id);
+    if (!byOrgPatient.has(key)) {
+      byOrgPatient.set(key, careCase.primary_pharmacist_id);
+    }
+  }
+
+  return { byCaseId, byOrgPatient };
+}
+
 type DailyOperationTask = () => Promise<DailyOperationResult>;
 
 const DEFAULT_DAILY_OPERATION_CONCURRENCY = 4;
@@ -2063,6 +2120,13 @@ export async function checkConsentExpiry() {
 
     const taskSpecs: GeneratedTaskSpec[] = [];
     let notificationCount = 0;
+    const activeCasePharmacists = await findPrimaryPharmacistIdsForActiveCases({
+      caseIds: expiring.map((consent) => consent.case_id),
+      orgPatientPairs: expiring.map((consent) => ({
+        orgId: consent.org_id,
+        patientId: consent.patient_id,
+      })),
+    });
 
     for (const consent of expiring) {
       if (!consent.expiry_date) continue;
@@ -2073,21 +2137,9 @@ export async function checkConsentExpiry() {
       const priority = daysUntilExpiry <= 7 ? ('urgent' as const) : ('high' as const);
       const patientName = consent.patient?.name ?? '不明';
 
-      // Find the primary pharmacist from the patient's active case
-      const activeCase = consent.case_id
-        ? await prisma.careCase.findFirst({
-            where: { id: consent.case_id, status: { notIn: ['discharged', 'terminated'] } },
-            select: { primary_pharmacist_id: true },
-          })
-        : await prisma.careCase.findFirst({
-            where: {
-              patient_id: consent.patient_id,
-              status: { notIn: ['discharged', 'terminated'] },
-            },
-            select: { primary_pharmacist_id: true },
-          });
-
-      const pharmacistId = activeCase?.primary_pharmacist_id;
+      const pharmacistId = consent.case_id
+        ? activeCasePharmacists.byCaseId.get(consent.case_id)
+        : activeCasePharmacists.byOrgPatient.get(orgPatientKey(consent.org_id, consent.patient_id));
       if (pharmacistId) {
         await prisma.notification.create({
           data: {
@@ -2148,6 +2200,12 @@ export async function checkPublicSubsidyExpiry(context: JobExecutionContext = {}
 
       const taskSpecs: GeneratedTaskSpec[] = [];
       let notificationCount = 0;
+      const activeCasePharmacists = await findPrimaryPharmacistIdsForActiveCases({
+        orgPatientPairs: expiring.map((insurance) => ({
+          orgId: insurance.org_id,
+          patientId: insurance.patient_id,
+        })),
+      });
 
       for (const insurance of expiring) {
         if (!insurance.valid_until) continue;
@@ -2157,15 +2215,9 @@ export async function checkPublicSubsidyExpiry(context: JobExecutionContext = {}
         const priority = daysUntilExpiry <= 7 ? ('urgent' as const) : ('high' as const);
         const patientName = insurance.patient?.name ?? '不明';
 
-        const activeCase = await prisma.careCase.findFirst({
-          where: {
-            org_id: insurance.org_id,
-            patient_id: insurance.patient_id,
-            status: { notIn: ['discharged', 'terminated'] },
-          },
-          select: { primary_pharmacist_id: true },
-        });
-        const pharmacistId = activeCase?.primary_pharmacist_id;
+        const pharmacistId = activeCasePharmacists.byOrgPatient.get(
+          orgPatientKey(insurance.org_id, insurance.patient_id),
+        );
         if (pharmacistId) {
           await prisma.notification.create({
             data: {

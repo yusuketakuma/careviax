@@ -788,7 +788,14 @@ describe('daily job local date keys', () => {
         patient: { id: 'patient_1', name: '山田 太郎' },
       },
     ]);
-    careCaseFindFirstMock.mockResolvedValue({ primary_pharmacist_id: 'pharmacist_1' });
+    careCaseFindManyMock.mockResolvedValue([
+      {
+        id: 'case_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        primary_pharmacist_id: 'pharmacist_1',
+      },
+    ]);
 
     const result = await checkConsentExpiry();
 
@@ -811,6 +818,75 @@ describe('daily job local date keys', () => {
     );
   });
 
+  it('prefetches consent expiry active cases once across case and patient fallbacks', async () => {
+    consentRecordFindManyMock.mockResolvedValue([
+      {
+        id: 'consent_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        consent_type: '居宅療養管理指導',
+        expiry_date: new Date('2026-06-14T15:30:00.000Z'),
+        patient: { id: 'patient_1', name: '山田 太郎' },
+      },
+      {
+        id: 'consent_2',
+        org_id: 'org_1',
+        patient_id: 'patient_2',
+        case_id: null,
+        consent_type: '在宅訪問同意',
+        expiry_date: new Date('2026-06-20T15:30:00.000Z'),
+        patient: { id: 'patient_2', name: '佐藤 花子' },
+      },
+    ]);
+    careCaseFindManyMock.mockResolvedValue([
+      {
+        id: 'case_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        primary_pharmacist_id: 'pharmacist_1',
+      },
+      {
+        id: 'case_2',
+        org_id: 'org_1',
+        patient_id: 'patient_2',
+        primary_pharmacist_id: 'pharmacist_2',
+      },
+    ]);
+
+    const result = await checkConsentExpiry();
+
+    expect(result).toEqual({ processedCount: 2 });
+    expect(careCaseFindManyMock).toHaveBeenCalledTimes(1);
+    expect(careCaseFindManyMock).toHaveBeenCalledWith({
+      where: {
+        status: { notIn: ['discharged', 'terminated'] },
+        OR: [
+          { id: { in: ['case_1'] } },
+          { org_id: { in: ['org_1'] }, patient_id: { in: ['patient_1', 'patient_2'] } },
+        ],
+      },
+      select: {
+        id: true,
+        org_id: true,
+        patient_id: true,
+        primary_pharmacist_id: true,
+      },
+    });
+    expect(notificationCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        user_id: 'pharmacist_1',
+        dedupe_key: 'consent-expiry:consent_1:7',
+      }),
+    });
+    expect(notificationCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        user_id: 'pharmacist_2',
+        dedupe_key: 'consent-expiry:consent_2:30',
+      }),
+    });
+  });
+
   it('notifies and creates a task for public subsidy insurance nearing expiry', async () => {
     patientInsuranceFindManyMock.mockResolvedValue([
       {
@@ -822,7 +898,14 @@ describe('daily job local date keys', () => {
         patient: { id: 'patient_1', name: '山田 太郎' },
       },
     ]);
-    careCaseFindFirstMock.mockResolvedValue({ primary_pharmacist_id: 'pharmacist_1' });
+    careCaseFindManyMock.mockResolvedValue([
+      {
+        id: 'case_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        primary_pharmacist_id: 'pharmacist_1',
+      },
+    ]);
 
     const result = await checkPublicSubsidyExpiry();
 
@@ -844,6 +927,70 @@ describe('daily job local date keys', () => {
         relatedEntityId: 'insurance_1',
       }),
     );
+  });
+
+  it('prefetches public subsidy expiry active cases once per patient set', async () => {
+    patientInsuranceFindManyMock.mockResolvedValue([
+      {
+        id: 'insurance_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        insurance_type: 'public_subsidy',
+        valid_until: new Date('2026-06-14T15:30:00.000Z'),
+        patient: { id: 'patient_1', name: '山田 太郎' },
+      },
+      {
+        id: 'insurance_2',
+        org_id: 'org_1',
+        patient_id: 'patient_2',
+        insurance_type: 'public_subsidy',
+        valid_until: new Date('2026-06-20T15:30:00.000Z'),
+        patient: { id: 'patient_2', name: '佐藤 花子' },
+      },
+    ]);
+    careCaseFindManyMock.mockResolvedValue([
+      {
+        id: 'case_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        primary_pharmacist_id: 'pharmacist_1',
+      },
+      {
+        id: 'case_2',
+        org_id: 'org_1',
+        patient_id: 'patient_2',
+        primary_pharmacist_id: 'pharmacist_2',
+      },
+    ]);
+
+    const result = await checkPublicSubsidyExpiry();
+
+    expect(result).toEqual({ processedCount: 2 });
+    expect(careCaseFindManyMock).toHaveBeenCalledTimes(1);
+    expect(careCaseFindManyMock).toHaveBeenCalledWith({
+      where: {
+        status: { notIn: ['discharged', 'terminated'] },
+        OR: [{ org_id: { in: ['org_1'] }, patient_id: { in: ['patient_1', 'patient_2'] } }],
+      },
+      select: {
+        id: true,
+        org_id: true,
+        patient_id: true,
+        primary_pharmacist_id: true,
+      },
+    });
+    expect(notificationCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        user_id: 'pharmacist_1',
+        dedupe_key: 'public-subsidy-expiry:insurance_1:7',
+      }),
+    });
+    expect(notificationCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        user_id: 'pharmacist_2',
+        dedupe_key: 'public-subsidy-expiry:insurance_2:30',
+      }),
+    });
   });
 });
 
