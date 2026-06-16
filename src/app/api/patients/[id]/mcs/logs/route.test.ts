@@ -5,12 +5,16 @@ const {
   requireAuthContextMock,
   patientFindFirstMock,
   patientMcsLinkFindUniqueMock,
+  taskFindFirstMock,
+  taskUpsertMock,
   communicationEventCreateMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   patientMcsLinkFindUniqueMock: vi.fn(),
+  taskFindFirstMock: vi.fn(),
+  taskUpsertMock: vi.fn(),
   communicationEventCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
@@ -26,6 +30,9 @@ vi.mock('@/lib/db/client', () => ({
     },
     patientMcsLink: {
       findUnique: patientMcsLinkFindUniqueMock,
+    },
+    task: {
+      findFirst: taskFindFirstMock,
     },
   },
 }));
@@ -64,12 +71,23 @@ describe('/api/patients/[id]/mcs/logs POST', () => {
     requireAuthContextMock.mockResolvedValue({
       ctx: { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' },
     });
-    patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
+    patientFindFirstMock.mockResolvedValue({ id: 'patient_1', name: '田中一郎' });
     patientMcsLinkFindUniqueMock.mockResolvedValue({
       source_url: 'https://www.medical-care.net/patients/2463520',
       mcs_project_url: 'https://www.medical-care.net/projects/medical/57886227',
       project_title: '田中一郎 在宅チーム',
     });
+    taskFindFirstMock.mockResolvedValue({
+      metadata: {
+        linked_status: 'linked',
+        participation_status: 'joined',
+        pharmacy_participants: ['佐藤薬剤師'],
+        counterpart_roles: ['physician', 'visiting_nurse'],
+        last_checked_at: '2026-06-01T00:00:00.000Z',
+        note: '家族も参加',
+      },
+    });
+    taskUpsertMock.mockResolvedValue({ id: 'task_mcs_profile' });
     communicationEventCreateMock.mockResolvedValue({
       id: 'event_1',
       event_type: 'mcs_check',
@@ -81,6 +99,9 @@ describe('/api/patients/[id]/mcs/logs POST', () => {
       callback({
         communicationEvent: {
           create: communicationEventCreateMock,
+        },
+        task: {
+          upsert: taskUpsertMock,
         },
       }),
     );
@@ -104,7 +125,7 @@ describe('/api/patients/[id]/mcs/logs POST', () => {
         id: 'patient_1',
         org_id: 'org_1',
       }),
-      select: { id: true },
+      select: { id: true, name: true },
     });
     expect(communicationEventCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -118,6 +139,45 @@ describe('/api/patients/[id]/mcs/logs POST', () => {
         subject: 'MCS 指示確認',
         content: '訪看からの食欲低下共有を確認\n次アクション: 医師へ服薬状況を確認',
         occurred_at: new Date('2026-06-16T00:00:00.000Z'),
+      }),
+    });
+    expect(taskUpsertMock).toHaveBeenCalledWith({
+      where: {
+        org_id_dedupe_key: {
+          org_id: 'org_1',
+          dedupe_key: 'patient_mcs_profile:patient_1',
+        },
+      },
+      create: expect.objectContaining({
+        org_id: 'org_1',
+        task_type: 'patient_mcs_profile',
+        title: '田中一郎 MCS 連携プロフィール',
+        status: 'completed',
+        related_entity_type: 'patient',
+        related_entity_id: 'patient_1',
+        metadata: expect.objectContaining({
+          linked_status: 'linked',
+          participation_status: 'joined',
+          pharmacy_participants: ['佐藤薬剤師'],
+          counterpart_roles: ['physician', 'visiting_nurse'],
+          last_checked_at: '2026-06-16T00:00:00.000Z',
+          note: '家族も参加',
+        }),
+      }),
+      update: expect.objectContaining({
+        task_type: 'patient_mcs_profile',
+        title: '田中一郎 MCS 連携プロフィール',
+        status: 'completed',
+        related_entity_type: 'patient',
+        related_entity_id: 'patient_1',
+        metadata: expect.objectContaining({
+          linked_status: 'linked',
+          participation_status: 'joined',
+          pharmacy_participants: ['佐藤薬剤師'],
+          counterpart_roles: ['physician', 'visiting_nurse'],
+          last_checked_at: '2026-06-16T00:00:00.000Z',
+          note: '家族も参加',
+        }),
       }),
     });
   });
@@ -140,6 +200,39 @@ describe('/api/patients/[id]/mcs/logs POST', () => {
         counterpart_contact: 'https://www.medical-care.net/patients/2463520',
       }),
     });
+  });
+
+  it('preserves legacy MCS counterpart role metadata when updating the last check date', async () => {
+    taskFindFirstMock.mockResolvedValue({
+      metadata: {
+        linked_status: 'linked',
+        participation_status: 'joined',
+        pharmacy_participants: ['佐藤薬剤師'],
+        main_counterpart_roles: ['医師', '訪看'],
+        last_checked_at: '2026-06-01T00:00:00.000Z',
+      },
+    });
+
+    const response = await POST(
+      createRequest({
+        summary: '確認済み',
+        occurred_at: '2026-06-17T00:00:00.000Z',
+      }),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(taskUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          metadata: expect.objectContaining({
+            counterpart_roles: ['医師', '訪看'],
+            last_checked_at: '2026-06-17T00:00:00.000Z',
+          }),
+        }),
+      }),
+    );
   });
 
   it('does not copy unsafe saved MCS URLs into the communication contact field', async () => {

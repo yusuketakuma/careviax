@@ -170,6 +170,7 @@ function mockPatientQuery(
   const billingMutate = vi.fn();
   const billingProfileMutate = vi.fn();
   const conferenceMutate = vi.fn();
+  const mcsCheckLogMutate = vi.fn();
   useOrgIdMock.mockReturnValue('org_1');
   useRouterMock.mockReturnValue({ push: vi.fn(), replace: vi.fn() });
   useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
@@ -187,7 +188,8 @@ function mockPatientQuery(
     })
     .mockReturnValueOnce({ mutate: billingMutate, isPending: false, variables: null })
     .mockReturnValueOnce({ mutate: billingProfileMutate, isPending: false, variables: null })
-    .mockReturnValueOnce({ mutate: conferenceMutate, isPending: false, variables: null });
+    .mockReturnValueOnce({ mutate: conferenceMutate, isPending: false, variables: null })
+    .mockReturnValueOnce({ mutate: mcsCheckLogMutate, isPending: false, variables: null });
   const patientData = {
     id: 'patient_1',
     name: '田中 一郎',
@@ -338,6 +340,7 @@ function mockPatientQuery(
     billingMutate,
     billingProfileMutate,
     conferenceMutate,
+    mcsCheckLogMutate,
   };
 }
 
@@ -684,6 +687,62 @@ describe('CardWorkspace', () => {
     fireEvent.click(screen.getByRole('button', { name: /原本到着を記録/ }));
 
     expect(faxMutate).toHaveBeenCalledWith('intake_0500');
+  });
+
+  it('records an MCS check log from the home operations panel', () => {
+    const { mcsCheckLogMutate } = mockPatientQuery(buildWorkspace(), {
+      generated_at: '2026-06-16T00:00:00.000Z',
+      attention_count: 0,
+      top_alerts: [],
+      items: [
+        {
+          key: 'mcs',
+          label: 'MCS・外部連携',
+          status: '連携あり',
+          description: '田中一郎 在宅チーム / 最終確認 2026/06/01',
+          href: '/patients/patient_1/mcs',
+          action_label: 'MCSを開く',
+          tone: 'ok',
+          updated_at: '2026-06-01T00:00:00.000Z',
+          metrics: [
+            { label: '最終確認', value: '2026/06/01' },
+            { label: '参加状況', value: '参加済' },
+          ],
+          alerts: [],
+          quick_actions: [
+            {
+              key: 'record_mcs_check_log',
+              label: 'MCS確認ログを記録',
+              resource_id: 'patient_1',
+            },
+          ],
+        },
+      ],
+    });
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /MCS確認ログを記録/ }));
+    expect(screen.getByText('MCS確認内容を入力してください。')).toBeTruthy();
+    expect(mcsCheckLogMutate).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('区分'), {
+      target: { value: 'instruction_check' },
+    });
+    fireEvent.change(screen.getByLabelText('MCS確認内容'), {
+      target: { value: '訪看からの食欲低下共有を確認' },
+    });
+    fireEvent.change(screen.getByLabelText('次アクション'), {
+      target: { value: '医師へ服薬状況を確認' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /MCS確認ログを記録/ }));
+
+    expect(mcsCheckLogMutate).toHaveBeenCalledWith({
+      patientId: 'patient_1',
+      contentType: 'instruction_check',
+      summary: '訪看からの食欲低下共有を確認',
+      nextAction: '医師へ服薬状況を確認',
+    });
   });
 
   it('saves a prescription image or PDF URL from the home operations panel', () => {

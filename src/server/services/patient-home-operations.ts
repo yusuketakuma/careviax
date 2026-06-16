@@ -646,6 +646,15 @@ function buildMcsItem(args: {
       { label: '同期状態', value: link?.last_sync_status ?? (link ? '登録済み' : '未登録') },
     ],
     alerts,
+    quick_actions: link
+      ? [
+          {
+            key: 'record_mcs_check_log',
+            label: 'MCS確認ログを記録',
+            resource_id: args.patientId,
+          },
+        ]
+      : [],
   };
 }
 

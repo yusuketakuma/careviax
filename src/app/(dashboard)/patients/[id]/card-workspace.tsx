@@ -387,6 +387,7 @@ function PatientHomeOperationsPanel({
   recordingBillingPaymentProfilePatientId,
   recordingBillingCandidateId,
   recordingConferenceScopeId,
+  recordingMcsCheckPatientId,
   onMarkFaxOriginalCollected,
   onSavePrescriptionDocument,
   onUploadPrescriptionDocument,
@@ -394,6 +395,7 @@ function PatientHomeOperationsPanel({
   onRecordBillingPaymentProfile,
   onRecordBillingCollection,
   onRecordConferenceNote,
+  onRecordMcsCheckLog,
 }: {
   patient: PatientOverview;
   operations?: PatientHomeOperationsSnapshot | null;
@@ -403,6 +405,7 @@ function PatientHomeOperationsPanel({
   recordingBillingPaymentProfilePatientId?: string | null;
   recordingBillingCandidateId?: string | null;
   recordingConferenceScopeId?: string | null;
+  recordingMcsCheckPatientId?: string | null;
   onMarkFaxOriginalCollected?: (intakeId: string) => void;
   onSavePrescriptionDocument?: (input: PrescriptionDocumentFormInput) => void;
   onUploadPrescriptionDocument?: (file: File) => Promise<string>;
@@ -410,6 +413,7 @@ function PatientHomeOperationsPanel({
   onRecordBillingPaymentProfile?: (input: BillingPaymentProfileFormInput) => void;
   onRecordBillingCollection?: (input: BillingCollectionFormInput) => void;
   onRecordConferenceNote?: (input: ConferenceNoteFormInput) => void;
+  onRecordMcsCheckLog?: (input: McsCheckLogFormInput) => void;
 }) {
   const items = (operations?.items ?? buildHomeOperationsItems(patient)).map(withHomeOperationIcon);
   const attentionCount = items.filter((item) => item.tone === 'attention').length;
@@ -582,6 +586,17 @@ function PatientHomeOperationsPanel({
                     />
                   );
                 }
+                if (action.key === 'record_mcs_check_log') {
+                  return (
+                    <McsCheckLogQuickForm
+                      key={action.key}
+                      actionLabel={action.label}
+                      patientId={action.resource_id}
+                      isPending={recordingMcsCheckPatientId === action.resource_id}
+                      onSubmit={onRecordMcsCheckLog}
+                    />
+                  );
+                }
                 if (action.key !== 'mark_fax_original_collected') return null;
                 const pending = markingFaxOriginalIntakeId === action.resource_id;
                 return (
@@ -727,6 +742,13 @@ type ConferenceNoteFormInput = {
   actionItemsRaw: string;
 };
 
+type McsCheckLogFormInput = {
+  patientId: string;
+  contentType: string;
+  summary: string;
+  nextAction: string | null;
+};
+
 type ConferenceStructuredSectionInput = {
   key: string;
   label: string;
@@ -762,6 +784,95 @@ function metricDateTimeValue(item: PatientHomeOperationItem, label: string) {
   const date = new Date(value.replaceAll('/', '-'));
   if (Number.isNaN(date.getTime())) return '';
   return toLocalDateTimeInputValue(date);
+}
+
+function McsCheckLogQuickForm({
+  actionLabel,
+  patientId,
+  isPending,
+  onSubmit,
+}: {
+  actionLabel: string;
+  patientId: string;
+  isPending: boolean;
+  onSubmit?: (input: McsCheckLogFormInput) => void;
+}) {
+  const [contentType, setContentType] = useState('report');
+  const [summary, setSummary] = useState('');
+  const [nextAction, setNextAction] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <form
+      className="mt-3 rounded-lg border border-current/20 bg-background/80 p-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const trimmedSummary = summary.trim();
+        const trimmedNextAction = nextAction.trim();
+        if (!trimmedSummary) {
+          setError('MCS確認内容を入力してください。');
+          return;
+        }
+        setError(null);
+        onSubmit?.({
+          patientId,
+          contentType,
+          summary: trimmedSummary,
+          nextAction: trimmedNextAction || null,
+        });
+      }}
+    >
+      <div className="grid gap-2">
+        <div className="space-y-1">
+          <Label htmlFor={`mcs-check-type-${patientId}`} className="text-xs">
+            区分
+          </Label>
+          <select
+            id={`mcs-check-type-${patientId}`}
+            value={contentType}
+            onChange={(event) => setContentType(event.target.value)}
+            className="min-h-9 w-full rounded-lg border border-input bg-background px-2 text-xs"
+          >
+            <option value="report">報告</option>
+            <option value="consultation">相談</option>
+            <option value="instruction_check">指示確認</option>
+            <option value="photo_review">写真確認</option>
+            <option value="urgent">緊急</option>
+            <option value="other">その他</option>
+          </select>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor={`mcs-check-summary-${patientId}`} className="text-xs">
+            MCS確認内容
+          </Label>
+          <Textarea
+            id={`mcs-check-summary-${patientId}`}
+            value={summary}
+            onChange={(event) => setSummary(event.target.value)}
+            className="min-h-16 text-xs"
+            placeholder="確認した投稿、相談内容、指示内容"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor={`mcs-check-next-action-${patientId}`} className="text-xs">
+            次アクション
+          </Label>
+          <Input
+            id={`mcs-check-next-action-${patientId}`}
+            value={nextAction}
+            onChange={(event) => setNextAction(event.target.value)}
+            className="min-h-9 text-xs"
+            placeholder="医師へ確認、訪看へ返信"
+          />
+        </div>
+        {error ? <p className="text-xs text-destructive">{error}</p> : null}
+        <Button type="submit" size="sm" className="min-h-9 w-full" disabled={isPending}>
+          <CheckCircle2 className="mr-1.5 size-4" aria-hidden="true" />
+          {isPending ? '保存中' : actionLabel}
+        </Button>
+      </div>
+    </form>
+  );
 }
 
 function parseConferenceActionItems(raw: string) {
@@ -2256,6 +2367,39 @@ export function CardWorkspace({
     },
   });
 
+  const recordMcsCheckLogMutation = useMutation({
+    mutationFn: async (input: McsCheckLogFormInput) => {
+      const response = await fetch(`/api/patients/${input.patientId}/mcs/logs`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          content_type: input.contentType,
+          summary: input.summary,
+          next_action: input.nextAction,
+          occurred_at: new Date().toISOString(),
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.message ?? 'MCS確認ログの保存に失敗しました');
+      }
+      return response.json();
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['patient-home-operations', patientId, orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['patient-mcs', patientId, orgId] }),
+      ]);
+      toast.success('MCS確認ログを保存しました');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
   if (!orgId || isLoading) return <Loading />;
   if (error || !patient) {
     return (
@@ -2354,6 +2498,11 @@ export function CardWorkspace({
                 : `patient:${recordConferenceNoteMutation.variables?.patientId}`
               : null
           }
+          recordingMcsCheckPatientId={
+            recordMcsCheckLogMutation.isPending
+              ? recordMcsCheckLogMutation.variables?.patientId
+              : null
+          }
           onMarkFaxOriginalCollected={markFaxOriginalCollectedMutation.mutate}
           onSavePrescriptionDocument={savePrescriptionDocumentMutation.mutate}
           onUploadPrescriptionDocument={uploadPrescriptionDocument}
@@ -2363,6 +2512,7 @@ export function CardWorkspace({
           onRecordBillingPaymentProfile={recordBillingPaymentProfileMutation.mutate}
           onRecordBillingCollection={recordBillingCollectionMutation.mutate}
           onRecordConferenceNote={recordConferenceNoteMutation.mutate}
+          onRecordMcsCheckLog={recordMcsCheckLogMutation.mutate}
         />
         <PatientCardDocumentsPanel patient={patient} orgId={orgId} />
         <PatientVisitPreparationPanel patient={patient} />
@@ -2507,6 +2657,11 @@ export function CardWorkspace({
                   : `patient:${recordConferenceNoteMutation.variables?.patientId}`
                 : null
             }
+            recordingMcsCheckPatientId={
+              recordMcsCheckLogMutation.isPending
+                ? recordMcsCheckLogMutation.variables?.patientId
+                : null
+            }
             onMarkFaxOriginalCollected={markFaxOriginalCollectedMutation.mutate}
             onSavePrescriptionDocument={savePrescriptionDocumentMutation.mutate}
             onUploadPrescriptionDocument={uploadPrescriptionDocument}
@@ -2516,6 +2671,7 @@ export function CardWorkspace({
             onRecordBillingPaymentProfile={recordBillingPaymentProfileMutation.mutate}
             onRecordBillingCollection={recordBillingCollectionMutation.mutate}
             onRecordConferenceNote={recordConferenceNoteMutation.mutate}
+            onRecordMcsCheckLog={recordMcsCheckLogMutation.mutate}
           />
           <PatientCardDocumentsPanel patient={patient} orgId={orgId} />
           <PatientVisitPreparationPanel patient={patient} />

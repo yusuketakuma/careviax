@@ -9,6 +9,9 @@ import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { canViewSensitivePatientData } from '@/lib/patient/sensitive';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { parseMedicalCareStationUrl } from '@/lib/patient-mcs/source';
+import { readJsonObject } from '@/lib/db/json';
+import { PATIENT_MCS_PROFILE_TASK_TYPE } from '@/server/services/patient-mcs';
+import { upsertOperationalTask } from '@/server/services/operational-tasks';
 
 const mcsLogCategoryLabels: Record<string, string> = {
   report: '報告確認',
@@ -39,6 +42,30 @@ function resolveSafeMcsContactUrl(link: {
   );
 }
 
+function readStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
+}
+
+function buildUpdatedMcsProfileMetadata(metadata: unknown, lastCheckedAt: string) {
+  const current = readJsonObject(metadata) ?? {};
+  const counterpartRoles = readStringArray(current.counterpart_roles);
+
+  return {
+    linked_status: typeof current.linked_status === 'string' ? current.linked_status : 'unknown',
+    participation_status:
+      typeof current.participation_status === 'string' ? current.participation_status : 'unknown',
+    pharmacy_participants: readStringArray(current.pharmacy_participants),
+    counterpart_roles:
+      counterpartRoles.length > 0
+        ? counterpartRoles
+        : readStringArray(current.main_counterpart_roles),
+    last_checked_at: lastCheckedAt,
+    note: typeof current.note === 'string' && current.note.trim() ? current.note : null,
+  };
+}
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
@@ -67,18 +94,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       { id, org_id: ctx.orgId },
       { userId: ctx.userId, role: ctx.role },
     ),
-    select: { id: true },
+    select: { id: true, name: true },
   });
   if (!patient) return notFound('患者が見つかりません');
 
-  const link = await prisma.patientMcsLink.findUnique({
-    where: { patient_id: id },
-    select: {
-      source_url: true,
-      mcs_project_url: true,
-      project_title: true,
-    },
-  });
+  const [link, profileTask] = await Promise.all([
+    prisma.patientMcsLink.findUnique({
+      where: { patient_id: id },
+      select: {
+        source_url: true,
+        mcs_project_url: true,
+        project_title: true,
+      },
+    }),
+    prisma.task.findFirst({
+      where: {
+        org_id: ctx.orgId,
+        task_type: PATIENT_MCS_PROFILE_TASK_TYPE,
+        related_entity_type: 'patient',
+        related_entity_id: id,
+      },
+      orderBy: [{ updated_at: 'desc' }],
+      select: {
+        metadata: true,
+      },
+    }),
+  ]);
 
   const categoryLabel = mcsLogCategoryLabels[parsed.data.content_type] ?? 'MCS確認';
   const content = [
@@ -88,8 +129,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .filter((value): value is string => Boolean(value))
     .join('\n');
 
-  const event = await withOrgContext(ctx.orgId, async (tx) =>
-    tx.communicationEvent.create({
+  const occurredAt = parsed.data.occurred_at ? new Date(parsed.data.occurred_at) : new Date();
+  const profileMetadata = buildUpdatedMcsProfileMetadata(
+    profileTask?.metadata,
+    occurredAt.toISOString(),
+  );
+  const event = await withOrgContext(ctx.orgId, async (tx) => {
+    const created = await tx.communicationEvent.create({
       data: {
         org_id: ctx.orgId,
         patient_id: id,
@@ -100,10 +146,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         counterpart_contact: link ? resolveSafeMcsContactUrl(link) : null,
         subject: `MCS ${categoryLabel}`,
         content,
-        occurred_at: parsed.data.occurred_at ? new Date(parsed.data.occurred_at) : new Date(),
+        occurred_at: occurredAt,
       },
-    }),
-  );
+    });
+
+    await upsertOperationalTask(tx, {
+      orgId: ctx.orgId,
+      taskType: PATIENT_MCS_PROFILE_TASK_TYPE,
+      title: `${patient.name} MCS 連携プロフィール`,
+      description: profileMetadata.note,
+      priority: 'normal',
+      status: 'completed',
+      dedupeKey: `patient_mcs_profile:${id}`,
+      relatedEntityType: 'patient',
+      relatedEntityId: id,
+      metadata: profileMetadata,
+    });
+
+    return created;
+  });
 
   return success({ data: event }, 201);
 }

@@ -18,7 +18,8 @@ export type PatientHomeOperationActionKey =
   | 'record_prescription_original_management'
   | 'record_billing_payment_profile'
   | 'record_billing_collection'
-  | 'record_conference_note';
+  | 'record_conference_note'
+  | 'record_mcs_check_log';
 
 export type PatientHomeOperationQuickAction = {
   key: PatientHomeOperationActionKey;

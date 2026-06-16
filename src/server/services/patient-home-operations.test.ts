@@ -295,6 +295,13 @@ describe('getPatientHomeOperationsData', () => {
         { label: '薬局側参加者', value: '佐藤薬剤師' },
         { label: '主な連携先', value: '医師 / 訪看' },
       ]),
+      quick_actions: [
+        {
+          key: 'record_mcs_check_log',
+          label: 'MCS確認ログを記録',
+          resource_id: 'patient_1',
+        },
+      ],
     });
     expect(result?.items.find((item) => item.key === 'prescription')).toMatchObject({
       status: '原本未着',
