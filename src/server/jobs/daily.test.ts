@@ -863,7 +863,7 @@ describe('daily job local date keys', () => {
         status: { notIn: ['discharged', 'terminated'] },
         OR: [
           { id: { in: ['case_1'] } },
-          { org_id: { in: ['org_1'] }, patient_id: { in: ['patient_1', 'patient_2'] } },
+          { org_id: 'org_1', patient_id: { in: ['patient_1', 'patient_2'] } },
         ],
       },
       select: {
@@ -970,7 +970,7 @@ describe('daily job local date keys', () => {
     expect(careCaseFindManyMock).toHaveBeenCalledWith({
       where: {
         status: { notIn: ['discharged', 'terminated'] },
-        OR: [{ org_id: { in: ['org_1'] }, patient_id: { in: ['patient_1', 'patient_2'] } }],
+        OR: [{ org_id: 'org_1', patient_id: { in: ['patient_1', 'patient_2'] } }],
       },
       select: {
         id: true,

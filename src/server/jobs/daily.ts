@@ -122,16 +122,21 @@ async function findPrimaryPharmacistIdsForActiveCases(args: {
     };
   }
 
-  const patientOrgIds = [...new Set(orgPatientPairs.map((pair) => pair.orgId))];
-  const patientIds = [...new Set(orgPatientPairs.map((pair) => pair.patientId))];
+  const patientIdsByOrg = new Map<string, string[]>();
+  for (const pair of orgPatientPairs) {
+    const patientIds = patientIdsByOrg.get(pair.orgId) ?? [];
+    patientIds.push(pair.patientId);
+    patientIdsByOrg.set(pair.orgId, patientIds);
+  }
   const cases = await prisma.careCase.findMany({
     where: {
       status: { notIn: ['discharged', 'terminated'] },
       OR: [
         ...(caseIds.length > 0 ? [{ id: { in: caseIds } }] : []),
-        ...(orgPatientPairs.length > 0
-          ? [{ org_id: { in: patientOrgIds }, patient_id: { in: patientIds } }]
-          : []),
+        ...[...patientIdsByOrg.entries()].map(([orgId, patientIds]) => ({
+          org_id: orgId,
+          patient_id: { in: patientIds },
+        })),
       ],
     },
     select: {
