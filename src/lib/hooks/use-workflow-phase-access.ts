@@ -368,7 +368,7 @@ export function useWorkflowPhaseAccess() {
   const query = useRealtimeQuery({
     queryKey: ['dashboard-workflow', orgId],
     queryFn: async () => {
-      const response = await fetch('/api/dashboard/workflow', {
+      const response = await fetch('/api/dashboard/workflow?view=phase', {
         headers: { 'x-org-id': orgId },
       });
       if (!response.ok) {

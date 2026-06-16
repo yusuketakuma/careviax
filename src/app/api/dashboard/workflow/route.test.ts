@@ -39,6 +39,7 @@ const {
   patientRiskQueueMock,
   homeCareFeatureSummaryMock,
   billingPreviewBatchMock,
+  queryRawMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
@@ -76,6 +77,7 @@ const {
   patientRiskQueueMock: vi.fn(),
   homeCareFeatureSummaryMock: vi.fn(),
   billingPreviewBatchMock: vi.fn(),
+  queryRawMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -159,7 +161,7 @@ vi.mock('@/lib/db/client', () => ({
     businessHoliday: {
       findMany: businessHolidayFindManyMock,
     },
-    $queryRaw: vi.fn().mockResolvedValue([{ count: BigInt(0) }]),
+    $queryRaw: queryRawMock,
   },
 }));
 
@@ -188,15 +190,16 @@ import { GET as rawGET } from './route';
 const emptyRouteContext = { params: Promise.resolve({}) };
 const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 
-function createRequest(headers?: Record<string, string>) {
-  return new NextRequest('http://localhost/api/dashboard/workflow', { headers });
+function createRequest(headers?: Record<string, string>, search = '') {
+  return new NextRequest(`http://localhost/api/dashboard/workflow${search}`, { headers });
 }
 
 describe('/api/dashboard/workflow GET', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     serverCache.clear();
 
+    queryRawMock.mockResolvedValue([{ count: BigInt(0) }]);
     cycleGroupByMock.mockResolvedValue([
       { overall_status: 'visit_completed', _count: { id: 2 } },
       { overall_status: 'dispensing', _count: { id: 1 } },
@@ -806,6 +809,59 @@ describe('/api/dashboard/workflow GET', () => {
     );
   });
 
+  it('serves phase navigation data without running full dashboard side-rail aggregations', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }, '?view=phase'));
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+
+    expect(payload.data).toMatchObject({
+      cycle_status_counts: {
+        visit_completed: 2,
+        dispensing: 1,
+      },
+      operations_queue: {
+        visit_demands: 2,
+        intake_linkages: 1,
+        self_reports_triage: 1,
+      },
+      visit_operations: {
+        overdue: 2,
+        awaiting_reports: 5,
+        missing_visit_consent: 0,
+        missing_management_plan: 0,
+        missing_first_visit_doc: 0,
+        missing_emergency_contact: 0,
+        missing_primary_physician: 0,
+      },
+      unified_workbench: expect.arrayContaining([
+        expect.objectContaining({ id: 'task:task_1' }),
+        expect.objectContaining({ id: 'proposal:proposal_1' }),
+      ]),
+      intake_linkage: [
+        expect.objectContaining({
+          patient_name: '山田 太郎',
+        }),
+      ],
+      refill_upcoming: [
+        expect.objectContaining({
+          id: 'intake_1',
+        }),
+      ],
+    });
+    expect(communicationQueueMock).not.toHaveBeenCalled();
+    expect(patientRiskQueueMock).not.toHaveBeenCalled();
+    expect(homeCareFeatureSummaryMock).not.toHaveBeenCalled();
+    expect(billingPreviewBatchMock).not.toHaveBeenCalled();
+    expect(conferenceNoteFindManyMock).not.toHaveBeenCalled();
+    expect(consentRecordFindManyMock).not.toHaveBeenCalled();
+    expect(managementPlanFindManyMock).not.toHaveBeenCalled();
+    expect(firstVisitDocumentCountMock).not.toHaveBeenCalled();
+  });
+
   it('keeps role-specific inbox state out of cross-role cache hits', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock
@@ -878,6 +934,16 @@ describe('/api/dashboard/workflow GET', () => {
         fingerprint,
       ),
     ).toBe(`workflow:org_1:clerk:user_1:2026-03-27:${fingerprint}`);
+    expect(
+      buildWorkflowCacheKey(
+        'org_1',
+        'clerk',
+        'user_1',
+        new Date(2026, 2, 27, 12, 0, 0),
+        fingerprint,
+        'phase',
+      ),
+    ).toBe(`workflow:org_1:clerk:user_1:2026-03-27:${fingerprint}:phase`);
     expect(
       buildWorkflowAssignmentScopeFingerprint({
         assignedToUserId: 'user_1',

@@ -10,6 +10,8 @@ import { serverCache } from '@/lib/utils/server-cache';
 import {
   fetchWorkflowCoreData,
   fetchWorkflowDependentData,
+  fetchWorkflowPhaseCoreData,
+  fetchWorkflowPhaseDependentData,
 } from '@/server/services/workflow-dashboard-queries';
 import {
   buildWorkflowAssignmentScopeFingerprint,
@@ -20,9 +22,10 @@ import { resolveDashboardAssignmentScope } from '@/server/services/dashboard-ass
 import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 
 export const GET = withAuthContext(
-  async (_req, ctx) => {
+  async (req, ctx) => {
     // scheduled_date / shift date(@db.Date)比較用: ローカル日付の UTC 深夜
     const today = utcDateFromLocalKey(localDateKey());
+    const view = new URL(req.url).searchParams.get('view') === 'phase' ? 'phase' : 'full';
     const assignmentScope = await resolveDashboardAssignmentScope({
       db: prisma,
       orgId: ctx.orgId,
@@ -34,6 +37,7 @@ export const GET = withAuthContext(
       ctx.userId,
       today,
       buildWorkflowAssignmentScopeFingerprint(assignmentScope),
+      view,
     );
     const cachedData = serverCache.get<Record<string, unknown>>(cacheKey);
     if (cachedData) {
@@ -44,22 +48,29 @@ export const GET = withAuthContext(
     const sevenDaysFromNow = addUtcDays(today, RECENT_WINDOW_DAYS);
     const recentOutcomeWindow = addUtcDays(today, -RECENT_WINDOW_DAYS);
 
-    const core = await fetchWorkflowCoreData(
-      prisma,
-      ctx.orgId,
-      today,
-      upcomingWindow,
-      sevenDaysFromNow,
-      recentOutcomeWindow,
-      assignmentScope,
-    );
-    const dependent = await fetchWorkflowDependentData(
-      prisma,
-      ctx.orgId,
-      today,
-      core,
-      assignmentScope,
-    );
+    const core =
+      view === 'phase'
+        ? await fetchWorkflowPhaseCoreData(
+            prisma,
+            ctx.orgId,
+            today,
+            upcomingWindow,
+            sevenDaysFromNow,
+            assignmentScope,
+          )
+        : await fetchWorkflowCoreData(
+            prisma,
+            ctx.orgId,
+            today,
+            upcomingWindow,
+            sevenDaysFromNow,
+            recentOutcomeWindow,
+            assignmentScope,
+          );
+    const dependent =
+      view === 'phase'
+        ? await fetchWorkflowPhaseDependentData(prisma, ctx.orgId, core)
+        : await fetchWorkflowDependentData(prisma, ctx.orgId, today, core, assignmentScope);
 
     const responsePayload = {
       data: buildWorkflowDashboardData({

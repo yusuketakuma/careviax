@@ -21,9 +21,11 @@ export function buildWorkflowCacheKey(
   userId: string,
   today: Date,
   assignmentScopeFingerprint?: string,
+  view?: 'full' | 'phase',
 ) {
   const scopeKey = assignmentScopeFingerprint ? `:${assignmentScopeFingerprint}` : '';
-  return `workflow:${orgId}:${role}:${userId}:${formatCacheDay(today)}${scopeKey}`;
+  const viewKey = view && view !== 'full' ? `:${view}` : '';
+  return `workflow:${orgId}:${role}:${userId}:${formatCacheDay(today)}${scopeKey}${viewKey}`;
 }
 
 export function buildCockpitCacheKey(
