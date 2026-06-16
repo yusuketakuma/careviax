@@ -685,6 +685,7 @@ function buildDocumentItem(args: {
     .filter((document) => document.delivered_at)
     .sort((left, right) => right.delivered_at!.getTime() - left.delivered_at!.getTime())[0];
   const firstAlert = alerts[0] ?? null;
+  const latestTemplateSummary = formatLatestTemplateSummary(args.latestTemplates);
 
   return {
     key: 'documents',
@@ -708,6 +709,7 @@ function buildDocumentItem(args: {
           ? `${formatDate(latestPrint.latestPrintedAt)} / ${latestPrint.latestPrintBatchId ?? 'バッチ未記録'}`
           : '未記録',
       },
+      { label: '最新テンプレート', value: latestTemplateSummary },
       ...documentStatuses.map((status) => {
         const template = templatesByType.get(status.templateType);
         const templateText = status.templateName
@@ -723,6 +725,28 @@ function buildDocumentItem(args: {
     ],
     alerts,
   };
+}
+
+function formatLatestTemplateSummary(
+  templates: Array<{
+    name: string;
+    version: number;
+    effective_from: Date | null;
+    effective_to: Date | null;
+  }>,
+) {
+  if (templates.length === 0) return '未設定';
+
+  const [latest] = [...templates].sort((left, right) => {
+    const leftEffectiveFrom = left.effective_from?.getTime() ?? 0;
+    const rightEffectiveFrom = right.effective_from?.getTime() ?? 0;
+    if (leftEffectiveFrom !== rightEffectiveFrom) return rightEffectiveFrom - leftEffectiveFrom;
+    return right.version - left.version;
+  });
+
+  const effectiveLabel = latest.effective_from ? ` / ${formatDate(latest.effective_from)}適用` : '';
+  const remainingCount = templates.length - 1;
+  return `${latest.name} v${latest.version}${effectiveLabel}${remainingCount > 0 ? ` 他${remainingCount}件` : ''}`;
 }
 
 function buildMcsItem(args: {

@@ -334,6 +334,10 @@ describe('getPatientHomeOperationsData', () => {
         { label: 'PDF/画像', value: '1/4件保存' },
         { label: '回収/画像', value: '0/4件完了' },
         { label: '最終印刷', value: '2026/06/03 / print_20260603T000000Z_batch1' },
+        {
+          label: '最新テンプレート',
+          value: '重要事項説明書 2026年版 v2 / 2026/04/01適用 他3件',
+        },
         { label: '契約書', value: '印刷済み / 居宅療養管理指導契約書 2026年版 v1' },
         { label: '重要事項説明書', value: '未作成 / 重要事項説明書 2026年版 v2' },
         { label: '個人情報同意書', value: '未作成 / 個人情報使用同意書 2026年版 v1' },
