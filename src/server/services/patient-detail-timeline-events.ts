@@ -305,6 +305,11 @@ const OPERATION_ACTION_LABELS: Record<string, { title: string; statusLabel: stri
   },
 };
 
+const BILLING_EXPORT_LABELS: Record<string, { title: string; statusLabel: string }> = {
+  billing_receipt: { title: '領収証PDFを出力', statusLabel: '領収証PDF' },
+  billing_invoice: { title: '請求書PDFを出力', statusLabel: '請求書PDF' },
+};
+
 const FIRST_VISIT_DOCUMENT_TYPE_LABELS: Record<string, string> = {
   contract: '契約書',
   important_matters: '重要事項説明書',
@@ -498,6 +503,9 @@ function buildOperationHistorySummary(item: OperationHistoryTimelineSource) {
         : documentUrlType
           ? '相対URL'
           : null;
+  const exportFormat = readString(changes.format)?.toUpperCase();
+  const exportRecordCount =
+    typeof changes.record_count === 'number' ? `${changes.record_count}件` : null;
   const billedAmount =
     typeof collection.billed_amount === 'number'
       ? `請求 ${collection.billed_amount.toLocaleString('ja-JP')}円`
@@ -604,16 +612,27 @@ function buildOperationHistorySummary(item: OperationHistoryTimelineSource) {
       readString(conferenceNote.billing_code)
         ? `算定 ${readString(conferenceNote.billing_code)}`
         : null,
+      exportFormat,
+      exportRecordCount,
     ]).join(' / ') || null
   );
 }
 
 function getOperationHistoryCategory(item: OperationHistoryTimelineSource) {
-  if (item.action.startsWith('billing_')) return 'billing';
+  if (item.action.startsWith('billing_') || item.target_type.startsWith('billing_')) {
+    return 'billing';
+  }
   if (item.action.startsWith('prescription_')) return 'prescription';
   if (item.action.startsWith('patient_mcs_')) return 'communication';
   if (item.action.startsWith('conference_note.')) return 'communication';
   return 'document';
+}
+
+function getOperationHistoryLabel(item: OperationHistoryTimelineSource) {
+  if (item.action === 'export') {
+    return BILLING_EXPORT_LABELS[item.target_type] ?? null;
+  }
+  return OPERATION_ACTION_LABELS[item.action] ?? null;
 }
 
 function getCommunicationDirectionLabel(direction: string) {
@@ -932,11 +951,12 @@ export function buildPatientTimelineEvents(input: BuildPatientTimelineEventsInpu
       ]),
     })),
     ...operationHistory.map((item) => {
-      const meta = OPERATION_ACTION_LABELS[item.action] ?? {
+      const meta = getOperationHistoryLabel(item) ?? {
         title: '患者操作履歴を記録',
         statusLabel: item.action,
       };
-      const isBilling = item.action.startsWith('billing_');
+      const isBilling =
+        item.action.startsWith('billing_') || item.target_type.startsWith('billing_');
       const isPrescription = item.action.startsWith('prescription_');
       const isMcs = item.action.startsWith('patient_mcs_');
       const isConference = item.action.startsWith('conference_note.');

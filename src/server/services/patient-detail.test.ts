@@ -829,6 +829,93 @@ describe('getPatientTimelineData', () => {
     });
   });
 
+  it('adds generated billing document PDF exports to the patient operation timeline', async () => {
+    const auditLogFindManyMock = vi.fn().mockResolvedValue([
+      {
+        id: 'audit_billing_pdf_1',
+        action: 'export',
+        target_type: 'billing_invoice',
+        target_id: 'candidate_1',
+        actor_id: 'user_2',
+        changes: {
+          format: 'pdf',
+          record_count: 1,
+          filters: {},
+          metadata: {},
+        },
+        created_at: new Date('2026-06-16T12:00:00.000Z'),
+      },
+    ]);
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          name: '山田 太郎',
+          name_kana: 'ヤマダ タロウ',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      billingCandidate: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'candidate_1',
+            status: 'confirmed',
+            billing_month: new Date('2026-06-01T00:00:00.000Z'),
+            billing_code: 'HOME_VISIT_MANAGEMENT',
+            billing_name: '居宅療養管理指導',
+            points: 518,
+            created_at: new Date('2026-06-01T00:00:00.000Z'),
+            updated_at: new Date('2026-06-01T00:00:00.000Z'),
+          },
+        ]),
+      },
+      auditLog: {
+        findMany: auditLogFindManyMock,
+      },
+      user: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'user_2', name: '鈴木 事務' }]),
+      },
+    });
+
+    const result = await getPatientTimelineData(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    expect(result?.timeline_events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'operation_history:audit_billing_pdf_1',
+          event_type: 'operation_history',
+          category: 'billing',
+          title: '請求書PDFを出力',
+          summary: 'PDF / 1件',
+          href: '/billing/candidates?patient_id=patient_1',
+          action_label: '請求を開く',
+          status: 'export',
+          status_label: '請求書PDF',
+          actor_name: '鈴木 事務',
+          metadata: ['billing_invoice', 'candidate_1'],
+        }),
+      ]),
+    );
+    expect(auditLogFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              target_type: { in: ['billing_receipt', 'billing_invoice'] },
+              target_id: { in: ['candidate_1'] },
+              action: 'export',
+            }),
+          ]),
+        }),
+      }),
+    );
+  });
+
   it('uses first visit document audit details for document timeline identity', async () => {
     const db = buildDb({
       patient: {

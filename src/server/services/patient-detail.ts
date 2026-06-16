@@ -728,6 +728,11 @@ export async function getPatientTimelineData(db: PatientTimelineDb, args: Detail
       target_id: { in: billingCandidateIds },
       action: { in: ['billing_collection_updated'] },
     });
+    operationHistoryFilters.push({
+      target_type: { in: ['billing_receipt', 'billing_invoice'] },
+      target_id: { in: billingCandidateIds },
+      action: 'export',
+    });
   }
   const conferenceNoteIds = conferenceNotes.map((item) => item.id);
   if (conferenceNoteIds.length > 0) {
