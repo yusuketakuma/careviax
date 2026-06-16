@@ -233,6 +233,8 @@ type BuildVisitBriefArgs = {
   limit?: number;
   actorId?: string;
   caseIds?: string[];
+  currentScheduleId?: string;
+  scheduledDate?: Date;
   // patient_changes(前回訪問差分)算出に必要。揃わない経路(schedule バッチ等)は差分を出さない。
   role?: MemberRole;
   userId?: string;
@@ -1362,6 +1364,8 @@ export async function getPatientVisitBrief(
       where: {
         org_id: args.orgId,
         patient_id: args.patientId,
+        ...(args.currentScheduleId ? { schedule_id: { not: args.currentScheduleId } } : {}),
+        ...(args.scheduledDate ? { visit_date: { lt: args.scheduledDate } } : {}),
         ...(args.caseIds === undefined
           ? {}
           : {
@@ -1763,6 +1767,8 @@ export async function getScheduleVisitBriefsForSchedules(
       schedule.orgId,
       schedule.patientId,
       schedule.caseId,
+      schedule.scheduleId,
+      schedule.scheduledDate?.toISOString() ?? null,
       schedule.limit ?? null,
       schedule.actorId ?? null,
     ]);
@@ -1780,6 +1786,8 @@ export async function getScheduleVisitBriefsForSchedules(
         orgId: schedule.orgId,
         patientId: schedule.patientId,
         caseIds: [schedule.caseId],
+        currentScheduleId: schedule.scheduleId,
+        scheduledDate: schedule.scheduledDate,
         limit: schedule.limit,
         actorId: schedule.actorId,
       });

@@ -263,7 +263,25 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
                   conference_context: [],
                   medication_period: null,
                   prescription_changes: null,
-                  previous_visit: null,
+                  previous_visit: {
+                    id: 'record_prev',
+                    summary: '前回は眠気を確認',
+                    structured_reuse: {
+                      source_visit_record_id: 'record_prev',
+                      source_visit_record_version: 3,
+                      source_visit_record_updated_at: '2026-04-01T03:00:00.000Z',
+                      subjective: ['眠気あり'],
+                      objective: [],
+                      assessment: [],
+                      plan: [],
+                      handoff: {
+                        next_check_items: ['眠気の継続確認'],
+                        ongoing_monitoring: [],
+                        decision_rationale: null,
+                      },
+                      carry_forward_items: ['眠気の継続確認'],
+                    },
+                  },
                   facility_parallel_context: null,
                   intake_context: null,
                   billing_collection_context: {
@@ -423,6 +441,14 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     });
     expect(visitRecordPostBodies[0]).toMatchObject({
       outcome_status: 'postponed',
+      structured_soap: {
+        previous_visit_reuse: {
+          source_visit_record_id: 'record_prev',
+          source_visit_record_version: 3,
+          source_visit_record_updated_at: '2026-04-01T03:00:00.000Z',
+          carry_forward_items: ['眠気の継続確認'],
+        },
+      },
     });
     expect(visitRecordPostBodies[0]).not.toHaveProperty('receipt_person_name');
     expect(visitRecordPostBodies[0]).not.toHaveProperty('receipt_person_relation');

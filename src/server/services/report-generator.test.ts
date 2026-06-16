@@ -272,7 +272,7 @@ describe('generateReportsFromVisit', () => {
     expect(result.reports[0].report_type).toBe('physician_report');
   });
 
-  it('returns existing reports without creating new ones', async () => {
+  it('returns existing sent reports without creating or refreshing them', async () => {
     visitRecordFindFirstMock.mockResolvedValue({
       id: 'vr-1',
       org_id: 'org-1',
@@ -316,7 +316,7 @@ describe('generateReportsFromVisit', () => {
 
     // Report already exists
     careReportFindManyMock.mockResolvedValue([
-      { id: 'report-existing', report_type: 'physician_report' },
+      { id: 'report-existing', report_type: 'physician_report', status: 'sent' },
     ]);
 
     const result = await generateReportsFromVisit('org-1', 'user-1', 'vr-1');
@@ -324,6 +324,100 @@ describe('generateReportsFromVisit', () => {
     expect(result.reports).toHaveLength(1);
     expect(result.reports[0].id).toBe('report-existing');
     expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('refreshes an existing draft report with regenerated visit content', async () => {
+    visitRecordFindFirstMock.mockResolvedValue({
+      id: 'vr-1',
+      org_id: 'org-1',
+      patient_id: 'p-1',
+      pharmacist_id: 'pharm-1',
+      visit_date: new Date('2026-03-10T01:00:00.000Z'),
+      structured_soap: baseSoap,
+      schedule_id: 'vs-1',
+      version: 7,
+      updated_at: new Date('2026-03-10T03:00:00.000Z'),
+    });
+    visitScheduleFindUniqueMock.mockResolvedValue({
+      case_id: 'case-1',
+      cycle_id: 'cycle-1',
+      org_id: 'org-1',
+    });
+    patientFindFirstMock.mockResolvedValue({
+      id: 'p-1',
+      name: '田中太郎',
+      birth_date: new Date('1950-01-01'),
+      gender: 'male',
+    });
+    medicationCycleFindFirstMock.mockResolvedValue({ id: 'cycle-1' });
+    residualMedicationFindManyMock.mockResolvedValue([]);
+    careTeamLinkFindManyMock.mockResolvedValue([]);
+    userFindFirstMock.mockResolvedValue({ name: '薬剤師A' });
+    billingEvidenceFindFirstMock.mockResolvedValue({
+      id: 'billing-1',
+      payer_basis: 'medical',
+      applied_rule_keys: ['home_visit_single'],
+      recommended_rule_keys: ['home_visit_single'],
+      validation_notes: ['SSOT確認済み'],
+      updated_at: new Date('2026-03-10T02:00:00.000Z'),
+      calculation_context: { effective_revision_code: '2026' },
+    });
+    careCaseFindFirstMock.mockResolvedValue({ required_visit_support: null });
+    prescriptionLineFindManyMock.mockResolvedValue([]);
+    buildPhysicianReportMock.mockReturnValue({ title: 'regenerated report' });
+    careReportFindManyMock.mockResolvedValue([
+      { id: 'report-draft', report_type: 'physician_report', status: 'draft' },
+    ]);
+
+    const txUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    const txCreateManyMock = vi.fn();
+    const txFindManyMock = vi
+      .fn()
+      .mockResolvedValue([
+        { id: 'report-draft', report_type: 'physician_report', status: 'draft' },
+      ]);
+    withOrgContextMock.mockImplementation(
+      async (_orgId: string, fn: (tx: unknown) => Promise<unknown>) =>
+        fn({
+          careReport: {
+            updateMany: txUpdateManyMock,
+            createMany: txCreateManyMock,
+            findMany: txFindManyMock,
+          },
+        }),
+    );
+
+    const result = await generateReportsFromVisit('org-1', 'user-1', 'vr-1');
+
+    expect(txUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'report-draft', org_id: 'org-1', status: 'draft' },
+      data: {
+        content: expect.objectContaining({
+          title: 'regenerated report',
+          billing_context: expect.objectContaining({
+            billing_evidence_id: 'billing-1',
+            payer_basis: 'medical',
+          }),
+          source_provenance: expect.objectContaining({
+            visit_record_id: 'vr-1',
+            visit_record_version: 7,
+            visit_record_updated_at: '2026-03-10T03:00:00.000Z',
+            schedule_id: 'vs-1',
+            medication_cycle_id: 'cycle-1',
+          }),
+        }),
+      },
+    });
+    expect(txCreateManyMock).not.toHaveBeenCalled();
+    expect(txFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org-1',
+        visit_record_id: 'vr-1',
+        report_type: { in: ['physician_report'] },
+      },
+      select: { id: true, report_type: true, status: true },
+    });
+    expect(result.reports).toEqual([{ id: 'report-draft', report_type: 'physician_report' }]);
   });
 
   it('creates physician_report when not existing', async () => {
@@ -501,6 +595,8 @@ describe('generateReportsFromVisit', () => {
       visit_date: new Date('2026-03-10T01:00:00.000Z'),
       structured_soap: baseSoap,
       schedule_id: 'vs-1',
+      version: 3,
+      updated_at: new Date('2026-03-10T03:30:00.000Z'),
     });
     visitScheduleFindUniqueMock.mockResolvedValue({
       case_id: 'case-1',
@@ -584,6 +680,8 @@ describe('generateReportsFromVisit', () => {
               source_provenance: expect.objectContaining({
                 schema_version: 1,
                 visit_record_id: 'vr-1',
+                visit_record_version: 3,
+                visit_record_updated_at: '2026-03-10T03:30:00.000Z',
                 schedule_id: 'vs-1',
                 patient_id: 'p-1',
                 case_id: 'case-1',
@@ -835,7 +933,7 @@ describe('generateReportsFromVisit', () => {
         visit_record_id: 'vr-1',
         report_type: { in: ['physician_report'] },
       },
-      select: { id: true, report_type: true },
+      select: { id: true, report_type: true, status: true },
     });
     expect(result.reports).toEqual([{ id: 'report-race-winner', report_type: 'physician_report' }]);
   });

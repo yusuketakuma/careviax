@@ -860,8 +860,20 @@ describe('getScheduleVisitBriefsForSchedules', () => {
 
     const result = await getScheduleVisitBriefsForSchedules(db, {
       schedules: [
-        { scheduleId: 'schedule_1', orgId: 'org_1', patientId: 'patient_1', caseId: 'case_1' },
-        { scheduleId: 'schedule_2', orgId: 'org_1', patientId: 'patient_1', caseId: 'case_2' },
+        {
+          scheduleId: 'schedule_1',
+          orgId: 'org_1',
+          patientId: 'patient_1',
+          caseId: 'case_1',
+          scheduledDate: new Date('2026-06-10T00:00:00.000Z'),
+        },
+        {
+          scheduleId: 'schedule_2',
+          orgId: 'org_1',
+          patientId: 'patient_1',
+          caseId: 'case_2',
+          scheduledDate: new Date('2026-06-17T00:00:00.000Z'),
+        },
       ],
     });
 
@@ -878,9 +890,29 @@ describe('getScheduleVisitBriefsForSchedules', () => {
         where: expect.objectContaining({ case_id: { in: ['case_2'] } }),
       }),
     );
+    expect(db.visitRecord.findFirst).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          schedule_id: { not: 'schedule_1' },
+          visit_date: { lt: new Date('2026-06-10T00:00:00.000Z') },
+          schedule: { case_id: { in: ['case_1'] } },
+        }),
+      }),
+    );
+    expect(db.visitRecord.findFirst).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          schedule_id: { not: 'schedule_2' },
+          visit_date: { lt: new Date('2026-06-17T00:00:00.000Z') },
+          schedule: { case_id: { in: ['case_2'] } },
+        }),
+      }),
+    );
   });
 
-  it('deduplicates schedule briefs for the same patient and case scope', async () => {
+  it('builds independent schedule briefs for the same patient and case scope', async () => {
     const db = {
       careCase: {
         findMany: vi.fn().mockResolvedValue([{ id: 'case_1' }]),
@@ -913,15 +945,27 @@ describe('getScheduleVisitBriefsForSchedules', () => {
 
     const result = await getScheduleVisitBriefsForSchedules(db, {
       schedules: [
-        { scheduleId: 'schedule_1', orgId: 'org_1', patientId: 'patient_1', caseId: 'case_1' },
-        { scheduleId: 'schedule_2', orgId: 'org_1', patientId: 'patient_1', caseId: 'case_1' },
+        {
+          scheduleId: 'schedule_1',
+          orgId: 'org_1',
+          patientId: 'patient_1',
+          caseId: 'case_1',
+          scheduledDate: new Date('2026-06-10T00:00:00.000Z'),
+        },
+        {
+          scheduleId: 'schedule_2',
+          orgId: 'org_1',
+          patientId: 'patient_1',
+          caseId: 'case_1',
+          scheduledDate: new Date('2026-06-10T00:00:00.000Z'),
+        },
       ],
     });
 
     expect([...result.keys()]).toEqual(['schedule_1', 'schedule_2']);
-    expect(result.get('schedule_1')).toBe(result.get('schedule_2'));
-    expect(db.patient.findFirst).toHaveBeenCalledTimes(1);
-    expect(db.visitScheduleContactLog.findMany).toHaveBeenCalledTimes(1);
-    expect(generateVisitBriefAiSummaryMock).toHaveBeenCalledTimes(1);
+    expect(result.get('schedule_1')).not.toBe(result.get('schedule_2'));
+    expect(db.patient.findFirst).toHaveBeenCalledTimes(2);
+    expect(db.visitScheduleContactLog.findMany).toHaveBeenCalledTimes(2);
+    expect(generateVisitBriefAiSummaryMock).toHaveBeenCalledTimes(2);
   });
 });
