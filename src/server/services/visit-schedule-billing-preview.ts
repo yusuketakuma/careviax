@@ -5,6 +5,7 @@ import {
   type BillingCadencePreview,
   type BillingCadenceScheduleRow,
   type BillingRequirementAlert,
+  type BillingRequirementWorkflowSnapshot,
 } from './billing-requirement-validator';
 import { resolveBillingPayerBasis } from './billing-payer-basis';
 import { resolvePatientInsurance } from './patient-insurance';
@@ -99,6 +100,21 @@ type BillingPreviewInsurancePrefetch = {
 type BillingPreviewRuntimeContextCache = Map<string, Promise<BillingRuntimeContextResult>>;
 type BillingPreviewPharmacistWeeklyCapById = Map<string, number | null>;
 type BillingPreviewCadenceScheduleRows = BillingCadenceScheduleRow[];
+type BillingPreviewConsentRecord = {
+  id: string;
+  patient_id: string;
+  expiry_date: Date | null;
+  obtained_date: Date | null;
+};
+type BillingPreviewManagementPlanRecord = {
+  id: string;
+  case_id: string;
+  status: string;
+  next_review_date: Date | null;
+  effective_from: Date | null;
+  version: number | null;
+  approved_at: Date | null;
+};
 
 const BILLING_PREVIEW_CADENCE_SEARCH_DAYS = 120;
 
@@ -192,6 +208,24 @@ function comparePendingPublicSubsidyPriority(
   );
 }
 
+function compareConsentRecordPriority(
+  left: BillingPreviewConsentRecord,
+  right: BillingPreviewConsentRecord,
+): number {
+  return (right.obtained_date?.getTime() ?? 0) - (left.obtained_date?.getTime() ?? 0);
+}
+
+function compareManagementPlanPriority(
+  left: BillingPreviewManagementPlanRecord,
+  right: BillingPreviewManagementPlanRecord,
+): number {
+  return (
+    compareNullableDateDesc(left.effective_from, right.effective_from) ||
+    (right.version ?? 0) - (left.version ?? 0) ||
+    compareNullableDateDesc(left.approved_at, right.approved_at)
+  );
+}
+
 function insuranceCoversDate(record: BillingPreviewInsuranceRecord, asOf: Date): boolean {
   const effectiveDate = effectiveInsuranceDate(asOf);
   return (
@@ -256,6 +290,76 @@ function buildBillingPreviewInsurancePrefetch(
         number: record.number,
         application_submitted_at: record.application_submitted_at,
         valid_from: record.valid_from,
+      };
+    },
+  };
+}
+
+function buildBillingPreviewWorkflowSnapshot(args: {
+  consents: BillingPreviewConsentRecord[];
+  managementPlans: BillingPreviewManagementPlanRecord[];
+  consentActiveAsOf: Date;
+}): BillingRequirementWorkflowSnapshot {
+  const consentsByPatientId = new Map<string, BillingPreviewConsentRecord[]>();
+  for (const consent of args.consents) {
+    const patientConsents = consentsByPatientId.get(consent.patient_id);
+    if (patientConsents) {
+      patientConsents.push(consent);
+    } else {
+      consentsByPatientId.set(consent.patient_id, [consent]);
+    }
+  }
+  for (const consents of consentsByPatientId.values()) {
+    consents.sort(compareConsentRecordPriority);
+  }
+
+  const plansByCaseId = new Map<string, BillingPreviewManagementPlanRecord[]>();
+  for (const plan of args.managementPlans) {
+    const casePlans = plansByCaseId.get(plan.case_id);
+    if (casePlans) {
+      casePlans.push(plan);
+    } else {
+      plansByCaseId.set(plan.case_id, [plan]);
+    }
+  }
+  for (const plans of plansByCaseId.values()) {
+    plans.sort(compareManagementPlanPriority);
+  }
+
+  return {
+    resolveConsent(resolveArgs) {
+      const consent =
+        consentsByPatientId
+          .get(resolveArgs.patientId)
+          ?.find(
+            (candidate) =>
+              candidate.expiry_date == null || candidate.expiry_date >= args.consentActiveAsOf,
+          ) ?? null;
+      if (!consent) return null;
+
+      return {
+        id: consent.id,
+        expiry_date: consent.expiry_date,
+      };
+    },
+    resolveManagementPlan(resolveArgs) {
+      const current =
+        plansByCaseId
+          .get(resolveArgs.caseId)
+          ?.find(
+            (candidate) =>
+              candidate.effective_from == null || candidate.effective_from <= resolveArgs.asOf,
+          ) ?? null;
+
+      return {
+        current: current
+          ? {
+              id: current.id,
+              status: current.status,
+            }
+          : null,
+        reviewOverdue:
+          current?.next_review_date != null && current.next_review_date < resolveArgs.asOf,
       };
     },
   };
@@ -342,6 +446,69 @@ async function prefetchBillingPreviewPharmacistWeeklyCaps(args: {
   }
 
   return capById;
+}
+
+async function prefetchBillingPreviewWorkflowSnapshot(args: {
+  orgId: string;
+  careCases: BillingPreviewCareCase[];
+  proposedDates: string[];
+}): Promise<BillingRequirementWorkflowSnapshot> {
+  const patientIds = [...new Set(args.careCases.map((careCase) => careCase.patient_id))];
+  const caseIds = [...new Set(args.careCases.map((careCase) => careCase.id))];
+  if (patientIds.length === 0 || caseIds.length === 0 || args.proposedDates.length === 0) {
+    return buildBillingPreviewWorkflowSnapshot({
+      consents: [],
+      managementPlans: [],
+      consentActiveAsOf: new Date(),
+    });
+  }
+
+  const proposedDates = args.proposedDates
+    .map((date) => new Date(date))
+    .sort((left, right) => left.getTime() - right.getTime());
+  const maxDate = proposedDates[proposedDates.length - 1]!;
+  const consentActiveAsOf = new Date();
+
+  const [consents, managementPlans] = await Promise.all([
+    prisma.consentRecord.findMany({
+      where: {
+        org_id: args.orgId,
+        patient_id: { in: patientIds },
+        consent_type: 'visit_medication_management',
+        is_active: true,
+        revoked_date: null,
+        OR: [{ expiry_date: null }, { expiry_date: { gte: consentActiveAsOf } }],
+      },
+      orderBy: [{ obtained_date: 'desc' }],
+      select: {
+        id: true,
+        patient_id: true,
+        expiry_date: true,
+        obtained_date: true,
+      },
+    }),
+    prisma.managementPlan.findMany({
+      where: {
+        org_id: args.orgId,
+        case_id: { in: caseIds },
+        status: 'approved',
+        approved_at: { not: null },
+        OR: [{ effective_from: null }, { effective_from: { lte: maxDate } }],
+      },
+      orderBy: [{ effective_from: 'desc' }, { version: 'desc' }, { approved_at: 'desc' }],
+      select: {
+        id: true,
+        case_id: true,
+        status: true,
+        next_review_date: true,
+        effective_from: true,
+        version: true,
+        approved_at: true,
+      },
+    }),
+  ]);
+
+  return buildBillingPreviewWorkflowSnapshot({ consents, managementPlans, consentActiveAsOf });
 }
 
 async function prefetchBillingPreviewCadenceSchedules(args: {
@@ -535,6 +702,7 @@ async function buildVisitScheduleBillingPreviewForCareCase(
     runtimeContextCache?: BillingPreviewRuntimeContextCache;
     pharmacistWeeklyCapById?: BillingPreviewPharmacistWeeklyCapById;
     cadenceScheduleRows?: BillingPreviewCadenceScheduleRows;
+    workflowSnapshot?: BillingRequirementWorkflowSnapshot;
   },
   careCase: BillingPreviewCareCase,
 ): Promise<VisitScheduleBillingPreview | null> {
@@ -621,6 +789,7 @@ async function buildVisitScheduleBillingPreviewForCareCase(
     payerBasis: payerBasis === 'self_pay' ? 'medical' : payerBasis,
     specialCapEligible,
     ...(args.cadenceScheduleRows ? { cadenceScheduleRows: args.cadenceScheduleRows } : {}),
+    ...(args.workflowSnapshot ? { workflowSnapshot: args.workflowSnapshot } : {}),
   } as const;
 
   const runtimeContext = await resolveBillingRuntimeContextWithCache({
@@ -684,6 +853,8 @@ export async function buildVisitScheduleBillingPreviewBatch(
     typeof prisma.visitSchedule?.count !== 'function' ||
     typeof prisma.user?.findFirst !== 'function' ||
     typeof prisma.user?.findMany !== 'function' ||
+    typeof prisma.consentRecord?.findMany !== 'function' ||
+    typeof prisma.managementPlan?.findMany !== 'function' ||
     typeof prisma.pharmacySiteInsuranceConfig?.findFirst !== 'function' ||
     typeof prisma.patientInsurance?.findFirst !== 'function' ||
     typeof prisma.patientInsurance?.findMany !== 'function'
@@ -727,6 +898,11 @@ export async function buildVisitScheduleBillingPreviewBatch(
     careCases,
     proposedDates: args.map((item) => item.proposedDate),
   });
+  const workflowSnapshot = await prefetchBillingPreviewWorkflowSnapshot({
+    orgId,
+    careCases,
+    proposedDates: args.map((item) => item.proposedDate),
+  });
   const runtimeContextCache: BillingPreviewRuntimeContextCache = new Map();
   const previewByInput = new Map<string, Promise<VisitScheduleBillingPreview | null>>();
   const entries = await Promise.all(
@@ -755,6 +931,7 @@ export async function buildVisitScheduleBillingPreviewBatch(
                 runtimeContextCache,
                 pharmacistWeeklyCapById,
                 cadenceScheduleRows,
+                workflowSnapshot,
               },
               careCase,
             )

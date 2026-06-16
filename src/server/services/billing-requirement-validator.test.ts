@@ -241,6 +241,32 @@ describe('validateBillingRequirements', () => {
     );
   });
 
+  it('uses prefetched workflow snapshot without loading consent or management plan rows', async () => {
+    const alerts = await validateBillingRequirements({
+      ...baseArgs,
+      workflowSnapshot: {
+        resolveConsent() {
+          return {
+            id: 'consent_expired',
+            expiry_date: new Date('2026-04-10T00:00:00.000Z'),
+          };
+        },
+        resolveManagementPlan() {
+          return {
+            current: { id: 'plan_1', status: 'approved' },
+            reviewOverdue: true,
+          };
+        },
+      },
+    });
+
+    expect(findActiveVisitConsentMock).not.toHaveBeenCalled();
+    expect(findCurrentManagementPlanMock).not.toHaveBeenCalled();
+    expect(alerts.map((alert) => alert.type)).toEqual(
+      expect.arrayContaining(['missing_management_plan', 'consent_expired_or_missing']),
+    );
+  });
+
   it('does not warn when pharmacist capacity is below threshold', async () => {
     // baseArgs → 2 count calls
     prismaMock.visitSchedule.count

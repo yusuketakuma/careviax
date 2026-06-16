@@ -52,6 +52,7 @@ export type ValidateBillingRequirementsArgs = {
   specialCapEligible?: boolean;
   pharmacistWeeklyCap?: number | null;
   cadenceScheduleRows?: BillingCadenceScheduleRow[];
+  workflowSnapshot?: BillingRequirementWorkflowSnapshot;
 };
 
 export type BillingCadenceScheduleRow = {
@@ -59,6 +60,27 @@ export type BillingCadenceScheduleRow = {
   scheduled_date: Date;
   pharmacist_id?: string | null;
   visit_type?: string | null;
+};
+
+export type BillingRequirementConsentSnapshot = {
+  id: string;
+  expiry_date?: Date | null;
+};
+
+export type BillingRequirementManagementPlanSnapshot = {
+  current: {
+    id: string;
+    status?: string;
+  } | null;
+  reviewOverdue: boolean;
+};
+
+export type BillingRequirementWorkflowSnapshot = {
+  resolveConsent(args: { patientId: string; asOf: Date }): BillingRequirementConsentSnapshot | null;
+  resolveManagementPlan(args: {
+    caseId: string;
+    asOf: Date;
+  }): BillingRequirementManagementPlanSnapshot;
 };
 
 export type BillingCadencePreview = {
@@ -320,15 +342,29 @@ export async function validateBillingRequirements(
           })
       : Promise.resolve(0),
     // Consent check
-    findActiveVisitConsent(prisma, {
-      orgId: args.orgId,
-      patientId: args.patientId,
-    }),
+    args.workflowSnapshot
+      ? Promise.resolve(
+          args.workflowSnapshot.resolveConsent({
+            patientId: args.patientId,
+            asOf: args.proposedDate,
+          }),
+        )
+      : findActiveVisitConsent(prisma, {
+          orgId: args.orgId,
+          patientId: args.patientId,
+        }),
     // Management plan check
-    findCurrentManagementPlan(prisma, {
-      orgId: args.orgId,
-      caseId: args.caseId,
-    }),
+    args.workflowSnapshot
+      ? Promise.resolve(
+          args.workflowSnapshot.resolveManagementPlan({
+            caseId: args.caseId,
+            asOf: args.proposedDate,
+          }),
+        )
+      : findCurrentManagementPlan(prisma, {
+          orgId: args.orgId,
+          caseId: args.caseId,
+        }),
   ]);
 
   const pharmacist =

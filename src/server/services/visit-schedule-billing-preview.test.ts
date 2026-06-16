@@ -9,6 +9,8 @@ const {
   visitScheduleCountMock,
   userFindFirstMock,
   userFindManyMock,
+  consentRecordFindManyMock,
+  managementPlanFindManyMock,
   pharmacySiteInsuranceConfigFindFirstMock,
   resolvePatientInsuranceMock,
   findLatestPrescriptionIntakeClassificationMock,
@@ -24,6 +26,8 @@ const {
   visitScheduleCountMock: vi.fn(),
   userFindFirstMock: vi.fn(),
   userFindManyMock: vi.fn(),
+  consentRecordFindManyMock: vi.fn(),
+  managementPlanFindManyMock: vi.fn(),
   pharmacySiteInsuranceConfigFindFirstMock: vi.fn(),
   resolvePatientInsuranceMock: vi.fn(),
   findLatestPrescriptionIntakeClassificationMock: vi.fn(),
@@ -52,6 +56,12 @@ vi.mock('@/lib/db/client', () => ({
     user: {
       findFirst: userFindFirstMock,
       findMany: userFindManyMock,
+    },
+    consentRecord: {
+      findMany: consentRecordFindManyMock,
+    },
+    managementPlan: {
+      findMany: managementPlanFindManyMock,
     },
     pharmacySiteInsuranceConfig: {
       findFirst: pharmacySiteInsuranceConfigFindFirstMock,
@@ -145,6 +155,8 @@ describe('buildVisitScheduleBillingPreview', () => {
     patientInsuranceFindManyMock.mockResolvedValue([]);
     visitScheduleFindManyMock.mockResolvedValue([]);
     userFindManyMock.mockResolvedValue([{ id: 'pharm_1', max_weekly_visits: 24 }]);
+    consentRecordFindManyMock.mockResolvedValue([]);
+    managementPlanFindManyMock.mockResolvedValue([]);
     validateBillingRequirementsMock.mockResolvedValue([]);
     getBillingCadencePreviewMock.mockResolvedValue({
       monthly_cap: 4,
@@ -706,5 +718,161 @@ describe('buildVisitScheduleBillingPreview', () => {
         ],
       }),
     );
+  });
+
+  it('prefetches workflow gate snapshots once for batch validation', async () => {
+    const expiredConsentDate = new Date('2026-04-05T00:00:00.000Z');
+    const validConsentDate = new Date('2027-05-01T00:00:00.000Z');
+    consentRecordFindManyMock.mockResolvedValue([
+      {
+        id: 'consent_expiring',
+        patient_id: 'patient_1',
+        expiry_date: expiredConsentDate,
+        obtained_date: new Date('2026-03-01T00:00:00.000Z'),
+      },
+      {
+        id: 'consent_current',
+        patient_id: 'patient_2',
+        expiry_date: validConsentDate,
+        obtained_date: new Date('2026-03-02T00:00:00.000Z'),
+      },
+    ]);
+    managementPlanFindManyMock.mockResolvedValue([
+      {
+        id: 'plan_1',
+        case_id: 'case_1',
+        status: 'approved',
+        next_review_date: new Date('2026-04-09T00:00:00.000Z'),
+        effective_from: new Date('2026-04-01T00:00:00.000Z'),
+        version: 1,
+        approved_at: new Date('2026-03-25T00:00:00.000Z'),
+      },
+      {
+        id: 'plan_2',
+        case_id: 'case_2',
+        status: 'approved',
+        next_review_date: new Date('2026-05-01T00:00:00.000Z'),
+        effective_from: new Date('2026-04-01T00:00:00.000Z'),
+        version: 1,
+        approved_at: new Date('2026-03-26T00:00:00.000Z'),
+      },
+    ]);
+    careCaseFindManyMock.mockResolvedValue([
+      {
+        id: 'case_1',
+        patient_id: 'patient_1',
+        primary_pharmacist_id: 'pharm_1',
+        required_visit_support: null,
+        patient: {
+          id: 'patient_1',
+        },
+      },
+      {
+        id: 'case_2',
+        patient_id: 'patient_2',
+        primary_pharmacist_id: 'pharm_2',
+        required_visit_support: null,
+        patient: {
+          id: 'patient_2',
+        },
+      },
+    ]);
+
+    await buildVisitScheduleBillingPreviewBatch(
+      [
+        {
+          key: 'proposal_1',
+          caseId: 'case_1',
+          proposedDate: '2026-04-10',
+          pharmacistId: 'pharm_1',
+          siteId: 'site_1',
+          visitType: 'regular',
+        },
+        {
+          key: 'proposal_2',
+          caseId: 'case_2',
+          proposedDate: '2026-04-10',
+          pharmacistId: 'pharm_2',
+          siteId: 'site_1',
+          visitType: 'regular',
+        },
+      ],
+      'org_1',
+    );
+
+    expect(consentRecordFindManyMock).toHaveBeenCalledTimes(1);
+    expect(consentRecordFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          patient_id: { in: ['patient_1', 'patient_2'] },
+          consent_type: 'visit_medication_management',
+          is_active: true,
+          revoked_date: null,
+        }),
+        select: {
+          id: true,
+          patient_id: true,
+          expiry_date: true,
+          obtained_date: true,
+        },
+      }),
+    );
+    expect(managementPlanFindManyMock).toHaveBeenCalledTimes(1);
+    expect(managementPlanFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          case_id: { in: ['case_1', 'case_2'] },
+          status: 'approved',
+          approved_at: { not: null },
+        }),
+        select: {
+          id: true,
+          case_id: true,
+          status: true,
+          next_review_date: true,
+          effective_from: true,
+          version: true,
+          approved_at: true,
+        },
+      }),
+    );
+
+    const firstValidationArgs = validateBillingRequirementsMock.mock.calls[0]?.[0];
+    const secondValidationArgs = validateBillingRequirementsMock.mock.calls[1]?.[0];
+    expect(firstValidationArgs).toEqual(
+      expect.objectContaining({
+        patientId: 'patient_1',
+        workflowSnapshot: expect.any(Object),
+      }),
+    );
+    expect(secondValidationArgs).toEqual(
+      expect.objectContaining({
+        patientId: 'patient_2',
+        workflowSnapshot: expect.any(Object),
+      }),
+    );
+    expect(
+      firstValidationArgs.workflowSnapshot.resolveConsent({
+        patientId: 'patient_1',
+        asOf: new Date('2026-04-10T00:00:00.000Z'),
+      }),
+    ).toBe(null);
+    expect(
+      secondValidationArgs.workflowSnapshot.resolveConsent({
+        patientId: 'patient_2',
+        asOf: new Date('2026-04-10T00:00:00.000Z'),
+      }),
+    ).toEqual({ id: 'consent_current', expiry_date: validConsentDate });
+    expect(
+      firstValidationArgs.workflowSnapshot.resolveManagementPlan({
+        caseId: 'case_1',
+        asOf: new Date('2026-04-10T00:00:00.000Z'),
+      }),
+    ).toEqual({
+      current: { id: 'plan_1', status: 'approved' },
+      reviewOverdue: true,
+    });
   });
 });
