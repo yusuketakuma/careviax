@@ -177,6 +177,60 @@
   }
 }
 
+@layer components {
+  .phos-patient-card-motion {
+    animation: phos-patient-card-enter 180ms ease-out both;
+    transition:
+      border-color 140ms ease-out,
+      box-shadow 140ms ease-out,
+      transform 180ms ease-out;
+  }
+
+  .phos-patient-card-motion:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 24px oklch(0.15 0.01 250 / 8%);
+  }
+
+  .phos-patient-empty-state {
+    animation: phos-patient-empty-enter 160ms ease-out both;
+  }
+
+  @keyframes phos-patient-card-enter {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes phos-patient-empty-enter {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .phos-patient-card-motion,
+  .phos-patient-empty-state {
+    animation: none;
+    transition: none;
+  }
+
+  .phos-patient-card-motion:hover {
+    transform: none;
+    box-shadow: none;
+  }
+}
+
 @media print {
   @page {
     size: A4;

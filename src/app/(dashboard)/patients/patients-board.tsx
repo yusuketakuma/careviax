@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useDeferredValue, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -15,7 +15,6 @@ import {
 import { buttonVariants } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/loading';
 import { FilterChipBar } from '@/components/features/workspace/filter-chip-bar';
 import {
   WorkspaceActionRail,
@@ -38,6 +37,7 @@ import type {
   PatientBoardResponse,
   PatientStatusTone,
 } from '@/types/patient-board';
+import { PatientBoardLoadingShell } from './patient-board-loading';
 
 /**
  * new_02_patient_list の患者カード一覧(docs/design-gap-analysis-new.md)。
@@ -60,10 +60,17 @@ export async function fetchPatientBoard(
 }
 
 type BoardScope = 'mine' | 'all';
+type BoardSort = 'priority' | 'next_visit' | 'name';
 
 const SCOPE_OPTIONS: Array<{ value: BoardScope; label: string }> = [
   { value: 'mine', label: '私の担当' },
   { value: 'all', label: '全員' },
+];
+
+const SORT_OPTIONS: Array<{ value: BoardSort; label: string }> = [
+  { value: 'priority', label: '対応が必要な順' },
+  { value: 'next_visit', label: '訪問が近い順' },
+  { value: 'name', label: '氏名順' },
 ];
 
 /** フィルタチップ。「今すぐ対応」=既定(優先順で全件表示)、他は絞り込み。 */
@@ -171,6 +178,27 @@ function formatAgeLabel(minutes: number): string {
   if (safeMinutes < 60) return `${safeMinutes}分`;
   if (safeMinutes < 24 * 60) return `${Math.floor(safeMinutes / 60)}時間`;
   return `${Math.floor(safeMinutes / (24 * 60))}日`;
+}
+
+function normalizeSearchText(value: string | null | undefined): string {
+  return (value ?? '').trim().toLocaleLowerCase('ja-JP');
+}
+
+function getVisitSortKey(card: PatientBoardCard): string {
+  const date = card.next_visit_date ?? '9999-12-31';
+  const time = card.next_visit_time ?? '99:99';
+  return `${date}T${time}`;
+}
+
+function sortPatientCards(cards: PatientBoardCard[], sort: BoardSort): PatientBoardCard[] {
+  if (sort === 'priority') return cards;
+  return [...cards].sort((left, right) => {
+    if (sort === 'next_visit') {
+      const visitCompare = getVisitSortKey(left).localeCompare(getVisitSortKey(right));
+      if (visitCompare !== 0) return visitCompare;
+    }
+    return left.name.localeCompare(right.name, 'ja');
+  });
 }
 
 /** 次回訪問の表示(本日 14:00 / 6/13(土) 10:00 / 退院連絡待ち)。 */
@@ -315,7 +343,7 @@ function PatientBoardCardItem({ card, now }: { card: PatientBoardCard; now: Date
 
   return (
     <article
-      className="relative flex flex-col gap-2 overflow-hidden rounded-lg border border-border/70 bg-card p-4 pl-5"
+      className="phos-patient-card-motion relative flex flex-col gap-2 overflow-hidden rounded-lg border border-border/70 bg-card p-4 pl-5"
       data-testid="patient-board-card"
       data-attention={card.attention}
     >
@@ -390,7 +418,11 @@ function PatientBoardCardItem({ card, now }: { card: PatientBoardCard; now: Date
       </p>
 
       <div className="mt-auto flex flex-wrap gap-2 pt-1">
-        <Link href={card.link_href} className={buttonVariants({ variant: 'outline', size: 'sm' })}>
+        <Link
+          href={card.link_href}
+          className={buttonVariants({ variant: 'outline', size: 'sm' })}
+          aria-label={`${card.name} ${card.link_label}`}
+        >
           → {card.link_label}
         </Link>
         <Link
@@ -424,32 +456,13 @@ function buildNextAction(data: PatientBoardResponse): NextActionPanelProps {
   };
 }
 
-function BoardSkeleton() {
-  return (
-    <div
-      className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]"
-      role="status"
-      aria-label="患者一覧読み込み中"
-    >
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-        {Array.from({ length: 8 }).map((_, index) => (
-          <Skeleton key={index} className="h-44 w-full rounded-lg" />
-        ))}
-      </div>
-      <div className="space-y-4">
-        {Array.from({ length: 3 }).map((_, index) => (
-          <Skeleton key={index} className="h-32 w-full rounded-lg" />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export function PatientsBoard() {
   const orgId = useOrgId();
   const [scope, setScope] = useState<BoardScope>('mine');
   const [chip, setChip] = useState<BoardChipValue>('priority');
+  const [sort, setSort] = useState<BoardSort>('priority');
   const [searchQuery, setSearchQuery] = useState('');
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const isBootstrappingOrg = !orgId;
 
   const boardQuery = useRealtimeQuery({
@@ -462,6 +475,8 @@ export function PatientsBoard() {
 
   const now = new Date();
   const data = boardQuery.data ?? null;
+  const isRefreshing = Boolean(boardQuery.isFetching && !boardQuery.isLoading);
+  const isSearchSettling = searchQuery !== deferredSearchQuery;
   const dateLabel = `${format(now, 'M/d(EEE) HH:mm', { locale: ja })} — カードの色＝いま必要な対応`;
 
   const todayKey = format(now, 'yyyy-MM-dd');
@@ -478,15 +493,23 @@ export function PatientsBoard() {
             if (chip === 'visit_today') return card.next_visit_date === todayKey;
             return card.attention === 'paused';
           });
-    const query = searchQuery.trim();
-    if (!query) return byChip;
-    return byChip.filter(
-      (card) =>
-        card.name.includes(query) ||
-        (card.address ?? '').includes(query) ||
-        card.residence_label.includes(query),
-    );
-  }, [chip, data, searchQuery, todayKey]);
+    const query = normalizeSearchText(deferredSearchQuery);
+    const searched = query
+      ? byChip.filter((card) =>
+          [
+            card.name,
+            card.address,
+            card.residence_label,
+            card.next_visit_label,
+            card.status_text,
+            ...(card.operation_summary ?? []),
+          ]
+            .map(normalizeSearchText)
+            .some((value) => value.includes(query)),
+        )
+      : byChip;
+    return sortPatientCards(searched, sort);
+  }, [chip, data, deferredSearchQuery, sort, todayKey]);
 
   const chipOptions = useMemo(() => {
     const counts = data?.chip_counts;
@@ -547,15 +570,30 @@ export function PatientsBoard() {
     : [];
 
   return (
-    <section aria-label="患者カード一覧" data-testid="patients-board">
+    <section
+      aria-label="患者カード一覧"
+      aria-busy={isBootstrappingOrg || boardQuery.isLoading || isRefreshing || isSearchSettling}
+      data-testid="patients-board"
+    >
       <div className="rounded-lg border border-border/70 bg-card p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <h2 className="text-xl font-bold text-foreground">患者一覧</h2>
             {/* HH:mm を含むため、SSR とハイドレーションが分を跨ぐと text mismatch になる */}
-            <p className="text-sm text-muted-foreground" suppressHydrationWarning>
-              {dateLabel}
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm text-muted-foreground" suppressHydrationWarning>
+                {dateLabel}
+              </p>
+              {isRefreshing ? (
+                <span
+                  className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700"
+                  role="status"
+                  aria-live="polite"
+                >
+                  最新の患者状態を確認中
+                </span>
+              ) : null}
+            </div>
           </div>
           <FilterChipBar
             options={SCOPE_OPTIONS}
@@ -585,7 +623,21 @@ export function PatientsBoard() {
 
         <div className="mt-4 border-t border-border/70 pt-3">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <span className="text-xs text-muted-foreground">並び: 対応が必要な順</span>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              並び
+              <select
+                value={sort}
+                onChange={(event) => setSort(event.target.value as BoardSort)}
+                className="min-h-[44px] rounded-lg border border-input bg-background px-2 py-1 text-sm font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="患者カードの並び順"
+              >
+                {SORT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <FilterChipBar
               options={chipOptions}
               value={chip}
@@ -616,6 +668,13 @@ export function PatientsBoard() {
                   className="h-9 w-56 pl-8"
                 />
               </div>
+              <p className="sr-only" role="status" aria-live="polite">
+                {isSearchSettling
+                  ? '検索結果を更新中'
+                  : data
+                    ? `${visibleCards.length}名を表示中`
+                    : '患者一覧を読み込み中'}
+              </p>
             </div>
           </div>
         </div>
@@ -623,7 +682,7 @@ export function PatientsBoard() {
 
       <div className="mt-6">
         {isBootstrappingOrg || boardQuery.isLoading ? (
-          <BoardSkeleton />
+          <PatientBoardLoadingShell />
         ) : boardQuery.isError || !data ? (
           <div className="rounded-lg border border-border/70 bg-card p-4">
             <ErrorState
@@ -638,9 +697,14 @@ export function PatientsBoard() {
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]">
             <div className="min-w-0">
               {visibleCards.length === 0 ? (
-                <p className="rounded-lg border border-border/70 bg-card px-4 py-6 text-sm text-muted-foreground">
-                  条件に一致する患者がいません。チップや検索条件を変更してください。
-                </p>
+                <div className="phos-patient-empty-state rounded-lg border border-border/70 bg-card px-4 py-6">
+                  <p className="text-sm font-medium text-foreground">
+                    条件に一致する患者がいません
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    チップ、検索語、並び順を確認してください。患者安全タグや警告は条件を戻すと再表示されます。
+                  </p>
+                </div>
               ) : (
                 <div
                   className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"

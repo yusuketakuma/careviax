@@ -21,6 +21,7 @@ vi.mock('@/lib/hooks/use-realtime-query', () => ({
 }));
 
 import { PatientsBoard, formatNextVisitLabel } from './patients-board';
+import { PatientBoardLoadingShell } from './patient-board-loading';
 
 function localIso(hours: number, minutes = 0) {
   return new Date(2026, 5, 12, hours, minutes).toISOString();
@@ -196,7 +197,9 @@ describe('PatientsBoard', () => {
     expect(within(summary).getByText('止まっている')).toBeTruthy();
     expect(within(summary).getByText('外部待ち0名 / 休止1名')).toBeTruthy();
 
-    expect(screen.getByText('並び: 対応が必要な順')).toBeTruthy();
+    expect(
+      (screen.getByRole('combobox', { name: '患者カードの並び順' }) as HTMLSelectElement).value,
+    ).toBe('priority');
     const chipBar = screen.getByRole('group', { name: '対応カテゴリの絞り込み' });
     expect(within(chipBar).getByRole('button', { name: /今すぐ対応/ })).toBeTruthy();
     expect(within(chipBar).getByRole('button', { name: /本日訪問 3＋施設12名/ })).toBeTruthy();
@@ -217,7 +220,7 @@ describe('PatientsBoard', () => {
     // 今すぐ対応カード: 危険タグを隠さない + 状態自然文 + 工程ショートカット
     const urgent = cards.find((node) => node.getAttribute('data-attention') === 'urgent_now');
     expect(urgent).toBeTruthy();
-    expect(within(urgent as HTMLElement).getByText('田中 一郎')).toBeTruthy();
+    expect(within(urgent as HTMLElement).getByRole('link', { name: '田中 一郎' })).toBeTruthy();
     expect(within(urgent as HTMLElement).getByText('今すぐ対応')).toBeTruthy();
     expect(within(urgent as HTMLElement).getByText('麻薬')).toBeTruthy();
     expect(within(urgent as HTMLElement).getByText('冷所')).toBeTruthy();
@@ -230,7 +233,9 @@ describe('PatientsBoard', () => {
     expect(
       within(urgent as HTMLElement).getByText('麻薬監査 期限12:00 — 持参薬が未確定'),
     ).toBeTruthy();
-    expect(within(urgent as HTMLElement).getByRole('link', { name: '→ 監査へ' })).toBeTruthy();
+    expect(
+      within(urgent as HTMLElement).getByRole('link', { name: '田中 一郎 監査へ' }),
+    ).toBeTruthy();
     expect(
       within(urgent as HTMLElement)
         .getByRole('link', { name: '患者詳細' })
@@ -261,13 +266,13 @@ describe('PatientsBoard', () => {
 
     fireEvent.click(within(chipBar).getByRole('button', { name: /休止/ }));
     expect(screen.getAllByTestId('patient-board-card')).toHaveLength(1);
-    expect(screen.getByText('吉田 進')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '吉田 進' })).toBeTruthy();
 
     // 本日訪問チップは対応カテゴリに関わらず「今日訪問がある患者」(今すぐ対応の田中も含む)
     fireEvent.click(within(chipBar).getByRole('button', { name: /本日訪問/ }));
     expect(screen.getAllByTestId('patient-board-card')).toHaveLength(2);
-    expect(screen.getByText('田中 一郎')).toBeTruthy();
-    expect(screen.getByText('伊藤 キヨ')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '田中 一郎' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: '伊藤 キヨ' })).toBeTruthy();
 
     fireEvent.click(within(chipBar).getByRole('button', { name: /今すぐ対応/ }));
     expect(screen.getAllByTestId('patient-board-card')).toHaveLength(5);
@@ -276,7 +281,58 @@ describe('PatientsBoard', () => {
       target: { value: '伊藤' },
     });
     expect(screen.getAllByTestId('patient-board-card')).toHaveLength(1);
-    expect(screen.getByText('伊藤 キヨ')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '伊藤 キヨ' })).toBeTruthy();
+  });
+
+  it('sorts visible cards without changing the stable patient card keys', () => {
+    render(<PatientsBoard />);
+
+    const sortSelect = screen.getByRole('combobox', { name: '患者カードの並び順' });
+
+    fireEvent.change(sortSelect, { target: { value: 'next_visit' } });
+    expect(
+      screen.getAllByTestId('patient-board-card-link').map((link) => link.textContent),
+    ).toEqual(['伊藤 キヨ', '田中 一郎', '佐々木 ハル', '吉田 進', '鈴木 新']);
+
+    fireEvent.change(sortSelect, { target: { value: 'name' } });
+    expect(
+      screen.getAllByTestId('patient-board-card-link').map((link) => link.textContent),
+    ).toEqual(['伊藤 キヨ', '吉田 進', '佐々木 ハル', '田中 一郎', '鈴木 新']);
+  });
+
+  it('keeps patient safety information visible while realtime refresh is pending', () => {
+    useRealtimeQueryMock.mockReturnValue({
+      data: buildFixture(),
+      isLoading: false,
+      isFetching: true,
+      isError: false,
+      error: null,
+      refetch: refetchMock,
+    });
+
+    render(<PatientsBoard />);
+
+    expect(screen.queryByLabelText('患者一覧読み込み中')).toBeNull();
+    expect(screen.getByTestId('patients-board').getAttribute('aria-busy')).toBe('true');
+    expect(screen.getByText('最新の患者状態を確認中')).toBeTruthy();
+    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(5);
+    expect(screen.getByText('麻薬')).toBeTruthy();
+    expect(screen.getByText('麻薬監査 期限12:00 — 持参薬が未確定')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '田中 一郎 監査へ' })).toBeTruthy();
+  });
+
+  it('announces empty filtered results without exposing hidden search-only address data', () => {
+    render(<PatientsBoard />);
+
+    fireEvent.change(screen.getByRole('searchbox', { name: '氏名・住所で検索' }), {
+      target: { value: '存在しない患者' },
+    });
+
+    expect(screen.queryAllByTestId('patient-board-card')).toHaveLength(0);
+    expect(screen.getByText('条件に一致する患者がいません')).toBeTruthy();
+    expect(screen.getByText(/患者安全タグや警告は条件を戻すと再表示されます/)).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toContain('0名を表示中');
+    expect(screen.queryByText('東京都千代田区')).toBeNull();
   });
 
   it('uses summary tiles as shortcuts into the visible patient groups', () => {
@@ -285,8 +341,8 @@ describe('PatientsBoard', () => {
     fireEvent.click(screen.getByRole('button', { name: /本日訪問2名\+施設12名/ }));
 
     expect(screen.getAllByTestId('patient-board-card')).toHaveLength(2);
-    expect(screen.getByText('田中 一郎')).toBeTruthy();
-    expect(screen.getByText('伊藤 キヨ')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '田中 一郎' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: '伊藤 キヨ' })).toBeTruthy();
   });
 
   it('renders the action rail with the single primary action, blocked reasons and evidence', () => {
@@ -313,6 +369,18 @@ describe('PatientsBoard', () => {
     expect(within(evidence).getByText('安全タグあり')).toBeTruthy();
     expect(within(evidence).getByText('9名')).toBeTruthy();
     expect(within(evidence).getAllByRole('link', { name: /開く/ })).toHaveLength(3);
+  });
+});
+
+describe('PatientBoardLoadingShell', () => {
+  it('uses one status announcement and no patient-like placeholder data', () => {
+    render(<PatientBoardLoadingShell />);
+
+    const statuses = screen.getAllByRole('status');
+    expect(statuses).toHaveLength(1);
+    expect(statuses[0].getAttribute('aria-label')).toBe('患者一覧を読み込み中');
+    expect(screen.getByText(/患者情報の判断には使用しないでください/)).toBeTruthy();
+    expect(screen.queryByText(/0名|田中|山田|東京都|電話/)).toBeNull();
   });
 });
 

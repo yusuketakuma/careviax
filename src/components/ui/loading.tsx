@@ -4,16 +4,29 @@ import { cn } from '@/lib/utils';
 export function Skeleton({ className }: { className?: string }) {
   return (
     <div
-      className={cn('animate-pulse rounded bg-muted', className)}
+      className={cn('animate-pulse rounded bg-muted motion-reduce:animate-none', className)}
       aria-hidden="true"
     />
   );
 }
 
 // Row-based skeleton for data tables
-export function SkeletonRows({ rows = 5, cols = 4 }: { rows?: number; cols?: number }) {
+export function SkeletonRows({
+  rows = 5,
+  cols = 4,
+  status = true,
+}: {
+  rows?: number;
+  cols?: number;
+  status?: boolean;
+}) {
   return (
-    <div className="space-y-2" role="status" aria-label="読み込み中">
+    <div
+      className="space-y-2"
+      role={status ? 'status' : undefined}
+      aria-label={status ? '読み込み中' : undefined}
+      aria-hidden={status ? undefined : true}
+    >
       {Array.from({ length: rows }).map((_, i) => (
         <div key={i} className="flex gap-4">
           {Array.from({ length: cols }).map((_, j) => (
@@ -29,8 +42,12 @@ export function SkeletonRows({ rows = 5, cols = 4 }: { rows?: number; cols?: num
 // Full-page loading state
 export function Loading({ label = '読み込み中...' }: { label?: string }) {
   return (
-    <div className="flex min-h-[200px] items-center justify-center" role="status" aria-label={label}>
-      <Spinner size="lg" />
+    <div
+      className="flex min-h-[200px] items-center justify-center"
+      role="status"
+      aria-label={label}
+    >
+      <Spinner size="lg" label={null} />
       <span className="sr-only">{label}</span>
     </div>
   );
@@ -40,6 +57,7 @@ export function Loading({ label = '読み込み中...' }: { label?: string }) {
 interface SpinnerProps {
   size?: 'sm' | 'md' | 'lg';
   className?: string;
+  label?: string | null;
 }
 
 const spinnerSizes = {
@@ -48,18 +66,20 @@ const spinnerSizes = {
   lg: 'h-8 w-8 border-[3px]',
 };
 
-export function Spinner({ size = 'md', className }: SpinnerProps) {
+export function Spinner({ size = 'md', className, label = '読み込み中' }: SpinnerProps) {
   return (
     <span
       className={cn(
         'inline-block animate-spin rounded-full border-current border-b-transparent',
+        'motion-reduce:animate-none',
         spinnerSizes[size],
-        className
+        className,
       )}
-      role="status"
-      aria-label="読み込み中"
+      role={label ? 'status' : undefined}
+      aria-label={label ?? undefined}
+      aria-hidden={label ? undefined : true}
     >
-      <span className="sr-only">読み込み中...</span>
+      {label ? <span className="sr-only">{label}...</span> : null}
     </span>
   );
 }
