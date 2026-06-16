@@ -37,6 +37,7 @@ function avatarColor(userId: string): string {
 }
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
+const PRESENCE_REFETCH_INTERVAL_MS = 30_000;
 const MAX_VISIBLE = 5;
 
 export function PresenceAvatars({ entityType, entityId }: PresenceAvatarsProps) {
@@ -51,13 +52,13 @@ export function PresenceAvatars({ entityType, entityId }: PresenceAvatarsProps) 
     queryFn: async () => {
       const res = await fetch(
         `/api/presence?entity_type=${encodeURIComponent(entityType)}&entity_id=${encodeURIComponent(entityId)}`,
-        { headers: { 'x-org-id': orgId } }
+        { headers: { 'x-org-id': orgId } },
       );
       if (!res.ok) return [];
-      const json = await res.json() as { data: PresenceUser[] };
+      const json = (await res.json()) as { data: PresenceUser[] };
       return json.data ?? [];
     },
-    refetchInterval: 5000,
+    refetchInterval: PRESENCE_REFETCH_INTERVAL_MS,
     enabled: !!orgId && !!entityId,
   });
 

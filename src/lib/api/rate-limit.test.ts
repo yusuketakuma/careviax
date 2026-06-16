@@ -265,6 +265,22 @@ describe('rate-limit', () => {
     });
   });
 
+  it('canonicalizes patient home operations separately from unknown API paths', async () => {
+    for (let index = 0; index < 300; index += 1) {
+      await expect(
+        checkRateLimit('203.0.113.10', `/api/not-real-${index}`, 'GET'),
+      ).resolves.toMatchObject({
+        allowed: true,
+      });
+    }
+
+    await expect(
+      checkRateLimit('203.0.113.10', '/api/patients/patient_1/home-operations', 'GET'),
+    ).resolves.toMatchObject({
+      allowed: true,
+    });
+  });
+
   it('shares read budget across unknown API paths to prevent scan key churn', async () => {
     for (let index = 0; index < 300; index += 1) {
       await expect(

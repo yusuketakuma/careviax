@@ -143,7 +143,7 @@ export function useCollaborativeForm<TFieldValues extends FieldValues>({
     collaborationAccessDeniedState.denied &&
     collaborationAccessDeniedState.key === collaborationAccessKey;
 
-  // --- Presence polling (unchanged from Phase 5) ---
+  // Presence uses SSE invalidation first; polling is a low-frequency fallback.
   const { data: presenceData = [] } = useQuery<PresenceUser[]>({
     queryKey,
     queryFn: async () => {
@@ -155,7 +155,7 @@ export function useCollaborativeForm<TFieldValues extends FieldValues>({
       const payload = await readJsonResponseBody(res);
       return readPresenceUsersResponse(payload);
     },
-    refetchInterval: 5000,
+    refetchInterval: 30_000,
     enabled: !!orgId && !!entityId && !collaborationAccessDenied,
   });
 
