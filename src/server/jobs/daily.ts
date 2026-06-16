@@ -707,7 +707,7 @@ export async function checkVisitRecordRetention() {
     const patientById = new Map(patients.map((patient) => [patient.id, patient.name]));
 
     const taskSpecs: GeneratedTaskSpec[] = [];
-    let notificationCount = 0;
+    const notificationData: Prisma.NotificationCreateManyInput[] = [];
 
     for (const record of expiring) {
       const retentionUntil = startOfDay(addYears(record.visit_date, 5));
@@ -719,18 +719,15 @@ export async function checkVisitRecordRetention() {
       const patientName = patientById.get(record.patient_id) ?? record.patient_id;
 
       for (const adminId of adminsByOrg.get(record.org_id) ?? []) {
-        await prisma.notification.create({
-          data: {
-            org_id: record.org_id,
-            user_id: adminId,
-            type: priority === 'urgent' ? 'urgent' : 'business',
-            title: '薬歴の保存期限',
-            message: `${patientName} さんの訪問記録が${thresholdLabel}に保存期限を迎えます。保全状況を確認してください。`,
-            link: `/visits/${record.id}`,
-            dedupe_key: `visit-record-retention:${record.id}:${adminId}:${priority}`,
-          },
+        notificationData.push({
+          org_id: record.org_id,
+          user_id: adminId,
+          type: priority === 'urgent' ? 'urgent' : 'business',
+          title: '薬歴の保存期限',
+          message: `${patientName} さんの訪問記録が${thresholdLabel}に保存期限を迎えます。保全状況を確認してください。`,
+          link: `/visits/${record.id}`,
+          dedupe_key: `visit-record-retention:${record.id}:${adminId}:${priority}`,
         });
-        notificationCount += 1;
       }
 
       taskSpecs.push({
@@ -753,6 +750,16 @@ export async function checkVisitRecordRetention() {
     if (taskSpecs.length > 0) {
       await syncGeneratedOperationalTasks(taskSpecs, ['visit_record_retention']);
     }
+
+    const notificationResult =
+      notificationData.length === 0
+        ? { count: 0 }
+        : await prisma.notification.createMany({
+            data: notificationData,
+            skipDuplicates: true,
+          });
+
+    const notificationCount = notificationResult.count;
 
     return { processedCount: notificationCount };
   });

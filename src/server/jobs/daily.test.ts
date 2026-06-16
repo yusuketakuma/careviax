@@ -22,6 +22,7 @@ const {
   medicationCycleFindManyMock,
   pharmacistCredentialFindManyMock,
   notificationCreateMock,
+  notificationCreateManyMock,
   dispatchNotificationEventMock,
   taskFindManyMock,
   qrScanDraftFindManyMock,
@@ -52,6 +53,7 @@ const {
   medicationCycleFindManyMock: vi.fn(),
   pharmacistCredentialFindManyMock: vi.fn(),
   notificationCreateMock: vi.fn(),
+  notificationCreateManyMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
   taskFindManyMock: vi.fn(),
   qrScanDraftFindManyMock: vi.fn(),
@@ -124,6 +126,7 @@ vi.mock('@/lib/db', () => ({
     },
     notification: {
       create: notificationCreateMock,
+      createMany: notificationCreateManyMock,
     },
     task: {
       findMany: taskFindManyMock,
@@ -1440,6 +1443,7 @@ describe('checkVisitRecordRetention', () => {
     ]);
     patientFindManyMock.mockResolvedValue([{ id: 'patient_1', name: '山田 太郎' }]);
     notificationCreateMock.mockResolvedValue({});
+    notificationCreateManyMock.mockResolvedValue({ count: 1 });
     taskFindManyMock.mockResolvedValue([]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -1471,6 +1475,20 @@ describe('checkVisitRecordRetention', () => {
       const result = await checkVisitRecordRetention();
 
       expect(result).toMatchObject({ processedCount: 1 });
+      expect(notificationCreateMock).not.toHaveBeenCalled();
+      expect(notificationCreateManyMock).toHaveBeenCalledWith({
+        data: [
+          expect.objectContaining({
+            org_id: 'org_1',
+            user_id: 'admin_1',
+            type: 'business',
+            title: '薬歴の保存期限',
+            link: '/visits/visit_record_1',
+            dedupe_key: 'visit-record-retention:visit_record_1:admin_1:high',
+          }),
+        ],
+        skipDuplicates: true,
+      });
       expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({
@@ -1490,6 +1508,51 @@ describe('checkVisitRecordRetention', () => {
     } finally {
       process.env.TZ = originalTimezone;
     }
+  });
+
+  it('batches multiple retention notifications and reports inserted count', async () => {
+    membershipFindManyMock.mockResolvedValue([
+      { org_id: 'org_1', user_id: 'admin_1' },
+      { org_id: 'org_1', user_id: 'owner_1' },
+    ]);
+    visitRecordFindManyMock.mockResolvedValue([
+      {
+        id: 'visit_record_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        visit_date: new Date('2021-03-25T00:00:00.000Z'),
+      },
+      {
+        id: 'visit_record_2',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        visit_date: new Date('2021-03-26T00:00:00.000Z'),
+      },
+    ]);
+    notificationCreateManyMock.mockResolvedValue({ count: 3 });
+
+    const result = await checkVisitRecordRetention();
+
+    expect(result).toMatchObject({ processedCount: 3 });
+    expect(notificationCreateMock).not.toHaveBeenCalled();
+    expect(notificationCreateManyMock).toHaveBeenCalledTimes(1);
+    expect(notificationCreateManyMock).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({
+          user_id: 'admin_1',
+          dedupe_key: 'visit-record-retention:visit_record_1:admin_1:urgent',
+        }),
+        expect.objectContaining({
+          user_id: 'owner_1',
+          dedupe_key: 'visit-record-retention:visit_record_2:owner_1:urgent',
+        }),
+      ]),
+      skipDuplicates: true,
+    });
+    const [{ data }] = notificationCreateManyMock.mock.calls[0] as [
+      { data: unknown[]; skipDuplicates: boolean },
+    ];
+    expect(data).toHaveLength(4);
   });
 });
 
