@@ -7,13 +7,25 @@ type Tx = Prisma.TransactionClient | typeof prisma;
 type FindFirstDelegate<T> = {
   findFirst(args: unknown): Promise<T | null>;
 };
+type FindManyDelegate<T> = {
+  findMany(args: unknown): Promise<T[]>;
+};
+type ConsentGateRecord = { id: string; expiry_date?: Date | null; obtained_date?: Date | null };
+type ManagementPlanGateRecord = {
+  id: string;
+  status?: string;
+  next_review_date: Date | null;
+  effective_from?: Date | null;
+  version?: number;
+  approved_at?: Date | null;
+};
 type GateDb = {
-  consentRecord: FindFirstDelegate<{ id: string; expiry_date?: Date | null }>;
-  managementPlan: FindFirstDelegate<{
-    id: string;
-    status?: string;
-    next_review_date: Date | null;
-  }>;
+  consentRecord: FindFirstDelegate<ConsentGateRecord>;
+  managementPlan: FindFirstDelegate<ManagementPlanGateRecord>;
+};
+type BatchGateDb = {
+  consentRecord: FindManyDelegate<ConsentGateRecord>;
+  managementPlan: FindManyDelegate<ManagementPlanGateRecord>;
 };
 
 const VISIT_WORKFLOW_GATE_ISSUES = [
@@ -45,6 +57,47 @@ type VisitWorkflowGateResult = {
 
 function isDateActive(date: Date | null | undefined, asOf: Date) {
   return !date || date >= asOf;
+}
+
+function compareConsentRecords(left: ConsentGateRecord, right: ConsentGateRecord) {
+  return (right.obtained_date?.getTime() ?? 0) - (left.obtained_date?.getTime() ?? 0);
+}
+
+function compareManagementPlans(left: ManagementPlanGateRecord, right: ManagementPlanGateRecord) {
+  const effectiveDiff =
+    (right.effective_from?.getTime() ?? 0) - (left.effective_from?.getTime() ?? 0);
+  if (effectiveDiff !== 0) return effectiveDiff;
+
+  const versionDiff = (right.version ?? 0) - (left.version ?? 0);
+  if (versionDiff !== 0) return versionDiff;
+
+  return (right.approved_at?.getTime() ?? 0) - (left.approved_at?.getTime() ?? 0);
+}
+
+function buildVisitWorkflowGateResult(args: {
+  consent: ConsentGateRecord | null;
+  plan: {
+    current: ManagementPlanGateRecord | null;
+    reviewOverdue: boolean;
+  };
+}): VisitWorkflowGateResult {
+  const issues: VisitWorkflowGateIssue[] = [];
+
+  if (!args.consent) {
+    issues.push('missing_visit_consent');
+  }
+  if (!args.plan.current) {
+    issues.push('missing_management_plan');
+  } else if (args.plan.reviewOverdue) {
+    issues.push('management_plan_review_overdue');
+  }
+
+  return {
+    ok: issues.length === 0,
+    issues,
+    consentId: args.consent?.id ?? null,
+    managementPlanId: args.plan.current?.id ?? null,
+  };
 }
 
 export async function findActiveVisitConsent(
@@ -113,23 +166,76 @@ export async function evaluateVisitWorkflowGate(
     findCurrentManagementPlan(tx, { orgId: args.orgId, caseId: args.caseId, asOf }),
   ]);
 
-  const issues: VisitWorkflowGateIssue[] = [];
+  return buildVisitWorkflowGateResult({ consent, plan });
+}
 
-  if (!consent) {
-    issues.push('missing_visit_consent');
-  }
-  if (!plan.current) {
-    issues.push('missing_management_plan');
-  } else if (plan.reviewOverdue) {
-    issues.push('management_plan_review_overdue');
-  }
+export async function evaluateVisitWorkflowGates(
+  tx: BatchGateDb,
+  args: {
+    orgId: string;
+    patientId: string;
+    caseId: string;
+    asOfDates: Date[];
+  },
+): Promise<VisitWorkflowGateResult[]> {
+  if (args.asOfDates.length === 0) return [];
 
-  return {
-    ok: issues.length === 0,
-    issues,
-    consentId: consent?.id ?? null,
-    managementPlanId: plan.current?.id ?? null,
-  };
+  const minAsOf = new Date(Math.min(...args.asOfDates.map((date) => date.getTime())));
+  const maxAsOf = new Date(Math.max(...args.asOfDates.map((date) => date.getTime())));
+  const [consents, plans] = await Promise.all([
+    tx.consentRecord.findMany({
+      where: {
+        org_id: args.orgId,
+        patient_id: args.patientId,
+        consent_type: 'visit_medication_management',
+        is_active: true,
+        revoked_date: null,
+        OR: [{ expiry_date: null }, { expiry_date: { gte: minAsOf } }],
+      },
+      orderBy: [{ obtained_date: 'desc' }],
+      select: {
+        id: true,
+        expiry_date: true,
+        obtained_date: true,
+      },
+    }),
+    tx.managementPlan.findMany({
+      where: {
+        org_id: args.orgId,
+        case_id: args.caseId,
+        status: 'approved',
+        approved_at: { not: null },
+        OR: [{ effective_from: null }, { effective_from: { lte: maxAsOf } }],
+      },
+      orderBy: [{ effective_from: 'desc' }, { version: 'desc' }, { approved_at: 'desc' }],
+      select: {
+        id: true,
+        next_review_date: true,
+        effective_from: true,
+        version: true,
+        approved_at: true,
+      },
+    }),
+  ]);
+
+  const orderedConsents = [...consents].sort(compareConsentRecords);
+  const orderedPlans = [...plans].sort(compareManagementPlans);
+
+  return args.asOfDates.map((asOf) => {
+    const consent =
+      orderedConsents.find((candidate) => isDateActive(candidate.expiry_date, asOf)) ?? null;
+    const currentPlan =
+      orderedPlans.find(
+        (candidate) => candidate.effective_from == null || candidate.effective_from <= asOf,
+      ) ?? null;
+    const plan = {
+      current: currentPlan,
+      reviewOverdue:
+        currentPlan?.next_review_date != null && !isDateActive(currentPlan.next_review_date, asOf),
+    };
+
+    return buildVisitWorkflowGateResult({ consent, plan });
+  });
 }
 
 export function formatVisitWorkflowGateIssues(issues: VisitWorkflowGateIssue[]) {

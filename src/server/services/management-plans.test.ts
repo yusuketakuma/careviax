@@ -1,8 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { consentRecordFindFirstMock, managementPlanFindFirstMock } = vi.hoisted(() => ({
+const {
+  consentRecordFindFirstMock,
+  consentRecordFindManyMock,
+  managementPlanFindFirstMock,
+  managementPlanFindManyMock,
+} = vi.hoisted(() => ({
   consentRecordFindFirstMock: vi.fn(),
+  consentRecordFindManyMock: vi.fn(),
   managementPlanFindFirstMock: vi.fn(),
+  managementPlanFindManyMock: vi.fn(),
 }));
 
 vi.mock('@/lib/db/client', () => ({
@@ -22,6 +29,7 @@ import {
   findActiveVisitConsent,
   findCurrentManagementPlan,
   evaluateVisitWorkflowGate,
+  evaluateVisitWorkflowGates,
   formatVisitWorkflowGateIssues,
   getVisitWorkflowGuidance,
   buildManagementPlanReviewTaskKey,
@@ -31,8 +39,11 @@ import {
 
 function makeGateDb() {
   return {
-    consentRecord: { findFirst: consentRecordFindFirstMock },
-    managementPlan: { findFirst: managementPlanFindFirstMock },
+    consentRecord: { findFirst: consentRecordFindFirstMock, findMany: consentRecordFindManyMock },
+    managementPlan: {
+      findFirst: managementPlanFindFirstMock,
+      findMany: managementPlanFindManyMock,
+    },
   };
 }
 
@@ -209,6 +220,101 @@ describe('evaluateVisitWorkflowGate', () => {
 
     expect(result.ok).toBe(false);
     expect(result.issues).toContain('management_plan_review_overdue');
+  });
+});
+
+describe('evaluateVisitWorkflowGates', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('evaluates recurring candidate gates with one consent read and one plan read', async () => {
+    consentRecordFindManyMock.mockResolvedValue([
+      {
+        id: 'consent-1',
+        expiry_date: new Date('2026-04-10T00:00:00.000Z'),
+        obtained_date: new Date('2026-01-01T00:00:00.000Z'),
+      },
+    ]);
+    managementPlanFindManyMock.mockResolvedValue([
+      {
+        id: 'plan-1',
+        next_review_date: new Date('2026-04-20T00:00:00.000Z'),
+        effective_from: new Date('2026-04-01T00:00:00.000Z'),
+        version: 1,
+        approved_at: new Date('2026-03-20T00:00:00.000Z'),
+      },
+    ]);
+
+    const result = await evaluateVisitWorkflowGates(makeGateDb(), {
+      orgId: 'org-1',
+      patientId: 'p-1',
+      caseId: 'case-1',
+      asOfDates: [new Date('2026-04-07T00:00:00.000Z'), new Date('2026-04-14T00:00:00.000Z')],
+    });
+
+    expect(consentRecordFindManyMock).toHaveBeenCalledTimes(1);
+    expect(managementPlanFindManyMock).toHaveBeenCalledTimes(1);
+    expect(consentRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(managementPlanFindFirstMock).not.toHaveBeenCalled();
+    expect(result).toEqual([
+      {
+        ok: true,
+        issues: [],
+        consentId: 'consent-1',
+        managementPlanId: 'plan-1',
+      },
+      {
+        ok: false,
+        issues: ['missing_visit_consent'],
+        consentId: null,
+        managementPlanId: 'plan-1',
+      },
+    ]);
+  });
+
+  it('selects the effective approved plan for each as-of date', async () => {
+    consentRecordFindManyMock.mockResolvedValue([
+      {
+        id: 'consent-1',
+        expiry_date: null,
+        obtained_date: new Date('2026-01-01T00:00:00.000Z'),
+      },
+    ]);
+    managementPlanFindManyMock.mockResolvedValue([
+      {
+        id: 'plan-new',
+        next_review_date: new Date('2026-05-01T00:00:00.000Z'),
+        effective_from: new Date('2026-04-15T00:00:00.000Z'),
+        version: 2,
+        approved_at: new Date('2026-04-10T00:00:00.000Z'),
+      },
+      {
+        id: 'plan-old',
+        next_review_date: new Date('2026-04-10T00:00:00.000Z'),
+        effective_from: new Date('2026-04-01T00:00:00.000Z'),
+        version: 1,
+        approved_at: new Date('2026-03-20T00:00:00.000Z'),
+      },
+    ]);
+
+    const result = await evaluateVisitWorkflowGates(makeGateDb(), {
+      orgId: 'org-1',
+      patientId: 'p-1',
+      caseId: 'case-1',
+      asOfDates: [new Date('2026-04-14T00:00:00.000Z'), new Date('2026-04-16T00:00:00.000Z')],
+    });
+
+    expect(result[0]).toMatchObject({
+      ok: false,
+      issues: ['management_plan_review_overdue'],
+      managementPlanId: 'plan-old',
+    });
+    expect(result[1]).toMatchObject({
+      ok: true,
+      issues: [],
+      managementPlanId: 'plan-new',
+    });
   });
 });
 

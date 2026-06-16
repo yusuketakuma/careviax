@@ -15,7 +15,7 @@ const {
   visitScheduleProposalFindManyMock,
   patientInsuranceFindFirstMock,
   patientInsuranceFindManyMock,
-  evaluateVisitWorkflowGateMock,
+  evaluateVisitWorkflowGatesMock,
   notifyWorkflowMutationMock,
   authRoleRef,
 } = vi.hoisted(() => ({
@@ -31,7 +31,7 @@ const {
   visitScheduleProposalFindManyMock: vi.fn(),
   patientInsuranceFindFirstMock: vi.fn(),
   patientInsuranceFindManyMock: vi.fn(),
-  evaluateVisitWorkflowGateMock: vi.fn(),
+  evaluateVisitWorkflowGatesMock: vi.fn(),
   notifyWorkflowMutationMock: vi.fn(),
   authRoleRef: { current: 'pharmacist' },
 }));
@@ -74,7 +74,7 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 }));
 
 vi.mock('@/server/services/management-plans', () => ({
-  evaluateVisitWorkflowGate: evaluateVisitWorkflowGateMock,
+  evaluateVisitWorkflowGates: evaluateVisitWorkflowGatesMock,
   formatVisitWorkflowGateIssues: (issues: string[]) => issues.join(' / '),
 }));
 
@@ -175,7 +175,9 @@ describe('/api/visit-schedules/generate POST', () => {
     );
 
     careCaseFindFirstMock.mockResolvedValue(buildCareCase());
-    evaluateVisitWorkflowGateMock.mockResolvedValue({ ok: true, issues: [] });
+    evaluateVisitWorkflowGatesMock.mockImplementation((_prisma, args) =>
+      Promise.resolve(args.asOfDates.map(() => ({ ok: true, issues: [] }))),
+    );
     pharmacistShiftFindManyMock.mockImplementation(async ({ where }) => {
       const dates = Array.isArray(where.date?.in) ? where.date.in : [];
       return dates.map((date: Date) => buildShift(format(date, 'yyyy-MM-dd')));
@@ -654,10 +656,12 @@ describe('/api/visit-schedules/generate POST', () => {
   });
 
   it('rejects generation when the visit workflow gate is not satisfied', async () => {
-    evaluateVisitWorkflowGateMock.mockResolvedValueOnce({
-      ok: false,
-      issues: ['management_plan_not_approved', 'consent_missing'],
-    });
+    evaluateVisitWorkflowGatesMock.mockResolvedValueOnce([
+      {
+        ok: false,
+        issues: ['management_plan_not_approved', 'consent_missing'],
+      },
+    ]);
 
     const response = await POST(
       createRequest({
@@ -676,11 +680,11 @@ describe('/api/visit-schedules/generate POST', () => {
       code: 'VALIDATION_ERROR',
       message: '2026-04-07: management_plan_not_approved / consent_missing',
     });
-    expect(evaluateVisitWorkflowGateMock).toHaveBeenCalledWith(expect.any(Object), {
+    expect(evaluateVisitWorkflowGatesMock).toHaveBeenCalledWith(expect.any(Object), {
       orgId: 'org_1',
       patientId: 'patient_1',
       caseId: 'case_1',
-      asOf: new Date('2026-04-07T00:00:00.000Z'),
+      asOfDates: [new Date('2026-04-07T00:00:00.000Z')],
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(visitScheduleCreateMock).not.toHaveBeenCalled();
@@ -688,12 +692,13 @@ describe('/api/visit-schedules/generate POST', () => {
   });
 
   it('rejects generation when any recurring candidate fails the visit workflow gate', async () => {
-    evaluateVisitWorkflowGateMock
-      .mockResolvedValueOnce({ ok: true, issues: [] })
-      .mockResolvedValueOnce({
+    evaluateVisitWorkflowGatesMock.mockResolvedValueOnce([
+      { ok: true, issues: [] },
+      {
         ok: false,
         issues: ['consent_missing'],
-      });
+      },
+    ]);
 
     const response = await POST(
       createRequest({
@@ -712,18 +717,12 @@ describe('/api/visit-schedules/generate POST', () => {
       code: 'VALIDATION_ERROR',
       message: '2026-04-14: consent_missing',
     });
-    expect(evaluateVisitWorkflowGateMock).toHaveBeenCalledTimes(2);
-    expect(evaluateVisitWorkflowGateMock).toHaveBeenNthCalledWith(1, expect.any(Object), {
+    expect(evaluateVisitWorkflowGatesMock).toHaveBeenCalledTimes(1);
+    expect(evaluateVisitWorkflowGatesMock).toHaveBeenCalledWith(expect.any(Object), {
       orgId: 'org_1',
       patientId: 'patient_1',
       caseId: 'case_1',
-      asOf: new Date('2026-04-07T00:00:00.000Z'),
-    });
-    expect(evaluateVisitWorkflowGateMock).toHaveBeenNthCalledWith(2, expect.any(Object), {
-      orgId: 'org_1',
-      patientId: 'patient_1',
-      caseId: 'case_1',
-      asOf: new Date('2026-04-14T00:00:00.000Z'),
+      asOfDates: [new Date('2026-04-07T00:00:00.000Z'), new Date('2026-04-14T00:00:00.000Z')],
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(visitScheduleCreateMock).not.toHaveBeenCalled();
@@ -802,7 +801,7 @@ describe('/api/visit-schedules/generate POST', () => {
       message: '訪問予定の一括生成期間は120日以内にしてください',
     });
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
-    expect(evaluateVisitWorkflowGateMock).not.toHaveBeenCalled();
+    expect(evaluateVisitWorkflowGatesMock).not.toHaveBeenCalled();
     expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
@@ -826,7 +825,7 @@ describe('/api/visit-schedules/generate POST', () => {
       message: '一度に生成できる訪問予定は100件までです',
     });
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
-    expect(evaluateVisitWorkflowGateMock).not.toHaveBeenCalled();
+    expect(evaluateVisitWorkflowGatesMock).not.toHaveBeenCalled();
     expect(pharmacistShiftFindManyMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });

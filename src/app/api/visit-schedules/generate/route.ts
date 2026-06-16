@@ -11,7 +11,7 @@ import { timeDateToString } from '@/lib/visits/time-of-day';
 import { prisma } from '@/lib/db/client';
 import { OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES as OPEN_PROPOSAL_STATUSES } from '@/lib/visit-schedule-proposals/route-order';
 import {
-  evaluateVisitWorkflowGate,
+  evaluateVisitWorkflowGates,
   formatVisitWorkflowGateIssues,
 } from '@/server/services/management-plans';
 import { resolveBillingPayerBasis } from '@/server/services/billing-payer-basis';
@@ -311,16 +311,12 @@ export const POST = withAuthContext(
       return forbiddenResponse('このケースまたは担当薬剤師で訪問予定を生成する権限がありません');
     }
 
-    const workflowGates = await Promise.all(
-      candidateDates.map((candidateDate) =>
-        evaluateVisitWorkflowGate(prisma, {
-          orgId: ctx.orgId,
-          patientId: careCase.patient_id,
-          caseId: case_id,
-          asOf: candidateDate,
-        }),
-      ),
-    );
+    const workflowGates = await evaluateVisitWorkflowGates(prisma, {
+      orgId: ctx.orgId,
+      patientId: careCase.patient_id,
+      caseId: case_id,
+      asOfDates: candidateDates,
+    });
     for (const [index, gate] of workflowGates.entries()) {
       if (!gate.ok) {
         const candidateDate = candidateDates[index]!;
