@@ -739,6 +739,54 @@ describe('/api/conference-notes', () => {
     expect(taskCreateManyMock).not.toHaveBeenCalled();
   });
 
+  it('rejects patient-detail conference operations without report tasks before sync side effects', async () => {
+    const response = await POST(
+      createRequest({
+        method: 'POST',
+        body: {
+          note_type: 'service_manager',
+          title: '担当者会議',
+          structured_content: {
+            sections: [
+              {
+                key: 'meeting_purpose',
+                label: '会議目的',
+                body: '訪看への共有内容を確認',
+              },
+            ],
+          },
+          participants: [],
+          metadata: {
+            conference_operation: {
+              format: 'mcs',
+              organizer: 'visiting_nurse',
+            },
+          },
+          action_items: [],
+          conference_date: '2026-03-28T01:00:00.000Z',
+        },
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: expect.arrayContaining([
+        expect.objectContaining({
+          path: ['metadata', 'conference_operation', 'report_type'],
+        }),
+        expect.objectContaining({
+          path: ['action_items'],
+        }),
+      ]),
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(conferenceNoteCreateMock).not.toHaveBeenCalled();
+    expect(taskCreateManyMock).not.toHaveBeenCalled();
+    expect(careReportCreateManyMock).not.toHaveBeenCalled();
+  });
+
   it('rejects conference note creation when conference type is omitted', async () => {
     const response = await POST(
       createRequest({

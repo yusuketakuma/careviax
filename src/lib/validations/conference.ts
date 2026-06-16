@@ -234,6 +234,17 @@ function validateConferenceStructuredContent(
   }
 }
 
+function hasPopulatedStructuredSection(
+  structuredContent: z.infer<typeof conferenceStructuredContentSchema> | undefined,
+  key: string,
+) {
+  return Boolean(
+    structuredContent?.sections.some(
+      (section) => section.key === key && Boolean(section.body?.trim()),
+    ),
+  );
+}
+
 export function resolveConferenceNoteType(input: ConferencePayloadWithType) {
   if (input.note_type && input.conference_type && input.note_type !== input.conference_type) {
     return null;
@@ -410,6 +421,36 @@ export const createConferenceNoteSchema = z
     }
 
     validateConferenceStructuredContent(noteType, value.structured_content, ctx);
+
+    const conferenceOperation = value.metadata?.conference_operation;
+    if (!conferenceOperation) return;
+
+    if (!conferenceOperation.report_type) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['metadata', 'conference_operation', 'report_type'],
+        message: '会議後の報告書用途を指定してください',
+      });
+    }
+
+    if (!value.action_items?.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['action_items'],
+        message: '会議後の薬局タスクを1件以上入力してください',
+      });
+    }
+
+    if (
+      noteType === 'pre_discharge' &&
+      !hasPopulatedStructuredSection(value.structured_content, 'target_discharge_date')
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['structured_content', 'sections'],
+        message: '退院前カンファレンスでは退院予定日を入力してください',
+      });
+    }
   });
 
 export const updateConferenceNoteSchema = z
