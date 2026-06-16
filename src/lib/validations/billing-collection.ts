@@ -45,6 +45,7 @@ export const updateBillingCollectionSchema = z
     receipt_issue_status: billingCollectionDocumentIssueStatusSchema.optional(),
     invoice_issue_status: billingCollectionDocumentIssueStatusSchema.optional(),
     save_receipt_copy: z.boolean().optional().default(false),
+    save_invoice_copy: z.boolean().optional().default(false),
     unpaid_reason: z.string().trim().max(500).optional().nullable(),
     note: z.string().trim().max(1000).optional().nullable(),
   })

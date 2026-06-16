@@ -1195,8 +1195,9 @@ describe('CardWorkspace', () => {
       target: { value: 'issued' },
     });
     fireEvent.click(screen.getByLabelText('領収証控えを保存する'));
+    expect((screen.getByLabelText('請求書控えを保存する') as HTMLInputElement).checked).toBe(true);
     expect(screen.getByText('領収証 発行済み / 請求書 発行済み')).toBeTruthy();
-    expect(screen.getByText('保存する')).toBeTruthy();
+    expect(screen.getByText('領収証 保存する / 請求書 保存する')).toBeTruthy();
     expect(screen.getByRole('link', { name: '領収証PDF' }).getAttribute('href')).toBe(
       '/api/billing-candidates/candidate_1/documents/pdf?kind=receipt',
     );
@@ -1217,6 +1218,7 @@ describe('CardWorkspace', () => {
       receiptIssueStatus: 'issued',
       invoiceIssueStatus: 'issued',
       saveReceiptCopy: true,
+      saveInvoiceCopy: true,
     });
   });
 

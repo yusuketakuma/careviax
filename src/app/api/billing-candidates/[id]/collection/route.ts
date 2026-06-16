@@ -171,7 +171,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         ? buildBillingDocumentPdfUrl(candidateId, 'receipt')
         : null;
     const invoiceCopyUrl =
-      invoiceIssueStatus === 'issued' ? buildBillingDocumentPdfUrl(candidateId, 'invoice') : null;
+      parsed.data.save_invoice_copy && invoiceIssueStatus === 'issued'
+        ? buildBillingDocumentPdfUrl(candidateId, 'invoice')
+        : null;
     const collection = {
       status: parsed.data.status,
       billed_amount: billedAmount,
@@ -190,6 +192,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       receipt_issue_status: receiptIssueStatus,
       invoice_issue_status: invoiceIssueStatus,
       save_receipt_copy: parsed.data.save_receipt_copy,
+      save_invoice_copy: parsed.data.save_invoice_copy,
       receipt_copy_url: receiptCopyUrl,
       invoice_copy_url: invoiceCopyUrl,
       unpaid_reason: normalizeNullableText(parsed.data.unpaid_reason),

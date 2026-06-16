@@ -804,6 +804,7 @@ type BillingCollectionFormInput = {
   receiptIssueStatus: 'not_required' | 'not_issued' | 'issued';
   invoiceIssueStatus: 'not_required' | 'not_issued' | 'issued';
   saveReceiptCopy: boolean;
+  saveInvoiceCopy: boolean;
 };
 
 type BillingPaymentProfileFormInput = {
@@ -1573,6 +1574,11 @@ function BillingCollectionQuickForm({
   const [saveReceiptCopy, setSaveReceiptCopy] = useState(
     () => metricValue(item, '領収証控えコード') === 'yes',
   );
+  const [saveInvoiceCopy, setSaveInvoiceCopy] = useState(
+    () =>
+      metricValue(item, '請求書控えコード') === 'yes' ||
+      Boolean(metricValue(item, '請求書控えURL')),
+  );
   const [scheduledCollectionAt, setScheduledCollectionAt] = useState(() =>
     metricDateTimeValue(item, '次回集金予定'),
   );
@@ -1666,6 +1672,7 @@ function BillingCollectionQuickForm({
           receiptIssueStatus,
           invoiceIssueStatus,
           saveReceiptCopy,
+          saveInvoiceCopy,
         });
       }}
     >
@@ -1793,15 +1800,26 @@ function BillingCollectionQuickForm({
             </select>
           </div>
         </div>
-        <label className="inline-flex min-h-9 items-center gap-2 text-xs">
-          <input
-            type="checkbox"
-            checked={saveReceiptCopy}
-            onChange={(event) => setSaveReceiptCopy(event.target.checked)}
-            className="size-4"
-          />
-          領収証控えを保存する
-        </label>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="inline-flex min-h-9 items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={saveReceiptCopy}
+              onChange={(event) => setSaveReceiptCopy(event.target.checked)}
+              className="size-4"
+            />
+            領収証控えを保存する
+          </label>
+          <label className="inline-flex min-h-9 items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={saveInvoiceCopy}
+              onChange={(event) => setSaveInvoiceCopy(event.target.checked)}
+              className="size-4"
+            />
+            請求書控えを保存する
+          </label>
+        </div>
         <div className="rounded-lg border border-current/15 bg-muted/20 p-2 text-xs">
           <p className="font-medium text-foreground">保存される集金履歴</p>
           <dl className="mt-2 grid gap-1">
@@ -1843,7 +1861,8 @@ function BillingCollectionQuickForm({
             <div className="flex justify-between gap-2">
               <dt className="text-muted-foreground">控え保存</dt>
               <dd className="font-medium text-foreground">
-                {saveReceiptCopy ? '保存する' : '保存しない'}
+                領収証 {saveReceiptCopy ? '保存する' : '保存しない'} / 請求書{' '}
+                {saveInvoiceCopy ? '保存する' : '保存しない'}
               </dd>
             </div>
           </dl>
@@ -3172,6 +3191,7 @@ export function CardWorkspace({
           receipt_issue_status: input.receiptIssueStatus,
           invoice_issue_status: input.invoiceIssueStatus,
           save_receipt_copy: input.saveReceiptCopy,
+          save_invoice_copy: input.saveInvoiceCopy,
         }),
       });
       if (!response.ok) {

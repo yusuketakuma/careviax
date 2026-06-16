@@ -151,6 +151,7 @@ function createDb(overrides: Record<string, unknown> = {}) {
               receipt_issue_status: 'issued',
               invoice_issue_status: 'not_issued',
               save_receipt_copy: true,
+              save_invoice_copy: false,
               receipt_copy_url: '/api/billing-candidates/candidate_1/documents/pdf?kind=receipt',
               invoice_copy_url: null,
             },
@@ -414,6 +415,7 @@ describe('getPatientHomeOperationsData', () => {
         { label: '請求書状態', value: '未発行' },
         { label: '領収証控え', value: '保存済み' },
         { label: '請求書控え', value: '未保存' },
+        { label: '請求書控えコード', value: 'no' },
         {
           label: '領収証控えURL',
           value: '/api/billing-candidates/candidate_1/documents/pdf?kind=receipt',

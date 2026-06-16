@@ -112,6 +112,7 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
         receipt_issue_status: 'issued',
         invoice_issue_status: 'issued',
         save_receipt_copy: true,
+        save_invoice_copy: true,
         unpaid_reason: '次回訪問時に残額集金',
       }),
       { params: Promise.resolve({ id: ' candidate_1 ' }) },
@@ -143,6 +144,7 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
             receipt_issue_status: 'issued',
             invoice_issue_status: 'issued',
             save_receipt_copy: true,
+            save_invoice_copy: true,
             receipt_copy_url: '/api/billing-candidates/candidate_1/documents/pdf?kind=receipt',
             invoice_copy_url: '/api/billing-candidates/candidate_1/documents/pdf?kind=invoice',
             updated_by: 'user_1',
@@ -164,6 +166,34 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     await expect(response.json()).resolves.toMatchObject({
       data: { id: 'candidate_1' },
     });
+  });
+
+  it('does not save an invoice copy URL unless staff explicitly requests it', async () => {
+    const response = await PATCH(
+      createRequest({
+        status: 'billed',
+        billed_amount: 3240,
+        collected_amount: 0,
+        invoice_issue_status: 'issued',
+      }),
+      { params: Promise.resolve({ id: 'candidate_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(updateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          calculation_breakdown: expect.objectContaining({
+            collection: expect.objectContaining({
+              status: 'billed',
+              invoice_issue_status: 'issued',
+              save_invoice_copy: false,
+              invoice_copy_url: null,
+            }),
+          }),
+        },
+      }),
+    );
   });
 
   it('rejects collected payments without receipt numbers when receipt issuance is required', async () => {
