@@ -211,77 +211,178 @@ export const GET = withAuthContext(
     const data = await withOrgContext(
       ctx.orgId,
       async (tx) => {
-        const schedules = await tx.visitSchedule.findMany({
-          where: {
-            org_id: ctx.orgId,
-            scheduled_date: { gte: today, lt: tomorrow },
-            schedule_status: { notIn: ['cancelled', 'rescheduled'] },
-          },
-          orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }],
+        const waitingDeliveriesPromise = tx.deliveryRecord.findMany({
+          where: { org_id: ctx.orgId, status: 'response_waiting' },
+          orderBy: { sent_at: 'asc' },
+          take: WAITING_LIMIT,
           select: {
             id: true,
-            schedule_status: true,
-            time_window_start: true,
-            facility_batch_id: true,
-            facility_batch: {
-              select: { id: true, facility_id: true, patient_ids: true },
+            sent_at: true,
+            report: {
+              select: { id: true, patient_id: true, report_type: true, content: true },
             },
-            case_: {
+          },
+        });
+        const waitingRequestsPromise = tx.communicationRequest.findMany({
+          where: {
+            org_id: ctx.orgId,
+            status: { in: ['sent', 'received', 'in_progress'] },
+          },
+          orderBy: { requested_at: 'asc' },
+          take: WAITING_LIMIT,
+          select: {
+            id: true,
+            subject: true,
+            patient_id: true,
+            requested_at: true,
+          },
+        });
+        const resolvedResponsesPromise = tx.communicationResponse.findMany({
+          where: {
+            org_id: ctx.orgId,
+            responded_at: { gte: localDayStart, lt: localDayEnd },
+          },
+          orderBy: { responded_at: 'desc' },
+          take: RESOLVED_LIMIT,
+          select: {
+            id: true,
+            responded_at: true,
+            request: { select: { subject: true, patient_id: true } },
+          },
+        });
+        const recentReportsPromise = tx.careReport.findMany({
+          where: { org_id: ctx.orgId },
+          orderBy: { updated_at: 'desc' },
+          take: CREATED_REPORT_LIMIT,
+          select: {
+            id: true,
+            patient_id: true,
+            report_type: true,
+            status: true,
+            content: true,
+            created_at: true,
+            updated_at: true,
+            delivery_records: {
+              orderBy: [{ sent_at: 'desc' }, { updated_at: 'desc' }],
+              take: 3,
               select: {
-                patient: { select: { id: true, name: true } },
-                care_team_links: {
-                  select: { role: true, name: true, is_primary: true },
-                },
+                id: true,
+                channel: true,
+                recipient_name: true,
+                status: true,
+                sent_at: true,
               },
             },
-            cycle: {
-              select: {
-                prescription_intakes: {
-                  orderBy: { created_at: 'desc' },
-                  take: 1,
-                  select: {
-                    lines: { select: { packaging_instruction_tags: true } },
-                  },
-                },
-              },
-            },
-            visit_record: { select: { id: true } },
+          },
+        });
+        const templateCountPromise = tx.template.count({
+          where: { org_id: ctx.orgId, template_type: 'care_report' },
+        });
+        const monthlyDeliveryCountPromise = tx.deliveryRecord.count({
+          where: {
+            org_id: ctx.orgId,
+            sent_at: { gte: monthStart, lt: nextMonthStart },
           },
         });
 
-        const visitRecordIds = schedules
-          .map((schedule) => schedule.visit_record?.id)
-          .filter((id): id is string => Boolean(id));
-        const existingReports =
-          visitRecordIds.length === 0
-            ? []
-            : await tx.careReport.findMany({
-                where: {
-                  org_id: ctx.orgId,
-                  visit_record_id: { in: visitRecordIds },
+        const scheduleContextPromise = (async () => {
+          const schedules = await tx.visitSchedule.findMany({
+            where: {
+              org_id: ctx.orgId,
+              scheduled_date: { gte: today, lt: tomorrow },
+              schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+            },
+            orderBy: [{ time_window_start: 'asc' }, { route_order: 'asc' }],
+            select: {
+              id: true,
+              schedule_status: true,
+              time_window_start: true,
+              facility_batch_id: true,
+              facility_batch: {
+                select: { id: true, facility_id: true, patient_ids: true },
+              },
+              case_: {
+                select: {
+                  patient: { select: { id: true, name: true } },
+                  care_team_links: {
+                    select: { role: true, name: true, is_primary: true },
+                  },
                 },
-                select: { id: true, visit_record_id: true, status: true },
-              });
+              },
+              cycle: {
+                select: {
+                  prescription_intakes: {
+                    orderBy: { created_at: 'desc' },
+                    take: 1,
+                    select: {
+                      lines: { select: { packaging_instruction_tags: true } },
+                    },
+                  },
+                },
+              },
+              visit_record: { select: { id: true } },
+            },
+          });
+
+          const visitRecordIds = schedules
+            .map((schedule) => schedule.visit_record?.id)
+            .filter((id): id is string => Boolean(id));
+          const existingReportsPromise =
+            visitRecordIds.length === 0
+              ? Promise.resolve([])
+              : tx.careReport.findMany({
+                  where: {
+                    org_id: ctx.orgId,
+                    visit_record_id: { in: visitRecordIds },
+                  },
+                  select: { id: true, visit_record_id: true, status: true },
+                });
+
+          const facilityIds = [
+            ...new Set(
+              schedules
+                .map((schedule) => schedule.facility_batch?.facility_id)
+                .filter((id): id is string => Boolean(id)),
+            ),
+          ];
+          const facilitiesPromise =
+            facilityIds.length === 0
+              ? Promise.resolve([])
+              : tx.facility.findMany({
+                  where: { id: { in: facilityIds }, org_id: ctx.orgId },
+                  select: { id: true, name: true },
+                });
+          const [existingReports, facilities] = await Promise.all([
+            existingReportsPromise,
+            facilitiesPromise,
+          ]);
+
+          return { schedules, existingReports, facilities };
+        })();
+
+        const [
+          { schedules, existingReports, facilities },
+          waitingDeliveries,
+          waitingRequests,
+          resolvedResponses,
+          recentReports,
+          templateCount,
+          monthlyDeliveryCount,
+        ] = await Promise.all([
+          scheduleContextPromise,
+          waitingDeliveriesPromise,
+          waitingRequestsPromise,
+          resolvedResponsesPromise,
+          recentReportsPromise,
+          templateCountPromise,
+          monthlyDeliveryCountPromise,
+        ]);
+
         const reportByRecordId = new Map(
           existingReports
             .filter((report) => report.visit_record_id)
             .map((report) => [report.visit_record_id as string, report]),
         );
-
-        const facilityIds = [
-          ...new Set(
-            schedules
-              .map((schedule) => schedule.facility_batch?.facility_id)
-              .filter((id): id is string => Boolean(id)),
-          ),
-        ];
-        const facilities =
-          facilityIds.length === 0
-            ? []
-            : await tx.facility.findMany({
-                where: { id: { in: facilityIds }, org_id: ctx.orgId },
-                select: { id: true, name: true },
-              });
         const facilityNameById = new Map(
           facilities.map((facility) => [facility.id, facility.name]),
         );
@@ -343,74 +444,6 @@ export const GET = withAuthContext(
                 : { label: '→ 訪問へ', href: '/visits' },
           });
         }
-
-        const [waitingDeliveries, waitingRequests, resolvedResponses] = [
-          await tx.deliveryRecord.findMany({
-            where: { org_id: ctx.orgId, status: 'response_waiting' },
-            orderBy: { sent_at: 'asc' },
-            take: WAITING_LIMIT,
-            select: {
-              id: true,
-              sent_at: true,
-              report: {
-                select: { id: true, patient_id: true, report_type: true, content: true },
-              },
-            },
-          }),
-          await tx.communicationRequest.findMany({
-            where: {
-              org_id: ctx.orgId,
-              status: { in: ['sent', 'received', 'in_progress'] },
-            },
-            orderBy: { requested_at: 'asc' },
-            take: WAITING_LIMIT,
-            select: {
-              id: true,
-              subject: true,
-              patient_id: true,
-              requested_at: true,
-            },
-          }),
-          await tx.communicationResponse.findMany({
-            where: {
-              org_id: ctx.orgId,
-              responded_at: { gte: localDayStart, lt: localDayEnd },
-            },
-            orderBy: { responded_at: 'desc' },
-            take: RESOLVED_LIMIT,
-            select: {
-              id: true,
-              responded_at: true,
-              request: { select: { subject: true, patient_id: true } },
-            },
-          }),
-        ];
-
-        const recentReports = await tx.careReport.findMany({
-          where: { org_id: ctx.orgId },
-          orderBy: { updated_at: 'desc' },
-          take: CREATED_REPORT_LIMIT,
-          select: {
-            id: true,
-            patient_id: true,
-            report_type: true,
-            status: true,
-            content: true,
-            created_at: true,
-            updated_at: true,
-            delivery_records: {
-              orderBy: [{ sent_at: 'desc' }, { updated_at: 'desc' }],
-              take: 3,
-              select: {
-                id: true,
-                channel: true,
-                recipient_name: true,
-                status: true,
-                sent_at: true,
-              },
-            },
-          },
-        });
 
         const waitingPatientIds = [
           ...new Set(
@@ -532,18 +565,6 @@ export const GET = withAuthContext(
             }),
           )
           .slice(0, OPEN_ISSUE_LIMIT);
-
-        const [templateCount, monthlyDeliveryCount] = [
-          await tx.template.count({
-            where: { org_id: ctx.orgId, template_type: 'care_report' },
-          }),
-          await tx.deliveryRecord.count({
-            where: {
-              org_id: ctx.orgId,
-              sent_at: { gte: monthStart, lt: nextMonthStart },
-            },
-          }),
-        ];
 
         const responseData: ReportsTodayWorkspaceResponse = {
           generated_at: now.toISOString(),
