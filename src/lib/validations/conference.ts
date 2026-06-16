@@ -60,6 +60,7 @@ export const conferenceMetadataSchema = z
     conference_operation: z
       .object({
         format: z.enum(['in_person', 'phone', 'web', 'mcs', 'written']).optional(),
+        location: z.string().trim().max(120).optional(),
         organizer: z
           .enum([
             'hospital',
@@ -72,6 +73,9 @@ export const conferenceMetadataSchema = z
             'other',
           ])
           .optional(),
+        agenda: z.string().trim().max(1000).optional(),
+        pharmacy_participants: z.array(z.string().trim().min(1)).max(20).optional(),
+        participant_count: z.number().int().nonnegative().optional(),
         report_type: z
           .enum([
             'physician_report',
@@ -107,6 +111,8 @@ const conferenceStructuredSectionRules: Partial<
     requiredKeys: ['discharge_background'],
     allowedKeys: [
       'discharge_background',
+      'agenda',
+      'location',
       'target_discharge_date',
       'medication_changes_on_discharge',
       'medication_summary',
@@ -120,6 +126,8 @@ const conferenceStructuredSectionRules: Partial<
     requiredKeys: ['meeting_purpose'],
     allowedKeys: [
       'meeting_purpose',
+      'agenda',
+      'location',
       'care_plan_changes',
       'care_plan_update',
       'service_adjustments',
@@ -135,6 +143,8 @@ const conferenceStructuredSectionRules: Partial<
     requiredKeys: [],
     allowedKeys: [
       'discussion_summary',
+      'agenda',
+      'location',
       'case_review',
       'medication_issues',
       'intervention_outcomes',
@@ -144,6 +154,8 @@ const conferenceStructuredSectionRules: Partial<
     requiredKeys: ['billing_confirmation'],
     allowedKeys: [
       'billing_confirmation',
+      'agenda',
+      'location',
       'timeline_summary',
       'terminal_process',
       'improvement_actions',
@@ -155,6 +167,8 @@ const conferenceStructuredSectionRules: Partial<
     requiredKeys: [],
     allowedKeys: [
       'emergency_context',
+      'agenda',
+      'location',
       'incident_summary',
       'root_cause',
       'urgent_actions',
@@ -330,8 +344,20 @@ export function buildConferenceMetadata(
     ...(metadata?.conference_operation?.format
       ? { format: metadata.conference_operation.format }
       : {}),
+    ...(metadata?.conference_operation?.location
+      ? { location: metadata.conference_operation.location }
+      : {}),
     ...(metadata?.conference_operation?.organizer
       ? { organizer: metadata.conference_operation.organizer }
+      : {}),
+    ...(metadata?.conference_operation?.agenda
+      ? { agenda: metadata.conference_operation.agenda }
+      : {}),
+    ...(metadata?.conference_operation?.pharmacy_participants?.length
+      ? { pharmacy_participants: metadata.conference_operation.pharmacy_participants }
+      : {}),
+    ...(metadata?.conference_operation?.participant_count !== undefined
+      ? { participant_count: metadata.conference_operation.participant_count }
       : {}),
     ...(metadata?.conference_operation?.report_type
       ? { report_type: metadata.conference_operation.report_type }

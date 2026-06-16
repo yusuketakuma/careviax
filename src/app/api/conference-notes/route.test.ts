@@ -1421,7 +1421,11 @@ describe('/api/conference-notes', () => {
             metadata: {
               conference_operation: {
                 format: 'mcs',
+                location: 'MCS 山田太郎さん在宅チーム',
                 organizer: 'visiting_nurse',
+                agenda: '訪看への服薬情報共有',
+                pharmacy_participants: ['鈴木薬剤師', '田中事務'],
+                participant_count: 3,
                 report_type: 'nurse_share',
               },
             },
@@ -1433,6 +1437,21 @@ describe('/api/conference-notes', () => {
 
       if (!response) throw new Error('response is required');
       expect(response.status).toBe(201);
+      expect(conferenceNoteCreateMock).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          metadata: expect.objectContaining({
+            conference_operation: {
+              format: 'mcs',
+              location: 'MCS 山田太郎さん在宅チーム',
+              organizer: 'visiting_nurse',
+              agenda: '訪看への服薬情報共有',
+              pharmacy_participants: ['鈴木薬剤師', '田中事務'],
+              participant_count: 3,
+              report_type: 'nurse_share',
+            },
+          }),
+        }),
+      });
       expect(careReportCreateManyMock).toHaveBeenCalledWith(
         expect.objectContaining({
           data: [

@@ -820,6 +820,7 @@ type ConferenceNoteFormInput = {
   title: string;
   conferenceDate: string;
   conferenceFormat: 'in_person' | 'phone' | 'web' | 'mcs' | 'written';
+  location: string;
   organizer:
     | 'hospital'
     | 'care_manager'
@@ -838,7 +839,10 @@ type ConferenceNoteFormInput = {
     | 'internal_record';
   followUpDate: string;
   followUpCompleted: boolean;
+  agenda: string;
   content: string;
+  participantsRaw: string;
+  pharmacyParticipantsRaw: string;
   visitScheduleChange: string;
   targetDischargeDate: string;
   actionItemsRaw: string;
@@ -1073,18 +1077,49 @@ function parseConferenceActionItems(raw: string) {
     });
 }
 
+export function parseConferenceParticipants(raw: string) {
+  return raw
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [nameValue, role, organizationName] = line.split('/').map((part) => part.trim());
+      return {
+        name: nameValue || line,
+        role: role ?? '',
+        ...(organizationName ? { organization_name: organizationName } : {}),
+        attended: true,
+      };
+    });
+}
+
+function parseConferenceNameList(raw: string) {
+  return raw
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
 function countConferenceActionItems(raw: string) {
   return parseConferenceActionItems(raw).length;
 }
 
 export function buildConferenceStructuredContent(input: ConferenceNoteFormInput) {
   const content = input.content.trim();
+  const agenda = input.agenda.trim();
+  const location = input.location.trim();
   const visitScheduleChange = input.visitScheduleChange.trim();
   const targetDischargeDate = input.targetDischargeDate.trim();
   const sections: ConferenceStructuredSectionInput[] = [];
 
   if (input.noteType === 'service_manager') {
     sections.push({ key: 'meeting_purpose', label: '会議目的', body: content });
+    if (agenda) {
+      sections.push({ key: 'agenda', label: '議題', body: agenda });
+    }
+    if (location) {
+      sections.push({ key: 'location', label: '開催場所', body: location });
+    }
     if (visitScheduleChange) {
       sections.push({
         key: 'service_adjustments',
@@ -1094,6 +1129,12 @@ export function buildConferenceStructuredContent(input: ConferenceNoteFormInput)
     }
   } else if (input.noteType === 'pre_discharge') {
     sections.push({ key: 'discharge_background', label: '退院背景', body: content });
+    if (agenda) {
+      sections.push({ key: 'agenda', label: '議題', body: agenda });
+    }
+    if (location) {
+      sections.push({ key: 'location', label: '開催場所', body: location });
+    }
     if (targetDischargeDate) {
       sections.push({
         key: 'target_discharge_date',
@@ -1110,10 +1151,28 @@ export function buildConferenceStructuredContent(input: ConferenceNoteFormInput)
     }
   } else if (input.noteType === 'death_conference') {
     sections.push({ key: 'billing_confirmation', label: '算定根拠確認', body: content });
+    if (agenda) {
+      sections.push({ key: 'agenda', label: '議題', body: agenda });
+    }
+    if (location) {
+      sections.push({ key: 'location', label: '開催場所', body: location });
+    }
   } else if (input.noteType === 'emergency') {
     sections.push({ key: 'emergency_context', label: '緊急背景', body: content });
+    if (agenda) {
+      sections.push({ key: 'agenda', label: '議題', body: agenda });
+    }
+    if (location) {
+      sections.push({ key: 'location', label: '開催場所', body: location });
+    }
   } else {
     sections.push({ key: 'discussion_summary', label: '議論要約', body: content });
+    if (agenda) {
+      sections.push({ key: 'agenda', label: '議題', body: agenda });
+    }
+    if (location) {
+      sections.push({ key: 'location', label: '開催場所', body: location });
+    }
   }
 
   const populatedSections = sections.filter((section) => section.body.trim().length > 0);
@@ -2138,6 +2197,7 @@ function ConferenceNoteQuickForm({
   const [conferenceDate, setConferenceDate] = useState(() => toLocalDateTimeInputValue(new Date()));
   const [conferenceFormat, setConferenceFormat] =
     useState<ConferenceNoteFormInput['conferenceFormat']>('in_person');
+  const [location, setLocation] = useState('');
   const [organizer, setOrganizer] = useState<ConferenceNoteFormInput['organizer']>('care_manager');
   const [reportType, setReportType] = useState<ConferenceNoteFormInput['reportType']>(() =>
     defaultConferenceReportType('service_manager'),
@@ -2145,12 +2205,17 @@ function ConferenceNoteQuickForm({
   const [followUpDate, setFollowUpDate] = useState('');
   const [followUpCompleted, setFollowUpCompleted] = useState(false);
   const [title, setTitle] = useState(() => `${patientName}様 サービス担当者会議`);
+  const [agenda, setAgenda] = useState('');
   const [content, setContent] = useState('');
+  const [participantsRaw, setParticipantsRaw] = useState('');
+  const [pharmacyParticipantsRaw, setPharmacyParticipantsRaw] = useState('');
   const [visitScheduleChange, setVisitScheduleChange] = useState('');
   const [targetDischargeDate, setTargetDischargeDate] = useState('');
   const [actionItemsRaw, setActionItemsRaw] = useState('');
   const [error, setError] = useState<string | null>(null);
   const actionItemCount = countConferenceActionItems(actionItemsRaw);
+  const participantCount = parseConferenceParticipants(participantsRaw).length;
+  const pharmacyParticipantCount = parseConferenceNameList(pharmacyParticipantsRaw).length;
   const requiresDischargeDate = noteType === 'pre_discharge';
 
   return (
@@ -2159,7 +2224,11 @@ function ConferenceNoteQuickForm({
       onSubmit={(event) => {
         event.preventDefault();
         const trimmedTitle = title.trim();
+        const trimmedLocation = location.trim();
+        const trimmedAgenda = agenda.trim();
         const trimmedContent = content.trim();
+        const trimmedParticipantsRaw = participantsRaw.trim();
+        const trimmedPharmacyParticipantsRaw = pharmacyParticipantsRaw.trim();
         const trimmedVisitScheduleChange = visitScheduleChange.trim();
         const trimmedTargetDischargeDate = targetDischargeDate.trim();
         const trimmedFollowUpDate = followUpDate.trim();
@@ -2184,11 +2253,15 @@ function ConferenceNoteQuickForm({
           title: trimmedTitle,
           conferenceDate,
           conferenceFormat,
+          location: trimmedLocation,
           organizer,
           reportType,
           followUpDate: trimmedFollowUpDate,
           followUpCompleted,
+          agenda: trimmedAgenda,
           content: trimmedContent,
+          participantsRaw: trimmedParticipantsRaw,
+          pharmacyParticipantsRaw: trimmedPharmacyParticipantsRaw,
           visitScheduleChange: trimmedVisitScheduleChange,
           targetDischargeDate: trimmedTargetDischargeDate,
           actionItemsRaw: trimmedActionItemsRaw,
@@ -2307,6 +2380,32 @@ function ConferenceNoteQuickForm({
             className="min-h-9 text-xs"
           />
         </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div className="space-y-1">
+            <Label htmlFor={`conference-location-${patientId}`} className="text-xs">
+              開催場所
+            </Label>
+            <Input
+              id={`conference-location-${patientId}`}
+              value={location}
+              onChange={(event) => setLocation(event.target.value)}
+              className="min-h-9 text-xs"
+              placeholder="病院会議室、MCS、施設名"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor={`conference-agenda-${patientId}`} className="text-xs">
+              議題
+            </Label>
+            <Input
+              id={`conference-agenda-${patientId}`}
+              value={agenda}
+              onChange={(event) => setAgenda(event.target.value)}
+              className="min-h-9 text-xs"
+              placeholder="退院後支援、訪問頻度、残薬対応"
+            />
+          </div>
+        </div>
         <div className="space-y-1">
           <Label htmlFor={`conference-content-${patientId}`} className="text-xs">
             会議要点
@@ -2319,6 +2418,32 @@ function ConferenceNoteQuickForm({
             aria-invalid={error?.includes('会議要点') ? true : undefined}
             placeholder="決定事項、薬局確認事項、報告書に残す要点"
           />
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div className="space-y-1">
+            <Label htmlFor={`conference-participants-${patientId}`} className="text-xs">
+              参加者
+            </Label>
+            <Textarea
+              id={`conference-participants-${patientId}`}
+              value={participantsRaw}
+              onChange={(event) => setParticipantsRaw(event.target.value)}
+              className="min-h-16 text-xs"
+              placeholder="1行1名。例: 佐藤CM / ケアマネ / あおぞら居宅"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor={`conference-pharmacy-participants-${patientId}`} className="text-xs">
+              薬局参加者
+            </Label>
+            <Textarea
+              id={`conference-pharmacy-participants-${patientId}`}
+              value={pharmacyParticipantsRaw}
+              onChange={(event) => setPharmacyParticipantsRaw(event.target.value)}
+              className="min-h-16 text-xs"
+              placeholder="1行1名。例: 鈴木薬剤師"
+            />
+          </div>
         </div>
         <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1">
@@ -2404,6 +2529,15 @@ function ConferenceNoteQuickForm({
             </dd>
             <dt>報告書用途</dt>
             <dd className="text-foreground">{conferenceReportTypeLabels[reportType]}</dd>
+            <dt>場所/議題</dt>
+            <dd className="text-foreground">
+              {location || '未入力'} / {agenda || '未入力'}
+            </dd>
+            <dt>参加者</dt>
+            <dd className="text-foreground">
+              {participantCount > 0 ? `外部 ${participantCount}名` : '外部未入力'} /{' '}
+              {pharmacyParticipantCount > 0 ? `薬局 ${pharmacyParticipantCount}名` : '薬局未入力'}
+            </dd>
             <dt>報告書・薬局タスク</dt>
             <dd className="text-foreground">
               {actionItemCount > 0 ? `タスク ${actionItemCount}件` : '未入力'}
@@ -2973,6 +3107,8 @@ export function CardWorkspace({
         throw new Error('会議名・開催日時・会議要点を入力してください');
       }
       const structuredContent = buildConferenceStructuredContent(input);
+      const participants = parseConferenceParticipants(input.participantsRaw);
+      const pharmacyParticipants = parseConferenceNameList(input.pharmacyParticipantsRaw);
       const response = await fetch('/api/conference-notes', {
         method: 'POST',
         headers: {
@@ -2991,14 +3127,20 @@ export function CardWorkspace({
             ? { follow_up_date: new Date(input.followUpDate).toISOString() }
             : {}),
           follow_up_completed: input.followUpCompleted,
-          participants: [],
+          participants,
           metadata: {
             visit_brief: {
               patient_id: input.patientId,
             },
             conference_operation: {
               format: input.conferenceFormat,
+              ...(input.location ? { location: input.location } : {}),
               organizer: input.organizer,
+              ...(input.agenda ? { agenda: input.agenda } : {}),
+              ...(pharmacyParticipants.length
+                ? { pharmacy_participants: pharmacyParticipants }
+                : {}),
+              participant_count: participants.length + pharmacyParticipants.length,
               report_type: input.reportType,
             },
           },

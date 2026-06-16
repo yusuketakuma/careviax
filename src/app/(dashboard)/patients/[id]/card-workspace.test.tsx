@@ -34,7 +34,11 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
 }));
 
-import { CardWorkspace, buildConferenceStructuredContent } from './card-workspace';
+import {
+  CardWorkspace,
+  buildConferenceStructuredContent,
+  parseConferenceParticipants,
+} from './card-workspace';
 
 setupDomTestEnv();
 
@@ -1540,6 +1544,18 @@ describe('CardWorkspace', () => {
     fireEvent.change(screen.getByLabelText('報告書用途'), {
       target: { value: 'nurse_share' },
     });
+    fireEvent.change(screen.getByLabelText('開催場所'), {
+      target: { value: 'MCS 山田太郎さん在宅チーム' },
+    });
+    fireEvent.change(screen.getByLabelText('議題'), {
+      target: { value: '退院後支援と訪問頻度調整' },
+    });
+    fireEvent.change(screen.getByLabelText('参加者'), {
+      target: { value: '佐藤CM / ケアマネ / あおぞら居宅\n高橋看護師 / 訪看 / みどり訪看' },
+    });
+    fireEvent.change(screen.getByLabelText('薬局参加者'), {
+      target: { value: '鈴木薬剤師\n田中事務' },
+    });
     fireEvent.change(screen.getByLabelText('訪問頻度変更'), {
       target: { value: '月2回' },
     });
@@ -1551,6 +1567,7 @@ describe('CardWorkspace', () => {
       target: { value: '報告書作成 / 薬剤師' },
     });
     expect(screen.getByText('タスク 1件')).toBeTruthy();
+    expect(screen.getByText('外部 2名 / 薬局 2名')).toBeTruthy();
     expect(screen.getByText('2026-06-17 10:30 / 完了')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /会議要点を登録/ }));
 
@@ -1561,11 +1578,15 @@ describe('CardWorkspace', () => {
       title: '田中 一郎様 サービス担当者会議',
       conferenceDate: expect.any(String),
       conferenceFormat: 'mcs',
+      location: 'MCS 山田太郎さん在宅チーム',
       organizer: 'visiting_nurse',
       reportType: 'nurse_share',
       followUpDate: '2026-06-17T10:30',
       followUpCompleted: true,
+      agenda: '退院後支援と訪問頻度調整',
       content: '退院後の服薬支援と残薬確認を合意した',
+      participantsRaw: '佐藤CM / ケアマネ / あおぞら居宅\n高橋看護師 / 訪看 / みどり訪看',
+      pharmacyParticipantsRaw: '鈴木薬剤師\n田中事務',
       visitScheduleChange: '月2回',
       targetDischargeDate: '',
       actionItemsRaw: '報告書作成 / 薬剤師',
@@ -1643,11 +1664,15 @@ describe('CardWorkspace', () => {
         title: 'サービス担当者会議',
         conferenceDate: '2026-06-16T09:00',
         conferenceFormat: 'in_person',
+        location: '地域包括会議室',
         organizer: 'care_manager',
         reportType: 'care_manager_report',
         followUpDate: '',
         followUpCompleted: false,
+        agenda: '訪問頻度と服薬支援方針',
         content: 'ケアプラン変更と服薬支援方針を確認した',
+        participantsRaw: '',
+        pharmacyParticipantsRaw: '',
         visitScheduleChange: '月2回',
         targetDischargeDate: '',
         actionItemsRaw: '報告書作成 / 薬剤師\n次回訪問日を連絡 / 事務',
@@ -1660,6 +1685,8 @@ describe('CardWorkspace', () => {
           label: '会議目的',
           body: 'ケアプラン変更と服薬支援方針を確認した',
         },
+        { key: 'agenda', label: '議題', body: '訪問頻度と服薬支援方針' },
+        { key: 'location', label: '開催場所', body: '地域包括会議室' },
         {
           key: 'service_adjustments',
           label: 'サービス調整',
@@ -1676,11 +1703,15 @@ describe('CardWorkspace', () => {
         title: '退院前カンファ',
         conferenceDate: '2026-06-16T09:00',
         conferenceFormat: 'in_person',
+        location: '',
         organizer: 'hospital',
         reportType: 'physician_report',
         followUpDate: '',
         followUpCompleted: false,
+        agenda: '',
         content: '退院後の服薬支援を確認した',
+        participantsRaw: '',
+        pharmacyParticipantsRaw: '',
         visitScheduleChange: '月1回',
         targetDischargeDate: '2026-06-20',
         actionItemsRaw: '',
@@ -1706,11 +1737,15 @@ describe('CardWorkspace', () => {
         title: '退院前カンファ',
         conferenceDate: '2026-06-16T09:00',
         conferenceFormat: 'in_person',
+        location: '',
         organizer: 'hospital',
         reportType: 'physician_report',
         followUpDate: '',
         followUpCompleted: false,
+        agenda: '',
         content: '退院後の服薬支援を確認した',
+        participantsRaw: '',
+        pharmacyParticipantsRaw: '',
         visitScheduleChange: '月1回',
         targetDischargeDate: '',
         actionItemsRaw: '',
@@ -1721,5 +1756,23 @@ describe('CardWorkspace', () => {
         { key: 'discharge_background', label: '退院背景', body: '退院後の服薬支援を確認した' },
       ],
     });
+  });
+
+  it('parses conference participant lines into attended participant payloads', () => {
+    expect(
+      parseConferenceParticipants('佐藤CM / ケアマネ / あおぞら居宅\n鈴木薬剤師 / 薬剤師'),
+    ).toEqual([
+      {
+        name: '佐藤CM',
+        role: 'ケアマネ',
+        organization_name: 'あおぞら居宅',
+        attended: true,
+      },
+      {
+        name: '鈴木薬剤師',
+        role: '薬剤師',
+        attended: true,
+      },
+    ]);
   });
 });
