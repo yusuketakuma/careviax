@@ -169,6 +169,23 @@ describe('FirstVisitDocumentsPanel', () => {
     expect(screen.getByLabelText('履歴操作')).toBeTruthy();
     expect(screen.getByLabelText('書類種別')).toBeTruthy();
     expect(screen.getByLabelText('原本保管場所')).toBeTruthy();
+    expect(screen.getByText('保存される履歴')).toBeTruthy();
+    expect(screen.getAllByText('画像保存').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('控え').length).toBeGreaterThan(0);
+    const saveButton = screen.getByRole('button', { name: '保存' });
+    expect(saveButton).not.toHaveProperty('disabled', true);
+    fireEvent.change(screen.getByLabelText('履歴操作'), { target: { value: 'replaced' } });
+    expect(
+      screen.getByText(
+        'この操作は監査履歴に理由が残ります。差替え・無効化の判断理由を入力してください。',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText('差替え・無効化では理由を入力してください。')).toBeTruthy();
+    expect(saveButton).toHaveProperty('disabled', true);
+    fireEvent.change(screen.getByLabelText('理由'), {
+      target: { value: '署名者を長女へ訂正' },
+    });
+    expect(saveButton).not.toHaveProperty('disabled', true);
     expect(screen.getByText('文書履歴')).toBeTruthy();
     const printPreviewLink = screen.getByRole('link', { name: '印刷プレビュー' });
     expect(printPreviewLink).toHaveProperty(

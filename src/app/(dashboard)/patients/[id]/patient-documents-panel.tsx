@@ -580,6 +580,11 @@ function FirstVisitDocumentStatusForm({
   const [storageLocation, setStorageLocation] = useState('store');
   const [historyReason, setHistoryReason] = useState('');
   const [historyNote, setHistoryNote] = useState('');
+  const selectedActionLabel = DOCUMENT_ACTION_LABELS[documentAction] ?? documentAction;
+  const selectedDocumentTypeLabel = DOCUMENT_TYPE_LABELS[documentType] ?? documentType;
+  const selectedStorageLabel = DOCUMENT_STORAGE_LABELS[storageLocation] ?? storageLocation;
+  const requiresReason = ['replaced', 'invalidated'].includes(documentAction);
+  const missingRequiredReason = requiresReason && !historyReason.trim();
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -728,10 +733,23 @@ function FirstVisitDocumentStatusForm({
           <Textarea
             id={`first-visit-history-reason-${document.id}`}
             value={historyReason}
+            aria-invalid={missingRequiredReason}
+            aria-describedby={
+              missingRequiredReason ? `first-visit-history-reason-error-${document.id}` : undefined
+            }
             onChange={(event) => setHistoryReason(event.target.value)}
             className="min-h-20"
             placeholder="差替え・無効化理由など"
           />
+          {missingRequiredReason ? (
+            <p
+              id={`first-visit-history-reason-error-${document.id}`}
+              className="text-xs text-destructive"
+              role="alert"
+            >
+              差替え・無効化では理由を入力してください。
+            </p>
+          ) : null}
         </div>
         <div className="space-y-1.5 lg:col-span-2">
           <Label htmlFor={`first-visit-history-note-${document.id}`}>備考</Label>
@@ -744,8 +762,36 @@ function FirstVisitDocumentStatusForm({
           />
         </div>
       </div>
+      <div className="mt-3 rounded-lg border border-border/60 bg-muted/20 p-3">
+        <p className="text-xs font-medium text-muted-foreground">保存される履歴</p>
+        <dl className="mt-2 grid gap-2 text-xs md:grid-cols-2">
+          <div className="flex justify-between gap-2">
+            <dt className="text-muted-foreground">操作</dt>
+            <dd className="text-right font-medium text-foreground">{selectedActionLabel}</dd>
+          </div>
+          <div className="flex justify-between gap-2">
+            <dt className="text-muted-foreground">書類</dt>
+            <dd className="text-right font-medium text-foreground">{selectedDocumentTypeLabel}</dd>
+          </div>
+          <div className="flex justify-between gap-2">
+            <dt className="text-muted-foreground">保管</dt>
+            <dd className="text-right font-medium text-foreground">{selectedStorageLabel}</dd>
+          </div>
+          <div className="flex justify-between gap-2">
+            <dt className="text-muted-foreground">控え</dt>
+            <dd className="text-right font-medium text-foreground">
+              {documentUrl.trim() ? '保存あり' : '未保存'}
+            </dd>
+          </div>
+        </dl>
+        {requiresReason ? (
+          <p className="mt-2 text-xs leading-5 text-muted-foreground">
+            この操作は監査履歴に理由が残ります。差替え・無効化の判断理由を入力してください。
+          </p>
+        ) : null}
+      </div>
       <div className="mt-3 flex justify-end">
-        <Button type="submit" size="sm" disabled={mutation.isPending}>
+        <Button type="submit" size="sm" disabled={mutation.isPending || missingRequiredReason}>
           <Save className="size-4" aria-hidden="true" />
           {mutation.isPending ? '保存中...' : '保存'}
         </Button>

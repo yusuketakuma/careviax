@@ -166,6 +166,29 @@ describe('/api/first-visit-documents/[id]', () => {
     expect(firstVisitDocumentFindFirstMock).not.toHaveBeenCalled();
   });
 
+  it('requires a reason before recording replacement or invalidation history', async () => {
+    const response = (await PATCH(
+      createPatchRequest({
+        document_action: {
+          action: 'replaced',
+          document_type: 'contract',
+          template_name: '居宅療養管理指導契約書 2026年版',
+          template_version: 'v1.1',
+          storage_location: 'store',
+        },
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        document_action: expect.arrayContaining(['差替え・無効化では理由を入力してください']),
+      },
+    });
+    expect(firstVisitDocumentFindFirstMock).not.toHaveBeenCalled();
+  });
+
   it('allows localhost HTTP document URLs for local development previews', async () => {
     const response = (await PATCH(
       createPatchRequest({ document_url: 'http://localhost:3000/api/visit-records/record_1/pdf' }),

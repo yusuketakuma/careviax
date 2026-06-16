@@ -44,42 +44,54 @@ export const createFirstVisitDocumentSchema = z.object({
 
 export type CreateFirstVisitDocumentInput = z.infer<typeof createFirstVisitDocumentSchema>;
 
-export const updateFirstVisitDocumentSchema = z.object({
-  delivered_at: z.string().datetime().optional().nullable(),
-  delivered_to: z.string().optional().nullable(),
-  emergency_contacts: z.array(emergencyContactSchema).min(1).optional(),
-  document_url: documentUrlSchema.optional().nullable(),
-  document_action: z
-    .object({
-      action: z.enum([
-        'generated',
-        'printed',
-        'recovered',
-        'image_saved',
-        'replaced',
-        'invalidated',
-      ]),
-      document_type: z
-        .enum([
-          'contract',
-          'important_matters',
-          'consent',
-          'privacy_consent',
-          'first_visit_document',
-          'other',
-        ])
-        .default('first_visit_document'),
-      template_name: z.string().trim().max(120).optional().nullable(),
-      template_version: z.string().trim().max(40).optional().nullable(),
-      storage_location: z
-        .enum(['store', 'headquarters', 'patient_home_copy_only', 'electronic', 'unknown'])
-        .optional()
-        .nullable(),
-      reason: z.string().trim().max(1000).optional().nullable(),
-      note: z.string().trim().max(1000).optional().nullable(),
-    })
-    .optional(),
-});
+export const updateFirstVisitDocumentSchema = z
+  .object({
+    delivered_at: z.string().datetime().optional().nullable(),
+    delivered_to: z.string().optional().nullable(),
+    emergency_contacts: z.array(emergencyContactSchema).min(1).optional(),
+    document_url: documentUrlSchema.optional().nullable(),
+    document_action: z
+      .object({
+        action: z.enum([
+          'generated',
+          'printed',
+          'recovered',
+          'image_saved',
+          'replaced',
+          'invalidated',
+        ]),
+        document_type: z
+          .enum([
+            'contract',
+            'important_matters',
+            'consent',
+            'privacy_consent',
+            'first_visit_document',
+            'other',
+          ])
+          .default('first_visit_document'),
+        template_name: z.string().trim().max(120).optional().nullable(),
+        template_version: z.string().trim().max(40).optional().nullable(),
+        storage_location: z
+          .enum(['store', 'headquarters', 'patient_home_copy_only', 'electronic', 'unknown'])
+          .optional()
+          .nullable(),
+        reason: z.string().trim().max(1000).optional().nullable(),
+        note: z.string().trim().max(1000).optional().nullable(),
+      })
+      .optional(),
+  })
+  .superRefine((value, ctx) => {
+    const action = value.document_action?.action;
+    if (!['replaced', 'invalidated'].includes(action ?? '')) return;
+    if (value.document_action?.reason?.trim()) return;
+
+    ctx.addIssue({
+      code: 'custom',
+      path: ['document_action', 'reason'],
+      message: '差替え・無効化では理由を入力してください',
+    });
+  });
 
 export type UpdateFirstVisitDocumentInput = z.infer<typeof updateFirstVisitDocumentSchema>;
 
