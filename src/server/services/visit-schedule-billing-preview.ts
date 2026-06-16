@@ -62,6 +62,8 @@ type LatestPrescriptionIntakeClassification = Awaited<
   ReturnType<typeof findLatestPrescriptionIntakeClassification>
 >;
 
+type BillingRuntimeContextResult = Awaited<ReturnType<typeof resolveBillingRuntimeContext>>;
+
 type BillingPreviewInsuranceType = Extract<InsuranceType, 'medical' | 'care'>;
 
 type BillingPreviewInsuranceRecord = {
@@ -92,6 +94,8 @@ type BillingPreviewInsurancePrefetch = {
   }): PublicSubsidyApplicationPreview;
 };
 
+type BillingPreviewRuntimeContextCache = Map<string, Promise<BillingRuntimeContextResult>>;
+
 const BILLING_PREVIEW_CARE_CASE_SELECT = {
   id: true,
   patient_id: true,
@@ -106,6 +110,55 @@ const BILLING_PREVIEW_CARE_CASE_SELECT = {
 
 function effectiveInsuranceDate(asOf: Date): Date {
   return utcDateFromLocalKey(localDateKey(asOf));
+}
+
+function buildRuntimeContextCacheKey(args: {
+  orgId: string;
+  payerBasis: 'medical' | 'care';
+  siteId: string | null;
+  asOfDate: Date;
+  buildingPatientCount: number;
+}): string {
+  return JSON.stringify([
+    args.orgId,
+    args.payerBasis,
+    args.siteId,
+    localDateKey(args.asOfDate),
+    args.buildingPatientCount,
+  ]);
+}
+
+function resolveBillingRuntimeContextWithCache(args: {
+  cache?: BillingPreviewRuntimeContextCache;
+  orgId: string;
+  payerBasis: 'medical' | 'care';
+  asOfDate: Date;
+  siteId: string | null;
+  buildingPatientCount: number;
+}): Promise<BillingRuntimeContextResult> {
+  if (!args.cache) {
+    return resolveBillingRuntimeContext(prisma, {
+      orgId: args.orgId,
+      payerBasis: args.payerBasis,
+      asOfDate: args.asOfDate,
+      siteId: args.siteId,
+      buildingPatientCount: args.buildingPatientCount,
+    });
+  }
+
+  const cacheKey = buildRuntimeContextCacheKey(args);
+  const cached = args.cache.get(cacheKey);
+  if (cached) return cached;
+
+  const context = resolveBillingRuntimeContext(prisma, {
+    orgId: args.orgId,
+    payerBasis: args.payerBasis,
+    asOfDate: args.asOfDate,
+    siteId: args.siteId,
+    buildingPatientCount: args.buildingPatientCount,
+  });
+  args.cache.set(cacheKey, context);
+  return context;
 }
 
 function compareNullableDateDesc(left: Date | null, right: Date | null): number {
@@ -379,6 +432,7 @@ async function buildVisitScheduleBillingPreviewForCareCase(
     visitType?: string | null;
     latestIntake?: LatestPrescriptionIntakeClassification;
     insurancePrefetch?: BillingPreviewInsurancePrefetch;
+    runtimeContextCache?: BillingPreviewRuntimeContextCache;
   },
   careCase: BillingPreviewCareCase,
 ): Promise<VisitScheduleBillingPreview | null> {
@@ -465,7 +519,8 @@ async function buildVisitScheduleBillingPreviewForCareCase(
     specialCapEligible,
   } as const;
 
-  const runtimeContext = await resolveBillingRuntimeContext(prisma, {
+  const runtimeContext = await resolveBillingRuntimeContextWithCache({
+    cache: args.runtimeContextCache,
     orgId: args.orgId,
     payerBasis: payerBasis === 'care' ? 'care' : 'medical',
     asOfDate: proposedDate,
@@ -553,6 +608,7 @@ export async function buildVisitScheduleBillingPreviewBatch(
     careCases,
     proposedDates: args.map((item) => item.proposedDate),
   });
+  const runtimeContextCache: BillingPreviewRuntimeContextCache = new Map();
   const previewByInput = new Map<string, Promise<VisitScheduleBillingPreview | null>>();
   const entries = await Promise.all(
     args.map(async (item) => {
@@ -577,6 +633,7 @@ export async function buildVisitScheduleBillingPreviewBatch(
                 visitType: item.visitType,
                 latestIntake: latestIntakeByCaseId.get(item.caseId) ?? null,
                 insurancePrefetch,
+                runtimeContextCache,
               },
               careCase,
             )

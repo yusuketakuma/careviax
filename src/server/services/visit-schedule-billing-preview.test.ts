@@ -419,4 +419,78 @@ describe('buildVisitScheduleBillingPreview', () => {
       }),
     );
   });
+
+  it('reuses runtime context across same-date same-site batch previews', async () => {
+    careCaseFindManyMock.mockResolvedValue([
+      {
+        id: 'case_1',
+        patient_id: 'patient_1',
+        primary_pharmacist_id: 'pharm_1',
+        required_visit_support: null,
+        patient: {
+          id: 'patient_1',
+        },
+      },
+      {
+        id: 'case_2',
+        patient_id: 'patient_2',
+        primary_pharmacist_id: 'pharm_2',
+        required_visit_support: null,
+        patient: {
+          id: 'patient_2',
+        },
+      },
+    ]);
+    patientInsuranceFindManyMock.mockResolvedValue([
+      makeInsuranceRecord({
+        id: 'insurance_medical_1',
+        patient_id: 'patient_1',
+        insurance_type: 'medical',
+        number: 'MED-001',
+      }),
+      makeInsuranceRecord({
+        id: 'insurance_medical_2',
+        patient_id: 'patient_2',
+        insurance_type: 'medical',
+        number: 'MED-002',
+      }),
+    ]);
+
+    const previews = await buildVisitScheduleBillingPreviewBatch(
+      [
+        {
+          key: 'proposal_1',
+          caseId: 'case_1',
+          proposedDate: '2026-04-03',
+          pharmacistId: 'pharm_1',
+          siteId: 'site_1',
+          visitType: 'regular',
+        },
+        {
+          key: 'proposal_2',
+          caseId: 'case_2',
+          proposedDate: '2026-04-03',
+          pharmacistId: 'pharm_2',
+          siteId: 'site_1',
+          visitType: 'regular',
+        },
+      ],
+      'org_1',
+    );
+
+    expect(findLatestPrescriptionIntakeClassificationMock).toHaveBeenCalledTimes(2);
+    expect(patientInsuranceFindManyMock).toHaveBeenCalledTimes(1);
+    expect(resolveBillingRuntimeContextMock).toHaveBeenCalledTimes(1);
+    expect(resolveBillingRuntimeContextMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        payerBasis: 'medical',
+        siteId: 'site_1',
+        asOfDate: new Date('2026-04-03'),
+        buildingPatientCount: 1,
+      }),
+    );
+    expect(Object.keys(previews).sort()).toEqual(['proposal_1', 'proposal_2']);
+  });
 });
