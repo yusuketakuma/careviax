@@ -1,13 +1,19 @@
 import { withAuthContext } from '@/lib/auth/context';
+import { COCKPIT_CACHE_TTL_MS } from '@/lib/constants/workflow';
 import { success } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { formatNullableDateKey } from '@/lib/date-key';
 import { todayUtcRange } from '@/lib/utils/date-boundary';
 import { extractPackagingInstructionTags } from '@/lib/dispensing/packaging';
+import { serverCache } from '@/lib/utils/server-cache';
 import {
   buildDashboardTaskAssignmentWhere,
   resolveDashboardAssignmentScope,
 } from '@/server/services/dashboard-assignment-scope';
+import {
+  buildCockpitCacheKey,
+  buildWorkflowAssignmentScopeFingerprint,
+} from '@/server/services/workflow-dashboard-cache';
 import { canViewAllDashboardWork } from '@/lib/auth/visit-schedule-access';
 import { buildBlockedReasons } from '@/lib/workflow/blocked-reason-projection';
 import type {
@@ -117,6 +123,19 @@ export const GET = withAuthContext(
       accessContext: ctx,
       scope: requestedScope ? appliedScope : 'role_default',
     });
+    const cacheKey = buildCockpitCacheKey(
+      ctx.orgId,
+      ctx.role,
+      ctx.userId,
+      todayRange.gte,
+      appliedScope,
+      buildWorkflowAssignmentScopeFingerprint(assignmentScope),
+    );
+    const cachedData = serverCache.get<DashboardCockpitResponse>(cacheKey);
+    if (cachedData) {
+      return success({ data: cachedData });
+    }
+
     const cycleCaseScope = assignmentScope.caseIds
       ? { case_id: { in: assignmentScope.caseIds } }
       : {};
@@ -322,6 +341,7 @@ export const GET = withAuthContext(
       team_capacity: buildTeamCapacity(teamMembers, todayShifts, todaySchedules, now),
     };
 
+    serverCache.set(cacheKey, responseData, COCKPIT_CACHE_TTL_MS);
     return success({ data: responseData });
   },
   {

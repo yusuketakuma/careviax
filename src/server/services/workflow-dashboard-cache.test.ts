@@ -41,6 +41,7 @@ describe('notifyWorkflowMutation', () => {
     });
 
     expect(invalidateMock).toHaveBeenCalledWith('workflow:org_1:');
+    expect(invalidateMock).toHaveBeenCalledWith('cockpit:org_1:');
     expect(broadcastStatusUpdateMock).toHaveBeenCalledWith('org:org_1', {
       type: 'cycle_transition',
       payload: { source: 'medication_cycles_transition' },
@@ -96,6 +97,7 @@ describe('notifyWorkflowMutation', () => {
     ).resolves.toBeUndefined();
 
     expect(invalidateMock).toHaveBeenCalledWith('workflow:org_1:');
+    expect(invalidateMock).toHaveBeenCalledWith('cockpit:org_1:');
   });
 });
 

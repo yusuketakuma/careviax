@@ -26,6 +26,18 @@ export function buildWorkflowCacheKey(
   return `workflow:${orgId}:${role}:${userId}:${formatCacheDay(today)}${scopeKey}`;
 }
 
+export function buildCockpitCacheKey(
+  orgId: string,
+  role: string,
+  userId: string,
+  today: Date,
+  scope: string,
+  assignmentScopeFingerprint?: string,
+) {
+  const scopeKey = assignmentScopeFingerprint ? `:${assignmentScopeFingerprint}` : '';
+  return `cockpit:${orgId}:${role}:${userId}:${formatCacheDay(today)}:${scope}${scopeKey}`;
+}
+
 export function buildWorkflowAssignmentScopeFingerprint(scope: DashboardAssignmentScope) {
   if (
     scope.caseIds === undefined &&
@@ -53,6 +65,7 @@ export function buildWorkflowAssignmentScopeFingerprint(scope: DashboardAssignme
 
 export function invalidateWorkflowDashboardCache(orgId: string) {
   serverCache.invalidate(`workflow:${orgId}:`);
+  serverCache.invalidate(`cockpit:${orgId}:`);
 }
 
 export async function notifyWorkflowMutation(args: {

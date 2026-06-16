@@ -2,6 +2,7 @@ export const UPCOMING_WINDOW_DAYS = 14;
 export const RECENT_WINDOW_DAYS = 7;
 export const WORKBENCH_MAX_ITEMS = 12;
 export const WORKFLOW_CACHE_TTL_MS = 15_000;
+export const COCKPIT_CACHE_TTL_MS = 15_000;
 export const WORKFLOW_TASK_LIMIT = 12;
 export const WORKFLOW_ISSUE_LIMIT = 12;
 export const WORKFLOW_UPCOMING_SCHEDULE_LIMIT = 48;

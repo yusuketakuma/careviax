@@ -11,6 +11,8 @@ const {
   careCaseFindManyMock,
   membershipFindManyMock,
   pharmacistShiftFindManyMock,
+  serverCacheGetMock,
+  serverCacheSetMock,
 } = vi.hoisted(() => ({
   authContextMock: { orgId: 'org_1', userId: 'user_1', role: 'admin' },
   medicationCycleGroupByMock: vi.fn(),
@@ -21,6 +23,8 @@ const {
   careCaseFindManyMock: vi.fn(),
   membershipFindManyMock: vi.fn(),
   pharmacistShiftFindManyMock: vi.fn(),
+  serverCacheGetMock: vi.fn(),
+  serverCacheSetMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -40,6 +44,13 @@ vi.mock('@/lib/db/client', () => ({
     careCase: { findMany: careCaseFindManyMock },
     membership: { findMany: membershipFindManyMock },
     pharmacistShift: { findMany: pharmacistShiftFindManyMock },
+  },
+}));
+
+vi.mock('@/lib/utils/server-cache', () => ({
+  serverCache: {
+    get: serverCacheGetMock,
+    set: serverCacheSetMock,
   },
 }));
 
@@ -92,6 +103,7 @@ describe('/api/dashboard/cockpit', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 12, 9, 42));
     vi.clearAllMocks();
+    serverCacheGetMock.mockReturnValue(undefined);
     authContextMock.role = 'admin';
     medicationCycleGroupByMock.mockResolvedValue([
       { overall_status: 'dispensed', _count: { id: 10 } },
@@ -226,6 +238,36 @@ describe('/api/dashboard/cockpit', () => {
 
     expect(json.data.carryover_count).toBe(2);
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(serverCacheSetMock).toHaveBeenCalledWith(
+      expect.stringContaining('cockpit:org_1:admin:user_1:2026-06-12:team'),
+      expect.objectContaining({ audit_pending_count: 2 }),
+      15_000,
+    );
+  });
+
+  it('serves a cached cockpit response without rerunning aggregate queries', async () => {
+    serverCacheGetMock.mockReturnValueOnce({
+      generated_at: '2026-06-12T00:00:00.000Z',
+      scope: { requested: 'team', applied: 'team', can_view_team: true },
+      cycle_status_counts: { audit_pending: 1 },
+      audit_pending_count: 1,
+      narcotic_audit_count: 0,
+      audit_queue: [],
+      today_visits: [],
+      blocked_reasons: [],
+      carryover_count: 0,
+      team_capacity: [],
+    });
+
+    const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: { cycle_status_counts: { audit_pending: 1 } },
+    });
+    expect(medicationCycleGroupByMock).not.toHaveBeenCalled();
+    expect(dispenseTaskFindManyMock).not.toHaveBeenCalled();
+    expect(serverCacheSetMock).not.toHaveBeenCalled();
   });
 
   it('uses the personal assignment scope when an admin requests mine', async () => {
