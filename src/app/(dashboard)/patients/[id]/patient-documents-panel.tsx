@@ -510,14 +510,25 @@ function PrintReadinessSummary({ readiness }: { readiness: FirstVisitPrintReadin
       </div>
       <div className="mt-3 rounded-lg border border-border/60 bg-background p-3">
         <p className="text-xs font-medium text-muted-foreground">使用予定テンプレート</p>
-        <dl className="mt-2 grid gap-2 text-xs md:grid-cols-2">
+        <dl className="mt-2 grid gap-2 md:grid-cols-2">
           {readiness.template_versions.map((template) => (
-            <div key={template.document_type} className="flex justify-between gap-2">
-              <dt className="text-muted-foreground">{template.label}</dt>
-              <dd className="text-right text-foreground">
-                {template.template_name
-                  ? `${template.template_name}${template.template_version ? ` ${template.template_version}` : ''}`
-                  : '未設定'}
+            <div
+              key={template.document_type}
+              className="rounded-lg border border-border/60 bg-card p-3"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <dt className="text-sm font-medium text-foreground">{template.label}</dt>
+                <Badge variant={template.template_id ? 'default' : 'secondary'}>
+                  {template.template_id ? '既定テンプレート' : '未設定'}
+                </Badge>
+              </div>
+              <dd className="mt-2 space-y-1 text-xs text-muted-foreground">
+                <span className="block font-medium text-foreground">
+                  {template.template_name
+                    ? `${template.template_name}${template.template_version ? ` ${template.template_version}` : ''}`
+                    : 'テンプレート未設定'}
+                </span>
+                <span className="block">{formatTemplateEffectiveWindow(template)}</span>
               </dd>
             </div>
           ))}
@@ -525,6 +536,24 @@ function PrintReadinessSummary({ readiness }: { readiness: FirstVisitPrintReadin
       </div>
     </div>
   );
+}
+
+function formatTemplateEffectiveWindow(
+  template: FirstVisitPrintReadiness['template_versions'][number],
+) {
+  const from = formatTemplateDate(template.effective_from);
+  const to = formatTemplateDate(template.effective_to);
+
+  if (!from && !to) {
+    return '適用期間未設定';
+  }
+
+  return `適用 ${from ?? '開始日未設定'} - ${to ?? '無期限'}`;
+}
+
+function formatTemplateDate(value: string | null) {
+  if (!value) return null;
+  return format(new Date(value), 'yyyy/MM/dd', { locale: ja });
 }
 
 function DocumentStatusSummary({ statuses }: { statuses: FirstVisitDocumentStatus[] }) {

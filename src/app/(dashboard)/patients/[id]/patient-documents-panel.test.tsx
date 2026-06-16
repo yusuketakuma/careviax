@@ -166,6 +166,10 @@ describe('FirstVisitDocumentsPanel', () => {
       'http://localhost:3000/admin/document-templates',
     );
     expect(screen.getAllByText('居宅療養管理指導契約書 2026年版 v1.1').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('既定テンプレート').length).toBeGreaterThan(0);
+    expect(screen.getByText('適用 2026/04/01 - 無期限')).toBeTruthy();
+    expect(screen.getByText('テンプレート未設定')).toBeTruthy();
+    expect(screen.getByText('適用期間未設定')).toBeTruthy();
     expect(screen.getByTestId('first-visit-document-status-summary')).toBeTruthy();
     expect(
       screen.getByRole('heading', { level: 3, name: '契約・同意書類の現在状態' }),
