@@ -16,7 +16,6 @@ import {
 } from '@/server/services/management-plans';
 import { resolveBillingPayerBasis } from '@/server/services/billing-payer-basis';
 import { validateScheduleTimeStringsFitShift } from '@/server/services/visit-schedule-shift';
-import { validateVisitVehicleResourceForSchedule } from '@/server/services/visit-schedule-service';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 
@@ -89,6 +88,14 @@ type ScheduleLimitInsuranceRecord = {
   valid_from: Date | null;
   valid_until: Date | null;
   created_at: Date;
+};
+
+type GeneratedVisitShift = {
+  date: Date;
+  site_id: string | null;
+  available: boolean;
+  available_from: Date | null;
+  available_to: Date | null;
 };
 
 function isInsuranceRecordEffective(record: ScheduleLimitInsuranceRecord, asOf: Date) {
@@ -164,6 +171,73 @@ async function resolveScheduleLimitInsuranceTypes(args: {
 
     return isLimitInsuranceType(payerBasis) ? payerBasis : null;
   });
+}
+
+async function validateGeneratedVisitVehicleResource(args: {
+  orgId: string;
+  vehicleResourceId: string;
+  candidateDates: Date[];
+  shiftByDate: Map<string, GeneratedVisitShift>;
+}) {
+  const vehicleResource = await prisma.visitVehicleResource.findFirst({
+    where: {
+      org_id: args.orgId,
+      id: args.vehicleResourceId,
+      available: true,
+    },
+    select: {
+      id: true,
+      site_id: true,
+      label: true,
+      max_stops: true,
+    },
+  });
+  if (!vehicleResource) {
+    return validationError('選択した車両リソースが見つからないか利用できません');
+  }
+
+  for (const candidateDate of args.candidateDates) {
+    const shift = args.shiftByDate.get(buildDateKey(candidateDate));
+    if (!shift?.site_id) {
+      return validationError('車両リソースを指定する場合は訪問拠点が必要です');
+    }
+    if (vehicleResource.site_id !== shift.site_id) {
+      return validationError('選択した車両リソースは訪問予定の拠点では利用できません');
+    }
+  }
+
+  if (vehicleResource.max_stops == null) return null;
+
+  const existingSchedules = await prisma.visitSchedule.findMany({
+    where: {
+      org_id: args.orgId,
+      vehicle_resource_id: args.vehicleResourceId,
+      scheduled_date: { in: args.candidateDates },
+      schedule_status: {
+        notIn: ['cancelled', 'rescheduled'],
+      },
+    },
+    select: {
+      scheduled_date: true,
+    },
+  });
+  const countByDate = new Map<string, number>();
+  for (const schedule of existingSchedules) {
+    const dateKey = buildDateKey(schedule.scheduled_date);
+    countByDate.set(dateKey, (countByDate.get(dateKey) ?? 0) + 1);
+  }
+  for (const candidateDate of args.candidateDates) {
+    const dateKey = buildDateKey(candidateDate);
+    const nextCount = (countByDate.get(dateKey) ?? 0) + 1;
+    countByDate.set(dateKey, nextCount);
+    if (nextCount > vehicleResource.max_stops) {
+      return validationError(
+        `${vehicleResource.label} で訪問できる件数は最大 ${vehicleResource.max_stops} 件です`,
+      );
+    }
+  }
+
+  return null;
 }
 
 export const POST = withAuthContext(
@@ -313,20 +387,13 @@ export const POST = withAuthContext(
       }
     }
     if (vehicle_resource_id) {
-      const vehicleValidations = await Promise.all(
-        candidateDates.map((candidateDate) => {
-          const shift = shiftByDate.get(buildDateKey(candidateDate));
-          return validateVisitVehicleResourceForSchedule(prisma, {
-            orgId: ctx.orgId,
-            vehicleResourceId: vehicle_resource_id,
-            siteId: shift?.site_id ?? null,
-            scheduledDate: candidateDate,
-          });
-        }),
-      );
-      for (const vehicleValidation of vehicleValidations) {
-        if (!vehicleValidation.ok) return vehicleValidation.response;
-      }
+      const vehicleValidationError = await validateGeneratedVisitVehicleResource({
+        orgId: ctx.orgId,
+        vehicleResourceId: vehicle_resource_id,
+        candidateDates,
+        shiftByDate,
+      });
+      if (vehicleValidationError) return vehicleValidationError;
     }
 
     const scheduleLimitTypes = await resolveScheduleLimitInsuranceTypes({

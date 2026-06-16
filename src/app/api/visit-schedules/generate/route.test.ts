@@ -56,6 +56,7 @@ vi.mock('@/lib/db/client', () => ({
       findFirst: visitVehicleResourceFindFirstMock,
     },
     visitSchedule: {
+      findMany: visitScheduleFindManyMock,
       count: visitScheduleCountMock,
     },
     patientInsurance: {
@@ -384,16 +385,23 @@ describe('/api/visit-schedules/generate POST', () => {
         max_stops: true,
       },
     });
-    expect(visitScheduleCountMock).toHaveBeenCalledWith({
-      where: {
-        org_id: 'org_1',
-        vehicle_resource_id: 'vehicle_1',
-        scheduled_date: new Date('2026-04-07T00:00:00.000Z'),
-        schedule_status: {
-          notIn: ['cancelled', 'rescheduled'],
+    expect(visitVehicleResourceFindFirstMock).toHaveBeenCalledTimes(1);
+    expect(visitScheduleCountMock).not.toHaveBeenCalled();
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          vehicle_resource_id: 'vehicle_1',
+          scheduled_date: { in: [new Date('2026-04-07T00:00:00.000Z')] },
+          schedule_status: {
+            notIn: ['cancelled', 'rescheduled'],
+          },
         },
-      },
-    });
+        select: {
+          scheduled_date: true,
+        },
+      }),
+    );
     expect(visitScheduleCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -438,7 +446,9 @@ describe('/api/visit-schedules/generate POST', () => {
       label: '社用車A',
       max_stops: 1,
     });
-    visitScheduleCountMock.mockResolvedValueOnce(1);
+    visitScheduleFindManyMock.mockResolvedValueOnce([
+      { scheduled_date: new Date('2026-04-07T00:00:00.000Z') },
+    ]);
 
     const response = await POST(
       createRequest({
@@ -457,6 +467,7 @@ describe('/api/visit-schedules/generate POST', () => {
     await expect(response.json()).resolves.toMatchObject({
       message: '社用車A で訪問できる件数は最大 1 件です',
     });
+    expect(visitScheduleCountMock).not.toHaveBeenCalled();
     expect(visitScheduleCreateMock).not.toHaveBeenCalled();
   });
 
