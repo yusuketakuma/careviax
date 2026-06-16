@@ -58,6 +58,10 @@ type BillingPreviewCareCase = {
   };
 };
 
+type LatestPrescriptionIntakeClassification = Awaited<
+  ReturnType<typeof findLatestPrescriptionIntakeClassification>
+>;
+
 const BILLING_PREVIEW_CARE_CASE_SELECT = {
   id: true,
   patient_id: true,
@@ -200,6 +204,7 @@ async function buildVisitScheduleBillingPreviewForCareCase(
     pharmacistId?: string | null;
     siteId?: string | null;
     visitType?: string | null;
+    latestIntake?: LatestPrescriptionIntakeClassification;
   },
   careCase: BillingPreviewCareCase,
 ): Promise<VisitScheduleBillingPreview | null> {
@@ -207,10 +212,12 @@ async function buildVisitScheduleBillingPreviewForCareCase(
 
   const [latestIntake, medicalInsurance, careInsurance, pendingPublicSubsidyInsurance] =
     await Promise.all([
-      findLatestPrescriptionIntakeClassification(prisma, {
-        orgId: args.orgId,
-        caseId: args.caseId,
-      }),
+      args.latestIntake !== undefined
+        ? Promise.resolve(args.latestIntake)
+        : findLatestPrescriptionIntakeClassification(prisma, {
+            orgId: args.orgId,
+            caseId: args.caseId,
+          }),
       resolvePatientInsurance(prisma, {
         orgId: args.orgId,
         patientId: careCase.patient_id,
@@ -331,6 +338,19 @@ export async function buildVisitScheduleBillingPreviewBatch(
     select: BILLING_PREVIEW_CARE_CASE_SELECT,
   });
   const careCaseById = new Map(careCases.map((careCase) => [careCase.id, careCase]));
+  const latestIntakeEntries = await Promise.all(
+    careCases.map(
+      async (careCase) =>
+        [
+          careCase.id,
+          await findLatestPrescriptionIntakeClassification(prisma, {
+            orgId,
+            caseId: careCase.id,
+          }),
+        ] as const,
+    ),
+  );
+  const latestIntakeByCaseId = new Map(latestIntakeEntries);
   const previewByInput = new Map<string, Promise<VisitScheduleBillingPreview | null>>();
   const entries = await Promise.all(
     args.map(async (item) => {
@@ -353,6 +373,7 @@ export async function buildVisitScheduleBillingPreviewBatch(
                 pharmacistId: item.pharmacistId,
                 siteId: item.siteId,
                 visitType: item.visitType,
+                latestIntake: latestIntakeByCaseId.get(item.caseId) ?? null,
               },
               careCase,
             )

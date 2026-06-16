@@ -304,7 +304,7 @@ describe('buildVisitScheduleBillingPreview', () => {
     expect(previews.proposal_1).toBe(previews.schedule_1);
   });
 
-  it('prefetches care cases once for same-case batch previews across different dates', async () => {
+  it('prefetches case-scoped dependencies once for same-case batch previews across different dates', async () => {
     const previews = await buildVisitScheduleBillingPreviewBatch(
       [
         {
@@ -329,7 +329,7 @@ describe('buildVisitScheduleBillingPreview', () => {
 
     expect(careCaseFindManyMock).toHaveBeenCalledTimes(1);
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
-    expect(findLatestPrescriptionIntakeClassificationMock).toHaveBeenCalledTimes(2);
+    expect(findLatestPrescriptionIntakeClassificationMock).toHaveBeenCalledTimes(1);
     expect(Object.keys(previews).sort()).toEqual(['proposal_1', 'proposal_2']);
   });
 });
