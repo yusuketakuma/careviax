@@ -531,6 +531,21 @@ describe('CardWorkspace', () => {
     expect(within(homeOps).getByText('未収額')).toBeTruthy();
     expect(within(homeOps).getByText('領収証')).toBeTruthy();
     expect(within(homeOps).getByText('R20260616-001')).toBeTruthy();
+    expect(within(homeOps).queryByText('支払者区分コード')).toBeNull();
+    const expandBillingMetricsButton = within(homeOps).getByRole('button', {
+      name: '全指標を表示（残り10件）',
+    });
+    expect(expandBillingMetricsButton.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(expandBillingMetricsButton);
+    expect(within(homeOps).getByText('支払者区分コード')).toBeTruthy();
+    expect(within(homeOps).getByText('請求書発行コード')).toBeTruthy();
+    expect(within(homeOps).getByText('one_month')).toBeTruthy();
+    const collapseBillingMetricsButton = within(homeOps).getByRole('button', {
+      name: '主要4項目に戻す',
+    });
+    expect(collapseBillingMetricsButton.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(collapseBillingMetricsButton);
+    expect(within(homeOps).queryByText('支払者区分コード')).toBeNull();
     expect(within(homeOps).getByRole('button', { name: /支払設定を更新/ })).toBeTruthy();
     expect(within(homeOps).getByRole('button', { name: /集金記録を更新/ })).toBeTruthy();
     expect(within(homeOps).getByRole('button', { name: /会議要点を追記/ })).toBeTruthy();

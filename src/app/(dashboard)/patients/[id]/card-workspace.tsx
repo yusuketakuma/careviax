@@ -462,6 +462,21 @@ function PatientHomeOperationsPanel({
         action_label: item.action_label,
       })),
     );
+  const [expandedMetricKeys, setExpandedMetricKeys] = useState<Set<PatientHomeOperationKey>>(
+    () => new Set(),
+  );
+
+  const toggleMetricExpansion = (key: PatientHomeOperationKey) => {
+    setExpandedMetricKeys((current) => {
+      const next = new Set(current);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
 
   return (
     <SectionCard aria-label="在宅運用管理" data-testid="patient-home-operations-panel">
@@ -520,6 +535,10 @@ function PatientHomeOperationsPanel({
       <div className="mt-4 grid gap-3 lg:grid-cols-2 2xl:grid-cols-5">
         {items.map((item) => {
           const Icon = item.icon;
+          const priorityMetrics = selectHomeOperationMetrics(item);
+          const isMetricExpanded = expandedMetricKeys.has(item.key);
+          const visibleMetrics = isMetricExpanded ? item.metrics : priorityMetrics;
+          const hiddenMetricCount = item.metrics.length - priorityMetrics.length;
           return (
             <div
               key={item.key}
@@ -537,13 +556,25 @@ function PatientHomeOperationsPanel({
                   <p className="mt-2 text-xs leading-5 text-muted-foreground">{item.description}</p>
                   {item.metrics.length > 0 ? (
                     <dl className="mt-3 grid gap-1 text-xs text-muted-foreground">
-                      {selectHomeOperationMetrics(item).map((metric) => (
+                      {visibleMetrics.map((metric) => (
                         <div key={metric.label} className="flex justify-between gap-2">
                           <dt>{metric.label}</dt>
                           <dd className="font-medium text-foreground">{metric.value}</dd>
                         </div>
                       ))}
                     </dl>
+                  ) : null}
+                  {hiddenMetricCount > 0 ? (
+                    <button
+                      type="button"
+                      className="mt-2 inline-flex min-h-8 items-center text-xs font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      aria-expanded={isMetricExpanded}
+                      onClick={() => toggleMetricExpansion(item.key)}
+                    >
+                      {isMetricExpanded
+                        ? '主要4項目に戻す'
+                        : `全指標を表示（残り${hiddenMetricCount}件）`}
+                    </button>
                   ) : null}
                   {item.alerts.length > 0 ? (
                     <ul className="mt-3 space-y-1 text-xs text-amber-800">
