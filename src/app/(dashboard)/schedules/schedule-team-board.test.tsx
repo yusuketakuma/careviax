@@ -378,7 +378,9 @@ describe('ScheduleTeamBoard', () => {
     expect(within(vehicles).getByRole('button', { name: '推奨車両を反映' })).toBeTruthy();
     const routePreview = screen.getByTestId('schedule-route-preview');
     expect(within(routePreview).getByText('訪問ルート')).toBeTruthy();
-    expect(within(routePreview).getByRole('link', { name: 'ルート案を開く' })).toBeTruthy();
+    expect(within(routePreview).getByRole('link', { name: 'ルート案を開く' }).className).toContain(
+      'min-h-[44px]',
+    );
     expect(within(routePreview).getByText('伊藤 キヨ様')).toBeTruthy();
     expect(within(routePreview).getAllByText(/軽バン1号/).length).toBeGreaterThan(0);
     expect(within(routePreview).getAllByText(/車両未割当/).length).toBeGreaterThan(0);
@@ -386,6 +388,7 @@ describe('ScheduleTeamBoard', () => {
     expect(visitRequestLink.getAttribute('href')).toContain(
       'work_request_type=staff_work_request_visit',
     );
+    expect(visitRequestLink.className).toContain('size-11');
     expect(visitRequestLink.getAttribute('href')).toContain('related_entity_type=visit_schedule');
     expect(visitRequestLink.getAttribute('href')).toContain('related_entity_id=visit_1');
 

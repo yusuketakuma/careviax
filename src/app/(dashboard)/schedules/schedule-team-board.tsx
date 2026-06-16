@@ -229,7 +229,7 @@ function GanttBlock({ block }: { block: BoardBlock }) {
       data-kind={block.kind}
       title={block.label}
       className={cn(
-        'absolute inset-y-1 flex items-center gap-1 overflow-hidden whitespace-nowrap rounded px-1.5 text-[11px] font-medium',
+        'absolute inset-y-1.5 flex items-center gap-1 overflow-hidden whitespace-nowrap rounded px-1.5 text-[11px] font-medium',
         blockClassName(block),
       )}
       style={{ left: `${left}%`, width: `${width}%` }}
@@ -246,7 +246,7 @@ function GanttBlock({ block }: { block: BoardBlock }) {
         <Link
           href={requestHref}
           aria-label={`${block.label}の訪問を依頼`}
-          className="ml-auto inline-flex size-6 shrink-0 items-center justify-center rounded text-white/90 transition-colors hover:bg-white/15 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+          className="ml-auto inline-flex size-11 shrink-0 items-center justify-center rounded text-white/90 transition-colors hover:bg-white/15 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
           data-testid="visit-work-request-link"
         >
           <Send className="size-3.5" aria-hidden="true" />
@@ -369,7 +369,7 @@ function GanttRow({ lane }: { lane: StaffLane }) {
       <p className="truncate text-sm font-semibold text-foreground">{lane.rowLabel}</p>
       <ol
         aria-label={`${lane.rowLabel}の今日の予定`}
-        className="relative h-11 rounded-md border border-border/60 bg-muted/20"
+        className="relative h-14 rounded-md border border-border/60 bg-muted/20"
       >
         {lane.blocks.map((block) => (
           <GanttBlock key={block.id} block={block} />
@@ -551,7 +551,7 @@ function VehicleRoutePanel({
           </h4>
           <Link
             href="/schedules/route-compare"
-            className="ml-auto text-xs font-bold text-primary underline-offset-4 hover:underline"
+            className="ml-auto inline-flex min-h-[44px] items-center rounded-md px-2 text-xs font-bold text-primary underline-offset-4 hover:bg-primary/5 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             ルート案を開く
           </Link>
