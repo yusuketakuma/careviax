@@ -2544,7 +2544,24 @@ export function ScheduleProposalsContent({
             </SheetDescription>
           </SheetHeader>
 
-          {!detail || detailQuery.isLoading ? (
+          {detailQuery.isError ? (
+            <Card className="mt-6 border-destructive/30 bg-destructive/5">
+              <CardContent className="space-y-3 py-6 text-sm">
+                <p className="font-semibold text-destructive">確定フローを表示できません</p>
+                <p className="text-muted-foreground">
+                  訪問候補の詳細取得に失敗しました。通信状態を確認して再試行してください。
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void detailQuery.refetch()}
+                >
+                  再試行
+                </Button>
+              </CardContent>
+            </Card>
+          ) : !detail || detailQuery.isLoading ? (
             <div className="py-10 text-sm text-muted-foreground">確定フローを読み込み中...</div>
           ) : (
             <div className="mt-6 space-y-6">

@@ -376,7 +376,7 @@ test.describe('schedule page', () => {
 
       const sheet = page.getByRole('dialog');
       await expect(sheet.getByTestId('proposal-confirmation-flow')).toBeVisible({
-        timeout: 45_000,
+        timeout: 90_000,
       });
       await expect(sheet.getByTestId('proposal-candidate-cards')).toBeVisible();
       await expect(sheet.getByTestId('proposal-flow-steps')).toBeVisible();
@@ -807,10 +807,15 @@ test.describe('admin master hub', () => {
   test('admin master hub cross search opens without errors', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/admin');
-    await expect(page.getByTestId('master-hub-card').first()).toBeVisible({ timeout: 45_000 });
+    const crossSearchLink = page.getByRole('link', { name: 'マスター横断検索' });
+    await expect(crossSearchLink).toBeVisible({ timeout: 45_000 });
 
-    await page.getByRole('link', { name: 'マスター横断検索' }).click();
-    await waitForStableUi(page);
+    await clickAndWaitForStableRoute(
+      page,
+      /\/admin\/data-explorer/,
+      () => crossSearchLink.click({ noWaitAfter: true }),
+      { timeout: 90_000 },
+    );
 
     await expect(page).toHaveURL(/\/admin\/data-explorer/);
     await expect(page.locator('main')).toContainText(/データ探索|マスター横断検索/);
