@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { Lock, TriangleAlert } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { FilterChipBar } from '@/components/features/workspace/filter-chip-bar';
@@ -207,7 +207,7 @@ function UrgentNowCard({
           期限 {formatTimeOfDay(item.due_at as string)} — {countdown.label}
         </p>
       ) : waitingMinutes != null ? (
-        <p className="text-sm font-semibold text-amber-600">
+        <p className="text-sm font-semibold text-amber-700">
           {formatAgeLabel(waitingMinutes)}前から監査待ちです
         </p>
       ) : null}
@@ -280,7 +280,7 @@ function UrgentNowSection({
 // ---------------------------------------------------------------------------
 
 const TIMELINE_BLOCK_CLASSES = {
-  visit: 'bg-emerald-600 text-white',
+  visit: 'bg-emerald-700 text-white',
   desk: 'bg-primary text-primary-foreground',
   break: 'border border-border/70 bg-muted text-muted-foreground',
 } as const;
@@ -385,7 +385,7 @@ function TodayFlowSection({
 
 const PROCESS_TILE_TONE_CLASSES: Record<ProcessNowTile['tone'], { tile: string; count: string }> = {
   over: { tile: 'border-red-300 bg-red-50', count: 'text-red-600' },
-  near: { tile: 'border-amber-300 bg-amber-50', count: 'text-amber-600' },
+  near: { tile: 'border-amber-300 bg-amber-50', count: 'text-amber-700' },
   normal: { tile: 'border-border/70 bg-background', count: 'text-foreground' },
 };
 
@@ -669,25 +669,37 @@ export function DashboardCockpit() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-xl font-bold text-foreground">ダッシュボード</h1>
+          <p className="text-sm font-medium text-muted-foreground">PH-OS ダッシュボード</p>
           {/* HH:mm を含むため、SSR とハイドレーションが分を跨ぐと text mismatch になる */}
           <p className="text-sm text-muted-foreground" suppressHydrationWarning>
             {dateLabel}
           </p>
         </div>
-        <FilterChipBar
-          options={VIEW_SCOPE_OPTIONS.map((option) =>
-            option.value === 'team' && !canViewTeam
-              ? {
-                  ...option,
-                  disabled: true,
-                  disabledReason: 'チーム全体は管理者だけが表示できます',
-                }
-              : option,
-          )}
-          value={appliedScope}
-          onChange={setViewScope}
-          ariaLabel="表示範囲の切替"
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/prescriptions/new"
+            className={cn(
+              buttonVariants({ variant: 'default', size: 'sm' }),
+              'min-h-[44px] px-3 sm:min-h-0',
+            )}
+          >
+            処方受付
+          </Link>
+          <FilterChipBar
+            options={VIEW_SCOPE_OPTIONS.map((option) =>
+              option.value === 'team' && !canViewTeam
+                ? {
+                    ...option,
+                    disabled: true,
+                    disabledReason: 'チーム全体は管理者だけが表示できます',
+                  }
+                : option,
+            )}
+            value={appliedScope}
+            onChange={setViewScope}
+            ariaLabel="表示範囲の切替"
+          />
+        </div>
       </div>
       {data?.scope?.applied === 'mine' && !data.scope.can_view_team ? (
         <p className="mt-2 text-xs text-muted-foreground">
