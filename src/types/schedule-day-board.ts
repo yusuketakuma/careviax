@@ -24,8 +24,31 @@ export type DayBoardVisit = {
   confirmed: boolean;
   /** 施設一括訪問の施設名(個人宅は null) */
   facility_label: string | null;
+  facility_batch_id: string | null;
   /** 同一施設バッチの同日対象患者数(個人宅は 1) */
   facility_patient_count: number;
+  preparation_summary: DayBoardVisitPreparationSummary;
+};
+
+export type DayBoardVisitPreparationSummary = {
+  completed_count: number;
+  total_count: number;
+  status: 'ready' | 'incomplete' | 'blocked' | 'unknown';
+  incomplete_labels: string[];
+  ready_blocker_summary?: DayBoardVisitReadyBlockerSummary;
+  aggregate_visit_count?: number;
+  incomplete_visit_count?: number;
+  blocked_visit_count?: number;
+  unknown_visit_count?: number;
+};
+
+export type DayBoardVisitReadyBlockerSummary = {
+  blocked: boolean;
+  blocker_count: number;
+  category_labels: string[];
+  preparation_blocker_count: number;
+  onboarding_blocker_count: number;
+  billing_blocker_count: number;
 };
 
 export type DayBoardStaffRoleKind = 'pharmacist' | 'clerk';

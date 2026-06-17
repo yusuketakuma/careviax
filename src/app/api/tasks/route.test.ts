@@ -139,6 +139,60 @@ describe('/api/tasks', () => {
     );
   });
 
+  it('filters open tasks by multiple task types without weakening assignment scope', async () => {
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/tasks?status=open&task_types=visit_preparation,visit_contact_followup,visit_schedule_override_approval',
+      ),
+    );
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(200);
+    expect(taskFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [
+            { assigned_to: 'user_1' },
+            {
+              related_entity_type: 'patient',
+              related_entity_id: { in: ['patient_1'] },
+            },
+            {
+              related_entity_type: 'case',
+              related_entity_id: { in: ['case_1'] },
+            },
+          ],
+          status: { in: ['pending', 'in_progress'] },
+          task_type: {
+            in: ['visit_preparation', 'visit_contact_followup', 'visit_schedule_override_approval'],
+          },
+        }),
+      }),
+    );
+  });
+
+  it('rejects ambiguous single and multiple task type filters', async () => {
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/tasks?task_type=visit_preparation&task_types=visit_demand',
+      ),
+    );
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(400);
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(taskFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects empty task_types filters before resolving assignment scope', async () => {
+    const response = await GET(createRequest('http://localhost/api/tasks?task_types=,,,'));
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(400);
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(taskFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('filters tasks by priority and decorates assigned user names', async () => {
     taskFindManyMock.mockResolvedValueOnce([
       {

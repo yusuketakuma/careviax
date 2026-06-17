@@ -17,7 +17,7 @@ type ReadyTransitionDb = Pick<
 > &
   BillingEvidenceBlockersReader;
 
-type VisitReadyPreparation = {
+export type VisitReadyPreparation = {
   org_id: string;
   medication_changes_reviewed: boolean;
   carry_items_confirmed: boolean;
@@ -26,17 +26,19 @@ type VisitReadyPreparation = {
   offline_synced: boolean;
 } | null;
 
-type VisitReadyOnboardingKey =
+export type VisitReadyOnboardingKey =
   | 'consent_obtained'
   | 'emergency_contact_set'
   | 'first_visit_doc_delivered'
   | 'management_plan_approved'
   | 'primary_physician_set';
 
-type VisitReadyOnboardingBlocker = {
+export type VisitReadyOnboardingBlocker = {
   key: VisitReadyOnboardingKey;
   label: string;
 };
+
+export type VisitReadyOnboardingReadiness = Record<VisitReadyOnboardingKey, boolean>;
 
 type VisitReadyBillingBlocker = BillingEvidenceBlocker & {
   evidence_id: string;
@@ -77,18 +79,28 @@ export const VISIT_READY_CONTEXT_BLOCKED_MESSAGE =
 
 export const VISIT_READY_CARRY_ITEMS_STATUS_BLOCKER = '持参物ステータス未解決';
 
-function buildReadinessBlockers(preparation: VisitReadyPreparation) {
-  const blockers = PREPARATION_READY_ITEMS.flatMap(([field, label]) =>
+export function isVisitCarryItemsStatusBlockingReady(status: string | null | undefined) {
+  return status === 'blocked' || status === 'partial';
+}
+
+export function buildVisitReadyReadinessBlockers(
+  preparation: VisitReadyPreparation,
+  carryItemsStatus?: string | null,
+) {
+  const blockers: string[] = PREPARATION_READY_ITEMS.flatMap(([field, label]) =>
     preparation?.[field] ? [] : [label],
   );
+  if (isVisitCarryItemsStatusBlockingReady(carryItemsStatus)) {
+    blockers.push(VISIT_READY_CARRY_ITEMS_STATUS_BLOCKER);
+  }
   return blockers;
 }
 
-function buildOnboardingBlockers(readiness: Record<VisitReadyOnboardingKey, boolean>) {
+export function buildVisitReadyOnboardingBlockers(readiness: VisitReadyOnboardingReadiness) {
   return ONBOARDING_READY_ITEMS.flatMap(([key, label]) => (readiness[key] ? [] : [{ key, label }]));
 }
 
-function isPrimaryPhysicianRole(role: string) {
+export function isVisitReadyPrimaryPhysicianRole(role: string) {
   return ['physician', 'doctor', 'clinic', 'prescriber'].includes(role);
 }
 
@@ -226,18 +238,13 @@ export async function evaluateVisitScheduleReadyTransition(
       (issue) => issue === 'missing_management_plan' || issue === 'management_plan_review_overdue',
     ),
     primary_physician_set: schedule.case_.care_team_links.some((link) =>
-      isPrimaryPhysicianRole(link.role),
+      isVisitReadyPrimaryPhysicianRole(link.role),
     ),
-  } satisfies Record<VisitReadyOnboardingKey, boolean>;
+  } satisfies VisitReadyOnboardingReadiness;
 
   const details = {
-    readiness_blockers: [
-      ...buildReadinessBlockers(preparation),
-      ...(['blocked', 'partial'].includes(schedule.carry_items_status ?? '')
-        ? [VISIT_READY_CARRY_ITEMS_STATUS_BLOCKER]
-        : []),
-    ],
-    onboarding_blockers: buildOnboardingBlockers(onboardingReadiness),
+    readiness_blockers: buildVisitReadyReadinessBlockers(preparation, schedule.carry_items_status),
+    onboarding_blockers: buildVisitReadyOnboardingBlockers(onboardingReadiness),
     billing_blockers: billingBlockers,
   } satisfies VisitReadyTransitionBlockers;
 

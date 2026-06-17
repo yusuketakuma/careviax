@@ -55,6 +55,8 @@ export async function createVisitScheduleContactLog(
     contactPhone?: string | null;
     note?: string | null;
     callbackDueAt?: Date | null;
+    idempotencyKey?: string | null;
+    requestFingerprint?: string | null;
     calledAt?: Date;
     calledBy: string;
   },
@@ -72,6 +74,8 @@ export async function createVisitScheduleContactLog(
       contact_phone: params.contactPhone ?? null,
       note: params.note ?? null,
       callback_due_at: params.callbackDueAt ?? null,
+      idempotency_key: params.idempotencyKey ?? null,
+      request_fingerprint: params.requestFingerprint ?? null,
       called_at: params.calledAt ?? new Date(),
       called_by: params.calledBy,
     },

@@ -26,6 +26,12 @@ import type {
   ScheduleDayBoardResponse,
 } from '@/types/schedule-day-board';
 import {
+  TASK_TYPE_LABELS,
+  formatTaskDueLabel,
+  taskPriorityClass,
+  type ScheduleTask,
+} from './day-view.shared';
+import {
   BOARD_END_MINUTES,
   BOARD_START_MINUTES,
   boardPercent,
@@ -65,6 +71,53 @@ async function fetchCockpitForRail(orgId: string): Promise<DashboardCockpitRespo
   if (!res.ok) throw new Error('当日の優先タスク取得に失敗しました');
   const json = await res.json();
   return json.data;
+}
+
+const SCHEDULE_BOARD_TASK_TYPES = [
+  'visit_preparation',
+  'visit_contact_followup',
+  'visit_schedule_override_approval',
+  'visit_carry_item_review',
+  'facility_batch_tracker',
+  'mobile_visit_mode',
+] as const;
+
+type ScheduleTaskStatusUpdate = Extract<ScheduleTask['status'], 'in_progress'>;
+
+async function fetchScheduleOperationalTasks(orgId: string): Promise<ScheduleTask[]> {
+  const params = new URLSearchParams({
+    status: 'open',
+    task_types: SCHEDULE_BOARD_TASK_TYPES.join(','),
+  });
+  const res = await fetch(`/api/tasks?${params.toString()}`, {
+    headers: { 'x-org-id': orgId },
+  });
+  if (!res.ok) throw new Error('スケジュール運用タスクの取得に失敗しました');
+  const json = await res.json();
+  return json.data;
+}
+
+async function updateScheduleOperationalTaskStatus({
+  orgId,
+  taskId,
+  status,
+}: {
+  orgId: string;
+  taskId: string;
+  status: ScheduleTaskStatusUpdate;
+}) {
+  const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-org-id': orgId,
+    },
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => null);
+    throw new Error(detail?.error ?? detail?.message ?? '運用タスクの更新に失敗しました');
+  }
 }
 
 async function updateVisitScheduleStatus({
@@ -180,6 +233,12 @@ const SCHEDULE_STATUS_OPTIONS: Array<{ value: ScheduleStatus; label: string }> =
   { value: 'no_show', label: '不在' },
   { value: 'cancelled', label: '中止' },
 ];
+const INLINE_SCHEDULE_STATUS_OPTIONS = SCHEDULE_STATUS_OPTIONS.filter(
+  (option) =>
+    !(
+      ['completed', 'postponed', 'rescheduled', 'no_show', 'cancelled'] as ScheduleStatus[]
+    ).includes(option.value),
+);
 
 const SCHEDULE_STATUS_CLASSES: Record<ScheduleStatus, string> = {
   planned: 'bg-slate-600 text-white',
@@ -192,6 +251,12 @@ const SCHEDULE_STATUS_CLASSES: Record<ScheduleStatus, string> = {
   rescheduled: 'bg-orange-700 text-white',
   no_show: 'bg-rose-700 text-white',
   cancelled: 'bg-rose-800 text-white',
+};
+const UNKNOWN_PREPARATION_SUMMARY: DayBoardVisit['preparation_summary'] = {
+  completed_count: 0,
+  total_count: 5,
+  status: 'unknown',
+  incomplete_labels: ['準備未確認'],
 };
 
 function scheduleStatusLabel(status: string | null): string {
@@ -214,7 +279,9 @@ function blockClassName(block: BoardBlock): string {
 function GanttBlock({ block }: { block: BoardBlock }) {
   const left = boardPercent(block.startMinutes);
   const width = Math.max(boardPercent(block.endMinutes) - left, 1.5);
-  const scheduleId = block.kind === 'visit' ? block.id.replace(/^visit:/, '') : null;
+  const isAggregateVisit = block.kind === 'visit' && Boolean(block.aggregateScheduleIds);
+  const scheduleId =
+    block.kind === 'visit' && !isAggregateVisit ? block.id.replace(/^visit:/, '') : null;
   const requestHref = scheduleId
     ? buildWorkRequestHref({
         type: 'staff_work_request_visit',
@@ -224,10 +291,17 @@ function GanttBlock({ block }: { block: BoardBlock }) {
         context: 'schedule_visit_card',
       })
     : null;
+  const preparationSummary = block.preparationSummary
+    ? normalizePreparationSummary(block.preparationSummary)
+    : null;
+  const preparationLabel = preparationSummary
+    ? preparationSummaryAriaLabel(preparationSummary)
+    : null;
   return (
     <li
       data-kind={block.kind}
       title={block.label}
+      aria-label={preparationLabel ? `${block.label}、${preparationLabel}` : block.label}
       className={cn(
         'absolute inset-y-1.5 flex items-center gap-1 overflow-hidden whitespace-nowrap rounded px-1.5 text-[11px] font-medium',
         blockClassName(block),
@@ -237,9 +311,10 @@ function GanttBlock({ block }: { block: BoardBlock }) {
       {block.locked ? <Lock className="size-3 shrink-0" aria-hidden="true" /> : null}
       {block.kind === 'visit' ? (
         <span className="shrink-0 rounded bg-white/20 px-1 py-0.5 text-[10px] leading-none">
-          {scheduleStatusLabel(block.status)}
+          {isAggregateVisit ? '施設一括' : scheduleStatusLabel(block.status)}
         </span>
       ) : null}
+      {preparationSummary ? <PreparationSummaryChip summary={preparationSummary} compact /> : null}
       <span className={cn('truncate', block.kind === 'travel' && 'sr-only')}>{block.label}</span>
       {block.risk ? <AlertTriangle className="size-3 shrink-0" aria-hidden="true" /> : null}
       {requestHref ? (
@@ -274,7 +349,8 @@ type ApplyRecommendedVehiclePayload = {
 
 function visitBlocksForLane(lane: StaffLane): VisitStatusBlock[] {
   return lane.blocks.filter(
-    (block): block is VisitStatusBlock => block.kind === 'visit' && Boolean(block.status),
+    (block): block is VisitStatusBlock =>
+      block.kind === 'visit' && !block.aggregateScheduleIds && Boolean(block.status),
   );
 }
 
@@ -343,7 +419,7 @@ function ScheduleStatusControlPanel({
                         })
                       }
                     >
-                      {SCHEDULE_STATUS_OPTIONS.map((option) => (
+                      {INLINE_SCHEDULE_STATUS_OPTIONS.map((option) => (
                         <option key={option.value} value={option.value}>
                           {option.label}
                         </option>
@@ -593,11 +669,104 @@ function RouteStaffList({ member, visits }: { member: DayBoardStaff; visits: Day
                 {visit.time_start ? formatTimeOfDayIso(visit.time_start) : '時間未定'} /{' '}
                 {visit.vehicle_label ?? '車両未割当'}
               </p>
+              <PreparationSummaryChip
+                summary={normalizePreparationSummary(visit.preparation_summary)}
+              />
             </div>
           </li>
         ))}
       </ol>
     </div>
+  );
+}
+
+function normalizePreparationSummary(
+  summary: DayBoardVisit['preparation_summary'] | null | undefined,
+): DayBoardVisit['preparation_summary'] {
+  return summary ?? UNKNOWN_PREPARATION_SUMMARY;
+}
+
+function preparationSummaryAriaLabel(summary: DayBoardVisit['preparation_summary']) {
+  const label = preparationSummaryDisplayLabel(summary);
+  const firstReadyBlocker = summary.ready_blocker_summary?.category_labels[0] ?? null;
+  const firstIncompleteBlocker = summary.incomplete_labels[0] ?? null;
+  const readyBlockerLabel = readyBlockerDisplayLabel(summary);
+  return [
+    label,
+    readyBlockerLabel,
+    firstReadyBlocker
+      ? `確認: ${firstReadyBlocker}`
+      : firstIncompleteBlocker
+        ? `未完: ${firstIncompleteBlocker}`
+        : null,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join('、');
+}
+
+function preparationSummaryDisplayLabel(summary: DayBoardVisit['preparation_summary']) {
+  const aggregateVisitCount = summary.aggregate_visit_count ?? 0;
+  const readyBlockerSummary = summary.ready_blocker_summary;
+  if (aggregateVisitCount > 1 && readyBlockerSummary?.blocked) {
+    const incompleteVisitCount = summary.incomplete_visit_count ?? aggregateVisitCount;
+    return `出発未達 ${incompleteVisitCount}/${aggregateVisitCount}`;
+  }
+  if (aggregateVisitCount > 1 && summary.status !== 'ready') {
+    const incompleteVisitCount = summary.incomplete_visit_count ?? aggregateVisitCount;
+    return summary.status === 'unknown'
+      ? `準備未確認 ${incompleteVisitCount}/${aggregateVisitCount}`
+      : `準備未完 ${incompleteVisitCount}/${aggregateVisitCount}`;
+  }
+  if (summary.status === 'ready') return '準備チェック完了';
+  if (summary.status === 'unknown') return '準備未確認';
+  return `準備 ${summary.completed_count}/${summary.total_count}`;
+}
+
+function readyBlockerDisplayLabel(summary: DayBoardVisit['preparation_summary']) {
+  const readyBlockerSummary = summary.ready_blocker_summary;
+  if (!readyBlockerSummary?.blocked) return null;
+  return `出発前条件 未解決${readyBlockerSummary.blocker_count}件`;
+}
+
+function PreparationSummaryChip({
+  summary,
+  compact = false,
+}: {
+  summary: DayBoardVisit['preparation_summary'];
+  compact?: boolean;
+}) {
+  const readyBlocked = Boolean(summary.ready_blocker_summary?.blocked);
+  const ready =
+    summary.status === 'ready' && !readyBlocked && summary.incomplete_labels.length === 0;
+  const readyBlockerLabel = readyBlockerDisplayLabel(summary);
+  const label =
+    compact && readyBlockerLabel ? readyBlockerLabel : preparationSummaryDisplayLabel(summary);
+  const firstBlocker =
+    summary.ready_blocker_summary?.category_labels[0] ?? summary.incomplete_labels[0] ?? null;
+  const detailLabel = readyBlockerLabel
+    ? `出発前条件: ${summary.ready_blocker_summary?.category_labels.join(' / ')}`
+    : firstBlocker
+      ? `未完: ${firstBlocker}`
+      : null;
+  return (
+    <span
+      className={cn(
+        'inline-flex max-w-full items-center gap-1 rounded border px-1.5 py-0.5 font-semibold leading-4',
+        compact ? 'h-5 shrink-0 text-[10px]' : 'mt-1 text-[11px]',
+        ready
+          ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+          : summary.status === 'blocked' || summary.status === 'unknown' || readyBlocked
+            ? 'border-amber-300 bg-amber-50 text-amber-900'
+            : 'border-amber-200 bg-amber-50 text-amber-800',
+      )}
+      aria-label={preparationSummaryAriaLabel(summary)}
+    >
+      {!ready ? <AlertTriangle className="size-3 shrink-0" aria-hidden="true" /> : null}
+      <span className="truncate">{label}</span>
+      {detailLabel && !compact ? (
+        <span className="hidden truncate text-amber-950 sm:inline">{detailLabel}</span>
+      ) : null}
+    </span>
   );
 }
 
@@ -848,6 +1017,208 @@ function PendingProposalsCard({
 }
 
 // ---------------------------------------------------------------------------
+// 運用タスク(訪問準備 / 架電 / 変更承認)
+// ---------------------------------------------------------------------------
+
+type ScheduleOperationalTaskUpdatePayload = {
+  taskId: string;
+  status: ScheduleTaskStatusUpdate;
+};
+
+function visibleScheduleOperationalTasks(
+  tasks: ScheduleTask[],
+  board: ScheduleDayBoardResponse,
+): ScheduleTask[] {
+  const visitIds = new Set(board.staff.flatMap((member) => member.visits).map((visit) => visit.id));
+  const proposalIds = new Set(board.pending_proposals.map((proposal) => proposal.id));
+
+  return tasks.filter((task) => {
+    if (task.status !== 'pending' && task.status !== 'in_progress') return false;
+    if (
+      !SCHEDULE_BOARD_TASK_TYPES.includes(
+        task.task_type as (typeof SCHEDULE_BOARD_TASK_TYPES)[number],
+      )
+    ) {
+      return false;
+    }
+    if (task.related_entity_type === 'visit_schedule' && task.related_entity_id) {
+      return visitIds.has(task.related_entity_id);
+    }
+    if (task.related_entity_type === 'visit_schedule_proposal' && task.related_entity_id) {
+      return proposalIds.has(task.related_entity_id);
+    }
+    return false;
+  });
+}
+
+function findTaskVisit(task: ScheduleTask, board: ScheduleDayBoardResponse) {
+  if (task.related_entity_type !== 'visit_schedule' || !task.related_entity_id) return null;
+  return (
+    board.staff
+      .flatMap((member) => member.visits)
+      .find((visit) => visit.id === task.related_entity_id) ?? null
+  );
+}
+
+function findTaskProposal(task: ScheduleTask, board: ScheduleDayBoardResponse) {
+  if (task.related_entity_type !== 'visit_schedule_proposal' || !task.related_entity_id) {
+    return null;
+  }
+  return board.pending_proposals.find((proposal) => proposal.id === task.related_entity_id) ?? null;
+}
+
+function operationalTaskContext(
+  task: ScheduleTask,
+  board: ScheduleDayBoardResponse,
+  todayKey: string,
+) {
+  const visit = findTaskVisit(task, board);
+  if (visit) {
+    const timeLabel = visit.time_start ? formatTimeOfDayIso(visit.time_start) : '時間未定';
+    return `${visit.patient_name}様 — ${timeLabel} / ${visit.vehicle_label ?? '車両未割当'}`;
+  }
+  const proposal = findTaskProposal(task, board);
+  if (proposal) {
+    const dateLabel = pendingProposalDateLabel(proposal.proposed_date, todayKey);
+    const timeLabel = proposal.time_start ? formatTimeOfDayIso(proposal.time_start) : '時間未定';
+    return `${proposal.patient_name}様 — ${dateLabel} ${timeLabel}`;
+  }
+  return '対象は現在の表示日外です';
+}
+
+function operationalTaskActionHref(task: ScheduleTask) {
+  if (task.task_type === 'visit_preparation' || task.task_type === 'visit_carry_item_review') {
+    return '/visits';
+  }
+  if (task.task_type === 'visit_schedule_override_approval') {
+    return '/schedules/proposals?workspace=dashboard&status=reschedule_pending';
+  }
+  if (task.task_type === 'visit_contact_followup' && task.related_entity_id) {
+    return `/schedules/proposals?workspace=dashboard&status=patient_contact_pending&preset=contact&detail=${encodeURIComponent(task.related_entity_id)}`;
+  }
+  return '/tasks';
+}
+
+function operationalTaskActionLabel(task: ScheduleTask) {
+  if (task.task_type === 'visit_preparation' || task.task_type === 'visit_carry_item_review') {
+    return '準備一覧へ';
+  }
+  if (task.task_type === 'visit_schedule_override_approval') return '変更承認へ';
+  if (task.task_type === 'visit_contact_followup') return '連絡結果を記録';
+  return 'タスクへ';
+}
+
+function ScheduleOperationalTasksCard({
+  board,
+  tasks,
+  todayKey,
+  loading,
+  error,
+  pendingTaskId,
+  onUpdateTaskStatus,
+}: {
+  board: ScheduleDayBoardResponse;
+  tasks: ScheduleTask[];
+  todayKey: string;
+  loading: boolean;
+  error: boolean;
+  pendingTaskId: string | null;
+  onUpdateTaskStatus: (payload: ScheduleOperationalTaskUpdatePayload) => void;
+}) {
+  const visibleTasks = visibleScheduleOperationalTasks(tasks, board);
+  if (!loading && !error && visibleTasks.length === 0) return null;
+
+  return (
+    <section
+      className="rounded-lg border border-border/70 bg-card p-4"
+      aria-labelledby="schedule-operational-tasks-heading"
+      data-testid="schedule-operational-tasks"
+    >
+      <div className="flex flex-wrap items-baseline gap-2">
+        <h3 id="schedule-operational-tasks-heading" className="text-base font-bold text-foreground">
+          運用タスク
+        </h3>
+        <span className="text-xs text-muted-foreground">スケジュールに影響する未完了タスク</span>
+      </div>
+      {loading ? (
+        <p className="mt-3 rounded-md border border-dashed border-border px-3 py-4 text-sm text-muted-foreground">
+          運用タスクを確認しています...
+        </p>
+      ) : error ? (
+        <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          運用タスクを取得できませんでした。右レールの止まっている理由も確認してください。
+        </p>
+      ) : (
+        <ul className="mt-3 grid gap-2 md:grid-cols-2" role="list">
+          {visibleTasks.slice(0, 6).map((task) => {
+            const pending = pendingTaskId === task.id;
+            const contextLabel = operationalTaskContext(task, board, todayKey);
+            return (
+              <li
+                key={task.id}
+                className="rounded-md border border-border/60 bg-muted/20 px-3 py-2.5"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded bg-background px-1.5 py-0.5 text-[11px] font-bold text-muted-foreground">
+                    {TASK_TYPE_LABELS[task.task_type] ?? task.task_type}
+                  </span>
+                  <span
+                    className={cn(
+                      'rounded px-1.5 py-0.5 text-[11px] font-bold',
+                      taskPriorityClass(task.priority),
+                    )}
+                  >
+                    {task.priority}
+                  </span>
+                  <span className="ml-auto text-xs font-semibold text-muted-foreground">
+                    期限 {formatTaskDueLabel(task)}
+                  </span>
+                </div>
+                <p className="mt-1 line-clamp-2 text-sm font-semibold text-foreground">
+                  {task.title}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">{contextLabel}</p>
+                {task.description ? (
+                  <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
+                    {task.description}
+                  </p>
+                ) : null}
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Link
+                    href={operationalTaskActionHref(task)}
+                    aria-label={`${contextLabel}の${operationalTaskActionLabel(task)}を開く`}
+                    className={buttonVariants({
+                      variant: 'outline',
+                      size: 'sm',
+                      className: 'min-h-[44px] bg-card',
+                    })}
+                  >
+                    {operationalTaskActionLabel(task)}
+                  </Link>
+                  {task.status === 'pending' ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="min-h-[44px] bg-card"
+                      disabled={pending}
+                      onClick={() => onUpdateTaskStatus({ taskId: task.id, status: 'in_progress' })}
+                      aria-label={`${contextLabel}を対応中にする`}
+                    >
+                      対応中
+                    </Button>
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // 右レール(次にやること / 止まっている理由 / 根拠・記録)
 // ---------------------------------------------------------------------------
 
@@ -925,6 +1296,12 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
     enabled: Boolean(orgId) && activeView === 'list',
     staleTime: 30_000,
   });
+  const operationalTasksQuery = useQuery({
+    queryKey: ['tasks', 'schedule-board', orgId, dateKey],
+    queryFn: () => fetchScheduleOperationalTasks(orgId),
+    enabled: Boolean(orgId) && activeView === 'list',
+    staleTime: 30_000,
+  });
   const statusMutation = useMutation({
     mutationFn: (payload: StatusChangePayload) => updateVisitScheduleStatus({ orgId, ...payload }),
     onSuccess: async () => {
@@ -932,6 +1309,18 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
         queryClient.invalidateQueries({ queryKey: ['schedule-day-board', orgId, dateKey] }),
         queryClient.invalidateQueries({ queryKey: ['schedule-rail-cockpit', orgId] }),
         queryClient.invalidateQueries({ queryKey: ['visit-schedules'] }),
+      ]);
+    },
+  });
+  const taskStatusMutation = useMutation({
+    mutationFn: (payload: ScheduleOperationalTaskUpdatePayload) =>
+      updateScheduleOperationalTaskStatus({ orgId, ...payload }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['tasks', 'schedule-board', orgId, dateKey] }),
+        queryClient.invalidateQueries({ queryKey: ['tasks', orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['schedule-day-board', orgId, dateKey] }),
+        queryClient.invalidateQueries({ queryKey: ['schedule-rail-cockpit', orgId] }),
       ]);
     },
   });
@@ -962,6 +1351,7 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
 
   const board = boardQuery.data ?? null;
   const cockpit = cockpitQuery.data ?? null;
+  const operationalTasks = operationalTasksQuery.data ?? [];
 
   const blockedReasons: BlockedReason[] = (cockpit?.blocked_reasons ?? []).map((reason) => ({
     id: reason.id,
@@ -1038,6 +1428,19 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
                     applyRecommendedVehicleMutation.mutate(payload)
                   }
                   applyingRecommendedVehicle={applyRecommendedVehicleMutation.isPending}
+                />
+                <ScheduleOperationalTasksCard
+                  board={board}
+                  tasks={operationalTasks}
+                  todayKey={todayKey}
+                  loading={operationalTasksQuery.isLoading}
+                  error={operationalTasksQuery.isError}
+                  pendingTaskId={
+                    taskStatusMutation.isPending
+                      ? (taskStatusMutation.variables?.taskId ?? null)
+                      : null
+                  }
+                  onUpdateTaskStatus={(payload) => taskStatusMutation.mutate(payload)}
                 />
                 <PendingProposalsCard proposals={board.pending_proposals} todayKey={todayKey} />
               </div>

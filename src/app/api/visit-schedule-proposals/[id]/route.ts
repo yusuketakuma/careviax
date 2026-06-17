@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
@@ -38,7 +39,11 @@ import {
 } from '@/server/services/visit-schedule-communication';
 import { validateScheduleTimeDatesFitShift } from '@/server/services/visit-schedule-shift';
 import { buildProposalRejectAuditChanges } from '@/lib/audit-logs/proposal-rejection';
-import { omitProposalRejectReason } from '@/lib/visit-schedule-proposals/response';
+import {
+  omitProposalRejectReason,
+  redactProposalContactLogs,
+  redactProposalPatientFields,
+} from '@/lib/visit-schedule-proposals/response';
 import { OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES as OPEN_PROPOSAL_STATUSES } from '@/lib/visit-schedule-proposals/route-order';
 
 type RoutePreviewPoint = {
@@ -131,6 +136,79 @@ class VisitProposalConfirmRetryLimitError extends Error {
 
 function isSerializableTransactionConflict(cause: unknown) {
   return cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2034';
+}
+
+function isUniqueConstraintError(cause: unknown) {
+  return cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2002';
+}
+
+function nullableContactAttemptField(value?: string | null) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+type ContactAttemptFingerprintInput = {
+  outcome: string;
+  contact_method: string;
+  contact_name?: string;
+  contact_phone?: string;
+  note?: string;
+  callback_due_at?: string;
+};
+
+function buildContactAttemptRequestFingerprint({
+  proposalId,
+  calledBy,
+  data,
+}: {
+  proposalId: string;
+  calledBy: string;
+  data: ContactAttemptFingerprintInput;
+}) {
+  const fingerprintInput = {
+    action: 'contact_attempt',
+    proposal_id: proposalId,
+    called_by: calledBy,
+    outcome: data.outcome,
+    contact_method: data.contact_method,
+    contact_name: nullableContactAttemptField(data.contact_name),
+    contact_phone: nullableContactAttemptField(data.contact_phone),
+    note: nullableContactAttemptField(data.note),
+    callback_due_at: data.callback_due_at ?? null,
+  };
+  return createHash('sha256').update(JSON.stringify(fingerprintInput)).digest('hex');
+}
+
+async function findContactAttemptLogByIdempotency(orgId: string, idempotencyKey: string) {
+  return prisma.visitScheduleContactLog.findFirst({
+    where: {
+      org_id: orgId,
+      idempotency_key: idempotencyKey,
+    },
+    select: {
+      proposal_id: true,
+      request_fingerprint: true,
+      called_by: true,
+    },
+  });
+}
+
+function isMatchingContactAttemptReplay({
+  log,
+  proposalId,
+  requestFingerprint,
+  calledBy,
+}: {
+  log: { proposal_id: string; request_fingerprint: string | null; called_by: string };
+  proposalId: string;
+  requestFingerprint: string;
+  calledBy: string;
+}) {
+  return (
+    log.proposal_id === proposalId &&
+    log.request_fingerprint === requestFingerprint &&
+    log.called_by === calledBy
+  );
 }
 
 async function withSerializableConfirmTransaction<T>(
@@ -360,12 +438,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     },
     include: {
       case_: {
-        include: {
+        select: {
           patient: {
-            include: {
+            select: {
+              id: true,
+              name: true,
               residences: {
                 where: { is_primary: true },
                 take: 1,
+                select: {
+                  address: true,
+                  building_id: true,
+                  unit_name: true,
+                  lat: true,
+                  lng: true,
+                },
               },
             },
           },
@@ -494,6 +581,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       contact_logs: {
         orderBy: { called_at: 'desc' },
         take: 20,
+        select: {
+          id: true,
+          outcome: true,
+          contact_method: true,
+          callback_due_at: true,
+          called_at: true,
+          note: true,
+        },
       },
     },
   });
@@ -519,12 +614,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       },
       include: {
         case_: {
-          include: {
+          select: {
             patient: {
-              include: {
+              select: {
+                id: true,
+                name: true,
                 residences: {
                   where: { is_primary: true },
                   take: 1,
+                  select: {
+                    address: true,
+                    building_id: true,
+                    unit_name: true,
+                    lat: true,
+                    lng: true,
+                  },
                 },
               },
             },
@@ -665,10 +769,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   return success({
     data: {
-      ...omitProposalRejectReason(proposal),
+      ...redactProposalPatientFields(redactProposalContactLogs(omitProposalRejectReason(proposal))),
       proposed_pharmacist: pharmacistById.get(proposal.proposed_pharmacist_id) ?? null,
       related_proposals: relatedProposals.map((item) => ({
-        ...omitProposalRejectReason(item),
+        ...redactProposalPatientFields(omitProposalRejectReason(item)),
         proposed_pharmacist: pharmacistById.get(item.proposed_pharmacist_id) ?? null,
       })),
       pharmacist_day_schedules: pharmacistDaySchedules,
@@ -700,29 +804,32 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const assignmentWhere = buildVisitScheduleProposalAssignmentWhere(ctx);
 
-  const existing = await prisma.visitScheduleProposal.findFirst({
-    where: {
-      id,
-      org_id: ctx.orgId,
-      ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
-    },
-    include: {
-      case_: {
-        select: {
-          patient_id: true,
-          patient: {
-            select: {
-              residences: {
-                where: { is_primary: true },
-                take: 1,
-                select: { facility_unit_id: true },
+  const findProposalForPatch = () =>
+    prisma.visitScheduleProposal.findFirst({
+      where: {
+        id,
+        org_id: ctx.orgId,
+        ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+      },
+      include: {
+        case_: {
+          select: {
+            patient_id: true,
+            patient: {
+              select: {
+                residences: {
+                  where: { is_primary: true },
+                  take: 1,
+                  select: { facility_unit_id: true },
+                },
               },
             },
           },
         },
       },
-    },
-  });
+    });
+
+  const existing = await findProposalForPatch();
   if (!existing) return notFound('訪問候補が見つかりません');
 
   const scheduleAssignmentWhere = buildVisitScheduleAssignmentWhere(ctx);
@@ -849,6 +956,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }),
       });
 
+      if (shouldMarkContactDeclined) {
+        await resolveOperationalTasks(tx, {
+          orgId: ctx.orgId,
+          dedupeKey: buildVisitScheduleContactTaskKey(id),
+          status: 'completed',
+        });
+      }
+
       return {
         kind: 'success' as const,
         proposal: {
@@ -880,6 +995,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (parsed.data.action === 'contact_attempt') {
     const data = parsed.data;
     const outcome = data.outcome;
+    const requestFingerprint = buildContactAttemptRequestFingerprint({
+      proposalId: id,
+      calledBy: ctx.userId,
+      data,
+    });
+
+    const replayedLog = await findContactAttemptLogByIdempotency(ctx.orgId, data.idempotency_key);
+    if (replayedLog) {
+      if (
+        !isMatchingContactAttemptReplay({
+          log: replayedLog,
+          proposalId: id,
+          requestFingerprint,
+          calledBy: ctx.userId,
+        })
+      ) {
+        return conflict('idempotency_key が別の連絡結果記録で使用されています');
+      }
+
+      return success({ data: omitProposalRejectReason(existing) });
+    }
 
     if (existing.proposal_status !== 'patient_contact_pending') {
       return validationError('この候補には電話結果を記録できません');
@@ -887,10 +1023,34 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const contactResult = await withOrgContext(ctx.orgId, async (tx) => {
       const contactedAt = new Date();
+      const current = await tx.visitScheduleProposal.findFirst({
+        where: {
+          id,
+          org_id: ctx.orgId,
+        },
+        select: {
+          proposal_status: true,
+          patient_contact_status: true,
+          finalized_schedule_id: true,
+        },
+      });
+      if (
+        !current ||
+        current.proposal_status !== 'patient_contact_pending' ||
+        current.finalized_schedule_id
+      ) {
+        return { kind: 'conflict' as const };
+      }
+      if (current.patient_contact_status === 'confirmed' && outcome !== 'confirmed') {
+        return { kind: 'confirmed_downgrade' as const };
+      }
+
       const nextProposalStatus =
-        outcome === 'declined' || outcome === 'change_requested'
+        outcome === 'declined'
           ? 'rejected'
-          : 'patient_contact_pending';
+          : outcome === 'change_requested'
+            ? 'reschedule_pending'
+            : 'patient_contact_pending';
       const claim = await tx.visitScheduleProposal.updateMany({
         where: {
           id,
@@ -918,6 +1078,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         contactPhone: data.contact_phone,
         note: data.note,
         callbackDueAt: data.callback_due_at ? new Date(data.callback_due_at) : null,
+        idempotencyKey: data.idempotency_key,
+        requestFingerprint,
         calledBy: ctx.userId,
       });
 
@@ -933,7 +1095,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             patientId: existing.case_.patient_id,
             assignedTo: existing.proposed_pharmacist_id,
             dueAt: new Date(data.callback_due_at),
-            description: data.note ?? '訪問候補の再架電対応を行ってください。',
+            description: '再架電が必要です。詳細は確定フローで確認してください。',
           }),
         );
       } else {
@@ -964,10 +1126,42 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           patient_contacted_at: contactedAt,
         },
       };
+    }).catch(async (error: unknown) => {
+      if (!isUniqueConstraintError(error)) throw error;
+      const concurrentLog = await findContactAttemptLogByIdempotency(
+        ctx.orgId,
+        data.idempotency_key,
+      );
+      if (
+        concurrentLog &&
+        isMatchingContactAttemptReplay({
+          log: concurrentLog,
+          proposalId: id,
+          requestFingerprint,
+          calledBy: ctx.userId,
+        })
+      ) {
+        const replayProposal = await findProposalForPatch();
+        if (!replayProposal) return { kind: 'not_found' as const };
+        return { kind: 'replay' as const, proposal: replayProposal };
+      }
+      return { kind: 'idempotency_conflict' as const };
     });
 
     if (contactResult.kind === 'conflict') {
       return conflict('この候補はすでに確定または変更されています。再読み込みしてください');
+    }
+    if (contactResult.kind === 'confirmed_downgrade') {
+      return conflict('患者確認済みの連絡結果は未接続へ戻せません。再読み込みしてください');
+    }
+    if (contactResult.kind === 'idempotency_conflict') {
+      return conflict('idempotency_key が別の連絡結果記録で使用されています');
+    }
+    if (contactResult.kind === 'not_found') {
+      return notFound('訪問候補が見つかりません');
+    }
+    if (contactResult.kind === 'replay') {
+      return success({ data: omitProposalRejectReason(contactResult.proposal) });
     }
 
     await notifyWorkflowMutation({

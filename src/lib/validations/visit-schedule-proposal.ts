@@ -27,6 +27,12 @@ const proposalTimeSchema = z
   .trim()
   .regex(/^([01]\d|2[0-3]):[0-5]\d$/, '時刻形式が不正です（HH:mm）');
 
+const idempotencyKeySchema = z
+  .string()
+  .trim()
+  .regex(/^[A-Za-z0-9._:-]{1,128}$/, 'idempotency_key が不正です')
+  .min(1, 'idempotency_key は必須です');
+
 export const generateVisitScheduleProposalSchema = z
   .object({
     case_id: z.string().min(1, 'ケースIDは必須です'),
@@ -42,11 +48,7 @@ export const generateVisitScheduleProposalSchema = z
     vehicle_resource_id: z.string().trim().min(1).optional(),
     reschedule_source_schedule_id: z.string().optional(),
     special_cap_eligible: z.boolean().optional(),
-    idempotency_key: z
-      .string()
-      .trim()
-      .regex(/^[A-Za-z0-9._:-]{1,128}$/, 'idempotency_key が不正です')
-      .min(1, 'idempotency_key は必須です'),
+    idempotency_key: idempotencyKeySchema,
   })
   .superRefine((data, ctx) => {
     if (data.preferred_time_from && data.preferred_time_to) {
@@ -77,15 +79,29 @@ export const updateVisitScheduleProposalSchema = z.discriminatedUnion('action', 
     action: z.literal('reject'),
     reject_reason: z.string().trim().min(1, '却下理由は必須です').max(300).optional(),
   }),
-  z.object({
-    action: z.literal('contact_attempt'),
-    outcome: z.enum(['attempted', 'unreachable', 'declined', 'change_requested', 'confirmed']),
-    contact_method: z.enum(['phone', 'fax', 'email']).default('phone'),
-    contact_name: z.string().optional(),
-    contact_phone: optionalPhoneNumberSchema,
-    note: z.string().optional(),
-    callback_due_at: z.string().datetime('callback_due_at の日時形式が不正です').optional(),
-  }),
+  z
+    .object({
+      action: z.literal('contact_attempt'),
+      outcome: z.enum(['attempted', 'unreachable', 'declined', 'change_requested', 'confirmed']),
+      idempotency_key: idempotencyKeySchema,
+      contact_method: z.enum(['phone', 'fax', 'email']).default('phone'),
+      contact_name: z.string().optional(),
+      contact_phone: optionalPhoneNumberSchema,
+      note: z.string().optional(),
+      callback_due_at: z.string().datetime('callback_due_at の日時形式が不正です').optional(),
+    })
+    .superRefine((data, ctx) => {
+      if (
+        (data.outcome === 'attempted' || data.outcome === 'unreachable') &&
+        !data.callback_due_at
+      ) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['callback_due_at'],
+          message: '未接続の場合は折返し予定日時が必須です',
+        });
+      }
+    }),
 ]);
 
 export type GenerateVisitScheduleProposalInput = z.infer<

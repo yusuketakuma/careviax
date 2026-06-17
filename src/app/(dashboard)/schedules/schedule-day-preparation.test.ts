@@ -583,6 +583,15 @@ describe('schedule day preparation helpers', () => {
       queryKey: ['visit-schedules', 'week-board', 'org_1'],
     });
     expect(invalidateQueries).toHaveBeenNthCalledWith(2, {
+      queryKey: ['schedule-day-board', 'org_1'],
+    });
+    expect(invalidateQueries).toHaveBeenNthCalledWith(3, {
+      queryKey: ['schedule-rail-cockpit', 'org_1'],
+    });
+    expect(invalidateQueries).toHaveBeenNthCalledWith(4, {
+      queryKey: ['visits', 'today-preparation', 'org_1'],
+    });
+    expect(invalidateQueries).toHaveBeenNthCalledWith(5, {
       queryKey: ['tasks', 'org_1'],
     });
   });

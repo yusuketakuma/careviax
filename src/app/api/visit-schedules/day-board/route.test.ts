@@ -13,6 +13,10 @@ const {
   contactLogFindManyMock,
   pharmacistShiftFindManyMock,
   visitVehicleResourceFindManyMock,
+  consentRecordFindManyMock,
+  firstVisitDocumentFindManyMock,
+  managementPlanFindManyMock,
+  billingEvidenceFindManyMock,
 } = vi.hoisted(() => ({
   authContextMock: { orgId: 'org_1', userId: 'user_1', role: 'admin' },
   membershipFindManyMock: vi.fn(),
@@ -25,6 +29,10 @@ const {
   contactLogFindManyMock: vi.fn(),
   pharmacistShiftFindManyMock: vi.fn(),
   visitVehicleResourceFindManyMock: vi.fn(),
+  consentRecordFindManyMock: vi.fn(),
+  firstVisitDocumentFindManyMock: vi.fn(),
+  managementPlanFindManyMock: vi.fn(),
+  billingEvidenceFindManyMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -46,6 +54,10 @@ vi.mock('@/lib/db/client', () => ({
     visitScheduleContactLog: { findMany: contactLogFindManyMock },
     pharmacistShift: { findMany: pharmacistShiftFindManyMock },
     visitVehicleResource: { findMany: visitVehicleResourceFindManyMock },
+    consentRecord: { findMany: consentRecordFindManyMock },
+    firstVisitDocument: { findMany: firstVisitDocumentFindManyMock },
+    managementPlan: { findMany: managementPlanFindManyMock },
+    billingEvidence: { findMany: billingEvidenceFindManyMock },
   },
 }));
 
@@ -75,6 +87,10 @@ describe('/api/visit-schedules/day-board', () => {
     contactLogFindManyMock.mockResolvedValue([]);
     pharmacistShiftFindManyMock.mockResolvedValue([]);
     visitVehicleResourceFindManyMock.mockResolvedValue([]);
+    consentRecordFindManyMock.mockResolvedValue([]);
+    firstVisitDocumentFindManyMock.mockResolvedValue([]);
+    managementPlanFindManyMock.mockResolvedValue([]);
+    billingEvidenceFindManyMock.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -86,11 +102,25 @@ describe('/api/visit-schedules/day-board', () => {
     expect(response.status).toBe(200);
 
     const where = visitScheduleFindManyMock.mock.calls.at(0)?.[0]?.where;
+    const select = visitScheduleFindManyMock.mock.calls.at(0)?.[0]?.select;
     // ローカル 2026-06-12 → UTC midnight 範囲。ローカル深夜(6/11T15:00Z)を渡すと
     // Prisma の @db.Date 切り捨てで前日扱いになり、当日訪問が全件こぼれる(回帰防止)
     expect(where?.scheduled_date).toEqual({
       gte: new Date('2026-06-12T00:00:00.000Z'),
       lt: new Date('2026-06-13T00:00:00.000Z'),
+    });
+    expect(select).toMatchObject({
+      carry_items_status: true,
+      preparation: {
+        select: {
+          prepared_at: true,
+          medication_changes_reviewed: true,
+          carry_items_confirmed: true,
+          previous_issues_reviewed: true,
+          route_confirmed: true,
+          offline_synced: true,
+        },
+      },
     });
   });
 
@@ -236,6 +266,7 @@ describe('/api/visit-schedules/day-board', () => {
         pharmacist_id: 'user_1',
         visit_type: 'regular',
         schedule_status: 'planned',
+        carry_items_status: 'partial',
         priority: 'normal',
         site_id: 'site_1',
         route_order: 1,
@@ -244,6 +275,14 @@ describe('/api/visit-schedules/day-board', () => {
         time_window_start: new Date(2026, 5, 12, 10, 0),
         time_window_end: new Date(2026, 5, 12, 10, 30),
         confirmed_at: new Date(2026, 5, 12, 9, 0),
+        preparation: {
+          prepared_at: new Date(2026, 5, 12, 9, 5),
+          medication_changes_reviewed: true,
+          carry_items_confirmed: true,
+          previous_issues_reviewed: true,
+          route_confirmed: true,
+          offline_synced: true,
+        },
         facility_batch_id: null,
         facility_batch: null,
         case_: { patient: { name: '伊藤 キヨ' } },
@@ -253,7 +292,9 @@ describe('/api/visit-schedules/day-board', () => {
         pharmacist_id: 'user_1',
         visit_type: 'regular',
         schedule_status: 'planned',
+        carry_items_status: 'ready',
         priority: 'normal',
+        scheduled_date: new Date('2026-06-12T00:00:00.000Z'),
         site_id: 'site_1',
         route_order: 2,
         vehicle_resource_id: null,
@@ -261,6 +302,14 @@ describe('/api/visit-schedules/day-board', () => {
         time_window_start: new Date(2026, 5, 12, 11, 0),
         time_window_end: new Date(2026, 5, 12, 11, 30),
         confirmed_at: null,
+        preparation: {
+          prepared_at: null,
+          medication_changes_reviewed: true,
+          carry_items_confirmed: false,
+          previous_issues_reviewed: true,
+          route_confirmed: false,
+          offline_synced: true,
+        },
         facility_batch_id: null,
         facility_batch: null,
         case_: { patient: { name: '田中 一郎' } },
@@ -298,6 +347,20 @@ describe('/api/visit-schedules/day-board', () => {
       site_id: 'site_1',
       vehicle_label: '軽バン1号',
       vehicle_travel_mode: 'DRIVE',
+      preparation_summary: {
+        completed_count: 5,
+        total_count: 5,
+        status: 'blocked',
+        incomplete_labels: ['持参物ステータス未解決'],
+      },
+    });
+    expect(json.data.staff[0].visits[1]).toMatchObject({
+      preparation_summary: {
+        completed_count: 3,
+        total_count: 5,
+        status: 'incomplete',
+        incomplete_labels: ['持参薬・物品確認', 'ルート確認'],
+      },
     });
     expect(json.data.vehicle_resources).toEqual([
       expect.objectContaining({
@@ -328,6 +391,106 @@ describe('/api/visit-schedules/day-board', () => {
         available: true,
       },
     });
+  });
+
+  it('returns PHI-minimal ready blocker categories without changing checklist status', async () => {
+    membershipFindManyMock.mockResolvedValue([
+      { role: 'pharmacist', user: { id: 'user_1', name: '山田 太郎' } },
+    ]);
+    visitScheduleFindManyMock.mockResolvedValue([
+      {
+        id: 'visit_ready_but_blocked',
+        case_id: 'case_1',
+        cycle_id: 'cycle_1',
+        pharmacist_id: 'user_1',
+        visit_type: 'regular',
+        schedule_status: 'planned',
+        carry_items_status: 'ready',
+        priority: 'normal',
+        scheduled_date: new Date('2026-06-12T00:00:00.000Z'),
+        site_id: 'site_1',
+        route_order: 1,
+        vehicle_resource_id: null,
+        vehicle_resource: null,
+        time_window_start: new Date(2026, 5, 12, 10, 0),
+        time_window_end: new Date(2026, 5, 12, 10, 30),
+        confirmed_at: new Date(2026, 5, 12, 9, 0),
+        preparation: {
+          org_id: 'org_1',
+          prepared_at: new Date(2026, 5, 12, 9, 5),
+          medication_changes_reviewed: true,
+          carry_items_confirmed: true,
+          previous_issues_reviewed: true,
+          route_confirmed: true,
+          offline_synced: true,
+        },
+        facility_batch_id: null,
+        facility_batch: null,
+        visit_record: { id: 'visit_record_secret_1' },
+        case_: {
+          patient: {
+            id: 'patient_1',
+            name: '伊藤 キヨ',
+            contacts: [{ id: 'contact_secret_1', phone: '090-0000-0000' }],
+          },
+          care_team_links: [{ role: 'care_manager' }],
+        },
+      },
+    ]);
+    firstVisitDocumentFindManyMock.mockResolvedValue([
+      {
+        case_id: 'case_1',
+        delivered_at: null,
+        created_at: new Date('2026-06-10T00:00:00.000Z'),
+      },
+    ]);
+    managementPlanFindManyMock.mockResolvedValue([
+      {
+        case_id: 'case_1',
+        next_review_date: new Date('2026-06-01T00:00:00.000Z'),
+        effective_from: null,
+        version: 1,
+        approved_at: new Date('2026-05-01T00:00:00.000Z'),
+      },
+    ]);
+    billingEvidenceFindManyMock.mockResolvedValue([
+      {
+        id: 'billing_secret_1',
+        visit_record_id: 'visit_record_secret_1',
+        cycle_id: 'cycle_1',
+        claimable: false,
+        exclusion_reason: '患者Aの算定根拠自由記述',
+        same_month_exclusion_flags: {
+          missing_visit_consent: true,
+          report_delivery_incomplete: true,
+        },
+      },
+    ]);
+
+    const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+    expect(response.status).toBe(200);
+    const json = await response.json();
+    const visit = json.data.staff[0].visits[0];
+
+    expect(visit.preparation_summary).toMatchObject({
+      completed_count: 5,
+      total_count: 5,
+      status: 'ready',
+      incomplete_labels: [],
+      ready_blocker_summary: {
+        blocked: true,
+        blocker_count: 6,
+        category_labels: ['導入準備 4件', '算定確認 2件'],
+        preparation_blocker_count: 0,
+        onboarding_blocker_count: 4,
+        billing_blocker_count: 2,
+      },
+    });
+    const responseText = JSON.stringify(json.data);
+    expect(responseText).not.toContain('090-0000-0000');
+    expect(responseText).not.toContain('visit_record_secret_1');
+    expect(responseText).not.toContain('billing_secret_1');
+    expect(responseText).not.toContain('患者Aの算定根拠自由記述');
   });
 
   it('counts untimed vehicle assignments when computing remaining capacity', async () => {

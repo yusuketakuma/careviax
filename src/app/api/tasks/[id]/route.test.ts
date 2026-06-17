@@ -7,7 +7,8 @@ const {
   careCaseFindFirstMock,
   patientFindFirstMock,
   taskFindFirstMock,
-  taskUpdateMock,
+  taskFindUniqueMock,
+  taskUpdateManyMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
@@ -15,7 +16,8 @@ const {
   careCaseFindFirstMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   taskFindFirstMock: vi.fn(),
-  taskUpdateMock: vi.fn(),
+  taskFindUniqueMock: vi.fn(),
+  taskUpdateManyMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -75,19 +77,22 @@ describe('/api/tasks/[id]', () => {
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1', archived_at: null });
     taskFindFirstMock.mockResolvedValue({
       id: 'task_1',
+      task_type: 'patient_self_report_followup',
       assigned_to: 'user_1',
       completed_at: null,
       related_entity_type: 'patient',
       related_entity_id: 'patient_1',
     });
-    taskUpdateMock.mockResolvedValue({
+    taskUpdateManyMock.mockResolvedValue({ count: 1 });
+    taskFindUniqueMock.mockResolvedValue({
       id: 'task_1',
       status: 'completed',
     });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         task: {
-          update: taskUpdateMock,
+          updateMany: taskUpdateManyMock,
+          findUnique: taskFindUniqueMock,
         },
       }),
     );
@@ -104,7 +109,7 @@ describe('/api/tasks/[id]', () => {
     ))!;
 
     expect(response.status).toBe(400);
-    expect(taskUpdateMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank task ids before parsing or resolving assignment scope', async () => {
@@ -120,7 +125,7 @@ describe('/api/tasks/[id]', () => {
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(taskFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(taskUpdateMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('updates a task and sets completed_at when marking it completed', async () => {
@@ -134,14 +139,100 @@ describe('/api/tasks/[id]', () => {
     ))!;
 
     expect(response.status).toBe(200);
-    expect(taskUpdateMock).toHaveBeenCalledWith({
-      where: { id: 'task_1' },
+    expect(taskUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'task_1',
+        org_id: 'org_1',
+        OR: [
+          { assigned_to: 'user_1' },
+          {
+            related_entity_type: 'patient',
+            related_entity_id: { in: ['patient_1'] },
+          },
+          {
+            related_entity_type: 'case',
+            related_entity_id: { in: ['case_1'] },
+          },
+        ],
+        status: { in: ['pending', 'in_progress'] },
+      },
       data: expect.objectContaining({
         status: 'completed',
         completed_at: expect.any(Date),
       }),
     });
+    expect(taskFindUniqueMock).toHaveBeenCalledWith({ where: { id: 'task_1' } });
   });
+
+  it('returns conflict when a stale status update loses the open-task claim', async () => {
+    taskFindFirstMock.mockResolvedValue({
+      id: 'task_1',
+      task_type: 'visit_contact_followup',
+      assigned_to: 'user_1',
+      completed_at: new Date('2026-06-18T08:00:00.000Z'),
+      related_entity_type: 'visit_schedule_proposal',
+      related_entity_id: 'proposal_1',
+    });
+    taskUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = (await PATCH(
+      createPatchRequest('task_1', {
+        status: 'in_progress',
+      }),
+      {
+        params: Promise.resolve({ id: 'task_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'タスクはすでに完了または取り消されています。再読み込みしてください',
+    });
+    expect(taskUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'task_1',
+          org_id: 'org_1',
+          status: { in: ['pending', 'in_progress'] },
+        }),
+      }),
+    );
+    expect(taskFindUniqueMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['visit_preparation', 'visit_schedule', 'schedule_1'],
+    ['visit_contact_followup', 'visit_schedule_proposal', 'proposal_1'],
+  ])(
+    'rejects generic completion for %s tasks that require dedicated flows',
+    async (taskType, relatedEntityType, relatedEntityId) => {
+      taskFindFirstMock.mockResolvedValue({
+        id: 'task_1',
+        task_type: taskType,
+        assigned_to: 'user_1',
+        completed_at: null,
+        related_entity_type: relatedEntityType,
+        related_entity_id: relatedEntityId,
+      });
+
+      const response = (await PATCH(
+        createPatchRequest('task_1', {
+          status: 'completed',
+        }),
+        {
+          params: Promise.resolve({ id: 'task_1' }),
+        },
+      ))!;
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        message: 'このタスクは専用画面で完了してください',
+      });
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(taskUpdateManyMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects archived related patients before updating operational tasks', async () => {
     patientFindFirstMock.mockResolvedValue({
@@ -160,7 +251,7 @@ describe('/api/tasks/[id]', () => {
 
     expect(response.status).toBe(409);
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(taskUpdateMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects archived patients resolved from related cases before updating operational tasks', async () => {
@@ -194,7 +285,7 @@ describe('/api/tasks/[id]', () => {
       select: { patient_id: true },
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(taskUpdateMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object update payloads before resolving assignment scope', async () => {
@@ -206,7 +297,7 @@ describe('/api/tasks/[id]', () => {
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(taskFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(taskUpdateMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects malformed JSON update payloads before resolving assignment scope', async () => {
@@ -221,7 +312,7 @@ describe('/api/tasks/[id]', () => {
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(taskFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(taskUpdateMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('does not update tasks outside the assignment scope', async () => {
@@ -254,6 +345,6 @@ describe('/api/tasks/[id]', () => {
         ],
       },
     });
-    expect(taskUpdateMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
   });
 });

@@ -95,12 +95,12 @@ function humanDecisionNextAction(proposal: Proposal) {
   if (proposal.proposal_status === 'confirmed' || proposal.finalized_schedule_id) {
     return '電話確認済みの内容で確定され、訪問予定へ反映済みです。';
   }
+  if (proposal.patient_contact_status === 'change_requested') {
+    return '患者から変更希望があります。希望条件に合わせて再提案してください。';
+  }
   if (proposal.proposal_status === 'patient_contact_pending') {
     if (proposal.patient_contact_status === 'confirmed') {
       return '患者確認済みです。日時確定で訪問予定に反映できます。';
-    }
-    if (proposal.patient_contact_status === 'change_requested') {
-      return '患者から変更希望があります。再提案または却下で候補を整理してください。';
     }
     if (proposal.patient_contact_status === 'unreachable') {
       return '不在・不通です。再架電予定を残してから確定判断してください。';
@@ -175,6 +175,12 @@ function finalizationSummary(proposal: Proposal) {
     return {
       label: '確定可能',
       detail: '日時確定で訪問予定に反映できます。',
+    };
+  }
+  if (proposal.patient_contact_status === 'change_requested') {
+    return {
+      label: '再提案が必要',
+      detail: '変更希望に合わせた別候補を作成してください。',
     };
   }
   return {

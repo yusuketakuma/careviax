@@ -208,7 +208,23 @@ describe('/api/visit-schedule-proposals', () => {
         reject_reason: '東京都港区2-2-2 090-1234-5678 アムロジピン 処方詳細',
         case_: {
           patient: {
-            residences: [],
+            id: 'patient_1',
+            name: '患者A',
+            phone: '03-0000-0000',
+            medical_insurance_number: 'MED-SECRET-1',
+            care_insurance_number: 'CARE-SECRET-1',
+            allergy_info: { freeText: 'アレルギー詳細' },
+            notes: '患者メモ詳細',
+            residences: [
+              {
+                address: '東京都千代田区1-1-1',
+                building_id: '建物A',
+                unit_name: '203号室',
+                lat: 35.1,
+                lng: 139.1,
+                geocode_source: 'internal-geocoder',
+              },
+            ],
           },
         },
         site: null,
@@ -221,7 +237,21 @@ describe('/api/visit-schedule-proposals', () => {
         },
         finalized_schedule: null,
         reschedule_source_schedule: null,
-        contact_logs: [],
+        contact_logs: [
+          {
+            id: 'contact_log_1',
+            outcome: 'attempted',
+            contact_method: 'phone',
+            contact_name: '家族A',
+            contact_phone: '090-0000-0000',
+            note: '折返し待ち',
+            callback_due_at: null,
+            called_at: new Date('2026-03-26T10:00:00.000Z'),
+            called_by: 'user_internal_1',
+            idempotency_key: 'contact-key-1',
+            request_fingerprint: 'contact-fingerprint-1',
+          },
+        ],
       },
     ]);
     userFindManyMock.mockResolvedValue([
@@ -323,10 +353,57 @@ describe('/api/visit-schedule-proposals', () => {
             id: 'vehicle_1',
             label: '社用車A',
           }),
+          contact_logs: [
+            {
+              id: 'contact_log_1',
+              outcome: 'attempted',
+              contact_method: 'phone',
+              callback_due_at: null,
+              called_at: '2026-03-26T10:00:00.000Z',
+              has_note: true,
+            },
+          ],
         }),
       ],
     });
     expect(body.data[0]).not.toHaveProperty('reject_reason');
+    expect(body.data[0].case_).not.toHaveProperty('patient_id');
+    expect(body.data[0].case_.patient).toEqual({
+      id: 'patient_1',
+      name: '患者A',
+      residences: [
+        {
+          address: '東京都千代田区1-1-1',
+          building_id: '建物A',
+          unit_name: '203号室',
+          lat: 35.1,
+          lng: 139.1,
+        },
+      ],
+    });
+    expect(body.data[0].case_.patient).not.toHaveProperty('phone');
+    expect(body.data[0].case_.patient).not.toHaveProperty('medical_insurance_number');
+    expect(body.data[0].case_.patient).not.toHaveProperty('care_insurance_number');
+    expect(body.data[0].case_.patient).not.toHaveProperty('allergy_info');
+    expect(body.data[0].case_.patient).not.toHaveProperty('notes');
+    expect(body.data[0].case_.patient.residences[0]).not.toHaveProperty('geocode_source');
+    expect(body.data[0].contact_logs[0]).not.toHaveProperty('contact_name');
+    expect(body.data[0].contact_logs[0]).not.toHaveProperty('contact_phone');
+    expect(body.data[0].contact_logs[0]).not.toHaveProperty('note');
+    expect(body.data[0].contact_logs[0]).not.toHaveProperty('called_by');
+    expect(body.data[0].contact_logs[0]).not.toHaveProperty('idempotency_key');
+    expect(body.data[0].contact_logs[0]).not.toHaveProperty('request_fingerprint');
+    expect(JSON.stringify(body)).not.toContain('家族A');
+    expect(JSON.stringify(body)).not.toContain('090-0000-0000');
+    expect(JSON.stringify(body)).not.toContain('折返し待ち');
+    expect(JSON.stringify(body)).not.toContain('contact-key-1');
+    expect(JSON.stringify(body)).not.toContain('contact-fingerprint-1');
+    expect(JSON.stringify(body)).not.toContain('03-0000-0000');
+    expect(JSON.stringify(body)).not.toContain('MED-SECRET-1');
+    expect(JSON.stringify(body)).not.toContain('CARE-SECRET-1');
+    expect(JSON.stringify(body)).not.toContain('アレルギー詳細');
+    expect(JSON.stringify(body)).not.toContain('患者メモ詳細');
+    expect(JSON.stringify(body)).not.toContain('internal-geocoder');
     expect(JSON.stringify(body)).not.toContain('東京都港区2-2-2');
     expect(JSON.stringify(body)).not.toContain('090-1234-5678');
     expect(JSON.stringify(body)).not.toContain('アムロジピン');
@@ -973,36 +1050,41 @@ describe('/api/visit-schedule-proposals', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
-  it('rejects direct confirmed contact status from the draft drawer before write side effects', async () => {
-    const response = (await PUT(
-      createPutRequest({
-        case_id: 'case_1',
-        visit_type: 'regular',
-        priority: 'normal',
-        proposed_date: '2026-04-03',
-        time_window_start: '09:00',
-        proposed_pharmacist_id: 'user_2',
-        travel_mode: 'DRIVE',
-        patient_contact_status: 'confirmed',
-        submit_for_contact: true,
-      }),
-    ))!;
+  it.each(['attempted', 'unreachable', 'declined', 'change_requested', 'confirmed'] as const)(
+    'rejects direct %s contact status from the draft drawer before write side effects',
+    async (patientContactStatus) => {
+      const response = (await PUT(
+        createPutRequest({
+          case_id: 'case_1',
+          visit_type: 'regular',
+          priority: 'normal',
+          proposed_date: '2026-04-03',
+          time_window_start: '09:00',
+          proposed_pharmacist_id: 'user_2',
+          travel_mode: 'DRIVE',
+          patient_contact_status: patientContactStatus,
+          submit_for_contact: true,
+        }),
+      ))!;
 
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      message: '入力値が不正です',
-      details: {
-        patient_contact_status: ['確認済みは患者連絡ワークフローで連絡結果として記録してください'],
-      },
-    });
-    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
-    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
-    expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
-    expect(auditLogCreateMock).not.toHaveBeenCalled();
-    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
-  });
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '入力値が不正です',
+        details: {
+          patient_contact_status: [
+            '患者連絡状態は患者連絡ワークフローで連絡結果として記録してください',
+          ],
+        },
+      });
+      expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+      expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+      expect(auditLogCreateMock).not.toHaveBeenCalled();
+      expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects editing a proposal that has already been confirmed by patient contact', async () => {
     visitScheduleProposalFindFirstMock.mockResolvedValueOnce({
@@ -1031,7 +1113,8 @@ describe('/api/visit-schedule-proposals', () => {
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toMatchObject({
       code: 'WORKFLOW_CONFLICT',
-      message: 'この候補はすでに確定または患者確認済みです。再読み込みしてください',
+      message:
+        'この候補はすでに患者連絡が始まっています。候補詳細の患者連絡フローで更新してください',
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
@@ -1075,7 +1158,7 @@ describe('/api/visit-schedule-proposals', () => {
         id: 'proposal_1',
         org_id: 'org_1',
         proposal_status: { in: ['proposed', 'patient_contact_pending'] },
-        patient_contact_status: { not: 'confirmed' },
+        patient_contact_status: 'pending',
         finalized_schedule_id: null,
       },
       data: expect.objectContaining({

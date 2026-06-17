@@ -74,4 +74,24 @@ describe('ProposalHumanDecisionFlow', () => {
     expect(screen.getByText('代替薬剤師')).toBeTruthy();
     expect(screen.getByText('担当薬剤師が公休のため、薬剤師Bへ代替提案しました。')).toBeTruthy();
   });
+
+  it('keeps change-requested proposals actionable for reproposal', () => {
+    render(
+      <ProposalHumanDecisionFlow
+        proposal={buildProposal({
+          proposal_status: 'reschedule_pending',
+          patient_contact_status: 'change_requested',
+        })}
+      />,
+    );
+
+    expect(screen.getByText('変更希望')).toBeTruthy();
+    expect(screen.getByText('再提案が必要')).toBeTruthy();
+    expect(
+      screen.getByText('患者から変更希望があります。希望条件に合わせて再提案してください。'),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText('この候補は終了しています。必要な場合は条件を変えて再提案してください。'),
+    ).toBeNull();
+  });
 });

@@ -70,6 +70,7 @@ import {
   type VisitRouteConfirmationContext,
   type VisitScheduleProposalRouteUpdate,
 } from '@/app/(dashboard)/schedules/visit-route-client';
+import { createScheduleContactAttemptIdempotencyKey } from '@/app/(dashboard)/schedules/schedule-day-proposal-action';
 import { useRouteOrderDraft } from '@/app/(dashboard)/schedules/route-order-draft';
 import { ProposalHumanDecisionFlow } from '../proposal-human-decision-flow';
 import { mergeScheduleProposalSearchParams } from './proposal-query-state';
@@ -232,6 +233,14 @@ type VisitVehicleResourceOption = VisitVehicleResourceSummary & {
 type VisitVehicleResourcesResponse = { data: VisitVehicleResourceOption[] };
 type ContactOutcome = 'attempted' | 'declined' | 'change_requested' | 'unreachable' | 'confirmed';
 type ContactMethod = 'phone' | 'fax' | 'email';
+
+function createProposalGenerationIdempotencyKey(proposalId: string) {
+  const suffix =
+    typeof globalThis.crypto?.randomUUID === 'function'
+      ? globalThis.crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  return `visit-reproposal:${proposalId}:${suffix}`;
+}
 type ContactFormState = {
   outcome: ContactOutcome;
   contact_method: ContactMethod;
@@ -271,6 +280,7 @@ type ProposalActionPayload =
   | {
       action: 'contact_attempt';
       outcome: ContactOutcome;
+      idempotency_key: string;
       contact_method: ContactMethod;
       contact_name?: string;
       contact_phone?: string;
@@ -979,8 +989,8 @@ export function ScheduleProposalsContent({
         latestLog?.contact_method === 'fax' || latestLog?.contact_method === 'email'
           ? latestLog.contact_method
           : 'phone',
-      contact_name: latestLog?.contact_name ?? '',
-      contact_phone: latestLog?.contact_phone ?? '',
+      contact_name: '',
+      contact_phone: '',
       note: '',
       callback_due_at: latestLog?.callback_due_at
         ? format(parseISO(latestLog.callback_due_at), "yyyy-MM-dd'T'HH:mm")
@@ -1110,6 +1120,7 @@ export function ScheduleProposalsContent({
       queryClient.invalidateQueries({ queryKey: ['schedule-proposal-detail', orgId] }),
       queryClient.invalidateQueries({ queryKey: ['visit-schedule-proposals', orgId] }),
       queryClient.invalidateQueries({ queryKey: ['visit-schedules', 'week-board', orgId] }),
+      queryClient.invalidateQueries({ queryKey: ['schedule-day-board', orgId] }),
       queryClient.invalidateQueries({ queryKey: ['tasks', 'visit-contact-followup', orgId] }),
     ]);
   };
@@ -1145,6 +1156,9 @@ export function ScheduleProposalsContent({
     onSuccess: async (_data, variables) => {
       setSingleConfirmAction(null);
       const payload = variables.payload;
+      if (payload.action === 'contact_attempt') {
+        setContactFormDraft(null);
+      }
       if (payload.action === 'approve') {
         toast.success('候補を承認し、患者連絡待ちへ移しました');
       } else if (payload.action === 'confirm') {
@@ -1326,22 +1340,29 @@ export function ScheduleProposalsContent({
         throw new Error('再提案対象が選択されていません');
       }
 
-      await proposalActionMutation.mutateAsync({
-        id: detail.id,
-        payload: {
-          action: 'contact_attempt',
-          outcome: 'change_requested',
-          contact_method: contactForm.contact_method,
-          contact_name: contactForm.contact_name || undefined,
-          contact_phone: contactForm.contact_phone || undefined,
-          note: [
-            contactForm.note.trim(),
-            reproposalForm.note.trim() ? `希望条件: ${reproposalForm.note.trim()}` : '',
-          ]
-            .filter(Boolean)
-            .join('\n'),
-        },
-      });
+      const shouldRecordChangeRequest =
+        detail.proposal_status === 'patient_contact_pending' &&
+        detail.patient_contact_status !== 'change_requested';
+
+      if (shouldRecordChangeRequest) {
+        await proposalActionMutation.mutateAsync({
+          id: detail.id,
+          payload: {
+            action: 'contact_attempt',
+            outcome: 'change_requested',
+            idempotency_key: createScheduleContactAttemptIdempotencyKey(detail.id),
+            contact_method: contactForm.contact_method,
+            contact_name: contactForm.contact_name || undefined,
+            contact_phone: contactForm.contact_phone || undefined,
+            note: [
+              contactForm.note.trim(),
+              reproposalForm.note.trim() ? `希望条件: ${reproposalForm.note.trim()}` : '',
+            ]
+              .filter(Boolean)
+              .join('\n'),
+          },
+        });
+      }
 
       const response = await fetch('/api/visit-schedule-proposals', {
         method: 'POST',
@@ -1363,6 +1384,7 @@ export function ScheduleProposalsContent({
               proposalPreviewMap?.get(detail.id)?.suggested_schedule_slot_count ||
               '3',
           ),
+          idempotency_key: createProposalGenerationIdempotencyKey(detail.id),
         }),
       });
       if (!response.ok) {
@@ -2588,6 +2610,16 @@ export function ScheduleProposalsContent({
                   </div>
                   <ProposalDecisionBadges proposal={detail} />
                   <div className="flex flex-wrap gap-2">
+                    {detail.patient_contact_status === 'change_requested' ? (
+                      <Button
+                        asChild
+                        variant="outline"
+                        size="sm"
+                        className={PROPOSAL_TOUCH_TARGET_CLASS}
+                      >
+                        <a href="#schedule-proposal-reproposal">再提案条件を入力</a>
+                      </Button>
+                    ) : null}
                     {detail.proposal_status !== 'patient_contact_pending' &&
                     ['proposed', 'reschedule_pending'].includes(detail.proposal_status) ? (
                       <Button
@@ -2618,6 +2650,9 @@ export function ScheduleProposalsContent({
                               payload: {
                                 action: 'contact_attempt',
                                 outcome: contactForm.outcome,
+                                idempotency_key: createScheduleContactAttemptIdempotencyKey(
+                                  detail.id,
+                                ),
                                 contact_method: contactForm.contact_method,
                                 contact_name: contactForm.contact_name || undefined,
                                 contact_phone: contactForm.contact_phone || undefined,
@@ -2798,6 +2833,9 @@ export function ScheduleProposalsContent({
                               payload: {
                                 action: 'contact_attempt',
                                 outcome: 'confirmed',
+                                idempotency_key: createScheduleContactAttemptIdempotencyKey(
+                                  detail.id,
+                                ),
                                 contact_method: contactForm.contact_method,
                                 contact_name: contactForm.contact_name || undefined,
                                 contact_phone: contactForm.contact_phone || undefined,
@@ -3091,16 +3129,8 @@ export function ScheduleProposalsContent({
                               {formatNullableDateTimeLabel(log.called_at)}
                             </span>
                           </div>
-                          {log.contact_name || log.contact_phone ? (
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {log.contact_name ?? '対応者未入力'}
-                              {log.contact_phone ? ` / ${log.contact_phone}` : ''}
-                            </p>
-                          ) : null}
-                          {log.note ? (
-                            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                              {log.note}
-                            </p>
+                          {log.has_note ? (
+                            <p className="mt-1 text-xs text-muted-foreground">連絡メモあり</p>
                           ) : null}
                         </div>
                       ))}
@@ -3116,7 +3146,9 @@ export function ScheduleProposalsContent({
                     変更希望時の再提案
                   </h3>
                   <CardDescription>
-                    変更希望を記録したうえで、新しい時間条件で候補を再生成します。
+                    {detail.patient_contact_status === 'change_requested'
+                      ? '記録済みの変更希望に合わせて、新しい時間条件で候補を再生成します。'
+                      : '変更希望を記録したうえで、新しい時間条件で候補を再生成します。'}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">

@@ -23,6 +23,8 @@ import { visitPriorityValues, visitTypeValues } from '@/lib/validations/visit-sc
 import {
   omitProposalRejectReason,
   omitProposalRejectReasons,
+  redactProposalContactLogs,
+  redactProposalPatientFields,
 } from '@/lib/visit-schedule-proposals/response';
 import { allocateProposalRouteOrders } from '@/lib/visit-schedule-proposals/route-order';
 import { visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
@@ -324,12 +326,21 @@ export const GET = withAuthContext(
       },
       include: {
         case_: {
-          include: {
+          select: {
             patient: {
-              include: {
+              select: {
+                id: true,
+                name: true,
                 residences: {
                   where: { is_primary: true },
                   take: 1,
+                  select: {
+                    address: true,
+                    building_id: true,
+                    unit_name: true,
+                    lat: true,
+                    lng: true,
+                  },
                 },
               },
             },
@@ -376,6 +387,14 @@ export const GET = withAuthContext(
         contact_logs: {
           orderBy: { called_at: 'desc' },
           take: 10,
+          select: {
+            id: true,
+            outcome: true,
+            contact_method: true,
+            callback_due_at: true,
+            called_at: true,
+            note: true,
+          },
         },
       },
       orderBy: [{ proposed_date: 'asc' }, { time_window_start: 'asc' }],
@@ -402,7 +421,9 @@ export const GET = withAuthContext(
 
     return success({
       data: proposals.map((proposal) => ({
-        ...omitProposalRejectReason(proposal),
+        ...redactProposalPatientFields(
+          redactProposalContactLogs(omitProposalRejectReason(proposal)),
+        ),
         proposed_pharmacist: pharmacistById.get(proposal.proposed_pharmacist_id) ?? null,
       })),
     });
@@ -872,11 +893,11 @@ const upsertDraftProposalSchema = z
         });
       }
     }
-    if (data.patient_contact_status === 'confirmed') {
+    if (data.patient_contact_status && data.patient_contact_status !== 'pending') {
       ctx.addIssue({
         code: 'custom',
         path: ['patient_contact_status'],
-        message: '確認済みは患者連絡ワークフローで連絡結果として記録してください',
+        message: '患者連絡状態は患者連絡ワークフローで連絡結果として記録してください',
       });
     }
   });
@@ -974,8 +995,10 @@ export const PUT = withAuthContext(
     if (existing && !['proposed', 'patient_contact_pending'].includes(existing.proposal_status)) {
       return validationError('下書き / 確認待ちの予定のみ編集できます');
     }
-    if (existing?.finalized_schedule_id || existing?.patient_contact_status === 'confirmed') {
-      return conflict('この候補はすでに確定または患者確認済みです。再読み込みしてください');
+    if (existing?.finalized_schedule_id || existing?.patient_contact_status !== 'pending') {
+      return conflict(
+        'この候補はすでに患者連絡が始まっています。候補詳細の患者連絡フローで更新してください',
+      );
     }
 
     const proposal = await withOrgContext(ctx.orgId, async (tx) => {
@@ -985,7 +1008,7 @@ export const PUT = withAuthContext(
             id: existing.id,
             org_id: ctx.orgId,
             proposal_status: { in: ['proposed', 'patient_contact_pending'] },
-            patient_contact_status: { not: 'confirmed' },
+            patient_contact_status: 'pending',
             finalized_schedule_id: null,
           },
           data: {
@@ -994,9 +1017,6 @@ export const PUT = withAuthContext(
             visit_type: input.visit_type,
             priority: input.priority,
             proposal_status: targetStatus,
-            ...(input.patient_contact_status
-              ? { patient_contact_status: input.patient_contact_status }
-              : {}),
             proposed_date: new Date(input.proposed_date),
             time_window_start: toProposalTimeDate(input.time_window_start),
             time_window_end: toProposalTimeDate(input.time_window_end),
@@ -1040,9 +1060,7 @@ export const PUT = withAuthContext(
           visit_type: input.visit_type,
           priority: input.priority,
           proposal_status: targetStatus,
-          ...(input.patient_contact_status
-            ? { patient_contact_status: input.patient_contact_status }
-            : {}),
+          patient_contact_status: 'pending',
           proposed_date: new Date(input.proposed_date),
           time_window_start: toProposalTimeDate(input.time_window_start),
           time_window_end: toProposalTimeDate(input.time_window_end),

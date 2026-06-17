@@ -172,6 +172,25 @@ const completePreparationBody = {
   offline_synced: true,
 };
 
+function buildPutScheduleMock(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'schedule_1',
+    case_id: 'case_1',
+    site_id: 'site_1',
+    vehicle_resource_id: null,
+    carry_items_status: 'ready',
+    schedule_status: 'planned',
+    scheduled_date: new Date('2026-03-27T00:00:00Z'),
+    route_order: 1,
+    pharmacist_id: 'user_1',
+    case_: {
+      primary_pharmacist_id: 'user_primary',
+      backup_pharmacist_id: null,
+    },
+    ...overrides,
+  };
+}
+
 describe('/api/visit-preparations/[scheduleId] GET', () => {
   const originalTimeZone = process.env.TZ;
 
@@ -1368,20 +1387,7 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
     vi.clearAllMocks();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
-    visitScheduleFindFirstMock.mockResolvedValue({
-      id: 'schedule_1',
-      case_id: 'case_1',
-      site_id: 'site_1',
-      vehicle_resource_id: null,
-      schedule_status: 'planned',
-      scheduled_date: new Date('2026-03-27T00:00:00Z'),
-      route_order: 1,
-      pharmacist_id: 'user_1',
-      case_: {
-        primary_pharmacist_id: 'user_primary',
-        backup_pharmacist_id: null,
-      },
-    });
+    visitScheduleFindFirstMock.mockResolvedValue(buildPutScheduleMock());
     visitPreparationUpsertMock.mockResolvedValue({
       id: 'prep_1',
       schedule_id: 'schedule_1',
@@ -1691,6 +1697,57 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
     });
   });
 
+  it('does not assign a vehicle from a stale route snapshot when route is not confirmed', async () => {
+    visitPreparationUpsertMock.mockResolvedValueOnce({
+      id: 'prep_1',
+      schedule_id: 'schedule_1',
+      checklist: {},
+      medication_changes_reviewed: true,
+      carry_items_confirmed: true,
+      previous_issues_reviewed: true,
+      route_confirmed: false,
+      offline_synced: true,
+      prepared_by: 'user_1',
+      prepared_at: null,
+    });
+
+    const response = await PUT(
+      createPutRequest({
+        ...completePreparationBody,
+        route_confirmed: false,
+        route_plan_snapshot: {
+          vehicle_resource: {
+            vehicle_id: 'vehicle_1',
+            label: '社用車A',
+            constraint_status: 'ok',
+          },
+        },
+      }),
+      {
+        params: Promise.resolve({ scheduleId: 'schedule_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(visitVehicleResourceFindFirstMock).not.toHaveBeenCalled();
+    expect(computeOptimizedVisitRouteMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(visitPreparationUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          route_confirmed: false,
+          prepared_at: null,
+        }),
+        update: expect.objectContaining({
+          route_confirmed: false,
+          prepared_at: null,
+        }),
+      }),
+    );
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+  });
+
   it('generates route plan snapshots on the server when no client snapshot is submitted', async () => {
     const response = await PUT(createPutRequest(completePreparationBody), {
       params: Promise.resolve({ scheduleId: 'schedule_1' }),
@@ -1767,6 +1824,92 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
       code: 'VALIDATION_ERROR',
       message: '選択した車両リソースの稼働上限を超えるためルート確認できません',
     });
+    expect(visitPreparationUpsertMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects route confirmation when selected vehicle capacity is exceeded after adding the current schedule', async () => {
+    visitVehicleResourceFindFirstMock.mockResolvedValueOnce({
+      id: 'vehicle_1',
+      site_id: 'site_1',
+      label: '社用車A',
+      travel_mode: 'DRIVE',
+      max_stops: 1,
+      max_route_duration_minutes: 120,
+    });
+    peerVisitScheduleFindManyMock
+      .mockResolvedValueOnce([
+        {
+          id: 'schedule_other',
+          route_order: 1,
+          priority: 'normal',
+          site: {
+            id: 'site_1',
+            name: '本店',
+            lat: 35.681236,
+            lng: 139.767125,
+          },
+          case_: {
+            patient: {
+              name: '田中一郎',
+              residences: [
+                {
+                  address: '東京都千代田区2-2',
+                  lat: 35.685,
+                  lng: 139.771,
+                },
+              ],
+            },
+          },
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'schedule_1',
+          route_order: 2,
+          priority: 'normal',
+          site: {
+            id: 'site_1',
+            name: '本店',
+            lat: 35.681236,
+            lng: 139.767125,
+          },
+          case_: {
+            patient: {
+              name: '山田太郎',
+              residences: [
+                {
+                  address: '東京都千代田区1-1',
+                  lat: 35.684,
+                  lng: 139.77,
+                },
+              ],
+            },
+          },
+        },
+      ]);
+
+    const response = await PUT(
+      createPutRequest({
+        ...completePreparationBody,
+        route_plan_snapshot: {
+          vehicle_resource: {
+            vehicle_id: 'vehicle_1',
+          },
+        },
+      }),
+      {
+        params: Promise.resolve({ scheduleId: 'schedule_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '社用車A で訪問できる件数は最大 1 件です',
+    });
+    expect(computeOptimizedVisitRouteMock).not.toHaveBeenCalled();
     expect(visitPreparationUpsertMock).not.toHaveBeenCalled();
     expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
   });
@@ -1861,4 +2004,65 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
       },
     });
   });
+
+  it.each(['partial', 'blocked'] as const)(
+    'keeps preparation incomplete when carry items status is %s even if checklist fields are complete',
+    async (carryItemsStatus) => {
+      visitScheduleFindFirstMock.mockResolvedValueOnce(
+        buildPutScheduleMock({ carry_items_status: carryItemsStatus }),
+      );
+      visitPreparationUpsertMock.mockResolvedValueOnce({
+        id: 'prep_1',
+        schedule_id: 'schedule_1',
+        checklist: {},
+        medication_changes_reviewed: true,
+        carry_items_confirmed: true,
+        previous_issues_reviewed: true,
+        route_confirmed: true,
+        offline_synced: true,
+        prepared_by: 'user_1',
+        prepared_at: null,
+      });
+
+      const response = await PUT(createPutRequest(completePreparationBody), {
+        params: Promise.resolve({ scheduleId: 'schedule_1' }),
+      });
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(200);
+      expect(visitScheduleFindFirstMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          select: expect.objectContaining({
+            carry_items_status: true,
+          }),
+        }),
+      );
+      expect(visitPreparationUpsertMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({
+            prepared_at: null,
+          }),
+          update: expect.objectContaining({
+            prepared_at: null,
+          }),
+        }),
+      );
+      expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          orgId: 'org_1',
+          taskType: 'visit_preparation',
+          assignedTo: 'user_1',
+          dedupeKey: 'visit-preparation:schedule_1',
+          description: '未完了: 持参物ステータス未解決',
+        }),
+      );
+      expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+      await expect(response.json()).resolves.toMatchObject({
+        data: {
+          prepared_at: null,
+        },
+      });
+    },
+  );
 });

@@ -17,6 +17,7 @@ const {
   pharmacistShiftFindFirstMock,
   vehicleResourceFindFirstMock,
   contactLogCreateMock,
+  contactLogFindFirstMock,
   contactLogUpdateManyMock,
   auditLogCreateMock,
   auditLogFindFirstMock,
@@ -42,6 +43,7 @@ const {
   pharmacistShiftFindFirstMock: vi.fn(),
   vehicleResourceFindFirstMock: vi.fn(),
   contactLogCreateMock: vi.fn(),
+  contactLogFindFirstMock: vi.fn(),
   contactLogUpdateManyMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
   auditLogFindFirstMock: vi.fn(),
@@ -67,6 +69,9 @@ vi.mock('@/lib/db/client', () => ({
     visitSchedule: {
       findMany: scheduleFindManyMock,
       count: scheduleCountMock,
+    },
+    visitScheduleContactLog: {
+      findFirst: contactLogFindFirstMock,
     },
     auditLog: {
       findFirst: auditLogFindFirstMock,
@@ -157,12 +162,21 @@ function buildProposal(overrides?: Record<string, unknown>) {
     case_: {
       patient_id: 'patient_1',
       patient: {
+        id: 'patient_1',
         name: '患者A',
+        phone: '03-0000-0000',
+        medical_insurance_number: 'MED-SECRET-1',
+        care_insurance_number: 'CARE-SECRET-1',
+        allergy_info: { freeText: 'アレルギー詳細' },
+        notes: '患者メモ詳細',
         residences: [
           {
             address: '東京都千代田区1-1-1',
+            building_id: '建物A',
+            unit_name: '203号室',
             lat: 35.2,
             lng: 139.2,
+            geocode_source: 'internal-geocoder',
           },
         ],
       },
@@ -193,6 +207,7 @@ function buildTxMock() {
       updateMany: proposalUpdateManyMock,
     },
     visitScheduleContactLog: {
+      findFirst: contactLogFindFirstMock,
       create: contactLogCreateMock,
       updateMany: contactLogUpdateManyMock,
     },
@@ -208,6 +223,13 @@ function buildTxMock() {
 function buildSerializableConflictError() {
   return new Prisma.PrismaClientKnownRequestError('Serializable transaction conflict', {
     code: 'P2034',
+    clientVersion: 'test',
+  });
+}
+
+function buildUniqueConstraintError() {
+  return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+    code: 'P2002',
     clientVersion: 'test',
   });
 }
@@ -260,6 +282,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       max_stops: 8,
     });
     contactLogCreateMock.mockResolvedValue({ id: 'contact_log_1' });
+    contactLogFindFirstMock.mockResolvedValue(null);
     contactLogUpdateManyMock.mockResolvedValue({ count: 1 });
     auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
     auditLogFindFirstMock.mockResolvedValue(null);
@@ -311,12 +334,21 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         reject_reason: '東京都港区2-2-2 090-1234-5678 アムロジピン 処方詳細',
         case_: {
           patient: {
+            id: 'patient_1',
             name: '患者A',
+            phone: '03-0000-0000',
+            medical_insurance_number: 'MED-SECRET-1',
+            care_insurance_number: 'CARE-SECRET-1',
+            allergy_info: { freeText: 'アレルギー詳細' },
+            notes: '患者メモ詳細',
             residences: [
               {
                 address: '東京都千代田区1-1-1',
+                building_id: '建物A',
+                unit_name: '203号室',
                 lat: 35.2,
                 lng: 139.2,
+                geocode_source: 'internal-geocoder',
               },
             ],
           },
@@ -347,6 +379,8 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
             callback_due_at: null,
             called_at: new Date('2026-03-26T10:00:00.000Z'),
             called_by: 'user_1',
+            idempotency_key: 'contact-key-1',
+            request_fingerprint: 'contact-fingerprint-1',
           },
         ],
         finalized_schedule: null,
@@ -364,12 +398,19 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
           proposed_date: new Date('2026-03-28T00:00:00.000Z'),
           case_: {
             patient: {
+              id: 'patient_1',
               name: '患者A',
+              phone: '03-9999-9999',
+              medical_insurance_number: 'MED-SECRET-RELATED',
+              notes: '関連候補患者メモ',
               residences: [
                 {
                   address: '東京都千代田区1-1-1',
+                  building_id: '建物A',
+                  unit_name: '203号室',
                   lat: 35.2,
                   lng: 139.2,
+                  geocode_source: 'related-geocoder',
                 },
               ],
             },
@@ -451,6 +492,16 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
       data: expect.objectContaining({
         id: 'proposal_1',
         vehicle_resource: expect.objectContaining({ id: 'vehicle_1', label: '社用車A' }),
+        contact_logs: [
+          {
+            id: 'log_1',
+            outcome: 'attempted',
+            contact_method: 'phone',
+            callback_due_at: null,
+            called_at: '2026-03-26T10:00:00.000Z',
+            has_note: true,
+          },
+        ],
         related_proposals: [
           expect.objectContaining({
             id: 'proposal_2',
@@ -477,6 +528,46 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     });
     expect(body.data).not.toHaveProperty('reject_reason');
     expect(body.data.related_proposals[0]).not.toHaveProperty('reject_reason');
+    expect(body.data.case_).not.toHaveProperty('patient_id');
+    expect(body.data.case_.patient).toEqual({
+      id: 'patient_1',
+      name: '患者A',
+      residences: [
+        {
+          address: '東京都千代田区1-1-1',
+          building_id: '建物A',
+          unit_name: '203号室',
+          lat: 35.2,
+          lng: 139.2,
+        },
+      ],
+    });
+    expect(body.data.related_proposals[0].case_).not.toHaveProperty('patient_id');
+    expect(body.data.related_proposals[0].case_.patient).not.toHaveProperty('phone');
+    expect(body.data.related_proposals[0].case_.patient).not.toHaveProperty(
+      'medical_insurance_number',
+    );
+    expect(body.data.contact_logs[0]).not.toHaveProperty('contact_name');
+    expect(body.data.contact_logs[0]).not.toHaveProperty('contact_phone');
+    expect(body.data.contact_logs[0]).not.toHaveProperty('note');
+    expect(body.data.contact_logs[0]).not.toHaveProperty('called_by');
+    expect(body.data.contact_logs[0]).not.toHaveProperty('idempotency_key');
+    expect(body.data.contact_logs[0]).not.toHaveProperty('request_fingerprint');
+    expect(JSON.stringify(body)).not.toContain('本人');
+    expect(JSON.stringify(body)).not.toContain('090-0000-0000');
+    expect(JSON.stringify(body)).not.toContain('折返し待ち');
+    expect(JSON.stringify(body)).not.toContain('contact-key-1');
+    expect(JSON.stringify(body)).not.toContain('contact-fingerprint-1');
+    expect(JSON.stringify(body)).not.toContain('03-0000-0000');
+    expect(JSON.stringify(body)).not.toContain('03-9999-9999');
+    expect(JSON.stringify(body)).not.toContain('MED-SECRET-1');
+    expect(JSON.stringify(body)).not.toContain('CARE-SECRET-1');
+    expect(JSON.stringify(body)).not.toContain('MED-SECRET-RELATED');
+    expect(JSON.stringify(body)).not.toContain('アレルギー詳細');
+    expect(JSON.stringify(body)).not.toContain('患者メモ詳細');
+    expect(JSON.stringify(body)).not.toContain('関連候補患者メモ');
+    expect(JSON.stringify(body)).not.toContain('internal-geocoder');
+    expect(JSON.stringify(body)).not.toContain('related-geocoder');
     expect(JSON.stringify(body)).not.toContain('東京都港区2-2-2');
     expect(JSON.stringify(body)).not.toContain('090-1234-5678');
     expect(JSON.stringify(body)).not.toContain('アムロジピン');
@@ -839,6 +930,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         {
           action: 'contact_attempt',
           outcome: 'attempted',
+          idempotency_key: 'contact-phone-invalid',
           contact_method: 'phone',
           contact_phone: '090-ABCD-1234',
         },
@@ -872,6 +964,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         {
           action: 'contact_attempt',
           outcome: 'attempted',
+          idempotency_key: 'contact-unassigned',
           contact_method: 'phone',
           callback_due_at: '2026-03-30T09:00:00.000Z',
         },
@@ -937,6 +1030,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         {
           action: 'contact_attempt',
           outcome: 'confirmed',
+          idempotency_key: 'contact-confirmed-1',
           contact_method: 'phone',
           contact_name: '本人',
           contact_phone: ' 090-0000-1111 ',
@@ -959,6 +1053,8 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         contact_name: '本人',
         contact_phone: '090-0000-1111',
         note: '了承済み',
+        idempotency_key: 'contact-confirmed-1',
+        request_fingerprint: expect.any(String),
       }),
     });
     expect(proposalUpdateManyMock).toHaveBeenCalledWith({
@@ -973,9 +1069,93 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         patient_contact_status: 'confirmed',
       }),
     });
+    expect(resolveOperationalTasksMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        dedupeKey: 'visit-contact-followup:proposal_1',
+        status: 'completed',
+      }),
+    );
   });
 
-  it('records change_requested outcomes as rejected proposals', async () => {
+  it('replays a concurrent contact attempt winner when the idempotency key insert races', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'pending',
+      }),
+    );
+    contactLogFindFirstMock.mockResolvedValueOnce(null).mockImplementationOnce(async () => ({
+      proposal_id: 'proposal_1',
+      request_fingerprint:
+        contactLogCreateMock.mock.calls[0]?.[0]?.data?.request_fingerprint ?? null,
+      called_by: 'user_1',
+    }));
+    contactLogCreateMock.mockRejectedValueOnce(buildUniqueConstraintError());
+
+    const response = await PATCH(
+      createRequest(
+        {
+          action: 'contact_attempt',
+          outcome: 'confirmed',
+          idempotency_key: 'contact-confirmed-race',
+          contact_method: 'phone',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'proposal_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(contactLogCreateMock).toHaveBeenCalledOnce();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects stale non-confirmed contact results after a proposal is already confirmed by phone', async () => {
+    proposalFindFirstMock
+      .mockResolvedValueOnce(
+        buildProposal({
+          proposal_status: 'patient_contact_pending',
+          patient_contact_status: 'confirmed',
+        }),
+      )
+      .mockResolvedValueOnce({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'confirmed',
+        finalized_schedule_id: null,
+      });
+
+    const response = await PATCH(
+      createRequest(
+        {
+          action: 'contact_attempt',
+          outcome: 'attempted',
+          idempotency_key: 'contact-stale-attempted-after-confirmed',
+          contact_method: 'phone',
+          callback_due_at: '2026-06-30T09:00:00.000Z',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'proposal_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '患者確認済みの連絡結果は未接続へ戻せません。再読み込みしてください',
+    });
+    expect(proposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(contactLogCreateMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps change_requested outcomes open as reschedule pending proposals', async () => {
     proposalFindFirstMock.mockResolvedValue(
       buildProposal({
         proposal_status: 'patient_contact_pending',
@@ -988,6 +1168,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         {
           action: 'contact_attempt',
           outcome: 'change_requested',
+          idempotency_key: 'contact-change-requested-1',
           contact_method: 'email',
           note: '午前帯のみ希望',
         },
@@ -1006,7 +1187,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         finalized_schedule_id: null,
       },
       data: expect.objectContaining({
-        proposal_status: 'rejected',
+        proposal_status: 'reschedule_pending',
         patient_contact_status: 'change_requested',
       }),
     });
@@ -1020,7 +1201,54 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     );
   });
 
-  it('clears stale callback tasks when an attempted contact no longer needs follow-up', async () => {
+  it('keeps declined contact outcomes as rejected proposals', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'pending',
+      }),
+    );
+
+    const response = await PATCH(
+      createRequest(
+        {
+          action: 'contact_attempt',
+          outcome: 'declined',
+          idempotency_key: 'contact-declined-1',
+          contact_method: 'phone',
+          note: '別候補も不要',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'proposal_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(proposalUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'proposal_1',
+        org_id: 'org_1',
+        proposal_status: 'patient_contact_pending',
+        finalized_schedule_id: null,
+      },
+      data: expect.objectContaining({
+        proposal_status: 'rejected',
+        patient_contact_status: 'declined',
+      }),
+    });
+    expect(contactLogCreateMock).toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        dedupeKey: 'visit-contact-followup:proposal_1',
+        status: 'completed',
+      }),
+    );
+  });
+
+  it('rejects attempted or unreachable contact results without a callback due date', async () => {
     proposalFindFirstMock.mockResolvedValue(
       buildProposal({
         proposal_status: 'patient_contact_pending',
@@ -1033,6 +1261,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         {
           action: 'contact_attempt',
           outcome: 'attempted',
+          idempotency_key: 'contact-attempted-no-callback',
           contact_method: 'phone',
           note: '再架電不要',
         },
@@ -1042,16 +1271,18 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     );
 
     if (!response) throw new Error('response is required');
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        callback_due_at: ['未接続の場合は折返し予定日時が必須です'],
+      },
+    });
+    expect(proposalFindFirstMock).not.toHaveBeenCalled();
+    expect(proposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(contactLogCreateMock).not.toHaveBeenCalled();
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
-    expect(resolveOperationalTasksMock).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        orgId: 'org_1',
-        dedupeKey: 'visit-contact-followup:proposal_1',
-        status: 'completed',
-      }),
-    );
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
   });
 
   it('creates a callback follow-up task when attempted contact includes a callback due date', async () => {
@@ -1067,6 +1298,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         {
           action: 'contact_attempt',
           outcome: 'attempted',
+          idempotency_key: 'contact-attempted-callback-1',
           contact_method: 'phone',
           note: '夕方に再架電',
           callback_due_at: '2026-03-30T09:00:00.000Z',
@@ -1084,7 +1316,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         orgId: 'org_1',
         taskType: 'visit_contact_followup',
         title: '患者への再架電が必要です',
-        description: '夕方に再架電',
+        description: '再架電が必要です。詳細は確定フローで確認してください。',
         assignedTo: 'pharmacist_1',
         dueDate: new Date('2026-03-30T09:00:00.000Z'),
         slaDueAt: new Date('2026-03-30T09:00:00.000Z'),
@@ -1113,6 +1345,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         {
           action: 'contact_attempt',
           outcome: 'confirmed',
+          idempotency_key: 'contact-stale-confirmed-1',
           contact_method: 'phone',
         },
         { 'x-org-id': 'org_1' },
@@ -1190,6 +1423,54 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
     expect(auditPayload).not.toContain('090-1234-5678');
     expect(auditPayload).not.toContain('アムロジピン');
     expect(auditPayload).not.toContain('処方詳細');
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+  });
+
+  it('resolves stale contact follow-up tasks when rejecting after outreach starts', async () => {
+    proposalFindFirstMock.mockResolvedValue(
+      buildProposal({
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'pending',
+      }),
+    );
+
+    const response = await PATCH(
+      createRequest(
+        {
+          action: 'reject',
+          reject_reason: '電話で辞退',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      {
+        params: Promise.resolve({ id: 'proposal_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(proposalUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'proposal_1',
+        org_id: 'org_1',
+        proposal_status: {
+          in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+        },
+        finalized_schedule_id: null,
+      },
+      data: expect.objectContaining({
+        proposal_status: 'rejected',
+        patient_contact_status: 'declined',
+      }),
+    });
+    expect(resolveOperationalTasksMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        dedupeKey: 'visit-contact-followup:proposal_1',
+        status: 'completed',
+      }),
+    );
   });
 
   it('claims proposal approval state before writing approval audit logs', async () => {

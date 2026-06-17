@@ -157,6 +157,33 @@ function mockImmediateMutations() {
   );
 }
 
+function mockExecutingMutations() {
+  useMutationMock.mockImplementation(
+    (options: {
+      mutationFn?: (variables: unknown) => unknown;
+      onSuccess?: (data: unknown, variables: unknown) => unknown;
+      onError?: (error: unknown) => unknown;
+    }) => ({
+      mutate: vi.fn((variables: unknown) => {
+        void Promise.resolve(options.mutationFn?.(variables))
+          .then((data) => options.onSuccess?.(data, variables))
+          .catch((error: unknown) => options.onError?.(error));
+      }),
+      mutateAsync: vi.fn(async (variables: unknown) => {
+        try {
+          const data = await options.mutationFn?.(variables);
+          await options.onSuccess?.(data, variables);
+          return data;
+        } catch (error) {
+          await options.onError?.(error);
+          throw error;
+        }
+      }),
+      isPending: false,
+    }),
+  );
+}
+
 function mockDashboardProposals(proposals: Array<ReturnType<typeof buildProposal>>) {
   useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
     if (queryKey[0] === 'schedule-proposals-dashboard') {
@@ -195,10 +222,11 @@ function expectProposalQueryInvalidations() {
       ['schedule-proposal-detail', 'org_1'],
       ['visit-schedule-proposals', 'org_1'],
       ['visit-schedules', 'week-board', 'org_1'],
+      ['schedule-day-board', 'org_1'],
       ['tasks', 'visit-contact-followup', 'org_1'],
     ]),
   );
-  expect(invalidateQueriesMock).toHaveBeenCalledTimes(5);
+  expect(invalidateQueriesMock).toHaveBeenCalledTimes(6);
 }
 
 function expectToastMessagesExcludeSensitiveDetails() {
@@ -1944,6 +1972,164 @@ describe('ScheduleProposalsContent', () => {
       screen.getByText('患者へ電話し、結果を「確認済み」で保存すると日時確定できます。'),
     ).toBeTruthy();
     expect(screen.getAllByText('社用車A').length).toBeGreaterThan(0);
+  });
+
+  it('does not display or prefill past contact log PHI while preserving new contact attempt input', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ data: {} }));
+    vi.stubGlobal('fetch', fetchMock);
+    mockImmediateMutations();
+    const detail = buildProposalDetail({
+      proposal_status: 'patient_contact_pending',
+      patient_contact_status: 'attempted',
+      contact_logs: [
+        {
+          id: 'contact_log_1',
+          outcome: 'attempted',
+          contact_method: 'phone',
+          contact_name: '家族A',
+          contact_phone: '090-0000-0000',
+          note: '折返し希望',
+          callback_due_at: '2026-04-09T12:30:00.000Z',
+          called_at: '2026-04-09T09:00:00.000Z',
+          called_by: 'user_1',
+          has_note: true,
+        },
+      ],
+    });
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'schedule-proposals-dashboard') {
+        return {
+          data: { data: [detail] },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      if (queryKey[0] === 'schedule-proposal-detail') {
+        return {
+          data: { data: detail },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: undefined,
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    render(<ScheduleProposalsContent initialDetailId="proposal_1" />);
+
+    const detailDialog = screen.getByRole('dialog', { name: '訪問日時確定フロー' });
+    expect(detailDialog.textContent ?? '').toContain('最近の連絡履歴');
+    expect(detailDialog.textContent ?? '').toContain('連絡メモあり');
+    expect(detailDialog.textContent ?? '').not.toContain('家族A');
+    expect(detailDialog.textContent ?? '').not.toContain('090-0000-0000');
+    expect(detailDialog.textContent ?? '').not.toContain('折返し希望');
+
+    const contactNameInput = within(detailDialog).getByLabelText('対応者名') as HTMLInputElement;
+    const contactPhoneInput = within(detailDialog).getByLabelText('連絡先') as HTMLInputElement;
+    const contactNoteInput = within(detailDialog).getByLabelText('連絡メモ') as HTMLTextAreaElement;
+    expect(contactNameInput.value).toBe('');
+    expect(contactPhoneInput.value).toBe('');
+    expect(contactNoteInput.value).toBe('');
+
+    fireEvent.change(contactNameInput, { target: { value: '本人' } });
+    fireEvent.change(contactPhoneInput, { target: { value: '080-1111-2222' } });
+    fireEvent.change(contactNoteInput, { target: { value: '本日16時で了承' } });
+    fireEvent.click(within(detailDialog).getByRole('button', { name: /連絡結果を保存/ }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/visit-schedule-proposals/proposal_1',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: expect.stringContaining('"contact_name":"本人"'),
+        }),
+      );
+    });
+    const requestBody = JSON.parse(
+      String(
+        fetchMock.mock.calls.find(
+          ([url, init]) =>
+            String(url).endsWith('/proposal_1') &&
+            (init as RequestInit | undefined)?.method === 'PATCH',
+        )?.[1]?.body,
+      ),
+    );
+    expect(requestBody).toMatchObject({
+      action: 'contact_attempt',
+      outcome: 'attempted',
+      contact_method: 'phone',
+      contact_name: '本人',
+      contact_phone: '080-1111-2222',
+      note: '本日16時で了承',
+    });
+    expect(JSON.stringify(requestBody)).not.toContain('家族A');
+    expect(JSON.stringify(requestBody)).not.toContain('090-0000-0000');
+    expect(JSON.stringify(requestBody)).not.toContain('折返し希望');
+  });
+
+  it('surfaces a top-level reproposal action for change-requested details and retries generation without re-recording contact', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      Response.json({ data: [], diagnostics: { accepted: [], rejected: [] } }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    mockExecutingMutations();
+    const detail = buildProposalDetail({
+      proposal_status: 'reschedule_pending',
+      patient_contact_status: 'change_requested',
+    });
+    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'schedule-proposals-dashboard') {
+        return {
+          data: { data: [detail] },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      if (queryKey[0] === 'schedule-proposal-detail') {
+        return {
+          data: { data: detail },
+          isLoading: false,
+          connected: true,
+        };
+      }
+      return {
+        data: undefined,
+        isLoading: false,
+        connected: true,
+      };
+    });
+
+    render(<ScheduleProposalsContent initialDetailId="proposal_1" />);
+
+    const detailDialog = screen.getByRole('dialog', { name: '訪問日時確定フロー' });
+    expect(
+      within(detailDialog).getByRole('link', { name: '再提案条件を入力' }).getAttribute('href'),
+    ).toBe('#schedule-proposal-reproposal');
+    expect(within(detailDialog).getByText('変更希望時の再提案')).toBeTruthy();
+    expect(within(detailDialog).getByRole('button', { name: '変更希望で再提案' })).toBeTruthy();
+    expect(detailDialog.textContent ?? '').not.toContain('この候補は終了しています');
+
+    fireEvent.click(within(detailDialog).getByRole('button', { name: '変更希望で再提案' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/visit-schedule-proposals',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('"idempotency_key":"visit-reproposal:proposal_1:'),
+        }),
+      );
+    });
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, init]) =>
+          url === '/api/visit-schedule-proposals/proposal_1' &&
+          (init as RequestInit | undefined)?.method === 'PATCH',
+      ),
+    ).toBe(false);
   });
 
   it('surfaces substitute, urgency, patient-window, and vehicle decisions on proposal cards', () => {

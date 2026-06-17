@@ -40,7 +40,7 @@ describe('schedule day proposal action helpers', () => {
     ).toMatchObject({ outcome });
   });
 
-  it('prefills contact log form from the latest fax or email log', () => {
+  it('prefills only non-PHI contact metadata from the latest fax or email log', () => {
     expect(
       buildScheduleDayContactLogForm({
         patient_contact_status: 'pending',
@@ -49,20 +49,17 @@ describe('schedule day proposal action helpers', () => {
             id: 'log_1',
             outcome: 'attempted',
             contact_method: 'fax',
-            contact_name: '家族A',
-            contact_phone: '090-0000-0000',
-            note: '折返し希望',
+            has_note: true,
             callback_due_at: '2026-04-09T12:30:00',
             called_at: '2026-04-09T09:00:00.000Z',
-            called_by: 'user_1',
           },
         ],
       }),
     ).toEqual({
       outcome: 'attempted',
       contact_method: 'fax',
-      contact_name: '家族A',
-      contact_phone: '090-0000-0000',
+      contact_name: '',
+      contact_phone: '',
       note: '',
       callback_due_at: '2026-04-09T12:30',
     });
@@ -77,12 +74,9 @@ describe('schedule day proposal action helpers', () => {
           id: 'log_1',
           outcome: 'confirmed',
           contact_method: 'email',
-          contact_name: '家族A',
-          contact_phone: '090-0000-0000',
-          note: '確定',
+          has_note: true,
           callback_due_at: '2026-04-09T12:30:00',
           called_at: '2026-04-09T09:00:00.000Z',
-          called_by: 'user_1',
         },
       ],
     };
@@ -92,8 +86,8 @@ describe('schedule day proposal action helpers', () => {
       form: {
         outcome: 'confirmed',
         contact_method: 'email',
-        contact_name: '家族A',
-        contact_phone: '090-0000-0000',
+        contact_name: '',
+        contact_phone: '',
         note: '',
         callback_due_at: '2026-04-09T12:30',
       },
@@ -125,6 +119,7 @@ describe('schedule day proposal action helpers', () => {
       payload: {
         action: 'contact_attempt',
         outcome: 'change_requested',
+        idempotency_key: expect.stringMatching(/^visit-contact:proposal_1:/),
         contact_method: 'email',
         contact_name: undefined,
         contact_phone: '090-0000-0000',
@@ -185,23 +180,48 @@ describe('schedule day proposal action helpers', () => {
     [{ action: 'confirm' } as const, '電話確認が完了し、訪問予定を確定しました'],
     [{ action: 'reject' } as const, '候補を却下しました'],
     [
-      { action: 'contact_attempt', outcome: 'change_requested', contact_method: 'phone' } as const,
+      {
+        action: 'contact_attempt',
+        outcome: 'change_requested',
+        idempotency_key: 'contact-msg-change',
+        contact_method: 'phone',
+      } as const,
       '変更希望として記録しました',
     ],
     [
-      { action: 'contact_attempt', outcome: 'declined', contact_method: 'phone' } as const,
+      {
+        action: 'contact_attempt',
+        outcome: 'declined',
+        idempotency_key: 'contact-msg-declined',
+        contact_method: 'phone',
+      } as const,
       '患者辞退として記録しました',
     ],
     [
-      { action: 'contact_attempt', outcome: 'unreachable', contact_method: 'phone' } as const,
+      {
+        action: 'contact_attempt',
+        outcome: 'unreachable',
+        idempotency_key: 'contact-msg-unreachable',
+        contact_method: 'phone',
+      } as const,
       '不通として記録しました',
     ],
     [
-      { action: 'contact_attempt', outcome: 'confirmed', contact_method: 'phone' } as const,
+      {
+        action: 'contact_attempt',
+        outcome: 'confirmed',
+        idempotency_key: 'contact-msg-confirmed',
+        contact_method: 'phone',
+      } as const,
       '患者確認済みとして記録しました',
     ],
     [
-      { action: 'contact_attempt', outcome: 'attempted', contact_method: 'phone' } as const,
+      {
+        action: 'contact_attempt',
+        outcome: 'attempted',
+        idempotency_key: 'contact-msg-attempted',
+        contact_method: 'phone',
+      } as const,
       '架電状況を更新しました',
     ],
   ])('keeps success message mapping for %j', (payload, expected) => {
@@ -248,6 +268,7 @@ describe('schedule day proposal action helpers', () => {
       payload: {
         action: 'contact_attempt',
         outcome: 'attempted',
+        idempotency_key: 'contact-success-attempted',
         contact_method: 'fax',
         contact_name: '家族A',
       },

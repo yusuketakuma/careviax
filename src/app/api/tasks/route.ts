@@ -17,6 +17,35 @@ import { z } from 'zod';
 
 const taskStatusSchema = z.enum(taskStatusValues);
 const taskPrioritySchema = z.enum(taskPriorityValues);
+const MAX_TASK_TYPE_FILTERS = 20;
+
+function parseTaskTypesFilter(value: string | null) {
+  if (!value) return { data: undefined as string[] | undefined, error: null as string | null };
+
+  const types = Array.from(
+    new Set(
+      value
+        .split(',')
+        .map((type) => type.trim())
+        .filter(Boolean),
+    ),
+  );
+
+  if (types.length === 0) {
+    return { data: undefined, error: 'task_types には1件以上の種別を指定してください' };
+  }
+  if (types.length > MAX_TASK_TYPE_FILTERS) {
+    return {
+      data: undefined,
+      error: `task_types は${MAX_TASK_TYPE_FILTERS}件以下で指定してください`,
+    };
+  }
+  if (types.some((type) => type.length > 100)) {
+    return { data: undefined, error: 'task_types の種別名が長すぎます' };
+  }
+
+  return { data: types, error: null };
+}
 
 function canCreateTaskInAssignmentScope(
   scope: DashboardAssignmentScope,
@@ -63,8 +92,19 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const taskType = searchParams.get('task_type') ?? undefined;
+  const taskTypesParam = searchParams.get('task_types');
+  if (taskType && taskTypesParam) {
+    return validationError('task_type と task_types は同時に指定できません');
+  }
+  const taskTypes = parseTaskTypesFilter(taskTypesParam);
+  if (taskTypes.error) {
+    return validationError(taskTypes.error, {
+      task_types: [taskTypes.error],
+    });
+  }
   const statusParam = searchParams.get('status') ?? undefined;
-  const status = statusParam ? taskStatusSchema.safeParse(statusParam) : null;
+  const status =
+    statusParam && statusParam !== 'open' ? taskStatusSchema.safeParse(statusParam) : null;
   if (status && !status.success) {
     return validationError('タスクステータスが不正です', {
       status: ['対応していないステータスです'],
@@ -91,7 +131,12 @@ export async function GET(req: NextRequest) {
       org_id: ctx.orgId,
       ...buildDashboardTaskAssignmentWhere(assignmentScope),
       ...(taskType ? { task_type: taskType } : {}),
-      ...(status ? { status: status.data } : {}),
+      ...(taskTypes.data ? { task_type: { in: taskTypes.data } } : {}),
+      ...(statusParam === 'open'
+        ? { status: { in: ['pending', 'in_progress'] } }
+        : status
+          ? { status: status.data }
+          : {}),
       ...(priority ? { priority: priority.data } : {}),
       ...(assignedTo ? { assigned_to: assignedTo } : {}),
       ...(relatedEntityType ? { related_entity_type: relatedEntityType } : {}),

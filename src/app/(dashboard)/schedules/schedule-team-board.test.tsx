@@ -6,6 +6,7 @@ import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { useUIStore } from '@/lib/stores/ui-store';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type { DayBoardStaff, ScheduleDayBoardResponse } from '@/types/schedule-day-board';
+import type { ScheduleTask } from './day-view.shared';
 import {
   buildScheduleRiskAlert,
   buildStaffLane,
@@ -32,6 +33,13 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 import { ScheduleTeamBoard } from './schedule-team-board';
 
 setupDomTestEnv();
+
+const READY_PREPARATION_SUMMARY = {
+  completed_count: 5,
+  total_count: 5,
+  status: 'ready' as const,
+  incomplete_labels: [],
+};
 
 function dateKeyOf(date: Date) {
   return `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(2, '0')}-${`${date.getDate()}`.padStart(2, '0')}`;
@@ -68,7 +76,14 @@ function buildPharmacist(overrides: Partial<DayBoardStaff> = {}): DayBoardStaff 
         vehicle_travel_mode: 'DRIVE',
         confirmed: true,
         facility_label: null,
+        facility_batch_id: null,
         facility_patient_count: 1,
+        preparation_summary: {
+          completed_count: 3,
+          total_count: 5,
+          status: 'incomplete',
+          incomplete_labels: ['持参薬・物品確認', 'ルート確認'],
+        },
       },
       {
         id: 'visit_2',
@@ -85,7 +100,19 @@ function buildPharmacist(overrides: Partial<DayBoardStaff> = {}): DayBoardStaff 
         vehicle_travel_mode: 'DRIVE',
         confirmed: true,
         facility_label: null,
+        facility_batch_id: null,
         facility_patient_count: 1,
+        preparation_summary: {
+          ...READY_PREPARATION_SUMMARY,
+          ready_blocker_summary: {
+            blocked: true,
+            blocker_count: 2,
+            category_labels: ['導入準備 2件'],
+            preparation_blocker_count: 0,
+            onboarding_blocker_count: 2,
+            billing_blocker_count: 0,
+          },
+        },
       },
       {
         id: 'visit_3',
@@ -102,7 +129,33 @@ function buildPharmacist(overrides: Partial<DayBoardStaff> = {}): DayBoardStaff 
         vehicle_travel_mode: null,
         confirmed: true,
         facility_label: 'グリーンヒル',
+        facility_batch_id: 'batch_green',
         facility_patient_count: 12,
+        preparation_summary: READY_PREPARATION_SUMMARY,
+      },
+      {
+        id: 'visit_5',
+        patient_name: '施設 二郎',
+        visit_type: 'regular',
+        schedule_status: 'planned',
+        priority: 'normal',
+        site_id: 'site_1',
+        route_order: 4,
+        time_start: localIso(16, 0),
+        time_end: localIso(16, 30),
+        vehicle_resource_id: 'vehicle_1',
+        vehicle_label: '軽バン1号',
+        vehicle_travel_mode: 'DRIVE',
+        confirmed: true,
+        facility_label: 'グリーンヒル',
+        facility_batch_id: 'batch_green',
+        facility_patient_count: 12,
+        preparation_summary: {
+          completed_count: 4,
+          total_count: 5,
+          status: 'blocked',
+          incomplete_labels: ['持参物ステータス未解決'],
+        },
       },
     ],
     open_task_count: 2,
@@ -148,7 +201,14 @@ function buildBoardFixture(): ScheduleDayBoardResponse {
             vehicle_travel_mode: null,
             confirmed: false,
             facility_label: null,
+            facility_batch_id: null,
             facility_patient_count: 1,
+            preparation_summary: {
+              completed_count: 5,
+              total_count: 5,
+              status: 'blocked',
+              incomplete_labels: ['持参物ステータス未解決'],
+            },
           },
         ],
       },
@@ -246,17 +306,48 @@ function buildCockpitFixture(): DashboardCockpitResponse {
   };
 }
 
+function buildScheduleTask(overrides: Partial<ScheduleTask> = {}): ScheduleTask {
+  return {
+    id: 'task_preparation',
+    task_type: 'visit_preparation',
+    title: '訪問準備を確認してください',
+    description: '出発前に持参薬とルートを確認します',
+    status: 'pending',
+    priority: 'high',
+    assigned_to: 'user_yamada',
+    due_date: localIso(11, 0),
+    sla_due_at: null,
+    related_entity_type: 'visit_schedule',
+    related_entity_id: 'visit_1',
+    metadata: null,
+    created_at: localIso(8, 30),
+    ...overrides,
+  };
+}
+
 function mockQueries({
   board = buildBoardFixture(),
   cockpit = buildCockpitFixture(),
+  tasks = [
+    buildScheduleTask(),
+    buildScheduleTask({
+      id: 'task_outside',
+      title: '翌日の準備',
+      related_entity_id: 'visit_outside',
+    }),
+  ],
 }: {
   board?: ScheduleDayBoardResponse | null;
   cockpit?: DashboardCockpitResponse | null;
+  tasks?: ScheduleTask[];
 } = {}) {
   useQueryMock.mockImplementation((options: { queryKey: unknown[] }) => {
     const key = options.queryKey[0];
     if (key === 'schedule-day-board') {
       return { data: board, isLoading: false, isError: false, error: null, refetch: vi.fn() };
+    }
+    if (key === 'tasks') {
+      return { data: tasks, isLoading: false, isError: false, error: null, refetch: vi.fn() };
     }
     return { data: cockpit, isLoading: false, isError: false, error: null, refetch: vi.fn() };
   });
@@ -276,6 +367,22 @@ describe('buildStaffLane', () => {
     expect(visitBlocks.map((block) => block.label)).toContain('施設グリーンヒル 12名');
     expect(visitBlocks.every((block) => block.locked)).toBe(true);
     expect(visitBlocks.find((block) => block.label === '田中 一郎様')?.risk).toBe(true);
+    expect(visitBlocks.find((block) => block.label === '伊藤 キヨ様')?.preparationSummary).toEqual({
+      completed_count: 3,
+      total_count: 5,
+      status: 'incomplete',
+      incomplete_labels: ['持参薬・物品確認', 'ルート確認'],
+    });
+    const facilityBlock = visitBlocks.find((block) => block.label === '施設グリーンヒル 12名');
+    expect(facilityBlock?.status).toBeNull();
+    expect(facilityBlock?.aggregateScheduleIds).toEqual(['visit_3', 'visit_5']);
+    expect(facilityBlock?.preparationSummary).toMatchObject({
+      status: 'blocked',
+      aggregate_visit_count: 2,
+      incomplete_visit_count: 1,
+      blocked_visit_count: 1,
+      incomplete_labels: ['持参物ステータス未解決'],
+    });
 
     const deskLabels = lane.blocks
       .filter((block) => block.kind === 'desk')
@@ -289,6 +396,64 @@ describe('buildStaffLane', () => {
     // 勤務帯9:00-18:00から占有分を引いた余白が件数として出る
     expect(lane.idleMinutes).toBeGreaterThan(0);
     expect(lane.idleMinutes).toBeLessThan(9 * 60);
+  });
+
+  it('aggregates facility visits with full-ready blockers as departure blockers', () => {
+    const [baseVisit] = buildPharmacist().visits;
+    const lane = buildStaffLane({
+      staff: buildPharmacist({
+        visits: [
+          {
+            ...baseVisit,
+            id: 'facility_ready_blocked',
+            patient_name: '施設 一郎',
+            schedule_status: 'ready',
+            facility_label: 'グリーンヒル',
+            facility_batch_id: 'batch_ready_blocked',
+            facility_patient_count: 2,
+            preparation_summary: {
+              ...READY_PREPARATION_SUMMARY,
+              ready_blocker_summary: {
+                blocked: true,
+                blocker_count: 1,
+                category_labels: ['導入準備 1件'],
+                preparation_blocker_count: 0,
+                onboarding_blocker_count: 1,
+                billing_blocker_count: 0,
+              },
+            },
+          },
+          {
+            ...baseVisit,
+            id: 'facility_ready_clear',
+            patient_name: '施設 二郎',
+            schedule_status: 'ready',
+            route_order: 2,
+            facility_label: 'グリーンヒル',
+            facility_batch_id: 'batch_ready_blocked',
+            facility_patient_count: 2,
+            preparation_summary: READY_PREPARATION_SUMMARY,
+          },
+        ],
+      }),
+    });
+
+    const facilityBlock = lane.blocks.find((block) => block.label === '施設グリーンヒル 2名');
+    expect(facilityBlock?.preparationSummary).toMatchObject({
+      status: 'blocked',
+      aggregate_visit_count: 2,
+      incomplete_visit_count: 1,
+      blocked_visit_count: 1,
+      incomplete_labels: ['導入準備 1件'],
+      ready_blocker_summary: {
+        blocked: true,
+        blocker_count: 1,
+        category_labels: ['導入準備 1件'],
+        preparation_blocker_count: 0,
+        onboarding_blocker_count: 1,
+        billing_blocker_count: 0,
+      },
+    });
   });
 
   it('builds clerk lane with routine desk blocks and clerical follow-up block', () => {
@@ -367,7 +532,40 @@ describe('ScheduleTeamBoard', () => {
     expect(screen.getAllByTestId('team-board-idle').length).toBe(2);
     expect(screen.getAllByText('予定').length).toBeGreaterThan(0);
     expect(screen.getAllByText('準備完了').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('完了').length).toBeGreaterThan(0);
+    const gantt = screen.getByTestId('schedule-team-gantt');
+    expect(
+      within(gantt).getByLabelText(/伊藤 キヨ様、準備 3\/5、未完: 持参薬・物品確認/),
+    ).toBeTruthy();
+    expect(within(gantt).getAllByText('準備 3/5').length).toBeGreaterThan(0);
+    expect(
+      within(gantt).getByLabelText(
+        /田中 一郎様、準備チェック完了、出発前条件 未解決2件、確認: 導入準備 2件/,
+      ),
+    ).toBeTruthy();
+    expect(within(gantt).getAllByText('出発前条件 未解決2件').length).toBeGreaterThan(0);
+    expect(
+      within(gantt).getByLabelText(
+        /施設グリーンヒル 12名、準備未完 1\/2、未完: 持参物ステータス未解決/,
+      ),
+    ).toBeTruthy();
+    expect(within(gantt).getByText('準備未完 1/2')).toBeTruthy();
+    expect(within(gantt).getByText('施設一括')).toBeTruthy();
+    expect(
+      within(gantt).queryByRole('link', { name: '施設グリーンヒル 12名の訪問を依頼' }),
+    ).toBeNull();
+    const operationalTasks = screen.getByTestId('schedule-operational-tasks');
+    expect(within(operationalTasks).getByRole('heading', { name: '運用タスク' })).toBeTruthy();
+    expect(within(operationalTasks).getByText('訪問準備を確認してください')).toBeTruthy();
+    expect(within(operationalTasks).getByText(/伊藤 キヨ様 — 10:30/)).toBeTruthy();
+    expect(within(operationalTasks).queryByText('翌日の準備')).toBeNull();
+    const preparationLink = within(operationalTasks).getByRole('link', {
+      name: /伊藤 キヨ様.*準備一覧へを開く/,
+    });
+    expect(preparationLink.getAttribute('href')).toBe('/visits');
+    expect(preparationLink.className).toContain('min-h-[44px]');
+    expect(
+      within(operationalTasks).queryByRole('button', { name: /伊藤 キヨ様.*完了にする/ }),
+    ).toBeNull();
     expect(screen.getByText('訪問色＝ステータス')).toBeTruthy();
     expect(screen.getByText('斜線＝移動時間')).toBeTruthy();
     expect(screen.getByText('緑点線＝余白')).toBeTruthy();
@@ -384,6 +582,10 @@ describe('ScheduleTeamBoard', () => {
       'min-h-[44px]',
     );
     expect(within(routePreview).getByText('伊藤 キヨ様')).toBeTruthy();
+    expect(within(routePreview).getByText('準備 3/5')).toBeTruthy();
+    expect(within(routePreview).getByText('未完: 持参薬・物品確認')).toBeTruthy();
+    expect(within(routePreview).getAllByText('準備チェック完了').length).toBeGreaterThan(0);
+    expect(within(routePreview).getByText('出発前条件: 導入準備 2件')).toBeTruthy();
     expect(within(routePreview).getAllByText(/軽バン1号/).length).toBeGreaterThan(0);
     expect(within(routePreview).getAllByText(/車両未割当/).length).toBeGreaterThan(0);
     const visitRequestLink = screen.getByRole('link', { name: '伊藤 キヨ様の訪問を依頼' });
@@ -401,6 +603,12 @@ describe('ScheduleTeamBoard', () => {
 
     // 未確定(受入判断・仮枠・返答期限・余白の変化)
     const pending = screen.getByTestId('schedule-pending-proposals');
+    expect(
+      Boolean(gantt.compareDocumentPosition(operationalTasks) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
+    expect(
+      Boolean(operationalTasks.compareDocumentPosition(pending) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
     expect(within(pending).getByText('受入判断')).toBeTruthy();
     expect(within(pending).getByText(/新規 鈴木 新様 — 明日 10:00 仮枠\(佐藤\)/)).toBeTruthy();
     expect(within(pending).getByText('返答期限 17:00')).toBeTruthy();
@@ -442,11 +650,71 @@ describe('ScheduleTeamBoard', () => {
     const controls = screen.getByTestId('schedule-status-controls');
     const statusSelect = within(controls).getByLabelText('伊藤 キヨ様のステータスを変更');
     expect(statusSelect).toBeTruthy();
+    expect(within(controls).queryByRole('option', { name: '完了' })).toBeNull();
+    expect(within(controls).queryByRole('option', { name: '中止' })).toBeNull();
+    expect(within(controls).queryByLabelText('施設グリーンヒル 12名のステータスを変更')).toBeNull();
 
     fireEvent.change(statusSelect, { target: { value: 'in_progress' } });
 
     expect(mutate).toHaveBeenCalledWith({
       scheduleId: 'visit_1',
+      status: 'in_progress',
+    });
+  });
+
+  it('routes visible contact follow-up tasks to the contact result flow without confirming them inline', () => {
+    const mutate = vi.fn();
+    useMutationMock.mockReturnValue({
+      mutate,
+      isPending: false,
+      variables: undefined,
+    });
+    mockQueries({
+      tasks: [
+        buildScheduleTask({
+          id: 'task_contact',
+          task_type: 'visit_contact_followup',
+          title: '折返し架電が必要です',
+          status: 'pending',
+          priority: 'normal',
+          related_entity_type: 'visit_schedule_proposal',
+          related_entity_id: 'proposal_1',
+        }),
+        buildScheduleTask({
+          id: 'task_cancelled',
+          title: '完了済みの準備',
+          status: 'completed',
+          related_entity_id: 'visit_1',
+        }),
+      ],
+    });
+    render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
+
+    const operationalTasks = screen.getByTestId('schedule-operational-tasks');
+    expect(within(operationalTasks).getByText('折返し架電が必要です')).toBeTruthy();
+    expect(within(operationalTasks).queryByText('完了済みの準備')).toBeNull();
+    expect(
+      within(operationalTasks).queryByRole('button', { name: /鈴木 新様.*完了にする/ }),
+    ).toBeNull();
+    expect(
+      within(operationalTasks).queryByRole('button', {
+        name: /鈴木 新様.*電話確認済みとして記録/,
+      }),
+    ).toBeNull();
+    const contactAction = within(operationalTasks).getByRole('link', {
+      name: /鈴木 新様.*連絡結果を記録を開く/,
+    });
+    expect(contactAction.className).toContain('min-h-[44px]');
+    expect(contactAction.getAttribute('href')).toContain(
+      '/schedules/proposals?workspace=dashboard&status=patient_contact_pending&preset=contact&detail=proposal_1',
+    );
+
+    fireEvent.click(
+      within(operationalTasks).getByRole('button', { name: /鈴木 新様.*対応中にする/ }),
+    );
+
+    expect(mutate).toHaveBeenCalledWith({
+      taskId: 'task_contact',
       status: 'in_progress',
     });
   });

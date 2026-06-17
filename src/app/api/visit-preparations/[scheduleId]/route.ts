@@ -23,7 +23,10 @@ import {
   resolveOperationalTasks,
 } from '@/server/services/operational-tasks';
 import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence';
-import { VISIT_READY_CARRY_ITEMS_STATUS_BLOCKER } from '@/server/services/visit-preparation-readiness';
+import {
+  VISIT_READY_CARRY_ITEMS_STATUS_BLOCKER,
+  isVisitCarryItemsStatusBlockingReady,
+} from '@/server/services/visit-preparation-readiness';
 import {
   getPatientHomeCareFeatureSummary,
   selectScheduleHomeCareFeatureHighlights,
@@ -1155,7 +1158,7 @@ export async function GET(
   const readinessBlockers = [
     !preparation?.medication_changes_reviewed ? '薬歴・前回変更の確認' : null,
     !preparation?.carry_items_confirmed ? '持参薬・物品確認' : null,
-    ['blocked', 'partial'].includes(schedule.carry_items_status ?? '')
+    isVisitCarryItemsStatusBlockingReady(schedule.carry_items_status)
       ? VISIT_READY_CARRY_ITEMS_STATUS_BLOCKER
       : null,
     !preparation?.previous_issues_reviewed ? '前回課題の確認' : null,
@@ -1550,6 +1553,7 @@ export async function PUT(
       case_id: true,
       site_id: true,
       vehicle_resource_id: true,
+      carry_items_status: true,
       schedule_status: true,
       scheduled_date: true,
       route_order: true,
@@ -1567,12 +1571,17 @@ export async function PUT(
     return forbiddenResponse('この訪問予定の準備情報を更新する権限がありません');
   }
 
-  const allChecklistComplete =
-    parsed.data.medication_changes_reviewed &&
-    parsed.data.carry_items_confirmed &&
-    parsed.data.previous_issues_reviewed &&
-    parsed.data.route_confirmed &&
-    parsed.data.offline_synced;
+  const readinessBlockers = [
+    !parsed.data.medication_changes_reviewed ? '薬歴・前回変更の確認' : null,
+    !parsed.data.carry_items_confirmed ? '持参薬・物品確認' : null,
+    isVisitCarryItemsStatusBlockingReady(schedule.carry_items_status)
+      ? VISIT_READY_CARRY_ITEMS_STATUS_BLOCKER
+      : null,
+    !parsed.data.previous_issues_reviewed ? '前回課題の確認' : null,
+    !parsed.data.route_confirmed ? 'ルート確認' : null,
+    !parsed.data.offline_synced ? 'オフライン同期確認' : null,
+  ].filter((value): value is string => value != null);
+  const preparationReady = readinessBlockers.length === 0;
 
   const templateOpts = parsed.data.template_options;
   const effectiveChecklist: Record<string, unknown> = templateOpts
@@ -1589,8 +1598,10 @@ export async function PUT(
   const submittedRoutePlanSnapshot = parsed.data.route_plan_snapshot
     ? normalizeInputJsonObject(parsed.data.route_plan_snapshot)
     : null;
-  const routeVehicleResourceId =
-    readRouteSnapshotVehicleResourceId(submittedRoutePlanSnapshot) ?? schedule.vehicle_resource_id;
+  const routeVehicleResourceId = parsed.data.route_confirmed
+    ? (readRouteSnapshotVehicleResourceId(submittedRoutePlanSnapshot) ??
+      schedule.vehicle_resource_id)
+    : null;
   let routePlanSnapshotWriteValue: Prisma.InputJsonValue | typeof Prisma.JsonNull = Prisma.JsonNull;
 
   if (parsed.data.route_confirmed) {
@@ -1672,15 +1683,6 @@ export async function PUT(
     if (vehicleResource && schedule.site_id && vehicleResource.site_id !== schedule.site_id) {
       return validationError('選択した車両リソースは訪問予定の拠点では利用できません');
     }
-    if (
-      vehicleResource?.max_stops != null &&
-      routeCellSchedules.length > vehicleResource.max_stops
-    ) {
-      return validationError(
-        `${vehicleResource.label} で訪問できる件数は最大 ${vehicleResource.max_stops} 件です`,
-      );
-    }
-
     const currentScheduleInRoute = routeCellSchedules.some((item) => item.id === schedule.id);
     const orderedRouteCellSchedules = currentScheduleInRoute
       ? routeCellSchedules
@@ -1724,6 +1726,14 @@ export async function PUT(
             },
           })),
         ];
+    if (
+      vehicleResource?.max_stops != null &&
+      orderedRouteCellSchedules.length > vehicleResource.max_stops
+    ) {
+      return validationError(
+        `${vehicleResource.label} で訪問できる件数は最大 ${vehicleResource.max_stops} 件です`,
+      );
+    }
     const originSite = orderedRouteCellSchedules[0]?.site ?? null;
     const origin =
       originSite?.lat != null && originSite.lng != null
@@ -1807,7 +1817,7 @@ export async function PUT(
         route_plan_snapshot: routePlanSnapshotWriteValue,
         offline_synced: parsed.data.offline_synced,
         prepared_by: ctx.userId,
-        prepared_at: allChecklistComplete ? new Date() : null,
+        prepared_at: preparationReady ? new Date() : null,
       },
       update: {
         checklist: normalizedChecklist,
@@ -1818,7 +1828,7 @@ export async function PUT(
         route_plan_snapshot: routePlanSnapshotWriteValue,
         offline_synced: parsed.data.offline_synced,
         prepared_by: ctx.userId,
-        prepared_at: allChecklistComplete ? new Date() : null,
+        prepared_at: preparationReady ? new Date() : null,
       },
     });
 
@@ -1832,7 +1842,7 @@ export async function PUT(
       });
     }
 
-    if (allChecklistComplete) {
+    if (preparationReady) {
       await resolveOperationalTasks(tx, {
         orgId: ctx.orgId,
         dedupeKey: buildPreparationTaskKey(schedule.id),
@@ -1843,7 +1853,7 @@ export async function PUT(
         orgId: ctx.orgId,
         taskType: 'visit_preparation',
         title: '訪問準備が未完了です',
-        description: '訪問前チェックリストを完了してください。',
+        description: `未完了: ${readinessBlockers.join('、')}`,
         priority: 'high',
         assignedTo: schedule.pharmacist_id,
         dueDate: schedule.scheduled_date,

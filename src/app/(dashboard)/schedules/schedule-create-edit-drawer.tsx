@@ -22,11 +22,9 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import {
-  CONTACT_STATUS_LABELS,
   PRIORITY_LABELS,
   VISIT_TYPE_LABELS,
   type CaseOption,
-  type PatientContactStatus,
   type Pharmacist,
   type Proposal,
   type VisitPriority,
@@ -44,12 +42,6 @@ const TRAVEL_MODE_LABELS: Record<TravelMode, string> = {
 
 const VISIT_TYPE_OPTIONS = Object.entries(VISIT_TYPE_LABELS) as Array<[VisitType, string]>;
 const PRIORITY_OPTIONS = Object.entries(PRIORITY_LABELS) as Array<[VisitPriority, string]>;
-const CONTACT_STATUS_OPTIONS = Object.entries(CONTACT_STATUS_LABELS) as Array<
-  [PatientContactStatus, string]
->;
-const DRAFT_CONTACT_STATUS_OPTIONS = CONTACT_STATUS_OPTIONS.filter(
-  ([value]) => value !== 'confirmed',
-);
 const TRAVEL_MODE_OPTIONS = Object.entries(TRAVEL_MODE_LABELS) as Array<[TravelMode, string]>;
 
 export type ScheduleCreateEditDrawerForm = {
@@ -60,7 +52,6 @@ export type ScheduleCreateEditDrawerForm = {
   time_window_start: string;
   proposed_pharmacist_id: string;
   travel_mode: TravelMode;
-  patient_contact_status: PatientContactStatus;
 };
 
 export function buildScheduleCreateEditDrawerForm(args: {
@@ -79,7 +70,6 @@ export function buildScheduleCreateEditDrawerForm(args: {
       time_window_start: proposal.time_window_start?.slice(0, 5) ?? '',
       proposed_pharmacist_id: proposal.proposed_pharmacist_id,
       travel_mode: (proposal.vehicle_resource?.travel_mode as TravelMode | undefined) ?? 'DRIVE',
-      patient_contact_status: proposal.patient_contact_status,
     };
   }
   const firstCase = cases[0];
@@ -92,7 +82,6 @@ export function buildScheduleCreateEditDrawerForm(args: {
     time_window_start: '',
     proposed_pharmacist_id: defaultPharmacistId,
     travel_mode: 'DRIVE',
-    patient_contact_status: 'pending',
   };
 }
 
@@ -115,7 +104,6 @@ export function buildScheduleCreateEditDrawerPayload(args: {
     ...(form.time_window_start ? { time_window_start: form.time_window_start } : {}),
     proposed_pharmacist_id: form.proposed_pharmacist_id,
     travel_mode: form.travel_mode,
-    patient_contact_status: form.patient_contact_status,
     submit_for_contact: submitForContact,
   };
 }
@@ -356,31 +344,9 @@ export function ScheduleCreateEditDrawer({
             </Select>
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="drawer-contact-status">患者確認</Label>
-            <Select
-              value={form.patient_contact_status}
-              onValueChange={(value) =>
-                setForm((current) => ({
-                  ...current,
-                  patient_contact_status: value as PatientContactStatus,
-                }))
-              }
-            >
-              <SelectTrigger id="drawer-contact-status" className="w-full">
-                <SelectValue placeholder="患者確認の状態を選択" />
-              </SelectTrigger>
-              <SelectContent>
-                {DRAFT_CONTACT_STATUS_OPTIONS.map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs leading-5 text-muted-foreground">
-              確認済みは確定フローの患者連絡ワークフローで連絡結果として記録します。
-            </p>
+          <div className="rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-xs leading-5 text-muted-foreground">
+            患者連絡の結果は候補詳細の連絡結果フローで記録します。この画面では予定案を作成し、
+            「確認待ちへ」で連絡対象に移します。
           </div>
 
           <div

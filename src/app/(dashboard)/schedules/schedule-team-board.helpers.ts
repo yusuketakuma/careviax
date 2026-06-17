@@ -42,6 +42,8 @@ export type BoardBlock = {
   locked: boolean;
   /** 麻薬監査未完などのリスク(⚠) */
   risk: boolean;
+  preparationSummary?: DayBoardVisit['preparation_summary'];
+  aggregateScheduleIds?: string[];
 };
 
 export type StaffLane = {
@@ -87,7 +89,94 @@ export function visitBlockLabel(visit: DayBoardVisit): string {
   return `${visit.patient_name}様`;
 }
 
-type VisitWindow = { start: number; end: number; visit: DayBoardVisit };
+type VisitWindow = {
+  start: number;
+  end: number;
+  visit: DayBoardVisit;
+  aggregateScheduleIds?: string[];
+};
+
+function aggregatePreparationSummaries(
+  visits: DayBoardVisit[],
+): DayBoardVisit['preparation_summary'] {
+  const summaries = visits.map((visit) => visit.preparation_summary);
+  const totalVisitCount = summaries.length;
+  const incompleteSummaries = summaries.filter(
+    (summary) =>
+      summary.status !== 'ready' ||
+      summary.incomplete_labels.length > 0 ||
+      summary.ready_blocker_summary?.blocked,
+  );
+  const blockedVisitCount = summaries.filter(
+    (summary) => summary.status === 'blocked' || summary.ready_blocker_summary?.blocked,
+  ).length;
+  const incompleteVisitCount = summaries.filter(
+    (summary) => summary.status === 'incomplete',
+  ).length;
+  const unknownVisitCount = summaries.filter((summary) => summary.status === 'unknown').length;
+  const incompleteLabels = Array.from(
+    new Set(
+      incompleteSummaries.flatMap((summary) => [
+        ...summary.incomplete_labels,
+        ...(summary.ready_blocker_summary?.category_labels ?? []),
+      ]),
+    ),
+  ).slice(0, 3);
+  const readyBlockerSummaries = summaries
+    .map((summary) => summary.ready_blocker_summary)
+    .filter(
+      (
+        summary,
+      ): summary is NonNullable<DayBoardVisit['preparation_summary']['ready_blocker_summary']> =>
+        Boolean(summary),
+    );
+  const preparationBlockerCount = readyBlockerSummaries.reduce(
+    (total, summary) => total + summary.preparation_blocker_count,
+    0,
+  );
+  const onboardingBlockerCount = readyBlockerSummaries.reduce(
+    (total, summary) => total + summary.onboarding_blocker_count,
+    0,
+  );
+  const billingBlockerCount = readyBlockerSummaries.reduce(
+    (total, summary) => total + summary.billing_blocker_count,
+    0,
+  );
+  const readyBlockerCount = preparationBlockerCount + onboardingBlockerCount + billingBlockerCount;
+
+  return {
+    completed_count: summaries.reduce((total, summary) => total + summary.completed_count, 0),
+    total_count: summaries.reduce((total, summary) => total + summary.total_count, 0),
+    status:
+      incompleteSummaries.length === 0
+        ? 'ready'
+        : blockedVisitCount > 0
+          ? 'blocked'
+          : incompleteVisitCount > 0
+            ? 'incomplete'
+            : 'unknown',
+    incomplete_labels: incompleteLabels,
+    aggregate_visit_count: totalVisitCount,
+    incomplete_visit_count: incompleteSummaries.length,
+    blocked_visit_count: blockedVisitCount,
+    unknown_visit_count: unknownVisitCount,
+    ready_blocker_summary:
+      readyBlockerSummaries.length > 0
+        ? {
+            blocked: readyBlockerCount > 0,
+            blocker_count: readyBlockerCount,
+            category_labels: [
+              preparationBlockerCount > 0 ? `訪問前提 ${preparationBlockerCount}件` : null,
+              onboardingBlockerCount > 0 ? `導入準備 ${onboardingBlockerCount}件` : null,
+              billingBlockerCount > 0 ? `算定確認 ${billingBlockerCount}件` : null,
+            ].filter((label): label is string => label !== null),
+            preparation_blocker_count: preparationBlockerCount,
+            onboarding_blocker_count: onboardingBlockerCount,
+            billing_blocker_count: billingBlockerCount,
+          }
+        : undefined,
+  };
+}
 
 /** 施設バッチをまとめた当日訪問ウィンドウ(時間未設定は除外)。 */
 function buildVisitWindows(visits: DayBoardVisit[]): VisitWindow[] {
@@ -97,7 +186,7 @@ function buildVisitWindows(visits: DayBoardVisit[]): VisitWindow[] {
   for (const visit of visits) {
     if (!visit.time_start) continue;
     if (visit.facility_label && visit.facility_patient_count > 1) {
-      const key = `${visit.facility_label}`;
+      const key = visit.facility_batch_id ?? `facility:${visit.facility_label}:${visit.time_start}`;
       const group = facilityGroups.get(key) ?? [];
       group.push(visit);
       facilityGroups.set(key, group);
@@ -123,11 +212,13 @@ function buildVisitWindows(visits: DayBoardVisit[]): VisitWindow[] {
     windows.push({
       start,
       end,
+      aggregateScheduleIds: group.map((visit) => visit.id),
       visit: {
         ...representative,
         // API の facility_patient_count(バッチ全体の人数)を優先し、
         // 同一行内の同時訪問件数はフォールバックとして使う
         facility_patient_count: Math.max(representative.facility_patient_count, group.length),
+        preparation_summary: aggregatePreparationSummaries(group),
       },
     });
   }
@@ -194,9 +285,11 @@ export function buildStaffLane({
       label: visitBlockLabel(window.visit),
       startMinutes: window.start,
       endMinutes: window.end,
-      status: window.visit.schedule_status,
+      status: window.aggregateScheduleIds ? null : window.visit.schedule_status,
       locked: window.visit.confirmed,
       risk: riskPatientNames?.has(window.visit.patient_name) ?? false,
+      preparationSummary: window.visit.preparation_summary,
+      aggregateScheduleIds: window.aggregateScheduleIds,
     });
     occupied.push({ start: window.start, end: window.end });
 

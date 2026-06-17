@@ -32,6 +32,7 @@ export type ScheduleDayProposalActionPayload =
       contact_phone?: string;
       note?: string;
       callback_due_at?: string;
+      idempotency_key: string;
     };
 
 export type ScheduleDayProposalActionRequest = {
@@ -81,8 +82,8 @@ export function buildScheduleDayContactLogForm(
       latestLog?.contact_method === 'fax' || latestLog?.contact_method === 'email'
         ? latestLog.contact_method
         : 'phone',
-    contact_name: latestLog?.contact_name ?? '',
-    contact_phone: latestLog?.contact_phone ?? '',
+    contact_name: '',
+    contact_phone: '',
     note: '',
     callback_due_at: latestLog?.callback_due_at
       ? format(parseISO(latestLog.callback_due_at), "yyyy-MM-dd'T'HH:mm")
@@ -106,6 +107,14 @@ export function closeScheduleDayContactLogDialog(): ScheduleDayContactLogDialogS
   };
 }
 
+export function createScheduleContactAttemptIdempotencyKey(proposalId: string) {
+  const suffix =
+    typeof globalThis.crypto?.randomUUID === 'function'
+      ? globalThis.crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  return `visit-contact:${proposalId}:${suffix}`;
+}
+
 export function buildScheduleDayContactAttemptRequest({
   proposalId,
   form,
@@ -118,6 +127,7 @@ export function buildScheduleDayContactAttemptRequest({
     payload: {
       action: 'contact_attempt',
       outcome: form.outcome,
+      idempotency_key: createScheduleContactAttemptIdempotencyKey(proposalId),
       contact_method: form.contact_method,
       contact_name: form.contact_name || undefined,
       contact_phone: form.contact_phone || undefined,

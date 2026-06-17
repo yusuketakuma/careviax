@@ -336,25 +336,28 @@ model VisitScheduleProposalBatch {
 }
 
 model VisitScheduleContactLog {
-  id              String                @id @default(cuid())
-  org_id          String
-  proposal_id     String
-  proposal        VisitScheduleProposal @relation(fields: [proposal_id], references: [id])
-  schedule_id     String?
-  schedule        VisitSchedule?        @relation(fields: [schedule_id], references: [id])
-  patient_id      String
-  case_id         String
-  outcome         PatientContactStatus
-  contact_method  String?
-  contact_name    String?
-  contact_phone   String?
-  note            String?
-  callback_due_at DateTime?
-  called_at       DateTime              @default(now())
-  called_by       String
-  created_at      DateTime              @default(now())
-  updated_at      DateTime              @updatedAt
+  id                  String                @id @default(cuid())
+  org_id              String
+  proposal_id         String
+  proposal            VisitScheduleProposal @relation(fields: [proposal_id], references: [id])
+  schedule_id         String?
+  schedule            VisitSchedule?        @relation(fields: [schedule_id], references: [id])
+  patient_id          String
+  case_id             String
+  outcome             PatientContactStatus
+  contact_method      String?
+  contact_name        String?
+  contact_phone       String?
+  note                String?
+  callback_due_at     DateTime?
+  idempotency_key     String?
+  request_fingerprint String?
+  called_at           DateTime              @default(now())
+  called_by           String
+  created_at          DateTime              @default(now())
+  updated_at          DateTime              @updatedAt
 
+  @@unique([org_id, idempotency_key])
   @@index([org_id, proposal_id])
   @@index([org_id, schedule_id])
   @@index([org_id, patient_id])
