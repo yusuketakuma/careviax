@@ -111,6 +111,8 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
         model: { patient_1: [] },
         setCells: { [key]: 'set' },
         auditCells: { [key]: 'ok' },
+        ng: { [key]: '数量不足' },
+        holdInfo: { [key]: { reason: '医師確認待ち', due: '', owner: '', memo: '' } },
       });
     });
 
@@ -118,8 +120,13 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
     expect(state.setCells).toMatchObject({ [key]: 'set', 'patient_2:0:朝': 'set' });
     expect(state.auditCells).toMatchObject({ [key]: 'ok', 'patient_2:0:朝': 'ok' });
     expect(state.checks[`${key}:0`]).toBeUndefined();
-    expect(state.ng[key]).toBeUndefined();
-    expect(state.holdInfo[key]).toBeUndefined();
+    expect(state.ng[key]).toBe('数量不足');
+    expect(state.holdInfo[key]).toEqual({
+      reason: '医師確認待ち',
+      due: '',
+      owner: '',
+      memo: '',
+    });
     expect(state.outChk['patient_1:外用薬']).toBeUndefined();
     expect(state.packet['patient_1:訪問バッグ']).toBeUndefined();
     expect(state.checks['patient_2:0:朝:0']).toBe(true);

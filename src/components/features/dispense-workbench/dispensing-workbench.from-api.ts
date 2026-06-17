@@ -26,11 +26,14 @@ import type {
   DiscontinuedMed,
   Drug,
   Group,
+  HoldInfo,
   SeedChange,
   SeedPatient,
   WorkbenchModel,
 } from './dispensing-workbench.types';
 import {
+  HOLD_REASON_TO_CODE,
+  NG_LABEL_TO_CODE,
   SLOT_TO_TIMING,
   type CalendarMatrixResponse,
   type CellMeta,
@@ -58,6 +61,14 @@ const SLOT_LABELS: Record<string, '朝' | '昼' | '夕' | '眠前'> = {
   evening: '夕',
   bedtime: '眠前',
 };
+
+const HOLD_CODE_TO_REASON = Object.fromEntries(
+  Object.entries(HOLD_REASON_TO_CODE).map(([label, code]) => [code, label]),
+);
+
+const NG_CODE_TO_LABEL = Object.fromEntries(
+  Object.entries(NG_LABEL_TO_CODE).map(([label, code]) => [code, label]),
+);
 
 /** 整数なら整数、そうでなければ小数 3 桁まで（末尾 0 除去）。 */
 function formatQuantity(value: number): string {
@@ -397,6 +408,8 @@ export function calendarWorkbenchStateFromApi(
   model: WorkbenchModel;
   setCells: Record<string, string>;
   auditCells: Record<string, string>;
+  ng: Record<string, string>;
+  holdInfo: Record<string, HoldInfo>;
 } {
   const group: Group = {
     gid: `${patientId}-set-g0`,
@@ -421,6 +434,8 @@ export function calendarWorkbenchStateFromApi(
   };
   const setCells: Record<string, string> = {};
   const auditCells: Record<string, string> = {};
+  const ng: Record<string, string> = {};
+  const holdInfo: Record<string, HoldInfo> = {};
 
   for (const row of matrix.rows) {
     for (const day of row.days) {
@@ -430,15 +445,30 @@ export function calendarWorkbenchStateFromApi(
         const cell = day.cells[slot as keyof typeof day.cells];
         if (!cell?.batch_id) continue;
         const key = cellKey(patientId, day.day_number - 1, tk);
-        if (cell.set_state === 'hold') setCells[key] = 'hold';
-        else if (cell.set_state === 'set') setCells[key] = 'set';
+        if (cell.set_state === 'hold') {
+          setCells[key] = 'hold';
+          if (cell.held_reason) {
+            holdInfo[key] = {
+              reason: HOLD_CODE_TO_REASON[cell.held_reason] ?? cell.held_reason,
+              due: '',
+              owner: '',
+              memo: '',
+            };
+          }
+        } else if (cell.set_state === 'set') {
+          setCells[key] = 'set';
+        }
 
         if (cell.audit_state === 'ok') auditCells[key] = 'ok';
-        else if (cell.audit_state === 'ng') auditCells[key] = 'ng';
-        else if (cell.set_state === 'hold') auditCells[key] = 'hold';
+        else if (cell.audit_state === 'ng') {
+          auditCells[key] = 'ng';
+          if (cell.ng_code && NG_CODE_TO_LABEL[cell.ng_code]) {
+            ng[key] = NG_CODE_TO_LABEL[cell.ng_code];
+          }
+        } else if (cell.set_state === 'hold') auditCells[key] = 'hold';
       }
     }
   }
 
-  return { model: { [patientId]: [group] }, setCells, auditCells };
+  return { model: { [patientId]: [group] }, setCells, auditCells, ng, holdInfo };
 }

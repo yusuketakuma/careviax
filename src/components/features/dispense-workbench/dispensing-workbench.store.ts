@@ -107,6 +107,8 @@ export interface WorkbenchState {
     model: WorkbenchModel;
     setCells: Record<string, string>;
     auditCells: Record<string, string>;
+    ng?: Record<string, string>;
+    holdInfo?: Record<string, HoldInfo>;
   }) => void;
   navBy: (delta: number) => void;
   setSort: (mode: SortMode) => void;
@@ -173,15 +175,15 @@ export const useWorkbenchStore = create<WorkbenchState>()(
 
       setWriteContext: (patch) => set((s) => ({ writeContext: { ...s.writeContext, ...patch } })),
 
-      setCalendarState: ({ patientId, model, setCells, auditCells }) =>
+      setCalendarState: ({ patientId, model, setCells, auditCells, ng = {}, holdInfo = {} }) =>
         set((s) => ({
           model: { ...s.model, ...model },
-          setCells: replacePatientCellState(s.setCells, patientId, setCells),
-          auditCells: replacePatientCellState(s.auditCells, patientId, auditCells),
+          setCells: replacePatientPrefixedState(s.setCells, patientId, setCells),
+          auditCells: replacePatientPrefixedState(s.auditCells, patientId, auditCells),
           outChk: removePatientPrefixedState(s.outChk, patientId),
           checks: removePatientPrefixedState(s.checks, patientId),
-          ng: removePatientPrefixedState(s.ng, patientId),
-          holdInfo: removePatientPrefixedState(s.holdInfo, patientId),
+          ng: replacePatientPrefixedState(s.ng, patientId, ng),
+          holdInfo: replacePatientPrefixedState(s.holdInfo, patientId, holdInfo),
           packet: removePatientPrefixedState(s.packet, patientId),
           target: null,
           holdModal: null,
@@ -470,11 +472,11 @@ function updateGroups(
   return { model: { ...state.model, [id]: gs } };
 }
 
-function replacePatientCellState(
-  existing: Record<string, string>,
+function replacePatientPrefixedState<T>(
+  existing: Record<string, T>,
   patientId: string,
-  replacement: Record<string, string>,
-): Record<string, string> {
+  replacement: Record<string, T>,
+): Record<string, T> {
   const prefix = `${patientId}:`;
   const retained = Object.fromEntries(
     Object.entries(existing).filter(([key]) => !key.startsWith(prefix)),

@@ -683,6 +683,17 @@ describe('calendarWorkbenchStateFromApi / cellMetaFromCalendar', () => {
       'patient_1:0:夕': 'ng',
       'patient_1:1:夕': 'hold',
     });
+    expect(state.ng).toEqual({
+      'patient_1:0:夕': '数量不足',
+    });
+    expect(state.holdInfo).toEqual({
+      'patient_1:1:夕': {
+        reason: '医師確認待ち',
+        due: '',
+        owner: '',
+        memo: '',
+      },
+    });
   });
 
   it('同一セルの複数 batch id/version を cellMeta に束ねる', () => {
