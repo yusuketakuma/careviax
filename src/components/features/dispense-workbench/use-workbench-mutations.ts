@@ -31,6 +31,9 @@ import { toast } from 'sonner';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
   isRealDataEnabled,
+  loadPatientsAsync,
+  loadWorkbenchAsync,
+  loadCalendarWriteContextAsync,
   submitDispenseResults,
   submitDispenseAudit,
   mutateCell,
@@ -52,6 +55,8 @@ import {
   type SubmitSetAuditInput,
   type CreateCycleHoldInput,
 } from './dispensing-workbench.write-types';
+import { useWorkbenchStore } from './dispensing-workbench.store';
+import { isCalendarPhase, type Phase } from './dispensing-workbench.types';
 
 /** ワークベンチ read query のキー（実データ hydrate / SSE 整合に使う）。 */
 export function workbenchQueryKey(orgId: string, patientId: string): QueryKey {
@@ -96,13 +101,57 @@ function recoverActiveQuery(queryClient: QueryClient, queryKey: QueryKey): void 
   void queryClient.refetchQueries({ queryKey, type: 'active' });
 }
 
+async function recoverWorkbenchDirect(phase: Phase, patientId: string): Promise<void> {
+  if (phase !== 'dispense' && phase !== 'audit') return;
+  const patients = await loadPatientsAsync();
+  if (patients.length === 0) {
+    useWorkbenchStore.getState().hydrate({ patients: [] });
+    return;
+  }
+  const targetId = patients.some((patient) => patient.id === patientId)
+    ? patientId
+    : patients[0].id;
+  const workbench = await loadWorkbenchAsync(phase, targetId);
+  if (!workbench) {
+    useWorkbenchStore.getState().hydrate({ patients: [] });
+    return;
+  }
+  const store = useWorkbenchStore.getState();
+  store.hydrate({
+    patients,
+    selId: targetId,
+    model: { [workbench.patient.id]: workbench.groups },
+  });
+  useWorkbenchStore.getState().setWriteContext(workbench.writeContext);
+}
+
+async function recoverCalendarDirect(
+  phase: Phase,
+  patientId: string,
+  planId: string | null,
+): Promise<void> {
+  if (!isCalendarPhase(phase) || !planId) return;
+  const result = await loadCalendarWriteContextAsync(patientId, planId);
+  if (!result) {
+    useWorkbenchStore.getState().hydrate({ patients: [] });
+    return;
+  }
+  const store = useWorkbenchStore.getState();
+  store.setCalendarState({ patientId, ...result.calendarState });
+  useWorkbenchStore.getState().setWriteContext(result.writeContext);
+}
+
 /**
  * ワークベンチ書込 mutation 群。実データ時のみ発火（mock は no-op）。
  * 各 mutation は §12 の onError（rollback は呼び出し側 store action 責務、ここでは toast +
  * 競合時 invalidate）/ onSettled（invalidate）を実装する。
  */
-export function useWorkbenchMutations(args: { patientId: string; planId: string | null }) {
-  const { patientId, planId } = args;
+export function useWorkbenchMutations(args: {
+  patientId: string;
+  planId: string | null;
+  phase: Phase;
+}) {
+  const { patientId, planId, phase } = args;
   const orgId = useOrgId();
   const queryClient = useQueryClient();
 
@@ -113,7 +162,8 @@ export function useWorkbenchMutations(args: { patientId: string; planId: string 
 
   const recoverWorkbench = useCallback(() => {
     recoverActiveQuery(queryClient, workbenchQueryKey(orgId, patientId));
-  }, [queryClient, orgId, patientId]);
+    void recoverWorkbenchDirect(phase, patientId);
+  }, [queryClient, orgId, patientId, phase]);
 
   const invalidateCalendar = useCallback(() => {
     if (!planId) return;
@@ -123,7 +173,8 @@ export function useWorkbenchMutations(args: { patientId: string; planId: string 
   const recoverCalendar = useCallback(() => {
     if (!planId) return;
     recoverActiveQuery(queryClient, calendarQueryKey(orgId, planId));
-  }, [queryClient, orgId, planId]);
+    void recoverCalendarDirect(phase, patientId, planId);
+  }, [queryClient, orgId, patientId, planId, phase]);
 
   // ── 調剤完了（POST /api/dispense-results, OCC=cycle.version）──
   const completeDispense = useMutation({

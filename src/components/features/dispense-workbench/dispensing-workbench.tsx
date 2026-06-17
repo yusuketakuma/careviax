@@ -101,7 +101,7 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
   // mutation 群（実データ時のみ発火・mock は no-op）とフェーズ別ハンドラを生成し、
   // 子コンポーネントへ props で渡す。既定（モック）ではハンドラ内で store アクションのみを呼び、
   // API は一切叩かない（現行 UI 不変）。実データ時のみ store アクション（楽観更新）+ mutation。
-  const mutations = useWorkbenchMutations({ patientId: selId, planId });
+  const mutations = useWorkbenchMutations({ patientId: selId, planId, phase });
   const writeHandlers = useWorkbenchWriteHandlers({
     phase,
     mutations,
