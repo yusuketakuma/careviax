@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { useWorkbenchStore } from './dispensing-workbench.store';
 import { RightPane } from './right-pane';
 import type { WorkbenchView } from './dispensing-workbench.types';
 import type { WorkbenchWriteHandlers } from './use-workbench-write-handlers';
@@ -42,7 +43,16 @@ const handlers = {
 } as unknown as WorkbenchWriteHandlers;
 
 describe('RightPane set audit NG controls', () => {
+  afterEach(() => {
+    act(() => {
+      useWorkbenchStore.setState({ target: null });
+    });
+  });
+
   it('requires an NG classification before enabling rejected audit submission', () => {
+    act(() => {
+      useWorkbenchStore.setState({ target: { di: 0, tk: '朝' } });
+    });
     render(<RightPane view={setAuditView('')} phase="seta" handlers={handlers} />);
 
     expect((screen.getByRole('button', { name: 'NG・差戻し' }) as HTMLButtonElement).disabled).toBe(
@@ -50,7 +60,19 @@ describe('RightPane set audit NG controls', () => {
     );
   });
 
+  it('requires a selected calendar cell before allowing NG classification', () => {
+    render(<RightPane view={setAuditView('数量不足')} phase="seta" handlers={handlers} />);
+
+    expect((screen.getByLabelText('NG分類') as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'NG・差戻し' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+  });
+
   it('enables rejected audit submission after an NG classification is selected', () => {
+    act(() => {
+      useWorkbenchStore.setState({ target: { di: 0, tk: '朝' } });
+    });
     render(<RightPane view={setAuditView('数量不足')} phase="seta" handlers={handlers} />);
 
     expect((screen.getByRole('button', { name: 'NG・差戻し' }) as HTMLButtonElement).disabled).toBe(

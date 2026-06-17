@@ -361,4 +361,22 @@ test.describe('set → set-audit real-data direct entry', () => {
     await expect(main).toContainText(data.periodLabel);
     expect(errors).toEqual([]);
   });
+
+  test('set-audit NG rejection requires a selected NG classification', async ({ context }) => {
+    const { page, errors } = await createInstrumentedPage(context);
+    await openSetWorkbenchWithRealData(page, '/set-audit');
+
+    const main = page.locator('main');
+    const ngClassification = main.locator('#ng-classification');
+    const rejectButton = main.getByRole('button', { name: 'NG・差戻し' });
+    await expect(ngClassification).toBeDisabled();
+    await expect(rejectButton).toBeDisabled();
+
+    await main.locator('[role="button"]').filter({ hasText: /包/ }).first().click();
+    await expect(ngClassification).toBeEnabled();
+    await ngClassification.selectOption({ label: '数量不足' });
+    await expect(rejectButton).toBeEnabled();
+
+    expect(errors).toEqual([]);
+  });
 });

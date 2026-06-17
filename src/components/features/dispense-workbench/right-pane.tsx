@@ -595,7 +595,9 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
     handlers ? handlers.onReturnToSet(di, tk) : storeReturnToSet(di, tk);
 
   const { target, checkItems, ngValue, ngOptions, rejectList, rejectEmpty, riskList } = view;
-  const ngDisabled = isPending || !ngValue;
+  const hasSelectedCell = cellTarget !== null;
+  const ngDisabled = isPending || !hasSelectedCell || !ngValue;
+  const ngClassificationDisabled = isPending || !hasSelectedCell;
   const auditButtonCursor = isPending ? 'not-allowed' : 'pointer';
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
@@ -723,7 +725,13 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
             onClick={onAuditNg}
             disabled={ngDisabled}
             aria-disabled={ngDisabled}
-            title={ngValue ? undefined : 'NG分類を選択してから差戻してください'}
+            title={
+              hasSelectedCell
+                ? ngValue
+                  ? undefined
+                  : 'NG分類を選択してから差戻してください'
+                : '対象セルを選択してから差戻してください'
+            }
             style={{
               flex: 1,
               cursor: ngDisabled ? 'not-allowed' : 'pointer',
@@ -765,7 +773,7 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
             id="ng-classification"
             value={ngValue}
             onChange={(e) => onNg(e.target.value)}
-            disabled={isPending}
+            disabled={ngClassificationDisabled}
             style={{
               flex: 1,
               fontSize: '11px',
