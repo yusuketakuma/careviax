@@ -19,6 +19,7 @@ import {
   canBypassVisitScheduleAssignmentAccess,
   type VisitScheduleAccessContext,
 } from '@/lib/auth/visit-schedule-access';
+import { isVisitCarryItemsStatusBlockingReady } from '@/server/services/visit-preparation-readiness';
 import type {
   PatientAttentionKey,
   PatientBoardBlockedReason,
@@ -197,7 +198,6 @@ type PatientQueryRow = {
     fax: string | null;
   }>;
   residences: Array<{
-    address: string;
     facility: { name: string } | null;
     building_id: string | null;
   }>;
@@ -237,9 +237,17 @@ type PatientQueryRow = {
     visit_schedules: Array<{
       scheduled_date: Date;
       time_window_start: Date | null;
+      carry_items_status: string | null;
       facility_batch_id: string | null;
       facility_batch: { patient_ids: unknown } | null;
-      preparation: { prepared_at: Date | null } | null;
+      preparation: {
+        prepared_at: Date | null;
+        medication_changes_reviewed: boolean;
+        carry_items_confirmed: boolean;
+        previous_issues_reviewed: boolean;
+        route_confirmed: boolean;
+        offline_synced: boolean;
+      } | null;
     }>;
   }>;
 };
@@ -248,6 +256,21 @@ type DerivedCard = PatientBoardCard & {
   facility_batch_id: string | null;
   facility_batch_patient_count: number;
 };
+
+type NextVisitSchedule = PatientQueryRow['cases'][number]['visit_schedules'][number] | null;
+
+function isVisitPreparationDisplayReady(schedule: NextVisitSchedule): boolean {
+  const preparation = schedule?.preparation;
+  return Boolean(
+    preparation?.prepared_at &&
+    preparation.medication_changes_reviewed &&
+    preparation.carry_items_confirmed &&
+    preparation.previous_issues_reviewed &&
+    preparation.route_confirmed &&
+    preparation.offline_synced &&
+    !isVisitCarryItemsStatusBlockingReady(schedule?.carry_items_status),
+  );
+}
 
 /** 1 患者 → 患者カード(状態語彙・危険タグ・工程・自然文)導出。 */
 function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCard {
@@ -293,6 +316,7 @@ function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCar
   // @db.Date は UTC 深夜で返るため、日付キー(UTC)とローカル今日キーで突き合わせる
   const visitToday =
     nextSchedule != null && formatUtcDateKey(nextSchedule.scheduled_date) === todayKey;
+  const visitPreparationReady = isVisitPreparationDisplayReady(nextSchedule);
 
   const currentStep = cycle ? getProcessStepKeyForStatus(cycle.overall_status) : null;
 
@@ -337,7 +361,7 @@ function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCar
     link = STEP_LINKS.dispense;
   } else if (visitToday) {
     attention = 'visit_today';
-    statusText = nextSchedule?.preparation?.prepared_at
+    statusText = visitPreparationReady
       ? '準備完了 — パケット・ルート・セット✓'
       : '本日訪問 — 出発前チェックを確認';
     tone = 'info';
@@ -390,7 +414,7 @@ function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCar
 
   const operationSummary = buildOperationSummary(patient, {
     visitToday,
-    visitPrepared: Boolean(nextSchedule?.preparation?.prepared_at),
+    visitPrepared: visitPreparationReady,
     facilityBatchPatientCount,
     contactReady: contactReadiness.ready,
   });
@@ -399,7 +423,7 @@ function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCar
     parkingAvailable: preference?.parking_available,
     careLevel: preference?.care_level,
     visitToday,
-    visitPrepared: Boolean(nextSchedule?.preparation?.prepared_at),
+    visitPrepared: visitPreparationReady,
     safetyTagCount: safetyTags.length,
     careTeamReliabilityAlertCount: careTeamReliability.alert_count,
   });
@@ -410,7 +434,6 @@ function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCar
     age: calculateAge(patient.birth_date, now),
     residence_kind: residenceKind,
     residence_label: residenceLabel,
-    address: patient.residences[0]?.address ?? null,
     attention,
     safety_tags: safetyTags,
     next_visit_date: nextSchedule ? formatUtcDateKey(nextSchedule.scheduled_date) : null,
@@ -525,7 +548,6 @@ export const GET = withAuthContext(
             where: { is_primary: true },
             take: 1,
             select: {
-              address: true,
               facility: { select: { name: true } },
               building_id: true,
             },
@@ -613,9 +635,19 @@ export const GET = withAuthContext(
                 select: {
                   scheduled_date: true,
                   time_window_start: true,
+                  carry_items_status: true,
                   facility_batch_id: true,
                   facility_batch: { select: { patient_ids: true } },
-                  preparation: { select: { prepared_at: true } },
+                  preparation: {
+                    select: {
+                      prepared_at: true,
+                      medication_changes_reviewed: true,
+                      carry_items_confirmed: true,
+                      previous_issues_reviewed: true,
+                      route_confirmed: true,
+                      offline_synced: true,
+                    },
+                  },
                 },
               },
             },

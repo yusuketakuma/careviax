@@ -95,6 +95,7 @@ function buildPatientRow(scheduledDate: Date) {
           {
             scheduled_date: scheduledDate,
             time_window_start: null,
+            carry_items_status: 'ready',
             facility_batch_id: null,
             facility_batch: null,
             preparation: null,
@@ -155,6 +156,23 @@ describe('/api/patients/board', () => {
       fax: true,
       is_primary: true,
     });
+    expect(select.residences.select).toEqual({
+      facility: { select: { name: true } },
+      building_id: true,
+    });
+    expect(select.cases.select.visit_schedules.select).toMatchObject({
+      carry_items_status: true,
+      preparation: {
+        select: {
+          prepared_at: true,
+          medication_changes_reviewed: true,
+          carry_items_confirmed: true,
+          previous_issues_reviewed: true,
+          route_confirmed: true,
+          offline_synced: true,
+        },
+      },
+    });
   });
 
   it('UTC 深夜で保存された当日の scheduled_date を「本日訪問」と判定する', async () => {
@@ -182,6 +200,87 @@ describe('/api/patients/board', () => {
     });
     expect(JSON.stringify(json.data.cards[0])).not.toContain('090-1111-2222');
   });
+
+  it('does not return primary residence full address in the board card payload', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
+    patientFindManyMock.mockResolvedValue([
+      {
+        ...buildPatientRow(new Date('2026-06-12T00:00:00.000Z')),
+        residences: [
+          {
+            address: '東京都千代田区丸の内1-1-1',
+            facility: null,
+            building_id: null,
+          },
+        ],
+      },
+    ]);
+    patientCountMock.mockResolvedValue(1);
+
+    const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+    expect(response.status).toBe(200);
+
+    const json = await response.json();
+    expect(json.data.cards[0]).not.toHaveProperty('address');
+    expect(json.data.cards[0]).toMatchObject({
+      patient_id: 'patient_1',
+      residence_kind: 'home',
+      residence_label: '在宅',
+    });
+    expect(JSON.stringify(json.data)).not.toContain('東京都千代田区丸の内1-1-1');
+  });
+
+  it.each(['partial', 'blocked'] as const)(
+    'prepared_at があっても持参物ステータス %s なら患者ボードでは準備未完扱いにする',
+    async (carryItemsStatus) => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
+      const patient = buildPatientRow(new Date('2026-06-12T00:00:00.000Z'));
+      const careCase = patient.cases[0];
+      patientFindManyMock.mockResolvedValue([
+        {
+          ...patient,
+          cases: [
+            {
+              ...careCase,
+              visit_schedules: [
+                {
+                  ...careCase.visit_schedules[0],
+                  carry_items_status: carryItemsStatus,
+                  preparation: {
+                    prepared_at: new Date('2026-06-12T07:30:00+09:00'),
+                    medication_changes_reviewed: true,
+                    carry_items_confirmed: true,
+                    previous_issues_reviewed: true,
+                    route_confirmed: true,
+                    offline_synced: true,
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ]);
+      patientCountMock.mockResolvedValue(1);
+
+      const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+      expect(response.status).toBe(200);
+
+      const json = await response.json();
+      expect(json.data.cards[0]).toMatchObject({
+        status_text: '本日訪問 — 出発前チェックを確認',
+        operation_summary: ['準備未完', '連絡先あり', '駐車場なし', '要介護 3'],
+        foundation_summary: {
+          status: 'needs_confirmation',
+          label: '未確認1件',
+          items: ['訪問準備未完'],
+        },
+      });
+      expect(JSON.stringify(json.data.cards[0])).not.toContain('訪問準備済');
+      expect(JSON.stringify(json.data.cards[0])).not.toContain('準備完了');
+    },
+  );
 
   it('希望連絡先名だけでは患者カードを連絡先あり扱いにせず、連携先信頼性も同じ基準で未確認にする', async () => {
     vi.useFakeTimers();
@@ -245,6 +344,7 @@ describe('/api/patients/board', () => {
               {
                 scheduled_date: new Date('2026-06-12T00:00:00.000Z'),
                 time_window_start: null,
+                carry_items_status: 'ready',
                 facility_batch_id: null,
                 facility_batch: null,
                 preparation: null,

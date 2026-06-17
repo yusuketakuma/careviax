@@ -1,8 +1,14 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HomeCareFeatureKey, HomeCareFeatureState } from '@/types/home-care';
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {},
+}));
+
+const listBillingEvidenceBlockersMock = vi.hoisted(() => vi.fn());
+
+vi.mock('@/server/services/billing-evidence', () => ({
+  listBillingEvidenceBlockers: listBillingEvidenceBlockersMock,
 }));
 
 import {
@@ -10,6 +16,7 @@ import {
   countHomeCareFacilityClusters,
   countHomeCareHolidayCoverageGaps,
   finalizeHomeCareFeatureSummary,
+  getPatientHomeCareFeatureSummary,
   selectScheduleHomeCareFeatureHighlights,
 } from './home-care-ops';
 
@@ -32,6 +39,11 @@ function makeFeature(
     ...overrides,
   };
 }
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  listBillingEvidenceBlockersMock.mockResolvedValue([]);
+});
 
 describe('home-care-ops', () => {
   it('defines 20 unique visit support features', () => {
@@ -150,5 +162,74 @@ describe('home-care-ops', () => {
         ],
       ),
     ).toBe(1);
+  });
+
+  it('surfaces patient billing evidence blockers in the home-care billing alert', async () => {
+    listBillingEvidenceBlockersMock.mockResolvedValue([
+      {
+        id: 'billing_evidence_1',
+        visit_record_id: 'visit_record_1',
+        validation_notes: null,
+        blockers: [
+          {
+            key: 'missing_management_plan',
+            reason: '管理計画書が未確認です',
+            action_label: '計画書を確認',
+            severity: 'high',
+          },
+        ],
+      },
+    ]);
+    const db = {
+      careCase: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'case_1',
+            patient_id: 'patient_1',
+            management_plans: [{ id: 'plan_1', next_review_date: null }],
+            patient: {
+              contacts: [{ relation: 'facility_staff', is_emergency_contact: false }],
+              medication_profiles: [],
+            },
+          },
+        ]),
+      },
+      task: {
+        findMany: vi.fn().mockResolvedValue([{ task_type: 'billing_evidence_review' }]),
+      },
+      patientSelfReport: { findMany: vi.fn().mockResolvedValue([]) },
+      medicationIssue: { findMany: vi.fn().mockResolvedValue([]) },
+      inquiryRecord: { findMany: vi.fn().mockResolvedValue([]) },
+      visitSchedule: { findMany: vi.fn().mockResolvedValue([]) },
+      careReport: { findMany: vi.fn().mockResolvedValue([]) },
+      communicationRequest: { findMany: vi.fn().mockResolvedValue([]) },
+      externalAccessGrant: { findMany: vi.fn().mockResolvedValue([{ id: 'grant_1' }]) },
+      consentRecord: { findMany: vi.fn().mockResolvedValue([{ id: 'consent_1' }]) },
+      firstVisitDocument: { findMany: vi.fn().mockResolvedValue([{ id: 'first_visit_doc_1' }]) },
+    };
+
+    const summary = await getPatientHomeCareFeatureSummary(
+      db as unknown as Parameters<typeof getPatientHomeCareFeatureSummary>[0],
+      { orgId: 'org_1', patientId: 'patient_1' },
+    );
+
+    const billingAlert = summary.features.find(
+      (feature) => feature.key === 'billing_blocker_alert',
+    );
+    expect(billingAlert).toMatchObject({
+      count: 2,
+      status: 'attention',
+      summary: '算定前レビューが必要です。',
+    });
+    expect(billingAlert?.evidence).toEqual([
+      '算定根拠不足 1件',
+      '管理計画書が未確認です',
+      'レビュー 1件',
+    ]);
+    expect(listBillingEvidenceBlockersMock).toHaveBeenCalledWith(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      limit: 4,
+    });
   });
 });

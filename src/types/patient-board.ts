@@ -37,8 +37,6 @@ export type PatientBoardCard = {
   residence_kind: PatientResidenceKind;
   /** 「在宅」「施設GH」「入院中」 */
   residence_label: string;
-  /** 検索(氏名・住所)用の住所。カードには表示しない */
-  address: string | null;
   attention: PatientAttentionKey;
   /** 危険タグ(narcotic / cold_storage / renal / swallowing / allergy / unit_dose 等)。空=安全タグなし */
   safety_tags: string[];

@@ -35,7 +35,6 @@ function card(overrides: Partial<PatientBoardCard>): PatientBoardCard {
     age: 80,
     residence_kind: 'home',
     residence_label: '在宅',
-    address: null,
     attention: 'steady',
     safety_tags: [],
     next_visit_date: null,
@@ -223,7 +222,7 @@ describe('PatientsBoard', () => {
     expect(screen.getByTestId('patients-board-scope-note').textContent).toContain(
       '私の担当 28名のうち 5名を表示',
     );
-    expect(screen.getByRole('searchbox', { name: '氏名・住所で検索' })).toBeTruthy();
+    expect(screen.getByRole('searchbox', { name: '氏名・状態で検索' })).toBeTruthy();
   });
 
   it('renders patient cards with hazard tags, next visit, process dots and step shortcuts', () => {
@@ -304,11 +303,22 @@ describe('PatientsBoard', () => {
     fireEvent.click(within(chipBar).getByRole('button', { name: /今すぐ対応/ }));
     expect(screen.getAllByTestId('patient-board-card')).toHaveLength(5);
 
-    fireEvent.change(screen.getByRole('searchbox', { name: '氏名・住所で検索' }), {
+    fireEvent.change(screen.getByRole('searchbox', { name: '氏名・状態で検索' }), {
       target: { value: '伊藤' },
     });
     expect(screen.getAllByTestId('patient-board-card')).toHaveLength(1);
     expect(screen.getByRole('link', { name: '伊藤 キヨ' })).toBeTruthy();
+  });
+
+  it('filters cards by operational status text without address search data', () => {
+    render(<PatientsBoard />);
+
+    fireEvent.change(screen.getByRole('searchbox', { name: '氏名・状態で検索' }), {
+      target: { value: '退院連絡待ち' },
+    });
+
+    expect(screen.getAllByTestId('patient-board-card')).toHaveLength(1);
+    expect(screen.getByRole('link', { name: '吉田 進' })).toBeTruthy();
   });
 
   it('sorts visible cards without changing the stable patient card keys', () => {
@@ -351,7 +361,7 @@ describe('PatientsBoard', () => {
   it('announces empty filtered results without exposing hidden search-only address data', () => {
     render(<PatientsBoard />);
 
-    fireEvent.change(screen.getByRole('searchbox', { name: '氏名・住所で検索' }), {
+    fireEvent.change(screen.getByRole('searchbox', { name: '氏名・状態で検索' }), {
       target: { value: '存在しない患者' },
     });
 
@@ -360,6 +370,31 @@ describe('PatientsBoard', () => {
     expect(screen.getByText(/患者安全タグや警告は条件を戻すと再表示されます/)).toBeTruthy();
     expect(screen.getByRole('status').textContent).toContain('0名を表示中');
     expect(screen.queryByText('東京都千代田区')).toBeNull();
+  });
+
+  it('does not use legacy address-only payload fields as hidden search text', () => {
+    const data = buildFixture();
+    const legacyAddressCard = {
+      ...data.cards[0],
+      address: '東京都千代田区丸の内1-1-1',
+    } satisfies PatientBoardCard & { address: string };
+    data.cards = [legacyAddressCard, ...data.cards.slice(1)];
+    useRealtimeQueryMock.mockReturnValue({
+      data,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: refetchMock,
+    });
+
+    render(<PatientsBoard />);
+
+    fireEvent.change(screen.getByRole('searchbox', { name: '氏名・状態で検索' }), {
+      target: { value: '丸の内' },
+    });
+
+    expect(screen.queryAllByTestId('patient-board-card')).toHaveLength(0);
+    expect(screen.queryByText('東京都千代田区丸の内1-1-1')).toBeNull();
   });
 
   it('uses summary tiles as shortcuts into the visible patient groups', () => {

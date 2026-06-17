@@ -537,7 +537,6 @@ export function PatientsBoard() {
       ? byChip.filter((card) =>
           [
             card.name,
-            card.address,
             card.residence_label,
             card.next_visit_label,
             card.status_text,
@@ -711,8 +710,8 @@ export function PatientsBoard() {
                   type="search"
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="氏名・住所で検索"
-                  aria-label="氏名・住所で検索"
+                  placeholder="氏名・状態で検索"
+                  aria-label="氏名・状態で検索"
                   className="h-9 w-56 pl-8"
                 />
               </div>

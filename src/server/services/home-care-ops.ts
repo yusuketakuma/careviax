@@ -3,6 +3,7 @@ import { formatDateKey } from '@/lib/date-key';
 import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
+import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence';
 import type {
   HomeCareFeatureDefinition,
   HomeCareFeatureKey,
@@ -1043,6 +1044,7 @@ export async function getPatientHomeCareFeatureSummary(
     shares,
     consents,
     firstVisitDocs,
+    billingEvidenceBlockers,
   ] = await Promise.all([
     db.task.findMany({
       where: {
@@ -1176,6 +1178,11 @@ export async function getPatientHomeCareFeatureSummary(
           },
           select: { id: true },
         }),
+    listBillingEvidenceBlockers(db, {
+      orgId: args.orgId,
+      patientId: args.patientId,
+      limit: 4,
+    }),
   ]);
 
   const taskCounts = tasks.reduce<FeatureTaskCountMap>((acc, task) => {
@@ -1218,6 +1225,15 @@ export async function getPatientHomeCareFeatureSummary(
   const mobilePending = upcomingSchedules.filter(
     (schedule) => !schedule.preparation?.offline_synced,
   ).length;
+  const billingEvidenceBlockerCount = billingEvidenceBlockers.reduce(
+    (total, item) => total + item.blockers.length,
+    0,
+  );
+  const billingEvidenceReasons = Array.from(
+    new Set(
+      billingEvidenceBlockers.flatMap((item) => item.blockers.map((blocker) => blocker.reason)),
+    ),
+  ).slice(0, 2);
 
   const features = [
     buildFeatureState({
@@ -1408,15 +1424,19 @@ export async function getPatientHomeCareFeatureSummary(
     buildFeatureState({
       key: 'billing_blocker_alert',
       count:
+        billingEvidenceBlockerCount +
         countTask(taskCounts, 'billing_evidence_review') +
         countTask(taskCounts, 'initial_home_visit_assessment'),
       summary:
-        countTask(taskCounts, 'billing_evidence_review') +
+        billingEvidenceBlockerCount +
+          countTask(taskCounts, 'billing_evidence_review') +
           countTask(taskCounts, 'initial_home_visit_assessment') >
         0
           ? '算定前レビューが必要です。'
           : '算定レビューの滞留はありません。',
       evidence: [
+        `算定根拠不足 ${billingEvidenceBlockerCount}件`,
+        ...billingEvidenceReasons,
         `レビュー ${countTask(taskCounts, 'billing_evidence_review')}件`,
         `初回算定前確認 ${countTask(taskCounts, 'initial_home_visit_assessment')}件`,
       ],
