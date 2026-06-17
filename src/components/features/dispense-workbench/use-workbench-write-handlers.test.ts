@@ -1,10 +1,198 @@
 import { describe, expect, it } from 'vitest';
 
 import { SET_AUDIT_CHECK_ITEMS } from './dispensing-workbench.write-types';
+import type { WorkbenchState } from './dispensing-workbench.store';
 import {
   buildRejectedSetAuditInput,
+  collectCarryPacketEvidence,
   collectSetAuditChecklistFromChecks,
 } from './use-workbench-write-handlers';
+
+describe('collectCarryPacketEvidence', () => {
+  it('builds non-PHI carry packet evidence for the current patient only', () => {
+    const evidence = collectCarryPacketEvidence({
+      selId: 'patient_1',
+      model: {
+        patient_1: [
+          {
+            gid: 'group_1',
+            label: 'セット対象',
+            method: '一包化',
+            start: '2026-06-17',
+            days: 1,
+            drugs: [
+              {
+                did: 'line_prn',
+                name: 'ロキソプロフェン錠60mg',
+                yoho: '疼痛時',
+                a: '',
+                h: '',
+                y: '',
+                n: '',
+                tag: '頓用',
+                funsai: false,
+                note: '',
+              },
+              {
+                did: 'line_topical',
+                name: '薬剤A',
+                yoho: '1日1回',
+                a: '',
+                h: '',
+                y: '',
+                n: '',
+                tag: '外用',
+                funsai: false,
+                note: '',
+              },
+              {
+                did: 'line_liquid',
+                name: '液剤A',
+                yoho: '朝食後',
+                a: '',
+                h: '',
+                y: '',
+                n: '',
+                tag: '',
+                funsai: false,
+                note: '内用液',
+              },
+            ],
+          },
+        ],
+      },
+      outChk: {
+        'patient_1:ロキソプロフェン錠60mg': true,
+        'patient_1:薬剤A': true,
+        'patient_1:液剤A': true,
+        'patient_2:薬剤A': true,
+      },
+      packet: {
+        'patient_1:cal': true,
+        'patient_1:ton': true,
+        'patient_1:gai': true,
+        'patient_1:liq': true,
+        'patient_1:doc': true,
+        'patient_1:note': true,
+        'patient_2:cal': true,
+      },
+      writeContext: {
+        taskId: null,
+        cycleId: 'cycle_1',
+        cycleVersion: 4,
+        planId: 'plan_1',
+        lineGroupByDid: {},
+        groupIdByGid: {},
+        cellMeta: {},
+      },
+    } as unknown as WorkbenchState);
+
+    expect(evidence).toEqual({
+      schema_version: 1,
+      plan_id: 'plan_1',
+      cycle_id: 'cycle_1',
+      patient_id: 'patient_1',
+      outside_meds: [
+        { line_id: 'line_prn', kind: 'prn', checked: true },
+        { line_id: 'line_topical', kind: 'topical', checked: true },
+        { line_id: 'line_liquid', kind: 'liquid', checked: true },
+      ],
+      packet_items: [
+        { key: 'cal', checked: true },
+        { key: 'ton', checked: true },
+        { key: 'gai', checked: true },
+        { key: 'liq', checked: true },
+        { key: 'doc', checked: true },
+        { key: 'note', checked: true },
+      ],
+      summary: {
+        outside_required_count: 3,
+        outside_confirmed_count: 3,
+        packet_required_count: 6,
+        packet_confirmed_count: 6,
+        all_checked: true,
+      },
+    });
+    expect(JSON.stringify(evidence)).not.toContain('ロキソプロフェン');
+    expect(JSON.stringify(evidence)).not.toContain('薬剤A');
+  });
+
+  it('records an explicit empty outside-med list when only the base packet is required', () => {
+    const evidence = collectCarryPacketEvidence({
+      selId: 'patient_1',
+      model: {
+        patient_1: [
+          {
+            gid: 'group_1',
+            label: 'セット対象',
+            method: '一包化',
+            start: '2026-06-17',
+            days: 1,
+            drugs: [
+              {
+                did: 'line_regular',
+                name: 'アムロジピン錠5mg',
+                yoho: '朝食後',
+                a: '1',
+                h: '',
+                y: '',
+                n: '',
+                tag: '',
+                funsai: false,
+                note: '',
+              },
+            ],
+          },
+        ],
+      },
+      outChk: {},
+      packet: {
+        'patient_1:cal': true,
+        'patient_1:doc': true,
+        'patient_1:note': true,
+      },
+      writeContext: {
+        taskId: null,
+        cycleId: 'cycle_1',
+        cycleVersion: 4,
+        planId: 'plan_1',
+        lineGroupByDid: {},
+        groupIdByGid: {},
+        cellMeta: {},
+      },
+    } as unknown as WorkbenchState);
+
+    expect(evidence?.outside_meds).toEqual([]);
+    expect(evidence?.packet_items.map((item) => item.key)).toEqual(['cal', 'doc', 'note']);
+    expect(evidence?.summary).toMatchObject({
+      outside_required_count: 0,
+      outside_confirmed_count: 0,
+      packet_required_count: 3,
+      packet_confirmed_count: 3,
+      all_checked: true,
+    });
+  });
+
+  it('does not build approval evidence while required packet items are unchecked', () => {
+    const evidence = collectCarryPacketEvidence({
+      selId: 'patient_1',
+      model: { patient_1: [] },
+      outChk: {},
+      packet: { 'patient_1:cal': true },
+      writeContext: {
+        taskId: null,
+        cycleId: 'cycle_1',
+        cycleVersion: 4,
+        planId: 'plan_1',
+        lineGroupByDid: {},
+        groupIdByGid: {},
+        cellMeta: {},
+      },
+    } as unknown as WorkbenchState);
+
+    expect(evidence).toBeNull();
+  });
+});
 
 describe('collectSetAuditChecklistFromChecks', () => {
   it('maps the visible set-audit checklist order to the API checklist keys', () => {

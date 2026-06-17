@@ -22,6 +22,7 @@ import {
 } from '@/lib/dispensing/set-batch-history';
 import { RejectCode, SetAuditCellState, type ScheduleStatus } from '@prisma/client';
 import { ADMIN_MEMBER_ROLES } from '@/lib/auth/member-roles';
+import { parseFrequencyToSlots } from '@/lib/dispensing/packaging-group';
 import { z } from 'zod';
 import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
 
@@ -47,6 +48,52 @@ const approvedScopeSchema = z
 // p0_15: 6項目チェックリスト(項目キー → 真偽)。3ペイン再構築の右ペインで記録する。
 const checklistSchema = z.record(z.string().min(1), z.boolean()).optional();
 
+const CARRY_PACKET_EVIDENCE_SCHEMA_VERSION = 1;
+const OUTSIDE_MED_EVIDENCE_KINDS = [
+  'prn',
+  'topical',
+  'cold',
+  'injection',
+  'liquid',
+  'other',
+] as const;
+const CARRY_PACKET_ITEM_KEYS = ['cal', 'ton', 'gai', 'liq', 'doc', 'note'] as const;
+
+const outsideMedEvidenceSchema = z
+  .object({
+    line_id: z.string().min(1).max(128),
+    kind: z.enum(OUTSIDE_MED_EVIDENCE_KINDS),
+    checked: z.literal(true),
+  })
+  .strict();
+
+const packetItemEvidenceSchema = z
+  .object({
+    key: z.enum(CARRY_PACKET_ITEM_KEYS),
+    checked: z.literal(true),
+  })
+  .strict();
+
+const carryPacketEvidenceSchema = z
+  .object({
+    schema_version: z.literal(CARRY_PACKET_EVIDENCE_SCHEMA_VERSION),
+    plan_id: z.string().min(1).max(128),
+    cycle_id: z.string().min(1).max(128),
+    patient_id: z.string().min(1).max(128),
+    outside_meds: z.array(outsideMedEvidenceSchema).max(300),
+    packet_items: z.array(packetItemEvidenceSchema).min(1).max(CARRY_PACKET_ITEM_KEYS.length),
+    summary: z
+      .object({
+        outside_required_count: z.number().int().nonnegative().max(300),
+        outside_confirmed_count: z.number().int().nonnegative().max(300),
+        packet_required_count: z.number().int().min(1).max(CARRY_PACKET_ITEM_KEYS.length),
+        packet_confirmed_count: z.number().int().min(1).max(CARRY_PACKET_ITEM_KEYS.length),
+        all_checked: z.literal(true),
+      })
+      .strict(),
+  })
+  .strict();
+
 const createSetAuditSchema = z.object({
   plan_id: z.string().min(1, 'セットプランIDは必須です'),
   result: z.enum(['approved', 'partial_approved', 'rejected'], {
@@ -62,6 +109,7 @@ const createSetAuditSchema = z.object({
   same_operator_reason: z.string().trim().min(1).max(1000).optional(),
   // p0_15 セット監査 3ペイン: チェックリストと写真資産(セット前/セット後/設置予定)。
   checklist: checklistSchema,
+  carry_packet_evidence: carryPacketEvidenceSchema.optional(),
   photo_asset_ids: z.array(z.string().min(1)).max(50).optional(),
   // 調剤ワークベンチ セル単位監査 (P0): SetBatch.audit_state / ng_code を確定する。
   cell_audits: z.array(cellAuditSchema).max(500).optional(),
@@ -111,6 +159,29 @@ type IdempotentSetAuditReplay = ExistingSetAuditForReplay & {
   idempotent: true;
 };
 
+type CarryPacketEvidence = z.infer<typeof carryPacketEvidenceSchema>;
+type OutsideMedEvidenceKind = (typeof OUTSIDE_MED_EVIDENCE_KINDS)[number];
+type CarryPacketItemKey = (typeof CARRY_PACKET_ITEM_KEYS)[number];
+type CarryPacketEvidenceValidationResult =
+  | { ok: true; evidence: CarryPacketEvidence; summary: CarryPacketEvidence['summary'] }
+  | { ok: false; reason: string };
+
+type SetAuditEvidenceBatch = {
+  line_id: string;
+  line: {
+    id: string;
+    drug_name: string;
+    dosage_form: string | null;
+    dose: string;
+    frequency: string;
+    unit: string | null;
+    route: string | null;
+    packaging_instructions: string | null;
+    packaging_instruction_tags: string[];
+    notes: string | null;
+  };
+};
+
 function normalizeApprovedScope(scope: unknown) {
   if (!scope || typeof scope !== 'object' || Array.isArray(scope)) {
     return undefined;
@@ -141,6 +212,173 @@ function normalizeJsonForCompare(value: unknown) {
 
 function sortedTextValues(values: readonly string[] | null | undefined) {
   return [...(values ?? [])].sort();
+}
+
+function uniqueValues<T>(values: readonly T[]): T[] {
+  return Array.from(new Set(values));
+}
+
+function textSetEquals(left: readonly string[], right: readonly string[]) {
+  if (left.length !== right.length) return false;
+  const rightSet = new Set(right);
+  return left.every((value) => rightSet.has(value));
+}
+
+function isInternalRoute(route: string | null | undefined) {
+  return !route || route === 'internal' || route === 'oral' || route === '内服';
+}
+
+function deriveOutsideMedEvidenceKind(
+  line: SetAuditEvidenceBatch['line'],
+): OutsideMedEvidenceKind | null {
+  const tags = line.packaging_instruction_tags ?? [];
+  const detail = [
+    line.drug_name,
+    line.dosage_form ?? '',
+    line.frequency,
+    line.packaging_instructions ?? '',
+    line.notes ?? '',
+    line.unit ?? '',
+    tags.join(' '),
+  ].join(' ');
+
+  if (!isInternalRoute(line.route)) {
+    if (line.route === 'injection') return 'injection';
+    if (/液|内用液|懸濁|mL|ml/.test(detail)) return 'liquid';
+    return 'topical';
+  }
+  if (tags.includes('cold_storage') || /冷所|坐/.test(detail)) return 'cold';
+  if (/注射|インスリン/.test(detail)) return 'injection';
+  if (/外用|テープ|軟膏|点眼|点鼻/.test(detail)) return 'topical';
+  if (/別容器|内用液|懸濁|液|mL|ml/.test(detail)) return 'liquid';
+  if (parseFrequencyToSlots(line.frequency).includes('prn')) return 'prn';
+  return null;
+}
+
+function deriveExpectedOutsideMeds(batches: SetAuditEvidenceBatch[]) {
+  const lineById = new Map<string, SetAuditEvidenceBatch['line']>();
+  for (const batch of batches) {
+    if (!lineById.has(batch.line_id)) lineById.set(batch.line_id, batch.line);
+  }
+
+  return Array.from(lineById.values())
+    .map((line) => {
+      const kind = deriveOutsideMedEvidenceKind(line);
+      return kind ? { line_id: line.id, kind } : null;
+    })
+    .filter((value): value is { line_id: string; kind: OutsideMedEvidenceKind } => value !== null)
+    .sort((a, b) => a.line_id.localeCompare(b.line_id));
+}
+
+function deriveExpectedPacketKeys(
+  outsideMeds: Array<{ kind: OutsideMedEvidenceKind }>,
+): CarryPacketItemKey[] {
+  const keys: CarryPacketItemKey[] = ['cal'];
+  if (outsideMeds.some((item) => item.kind === 'prn')) keys.push('ton');
+  if (outsideMeds.some((item) => item.kind === 'topical')) keys.push('gai');
+  if (outsideMeds.some((item) => item.kind === 'liquid' || item.kind === 'cold')) {
+    keys.push('liq');
+  }
+  keys.push('doc', 'note');
+  return keys;
+}
+
+function normalizeCarryPacketEvidence(
+  evidence: CarryPacketEvidence,
+  expectedOutsideMeds: Array<{ line_id: string; kind: OutsideMedEvidenceKind }>,
+  expectedPacketKeys: CarryPacketItemKey[],
+): CarryPacketEvidence {
+  return {
+    schema_version: CARRY_PACKET_EVIDENCE_SCHEMA_VERSION,
+    plan_id: evidence.plan_id,
+    cycle_id: evidence.cycle_id,
+    patient_id: evidence.patient_id,
+    outside_meds: expectedOutsideMeds.map((item) => ({
+      line_id: item.line_id,
+      kind: item.kind,
+      checked: true,
+    })),
+    packet_items: expectedPacketKeys.map((key) => ({ key, checked: true })),
+    summary: {
+      outside_required_count: expectedOutsideMeds.length,
+      outside_confirmed_count: expectedOutsideMeds.length,
+      packet_required_count: expectedPacketKeys.length,
+      packet_confirmed_count: expectedPacketKeys.length,
+      all_checked: true,
+    },
+  };
+}
+
+function validateCarryPacketEvidence(args: {
+  evidence: CarryPacketEvidence;
+  planId: string;
+  cycleId: string;
+  patientId: string | null;
+  batches: SetAuditEvidenceBatch[];
+}): CarryPacketEvidenceValidationResult {
+  const { evidence, planId, cycleId, patientId, batches } = args;
+  if (evidence.plan_id !== planId || evidence.cycle_id !== cycleId) {
+    return { ok: false, reason: 'plan_or_cycle_mismatch' };
+  }
+  if (!patientId || evidence.patient_id !== patientId) {
+    return { ok: false, reason: 'patient_mismatch' };
+  }
+
+  const expectedOutsideMeds = deriveExpectedOutsideMeds(batches);
+  const expectedOutsideIds = expectedOutsideMeds.map((item) => item.line_id);
+  const submittedOutsideIds = evidence.outside_meds.map((item) => item.line_id);
+  if (uniqueValues(submittedOutsideIds).length !== submittedOutsideIds.length) {
+    return { ok: false, reason: 'duplicate_outside_line' };
+  }
+  if (!textSetEquals(submittedOutsideIds, expectedOutsideIds)) {
+    return { ok: false, reason: 'outside_line_mismatch' };
+  }
+
+  const submittedOutsideById = new Map(
+    evidence.outside_meds.map((item) => [item.line_id, item.kind]),
+  );
+  for (const expected of expectedOutsideMeds) {
+    if (submittedOutsideById.get(expected.line_id) !== expected.kind) {
+      return { ok: false, reason: 'outside_kind_mismatch' };
+    }
+  }
+
+  const expectedPacketKeys = deriveExpectedPacketKeys(expectedOutsideMeds);
+  const submittedPacketKeys = evidence.packet_items.map((item) => item.key);
+  if (uniqueValues(submittedPacketKeys).length !== submittedPacketKeys.length) {
+    return { ok: false, reason: 'duplicate_packet_key' };
+  }
+  if (!textSetEquals(submittedPacketKeys, expectedPacketKeys)) {
+    return { ok: false, reason: 'packet_key_mismatch' };
+  }
+
+  const summary = evidence.summary;
+  if (
+    summary.outside_required_count !== expectedOutsideMeds.length ||
+    summary.outside_confirmed_count !== expectedOutsideMeds.length ||
+    summary.packet_required_count !== expectedPacketKeys.length ||
+    summary.packet_confirmed_count !== expectedPacketKeys.length
+  ) {
+    return { ok: false, reason: 'summary_mismatch' };
+  }
+
+  const normalized = normalizeCarryPacketEvidence(
+    evidence,
+    expectedOutsideMeds,
+    expectedPacketKeys,
+  );
+  return { ok: true, evidence: normalized, summary: normalized.summary };
+}
+
+function buildPersistedSetAuditChecklist(
+  checklist: Record<string, boolean> | undefined,
+  carryPacketEvidence: CarryPacketEvidence | null,
+) {
+  if (!checklist && !carryPacketEvidence) return undefined;
+  return {
+    ...(checklist ?? {}),
+    ...(carryPacketEvidence ? { carry_packet_evidence: carryPacketEvidence } : {}),
+  };
 }
 
 function isIdempotentSetAuditReplay(value: unknown): value is IdempotentSetAuditReplay {
@@ -388,6 +626,7 @@ export const POST = withAuthContext(
       reject_reason_code,
       same_operator_reason,
       checklist,
+      carry_packet_evidence,
       photo_asset_ids,
       cell_audits,
     } = parsed.data;
@@ -399,6 +638,9 @@ export const POST = withAuthContext(
       );
       if (!allChecked) {
         return validationError('監査OKには全6項目のチェックが必要です');
+      }
+      if (!carry_packet_evidence) {
+        return validationError('監査OKには外薬同梱と訪問持出パケットの確認証跡が必要です');
       }
     }
 
@@ -457,9 +699,14 @@ export const POST = withAuthContext(
             select: {
               id: true,
               drug_name: true,
+              dosage_form: true,
               dose: true,
               frequency: true,
               unit: true,
+              route: true,
+              packaging_instructions: true,
+              packaging_instruction_tags: true,
+              notes: true,
             },
           },
         },
@@ -469,6 +716,31 @@ export const POST = withAuthContext(
       if (setBatches.length === 0) {
         return { error: 'no_batches' as const };
       }
+
+      const carryPacketValidation =
+        result === 'approved' && carry_packet_evidence
+          ? validateCarryPacketEvidence({
+              evidence: carry_packet_evidence,
+              planId: plan_id,
+              cycleId: plan.cycle_id,
+              patientId: plan.cycle?.patient_id ?? null,
+              batches: setBatches,
+            })
+          : null;
+      if (carryPacketValidation && !carryPacketValidation.ok) {
+        return {
+          error: 'invalid_carry_packet_evidence' as const,
+          reason: carryPacketValidation.reason,
+        };
+      }
+      const normalizedCarryPacketEvidence =
+        carryPacketValidation && carryPacketValidation.ok ? carryPacketValidation.evidence : null;
+      const carryPacketEvidenceSummary =
+        carryPacketValidation && carryPacketValidation.ok ? carryPacketValidation.summary : null;
+      const persistedChecklist = buildPersistedSetAuditChecklist(
+        checklist,
+        normalizedCarryPacketEvidence,
+      );
 
       const existingTerminalAudit = await tx.setAudit.findFirst({
         where: {
@@ -496,7 +768,7 @@ export const POST = withAuthContext(
             existingAudit: existingTerminalAudit,
             userId: ctx.userId,
             approvedScope: normalizeApprovedScope(approved_scope),
-            checklist: checklist ? toPrismaJsonInput(checklist) : undefined,
+            checklist: persistedChecklist ? toPrismaJsonInput(persistedChecklist) : undefined,
             photoAssetIds: photo_asset_ids,
             sameOperatorReason: same_operator_reason,
           }) &&
@@ -898,7 +1170,7 @@ export const POST = withAuthContext(
             ? toPrismaJsonInput(effectiveApprovedScope)
             : undefined,
           reject_reason: reject_reason ?? null,
-          checklist: checklist ? toPrismaJsonInput(checklist) : undefined,
+          checklist: persistedChecklist ? toPrismaJsonInput(persistedChecklist) : undefined,
           photo_asset_ids: photo_asset_ids ?? [],
           audited_by: ctx.userId,
           audited_at: now,
@@ -920,6 +1192,7 @@ export const POST = withAuthContext(
           reject_reason: reject_reason ?? null,
           reject_reason_code: reject_reason_code ?? null,
           checklist: checklist ?? null,
+          carry_packet_evidence_summary: carryPacketEvidenceSummary,
           photo_asset_ids: photo_asset_ids ?? [],
         },
       });
@@ -973,6 +1246,11 @@ export const POST = withAuthContext(
       if (auditResult.error === 'invalid_batch') {
         return validationError('指定されたセルが当該プランに存在しません', {
           batch_id: 'batchId' in auditResult ? auditResult.batchId : null,
+        });
+      }
+      if (auditResult.error === 'invalid_carry_packet_evidence') {
+        return validationError('外薬同梱と訪問持出パケットの確認証跡が不正です', {
+          reason: 'reason' in auditResult ? auditResult.reason : null,
         });
       }
       if (auditResult.error === 'self_audit') {

@@ -110,9 +110,14 @@ export type CalendarPivotBatch = {
 export type CalendarPivotLine = {
   id: string;
   drug_name: string;
+  dosage_form?: string | null;
   dose: string | null;
   frequency: string;
   unit: string | null;
+  route?: string | null;
+  packaging_instructions?: string | null;
+  packaging_instruction_tags?: string[];
+  notes?: string | null;
 };
 
 export type CalendarCell = {

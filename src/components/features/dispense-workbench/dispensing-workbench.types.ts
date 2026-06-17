@@ -181,6 +181,8 @@ export type OutsideKind = '頓服' | '外用' | '冷所' | '注射' | '液剤';
 
 /** カレンダー外薬（同梱確認の対象）*/
 export interface OutsideMed {
+  /** PrescriptionLine.id when available. Used to distinguish same-name outside medicines. */
+  line_id?: string;
   name: string;
   kind: OutsideKind | string;
 }

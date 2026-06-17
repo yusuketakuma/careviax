@@ -164,6 +164,44 @@ export const SET_AUDIT_CHECK_ITEMS = [
 
 export type SetAuditChecklistKey = (typeof SET_AUDIT_CHECK_ITEMS)[number]['key'];
 
+export const CARRY_PACKET_EVIDENCE_SCHEMA_VERSION = 1;
+
+export const OUTSIDE_MED_EVIDENCE_KINDS = [
+  'prn',
+  'topical',
+  'cold',
+  'injection',
+  'liquid',
+  'other',
+] as const;
+export type OutsideMedEvidenceKind = (typeof OUTSIDE_MED_EVIDENCE_KINDS)[number];
+
+export const CARRY_PACKET_ITEM_KEYS = ['cal', 'ton', 'gai', 'liq', 'doc', 'note'] as const;
+export type CarryPacketItemKey = (typeof CARRY_PACKET_ITEM_KEYS)[number];
+
+export interface CarryPacketEvidenceInput {
+  schema_version: typeof CARRY_PACKET_EVIDENCE_SCHEMA_VERSION;
+  plan_id: string;
+  cycle_id: string;
+  patient_id: string;
+  outside_meds: Array<{
+    line_id: string;
+    kind: OutsideMedEvidenceKind;
+    checked: true;
+  }>;
+  packet_items: Array<{
+    key: CarryPacketItemKey;
+    checked: true;
+  }>;
+  summary: {
+    outside_required_count: number;
+    outside_confirmed_count: number;
+    packet_required_count: number;
+    packet_confirmed_count: number;
+    all_checked: true;
+  };
+}
+
 // ============================================================================
 // API I/O DTO（W2 レスポンスの最小サブセット）
 // ============================================================================
@@ -241,6 +279,7 @@ export interface SubmitSetAuditInput {
   reject_reason?: string;
   reject_reason_code?: RejectCode;
   checklist?: Record<string, boolean>;
+  carry_packet_evidence?: CarryPacketEvidenceInput;
   cell_audits?: Array<{
     batch_id: string;
     audit_state: 'ok' | 'ng';

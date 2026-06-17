@@ -128,6 +128,29 @@ function completeSetAuditChecklist() {
   };
 }
 
+function completeCarryPacketEvidence(overrides: Record<string, unknown> = {}) {
+  return {
+    schema_version: 1,
+    plan_id: 'plan_1',
+    cycle_id: 'cycle_1',
+    patient_id: 'patient_1',
+    outside_meds: [],
+    packet_items: [
+      { key: 'cal', checked: true },
+      { key: 'doc', checked: true },
+      { key: 'note', checked: true },
+    ],
+    summary: {
+      outside_required_count: 0,
+      outside_confirmed_count: 0,
+      packet_required_count: 3,
+      packet_confirmed_count: 3,
+      all_checked: true,
+    },
+    ...overrides,
+  };
+}
+
 describe('/api/set-audits POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -138,10 +161,12 @@ describe('/api/set-audits POST', () => {
     setPlanFindFirstMock.mockResolvedValue({
       id: 'plan_1',
       cycle_id: 'cycle_1',
+      cycle: { patient_id: 'patient_1' },
     });
     setBatchFindManyMock.mockResolvedValue([
       {
         id: 'batch_1',
+        line_id: 'line_1',
         slot: 'morning',
         day_number: 1,
         quantity: 1,
@@ -152,9 +177,14 @@ describe('/api/set-audits POST', () => {
         line: {
           id: 'line_1',
           drug_name: 'アムロジピン錠5mg',
+          dosage_form: '錠剤',
           dose: '1回1錠',
           frequency: '朝食後',
           unit: '錠',
+          route: 'internal',
+          packaging_instructions: null,
+          packaging_instruction_tags: [],
+          notes: null,
         },
       },
     ]);
@@ -227,6 +257,7 @@ describe('/api/set-audits POST', () => {
           plan_id: 'plan_1',
           result: 'approved',
           checklist: completeSetAuditChecklist(),
+          carry_packet_evidence: completeCarryPacketEvidence(),
         },
         { 'x-org-id': 'org_1' },
       ),
@@ -287,6 +318,26 @@ describe('/api/set-audits POST', () => {
         pre_visit_checklist_completed: false,
       },
     });
+    expect(setAuditCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        checklist: {
+          ...completeSetAuditChecklist(),
+          carry_packet_evidence: completeCarryPacketEvidence(),
+        },
+      }),
+    });
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        action: 'set_audit.create',
+        changes: expect.objectContaining({
+          checklist: completeSetAuditChecklist(),
+          carry_packet_evidence_summary: completeCarryPacketEvidence().summary,
+        }),
+      }),
+    );
+    expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('アムロジピン');
   });
 
   it('rejects non-object audit payloads before transaction side effects', async () => {
@@ -372,6 +423,166 @@ describe('/api/set-audits POST', () => {
     expect(setAuditCreateMock).not.toHaveBeenCalled();
   });
 
+  it('rejects approval without carry packet evidence before transaction side effects', async () => {
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'approved',
+          checklist: completeSetAuditChecklist(),
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '監査OKには外薬同梱と訪問持出パケットの確認証跡が必要です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(setAuditCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects carry packet evidence bound to a different patient', async () => {
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'approved',
+          checklist: completeSetAuditChecklist(),
+          carry_packet_evidence: completeCarryPacketEvidence({ patient_id: 'patient_2' }),
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '外薬同梱と訪問持出パケットの確認証跡が不正です',
+      details: { reason: 'patient_mismatch' },
+    });
+    expect(setAuditCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts evidence for an external-route outside medicine whose name has no topical keyword', async () => {
+    const carryPacketEvidence = completeCarryPacketEvidence({
+      outside_meds: [{ line_id: 'line_topical', kind: 'topical', checked: true }],
+      packet_items: [
+        { key: 'cal', checked: true },
+        { key: 'gai', checked: true },
+        { key: 'doc', checked: true },
+        { key: 'note', checked: true },
+      ],
+      summary: {
+        outside_required_count: 1,
+        outside_confirmed_count: 1,
+        packet_required_count: 4,
+        packet_confirmed_count: 4,
+        all_checked: true,
+      },
+    });
+    setBatchFindManyMock.mockResolvedValue([
+      {
+        id: 'batch_1',
+        line_id: 'line_topical',
+        slot: 'morning',
+        day_number: 1,
+        quantity: 1,
+        carry_type: 'carry',
+        set_state: 'set',
+        audit_state: 'ok',
+        ng_code: null,
+        version: 1,
+        line: {
+          id: 'line_topical',
+          drug_name: '薬剤A',
+          dosage_form: null,
+          dose: '1回適量',
+          frequency: '1日1回',
+          unit: null,
+          route: 'external',
+          packaging_instructions: null,
+          packaging_instruction_tags: [],
+          notes: null,
+        },
+      },
+    ]);
+
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'approved',
+          checklist: completeSetAuditChecklist(),
+          carry_packet_evidence: carryPacketEvidence,
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(setAuditCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        checklist: {
+          ...completeSetAuditChecklist(),
+          carry_packet_evidence: carryPacketEvidence,
+        },
+      }),
+    });
+  });
+
+  it('rejects evidence that omits server-derived outside medicine lines', async () => {
+    setBatchFindManyMock.mockResolvedValue([
+      {
+        id: 'batch_1',
+        line_id: 'line_topical',
+        slot: 'prn',
+        day_number: 1,
+        quantity: 1,
+        carry_type: 'carry',
+        set_state: 'set',
+        audit_state: 'ok',
+        ng_code: null,
+        version: 1,
+        line: {
+          id: 'line_topical',
+          drug_name: '外用薬A',
+          dosage_form: '軟膏',
+          dose: '1回適量',
+          frequency: '1日1回',
+          unit: null,
+          route: 'external',
+          packaging_instructions: null,
+          packaging_instruction_tags: [],
+          notes: null,
+        },
+      },
+    ]);
+
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'approved',
+          checklist: completeSetAuditChecklist(),
+          carry_packet_evidence: completeCarryPacketEvidence(),
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      details: { reason: 'outside_line_mismatch' },
+    });
+    expect(setAuditCreateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects approved audits when any batch is not set and audited OK', async () => {
     setBatchFindManyMock.mockResolvedValue([
       {
@@ -420,6 +631,7 @@ describe('/api/set-audits POST', () => {
           plan_id: 'plan_1',
           result: 'approved',
           checklist: completeSetAuditChecklist(),
+          carry_packet_evidence: completeCarryPacketEvidence(),
         },
         { 'x-org-id': 'org_1' },
       ),
@@ -454,6 +666,7 @@ describe('/api/set-audits POST', () => {
           plan_id: 'plan_1',
           result: 'approved',
           checklist: completeSetAuditChecklist(),
+          carry_packet_evidence: completeCarryPacketEvidence(),
         },
         { 'x-org-id': 'org_1' },
       ),
@@ -854,6 +1067,7 @@ describe('/api/set-audits POST', () => {
           plan_id: 'plan_1',
           result: 'approved',
           checklist: completeSetAuditChecklist(),
+          carry_packet_evidence: completeCarryPacketEvidence(),
         },
         { 'x-org-id': 'org_1' },
       ),
@@ -1048,6 +1262,7 @@ describe('/api/set-audits POST', () => {
           plan_id: 'plan_1',
           result: 'approved',
           checklist: completeSetAuditChecklist(),
+          carry_packet_evidence: completeCarryPacketEvidence(),
           cell_audits: [{ batch_id: 'batch_1', audit_state: 'ng', expected_version: 1 }],
         },
         { 'x-org-id': 'org_1' },
@@ -1070,6 +1285,7 @@ describe('/api/set-audits POST', () => {
           plan_id: 'plan_1',
           result: 'approved',
           checklist: completeSetAuditChecklist(),
+          carry_packet_evidence: completeCarryPacketEvidence(),
           cell_audits: [
             { batch_id: 'batch_1', audit_state: 'ok', expected_version: 1 },
             {
@@ -1126,6 +1342,7 @@ describe('/api/set-audits POST', () => {
           plan_id: 'plan_1',
           result: 'approved',
           checklist: completeSetAuditChecklist(),
+          carry_packet_evidence: completeCarryPacketEvidence(),
           cell_audits: [{ batch_id: 'batch_1', audit_state: 'ok', expected_version: 1 }],
         },
         { 'x-org-id': 'org_1' },
@@ -1152,6 +1369,7 @@ describe('/api/set-audits POST', () => {
           plan_id: 'plan_1',
           result: 'approved',
           checklist: completeSetAuditChecklist(),
+          carry_packet_evidence: completeCarryPacketEvidence(),
           same_operator_reason: '単独管理薬剤師のため自己監査を実施',
           cell_audits: [{ batch_id: 'batch_1', audit_state: 'ok', expected_version: 1 }],
         },
@@ -1189,6 +1407,7 @@ describe('/api/set-audits POST', () => {
           plan_id: 'plan_1',
           result: 'approved',
           checklist: completeSetAuditChecklist(),
+          carry_packet_evidence: completeCarryPacketEvidence(),
           same_operator_reason: '単独管理薬剤師のため自己監査を実施',
           cell_audits: [{ batch_id: 'batch_1', audit_state: 'ok', expected_version: 1 }],
         },
@@ -1305,6 +1524,7 @@ describe('/api/set-audits POST', () => {
           plan_id: 'plan_1',
           result: 'approved',
           checklist: completeSetAuditChecklist(),
+          carry_packet_evidence: completeCarryPacketEvidence(),
           cell_audits: [{ batch_id: 'batch_1', audit_state: 'ok', expected_version: 1 }],
         },
         { 'x-org-id': 'org_1' },
@@ -1324,6 +1544,8 @@ describe('/api/set-audits POST', () => {
 
   it('replays an already-applied approved audit without duplicate side effects', async () => {
     const checklist = completeSetAuditChecklist();
+    const carryPacketEvidence = completeCarryPacketEvidence();
+    const persistedChecklist = { ...checklist, carry_packet_evidence: carryPacketEvidence };
     setBatchFindManyMock.mockResolvedValue([
       {
         id: 'batch_1',
@@ -1351,7 +1573,7 @@ describe('/api/set-audits POST', () => {
       result: 'approved',
       approved_scope: null,
       reject_reason: null,
-      checklist,
+      checklist: persistedChecklist,
       photo_asset_ids: [],
       audited_by: 'user_1',
       same_operator_reason: null,
@@ -1363,6 +1585,7 @@ describe('/api/set-audits POST', () => {
           plan_id: 'plan_1',
           result: 'approved',
           checklist,
+          carry_packet_evidence: carryPacketEvidence,
           cell_audits: [{ batch_id: 'batch_1', audit_state: 'ok', expected_version: 3 }],
         },
         { 'x-org-id': 'org_1' },
@@ -1427,6 +1650,7 @@ describe('/api/set-audits POST', () => {
           plan_id: 'plan_1',
           result: 'approved',
           checklist: completeSetAuditChecklist(),
+          carry_packet_evidence: completeCarryPacketEvidence(),
           cell_audits: [{ batch_id: 'ghost_batch', audit_state: 'ok', expected_version: 1 }],
         },
         { 'x-org-id': 'org_1' },
@@ -1471,6 +1695,7 @@ describe('/api/set-audits POST', () => {
           plan_id: 'plan_1',
           result: 'approved',
           checklist: completeSetAuditChecklist(),
+          carry_packet_evidence: completeCarryPacketEvidence(),
           cell_audits: [{ batch_id: 'batch_1', audit_state: 'ok', expected_version: 2 }],
         },
         { 'x-org-id': 'org_1' },

@@ -233,6 +233,7 @@ function GridInfo({ view }: { view: WorkbenchView }) {
       >
         <SectionHeading color="#d99441" label="備考・申し送り" />
         <div
+          data-testid="calendar-outside-meds-confirmation"
           style={{
             flex: 1,
             minHeight: 0,
@@ -543,6 +544,7 @@ function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
       <div style={{ flex: 'none', margin: '0 9px 9px 9px' }}>
         <SectionHeading color="#9558c4" label="訪問持出パケット 完成判定" />
         <div
+          data-testid="visit-carry-packet-confirmation"
           style={{
             background: '#faf7fd',
             border: '1px solid #e0d2ee',

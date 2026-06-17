@@ -158,7 +158,7 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
           hydrate({ patients: [] });
           return;
         }
-        setCalendarState({ patientId: selId, ...result.calendarState });
+        setCalendarState({ patientId: selId, planId, ...result.calendarState });
         setWriteContext(result.writeContext);
         return;
       }
@@ -170,7 +170,11 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
         return;
       }
       hydrate({ patients: result.patients, selId: result.selId });
-      setCalendarState({ patientId: result.selId, ...result.calendarState });
+      setCalendarState({
+        patientId: result.selId,
+        planId: result.writeContext.planId,
+        ...result.calendarState,
+      });
       setWriteContext(result.writeContext);
     })();
     return () => {

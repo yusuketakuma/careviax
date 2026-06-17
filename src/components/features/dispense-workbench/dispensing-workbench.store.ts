@@ -110,6 +110,7 @@ export interface WorkbenchState {
    */
   setCalendarState: (args: {
     patientId: string;
+    planId?: string | null;
     model: WorkbenchModel;
     setCells: Record<string, string>;
     auditCells: Record<string, string>;
@@ -181,19 +182,34 @@ export const useWorkbenchStore = create<WorkbenchState>()(
 
       setWriteContext: (patch) => set((s) => ({ writeContext: { ...s.writeContext, ...patch } })),
 
-      setCalendarState: ({ patientId, model, setCells, auditCells, ng = {}, holdInfo = {} }) =>
-        set((s) => ({
-          model: { ...s.model, ...model },
-          setCells: replacePatientPrefixedState(s.setCells, patientId, setCells),
-          auditCells: replacePatientPrefixedState(s.auditCells, patientId, auditCells),
-          outChk: removePatientPrefixedState(s.outChk, patientId),
-          checks: removePatientPrefixedState(s.checks, patientId),
-          ng: replacePatientPrefixedState(s.ng, patientId, ng),
-          holdInfo: replacePatientPrefixedState(s.holdInfo, patientId, holdInfo),
-          packet: removePatientPrefixedState(s.packet, patientId),
-          target: null,
-          holdModal: null,
-        })),
+      setCalendarState: ({
+        patientId,
+        planId,
+        model,
+        setCells,
+        auditCells,
+        ng = {},
+        holdInfo = {},
+      }) =>
+        set((s) => {
+          const preserveCarryEvidence = !!planId && s.writeContext.planId === planId;
+          return {
+            model: { ...s.model, ...model },
+            setCells: replacePatientPrefixedState(s.setCells, patientId, setCells),
+            auditCells: replacePatientPrefixedState(s.auditCells, patientId, auditCells),
+            outChk: preserveCarryEvidence
+              ? s.outChk
+              : removePatientPrefixedState(s.outChk, patientId),
+            checks: removePatientPrefixedState(s.checks, patientId),
+            ng: replacePatientPrefixedState(s.ng, patientId, ng),
+            holdInfo: replacePatientPrefixedState(s.holdInfo, patientId, holdInfo),
+            packet: preserveCarryEvidence
+              ? s.packet
+              : removePatientPrefixedState(s.packet, patientId),
+            target: null,
+            holdModal: null,
+          };
+        }),
 
       hydrate: ({ patients, selId, model, done, audit }) =>
         set((s) => {

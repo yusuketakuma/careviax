@@ -43,7 +43,10 @@ type SetAuditChainState = {
   ready_visit_schedules: number;
   visit_schedules_with_carry_items: number;
   schedule_statuses: string[];
+  set_audits_with_carry_packet_evidence: number;
   create_audit_logs: number;
+  create_audit_logs_with_carry_packet_summary: number;
+  create_audit_logs_with_full_carry_packet_evidence: number;
   cell_audit_logs: number;
 };
 
@@ -58,7 +61,10 @@ function formatSetCalendarPeriod(start: string, dayCount: number) {
 
 async function openSetWorkbenchWithRealData(page: Page, path: string) {
   await page.addInitScript(() => {
+    const resetKey = 'chouzai-workbench-reset-once';
+    if (window.sessionStorage.getItem(resetKey) === '1') return;
     window.localStorage.removeItem('chouzai-workbench');
+    window.sessionStorage.setItem(resetKey, '1');
   });
 
   await openStableRoute(page, path);
@@ -99,6 +105,46 @@ async function waitForVisibleSetAuditCell(main: Locator) {
   const cell = main.locator('[role="button"]').filter({ hasText: /包/ }).first();
   await expect(cell).toBeVisible({ timeout: 15_000 });
   return cell;
+}
+
+async function confirmVisitCarryPacketOnSetPage(main: Locator) {
+  const carrySections = main.locator(
+    '[data-testid="calendar-outside-meds-confirmation"], [data-testid="visit-carry-packet-confirmation"]',
+  );
+  const uncheckedCarryItems = carrySections.locator('button[aria-pressed="false"]');
+
+  for (let guard = 0; guard < 20; guard += 1) {
+    const remaining = await uncheckedCarryItems.count();
+    if (remaining === 0) break;
+    await uncheckedCarryItems.first().click();
+    await expect
+      .poll(() => uncheckedCarryItems.count(), { timeout: 5_000 })
+      .toBeLessThan(remaining);
+  }
+
+  await expect(uncheckedCarryItems).toHaveCount(0);
+  for (const label of ['お薬カレンダー完成', '服薬説明書', 'お薬手帳シール']) {
+    await expect(main.getByRole('button', { name: label })).toHaveAttribute('aria-pressed', 'true');
+  }
+}
+
+async function openSetAuditViaSetWithCarryEvidence(page: Page) {
+  const data = await openSetWorkbenchWithRealData(page, '/set');
+  const main = page.locator('main');
+  await expect(main.getByRole('navigation', { name: '工程タブ' })).toBeVisible();
+  await confirmVisitCarryPacketOnSetPage(main);
+
+  await clickAndWaitForStableRoute(
+    page,
+    /\/set-audit/,
+    () =>
+      main.getByRole('link', { name: 'セット監査', exact: true }).first().click({
+        noWaitAfter: true,
+      }),
+    { timeout: 90_000 },
+  );
+  await expect(main.locator('a[aria-current="page"]')).toContainText('セット監査');
+  return data;
 }
 
 function assertSafeE2eDatabase() {
@@ -256,11 +302,34 @@ async function readSetAuditChainState(planId = SET_AUDIT_SUCCESS_PLAN_ID) {
           ) AS schedule_statuses,
           (
             SELECT count(*)::int
+            FROM "SetAudit" audit
+            JOIN target_plan plan ON plan.id = audit.plan_id AND plan.org_id = audit.org_id
+            WHERE audit.result = 'approved'
+              AND coalesce(audit.checklist::jsonb, '{}'::jsonb) ? 'carry_packet_evidence'
+          ) AS set_audits_with_carry_packet_evidence,
+          (
+            SELECT count(*)::int
             FROM "AuditLog" log
             JOIN "SetAudit" audit ON audit.id = log.target_id
             JOIN target_plan plan ON plan.id = audit.plan_id AND plan.org_id = audit.org_id
             WHERE log.action = 'set_audit.create'
           ) AS create_audit_logs,
+          (
+            SELECT count(*)::int
+            FROM "AuditLog" log
+            JOIN "SetAudit" audit ON audit.id = log.target_id
+            JOIN target_plan plan ON plan.id = audit.plan_id AND plan.org_id = audit.org_id
+            WHERE log.action = 'set_audit.create'
+              AND coalesce(log.changes::jsonb, '{}'::jsonb) ? 'carry_packet_evidence_summary'
+          ) AS create_audit_logs_with_carry_packet_summary,
+          (
+            SELECT count(*)::int
+            FROM "AuditLog" log
+            JOIN "SetAudit" audit ON audit.id = log.target_id
+            JOIN target_plan plan ON plan.id = audit.plan_id AND plan.org_id = audit.org_id
+            WHERE log.action = 'set_audit.create'
+              AND coalesce(log.changes::jsonb, '{}'::jsonb) ? 'carry_packet_evidence'
+          ) AS create_audit_logs_with_full_carry_packet_evidence,
           (
             SELECT count(*)::int
             FROM "AuditLog" log
@@ -568,7 +637,7 @@ test.describe('set → set-audit real-data direct entry', () => {
     context,
   }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await openSetWorkbenchWithRealData(page, '/set-audit');
+    await openSetAuditViaSetWithCarryEvidence(page);
 
     const main = page.locator('main');
     await waitForVisibleSetAuditCell(main);
@@ -624,6 +693,12 @@ test.describe('set → set-audit real-data direct entry', () => {
         residual_usage_ok: true,
         cold_storage_separated: true,
       },
+      carry_packet_evidence: {
+        schema_version: 1,
+        summary: {
+          all_checked: true,
+        },
+      },
     });
     expect(Array.isArray((approvalPayload as { cell_audits?: unknown[] }).cell_audits)).toBe(true);
     expect((approvalPayload as { cell_audits: unknown[] }).cell_audits.length).toBeGreaterThan(0);
@@ -654,7 +729,7 @@ test.describe('set → set-audit real-data direct entry', () => {
     await resetSetAuditSuccessFixture();
 
     const { page, errors } = await createInstrumentedPage(context);
-    const data = await openSetWorkbenchWithRealData(page, '/set-audit');
+    const data = await openSetAuditViaSetWithCarryEvidence(page);
     expect(data.planId).toBe(SET_AUDIT_SUCCESS_PLAN_ID);
 
     const main = page.locator('main');
@@ -695,7 +770,10 @@ test.describe('set → set-audit real-data direct entry', () => {
     expect(state.ready_visit_schedules).toBe(state.visit_schedules);
     expect(state.visit_schedules_with_carry_items).toBe(state.visit_schedules);
     expect(state.schedule_statuses).toEqual(['planned']);
+    expect(state.set_audits_with_carry_packet_evidence).toBe(1);
     expect(state.create_audit_logs).toBeGreaterThanOrEqual(1);
+    expect(state.create_audit_logs_with_carry_packet_summary).toBeGreaterThanOrEqual(1);
+    expect(state.create_audit_logs_with_full_carry_packet_evidence).toBe(0);
     expect(state.cell_audit_logs).toBeGreaterThanOrEqual(state.set_batches);
 
     expect(errors).toEqual([]);

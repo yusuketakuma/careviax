@@ -125,7 +125,7 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
     });
   });
 
-  it('clears patient-scoped auxiliary calendar state when real calendar state is rehydrated', async () => {
+  it('clears patient-scoped auxiliary calendar state when real calendar state is rehydrated without a matching plan', async () => {
     const { useWorkbenchStore } = await importRealDataHandlers();
     const key = 'patient_1:0:朝';
 
@@ -142,9 +142,19 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
         },
         outChk: { 'patient_1:外用薬': true, 'patient_2:外用薬': true },
         packet: { 'patient_1:訪問バッグ': true, 'patient_2:訪問バッグ': true },
+        writeContext: {
+          taskId: null,
+          cycleId: 'cycle_1',
+          cycleVersion: 1,
+          planId: 'plan_1',
+          lineGroupByDid: {},
+          groupIdByGid: {},
+          cellMeta: {},
+        },
       });
       useWorkbenchStore.getState().setCalendarState({
         patientId: 'patient_1',
+        planId: 'plan_2',
         model: { patient_1: [] },
         setCells: { [key]: 'set' },
         auditCells: { [key]: 'ok' },
@@ -168,6 +178,47 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
     expect(state.packet['patient_1:訪問バッグ']).toBeUndefined();
     expect(state.checks['patient_2:0:朝:0']).toBe(true);
     expect(state.ng['patient_2:0:朝']).toBe('数量不足');
+  });
+
+  it('preserves visit carry evidence when the same set plan is rehydrated for set-audit', async () => {
+    const { useWorkbenchStore } = await importRealDataHandlers();
+    const key = 'patient_1:0:朝';
+
+    act(() => {
+      useWorkbenchStore.setState({
+        selId: 'patient_1',
+        setCells: { [key]: 'hold' },
+        auditCells: { [key]: 'ng' },
+        checks: { [`${key}:0`]: true },
+        outChk: { 'patient_1:外用薬': true },
+        packet: { 'patient_1:cal': true, 'patient_1:doc': true, 'patient_1:note': true },
+        writeContext: {
+          taskId: null,
+          cycleId: 'cycle_1',
+          cycleVersion: 1,
+          planId: 'plan_1',
+          lineGroupByDid: {},
+          groupIdByGid: {},
+          cellMeta: {},
+        },
+      });
+      useWorkbenchStore.getState().setCalendarState({
+        patientId: 'patient_1',
+        planId: 'plan_1',
+        model: { patient_1: [] },
+        setCells: { [key]: 'set' },
+        auditCells: { [key]: 'ok' },
+      });
+    });
+
+    const state = useWorkbenchStore.getState();
+    expect(state.setCells[key]).toBe('set');
+    expect(state.auditCells[key]).toBe('ok');
+    expect(state.checks[`${key}:0`]).toBeUndefined();
+    expect(state.outChk['patient_1:外用薬']).toBe(true);
+    expect(state.packet['patient_1:cal']).toBe(true);
+    expect(state.packet['patient_1:doc']).toBe(true);
+    expect(state.packet['patient_1:note']).toBe(true);
   });
 
   it('restores the previous set cell state when a cell set mutation fails', async () => {
@@ -421,7 +472,6 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
               start: '2026-06-17',
               days: 1,
               calendarStart: '2026-06-17',
-              calendarDayCount: 1,
               drugs: [
                 {
                   did: 'line_1',
@@ -503,7 +553,6 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
               start: '2026-06-17',
               days: 1,
               calendarStart: '2026-06-17',
-              calendarDayCount: 1,
               drugs: [
                 {
                   did: 'line_1',
@@ -981,6 +1030,11 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
           [`${key}:4`]: true,
           [`${key}:5`]: true,
         },
+        packet: {
+          'patient_1:cal': true,
+          'patient_1:doc': true,
+          'patient_1:note': true,
+        },
         ng: { [key]: '薬剤違い' },
         writeContext: {
           taskId: null,
@@ -1009,10 +1063,104 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
     });
 
     expect(setAudit.mutate).toHaveBeenCalled();
+    expect(setAudit.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        carry_packet_evidence: expect.objectContaining({
+          plan_id: 'plan_1',
+          cycle_id: 'cycle_1',
+          patient_id: 'patient_1',
+          outside_meds: [],
+          packet_items: [
+            { key: 'cal', checked: true },
+            { key: 'doc', checked: true },
+            { key: 'note', checked: true },
+          ],
+        }),
+      }),
+      expect.objectContaining({ onError: expect.any(Function) }),
+    );
     expect(useWorkbenchStore.getState().auditCells[key]).toBeUndefined();
     expect(useWorkbenchStore.getState().checks[`${key}:0`]).toBeUndefined();
     expect(useWorkbenchStore.getState().ng[key]).toBeUndefined();
     expect(onAdvance).not.toHaveBeenCalled();
+  });
+
+  it('does not submit final set-audit approval when carry packet evidence is incomplete', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const setAudit = mutationStub();
+    const key = 'patient_1:0:朝';
+
+    act(() => {
+      useWorkbenchStore.setState({
+        selId: 'patient_1',
+        model: {
+          patient_1: [
+            {
+              gid: 'group_1',
+              label: '朝食後',
+              method: '一包化',
+              start: '2026-06-17',
+              days: 1,
+              calendarDayCount: 1,
+              drugs: [
+                {
+                  did: 'line_1',
+                  name: 'アムロジピン錠5mg',
+                  yoho: '朝食後',
+                  a: '1',
+                  h: '',
+                  y: '',
+                  n: '',
+                  tag: '',
+                  funsai: false,
+                  note: '',
+                },
+              ],
+            },
+          ],
+        },
+        setCells: { [key]: 'set' },
+        auditCells: { [key]: 'ok' },
+        checks: {
+          [`${key}:0`]: true,
+          [`${key}:1`]: true,
+          [`${key}:2`]: true,
+          [`${key}:3`]: true,
+          [`${key}:4`]: true,
+          [`${key}:5`]: true,
+        },
+        packet: { 'patient_1:cal': true },
+        writeContext: {
+          taskId: null,
+          cycleId: 'cycle_1',
+          cycleVersion: 4,
+          planId: 'plan_1',
+          lineGroupByDid: {},
+          groupIdByGid: {},
+          cellMeta: {
+            [key]: { batchIds: ['batch_1'], versions: [7], dayNumber: 1, slot: 'morning' },
+          },
+        },
+      });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'seta',
+        mutations: fakeMutations({ setAudit }),
+      }),
+    );
+
+    act(() => {
+      result.current.onPrimary();
+    });
+
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      '外薬同梱と訪問持出パケットの確認証跡を作成できません。セット工程を再確認してください。',
+    );
+    expect(setAudit.mutate).not.toHaveBeenCalled();
+    expect(useWorkbenchStore.getState().auditCells[key]).toBe('ok');
+    expect(useWorkbenchStore.getState().checks[`${key}:0`]).toBe(true);
   });
 
   it('creates a real packaging group and maps the local gid to the backend id', async () => {
@@ -1367,7 +1515,6 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
               start: '2026-06-17',
               days: 1,
               calendarStart: '2026-06-17',
-              calendarDayCount: 1,
               drugs: [
                 {
                   did: 'line_1',

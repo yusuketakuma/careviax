@@ -139,7 +139,7 @@ async function recoverCalendarDirect(
     return;
   }
   const store = useWorkbenchStore.getState();
-  store.setCalendarState({ patientId, ...result.calendarState });
+  store.setCalendarState({ patientId, planId, ...result.calendarState });
   useWorkbenchStore.getState().setWriteContext(result.writeContext);
 }
 

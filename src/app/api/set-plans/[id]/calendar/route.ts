@@ -85,9 +85,14 @@ export const GET = withAuthContext<{ id: string }>(
             select: {
               id: true,
               drug_name: true,
+              dosage_form: true,
               dose: true,
               frequency: true,
               unit: true,
+              route: true,
+              packaging_instructions: true,
+              packaging_instruction_tags: true,
+              notes: true,
             },
           },
         },
@@ -98,9 +103,14 @@ export const GET = withAuthContext<{ id: string }>(
       intake.lines.map((line) => ({
         id: line.id,
         drug_name: line.drug_name,
+        dosage_form: line.dosage_form,
         dose: line.dose,
         frequency: line.frequency,
         unit: line.unit,
+        route: line.route,
+        packaging_instructions: line.packaging_instructions,
+        packaging_instruction_tags: line.packaging_instruction_tags,
+        notes: line.notes,
       })),
     );
 

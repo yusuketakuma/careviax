@@ -275,7 +275,7 @@ describe('workbenchFromApi — Drug フィールド写像', () => {
       count_rows: [
         countRow({
           line_id: 'L6',
-          drug_name: 'ヒルドイドローション',
+          drug_name: '薬剤A',
           frequency: '1日2回',
           route: 'external',
         }),

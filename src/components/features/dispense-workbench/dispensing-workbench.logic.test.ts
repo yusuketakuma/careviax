@@ -179,6 +179,32 @@ describe('calc（packets / PTP分類 / カレンダー外薬）', () => {
     const c = calc(MODEL, '0006');
     expect(c.outside.some((o) => /ラジカット/.test(o.name) && o.kind === '液剤')).toBe(true);
   });
+  it('tag=外用の薬剤名に外用語がなくてもカレンダー外薬（外用）に分類', () => {
+    const c = calc(
+      {
+        pat_1: [
+          {
+            gid: 'g1',
+            label: 'セット対象',
+            method: '一包化',
+            start: '2026-06-17',
+            days: 1,
+            drugs: [
+              drug({
+                did: 'line_external',
+                name: '薬剤A',
+                yoho: '1日1回',
+                tag: '外用',
+              }),
+            ],
+          },
+        ],
+      },
+      'pat_1',
+    );
+
+    expect(c.outside).toEqual([{ line_id: 'line_external', name: '薬剤A', kind: '外用' }]);
+  });
   it('別包薬は packets に加算されるが drugs に（別包）サフィックス', () => {
     const c = calc(MODEL, '0002');
     const all = Object.values(c.content).flatMap((v) => v.drugs);

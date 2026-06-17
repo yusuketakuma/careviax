@@ -26,15 +26,19 @@ import type { WorkbenchMutations } from './use-workbench-mutations';
 import {
   HOLD_REASON_TO_CODE,
   NG_LABEL_TO_CODE,
+  CARRY_PACKET_EVIDENCE_SCHEMA_VERSION,
   SET_AUDIT_CHECK_ITEMS,
   TIMING_TO_SLOT,
   type CellMeta,
+  type CarryPacketEvidenceInput,
+  type CarryPacketItemKey,
+  type OutsideMedEvidenceKind,
   type RejectCode,
   type SetAuditChecklistKey,
   type CellMutationTarget,
   type SubmitSetAuditInput,
 } from './dispensing-workbench.write-types';
-import { cellKey } from './dispensing-workbench.logic';
+import { calc, cellKey, packetKeys } from './dispensing-workbench.logic';
 import { isCalendarPhase } from './dispensing-workbench.types';
 import type { CellTarget, Group, Phase } from './dispensing-workbench.types';
 
@@ -473,11 +477,19 @@ export function useWorkbenchWriteHandlers(args: {
             } else if (phase === 'seta' && s.writeContext.planId) {
               const patientId = s.selId;
               const cellAudits = collectSetAuditCellAudits(s, 'ok');
+              const carryPacketEvidence = collectCarryPacketEvidence(s);
+              if (!carryPacketEvidence) {
+                toast.error(
+                  '外薬同梱と訪問持出パケットの確認証跡を作成できません。セット工程を再確認してください。',
+                );
+                return null;
+              }
               mutations.setAudit.mutate(
                 {
                   plan_id: s.writeContext.planId,
                   result: 'approved',
                   checklist: collectSetAuditChecklist(s),
+                  carry_packet_evidence: carryPacketEvidence,
                   ...(cellAudits.length > 0 ? { cell_audits: cellAudits } : {}),
                 },
                 {
@@ -791,6 +803,77 @@ function collectSetAuditChecklist(
   s: ReturnType<typeof useWorkbenchStore.getState>,
 ): Record<SetAuditChecklistKey, boolean> {
   return collectSetAuditChecklistFromChecks(s.checks);
+}
+
+function outsideKindToEvidenceKind(kind: string): OutsideMedEvidenceKind {
+  if (kind === '頓服') return 'prn';
+  if (kind === '外用') return 'topical';
+  if (kind === '冷所') return 'cold';
+  if (kind === '注射') return 'injection';
+  if (kind === '液剤') return 'liquid';
+  return 'other';
+}
+
+function isCarryPacketItemKey(value: string): value is CarryPacketItemKey {
+  return (
+    value === 'cal' ||
+    value === 'ton' ||
+    value === 'gai' ||
+    value === 'liq' ||
+    value === 'doc' ||
+    value === 'note'
+  );
+}
+
+export function collectCarryPacketEvidence(
+  s: ReturnType<typeof useWorkbenchStore.getState>,
+): CarryPacketEvidenceInput | null {
+  const planId = s.writeContext.planId;
+  const cycleId = s.writeContext.cycleId;
+  const patientId = s.selId;
+  if (!planId || !cycleId || !patientId) return null;
+
+  const calendar = calc(s.model, patientId);
+  const outsideItems = calendar.outside.map((outside) => ({
+    line_id: outside.line_id ?? '',
+    kind: outsideKindToEvidenceKind(outside.kind),
+    checked: s.outChk[`${patientId}:${outside.name}`] === true,
+  }));
+  const packetItems = packetKeys(s.model, patientId)
+    .filter(isCarryPacketItemKey)
+    .map((key) => ({
+      key,
+      checked: s.packet[`${patientId}:${key}`] === true,
+    }));
+
+  const allOutsideChecked = outsideItems.every(
+    (item) => item.line_id.length > 0 && item.checked === true,
+  );
+  const allPacketChecked = packetItems.every((item) => item.checked === true);
+  if (!allOutsideChecked || !allPacketChecked) return null;
+
+  return {
+    schema_version: CARRY_PACKET_EVIDENCE_SCHEMA_VERSION,
+    plan_id: planId,
+    cycle_id: cycleId,
+    patient_id: patientId,
+    outside_meds: outsideItems.map((item) => ({
+      line_id: item.line_id,
+      kind: item.kind,
+      checked: true,
+    })),
+    packet_items: packetItems.map((item) => ({
+      key: item.key,
+      checked: true,
+    })),
+    summary: {
+      outside_required_count: outsideItems.length,
+      outside_confirmed_count: outsideItems.length,
+      packet_required_count: packetItems.length,
+      packet_confirmed_count: packetItems.length,
+      all_checked: true,
+    },
+  };
 }
 
 export function collectSetAuditChecklistFromChecks(

@@ -324,11 +324,16 @@ export function calc(model: WorkbenchModel, id: string): CalcResult {
   drugs.forEach((r) => {
     if (isOut(r)) {
       let kind = '頓服';
-      if (/外用|テープ|軟膏/.test(r.note + r.name)) kind = '外用';
-      else if (/冷所|坐/.test(r.note)) kind = '冷所';
-      else if (/注射|インスリン/.test(r.note)) kind = '注射';
-      else if (/別容器|内用液|懸濁|液/.test(r.note + r.name)) kind = '液剤';
-      outside.push({ name: r.name, kind });
+      const detail = r.note + r.name;
+      if (r.tag === '外用') {
+        if (/注射|インスリン/.test(detail)) kind = '注射';
+        else if (/別容器|内用液|懸濁|液|mL|ml/.test(detail)) kind = '液剤';
+        else kind = '外用';
+      } else if (/冷所|坐/.test(detail)) kind = '冷所';
+      else if (/注射|インスリン/.test(detail)) kind = '注射';
+      else if (/外用|テープ|軟膏|点眼|点鼻/.test(detail)) kind = '外用';
+      else if (/別容器|内用液|懸濁|液|mL|ml/.test(detail)) kind = '液剤';
+      outside.push({ line_id: r.did, name: r.name, kind });
     }
   });
   const content: Record<string, TimingContent> = {};

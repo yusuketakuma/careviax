@@ -401,6 +401,30 @@ function quantityForSlot(row: CalendarMatrixResponse['rows'][number], slot: stri
   return formatCalendarQuantity(firstQuantity);
 }
 
+function calendarLineTagOf(line: CalendarMatrixResponse['rows'][number]['line']): string {
+  const slots = parseFrequencyToSlots(line.frequency);
+  if (slots.includes('prn')) return '頓用';
+  if (line.route && line.route !== 'internal' && line.route !== 'oral' && line.route !== '内服') {
+    return '外用';
+  }
+  return '';
+}
+
+function calendarLineNoteOf(line: CalendarMatrixResponse['rows'][number]['line']): string {
+  const tags = line.packaging_instruction_tags ?? [];
+  const parts = [
+    line.dose ?? '',
+    line.packaging_instructions ?? '',
+    line.notes ?? '',
+    tags.includes('cold_storage') ? '冷所' : '',
+    tags.includes('separate_pack') ? '別包' : '',
+    line.route === 'injection' ? '注射' : '',
+    /液|mL|ml/.test(`${line.dosage_form ?? ''} ${line.unit ?? ''}`) ? '液剤' : '',
+  ].filter((value) => value.trim().length > 0);
+
+  return Array.from(new Set(parts)).join(' ・ ');
+}
+
 /**
  * CalendarMatrixResponse → existing workbench view state.
  *
@@ -434,9 +458,9 @@ export function calendarWorkbenchStateFromApi(
       h: quantityForSlot(row, 'noon'),
       y: quantityForSlot(row, 'evening'),
       n: quantityForSlot(row, 'bedtime'),
-      tag: '',
+      tag: calendarLineTagOf(row.line),
       funsai: false,
-      note: row.line.dose ?? '',
+      note: calendarLineNoteOf(row.line),
     })),
   };
   const setCells: Record<string, string> = {};
