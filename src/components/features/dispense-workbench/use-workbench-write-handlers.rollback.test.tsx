@@ -130,6 +130,90 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
     expect(useWorkbenchStore.getState().setCells[key]).toBe('hold');
   });
 
+  it('updates the local cell version after a successful cell mutation', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const key = 'patient_1:0:朝';
+    const cellMutation = mutationStub((_input, options) =>
+      options?.onSuccess?.({ data: { id: 'batch_1', version: 8 } }),
+    );
+
+    act(() => {
+      useWorkbenchStore.setState({
+        selId: 'patient_1',
+        target: { di: 0, tk: '朝' },
+        setCells: { [key]: 'pending' },
+        writeContext: {
+          taskId: null,
+          cycleId: 'cycle_1',
+          cycleVersion: 4,
+          planId: 'plan_1',
+          lineGroupByDid: {},
+          groupIdByGid: {},
+          cellMeta: {
+            [key]: { batchIds: ['batch_1'], versions: [7], dayNumber: 1, slot: 'morning' },
+          },
+        },
+      });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'setp',
+        mutations: fakeMutations({ cellMutation }),
+      }),
+    );
+
+    act(() => {
+      result.current.onSetCell();
+    });
+
+    expect(cellMutation.mutate).toHaveBeenCalledWith(
+      { batch_id: 'batch_1', action: 'set', expected_version: 7 },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
+    expect(useWorkbenchStore.getState().writeContext.cellMeta[key].versions).toEqual([8]);
+  });
+
+  it('does not downgrade the local cell version from a stale mutation success response', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const key = 'patient_1:0:朝';
+    const cellMutation = mutationStub((_input, options) =>
+      options?.onSuccess?.({ data: { id: 'batch_1', version: 8 } }),
+    );
+
+    act(() => {
+      useWorkbenchStore.setState({
+        selId: 'patient_1',
+        target: { di: 0, tk: '朝' },
+        setCells: { [key]: 'pending' },
+        writeContext: {
+          taskId: null,
+          cycleId: 'cycle_1',
+          cycleVersion: 4,
+          planId: 'plan_1',
+          lineGroupByDid: {},
+          groupIdByGid: {},
+          cellMeta: {
+            [key]: { batchIds: ['batch_1'], versions: [9], dayNumber: 1, slot: 'morning' },
+          },
+        },
+      });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'setp',
+        mutations: fakeMutations({ cellMutation }),
+      }),
+    );
+
+    act(() => {
+      result.current.onSetCell();
+    });
+
+    expect(useWorkbenchStore.getState().writeContext.cellMeta[key].versions).toEqual([9]);
+  });
+
   it('restores set and audit cell states when returning a cell to set fails', async () => {
     const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
     const key = 'patient_1:0:朝';
@@ -244,6 +328,82 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
       expect.objectContaining({ onError: expect.any(Function) }),
     );
     expect(useWorkbenchStore.getState().setCells).toEqual({ [key]: 'hold', [noonKey]: 'set' });
+  });
+
+  it('updates local cell versions after a successful bulk set', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const key = 'patient_1:0:朝';
+    const noonKey = 'patient_1:0:昼';
+    const bulkSet = mutationStub((_input, options) =>
+      options?.onSuccess?.({
+        data: {
+          batches: [
+            { id: 'batch_1', version: 8 },
+            { id: 'batch_2', version: 9 },
+          ],
+        },
+      }),
+    );
+
+    act(() => {
+      useWorkbenchStore.setState({
+        selId: 'patient_1',
+        setCells: { [key]: 'pending', [noonKey]: 'pending' },
+        model: {
+          patient_1: [
+            {
+              gid: 'group_1',
+              label: '朝食後',
+              method: '一包化',
+              start: '2026-06-17',
+              days: 1,
+              calendarStart: '2026-06-17',
+              calendarDayCount: 1,
+              drugs: [
+                {
+                  did: 'line_1',
+                  name: 'アムロジピン錠5mg',
+                  yoho: '朝食後',
+                  a: '1',
+                  h: '',
+                  y: '',
+                  n: '',
+                  tag: '',
+                  funsai: false,
+                  note: '',
+                },
+              ],
+            },
+          ],
+        },
+        writeContext: {
+          taskId: null,
+          cycleId: 'cycle_1',
+          cycleVersion: 4,
+          planId: 'plan_1',
+          lineGroupByDid: {},
+          groupIdByGid: {},
+          cellMeta: {
+            [key]: { batchIds: ['batch_1'], versions: [7], dayNumber: 1, slot: 'morning' },
+            [noonKey]: { batchIds: ['batch_2'], versions: [8], dayNumber: 1, slot: 'noon' },
+          },
+        },
+      });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'setp',
+        mutations: fakeMutations({ bulkSet }),
+      }),
+    );
+
+    act(() => {
+      result.current.onBulk();
+    });
+
+    expect(useWorkbenchStore.getState().writeContext.cellMeta[key].versions).toEqual([8]);
+    expect(useWorkbenchStore.getState().writeContext.cellMeta[noonKey].versions).toEqual([9]);
   });
 
   it('persists calendar holds through the set-batch cell API and rolls back local hold state on failure', async () => {

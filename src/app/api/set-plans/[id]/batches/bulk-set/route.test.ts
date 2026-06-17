@@ -97,7 +97,12 @@ describe('set-plans/[id]/batches/bulk-set POST', () => {
 
   it('rejects duplicate cell ids before any write', async () => {
     const response = await POST(
-      createRequest({ cells: [{ batch_id: 'batch_1' }, { batch_id: 'batch_1' }] }),
+      createRequest({
+        cells: [
+          { batch_id: 'batch_1', expected_version: 1 },
+          { batch_id: 'batch_1', expected_version: 1 },
+        ],
+      }),
       params,
     );
     expect(response.status).toBe(400);
@@ -107,9 +112,18 @@ describe('set-plans/[id]/batches/bulk-set POST', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
+  it('requires expected_version for each cell', async () => {
+    const response = await POST(createRequest({ cells: [{ batch_id: 'batch_1' }] }), params);
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
   it('returns 404 when the plan is not accessible', async () => {
     txMock.setPlan.findFirst.mockResolvedValue(null);
-    const response = await POST(createRequest({ cells: [{ batch_id: 'batch_1' }] }), params);
+    const response = await POST(
+      createRequest({ cells: [{ batch_id: 'batch_1', expected_version: 1 }] }),
+      params,
+    );
     expect(response.status).toBe(404);
     expect(txMock.setBatch.updateMany).not.toHaveBeenCalled();
   });
@@ -122,7 +136,10 @@ describe('set-plans/[id]/batches/bulk-set POST', () => {
         cycle: { overall_status: status },
       });
 
-      const response = await POST(createRequest({ cells: [{ batch_id: 'batch_1' }] }), params);
+      const response = await POST(
+        createRequest({ cells: [{ batch_id: 'batch_1', expected_version: 1 }] }),
+        params,
+      );
 
       expect(response.status).toBe(409);
       await expect(response.json()).resolves.toMatchObject({
@@ -142,7 +159,12 @@ describe('set-plans/[id]/batches/bulk-set POST', () => {
   it('returns 404 when some cells are missing', async () => {
     txMock.setBatch.findMany.mockResolvedValueOnce([buildBatch('batch_1')]);
     const response = await POST(
-      createRequest({ cells: [{ batch_id: 'batch_1' }, { batch_id: 'batch_2' }] }),
+      createRequest({
+        cells: [
+          { batch_id: 'batch_1', expected_version: 1 },
+          { batch_id: 'batch_2', expected_version: 1 },
+        ],
+      }),
       params,
     );
     expect(response.status).toBe(404);
@@ -163,7 +185,12 @@ describe('set-plans/[id]/batches/bulk-set POST', () => {
       ]);
 
     const response = await POST(
-      createRequest({ cells: [{ batch_id: 'batch_1' }, { batch_id: 'batch_2' }] }),
+      createRequest({
+        cells: [
+          { batch_id: 'batch_1', expected_version: 1 },
+          { batch_id: 'batch_2', expected_version: 1 },
+        ],
+      }),
       params,
     );
     expect(response.status).toBe(200);
@@ -173,7 +200,10 @@ describe('set-plans/[id]/batches/bulk-set POST', () => {
     // OCC update per cell, all setting set_by on the server.
     expect(txMock.setBatch.updateMany).toHaveBeenCalledTimes(2);
     const firstUpdate = txMock.setBatch.updateMany.mock.calls[0][0];
-    expect(firstUpdate.where).toMatchObject({ version: 1 });
+    expect(firstUpdate.where).toMatchObject({
+      version: 1,
+      plan: { cycle: { overall_status: 'setting' } },
+    });
     expect(firstUpdate.data).toMatchObject({ set_state: 'set', set_by: 'user_1' });
     expect(firstUpdate.data.set_at).toBeInstanceOf(Date);
 
@@ -223,7 +253,10 @@ describe('set-plans/[id]/batches/bulk-set POST', () => {
     txMock.setBatch.findMany.mockResolvedValueOnce([buildBatch('batch_1')]);
     txMock.setBatch.updateMany.mockResolvedValue({ count: 0 });
 
-    const response = await POST(createRequest({ cells: [{ batch_id: 'batch_1' }] }), params);
+    const response = await POST(
+      createRequest({ cells: [{ batch_id: 'batch_1', expected_version: 1 }] }),
+      params,
+    );
     expect(response.status).toBe(409);
     expect(txMock.auditLog.create).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();

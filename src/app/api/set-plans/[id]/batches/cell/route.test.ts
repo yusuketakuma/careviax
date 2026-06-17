@@ -115,14 +115,30 @@ describe('set-plans/[id]/batches/cell PATCH', () => {
   });
 
   it('requires held_reason for hold action', async () => {
-    const response = await PATCH(createRequest({ action: 'hold', batch_id: 'batch_1' }), params);
+    const response = await PATCH(
+      createRequest({ action: 'hold', batch_id: 'batch_1', expected_version: 1 }),
+      params,
+    );
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['set', { action: 'set', batch_id: 'batch_1' }],
+    ['hold', { action: 'hold', batch_id: 'batch_1', held_reason: 'stock_shortage' }],
+    ['clear', { action: 'clear', batch_id: 'batch_1' }],
+  ] as const)('requires expected_version for %s action', async (_action, body) => {
+    const response = await PATCH(createRequest(body), params);
     expect(response.status).toBe(400);
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
   it('returns 404 when the plan is not accessible', async () => {
     txMock.setPlan.findFirst.mockResolvedValue(null);
-    const response = await PATCH(createRequest({ action: 'set', batch_id: 'batch_1' }), params);
+    const response = await PATCH(
+      createRequest({ action: 'set', batch_id: 'batch_1', expected_version: 1 }),
+      params,
+    );
     expect(response.status).toBe(404);
     expect(txMock.setBatch.updateMany).not.toHaveBeenCalled();
   });
@@ -135,7 +151,10 @@ describe('set-plans/[id]/batches/cell PATCH', () => {
         cycle: { overall_status: status },
       });
 
-      const response = await PATCH(createRequest({ action: 'clear', batch_id: 'batch_1' }), params);
+      const response = await PATCH(
+        createRequest({ action: 'clear', batch_id: 'batch_1', expected_version: 1 }),
+        params,
+      );
 
       expect(response.status).toBe(409);
       await expect(response.json()).resolves.toMatchObject({
@@ -154,7 +173,10 @@ describe('set-plans/[id]/batches/cell PATCH', () => {
 
   it('returns 404 when the cell is not found', async () => {
     txMock.setBatch.findFirst.mockResolvedValueOnce(null);
-    const response = await PATCH(createRequest({ action: 'set', batch_id: 'batch_x' }), params);
+    const response = await PATCH(
+      createRequest({ action: 'set', batch_id: 'batch_x', expected_version: 1 }),
+      params,
+    );
     expect(response.status).toBe(404);
     expect(txMock.setBatch.updateMany).not.toHaveBeenCalled();
   });
@@ -166,14 +188,21 @@ describe('set-plans/[id]/batches/cell PATCH', () => {
         buildBatch({ set_state: 'set', set_by: 'user_1', set_at: new Date(), version: 2 }),
       );
 
-    const response = await PATCH(createRequest({ action: 'set', batch_id: 'batch_1' }), params);
+    const response = await PATCH(
+      createRequest({ action: 'set', batch_id: 'batch_1', expected_version: 1 }),
+      params,
+    );
     expect(response.status).toBe(200);
     const payload = await response.json();
     expect(payload.data.set_state).toBe('set');
 
     // OCC: updateMany guarded by version, with server-side set_by/set_at.
     const updateArgs = txMock.setBatch.updateMany.mock.calls[0][0];
-    expect(updateArgs.where).toMatchObject({ id: 'batch_1', version: 1 });
+    expect(updateArgs.where).toMatchObject({
+      id: 'batch_1',
+      version: 1,
+      plan: { cycle: { overall_status: 'setting' } },
+    });
     expect(updateArgs.data).toMatchObject({ set_state: 'set', set_by: 'user_1' });
     expect(updateArgs.data.set_at).toBeInstanceOf(Date);
     expect(updateArgs.data.version).toEqual({ increment: 1 });
@@ -202,6 +231,7 @@ describe('set-plans/[id]/batches/cell PATCH', () => {
         batch_id: 'batch_1',
         held_reason: 'stock_shortage',
         held_detail: '在庫不足',
+        expected_version: 1,
       }),
       params,
     );
@@ -240,7 +270,10 @@ describe('set-plans/[id]/batches/cell PATCH', () => {
     txMock.setBatch.findFirst.mockResolvedValueOnce(buildBatch());
     txMock.setBatch.updateMany.mockResolvedValue({ count: 0 });
 
-    const response = await PATCH(createRequest({ action: 'set', batch_id: 'batch_1' }), params);
+    const response = await PATCH(
+      createRequest({ action: 'set', batch_id: 'batch_1', expected_version: 1 }),
+      params,
+    );
     expect(response.status).toBe(409);
     const payload = await response.json();
     expect(payload.code).toBe('WORKFLOW_CONFLICT');
@@ -253,7 +286,10 @@ describe('set-plans/[id]/batches/cell PATCH', () => {
       .mockResolvedValueOnce(buildBatch({ set_state: 'hold', held_reason: 'stock_shortage' }))
       .mockResolvedValueOnce(buildBatch({ set_state: 'pending', version: 2 }));
 
-    const response = await PATCH(createRequest({ action: 'clear', batch_id: 'batch_1' }), params);
+    const response = await PATCH(
+      createRequest({ action: 'clear', batch_id: 'batch_1', expected_version: 1 }),
+      params,
+    );
     expect(response.status).toBe(200);
     const updateArgs = txMock.setBatch.updateMany.mock.calls[0][0];
     expect(updateArgs.data).toMatchObject({

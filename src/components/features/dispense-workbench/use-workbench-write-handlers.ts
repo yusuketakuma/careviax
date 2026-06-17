@@ -105,6 +105,52 @@ function membershipOf(groups: Group[]): Record<string, string> {
   return out;
 }
 
+function readReturnedBatchVersions(data: unknown): Array<{ id: string; version: number }> {
+  const body = data as
+    | { data?: { id?: unknown; version?: unknown; batches?: unknown } }
+    | null
+    | undefined;
+  const payload = body?.data;
+  if (!payload) return [];
+  const batches = Array.isArray(payload.batches) ? payload.batches : [payload];
+  return batches.flatMap((batch) => {
+    const candidate = batch as { id?: unknown; version?: unknown };
+    return typeof candidate.id === 'string' && typeof candidate.version === 'number'
+      ? [{ id: candidate.id, version: candidate.version }]
+      : [];
+  });
+}
+
+function applyReturnedBatchVersions(data: unknown): void {
+  const updates = readReturnedBatchVersions(data);
+  if (updates.length === 0) return;
+  const versionByBatchId = new Map(updates.map((batch) => [batch.id, batch.version]));
+  useWorkbenchStore.setState((state) => {
+    let changed = false;
+    const cellMeta = Object.fromEntries(
+      Object.entries(state.writeContext.cellMeta).map(([key, meta]) => {
+        let metaChanged = false;
+        const versions = meta.versions.map((version, index) => {
+          const nextVersion = versionByBatchId.get(meta.batchIds[index]);
+          if (nextVersion === undefined || nextVersion <= version) return version;
+          metaChanged = true;
+          return nextVersion;
+        });
+        if (!metaChanged) return [key, meta];
+        changed = true;
+        return [key, { ...meta, versions }];
+      }),
+    );
+    if (!changed) return state;
+    return {
+      writeContext: {
+        ...state.writeContext,
+        cellMeta,
+      },
+    };
+  });
+}
+
 /**
  * フェーズ別の書込ハンドラ束を返す。子はこれを props で受け取り onClick から呼ぶ。
  */
@@ -258,6 +304,7 @@ export function useWorkbenchWriteHandlers(args: {
           const s = snap();
           if (phase !== 'setp' || !s.writeContext.planId) return;
           mutations.bulkSet.mutate(cells, {
+            onSuccess: applyReturnedBatchVersions,
             onError: () => {
               restoreCells('setp', previousSetCells);
             },
@@ -337,6 +384,7 @@ export function useWorkbenchWriteHandlers(args: {
                 expected_version: meta.versions[i],
               },
               {
+                onSuccess: applyReturnedBatchVersions,
                 onError: () => {
                   restoreCell(phase, before.selId, target, previousSetState);
                 },
@@ -419,6 +467,7 @@ export function useWorkbenchWriteHandlers(args: {
                 expected_version: meta.versions[i],
               },
               {
+                onSuccess: applyReturnedBatchVersions,
                 onError: () => {
                   restoreCell('setp', before.selId, target, previousSetState);
                   restoreCell('seta', before.selId, target, previousAuditState);
@@ -470,6 +519,7 @@ export function useWorkbenchWriteHandlers(args: {
                   expected_version: meta.versions[i],
                 },
                 {
+                  onSuccess: applyReturnedBatchVersions,
                   onError: () => {
                     restoreCell(phase, before.selId, target, previousCellState);
                     restoreHoldInfo(before.selId, target, previousHoldInfo);

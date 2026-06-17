@@ -27,19 +27,19 @@ const cellMutationSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('set'),
     batch_id: z.string().min(1, 'セルIDは必須です'),
-    expected_version: z.number().int().min(1).optional(),
+    expected_version: z.number().int().min(1),
   }),
   z.object({
     action: z.literal('hold'),
     batch_id: z.string().min(1, 'セルIDは必須です'),
     held_reason: z.enum(HOLD_REASONS, { error: '保留理由を選択してください' }),
     held_detail: z.string().max(1000).optional(),
-    expected_version: z.number().int().min(1).optional(),
+    expected_version: z.number().int().min(1),
   }),
   z.object({
     action: z.literal('clear'),
     batch_id: z.string().min(1, 'セルIDは必須です'),
-    expected_version: z.number().int().min(1).optional(),
+    expected_version: z.number().int().min(1),
   }),
 ]);
 
@@ -120,7 +120,7 @@ export const PATCH = withAuthContext<{ id: string }>(
       }
 
       // 競合(§12-4): バージョン不一致は早期 409。最終判定は updateMany count===0。
-      if (input.expected_version !== undefined && input.expected_version !== batch.version) {
+      if (input.expected_version !== batch.version) {
         return {
           kind: 'error' as const,
           response: conflict(
@@ -188,6 +188,7 @@ export const PATCH = withAuthContext<{ id: string }>(
           org_id: ctx.orgId,
           plan_id: planId,
           version: batch.version,
+          plan: { cycle: { overall_status: MUTABLE_SET_BATCH_CYCLE_STATUS } },
         },
         data,
       });

@@ -18,7 +18,7 @@ const bulkSetSchema = z.object({
     .array(
       z.object({
         batch_id: z.string().min(1, 'セルIDは必須です'),
-        expected_version: z.number().int().min(1).optional(),
+        expected_version: z.number().int().min(1),
       }),
     )
     .min(1, 'セットするセルを1件以上指定してください')
@@ -127,7 +127,7 @@ export const POST = withAuthContext<{ id: string }>(
         const expectedVersion = expectedById.get(batch.id);
 
         // 競合(§12-4): 早期 version チェック(UX hint)。
-        if (expectedVersion !== undefined && expectedVersion !== batch.version) {
+        if (expectedVersion !== batch.version) {
           return {
             kind: 'error' as const,
             response: conflict(
@@ -149,6 +149,7 @@ export const POST = withAuthContext<{ id: string }>(
             org_id: ctx.orgId,
             plan_id: planId,
             version: batch.version,
+            plan: { cycle: { overall_status: MUTABLE_SET_BATCH_CYCLE_STATUS } },
           },
           data: {
             set_state: 'set',
