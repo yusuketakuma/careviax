@@ -64,9 +64,15 @@ export function PatientCareTeamSourcePanel({
         {contacts.length > 0 ? (
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {contacts.map((contact) => (
-              <div key={contact.id} className="rounded-xl border border-emerald-200 bg-white/85 p-3 text-sm">
+              <div
+                key={contact.id}
+                className="rounded-xl border border-emerald-200 bg-white/85 p-3 text-sm"
+              >
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800">
+                  <Badge
+                    variant="outline"
+                    className="border-emerald-200 bg-emerald-50 text-emerald-800"
+                  >
                     {ROLE_LABELS[normalizeCareTeamRole(contact.role)] ?? contact.role}
                   </Badge>
                   <span className="font-medium text-foreground">{contact.name}</span>
@@ -80,7 +86,7 @@ export function PatientCareTeamSourcePanel({
                 {contact.phone ? (
                   <a
                     href={`tel:${contact.phone}`}
-                    className="mt-1 inline-flex min-h-8 items-center gap-1.5 text-xs font-medium text-emerald-800"
+                    className="mt-1 inline-flex min-h-[44px] items-center gap-1.5 text-xs font-medium text-emerald-800 sm:min-h-8"
                   >
                     <Phone className="size-3.5" aria-hidden="true" />
                     {contact.phone}
@@ -100,7 +106,11 @@ export function PatientCareTeamSourcePanel({
         {missingRoles.length > 0 ? (
           <div className="flex flex-wrap gap-2 text-xs">
             {missingRoles.map((role) => (
-              <Badge key={role} variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">
+              <Badge
+                key={role}
+                variant="outline"
+                className="border-amber-200 bg-amber-50 text-amber-800"
+              >
                 未登録: {ROLE_LABELS[role]}
               </Badge>
             ))}

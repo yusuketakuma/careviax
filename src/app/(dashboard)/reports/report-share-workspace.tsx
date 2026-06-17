@@ -16,6 +16,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { WorkspaceActionRail } from '@/components/features/workspace/action-rail';
+import { MainWorkflowCompactNav } from '@/components/features/workflow/main-workflow-route';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
@@ -577,6 +578,13 @@ export function ReportShareWorkspace() {
         >
           テンプレートを編集
         </Link>
+      </div>
+
+      <div className="mt-4">
+        <MainWorkflowCompactNav
+          currentSteps={['reports']}
+          description="報告・共有は処方から訪問後報告までの主業務フローの終点です。前工程の訪問記録へ戻って根拠を確認できます。"
+        />
       </div>
 
       <div className="mt-4">
