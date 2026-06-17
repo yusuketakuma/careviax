@@ -286,8 +286,7 @@ function SetWork({ view, phase, handlers }: SetWorkProps) {
   const openHold = useWorkbenchStore((s) => s.openHold);
   const storeToggleOut = useWorkbenchStore((s) => s.toggleOut);
   const storeTogglePacket = useWorkbenchStore((s) => s.togglePacket);
-  const onSetCell = () =>
-    handlers ? handlers.onSetCell() : applyCell(phase, 'set', cellTarget);
+  const onSetCell = () => (handlers ? handlers.onSetCell() : applyCell(phase, 'set', cellTarget));
   const onOpenHold = () => (handlers ? handlers.onOpenHold() : openHold(cellTarget));
   const onToggleOut = (name: string) =>
     handlers ? handlers.onToggleOut(name) : storeToggleOut(name);
@@ -576,7 +575,7 @@ interface SetAuditProps {
   isPending?: boolean;
 }
 
-function SetAudit({ view, phase, handlers }: SetAuditProps) {
+function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
   // 書込操作はシェル handlers（store + 実データ mutation）を優先し、未提供時のみ store へフォールバック。
   // cellTarget はフォールバック時のセル操作系アクションに必要。
   const cellTarget = useWorkbenchStore((s) => s.target);
@@ -590,11 +589,14 @@ function SetAudit({ view, phase, handlers }: SetAuditProps) {
   const onOpenHold = () => (handlers ? handlers.onOpenHold() : openHold(cellTarget));
   const onToggleCheck = (i: number) =>
     handlers ? handlers.onToggleCheck(i) : storeToggleCheck(cellTarget, i);
-  const onNg = (value: string) => (handlers ? handlers.onSetNg(value) : storeSetNg(cellTarget, value));
+  const onNg = (value: string) =>
+    handlers ? handlers.onSetNg(value) : storeSetNg(cellTarget, value);
   const onReturn = (di: number, tk: string) =>
     handlers ? handlers.onReturnToSet(di, tk) : storeReturnToSet(di, tk);
 
   const { target, checkItems, ngValue, ngOptions, rejectList, rejectEmpty, riskList } = view;
+  const ngDisabled = isPending || !ngValue;
+  const auditButtonCursor = isPending ? 'not-allowed' : 'pointer';
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       {/* 期待値（処方・服薬計画）*/}
@@ -699,17 +701,19 @@ function SetAudit({ view, phase, handlers }: SetAuditProps) {
           <button
             type="button"
             onClick={onAuditOk}
+            disabled={isPending}
             style={{
               flex: 1,
-              cursor: 'pointer',
+              cursor: auditButtonCursor,
               textAlign: 'center',
               fontSize: '12.5px',
               fontWeight: 700,
               color: '#fff',
-              background: '#27ae60',
+              background: isPending ? '#a8b3bf' : '#27ae60',
               border: '1px solid #1f9150',
               borderRadius: '5px',
               padding: '8px 0',
+              opacity: isPending ? 0.72 : 1,
             }}
           >
             監査OK
@@ -717,17 +721,21 @@ function SetAudit({ view, phase, handlers }: SetAuditProps) {
           <button
             type="button"
             onClick={onAuditNg}
+            disabled={ngDisabled}
+            aria-disabled={ngDisabled}
+            title={ngValue ? undefined : 'NG分類を選択してから差戻してください'}
             style={{
               flex: 1,
-              cursor: 'pointer',
+              cursor: ngDisabled ? 'not-allowed' : 'pointer',
               textAlign: 'center',
               fontSize: '12.5px',
               fontWeight: 700,
               color: '#fff',
-              background: '#d9534f',
+              background: ngDisabled ? '#a8b3bf' : '#d9534f',
               border: '1px solid #b94440',
               borderRadius: '5px',
               padding: '8px 0',
+              opacity: ngDisabled ? 0.72 : 1,
             }}
           >
             NG・差戻し
@@ -735,7 +743,13 @@ function SetAudit({ view, phase, handlers }: SetAuditProps) {
           <button
             type="button"
             onClick={onOpenHold}
-            style={{ ...holdButtonStyle, padding: '8px 12px' }}
+            disabled={isPending}
+            style={{
+              ...holdButtonStyle,
+              padding: '8px 12px',
+              cursor: auditButtonCursor,
+              opacity: isPending ? 0.72 : 1,
+            }}
           >
             保留…
           </button>
@@ -751,6 +765,7 @@ function SetAudit({ view, phase, handlers }: SetAuditProps) {
             id="ng-classification"
             value={ngValue}
             onChange={(e) => onNg(e.target.value)}
+            disabled={isPending}
             style={{
               flex: 1,
               fontSize: '11px',
@@ -802,16 +817,18 @@ function SetAudit({ view, phase, handlers }: SetAuditProps) {
               <button
                 type="button"
                 onClick={() => onReturn(rj.di, rj.tk)}
+                disabled={isPending}
                 style={{
                   flex: 'none',
-                  cursor: 'pointer',
+                  cursor: auditButtonCursor,
                   fontSize: '10.5px',
                   fontWeight: 700,
                   color: '#fff',
-                  background: '#9558c4',
+                  background: isPending ? '#a8b3bf' : '#9558c4',
                   border: '1px solid #7c43ab',
                   borderRadius: '4px',
                   padding: '4px 8px',
+                  opacity: isPending ? 0.72 : 1,
                 }}
               >
                 セットへ戻す

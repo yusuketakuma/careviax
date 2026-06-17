@@ -31,6 +31,7 @@ import {
   type CellMeta,
   type RejectCode,
   type SetAuditChecklistKey,
+  type SubmitSetAuditInput,
 } from './dispensing-workbench.write-types';
 import { cellKey } from './dispensing-workbench.logic';
 import type { CellTarget, Group, Phase } from './dispensing-workbench.types';
@@ -125,6 +126,7 @@ export function useWorkbenchWriteHandlers(args: {
   const primary = useWorkbenchStore((s) => s.primary);
   const selectCell = useWorkbenchStore((s) => s.selectCell);
   const applyCell = useWorkbenchStore((s) => s.applyCell);
+  const restoreCell = useWorkbenchStore((s) => s.restoreCell);
   const toggleOut = useWorkbenchStore((s) => s.toggleOut);
   const togglePacket = useWorkbenchStore((s) => s.togglePacket);
   const toggleCheck = useWorkbenchStore((s) => s.toggleCheck);
@@ -281,24 +283,32 @@ export function useWorkbenchWriteHandlers(args: {
       },
       onAuditNg: () => {
         const target = snap().target;
+        if (!target) return;
+        const before = snap();
+        const key = cellKey(before.selId, target.di, target.tk);
+        const previousAuditState = before.auditCells[key];
+        const ngLabel = before.ng[key];
+        const ngCode = ngLabel ? NG_LABEL_TO_CODE[ngLabel] : undefined;
+        if (isRealDataEnabled() && !ngCode) return;
+
         applyCell(phase, 'ng', target);
         real(() => {
           const s = snap();
-          if (!s.writeContext.planId || !target) return;
+          if (!s.writeContext.planId) return;
           const meta = resolveCellMeta(s.writeContext.cellMeta, s.selId, target);
-          if (!meta) return;
-          const ngLabel = s.ng[cellKey(s.selId, target.di, target.tk)];
-          const ngCode = ngLabel ? NG_LABEL_TO_CODE[ngLabel] : undefined;
-          mutations.setAudit.mutate({
-            plan_id: s.writeContext.planId,
-            result: 'rejected',
-            reject_reason_code: ngCode,
-            cell_audits: meta.batchIds.map((batch_id, i) => ({
-              batch_id,
-              audit_state: 'ng',
-              ng_code: ngCode,
-              expected_version: meta.versions[i],
-            })),
+          if (!meta || !ngCode) {
+            restoreCell(phase, before.selId, target, previousAuditState);
+            return;
+          }
+          const input = buildRejectedSetAuditInput(s.writeContext.planId, meta, ngLabel);
+          if (!input) {
+            restoreCell(phase, before.selId, target, previousAuditState);
+            return;
+          }
+          mutations.setAudit.mutate(input, {
+            onError: () => {
+              restoreCell(phase, before.selId, target, previousAuditState);
+            },
           });
         });
       },
@@ -374,6 +384,7 @@ export function useWorkbenchWriteHandlers(args: {
     primary,
     selectCell,
     applyCell,
+    restoreCell,
     toggleOut,
     togglePacket,
     toggleCheck,
@@ -468,4 +479,25 @@ export function collectSetAuditChecklistFromChecks(
     values[item.key] = checks[`${prefix}:${index}`] === true;
   });
   return values;
+}
+
+export function buildRejectedSetAuditInput(
+  planId: string,
+  meta: CellMeta,
+  ngLabel: string | undefined,
+): SubmitSetAuditInput | null {
+  const ngCode = ngLabel ? NG_LABEL_TO_CODE[ngLabel] : undefined;
+  if (!ngCode) return null;
+  return {
+    plan_id: planId,
+    result: 'rejected',
+    reject_reason: ngLabel,
+    reject_reason_code: ngCode,
+    cell_audits: meta.batchIds.map((batch_id, i) => ({
+      batch_id,
+      audit_state: 'ng',
+      ng_code: ngCode,
+      expected_version: meta.versions[i],
+    })),
+  };
 }

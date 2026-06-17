@@ -113,6 +113,12 @@ export interface WorkbenchState {
   dropTo: (gid: string) => void;
   selectCell: (di: number, tk: string) => void;
   applyCell: (phase: Phase, val: string, target: CellTarget | null) => void;
+  restoreCell: (
+    phase: Phase,
+    patientId: string,
+    target: CellTarget,
+    value: string | undefined,
+  ) => void;
   toggleOut: (name: string) => void;
   toggleCheck: (target: CellTarget | null, i: number) => void;
   setNg: (target: CellTarget | null, value: string) => void;
@@ -245,6 +251,17 @@ export const useWorkbenchStore = create<WorkbenchState>()(
         const k = cellKey(get().selId, target.di, target.tk);
         if (phase === 'setp') set((s) => ({ setCells: { ...s.setCells, [k]: val }, target: null }));
         else set((s) => ({ auditCells: { ...s.auditCells, [k]: val }, target: null }));
+      },
+
+      restoreCell: (phase, patientId, target, value) => {
+        const k = cellKey(patientId, target.di, target.tk);
+        const stateKey = phase === 'setp' ? 'setCells' : 'auditCells';
+        set((s) => {
+          const next = { ...s[stateKey] };
+          if (value) next[k] = value;
+          else delete next[k];
+          return { [stateKey]: next };
+        });
       },
 
       toggleOut: (name) => {

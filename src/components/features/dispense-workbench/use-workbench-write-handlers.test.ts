@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import { SET_AUDIT_CHECK_ITEMS } from './dispensing-workbench.write-types';
-import { collectSetAuditChecklistFromChecks } from './use-workbench-write-handlers';
+import {
+  buildRejectedSetAuditInput,
+  collectSetAuditChecklistFromChecks,
+} from './use-workbench-write-handlers';
 
 describe('collectSetAuditChecklistFromChecks', () => {
   it('maps the visible set-audit checklist order to the API checklist keys', () => {
@@ -37,6 +40,41 @@ describe('collectSetAuditChecklistFromChecks', () => {
       no_discontinued: false,
       residual_usage_ok: false,
       cold_storage_separated: false,
+    });
+  });
+});
+
+describe('buildRejectedSetAuditInput', () => {
+  it('does not build a rejected audit payload until an NG classification is selected', () => {
+    expect(
+      buildRejectedSetAuditInput(
+        'plan_1',
+        { batchIds: ['batch_1'], versions: [3], dayNumber: 1, slot: 'morning' },
+        undefined,
+      ),
+    ).toBeNull();
+  });
+
+  it('includes both human-readable and structured NG reasons in rejected audit payloads', () => {
+    expect(
+      buildRejectedSetAuditInput(
+        'plan_1',
+        { batchIds: ['batch_1'], versions: [3], dayNumber: 1, slot: 'morning' },
+        '数量不足',
+      ),
+    ).toEqual({
+      plan_id: 'plan_1',
+      result: 'rejected',
+      reject_reason: '数量不足',
+      reject_reason_code: 'quantity_short',
+      cell_audits: [
+        {
+          batch_id: 'batch_1',
+          audit_state: 'ng',
+          ng_code: 'quantity_short',
+          expected_version: 3,
+        },
+      ],
     });
   });
 });
