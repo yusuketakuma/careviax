@@ -102,7 +102,11 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
   // 子コンポーネントへ props で渡す。既定（モック）ではハンドラ内で store アクションのみを呼び、
   // API は一切叩かない（現行 UI 不変）。実データ時のみ store アクション（楽観更新）+ mutation。
   const mutations = useWorkbenchMutations({ patientId: selId, planId });
-  const writeHandlers = useWorkbenchWriteHandlers({ phase, mutations });
+  const writeHandlers = useWorkbenchWriteHandlers({
+    phase,
+    mutations,
+    onAdvance: (nextPhase) => router.push(PHASE_ROUTE[nextPhase]),
+  });
 
   // ---- 実データ結線（計画 §14 / 段階1b 読取のみ）----
   // 既定（モック）では isRealDataEnabled()=false でこの effect は no-op。

@@ -14,6 +14,7 @@
  */
 
 import type { HoldReason, RejectCode, HoldScope } from '@prisma/client';
+export type { RejectCode } from '@prisma/client';
 
 import type { CalendarMatrix } from '@/app/api/medication-sets/workspace/set-derivations';
 import type { Phase, TimingKey } from './dispensing-workbench.types';

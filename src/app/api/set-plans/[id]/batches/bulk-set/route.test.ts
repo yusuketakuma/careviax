@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { authMock, prismaMock, withOrgContextMock, txMock, notifyWorkflowMutationMock } =
-  vi.hoisted(() => ({
+const { authMock, prismaMock, withOrgContextMock, txMock, notifyWorkflowMutationMock } = vi.hoisted(
+  () => ({
     authMock: vi.fn(),
     prismaMock: {
       membership: { findFirst: vi.fn() },
@@ -18,7 +18,8 @@ const { authMock, prismaMock, withOrgContextMock, txMock, notifyWorkflowMutation
       auditLog: { create: vi.fn() },
     },
     notifyWorkflowMutationMock: vi.fn(),
-  }));
+  }),
+);
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
@@ -79,7 +80,10 @@ describe('set-plans/[id]/batches/bulk-set POST', () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     prismaMock.membership.findFirst.mockResolvedValue({ role: 'pharmacist' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(txMock));
-    txMock.setPlan.findFirst.mockResolvedValue({ id: 'plan_1' });
+    txMock.setPlan.findFirst.mockResolvedValue({
+      id: 'plan_1',
+      cycle: { overall_status: 'setting' },
+    });
     txMock.setBatch.updateMany.mockResolvedValue({ count: 1 });
     txMock.setBatchChangeLog.create.mockResolvedValue({});
     txMock.auditLog.create.mockResolvedValue({});
@@ -109,6 +113,31 @@ describe('set-plans/[id]/batches/bulk-set POST', () => {
     expect(response.status).toBe(404);
     expect(txMock.setBatch.updateMany).not.toHaveBeenCalled();
   });
+
+  it.each(['set_audited', 'visit_ready', 'visit_completed'])(
+    'rejects direct bulk cell changes after the set workflow leaves setting (%s)',
+    async (status) => {
+      txMock.setPlan.findFirst.mockResolvedValue({
+        id: 'plan_1',
+        cycle: { overall_status: status },
+      });
+
+      const response = await POST(createRequest({ cells: [{ batch_id: 'batch_1' }] }), params);
+
+      expect(response.status).toBe(409);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'WORKFLOW_CONFLICT',
+        details: {
+          current_status: status,
+          required_status: 'setting',
+        },
+      });
+      expect(txMock.setBatch.findMany).not.toHaveBeenCalled();
+      expect(txMock.setBatch.updateMany).not.toHaveBeenCalled();
+      expect(txMock.auditLog.create).not.toHaveBeenCalled();
+      expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    },
+  );
 
   it('returns 404 when some cells are missing', async () => {
     txMock.setBatch.findMany.mockResolvedValueOnce([buildBatch('batch_1')]);

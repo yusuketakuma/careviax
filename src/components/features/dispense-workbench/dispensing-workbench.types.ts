@@ -143,6 +143,8 @@ export interface Drug {
   tag: string;
   funsai: boolean;
   note: string;
+  /** API-backed prescribed total quantity. Used as the initial dispense result quantity. */
+  prescribedQuantity?: number | null;
   chg?: ChangeKind;
   prevText?: string;
 }

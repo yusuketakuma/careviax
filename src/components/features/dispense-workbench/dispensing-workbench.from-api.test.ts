@@ -177,6 +177,7 @@ describe('workbenchFromApi — 朝昼夕眠前 slots の逆算割付', () => {
     expect(d.h).toBe('1');
     expect(d.y).toBe('1');
     expect(d.n).toBe('');
+    expect(d.prescribedQuantity).toBe(84);
   });
 
   it('朝夕食後（2時点）の g 製剤は単位付きで朝夕に割付', () => {

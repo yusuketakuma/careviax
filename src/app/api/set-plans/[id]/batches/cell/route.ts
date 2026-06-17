@@ -55,6 +55,8 @@ const batchInclude = {
   },
 } as const;
 
+const MUTABLE_SET_BATCH_CYCLE_STATUS = 'setting';
+
 /**
  * PATCH /api/set-plans/[id]/batches/cell
  * お薬カレンダーのセル単位 set / hold / clear。
@@ -88,10 +90,22 @@ export const PATCH = withAuthContext<{ id: string }>(
           org_id: ctx.orgId,
           ...(planAssignmentWhere ? { AND: [planAssignmentWhere] } : {}),
         },
-        select: { id: true },
+        select: { id: true, cycle: { select: { overall_status: true } } },
       });
       if (!plan) {
         return { kind: 'error' as const, response: notFound('セットプランが見つかりません') };
+      }
+      if (plan.cycle.overall_status !== MUTABLE_SET_BATCH_CYCLE_STATUS) {
+        return {
+          kind: 'error' as const,
+          response: conflict(
+            'セット監査後または訪問準備後のセットセルは直接変更できません。差戻し後に再作業してください',
+            {
+              current_status: plan.cycle.overall_status,
+              required_status: MUTABLE_SET_BATCH_CYCLE_STATUS,
+            },
+          ),
+        };
       }
 
       const batch = await tx.setBatch.findFirst({

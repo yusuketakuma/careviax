@@ -37,6 +37,8 @@ const batchInclude = {
   },
 } as const;
 
+const MUTABLE_SET_BATCH_CYCLE_STATUS = 'setting';
+
 class BulkSetRollback extends Error {
   constructor(readonly response: NextResponse) {
     super('bulk set transaction rolled back');
@@ -81,10 +83,22 @@ export const POST = withAuthContext<{ id: string }>(
           org_id: ctx.orgId,
           ...(planAssignmentWhere ? { AND: [planAssignmentWhere] } : {}),
         },
-        select: { id: true },
+        select: { id: true, cycle: { select: { overall_status: true } } },
       });
       if (!plan) {
         return { kind: 'error' as const, response: notFound('セットプランが見つかりません') };
+      }
+      if (plan.cycle.overall_status !== MUTABLE_SET_BATCH_CYCLE_STATUS) {
+        return {
+          kind: 'error' as const,
+          response: conflict(
+            'セット監査後または訪問準備後のセットセルは直接変更できません。差戻し後に再作業してください',
+            {
+              current_status: plan.cycle.overall_status,
+              required_status: MUTABLE_SET_BATCH_CYCLE_STATUS,
+            },
+          ),
+        };
       }
 
       const expectedById = new Map(

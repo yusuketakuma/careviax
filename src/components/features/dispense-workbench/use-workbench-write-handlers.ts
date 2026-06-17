@@ -28,12 +28,21 @@ import {
   NG_LABEL_TO_CODE,
   TIMING_TO_SLOT,
   type CellMeta,
+  type RejectCode,
 } from './dispensing-workbench.write-types';
 import { cellKey } from './dispensing-workbench.logic';
 import type { CellTarget, Group, Phase } from './dispensing-workbench.types';
 
 /** カレンダーセルの保留スコープ（API HoldScope）。1 セル＝cell 単位。 */
 const CELL_HOLD_SCOPE: HoldScope = 'cell';
+const SET_AUDIT_CHECKLIST_KEYS = [
+  'date_match',
+  'timing_match',
+  'quantity_match',
+  'no_discontinued',
+  'residual_usage_ok',
+  'cold_storage_separated',
+] as const;
 
 export interface WorkbenchWriteHandlers {
   // ── グリッド（dispense / audit）──
@@ -108,8 +117,9 @@ function membershipOf(groups: Group[]): Record<string, string> {
 export function useWorkbenchWriteHandlers(args: {
   phase: Phase;
   mutations: WorkbenchMutations;
+  onAdvance?: (phase: Phase) => void;
 }): WorkbenchWriteHandlers {
-  const { phase, mutations } = args;
+  const { phase, mutations, onAdvance } = args;
 
   // store アクション（楽観更新 / モック挙動の正本）。
   const toggleRow = useWorkbenchStore((s) => s.toggleRow);
@@ -214,21 +224,35 @@ export function useWorkbenchWriteHandlers(args: {
         const next = primary(phase);
         if (next) {
           // ゲート通過時のみ確定書込（調剤完了 / セット監査承認）を発火。
-          real(() => {
+          if (isRealDataEnabled()) {
             const s = snap();
             if (phase === 'dispense' && s.writeContext.taskId) {
-              mutations.completeDispense.mutate({
-                task_id: s.writeContext.taskId,
-                lines: collectDispenseLines(s),
-                expected_version: s.writeContext.cycleVersion ?? undefined,
-              });
+              mutations.completeDispense.mutate(
+                {
+                  task_id: s.writeContext.taskId,
+                  lines: collectDispenseLines(s),
+                  expected_version: s.writeContext.cycleVersion ?? undefined,
+                },
+                {
+                  onSuccess: () => onAdvance?.(next),
+                },
+              );
             } else if (phase === 'seta' && s.writeContext.planId) {
-              mutations.setAudit.mutate({
-                plan_id: s.writeContext.planId,
-                result: 'approved',
-              });
+              const cellAudits = collectSetAuditCellAudits(s, 'ok');
+              mutations.setAudit.mutate(
+                {
+                  plan_id: s.writeContext.planId,
+                  result: 'approved',
+                  checklist: collectSetAuditChecklist(s),
+                  ...(cellAudits.length > 0 ? { cell_audits: cellAudits } : {}),
+                },
+                {
+                  onSuccess: () => onAdvance?.(next),
+                },
+              );
             }
-          });
+            return null;
+          }
         }
         return next;
       },
@@ -259,21 +283,8 @@ export function useWorkbenchWriteHandlers(args: {
       onAuditOk: () => {
         const target = snap().target;
         applyCell(phase, 'ok', target);
-        real(() => {
-          const s = snap();
-          if (!s.writeContext.planId) return;
-          const meta = resolveCellMeta(s.writeContext.cellMeta, s.selId, target);
-          if (!meta) return;
-          mutations.setAudit.mutate({
-            plan_id: s.writeContext.planId,
-            result: 'partial_approved',
-            cell_audits: meta.batchIds.map((batch_id, i) => ({
-              batch_id,
-              audit_state: 'ok',
-              expected_version: meta.versions[i],
-            })),
-          });
-        });
+        // OK cells are submitted with final approval. Posting partial_approved per cell would
+        // transition the cycle and publish carry items before the full checklist is complete.
       },
       onAuditNg: () => {
         const target = snap().target;
@@ -377,14 +388,15 @@ export function useWorkbenchWriteHandlers(args: {
     returnToSet,
     openHold,
     saveHold,
+    onAdvance,
   ]);
 }
 
 /**
- * 調剤完了の line 入力を store から組む。実数量は明細から取得できないため計画値を踏襲し
- * actual_quantity=0（差異登録 UI は将来分）。carry_type は既定 'carry'（持参）。
+ * 調剤完了の line 入力を store から組む。実データ由来の prescribedQuantity を初期実数量
+ * （処方量どおり）として使う。数量未取得行はサーバ差異判定対象外なので安全な正数に倒す。
  */
-function collectDispenseLines(s: ReturnType<typeof useWorkbenchStore.getState>): Array<{
+export function collectDispenseLines(s: ReturnType<typeof useWorkbenchStore.getState>): Array<{
   line_id: string;
   actual_drug_name: string;
   actual_quantity: number;
@@ -402,10 +414,57 @@ function collectDispenseLines(s: ReturnType<typeof useWorkbenchStore.getState>):
       lines.push({
         line_id: d.did,
         actual_drug_name: d.name,
-        actual_quantity: 0,
+        actual_quantity:
+          d.prescribedQuantity && d.prescribedQuantity > 0 ? d.prescribedQuantity : 1,
         carry_type: 'carry',
       });
     }
   }
   return lines;
+}
+
+function collectSetAuditCellAudits(
+  s: ReturnType<typeof useWorkbenchStore.getState>,
+  state: 'ok' | 'ng',
+): Array<{
+  batch_id: string;
+  audit_state: 'ok' | 'ng';
+  ng_code?: RejectCode;
+  expected_version: number;
+}> {
+  const out: Array<{
+    batch_id: string;
+    audit_state: 'ok' | 'ng';
+    ng_code?: RejectCode;
+    expected_version: number;
+  }> = [];
+  for (const [key, auditState] of Object.entries(s.auditCells)) {
+    if (auditState !== state) continue;
+    const meta = s.writeContext.cellMeta[key];
+    if (!meta) continue;
+    const ngLabel = s.ng[key];
+    const ngCode = ngLabel ? NG_LABEL_TO_CODE[ngLabel] : undefined;
+    meta.batchIds.forEach((batch_id, i) => {
+      out.push({
+        batch_id,
+        audit_state: state,
+        ...(ngCode ? { ng_code: ngCode } : {}),
+        expected_version: meta.versions[i],
+      });
+    });
+  }
+  return out;
+}
+
+function collectSetAuditChecklist(
+  s: ReturnType<typeof useWorkbenchStore.getState>,
+): Record<string, boolean> {
+  const values = Object.fromEntries(SET_AUDIT_CHECKLIST_KEYS.map((key) => [key, false]));
+  const firstCheckedCell = Object.keys(s.checks).find((key) => s.checks[key]);
+  if (!firstCheckedCell) return values;
+  const prefix = firstCheckedCell.replace(/:\d+$/, '');
+  SET_AUDIT_CHECKLIST_KEYS.forEach((key, index) => {
+    values[key] = s.checks[`${prefix}:${index}`] === true;
+  });
+  return values;
 }

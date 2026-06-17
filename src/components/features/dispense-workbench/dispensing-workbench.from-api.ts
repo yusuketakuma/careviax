@@ -221,6 +221,7 @@ export function workbenchFromApi(data: DispenseWorkbenchData): {
       tag: tagOf(row),
       funsai: funsaiOf(row),
       note: noteOf(row),
+      prescribedQuantity: row.prescribed_quantity,
     };
     const chg = changeKindOf(cmp?.change_type ?? null);
     if (chg) {
