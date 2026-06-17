@@ -98,18 +98,18 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
           data: [
             {
               patient_id: 'patient_1',
-              cycle_id: 'cycle_1',
+              cycle_id: 'cycle_latest_without_plan',
               name: '佐藤 花子',
               name_kana: 'サトウ ハナコ',
-              overall_status: 'setting',
-              badge: 'audited',
+              overall_status: 'dispensing',
+              badge: 'in_progress',
               start_date: '2026-06-17',
               registered_date: '2026-06-01',
             },
           ],
         });
       }
-      if (url === '/api/set-plans?cycle_id=cycle_1') {
+      if (url === '/api/set-plans?patient_id=patient_1') {
         return jsonResponse({ data: [{ id: 'plan_1', cycle_id: 'cycle_1' }] });
       }
       if (url === '/api/set-plans/plan_1/calendar') {
@@ -148,11 +148,76 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      '/api/set-plans?cycle_id=cycle_1',
+      '/api/set-plans?patient_id=patient_1',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
+      '/api/set-plans/plan_1/calendar',
+      expect.any(Object),
+    );
+  });
+
+  it('falls forward to the first patient with a SetPlan when the selected patient has no calendar', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/dispense-workbench/patients') {
+        return jsonResponse({
+          data: [
+            {
+              patient_id: 'patient_without_plan',
+              cycle_id: 'cycle_without_plan',
+              name: '計画なし 患者',
+              name_kana: 'ケイカクナシ カンジャ',
+              overall_status: 'dispensing',
+              badge: 'in_progress',
+              start_date: '2026-06-17',
+              registered_date: '2026-06-01',
+            },
+            {
+              patient_id: 'patient_with_plan',
+              cycle_id: 'cycle_latest_without_plan',
+              name: '計画あり 患者',
+              name_kana: 'ケイカクアリ カンジャ',
+              overall_status: 'dispensing',
+              badge: 'in_progress',
+              start_date: '2026-06-17',
+              registered_date: '2026-06-01',
+            },
+          ],
+        });
+      }
+      if (url === '/api/set-plans?patient_id=patient_without_plan') {
+        return jsonResponse({ data: [] });
+      }
+      if (url === '/api/set-plans?patient_id=patient_with_plan') {
+        return jsonResponse({ data: [{ id: 'plan_1', cycle_id: 'cycle_1' }] });
+      }
+      if (url === '/api/set-plans/plan_1/calendar') {
+        return jsonResponse(calendarBody());
+      }
+      return new Response('not found', { status: 404 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { loadSetCalendarForPatientAsync } = await import('./dispensing-workbench.adapter');
+    const result = await loadSetCalendarForPatientAsync('patient_without_plan');
+
+    expect(result?.selId).toBe('patient_with_plan');
+    expect(result?.writeContext.planId).toBe('plan_1');
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/set-plans?patient_id=patient_without_plan',
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      '/api/set-plans?patient_id=patient_with_plan',
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
       '/api/set-plans/plan_1/calendar',
       expect.any(Object),
     );

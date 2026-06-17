@@ -153,6 +153,17 @@ export const NG_LABEL_TO_CODE: Record<string, RejectCode> = {
   判断不能: 'undeterminable',
 };
 
+export const SET_AUDIT_CHECK_ITEMS = [
+  { key: 'date_match', label: '日付が正しい' },
+  { key: 'timing_match', label: '用法が正しい' },
+  { key: 'quantity_match', label: '数量が正しい' },
+  { key: 'no_discontinued', label: '中止薬が混入していない' },
+  { key: 'residual_usage_ok', label: '残薬使用の指示と一致' },
+  { key: 'cold_storage_separated', label: '冷所薬を分離している' },
+] as const;
+
+export type SetAuditChecklistKey = (typeof SET_AUDIT_CHECK_ITEMS)[number]['key'];
+
 // ============================================================================
 // API I/O DTO（W2 レスポンスの最小サブセット）
 // ============================================================================

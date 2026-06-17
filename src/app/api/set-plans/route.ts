@@ -58,11 +58,13 @@ export const GET = withAuthContext(
   async (req: NextRequest, ctx: AuthContext) => {
     const { searchParams } = new URL(req.url);
     const cycleId = searchParams.get('cycle_id') ?? undefined;
+    const patientId = searchParams.get('patient_id') ?? undefined;
     const assignmentWhere = buildSetPlanAssignmentWhere(ctx);
 
     const where = {
       org_id: ctx.orgId,
       ...(cycleId ? { cycle_id: cycleId } : {}),
+      ...(patientId ? { cycle: { patient_id: patientId } } : {}),
       ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
     };
 

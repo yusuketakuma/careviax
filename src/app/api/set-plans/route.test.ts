@@ -142,6 +142,24 @@ describe('/api/set-plans', () => {
     );
   });
 
+  it('lists set plans filtered by patient for direct set calendar entry', async () => {
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const response = (await GET(
+      createRequest('http://localhost/api/set-plans?patient_id=patient_1'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(setPlanFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          cycle: { patient_id: 'patient_1' },
+        },
+      }),
+    );
+  });
+
   it('lists set plans org-wide for trainee users without assignment scoping', async () => {
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist_trainee' });
     setPlanFindManyMock.mockResolvedValue([{ id: 'plan_1' }]);

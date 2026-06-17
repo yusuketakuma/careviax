@@ -154,7 +154,8 @@ export const useWorkbenchStore = create<WorkbenchState>()(
       hydrated: false,
       writeContext: emptyWriteContext(),
 
-      setPatient: (id) => set({ selId: id, target: null, holdModal: null }),
+      setPatient: (id) =>
+        set({ selId: id, target: null, holdModal: null, writeContext: emptyWriteContext() }),
 
       setWriteContext: (patch) => set((s) => ({ writeContext: { ...s.writeContext, ...patch } })),
 
@@ -178,6 +179,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
             hydrated: true,
             target: null,
             holdModal: null,
+            ...(nextSelId !== s.selId ? { writeContext: emptyWriteContext() } : {}),
             ...(model ? { model: { ...s.model, ...model } } : {}),
           };
         }),

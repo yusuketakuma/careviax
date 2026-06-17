@@ -26,24 +26,17 @@ import type { WorkbenchMutations } from './use-workbench-mutations';
 import {
   HOLD_REASON_TO_CODE,
   NG_LABEL_TO_CODE,
+  SET_AUDIT_CHECK_ITEMS,
   TIMING_TO_SLOT,
   type CellMeta,
   type RejectCode,
+  type SetAuditChecklistKey,
 } from './dispensing-workbench.write-types';
 import { cellKey } from './dispensing-workbench.logic';
 import type { CellTarget, Group, Phase } from './dispensing-workbench.types';
 
 /** カレンダーセルの保留スコープ（API HoldScope）。1 セル＝cell 単位。 */
 const CELL_HOLD_SCOPE: HoldScope = 'cell';
-const SET_AUDIT_CHECKLIST_KEYS = [
-  'date_match',
-  'timing_match',
-  'quantity_match',
-  'no_discontinued',
-  'residual_usage_ok',
-  'cold_storage_separated',
-] as const;
-
 export interface WorkbenchWriteHandlers {
   // ── グリッド（dispense / audit）──
   /** 行チェック（調剤済 / 監査OK のトグル）。 */
@@ -458,13 +451,21 @@ function collectSetAuditCellAudits(
 
 function collectSetAuditChecklist(
   s: ReturnType<typeof useWorkbenchStore.getState>,
-): Record<string, boolean> {
-  const values = Object.fromEntries(SET_AUDIT_CHECKLIST_KEYS.map((key) => [key, false]));
-  const firstCheckedCell = Object.keys(s.checks).find((key) => s.checks[key]);
+): Record<SetAuditChecklistKey, boolean> {
+  return collectSetAuditChecklistFromChecks(s.checks);
+}
+
+export function collectSetAuditChecklistFromChecks(
+  checks: Record<string, boolean>,
+): Record<SetAuditChecklistKey, boolean> {
+  const values = Object.fromEntries(
+    SET_AUDIT_CHECK_ITEMS.map((item) => [item.key, false]),
+  ) as Record<SetAuditChecklistKey, boolean>;
+  const firstCheckedCell = Object.keys(checks).find((key) => checks[key]);
   if (!firstCheckedCell) return values;
   const prefix = firstCheckedCell.replace(/:\d+$/, '');
-  SET_AUDIT_CHECKLIST_KEYS.forEach((key, index) => {
-    values[key] = s.checks[`${prefix}:${index}`] === true;
+  SET_AUDIT_CHECK_ITEMS.forEach((item, index) => {
+    values[item.key] = checks[`${prefix}:${index}`] === true;
   });
   return values;
 }

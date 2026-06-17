@@ -221,8 +221,10 @@ export async function loadCalendarWriteContextAsync(
  * Direct /set or /set-audit entry point.
  *
  * The calendar write/read context cannot be derived from local persisted state.
- * Resolve it from the real patient list row (patient_id -> cycle_id), then the
- * latest SetPlan for that cycle, then the plan calendar.
+ * Resolve it from the real patient list row, preferring the currently selected
+ * patient but falling forward to the first patient that actually has a SetPlan.
+ * The dispensing queue's latest cycle is often not the set-plan cycle, so the
+ * direct set routes resolve by patient_id instead of cycle_id.
  */
 export async function loadSetCalendarForPatientAsync(patientId: string): Promise<{
   patients: SeedPatient[];
@@ -238,23 +240,30 @@ export async function loadSetCalendarForPatientAsync(patientId: string): Promise
   const listRows = listBody?.data;
   if (!listRows || listRows.length === 0) return null;
 
-  const selectedRow = listRows.find((row) => row.patient_id === patientId) ?? listRows[0];
-  if (!selectedRow?.cycle_id) return null;
+  const selectedRow = listRows.find((row) => row.patient_id === patientId);
+  const candidates = [
+    ...(selectedRow ? [selectedRow] : []),
+    ...listRows.filter((row) => row.patient_id !== selectedRow?.patient_id),
+  ];
 
-  const plansBody = await fetchJson<SetPlanListResponse>(
-    `/api/set-plans?cycle_id=${encodeURIComponent(selectedRow.cycle_id)}`,
-  );
-  const planId = plansBody?.data?.[0]?.id;
-  if (!planId) return null;
+  for (const row of candidates) {
+    const plansBody = await fetchJson<SetPlanListResponse>(
+      `/api/set-plans?patient_id=${encodeURIComponent(row.patient_id)}`,
+    );
+    const planId = plansBody?.data?.[0]?.id;
+    if (!planId) continue;
 
-  const calendar = await loadCalendarWriteContextAsync(selectedRow.patient_id, planId);
-  if (!calendar) return null;
+    const calendar = await loadCalendarWriteContextAsync(row.patient_id, planId);
+    if (!calendar) continue;
 
-  return {
-    patients: patientsFromApi(listRows),
-    selId: selectedRow.patient_id,
-    ...calendar,
-  };
+    return {
+      patients: patientsFromApi(listRows),
+      selId: row.patient_id,
+      ...calendar,
+    };
+  }
+
+  return null;
 }
 
 // ── 書込（実データ）: USE_MOCK ゲートの裏 ──

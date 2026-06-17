@@ -34,6 +34,7 @@ import {
   totals as calcTotals,
 } from './dispensing-workbench.logic';
 import { loadPatients } from './dispensing-workbench.adapter';
+import { SET_AUDIT_CHECK_ITEMS } from './dispensing-workbench.write-types';
 import type {
   CalcResult,
   CellTarget,
@@ -94,7 +95,16 @@ const HOLD_REASON_OPTS = [
 
 const SEED_PATIENTS: SeedPatient[] = loadPatients();
 
-const AV_PAL = ['#3a6ea5', '#5a8f4a', '#b06a2a', '#7b4ba0', '#2a7d8f', '#a04a6a', '#4a6aa0', '#8a6a2a'];
+const AV_PAL = [
+  '#3a6ea5',
+  '#5a8f4a',
+  '#b06a2a',
+  '#7b4ba0',
+  '#2a7d8f',
+  '#a04a6a',
+  '#4a6aa0',
+  '#8a6a2a',
+];
 const CHIP_PAL: Pick<ChipView, 'bg' | 'border' | 'color'>[] = [
   { bg: '#e8f0fb', border: '#b9d0ee', color: '#1f4e79' },
   { bg: '#eaf6ec', border: '#bfe0c4', color: '#2c7a3d' },
@@ -256,12 +266,10 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     };
   });
 
-  const sortButtons = (
-    [
-      { key: 'start' as const, label: '服用開始' },
-      { key: 'regist' as const, label: '登録日' },
-    ]
-  ).map((sb) => ({
+  const sortButtons = [
+    { key: 'start' as const, label: '服用開始' },
+    { key: 'regist' as const, label: '登録日' },
+  ].map((sb) => ({
     key: sb.key,
     label: sb.label,
     active: sortMode === sb.key,
@@ -534,7 +542,11 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
 
   // ---- 比較 ----
   const cmp = comparison(model, id, p.discontinued);
-  const changeColors: Record<string, string> = { 新規: '#2c7a3d', 変更: '#9a6a18', 中止: '#c0392b' };
+  const changeColors: Record<string, string> = {
+    新規: '#2c7a3d',
+    変更: '#9a6a18',
+    中止: '#c0392b',
+  };
   const changes: ChangeChip[] = ([] as ChangeChip[])
     .concat(cmp.neu.map((d) => ({ type: '新規', text: d.name, color: changeColors['新規'] })))
     .concat(
@@ -553,7 +565,12 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     cont: cmp.cont.length,
   };
   const compareSections: CompareSection[] = [
-    { key: 'cont', title: '継続', color: '#5a8f4a', items: cmp.cont.map((d) => ({ name: d.name, sub: d.yoho })) },
+    {
+      key: 'cont',
+      title: '継続',
+      color: '#5a8f4a',
+      items: cmp.cont.map((d) => ({ name: d.name, sub: d.yoho })),
+    },
     {
       key: 'neu',
       title: '新規',
@@ -564,7 +581,10 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
       key: 'chg',
       title: '変更',
       color: '#9a6a18',
-      items: cmp.chg.map((d) => ({ name: d.name, sub: (d.prevText || '前回') + ' → ' + (d.note || '今回') })),
+      items: cmp.chg.map((d) => ({
+        name: d.name,
+        sub: (d.prevText || '前回') + ' → ' + (d.note || '今回'),
+      })),
     },
     {
       key: 'disc',
@@ -578,7 +598,12 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
   const outsideMeds = cal.outside.map((o) => {
     const k = id + ':' + o.name;
     const on = !!outChk[k];
-    const kc: Record<string, string> = { 頓服: '#7b4ba0', 外用: '#b75a28', 冷所: '#2a7d8f', 注射: '#a04a6a' };
+    const kc: Record<string, string> = {
+      頓服: '#7b4ba0',
+      外用: '#b75a28',
+      冷所: '#2a7d8f',
+      注射: '#a04a6a',
+    };
     return { name: o.name, kind: o.kind, kindColor: kc[o.kind] || '#6b7280', checked: on };
   });
   const outsideEmpty = outsideMeds.length === 0;
@@ -656,10 +681,9 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     });
 
   // ---- セット監査 確認項目 ----
-  const ciLabels = ['日付が正しい', '用法が正しい', '薬剤が正しい', '数量が正しい', '中止薬が混入していない', '残薬使用の指示と一致'];
-  const checkItems = ciLabels.map((l, i) => {
+  const checkItems = SET_AUDIT_CHECK_ITEMS.map((item, i) => {
     const on = !!tg && !!checks[cellKey(id, tg.di, tg.tk) + ':' + i];
-    return { index: i, label: l, checked: on };
+    return { index: i, label: item.label, checked: on };
   });
   const ngValue = tg ? ng[cellKey(id, tg.di, tg.tk)] || '' : '';
 
@@ -692,7 +716,12 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
 
   if (ph === 'dispense') {
     const pct = prog.total ? Math.round((prog.done / prog.total) * 100) : 0;
-    progress = { label: '調剤ピッキング進捗', pct: pct + '%', color: '#2f80ed', fraction: prog.done + ' / ' + prog.total };
+    progress = {
+      label: '調剤ピッキング進捗',
+      pct: pct + '%',
+      color: '#2f80ed',
+      fraction: prog.done + ' / ' + prog.total,
+    };
     bulkLabel = '全て調剤済';
     primaryLabel = '調剤完了 → 監査へ ▶';
     primaryBg = '#2f6fd6';
@@ -700,7 +729,12 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     checkHead = '調剤';
   } else if (ph === 'audit') {
     const pct = prog.total ? Math.round((prog.audit / prog.total) * 100) : 0;
-    progress = { label: '調剤監査 進捗', pct: pct + '%', color: '#27ae60', fraction: prog.audit + ' / ' + prog.total };
+    progress = {
+      label: '調剤監査 進捗',
+      pct: pct + '%',
+      color: '#27ae60',
+      fraction: prog.audit + ' / ' + prog.total,
+    };
     bulkLabel = '全て監査OK';
     primaryLabel = '監査確定 → セットへ ▶';
     primaryBg = '#2c9a4e';
@@ -716,14 +750,24 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
       });
     const pct = totC ? Math.round((dnC / totC) * 100) : 0;
     if (isSet) {
-      progress = { label: 'セット進捗', pct: pct + '%', color: '#b07cd6', fraction: dnC + ' / ' + totC };
+      progress = {
+        label: 'セット進捗',
+        pct: pct + '%',
+        color: '#b07cd6',
+        fraction: dnC + ' / ' + totC,
+      };
       bulkLabel = '全セルをセット済';
       primaryLabel = 'セット完了 → 監査へ ▶';
       primaryBg = '#9558c4';
       primaryBorder = '#7c43ab';
       checkHead = 'セット';
     } else {
-      progress = { label: 'セット監査 進捗', pct: pct + '%', color: '#d6905a', fraction: dnC + ' / ' + totC };
+      progress = {
+        label: 'セット監査 進捗',
+        pct: pct + '%',
+        color: '#d6905a',
+        fraction: dnC + ' / ' + totC,
+      };
       bulkLabel = '全セルOK';
       primaryLabel = '監査承認（薬剤師）✓';
       primaryBg = '#c97b3e';
@@ -774,11 +818,23 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
 
   // ---- 保留モーダル ----
   const holdOpen = !!hm;
-  const holdReasons = HOLD_REASON_OPTS.map((r) => ({ label: r, selected: !!hm && hm.reason === r }));
+  const holdReasons = HOLD_REASON_OPTS.map((r) => ({
+    label: r,
+    selected: !!hm && hm.reason === r,
+  }));
   const holdReady = !!hm && !!hm.reason;
-  const holdCellLabel = hm ? (days[hm.di] ? days[hm.di].d : '') + ' ' + (cal.tlabel[hm.tk] || '') : '';
+  const holdCellLabel = hm
+    ? (days[hm.di] ? days[hm.di].d : '') + ' ' + (cal.tlabel[hm.tk] || '')
+    : '';
 
-  const phaseLabel = ph === 'dispense' ? '調剤' : ph === 'audit' ? '調剤監査' : ph === 'setp' ? 'セット' : 'セット監査';
+  const phaseLabel =
+    ph === 'dispense'
+      ? '調剤'
+      : ph === 'audit'
+        ? '調剤監査'
+        : ph === 'setp'
+          ? 'セット'
+          : 'セット監査';
 
   return {
     phase: ph,

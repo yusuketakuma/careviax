@@ -1,10 +1,83 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page, type Response } from '@playwright/test';
 import {
   attachLocalSession,
   clickAndWaitForStableRoute,
   createInstrumentedPage,
   openStableRoute,
 } from './helpers/local-auth';
+
+type WorkbenchPatientsPayload = {
+  data: Array<{ patient_id: string; name: string }>;
+};
+
+type SetPlansPayload = {
+  data: Array<{ id: string; cycle_id: string }>;
+};
+
+type SetCalendarPayload = {
+  data: {
+    plan_id: string;
+    rows: Array<{ line: { drug_name: string } }>;
+  };
+};
+
+async function openSetWorkbenchWithRealData(page: Page, path: string) {
+  await page.addInitScript(() => {
+    window.localStorage.removeItem('chouzai-workbench');
+  });
+  const setPlanResponses: Response[] = [];
+  page.on('response', (response) => {
+    const url = new URL(response.url());
+    if (
+      url.pathname === '/api/set-plans' &&
+      url.searchParams.has('patient_id') &&
+      response.request().method() === 'GET'
+    ) {
+      setPlanResponses.push(response);
+    }
+  });
+
+  const patientsPromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      url.pathname === '/api/dispense-workbench/patients' && response.request().method() === 'GET'
+    );
+  });
+  const calendarPromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      /^\/api\/set-plans\/[^/]+\/calendar$/.test(url.pathname) &&
+      response.request().method() === 'GET'
+    );
+  });
+
+  await openStableRoute(page, path);
+
+  const [patientsResponse, calendarResponse] = await Promise.all([
+    patientsPromise,
+    calendarPromise,
+  ]);
+
+  expect(patientsResponse.ok()).toBe(true);
+  expect(calendarResponse.ok()).toBe(true);
+
+  const patients = (await patientsResponse.json()) as WorkbenchPatientsPayload;
+  const planPayloads = await Promise.all(
+    setPlanResponses.map(async (response) => (await response.json()) as SetPlansPayload),
+  );
+  const resolvedPlans = planPayloads.flatMap((payload) => payload.data);
+  const calendar = (await calendarResponse.json()) as SetCalendarPayload;
+
+  expect(patients.data.length).toBeGreaterThan(0);
+  expect(resolvedPlans.length).toBeGreaterThan(0);
+  expect(resolvedPlans.some((plan) => plan.id === calendar.data.plan_id)).toBe(true);
+  expect(calendar.data.rows.length).toBeGreaterThan(0);
+
+  return {
+    patientName: patients.data[0].name,
+    drugName: calendar.data.rows[0].line.drug_name,
+  };
+}
 
 test.describe('prescription → QR scan → draft', () => {
   test.beforeEach(async ({ context }) => {
@@ -154,7 +227,9 @@ test.describe('dispense → audit flow', () => {
     await openStableRoute(page, '/dispense');
 
     // 新 DispensingWorkbench のメニューバーが安定アンカー（旧「調剤」見出しは撤去済み）。
-    await expect(page.locator('main').getByRole('navigation', { name: 'メインメニュー' })).toBeVisible();
+    await expect(
+      page.locator('main').getByRole('navigation', { name: 'メインメニュー' }),
+    ).toBeVisible();
 
     const content = await page.locator('main').textContent();
     expect(content?.trim().length).toBeGreaterThan(0);
@@ -192,7 +267,9 @@ test.describe('dispense → audit flow', () => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/audit');
 
-    await expect(page.locator('main').getByRole('navigation', { name: 'メインメニュー' })).toBeVisible();
+    await expect(
+      page.locator('main').getByRole('navigation', { name: 'メインメニュー' }),
+    ).toBeVisible();
 
     const content = await page.locator('main').textContent();
     expect(content?.trim().length).toBeGreaterThan(0);
@@ -235,6 +312,38 @@ test.describe('dispense → audit flow', () => {
     );
     await expect(main.getByRole('navigation', { name: 'メインメニュー' })).toBeVisible();
 
+    expect(errors).toEqual([]);
+  });
+});
+
+test.describe('set → set-audit real-data direct entry', () => {
+  test.beforeEach(async ({ context }) => {
+    await attachLocalSession(context);
+  });
+
+  test('set workbench resolves patient SetPlan calendar data on direct entry', async ({
+    context,
+  }) => {
+    const { page, errors } = await createInstrumentedPage(context);
+    const data = await openSetWorkbenchWithRealData(page, '/set');
+
+    const main = page.locator('main');
+    await expect(main.getByRole('navigation', { name: 'メインメニュー' })).toBeVisible();
+    await expect(main).toContainText(data.patientName);
+    await expect(main).toContainText(data.drugName);
+    expect(errors).toEqual([]);
+  });
+
+  test('set-audit workbench resolves patient SetPlan calendar data on direct entry', async ({
+    context,
+  }) => {
+    const { page, errors } = await createInstrumentedPage(context);
+    const data = await openSetWorkbenchWithRealData(page, '/set-audit');
+
+    const main = page.locator('main');
+    await expect(main.getByRole('navigation', { name: 'メインメニュー' })).toBeVisible();
+    await expect(main).toContainText(data.patientName);
+    await expect(main).toContainText(data.drugName);
     expect(errors).toEqual([]);
   });
 });
