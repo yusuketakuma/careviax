@@ -342,11 +342,16 @@ export function useWorkbenchWriteHandlers(args: {
                   onSuccess: () => onAdvance?.(next),
                 },
               );
-            } else if (phase === 'audit' && s.writeContext.taskId) {
+            } else if (
+              phase === 'audit' &&
+              s.writeContext.taskId &&
+              s.writeContext.cycleVersion !== null
+            ) {
               mutations.completeAudit.mutate(
                 {
                   task_id: s.writeContext.taskId,
                   result: 'approved',
+                  expected_version: s.writeContext.cycleVersion,
                 },
                 {
                   onSuccess: () => onAdvance?.(next),

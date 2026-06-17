@@ -66,6 +66,23 @@ const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
 
 function createRequest(body: unknown) {
+  const requestBody =
+    body &&
+    typeof body === 'object' &&
+    !Array.isArray(body) &&
+    'task_id' in body &&
+    'result' in body &&
+    !('expected_version' in body)
+      ? { ...body, expected_version: 1 }
+      : body;
+  return new NextRequest('http://localhost/api/dispense-audits', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(requestBody),
+  } satisfies NextRequestInit);
+}
+
+function createRawRequest(body: unknown) {
   return new NextRequest('http://localhost/api/dispense-audits', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -235,6 +252,21 @@ describe('/api/dispense-audits POST', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it('requires expected_version before transaction or notification side effects', async () => {
+    const response = await POST(
+      createRawRequest({
+        task_id: 'task_1',
+        result: 'approved',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('moves a rejected task back to dispensing and notifies the assignee', async () => {
     const taskUpdateMock = vi.fn().mockResolvedValue({});
     const cycleFindFirstMock = vi
@@ -374,6 +406,62 @@ describe('/api/dispense-audits POST', () => {
     );
     expect(dispenseResultFindManyMock).not.toHaveBeenCalled();
     expect(dispenseAuditCreateMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects stale expected_version before creating an audit record', async () => {
+    const dispenseAuditCreateMock = vi.fn();
+    const taskUpdateMock = vi.fn();
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'task_stale',
+            cycle_id: 'cycle_stale',
+            assigned_to: 'user_dispense',
+            due_date: null,
+            priority: 'normal',
+            cycle: {
+              patient_id: 'patient_1',
+              overall_status: 'audit_pending',
+              version: 2,
+              set_plans: [],
+              case_: {
+                primary_pharmacist_id: 'pharmacist_1',
+                patient: { name: '山田 太郎' },
+              },
+            },
+          }),
+          update: taskUpdateMock,
+        },
+        dispenseResult: {
+          findMany: vi.fn().mockResolvedValue([{ dispensed_by: 'user_dispense' }]),
+        },
+        membership: {
+          findFirst: vi.fn(),
+          findMany: vi.fn(),
+        },
+        dispenseAudit: {
+          findFirst: vi.fn(),
+          create: dispenseAuditCreateMock,
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_stale',
+        result: 'approved',
+        expected_version: 1,
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(dispenseAuditCreateMock).not.toHaveBeenCalled();
+    expect(taskUpdateMock).not.toHaveBeenCalled();
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });

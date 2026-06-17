@@ -213,6 +213,7 @@ export interface SubmitDispenseResultsInput {
 export interface SubmitDispenseAuditInput {
   task_id: string;
   result: 'approved' | 'rejected' | 'hold' | 'emergency_approved';
+  expected_version: number;
   reject_reason?: string;
   reject_reason_code?: string;
   reject_detail?: string;

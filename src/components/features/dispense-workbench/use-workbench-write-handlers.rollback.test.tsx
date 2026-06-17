@@ -589,7 +589,7 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
 
     expect(nextPhase).toBeNull();
     expect(completeAudit.mutate).toHaveBeenCalledWith(
-      { task_id: 'task_1', result: 'approved' },
+      { task_id: 'task_1', result: 'approved', expected_version: 4 },
       expect.objectContaining({ onSuccess: expect.any(Function) }),
     );
     expect(onAdvance).toHaveBeenCalledWith('setp');

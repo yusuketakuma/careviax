@@ -518,6 +518,8 @@ describe('Workflow: prescription intake to care report', () => {
             priority: 'normal',
             cycle: {
               patient_id: IDS.patient,
+              overall_status: 'audit_pending',
+              version: 1,
               set_plans: [],
               case_: {
                 primary_pharmacist_id: IDS.user,
@@ -564,6 +566,7 @@ describe('Workflow: prescription intake to care report', () => {
       createPostRequest({
         task_id: IDS.dispenseTask,
         result: 'approved',
+        expected_version: 1,
       }),
       emptyRouteContext,
     );

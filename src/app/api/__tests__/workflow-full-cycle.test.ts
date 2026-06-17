@@ -1225,6 +1225,7 @@ describe('workflow full-cycle integration', () => {
       createRequest({
         task_id: 'task_1',
         result: 'approved',
+        expected_version: state.cycle.version,
       }),
       emptyRouteContext,
     );

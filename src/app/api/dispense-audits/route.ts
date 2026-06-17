@@ -175,6 +175,7 @@ const REJECT_REASON_CODES = [
 const createDispenseAuditSchema = z.object({
   task_id: z.string().min(1),
   result: z.enum(['approved', 'rejected', 'hold', 'emergency_approved']),
+  expected_version: z.number().int().min(1),
   reject_reason: z.string().optional(),
   reject_reason_code: z.enum(REJECT_REASON_CODES).optional(),
   reject_detail: z.string().optional(),
@@ -293,6 +294,7 @@ export const POST = withAuthContext(
       external_audit,
       double_count,
       same_operator_reason,
+      expected_version,
     } = parsed.data;
     const sameOperatorReason = same_operator_reason?.trim() ?? '';
     const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
@@ -323,6 +325,7 @@ export const POST = withAuthContext(
               select: {
                 patient_id: true,
                 overall_status: true,
+                version: true,
                 set_plans: {
                   select: {
                     id: true,
@@ -344,6 +347,13 @@ export const POST = withAuthContext(
           },
         });
         if (!task) return null;
+
+        if (typeof task.cycle.version === 'number' && task.cycle.version !== expected_version) {
+          return {
+            error: 'cycle_version_conflict',
+            conflict: true,
+          } as const;
+        }
 
         // S2: Self-audit prevention — dispenser cannot audit their own work.
         // D1=B: 単独薬剤師の自己監査=限定例外。調剤者=監査者の場合は原則拒否だが、
