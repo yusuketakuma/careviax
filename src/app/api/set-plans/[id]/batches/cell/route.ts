@@ -138,6 +138,10 @@ export const PATCH = withAuthContext<{ id: string }>(
         };
       }
 
+      if (isCellMutationNoop(input, batch)) {
+        return { kind: 'success' as const, batch, changed: false };
+      }
+
       const beforeSnapshot = buildSetBatchHistorySnapshot(batch);
       const now = new Date();
 
@@ -249,18 +253,52 @@ export const PATCH = withAuthContext<{ id: string }>(
         },
       });
 
-      return { kind: 'success' as const, batch: updated };
+      return { kind: 'success' as const, batch: updated, changed: true };
     });
 
     if (result.kind === 'error') return result.response;
 
-    await notifyWorkflowMutation({
-      orgId: ctx.orgId,
-      eventType: 'cycle_transition',
-      payload: { source: 'set_batches_update', plan_id: planId, action: input.action },
-    });
+    if (result.changed) {
+      await notifyWorkflowMutation({
+        orgId: ctx.orgId,
+        eventType: 'cycle_transition',
+        payload: { source: 'set_batches_update', plan_id: planId, action: input.action },
+      });
+    }
 
     return success({ data: result.batch });
   },
   { permission: 'canSet', message: 'セット作業の権限がありません' },
 );
+
+function isCellMutationNoop(
+  input: z.infer<typeof cellMutationSchema>,
+  batch: {
+    set_state: string;
+    held_reason: string | null;
+    held_by: string | null;
+    held_at: Date | null;
+    set_by: string | null;
+    set_at: Date | null;
+  },
+): boolean {
+  if (input.action === 'set') {
+    return (
+      batch.set_state === 'set' &&
+      batch.held_reason === null &&
+      batch.held_by === null &&
+      batch.held_at === null
+    );
+  }
+  if (input.action === 'hold') {
+    return batch.set_state === 'hold' && batch.held_reason === input.held_reason;
+  }
+  return (
+    batch.set_state === 'pending' &&
+    batch.set_by === null &&
+    batch.set_at === null &&
+    batch.held_reason === null &&
+    batch.held_by === null &&
+    batch.held_at === null
+  );
+}

@@ -218,6 +218,25 @@ describe('set-plans/[id]/batches/cell PATCH', () => {
     expect(notifyWorkflowMutationMock).toHaveBeenCalledTimes(1);
   });
 
+  it('returns the current cell without side effects when set is already applied', async () => {
+    txMock.setBatch.findFirst.mockResolvedValueOnce(
+      buildBatch({ set_state: 'set', set_by: 'user_1', set_at: new Date(), version: 2 }),
+    );
+
+    const response = await PATCH(
+      createRequest({ action: 'set', batch_id: 'batch_1', expected_version: 2 }),
+      params,
+    );
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.data).toMatchObject({ id: 'batch_1', set_state: 'set', version: 2 });
+    expect(txMock.setBatch.updateMany).not.toHaveBeenCalled();
+    expect(txMock.auditLog.create).not.toHaveBeenCalled();
+    expect(txMock.setBatchChangeLog.create).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('holds a cell with reason and detail', async () => {
     txMock.setBatch.findFirst
       .mockResolvedValueOnce(buildBatch())

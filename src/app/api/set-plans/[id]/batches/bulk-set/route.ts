@@ -122,6 +122,7 @@ export const POST = withAuthContext<{ id: string }>(
       const beforeSnapshots: ReturnType<typeof buildSetBatchHistorySnapshot>[] = [];
       const afterSnapshots: ReturnType<typeof buildSetBatchHistorySnapshot>[] = [];
       const lineIds = new Set<string>();
+      let changedCount = 0;
 
       for (const batch of batches) {
         const expectedVersion = expectedById.get(batch.id);
@@ -139,6 +140,8 @@ export const POST = withAuthContext<{ id: string }>(
             ),
           };
         }
+
+        if (isBulkSetNoop(batch)) continue;
 
         beforeSnapshots.push(buildSetBatchHistorySnapshot(batch));
 
@@ -172,43 +175,51 @@ export const POST = withAuthContext<{ id: string }>(
           );
         }
         lineIds.add(batch.line_id);
+        changedCount += 1;
       }
 
-      const updatedBatches = await tx.setBatch.findMany({
-        where: { id: { in: batchIds }, org_id: ctx.orgId, plan_id: planId },
-        include: batchInclude,
-        orderBy: [{ day_number: 'asc' }, { slot: 'asc' }],
-      });
-      for (const updated of updatedBatches) {
-        afterSnapshots.push(buildSetBatchHistorySnapshot(updated));
+      const updatedBatches =
+        changedCount > 0
+          ? await tx.setBatch.findMany({
+              where: { id: { in: batchIds }, org_id: ctx.orgId, plan_id: planId },
+              include: batchInclude,
+              orderBy: [{ day_number: 'asc' }, { slot: 'asc' }],
+            })
+          : batches;
+      if (changedCount > 0) {
+        for (const updated of updatedBatches) {
+          afterSnapshots.push(buildSetBatchHistorySnapshot(updated));
+        }
       }
 
-      await createSetBatchChangeLog(tx, {
-        orgId: ctx.orgId,
-        planId,
-        action: 'cell_bulk_set',
-        triggerSource: 'workbench_bulk_set',
-        reason: `${updatedBatches.length}件のセルを一括セット済にしました`,
-        lineIds: Array.from(lineIds),
-        beforeSnapshot: beforeSnapshots,
-        afterSnapshot: afterSnapshots,
-        changedBy: ctx.userId,
-      });
+      if (changedCount > 0) {
+        await createSetBatchChangeLog(tx, {
+          orgId: ctx.orgId,
+          planId,
+          action: 'cell_bulk_set',
+          triggerSource: 'workbench_bulk_set',
+          reason: `${changedCount}件のセルを一括セット済にしました`,
+          lineIds: Array.from(lineIds),
+          beforeSnapshot: beforeSnapshots,
+          afterSnapshot: afterSnapshots,
+          changedBy: ctx.userId,
+        });
 
-      // 監査証跡(§12-5): append-only AuditLog(一括操作で1件)。
-      await createAuditLogEntry(tx, ctx, {
-        action: 'set_batch.cell_bulk_set',
-        targetType: 'SetPlan',
-        targetId: planId,
-        changes: {
-          plan_id: planId,
-          count: updatedBatches.length,
-          batch_ids: batchIds,
-          line_ids: Array.from(lineIds),
-        },
-      });
+        // 監査証跡(§12-5): append-only AuditLog(一括操作で1件)。
+        await createAuditLogEntry(tx, ctx, {
+          action: 'set_batch.cell_bulk_set',
+          targetType: 'SetPlan',
+          targetId: planId,
+          changes: {
+            plan_id: planId,
+            count: changedCount,
+            batch_ids: batchIds,
+            line_ids: Array.from(lineIds),
+          },
+        });
+      }
 
-      return { kind: 'success' as const, batches: updatedBatches };
+      return { kind: 'success' as const, batches: updatedBatches, changedCount };
     }).catch((err: unknown) => {
       if (err instanceof BulkSetRollback) {
         return { kind: 'error' as const, response: err.response };
@@ -218,13 +229,15 @@ export const POST = withAuthContext<{ id: string }>(
 
     if (result.kind === 'error') return result.response;
 
-    await notifyWorkflowMutation({
-      orgId: ctx.orgId,
-      eventType: 'cycle_transition',
-      payload: { source: 'set_batches_update', plan_id: planId, count: result.batches.length },
-    });
+    if (result.changedCount > 0) {
+      await notifyWorkflowMutation({
+        orgId: ctx.orgId,
+        eventType: 'cycle_transition',
+        payload: { source: 'set_batches_update', plan_id: planId, count: result.changedCount },
+      });
+    }
 
-    return success({ data: { count: result.batches.length, batches: result.batches } });
+    return success({ data: { count: result.changedCount, batches: result.batches } });
   },
   { permission: 'canSet', message: 'セット作業の権限がありません' },
 );
@@ -236,4 +249,18 @@ function findDuplicateBatchId(batchIds: string[]): string | null {
     seen.add(batchId);
   }
   return null;
+}
+
+function isBulkSetNoop(batch: {
+  set_state: string;
+  held_reason: string | null;
+  held_by?: string | null;
+  held_at?: Date | null;
+}): boolean {
+  return (
+    batch.set_state === 'set' &&
+    batch.held_reason === null &&
+    (batch.held_by ?? null) === null &&
+    (batch.held_at ?? null) === null
+  );
 }

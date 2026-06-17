@@ -220,6 +220,37 @@ describe('set-plans/[id]/batches/bulk-set POST', () => {
     expect(notifyWorkflowMutationMock).toHaveBeenCalledTimes(1);
   });
 
+  it('returns already-set cells without version churn or audit side effects', async () => {
+    txMock.setBatch.findMany.mockResolvedValueOnce([
+      buildBatch('batch_1', { set_state: 'set', set_by: 'user_1', version: 2 }),
+      buildBatch('batch_2', { line_id: 'line_2', set_state: 'set', set_by: 'user_1', version: 3 }),
+    ]);
+
+    const response = await POST(
+      createRequest({
+        cells: [
+          { batch_id: 'batch_1', expected_version: 2 },
+          { batch_id: 'batch_2', expected_version: 3 },
+        ],
+      }),
+      params,
+    );
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.data.count).toBe(0);
+    expect(payload.data.batches).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'batch_1', version: 2 }),
+        expect.objectContaining({ id: 'batch_2', version: 3 }),
+      ]),
+    );
+    expect(txMock.setBatch.updateMany).not.toHaveBeenCalled();
+    expect(txMock.auditLog.create).not.toHaveBeenCalled();
+    expect(txMock.setBatchChangeLog.create).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('returns 409 with details when an expected_version mismatches and rolls back', async () => {
     txMock.setBatch.findMany.mockResolvedValueOnce([
       buildBatch('batch_1'),
