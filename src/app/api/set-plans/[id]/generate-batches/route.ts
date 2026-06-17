@@ -25,6 +25,7 @@ import { z } from 'zod';
 
 const generateBatchesSchema = z.object({
   force: z.boolean().optional().default(false),
+  expected_updated_at: z.string().datetime('セットプランの版情報が不正です').optional(),
 });
 
 const SET_BATCH_GENERATE_SERIALIZABLE_RETRY_LIMIT = 3;
@@ -134,8 +135,12 @@ export const POST = withAuthContext<{ id: string }>(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const { force } = parsed.data;
+    const { force, expected_updated_at: expectedUpdatedAt } = parsed.data;
     const assignmentWhere = buildSetPlanAssignmentWhere(ctx);
+
+    if (force && !expectedUpdatedAt) {
+      return validationError('強制再生成にはセットプランの版情報(expected_updated_at)が必要です');
+    }
 
     const plan = await prisma.setPlan.findFirst({
       where: {
@@ -185,6 +190,16 @@ export const POST = withAuthContext<{ id: string }>(
     });
 
     if (!plan) return notFound('セットプランが見つかりません');
+
+    if (expectedUpdatedAt && plan.updated_at.toISOString() !== expectedUpdatedAt) {
+      return conflict(
+        'セットプランが他のユーザーによって更新されています。再読み込みしてください',
+        {
+          current_updated_at: plan.updated_at.toISOString(),
+          expected_updated_at: expectedUpdatedAt,
+        },
+      );
+    }
 
     const intakes = await prisma.prescriptionIntake.findMany({
       where: { cycle_id: plan.cycle_id, org_id: ctx.orgId },
@@ -271,12 +286,23 @@ export const POST = withAuthContext<{ id: string }>(
           patientPackagingProfile,
         });
 
-        await tx.setPlan.update({
-          where: { id },
+        const planUpdate = await tx.setPlan.updateMany({
+          where: {
+            id,
+            org_id: ctx.orgId,
+            ...(expectedUpdatedAt ? { updated_at: new Date(expectedUpdatedAt) } : {}),
+          },
           data: {
             packaging_summary_snapshot: packagingSummary,
           },
         });
+        if (planUpdate.count === 0) {
+          return {
+            kind: 'conflict' as const,
+            message: 'セットプランが他のユーザーによって更新されています。再読み込みしてください',
+            details: { expected_updated_at: expectedUpdatedAt },
+          } as const;
+        }
 
         let regenerationBeforeSnapshots: ReturnType<typeof buildSetBatchHistorySnapshot>[] = [];
         if (force) {
@@ -409,6 +435,9 @@ export const POST = withAuthContext<{ id: string }>(
 
     if ('kind' in result && result.kind === 'error') {
       return validationError(result.message);
+    }
+    if ('kind' in result && result.kind === 'conflict') {
+      return conflict(result.message, result.details);
     }
 
     if (!result.reused) {

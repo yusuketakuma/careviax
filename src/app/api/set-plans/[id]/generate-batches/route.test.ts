@@ -13,7 +13,7 @@ const { authMock, prismaMock, withOrgContextMock, txMock, notifyWorkflowMutation
     withOrgContextMock: vi.fn(),
     txMock: {
       setPlan: {
-        update: vi.fn(),
+        updateMany: vi.fn(),
       },
       setBatch: {
         count: vi.fn(),
@@ -47,6 +47,8 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 }));
 
 import { POST } from './route';
+
+const CURRENT_UPDATED_AT = '2026-03-01T00:00:00.000Z';
 
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/set-plans/plan_1/generate-batches', {
@@ -99,7 +101,7 @@ describe('set-plans/[id]/generate-batches POST', () => {
       set_method: 'custom',
       packaging_method_id: null,
       packaging_method_ref: null,
-      updated_at: new Date('2026-03-01T00:00:00.000Z'),
+      updated_at: new Date(CURRENT_UPDATED_AT),
       cycle: {
         overall_status: 'audited',
         case_: {
@@ -127,12 +129,13 @@ describe('set-plans/[id]/generate-batches POST', () => {
       },
     ]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(txMock));
+    txMock.setPlan.updateMany.mockResolvedValue({ count: 1 });
   });
 
   it('reuses existing batches instead of duplicating them when force is omitted', async () => {
     txMock.setBatch.count.mockResolvedValue(1);
     txMock.setBatch.findFirst.mockResolvedValue({
-      updated_at: new Date('2026-03-01T00:00:00.000Z'),
+      updated_at: new Date(CURRENT_UPDATED_AT),
     });
     txMock.setBatch.findMany.mockResolvedValue([
       {
@@ -188,15 +191,58 @@ describe('set-plans/[id]/generate-batches POST', () => {
       },
     });
 
-    const response = await POST(createRequest({ force: true }), {
-      params: Promise.resolve({ id: 'plan_1' }),
-    });
+    const response = await POST(
+      createRequest({ force: true, expected_updated_at: CURRENT_UPDATED_AT }),
+      {
+        params: Promise.resolve({ id: 'plan_1' }),
+      },
+    );
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
       message:
         'セット監査後の再生成は訪問持参物と不整合になるため実行できません。差戻し後に再生成してください',
     });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(txMock.setBatch.deleteMany).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('requires expected_updated_at for forced regeneration before intake reads or writes', async () => {
+    const response = await POST(createRequest({ force: true }), {
+      params: Promise.resolve({ id: 'plan_1' }),
+    });
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '強制再生成にはセットプランの版情報(expected_updated_at)が必要です',
+    });
+    expect(prismaMock.setPlan.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.prescriptionIntake.findMany).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(txMock.setBatch.deleteMany).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects stale forced regeneration before intake reads or writes', async () => {
+    const response = await POST(
+      createRequest({ force: true, expected_updated_at: '2026-02-28T00:00:00.000Z' }),
+      {
+        params: Promise.resolve({ id: 'plan_1' }),
+      },
+    );
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'セットプランが他のユーザーによって更新されています。再読み込みしてください',
+      details: {
+        current_updated_at: CURRENT_UPDATED_AT,
+        expected_updated_at: '2026-02-28T00:00:00.000Z',
+      },
+    });
+    expect(prismaMock.prescriptionIntake.findMany).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(txMock.setBatch.deleteMany).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
@@ -242,7 +288,7 @@ describe('set-plans/[id]/generate-batches POST', () => {
       set_method: 'custom',
       packaging_method_id: null,
       packaging_method_ref: null,
-      updated_at: new Date('2026-03-01T00:00:00.000Z'),
+      updated_at: new Date(CURRENT_UPDATED_AT),
       cycle: {
         overall_status: 'dispensing',
         case_: {
@@ -273,7 +319,7 @@ describe('set-plans/[id]/generate-batches POST', () => {
       set_method: 'custom',
       packaging_method_id: null,
       packaging_method_ref: null,
-      updated_at: new Date('2026-03-01T00:00:00.000Z'),
+      updated_at: new Date(CURRENT_UPDATED_AT),
       cycle: {
         overall_status: 'audited',
         case_: {
@@ -314,9 +360,12 @@ describe('set-plans/[id]/generate-batches POST', () => {
     txMock.setBatch.createMany.mockResolvedValue({ count: 84 });
     txMock.setBatch.findMany.mockResolvedValue([]);
 
-    const response = await POST(createRequest({ force: true }), {
-      params: Promise.resolve({ id: 'plan_1' }),
-    });
+    const response = await POST(
+      createRequest({ force: true, expected_updated_at: CURRENT_UPDATED_AT }),
+      {
+        params: Promise.resolve({ id: 'plan_1' }),
+      },
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
@@ -365,6 +414,28 @@ describe('set-plans/[id]/generate-batches POST', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it('rejects forced regeneration when the plan changes during the transaction', async () => {
+    txMock.setBatch.count.mockResolvedValue(0);
+    txMock.setPlan.updateMany.mockResolvedValue({ count: 0 });
+
+    const response = await POST(
+      createRequest({ force: true, expected_updated_at: CURRENT_UPDATED_AT }),
+      {
+        params: Promise.resolve({ id: 'plan_1' }),
+      },
+    );
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'セットプランが他のユーザーによって更新されています。再読み込みしてください',
+      details: { expected_updated_at: CURRENT_UPDATED_AT },
+    });
+    expect(txMock.setBatch.deleteMany).not.toHaveBeenCalled();
+    expect(txMock.setBatch.createMany).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('retries serializable conflicts and reuses batches created by the competing request', async () => {
     withOrgContextMock
       .mockRejectedValueOnce(buildSerializableConflictError())
@@ -405,7 +476,7 @@ describe('set-plans/[id]/generate-batches POST', () => {
     prismaMock.membership.findFirst.mockResolvedValue({ role: 'pharmacist' });
     prismaMock.setPlan.findFirst.mockResolvedValue(null);
 
-    const response = await POST(createRequest({ force: true }), {
+    const response = await POST(createRequest({ force: false }), {
       params: Promise.resolve({ id: 'plan_1' }),
     });
     if (!response) throw new Error('response is required');
