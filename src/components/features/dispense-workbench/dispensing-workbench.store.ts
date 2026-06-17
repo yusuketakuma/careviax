@@ -119,6 +119,8 @@ export interface WorkbenchState {
     target: CellTarget,
     value: string | undefined,
   ) => void;
+  restoreCells: (phase: Phase, values: Record<string, string>) => void;
+  restoreHoldInfo: (patientId: string, target: CellTarget, value: HoldInfo | undefined) => void;
   toggleOut: (name: string) => void;
   toggleCheck: (target: CellTarget | null, i: number) => void;
   setNg: (target: CellTarget | null, value: string) => void;
@@ -261,6 +263,21 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           if (value) next[k] = value;
           else delete next[k];
           return { [stateKey]: next };
+        });
+      },
+
+      restoreCells: (phase, values) => {
+        const stateKey = phase === 'setp' ? 'setCells' : 'auditCells';
+        set({ [stateKey]: { ...values } });
+      },
+
+      restoreHoldInfo: (patientId, target, value) => {
+        const k = cellKey(patientId, target.di, target.tk);
+        set((s) => {
+          const next = { ...s.holdInfo };
+          if (value) next[k] = value;
+          else delete next[k];
+          return { holdInfo: next };
         });
       },
 

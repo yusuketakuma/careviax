@@ -34,6 +34,7 @@ import {
   type SubmitSetAuditInput,
 } from './dispensing-workbench.write-types';
 import { cellKey } from './dispensing-workbench.logic';
+import { isCalendarPhase } from './dispensing-workbench.types';
 import type { CellTarget, Group, Phase } from './dispensing-workbench.types';
 
 /** カレンダーセルの保留スコープ（API HoldScope）。1 セル＝cell 単位。 */
@@ -127,6 +128,8 @@ export function useWorkbenchWriteHandlers(args: {
   const selectCell = useWorkbenchStore((s) => s.selectCell);
   const applyCell = useWorkbenchStore((s) => s.applyCell);
   const restoreCell = useWorkbenchStore((s) => s.restoreCell);
+  const restoreCells = useWorkbenchStore((s) => s.restoreCells);
+  const restoreHoldInfo = useWorkbenchStore((s) => s.restoreHoldInfo);
   const toggleOut = useWorkbenchStore((s) => s.toggleOut);
   const togglePacket = useWorkbenchStore((s) => s.togglePacket);
   const toggleCheck = useWorkbenchStore((s) => s.toggleCheck);
@@ -200,18 +203,27 @@ export function useWorkbenchWriteHandlers(args: {
       },
       onBulk: () => {
         if (isRealDataEnabled() && isAnyPending) return; // 実データ時のみ二重送信ガード
-        bulk(phase);
-        real(() => {
-          const s = snap();
-          if (phase !== 'setp' || !s.writeContext.planId) return;
-          // 一括セット: 現在の cellMeta の全 batch を bulk-set へ。
-          const cells: Array<{ batch_id: string; expected_version?: number }> = [];
-          for (const meta of Object.values(s.writeContext.cellMeta)) {
+        const before = snap();
+        if (isRealDataEnabled() && phase === 'setp' && !before.writeContext.planId) return;
+        const previousSetCells = before.setCells;
+        const cells: Array<{ batch_id: string; expected_version?: number }> = [];
+        if (isRealDataEnabled() && phase === 'setp') {
+          for (const meta of Object.values(before.writeContext.cellMeta)) {
             meta.batchIds.forEach((batchId, i) => {
               cells.push({ batch_id: batchId, expected_version: meta.versions[i] });
             });
           }
-          if (cells.length > 0) mutations.bulkSet.mutate(cells);
+          if (cells.length === 0) return;
+        }
+        bulk(phase);
+        real(() => {
+          const s = snap();
+          if (phase !== 'setp' || !s.writeContext.planId) return;
+          mutations.bulkSet.mutate(cells, {
+            onError: () => {
+              restoreCells('setp', previousSetCells);
+            },
+          });
         });
       },
       onPrimary: () => {
@@ -256,18 +268,32 @@ export function useWorkbenchWriteHandlers(args: {
       onSelectCell: (di, tk) => selectCell(di, tk),
       onSetCell: () => {
         const target = snap().target;
+        if (!target) return;
+        const before = snap();
+        const key = cellKey(before.selId, target.di, target.tk);
+        const previousSetState = before.setCells[key];
+        if (isRealDataEnabled()) {
+          const meta = resolveCellMeta(before.writeContext.cellMeta, before.selId, target);
+          if (!before.writeContext.planId || !meta) return;
+        }
         applyCell(phase, 'set', target);
         real(() => {
           const s = snap();
-          if (!s.writeContext.planId) return;
           const meta = resolveCellMeta(s.writeContext.cellMeta, s.selId, target);
           if (!meta) return;
           meta.batchIds.forEach((batchId, i) => {
-            mutations.cellMutation.mutate({
-              batch_id: batchId,
-              action: 'set',
-              expected_version: meta.versions[i],
-            });
+            mutations.cellMutation.mutate(
+              {
+                batch_id: batchId,
+                action: 'set',
+                expected_version: meta.versions[i],
+              },
+              {
+                onError: () => {
+                  restoreCell(phase, before.selId, target, previousSetState);
+                },
+              },
+            );
           });
         });
       },
@@ -321,19 +347,36 @@ export function useWorkbenchWriteHandlers(args: {
         setNg(target, value);
       },
       onReturnToSet: (di, tk) => {
+        const before = snap();
+        const target = { di, tk };
+        const key = cellKey(before.selId, di, tk);
+        const previousSetState = before.setCells[key];
+        const previousAuditState = before.auditCells[key];
+        if (isRealDataEnabled()) {
+          const meta = before.writeContext.cellMeta[key];
+          if (!before.writeContext.planId || !meta) return;
+        }
         returnToSet(di, tk);
         real(() => {
           const s = snap();
           if (!s.writeContext.planId) return;
-          const meta = s.writeContext.cellMeta[cellKey(s.selId, di, tk)];
+          const meta = s.writeContext.cellMeta[key];
           if (!meta) return;
           // セットへ戻す＝当該セルを未セット化（clear）。
           meta.batchIds.forEach((batchId, i) => {
-            mutations.cellMutation.mutate({
-              batch_id: batchId,
-              action: 'clear',
-              expected_version: meta.versions[i],
-            });
+            mutations.cellMutation.mutate(
+              {
+                batch_id: batchId,
+                action: 'clear',
+                expected_version: meta.versions[i],
+              },
+              {
+                onError: () => {
+                  restoreCell('setp', before.selId, target, previousSetState);
+                  restoreCell('seta', before.selId, target, previousAuditState);
+                },
+              },
+            );
           });
         });
       },
@@ -346,13 +389,50 @@ export function useWorkbenchWriteHandlers(args: {
       onSaveHold: () => {
         // 確定前にドラフトを退避（saveHold が holdModal を null にするため）。
         const draft = snap().holdModal;
-        saveHold(phase);
         if (!draft || !draft.reason) return; // saveHold 同様 理由必須
+        const before = snap();
+        const key = cellKey(before.selId, draft.di, draft.tk);
+        const target = { di: draft.di, tk: draft.tk };
+        const previousCellState = phase === 'seta' ? before.auditCells[key] : before.setCells[key];
+        const previousHoldInfo = before.holdInfo[key];
+        const reasonCode = HOLD_REASON_TO_CODE[draft.reason];
+        if (!reasonCode) return;
+        if (isRealDataEnabled() && isCalendarPhase(phase)) {
+          const meta = before.writeContext.cellMeta[key];
+          if (!before.writeContext.planId || !meta) return;
+        }
+
+        saveHold(phase);
         real(() => {
           const s = snap();
+          if (isCalendarPhase(phase)) {
+            const meta = s.writeContext.cellMeta[key];
+            if (!s.writeContext.planId || !meta) {
+              restoreCell(phase, before.selId, target, previousCellState);
+              restoreHoldInfo(before.selId, target, previousHoldInfo);
+              return;
+            }
+            meta.batchIds.forEach((batchId, i) => {
+              mutations.cellMutation.mutate(
+                {
+                  batch_id: batchId,
+                  action: 'hold',
+                  held_reason: reasonCode,
+                  held_detail: draft.memo || undefined,
+                  expected_version: meta.versions[i],
+                },
+                {
+                  onError: () => {
+                    restoreCell(phase, before.selId, target, previousCellState);
+                    restoreHoldInfo(before.selId, target, previousHoldInfo);
+                  },
+                },
+              );
+            });
+            return;
+          }
+
           if (!s.writeContext.cycleId) return;
-          const reasonCode = HOLD_REASON_TO_CODE[draft.reason];
-          if (!reasonCode) return;
           const slot = TIMING_TO_SLOT[draft.tk as keyof typeof TIMING_TO_SLOT];
           const meta = s.writeContext.cellMeta[cellKey(s.selId, draft.di, draft.tk)];
           mutations.createHold.mutate({
@@ -385,6 +465,8 @@ export function useWorkbenchWriteHandlers(args: {
     selectCell,
     applyCell,
     restoreCell,
+    restoreCells,
+    restoreHoldInfo,
     toggleOut,
     togglePacket,
     toggleCheck,

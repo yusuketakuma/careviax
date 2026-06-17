@@ -278,7 +278,7 @@ interface SetWorkProps {
   isPending?: boolean;
 }
 
-function SetWork({ view, phase, handlers }: SetWorkProps) {
+function SetWork({ view, phase, handlers, isPending = false }: SetWorkProps) {
   // 書込操作はシェル handlers（store + 実データ mutation）を優先し、未提供時のみ store へフォールバック。
   // cellTarget はフォールバック時のセル操作系アクションに必要。
   const cellTarget = useWorkbenchStore((s) => s.target);
@@ -294,6 +294,9 @@ function SetWork({ view, phase, handlers }: SetWorkProps) {
     handlers ? handlers.onTogglePacket(item) : storeTogglePacket(item);
 
   const { target, setMethod, setSteps, outsideMeds, outsideEmpty, packetItems } = view;
+  const hasSelectedCell = cellTarget !== null;
+  const cellActionDisabled = isPending || !hasSelectedCell;
+  const cellActionCursor = cellActionDisabled ? 'not-allowed' : 'pointer';
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       {/* 次にセットする薬剤 */}
@@ -432,22 +435,35 @@ function SetWork({ view, phase, handlers }: SetWorkProps) {
             <button
               type="button"
               onClick={onSetCell}
+              disabled={cellActionDisabled}
+              aria-disabled={cellActionDisabled}
+              title={hasSelectedCell ? undefined : '対象セルを選択してからセットしてください'}
               style={{
                 flex: 1,
-                cursor: 'pointer',
+                cursor: cellActionCursor,
                 textAlign: 'center',
                 fontSize: '12px',
                 fontWeight: 700,
                 color: '#fff',
-                background: '#2f6fd6',
+                background: cellActionDisabled ? '#a8b3bf' : '#2f6fd6',
                 border: '1px solid #245aad',
                 borderRadius: '5px',
                 padding: '7px 0',
+                opacity: cellActionDisabled ? 0.72 : 1,
               }}
             >
               このセルへセット
             </button>
-            <button type="button" onClick={onOpenHold} style={holdButtonStyle}>
+            <button
+              type="button"
+              onClick={onOpenHold}
+              disabled={cellActionDisabled}
+              style={{
+                ...holdButtonStyle,
+                cursor: cellActionCursor,
+                opacity: cellActionDisabled ? 0.72 : 1,
+              }}
+            >
               保留…
             </button>
           </div>

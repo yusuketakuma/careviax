@@ -33,7 +33,32 @@ function setAuditView(ngValue: string): WorkbenchView {
   } as unknown as WorkbenchView;
 }
 
+function setWorkView(): WorkbenchView {
+  return {
+    rightTitle: 'セット作業',
+    isGrid: false,
+    isSet: true,
+    isSeta: false,
+    target: {
+      date: '2026/4/1（水）',
+      timing: '朝食後',
+      packetText: '1包',
+      ptpText: '',
+      hasPtp: false,
+      drugs: ['アムロジピン錠5mg'],
+      note: '',
+      hasNote: false,
+    },
+    setMethod: 'お薬カレンダーの該当ポケットへ投入',
+    setSteps: [],
+    outsideMeds: [],
+    outsideEmpty: true,
+    packetItems: [],
+  } as unknown as WorkbenchView;
+}
+
 const handlers = {
+  onSetCell: vi.fn(),
   onAuditOk: vi.fn(),
   onAuditNg: vi.fn(),
   onOpenHold: vi.fn(),
@@ -41,6 +66,40 @@ const handlers = {
   onSetNg: vi.fn(),
   onReturnToSet: vi.fn(),
 } as unknown as WorkbenchWriteHandlers;
+
+describe('RightPane set work cell controls', () => {
+  afterEach(() => {
+    act(() => {
+      useWorkbenchStore.setState({ target: null });
+    });
+  });
+
+  it('requires a selected calendar cell before enabling set and hold actions', () => {
+    render(<RightPane view={setWorkView()} phase="setp" handlers={handlers} />);
+
+    expect(
+      (screen.getByRole('button', { name: 'このセルへセット' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect((screen.getByRole('button', { name: '保留…' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+  });
+
+  it('enables set and hold actions after a calendar cell is selected', () => {
+    act(() => {
+      useWorkbenchStore.setState({ target: { di: 0, tk: '朝' } });
+    });
+
+    render(<RightPane view={setWorkView()} phase="setp" handlers={handlers} />);
+
+    expect(
+      (screen.getByRole('button', { name: 'このセルへセット' }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect((screen.getByRole('button', { name: '保留…' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+  });
+});
 
 describe('RightPane set audit NG controls', () => {
   afterEach(() => {
