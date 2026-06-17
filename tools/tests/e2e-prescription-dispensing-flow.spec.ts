@@ -379,4 +379,85 @@ test.describe('set → set-audit real-data direct entry', () => {
 
     expect(errors).toEqual([]);
   });
+
+  test('set-audit final approval stays on set-audit when the API returns a conflict', async ({
+    context,
+  }) => {
+    const { page, errors } = await createInstrumentedPage(context);
+    await openSetWorkbenchWithRealData(page, '/set-audit');
+
+    const main = page.locator('main');
+    await main.getByRole('button', { name: '全セルOK' }).click();
+    await main.locator('[role="button"]').filter({ hasText: /包/ }).first().click();
+    for (const label of [
+      '日付が正しい',
+      '用法が正しい',
+      '数量が正しい',
+      '中止薬が混入していない',
+      '残薬使用の指示と一致',
+      '冷所薬を分離している',
+    ]) {
+      await main.getByRole('button', { name: label }).click();
+    }
+
+    let approvalPayload: unknown = null;
+    await page.route('**/api/set-audits', async (route) => {
+      const request = route.request();
+      if (request.method() !== 'POST') {
+        await route.continue();
+        return;
+      }
+      approvalPayload = request.postDataJSON();
+      await route.fulfill({
+        status: 409,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: false,
+          error: 'cell_version_conflict',
+          message: 'セット監査データが更新されています',
+        }),
+      });
+    });
+
+    const approvalResponse = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return url.pathname === '/api/set-audits' && response.request().method() === 'POST';
+    });
+    await main.getByRole('button', { name: '監査承認（薬剤師）✓' }).click();
+
+    const response = await approvalResponse;
+    expect(response.status()).toBe(409);
+    await expect(page).toHaveURL(/\/set-audit/);
+    expect(approvalPayload).toMatchObject({
+      result: 'approved',
+      checklist: {
+        date_match: true,
+        timing_match: true,
+        quantity_match: true,
+        no_discontinued: true,
+        residual_usage_ok: true,
+        cold_storage_separated: true,
+      },
+    });
+    expect(Array.isArray((approvalPayload as { cell_audits?: unknown[] }).cell_audits)).toBe(true);
+    expect((approvalPayload as { cell_audits: unknown[] }).cell_audits.length).toBeGreaterThan(0);
+    expect(
+      (approvalPayload as { cell_audits: Array<{ expected_version?: unknown }> }).cell_audits,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          audit_state: 'ok',
+          expected_version: expect.any(Number),
+        }),
+      ]),
+    );
+
+    expect(
+      errors.filter(
+        (entry) =>
+          !entry.includes('http:409 http://localhost:3012/api/set-audits') &&
+          !entry.includes('Failed to load resource: the server responded with a status of 409'),
+      ),
+    ).toEqual([]);
+  });
 });
