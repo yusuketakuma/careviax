@@ -1,18 +1,18 @@
 /*
- * 調剤ワークベンチ 忠実再現スタイル（設計プロト 調剤ワークベンチ.dc.html のインライン CSS を
- * CSS Module 定数として隔離）。globals.css / Tailwind テーマには手を入れない（計画 §段階1）。
+ * 調剤ワークベンチスタイル（設計プロト 調剤ワークベンチ.dc.html のインライン CSS を
+ * CSS Module 定数として隔離）。globals.css / Tailwind テーマには手を入れない。
  *
- * 寸法・配色は設計プロトの実値を厳守する：
+ * 寸法・配色は業務画面の視認性を維持する：
  *  - フォント: Meiryo → Hiragino → Yu Gothic → MS PGothic → sans-serif
- *  - タイトルバー 30px / メニュー 26px / ペインヘッダ 24px / グリッド帯 30/23px
+ *  - ペインヘッダ 24px / グリッド帯 30/23px
  *  - 左ペイン 212px / 右ペイン 300px / 本体 min-width 1540px
  *  - スクロールバー 13px / 青グラデ #2c558a→#193454, #3a5e8c→#27466c
  *  - 主要パレット #1f4e79（accent）等
  */
 
-/* ===== ルート（デスクトップ専用・height:100vh 忠実再現）===== */
+/* ===== ルート（デスクトップ専用）===== */
 .root {
-  height: 100vh;
+  height: 100dvh;
   min-width: 1540px;
   display: flex;
   flex-direction: column;
@@ -26,7 +26,7 @@
 
 /* AppShell 配下にマウントする場合のヘッダ控除高（計画 §3・単一変更点） */
 .rootInShell {
-  height: calc(100vh - 3.5rem);
+  height: calc(100dvh - 3.5rem);
 }
 
 /* スクロールバー（13px・設計プロト helmet）。CSS Module スコープ内に閉じる */
@@ -61,54 +61,6 @@
     min-height: 44px;
     box-sizing: border-box;
   }
-}
-
-/* ===== タイトルバー（30px・青グラデ）===== */
-.titleBar {
-  height: 30px;
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: linear-gradient(180deg, #2c558a, #193454);
-  color: #fff;
-  padding: 0 8px;
-  font-size: 12.5px;
-}
-.titleIcon {
-  width: 17px;
-  height: 17px;
-  border-radius: 3px;
-  background: #7fb0e8;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  font-weight: 700;
-  color: #173050;
-}
-
-/* ===== メニューバー（26px）===== */
-.menuBar {
-  height: 26px;
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  background: #f3f4f6;
-  border-bottom: 1px solid #c6ccd4;
-  padding: 0 4px;
-  font-size: 12.5px;
-  color: #243040;
-}
-.menuItem {
-  padding: 3px 9px;
-  border-radius: 3px;
-}
-.menuItemActive {
-  background: #dde8f6;
-  color: #1b3a63;
-  font-weight: 700;
 }
 
 /* ===== 患者リボン ===== */
@@ -277,28 +229,6 @@
   flex-direction: column;
   background: #f5f6f8;
   border-left: 1px solid #c6ccd4;
-}
-
-/* ===== F-key バー ===== */
-.fkeyBar {
-  flex: none;
-  display: flex;
-  gap: 3px;
-  padding: 4px 5px;
-  background: #d9dee4;
-  border-top: 1px solid #b3bac3;
-}
-.fkey {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
-  background: linear-gradient(180deg, #fbfcfd, #eef1f4);
-  border: 1px solid #bcc3cc;
-  border-radius: 4px;
-  padding: 4px 2px;
-  cursor: pointer;
 }
 
 /* ===== ステータスバー（23px・青グラデ）===== */

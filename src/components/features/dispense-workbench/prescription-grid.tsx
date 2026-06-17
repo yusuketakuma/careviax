@@ -12,8 +12,8 @@
  * HTML5 D&D で行を別グループへ移動（store.dragStart / dropTo）。
  *
  * 寸法・配色・フォントは module.css クラス + 設計プロト実値の inline style で再現する。
- * 主操作（primary）はゲート通過時のみ phase を返すが、ルート遷移は親シェルが担うため
- * ここでは store.primary を呼ぶのみ（段階1）。
+ * 書込を伴う操作は handlers へ委譲する。実データ時は handlers が mutation と競合時 rollback を担い、
+ * 比較モーダルは読み込み済み比較データを表示する。
  */
 
 import type { CSSProperties, DragEvent } from 'react';
@@ -141,8 +141,10 @@ export function PrescriptionGrid({ view, phase, handlers, isPending }: Prescript
         <button
           type="button"
           onClick={addGroup}
+          disabled={isPending}
+          aria-disabled={isPending}
           style={{
-            cursor: 'pointer',
+            cursor: isPending ? 'not-allowed' : 'pointer',
             fontSize: 11,
             fontWeight: 700,
             color: '#1f6f3d',
@@ -152,6 +154,7 @@ export function PrescriptionGrid({ view, phase, handlers, isPending }: Prescript
             padding: '3px 10px',
             whiteSpace: 'nowrap',
             font: 'inherit',
+            opacity: isPending ? 0.6 : 1,
           }}
         >
           ＋ 新規グループ

@@ -121,6 +121,8 @@ async function recoverWorkbenchDirect(phase: Phase, patientId: string): Promise<
     patients,
     selId: targetId,
     model: { [workbench.patient.id]: workbench.groups },
+    done: workbench.done,
+    audit: workbench.audit,
   });
   useWorkbenchStore.getState().setWriteContext(workbench.writeContext);
 }

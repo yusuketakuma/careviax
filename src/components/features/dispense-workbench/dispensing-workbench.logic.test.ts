@@ -16,6 +16,7 @@ import {
   mapTiming,
   nextGroupNo,
   normCell,
+  patientProgress,
   parseISO,
   shortMD,
   sortedIds,
@@ -185,13 +186,42 @@ describe('calc（packets / PTP分類 / カレンダー外薬）', () => {
   });
 });
 
+describe('patientProgress', () => {
+  it('監査進捗は調剤済みかつ監査済みの行だけ数える', () => {
+    const model = {
+      patient_multi: [
+        {
+          gid: 'g_multi',
+          label: '朝食後',
+          method: '一包化',
+          start: '2026-04-01',
+          days: 14,
+          drugs: [
+            drug({ did: 'line_1', name: 'アムロジピン錠5mg' }),
+            drug({ did: 'line_2', name: 'カンデサルタン錠4mg' }),
+          ],
+        },
+      ],
+    };
+
+    expect(
+      patientProgress(model, 'patient_multi', { line_1: true }, { line_1: true, line_2: true }),
+    ).toEqual({ total: 2, done: 1, audit: 1 });
+  });
+});
+
 describe('calcGate（4区分ゲート）', () => {
-  it('グリッド工程は常に ok', () => {
+  it('グリッド工程は全対象行チェック済みで ok', () => {
+    const done = Object.fromEntries(
+      MODEL['0001'].flatMap((g) => g.drugs.map((d) => [d.did, true])),
+    );
+
     expect(
       calcGate({
         phase: 'dispense',
         model: MODEL,
         id: '0001',
+        done,
         setCells: {},
         auditCells: {},
         outChk: {},
@@ -203,12 +233,105 @@ describe('calcGate（4区分ゲート）', () => {
         phase: 'audit',
         model: MODEL,
         id: '0001',
+        done,
+        audit: done,
         setCells: {},
         auditCells: {},
         outChk: {},
         packet: {},
       }).ok,
     ).toBe(true);
+  });
+
+  it('グリッド工程は未チェック行が残ると不可', () => {
+    const g = calcGate({
+      phase: 'dispense',
+      model: MODEL,
+      id: '0001',
+      done: {},
+      setCells: {},
+      auditCells: {},
+      outChk: {},
+      packet: {},
+    });
+
+    expect(g.ok).toBe(false);
+    expect(g.text).toMatch(/未調剤/);
+  });
+
+  it('グリッド工程は複数行の一部だけチェック済みでも不可', () => {
+    const model = {
+      patient_multi: [
+        {
+          gid: 'g_multi',
+          label: '朝食後',
+          method: '一包化',
+          start: '2026-04-01',
+          days: 14,
+          drugs: [
+            drug({ did: 'line_1', name: 'アムロジピン錠5mg' }),
+            drug({ did: 'line_2', name: 'カンデサルタン錠4mg' }),
+          ],
+        },
+      ],
+    };
+
+    const dispenseGate = calcGate({
+      phase: 'dispense',
+      model,
+      id: 'patient_multi',
+      done: { line_1: true },
+      setCells: {},
+      auditCells: {},
+      outChk: {},
+      packet: {},
+    });
+    expect(dispenseGate).toMatchObject({ ok: false, text: '未調剤 1' });
+
+    const auditGate = calcGate({
+      phase: 'audit',
+      model,
+      id: 'patient_multi',
+      done: { line_1: true },
+      audit: { line_1: true },
+      setCells: {},
+      auditCells: {},
+      outChk: {},
+      packet: {},
+    });
+    expect(auditGate).toMatchObject({ ok: false, text: '未監査 1' });
+  });
+
+  it('監査工程は監査チェックだけでは不可で、調剤済みも必要', () => {
+    const model = {
+      patient_multi: [
+        {
+          gid: 'g_multi',
+          label: '朝食後',
+          method: '一包化',
+          start: '2026-04-01',
+          days: 14,
+          drugs: [
+            drug({ did: 'line_1', name: 'アムロジピン錠5mg' }),
+            drug({ did: 'line_2', name: 'カンデサルタン錠4mg' }),
+          ],
+        },
+      ],
+    };
+
+    const gate = calcGate({
+      phase: 'audit',
+      model,
+      id: 'patient_multi',
+      done: { line_1: true },
+      audit: { line_1: true, line_2: true },
+      setCells: {},
+      auditCells: {},
+      outChk: {},
+      packet: {},
+    });
+
+    expect(gate).toMatchObject({ ok: false, text: '未監査 1' });
   });
 
   it('setp は未セットありで不可・メッセージに未セット件数', () => {

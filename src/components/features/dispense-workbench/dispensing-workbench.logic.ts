@@ -260,7 +260,7 @@ export function patientProgress(
   drugsOf(model, id).forEach((dr) => {
     total++;
     if (done[dr.did]) dn++;
-    if (audit[dr.did]) au++;
+    if (done[dr.did] && audit[dr.did]) au++;
   });
   return { total: total, done: dn, audit: au };
 }
@@ -400,7 +400,7 @@ export function cellKey(id: string, di: number, tk: string): string {
 
 /**
  * 完了ゲート判定。
- * - グリッド工程（dispense/audit）: 常に ok
+ * - グリッド工程（dispense/audit）: 全対象行チェック済みで ok
  * - setp: 未セット・外薬未確認・持出未完が全て0で ok
  * - seta: 未監査0・NG0・セット監査チェック6項目完了で ok
  */
@@ -408,14 +408,44 @@ export function calcGate(args: {
   phase: Phase;
   model: WorkbenchModel;
   id: string;
+  done?: Record<string, boolean>;
+  audit?: Record<string, boolean>;
   setCells: Record<string, string>;
   auditCells: Record<string, string>;
   outChk: Record<string, boolean>;
   packet: Record<string, boolean>;
   checks?: Record<string, boolean>;
 }): GateResult {
-  const { phase, model, id, setCells, auditCells, outChk, packet, checks = {} } = args;
-  if (phase !== 'setp' && phase !== 'seta') return { ok: true, text: '' };
+  const {
+    phase,
+    model,
+    id,
+    done = {},
+    audit = {},
+    setCells,
+    auditCells,
+    outChk,
+    packet,
+    checks = {},
+  } = args;
+  if (phase === 'dispense' || phase === 'audit') {
+    const drugs = drugsOf(model, id);
+    const completed = drugs.filter((drug) =>
+      phase === 'dispense' ? done[drug.did] : done[drug.did] && audit[drug.did],
+    ).length;
+    const remain = drugs.length - completed;
+    return {
+      ok: drugs.length > 0 && remain === 0,
+      text:
+        phase === 'dispense'
+          ? remain === 0
+            ? '✓ 全行調剤済'
+            : '未調剤 ' + remain
+          : remain === 0
+            ? '✓ 全行監査OK'
+            : '未監査 ' + remain,
+    };
+  }
   const cal = calc(model, id);
   const dayCount = calendarDayCountOf(model[id] ?? []);
   const total = cal.active.length * dayCount;

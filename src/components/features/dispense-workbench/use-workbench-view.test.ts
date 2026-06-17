@@ -52,6 +52,30 @@ const model: WorkbenchModel = {
   ],
 };
 
+const singleRowGroup = model.patient_api[0]!;
+const multiRowModel: WorkbenchModel = {
+  patient_api: [
+    {
+      ...singleRowGroup,
+      drugs: [
+        ...singleRowGroup.drugs,
+        {
+          did: 'line_2',
+          name: 'カンデサルタン錠4mg',
+          yoho: '朝食後',
+          a: '1',
+          h: '',
+          y: '',
+          n: '',
+          tag: '',
+          funsai: false,
+          note: '',
+        },
+      ],
+    },
+  ],
+};
+
 describe('buildView calendar period', () => {
   it('renders API-backed set calendar period and day count instead of the legacy 7-day window', () => {
     const view = buildView({
@@ -109,6 +133,118 @@ describe('buildView calendar period', () => {
     expect(view.cur.period).toBe('—');
     expect(view.progress.fraction).toBe('0 / 0');
     expect(view.primary.cursor).toBe('not-allowed');
+  });
+
+  it('blocks dispense and audit primary actions until every visible drug row is checked', () => {
+    const base = {
+      selId: patient.id,
+      sortMode: 'start' as const,
+      done: {},
+      audit: {},
+      setCells: {},
+      auditCells: {},
+      outChk: {},
+      checks: {},
+      ng: {},
+      target: null,
+      holdModal: null,
+      holdInfo: {},
+      packet: {},
+      compareOpen: false,
+      model,
+      patients: [patient],
+    };
+
+    const blockedDispense = buildView({ ...base, phase: 'dispense' });
+    expect(blockedDispense.primary.cursor).toBe('not-allowed');
+
+    const allowedDispense = buildView({
+      ...base,
+      phase: 'dispense',
+      done: { line_1: true },
+    });
+    expect(allowedDispense.primary.cursor).toBe('pointer');
+
+    const blockedAudit = buildView({ ...base, phase: 'audit' });
+    expect(blockedAudit.primary.cursor).toBe('not-allowed');
+
+    const allowedAudit = buildView({
+      ...base,
+      phase: 'audit',
+      done: { line_1: true },
+      audit: { line_1: true },
+    });
+    expect(allowedAudit.primary.cursor).toBe('pointer');
+  });
+
+  it('keeps dispense and audit primary actions disabled when only some visible rows are checked', () => {
+    const base = {
+      selId: patient.id,
+      sortMode: 'start' as const,
+      done: {},
+      audit: {},
+      setCells: {},
+      auditCells: {},
+      outChk: {},
+      checks: {},
+      ng: {},
+      target: null,
+      holdModal: null,
+      holdInfo: {},
+      packet: {},
+      compareOpen: false,
+      model: multiRowModel,
+      patients: [patient],
+    };
+
+    const partialDispense = buildView({
+      ...base,
+      phase: 'dispense',
+      done: { line_1: true },
+    });
+    expect(partialDispense.gate.ok).toBe(false);
+    expect(partialDispense.progress.fraction).toBe('1 / 2');
+    expect(partialDispense.primary.cursor).toBe('not-allowed');
+
+    const partialAudit = buildView({
+      ...base,
+      phase: 'audit',
+      done: { line_1: true },
+      audit: { line_1: true },
+    });
+    expect(partialAudit.gate.ok).toBe(false);
+    expect(partialAudit.progress.fraction).toBe('1 / 2');
+    expect(partialAudit.primary.cursor).toBe('not-allowed');
+  });
+
+  it('keeps audit primary disabled when rows are audited locally but not dispensed', () => {
+    const view = buildView({
+      phase: 'audit',
+      selId: patient.id,
+      sortMode: 'start',
+      done: {},
+      audit: { line_1: true, line_2: true },
+      setCells: {},
+      auditCells: {},
+      outChk: {},
+      checks: {},
+      ng: {},
+      target: null,
+      holdModal: null,
+      holdInfo: {},
+      packet: {},
+      compareOpen: false,
+      model: multiRowModel,
+      patients: [patient],
+    });
+
+    expect(view.gate.ok).toBe(false);
+    expect(view.progress.fraction).toBe('0 / 2');
+    expect(view.primary.cursor).toBe('not-allowed');
+    expect(view.rows.filter((row) => row.kind === 'drug').map((row) => row.note)).toEqual([
+      '未調剤',
+      '未調剤',
+    ]);
   });
 
   it.each(['setp', 'seta'] as const)(

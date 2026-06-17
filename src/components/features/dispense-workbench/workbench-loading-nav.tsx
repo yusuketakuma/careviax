@@ -16,7 +16,7 @@ type WorkbenchLoadingNavProps = {
 export function WorkbenchLoadingNav({ phase }: WorkbenchLoadingNavProps) {
   return (
     <nav
-      aria-label="メインメニュー"
+      aria-label="工程タブ"
       className="flex flex-wrap items-center gap-1 rounded-lg border border-border/70 bg-card p-1"
     >
       {PHASES.map((item) => {

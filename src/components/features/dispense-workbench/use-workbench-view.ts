@@ -736,6 +736,8 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     phase: ph,
     model,
     id,
+    done,
+    audit,
     setCells,
     auditCells,
     outChk,
@@ -769,6 +771,12 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     primaryBg = dataUnavailable ? '#b8bfc8' : '#2f6fd6';
     primaryBorder = dataUnavailable ? '#a3abb5' : '#245aad';
     checkHead = '調剤';
+    if (!gateResult.ok) {
+      primaryBg = '#b8bfc8';
+      primaryBorder = '#a3abb5';
+      primaryCursor = 'not-allowed';
+      primaryOpacity = '.7';
+    }
   } else if (ph === 'audit') {
     const pct = prog.total ? Math.round((prog.audit / prog.total) * 100) : 0;
     progress = {
@@ -782,6 +790,12 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     primaryBg = dataUnavailable ? '#b8bfc8' : '#2c9a4e';
     primaryBorder = dataUnavailable ? '#a3abb5' : '#218040';
     checkHead = '監査';
+    if (!gateResult.ok) {
+      primaryBg = '#b8bfc8';
+      primaryBorder = '#a3abb5';
+      primaryCursor = 'not-allowed';
+      primaryOpacity = '.7';
+    }
   } else {
     const totC = cal.active.length * calendarDayCount;
     let dnC = 0;
@@ -843,14 +857,11 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     primaryOpacity = '.7';
   }
 
-  // ---- F-keys ----
+  // ---- 実装済み物理 F-key shortcuts ----
   const fkeys: WorkbenchView['fkeys'] = [
-    fkey('F1', 'ヘルプ', 'help'),
-    fkey('F2', '患者検索', 'searchPatient'),
     fkey('F3', '前患者', 'prevPatient'),
     fkey('F4', '次患者', 'nextPatient'),
     fkey('F5', '一括処理', 'bulk', true),
-    fkey('F6', '写真', 'photo'),
     fkey('F7', '保留', 'hold'),
     fkey('F8', '調剤', 'phaseDispense', ph === 'dispense'),
     fkey('F9', '調剤監査', 'phaseAudit', ph === 'audit'),

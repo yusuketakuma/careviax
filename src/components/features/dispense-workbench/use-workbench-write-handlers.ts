@@ -18,6 +18,7 @@
 
 import { useMemo } from 'react';
 import type { HoldScope } from '@prisma/client';
+import { toast } from 'sonner';
 
 import { useWorkbenchStore } from './dispensing-workbench.store';
 import { isRealDataEnabled } from './dispensing-workbench.adapter';
@@ -219,6 +220,48 @@ export function useWorkbenchWriteHandlers(args: {
     };
     /** 最新 store 状態（mutation 用 id 解決はここから読む）。 */
     const snap = () => useWorkbenchStore.getState();
+    const reportMissingWriteContext = () => {
+      toast.error(
+        '保存に必要な実データを取得できませんでした。患者を再選択してから実行してください。',
+      );
+    };
+    const reportUnsupportedRealWrite = () => {
+      toast.error('この項目は実データではまだ保存できません。最新状態を再読み込みしてください。');
+    };
+    const requireRealTaskContext = (s = snap()): boolean => {
+      if (!isRealDataEnabled()) return true;
+      if (s.writeContext.taskId) return true;
+      reportMissingWriteContext();
+      return false;
+    };
+    const requireRealPlanContext = (s = snap()): boolean => {
+      if (!isRealDataEnabled()) return true;
+      if (s.writeContext.planId) return true;
+      reportMissingWriteContext();
+      return false;
+    };
+    const requireRealCycleContext = (s = snap()): boolean => {
+      if (!isRealDataEnabled()) return true;
+      if (s.writeContext.cycleId) return true;
+      reportMissingWriteContext();
+      return false;
+    };
+    const requireRealCellContext = (
+      s: ReturnType<typeof snap>,
+      target: CellTarget | null,
+    ): CellMeta | null => {
+      if (!isRealDataEnabled()) return null;
+      const meta = resolveCellMeta(s.writeContext.cellMeta, s.selId, target);
+      if (s.writeContext.planId && meta) return meta;
+      reportMissingWriteContext();
+      return null;
+    };
+    const canSubmitRealPrimary = (s: ReturnType<typeof snap>): boolean => {
+      if (phase === 'dispense' || phase === 'audit') {
+        return !!s.writeContext.taskId && s.writeContext.cycleVersion !== null;
+      }
+      return !!s.writeContext.planId;
+    };
 
     return {
       // ── グリッド ──
@@ -228,33 +271,59 @@ export function useWorkbenchWriteHandlers(args: {
         toggleRow(phase, did);
       },
       onGroupMethod: (gid, value) => {
+        if (isRealDataEnabled()) {
+          const s = snap();
+          const groupId = s.writeContext.groupIdByGid[gid];
+          if (!s.writeContext.taskId || !groupId) {
+            reportMissingWriteContext();
+            return;
+          }
+        }
         setGMethod(gid, value);
         real(() => {
           const s = snap();
+          const taskId = s.writeContext.taskId;
           const groupId = s.writeContext.groupIdByGid[gid];
-          if (!s.writeContext.taskId || !groupId) return;
+          if (!taskId || !groupId) {
+            reportMissingWriteContext();
+            return;
+          }
           mutations.saveGroups.mutate({
-            taskId: s.writeContext.taskId,
+            taskId,
             groups: [{ id: groupId, method: value }],
           });
         });
       },
       onGroupStart: (gid, value) => {
+        if (isRealDataEnabled()) {
+          reportUnsupportedRealWrite();
+          return;
+        }
         setGStart(gid, value);
         // 服用開始日はグループ属性 API（method/slot/label/sort_order）に無く、明細 start_date は
         // line 単位。グループ一括での開始日変更 API は未提供のため実データでも store のみ更新。
       },
       onGroupDays: (gid, value) => {
+        if (isRealDataEnabled()) {
+          reportUnsupportedRealWrite();
+          return;
+        }
         setGDays(gid, value);
         // 処方日数も同様にグループ属性 API に無いため store のみ更新。
       },
       onDropTo: (gid) => {
         // dropTo は内部の dragId を消費するため、移動前後の model を diff して移動 did を特定する。
-        const before = membershipOf(snap().model[snap().selId] ?? []);
+        const beforeState = snap();
+        if (!requireRealTaskContext(beforeState)) return;
+        const before = membershipOf(beforeState.model[beforeState.selId] ?? []);
         dropTo(gid);
         real(() => {
           const s = snap();
-          if (!s.writeContext.taskId) return;
+          const taskId = s.writeContext.taskId;
+          if (!taskId) {
+            reportMissingWriteContext();
+            return;
+          }
           const groupId = s.writeContext.groupIdByGid[gid] ?? null;
           const after = membershipOf(s.model[s.selId] ?? []);
           // gid へ新たに入った did（所属が変わって gid になった行）を割当対象にする。
@@ -263,14 +332,17 @@ export function useWorkbenchWriteHandlers(args: {
           );
           if (!movedDid) return;
           mutations.assignLines.mutate({
-            taskId: s.writeContext.taskId,
+            taskId,
             assignments: [{ line_id: movedDid, packaging_group_id: groupId }],
           });
         });
       },
       onAddGroup: () => {
         const before = snap();
-        if (isRealDataEnabled() && !before.writeContext.taskId) return;
+        if (isRealDataEnabled() && !before.writeContext.taskId) {
+          reportMissingWriteContext();
+          return;
+        }
         const gid = addGroup();
         if (!gid) return;
         real(() => {
@@ -315,7 +387,7 @@ export function useWorkbenchWriteHandlers(args: {
       onBulk: () => {
         if (isRealDataEnabled() && isAnyPending) return; // 実データ時のみ二重送信ガード
         const before = snap();
-        if (isRealDataEnabled() && phase === 'setp' && !before.writeContext.planId) return;
+        if (phase === 'setp' && !requireRealPlanContext(before)) return;
         const previousSetCells = before.setCells;
         const cells: Array<{ batch_id: string; expected_version?: number }> = [];
         if (isRealDataEnabled() && phase === 'setp') {
@@ -324,7 +396,10 @@ export function useWorkbenchWriteHandlers(args: {
               cells.push({ batch_id: batchId, expected_version: meta.versions[i] });
             });
           }
-          if (cells.length === 0) return;
+          if (cells.length === 0) {
+            reportMissingWriteContext();
+            return;
+          }
         }
         bulk(phase);
         real(() => {
@@ -340,6 +415,13 @@ export function useWorkbenchWriteHandlers(args: {
       },
       onPrimary: () => {
         if (isRealDataEnabled() && isAnyPending) return null; // 実データ時のみ二重送信ガード
+        if (isRealDataEnabled()) {
+          const s = snap();
+          if (!canSubmitRealPrimary(s)) {
+            reportMissingWriteContext();
+            return null;
+          }
+        }
         const next = primary(phase);
         if (next) {
           // ゲート通過時のみ確定書込（調剤完了 / セット監査承認）を発火。
@@ -350,11 +432,12 @@ export function useWorkbenchWriteHandlers(args: {
               s.writeContext.taskId &&
               s.writeContext.cycleVersion !== null
             ) {
-              const submittedLineIds = collectDispenseLines(s).map((line) => line.line_id);
+              const lines = collectDispenseLines(s);
+              const submittedLineIds = lines.map((line) => line.line_id);
               mutations.completeDispense.mutate(
                 {
                   task_id: s.writeContext.taskId,
-                  lines: collectDispenseLines(s),
+                  lines,
                   expected_version: s.writeContext.cycleVersion,
                 },
                 {
@@ -424,8 +507,7 @@ export function useWorkbenchWriteHandlers(args: {
         const key = cellKey(before.selId, target.di, target.tk);
         const previousSetState = before.setCells[key];
         if (isRealDataEnabled()) {
-          const meta = resolveCellMeta(before.writeContext.cellMeta, before.selId, target);
-          if (!before.writeContext.planId || !meta) return;
+          if (!requireRealCellContext(before, target)) return;
         }
         applyCell(phase, 'set', target);
         real(() => {
@@ -464,18 +546,25 @@ export function useWorkbenchWriteHandlers(args: {
         const previousAuditState = before.auditCells[key];
         const ngLabel = before.ng[key];
         const ngCode = ngLabel ? NG_LABEL_TO_CODE[ngLabel] : undefined;
-        if (isRealDataEnabled() && !ngCode) return;
+        if (isRealDataEnabled()) {
+          if (!ngCode) {
+            toast.error('NG分類を選択してから実行してください。');
+            return;
+          }
+          if (!requireRealCellContext(before, target)) return;
+        }
 
         applyCell(phase, 'ng', target);
         real(() => {
           const s = snap();
-          if (!s.writeContext.planId) return;
+          const planId = s.writeContext.planId;
           const meta = resolveCellMeta(s.writeContext.cellMeta, s.selId, target);
-          if (!meta || !ngCode) {
+          if (!planId || !meta || !ngCode) {
             restoreCell(phase, before.selId, target, previousAuditState);
+            reportMissingWriteContext();
             return;
           }
-          const input = buildRejectedSetAuditInput(s.writeContext.planId, meta, ngLabel);
+          const input = buildRejectedSetAuditInput(planId, meta, ngLabel);
           if (!input) {
             restoreCell(phase, before.selId, target, previousAuditState);
             return;
@@ -502,15 +591,18 @@ export function useWorkbenchWriteHandlers(args: {
         const previousSetState = before.setCells[key];
         const previousAuditState = before.auditCells[key];
         if (isRealDataEnabled()) {
-          const meta = before.writeContext.cellMeta[key];
-          if (!before.writeContext.planId || !meta) return;
+          if (!requireRealCellContext(before, target)) return;
         }
         returnToSet(di, tk);
         real(() => {
           const s = snap();
-          if (!s.writeContext.planId) return;
           const meta = s.writeContext.cellMeta[key];
-          if (!meta) return;
+          if (!meta) {
+            restoreCell('setp', before.selId, target, previousSetState);
+            restoreCell('seta', before.selId, target, previousAuditState);
+            reportMissingWriteContext();
+            return;
+          }
           // セットへ戻す＝当該セルを未セット化（clear）。
           mutations.cellMutation.mutate(
             {
@@ -545,8 +637,10 @@ export function useWorkbenchWriteHandlers(args: {
         const reasonCode = HOLD_REASON_TO_CODE[draft.reason];
         if (!reasonCode) return;
         if (isRealDataEnabled() && isCalendarPhase(phase)) {
-          const meta = before.writeContext.cellMeta[key];
-          if (!before.writeContext.planId || !meta) return;
+          if (!requireRealCellContext(before, target)) return;
+        }
+        if (isRealDataEnabled() && !isCalendarPhase(phase) && !requireRealCycleContext(before)) {
+          return;
         }
 
         saveHold(phase);
@@ -577,11 +671,17 @@ export function useWorkbenchWriteHandlers(args: {
             return;
           }
 
-          if (!s.writeContext.cycleId) return;
           const slot = TIMING_TO_SLOT[draft.tk as keyof typeof TIMING_TO_SLOT];
           const meta = s.writeContext.cellMeta[cellKey(s.selId, draft.di, draft.tk)];
+          const cycleId = s.writeContext.cycleId;
+          if (!cycleId) {
+            restoreCell(phase, before.selId, target, previousCellState);
+            restoreHoldInfo(before.selId, target, previousHoldInfo);
+            reportMissingWriteContext();
+            return;
+          }
           mutations.createHold.mutate({
-            cycle_id: s.writeContext.cycleId,
+            cycle_id: cycleId,
             phase,
             scope: CELL_HOLD_SCOPE,
             reason: reasonCode,

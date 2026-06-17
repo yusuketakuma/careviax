@@ -92,7 +92,13 @@ export interface WorkbenchState {
    * 実データ初期化（計画 §14 読取結線）。患者リスト + 選択患者の model を流し込む。
    * 既定パス（モック）では呼ばれない。selId が新リストに無ければ先頭へ寄せる。
    */
-  hydrate: (args: { patients: SeedPatient[]; selId?: string; model?: WorkbenchModel }) => void;
+  hydrate: (args: {
+    patients: SeedPatient[];
+    selId?: string;
+    model?: WorkbenchModel;
+    done?: Record<string, boolean>;
+    audit?: Record<string, boolean>;
+  }) => void;
   /**
    * 書込結線の実データ識別子を部分マージする（実データ時のみ呼ばれる）。
    * 既定（モック）では未使用。selId 切替やカレンダー取得時に充填する。
@@ -189,7 +195,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           holdModal: null,
         })),
 
-      hydrate: ({ patients, selId, model }) =>
+      hydrate: ({ patients, selId, model, done, audit }) =>
         set((s) => {
           if (patients.length === 0) {
             return {
@@ -198,6 +204,8 @@ export const useWorkbenchStore = create<WorkbenchState>()(
               hydrated: true,
               target: null,
               holdModal: null,
+              done: {},
+              audit: {},
               model: {},
               writeContext: emptyWriteContext(),
             };
@@ -210,6 +218,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
             hydrated: true,
             target: null,
             holdModal: null,
+            ...(model ? { done: done ?? {}, audit: audit ?? {} } : {}),
             ...(nextSelId !== s.selId ? { writeContext: emptyWriteContext() } : {}),
             ...(model ? { model: { ...s.model, ...model } } : {}),
           };
@@ -350,10 +359,13 @@ export const useWorkbenchStore = create<WorkbenchState>()(
       },
 
       bulk: (phase) => {
-        const { selId, model } = get();
+        const { selId, model, done } = get();
         if (phase === 'dispense' || phase === 'audit') {
           const upd: Record<string, boolean> = {};
-          drugsOf(model, selId).forEach((dr) => (upd[dr.did] = true));
+          drugsOf(model, selId).forEach((dr) => {
+            if (phase === 'audit' && !done[dr.did]) return;
+            upd[dr.did] = true;
+          });
           if (phase === 'dispense') set((s) => ({ done: { ...s.done, ...upd } }));
           else set((s) => ({ audit: { ...s.audit, ...upd } }));
           return;
@@ -414,6 +426,8 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           phase,
           model: s.model,
           id: s.selId,
+          done: s.done,
+          audit: s.audit,
           setCells: s.setCells,
           auditCells: s.auditCells,
           outChk: s.outChk,

@@ -95,6 +95,12 @@ async function waitForSetAuditApprovalReady(main: Locator) {
   });
 }
 
+async function waitForVisibleSetAuditCell(main: Locator) {
+  const cell = main.locator('[role="button"]').filter({ hasText: /包/ }).first();
+  await expect(cell).toBeVisible({ timeout: 15_000 });
+  return cell;
+}
+
 function assertSafeE2eDatabase() {
   if (process.env.PLAYWRIGHT !== '1' && process.env.PLAYWRIGHT_REUSE_SERVER !== '1') {
     throw new Error('Set-audit success E2E requires PLAYWRIGHT=1 or PLAYWRIGHT_REUSE_SERVER=1');
@@ -403,8 +409,8 @@ test.describe('prescription intake flow', () => {
       { timeout: 45_000 },
     );
 
-    // 新 DispensingWorkbench のメニューバーが安定アンカー（旧「調剤」見出しは撤去済み）。
-    await expect(main.getByRole('navigation', { name: 'メインメニュー' })).toBeVisible({
+    // 新 DispensingWorkbench の工程タブが安定アンカー（旧「調剤」見出しは撤去済み）。
+    await expect(main.getByRole('navigation', { name: '工程タブ' })).toBeVisible({
       timeout: 45_000,
     });
 
@@ -421,10 +427,8 @@ test.describe('dispense → audit flow', () => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/dispense');
 
-    // 新 DispensingWorkbench のメニューバーが安定アンカー（旧「調剤」見出しは撤去済み）。
-    await expect(
-      page.locator('main').getByRole('navigation', { name: 'メインメニュー' }),
-    ).toBeVisible();
+    // 新 DispensingWorkbench の工程タブが安定アンカー（旧「調剤」見出しは撤去済み）。
+    await expect(page.locator('main').getByRole('navigation', { name: '工程タブ' })).toBeVisible();
 
     const content = await page.locator('main').textContent();
     expect(content?.trim().length).toBeGreaterThan(0);
@@ -462,9 +466,7 @@ test.describe('dispense → audit flow', () => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/audit');
 
-    await expect(
-      page.locator('main').getByRole('navigation', { name: 'メインメニュー' }),
-    ).toBeVisible();
+    await expect(page.locator('main').getByRole('navigation', { name: '工程タブ' })).toBeVisible();
 
     const content = await page.locator('main').textContent();
     expect(content?.trim().length).toBeGreaterThan(0);
@@ -487,7 +489,7 @@ test.describe('dispense → audit flow', () => {
       page.locator('main').getByRole('link', { name: '調剤キュー' }).first().click(),
     );
     const main = page.locator('main');
-    await expect(main.getByRole('navigation', { name: 'メインメニュー' })).toBeVisible();
+    await expect(main.getByRole('navigation', { name: '工程タブ' })).toBeVisible();
 
     // → audit via 工程タブ（調剤監査 → /audit）
     await clickAndWaitForStableRoute(
@@ -505,7 +507,7 @@ test.describe('dispense → audit flow', () => {
     await clickAndWaitForStableRoute(page, /\/dispense/, () =>
       main.getByRole('link', { name: '調剤', exact: true }).first().click(),
     );
-    await expect(main.getByRole('navigation', { name: 'メインメニュー' })).toBeVisible();
+    await expect(main.getByRole('navigation', { name: '工程タブ' })).toBeVisible();
 
     expect(errors).toEqual([]);
   });
@@ -523,7 +525,7 @@ test.describe('set → set-audit real-data direct entry', () => {
     await openSetWorkbenchWithRealData(page, '/set');
 
     const main = page.locator('main');
-    await expect(main.getByRole('navigation', { name: 'メインメニュー' })).toBeVisible();
+    await expect(main.getByRole('navigation', { name: '工程タブ' })).toBeVisible();
     await expect(main).toContainText('セット対象期間');
     await expect(main).toContainText('一包化袋');
     await expect(main).toContainText('1包');
@@ -537,7 +539,7 @@ test.describe('set → set-audit real-data direct entry', () => {
     await openSetWorkbenchWithRealData(page, '/set-audit');
 
     const main = page.locator('main');
-    await expect(main.getByRole('navigation', { name: 'メインメニュー' })).toBeVisible();
+    await expect(main.getByRole('navigation', { name: '工程タブ' })).toBeVisible();
     await expect(main).toContainText('セット対象期間');
     await expect(main).toContainText('一包化袋');
     await expect(main).toContainText('1包');
@@ -569,8 +571,9 @@ test.describe('set → set-audit real-data direct entry', () => {
     await openSetWorkbenchWithRealData(page, '/set-audit');
 
     const main = page.locator('main');
+    await waitForVisibleSetAuditCell(main);
     await main.getByRole('button', { name: '全セルOK' }).click();
-    await main.locator('[role="button"]').filter({ hasText: /包/ }).first().click();
+    await (await waitForVisibleSetAuditCell(main)).click();
     for (const label of [
       '日付が正しい',
       '用法が正しい',
@@ -655,8 +658,9 @@ test.describe('set → set-audit real-data direct entry', () => {
     expect(data.planId).toBe(SET_AUDIT_SUCCESS_PLAN_ID);
 
     const main = page.locator('main');
+    await waitForVisibleSetAuditCell(main);
     await main.getByRole('button', { name: '全セルOK' }).click();
-    await main.locator('[role="button"]').filter({ hasText: /包/ }).first().click();
+    await (await waitForVisibleSetAuditCell(main)).click();
     for (const label of [
       '日付が正しい',
       '用法が正しい',

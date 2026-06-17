@@ -167,6 +167,8 @@ export async function loadWorkbenchAsync(
 ): Promise<{
   patient: SeedPatient;
   groups: Group[];
+  done: Record<string, boolean>;
+  audit: Record<string, boolean>;
   writeContext: WorkbenchWriteContextPatch;
 } | null> {
   if (USE_MOCK) return null;
@@ -179,10 +181,10 @@ export async function loadWorkbenchAsync(
     `/api/dispense-tasks/${encodeURIComponent(taskId)}/workbench`,
   );
   if (!data) return null;
-  const { patient, groups } = workbenchFromApi(data);
+  const { patient, groups, done, audit } = workbenchFromApi(data);
   // 書込結線の id 束（task_id / cycle_id / cycle.version / グループ割当）を同時に返し、
   // シェルが setWriteContext で store に充填できるようにする（mutations hook が読む）。
-  return { patient, groups, writeContext: writeContextFromApi(data) };
+  return { patient, groups, done, audit, writeContext: writeContextFromApi(data) };
 }
 
 /**

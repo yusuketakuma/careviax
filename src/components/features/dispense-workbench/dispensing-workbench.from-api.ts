@@ -180,6 +180,8 @@ export function patientsFromApi(rows: DispenseWorkbenchPatientRow[]): SeedPatien
 export function workbenchFromApi(data: DispenseWorkbenchData): {
   patient: SeedPatient;
   groups: Group[];
+  done: Record<string, boolean>;
+  audit: Record<string, boolean>;
 } {
   // comparison: line_id（comparison.key）→ chg / prevText を引くマップ + 中止薬。
   // Legacy fallback by drug_name is used only when the name maps to exactly one comparison row.
@@ -263,6 +265,11 @@ export function workbenchFromApi(data: DispenseWorkbenchData): {
     days: 0,
     drugs: groupMap.get(key)!,
   }));
+  const done = Object.fromEntries(
+    data.count_rows
+      .filter((row) => row.result_id || row.dispensed_at)
+      .map((row) => [row.line_id, true]),
+  );
 
   // 申し送り・属性チップ（HANDLING_TAG ラベルは API 側で日本語合成済みの safety.cautions を使用）
   const chips = [...new Set(data.safety.handling_tags)].filter((t) => t.length > 0);
@@ -287,7 +294,7 @@ export function workbenchFromApi(data: DispenseWorkbenchData): {
     rows: [],
   };
 
-  return { patient, groups };
+  return { patient, groups, done, audit: {} };
 }
 
 // ── 公開: 書込結線の実データ識別子（writeContext の dispense/audit 部分） ──

@@ -611,7 +611,7 @@ export interface GateView {
   border: string;
 }
 
-/** F-key 表示 */
+/** 実装済み物理 F-key shortcut */
 export interface FKeyView {
   key: string;
   label: string;
@@ -623,12 +623,9 @@ export interface FKeyView {
 
 /** F-key の意味（コンポーネント側でハンドラに割当）*/
 export type FKeyAction =
-  | 'help'
-  | 'searchPatient'
   | 'prevPatient'
   | 'nextPatient'
   | 'bulk'
-  | 'photo'
   | 'hold'
   | 'phaseDispense'
   | 'phaseAudit'

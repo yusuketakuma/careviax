@@ -5,11 +5,11 @@
  *
  * 役割:
  *  - props { phase }（ルートから注入）。useWorkbenchView(phase) で派生 view を 1 回取得し子へ配分。
- *  - レイアウト: タイトルバー / メニューバー / 患者リボン / BODY(左=PatientListPanel・
+ *  - レイアウト: 患者リボン / BODY(左=PatientListPanel・
  *    中央=PhaseTabs + (isGrid:PrescriptionGrid | isCal:MedicationCalendarGrid)・右=RightPane) /
- *    F1〜F12 バー / ステータスバー。
- *  - F8〜F11・フェーズタブは 4 ルート（/dispense /audit /set /set-audit）へ遷移。
- *    F12「次工程へ」は store.primary(phase) がゲート通過時に返す次 phase のルートへ router.push。
+ *    ステータスバー。
+ *  - フェーズタブは 4 ルート（/dispense /audit /set /set-audit）へ遷移。
+ *    物理 F12「次工程へ」は store.primary(phase) がゲート通過時に返す next phase を処理する。
  *  - HoldReasonDialog / PrescriptionCompareDialog をマウント（開閉は view.holdOpen / view.compareOpen）。
  *
  * 状態は useWorkbenchStore（zustand+persist）に集約。子は props { view, phase } を受け取り、
@@ -52,24 +52,6 @@ const PHASE_ROUTE: Record<Phase, string> = {
   setp: '/set',
   seta: '/set-audit',
 };
-
-/** メニューバー項目（設計 L42-49・固定表示）。 */
-const MENU_ITEMS = [
-  '患者(P)',
-  '調剤(C)',
-  '監査(K)',
-  'セット(S)',
-  'マスタ(M)',
-  '印刷(R)',
-  '設定',
-  'ヘルプ(H)',
-] as const;
-/** 現 phase に応じてハイライトするメニュー（調剤系=調剤(C) / 監査系=監査(K) / セット系=セット(S)）。 */
-function activeMenu(phase: Phase): string {
-  if (phase === 'dispense') return '調剤(C)';
-  if (phase === 'audit') return '監査(K)';
-  return 'セット(S)';
-}
 
 /** 時計表記（設計 componentDidMount の setInterval 相当・HH:MM:SS）。 */
 function formatClock(now: Date): string {
@@ -148,6 +130,8 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
         patients,
         selId: targetId,
         model: { [wb.patient.id]: wb.groups },
+        done: wb.done,
+        audit: wb.audit,
       });
       // 書込結線の id 束を store へ充填（mutations hook が読む）。
       setWriteContext(wb.writeContext);
@@ -227,10 +211,6 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
           if (nextPhase) router.push(PHASE_ROUTE[nextPhase]);
           break;
         }
-        // help / searchPatient / photo は段階1では未実装（モック）。表示は維持。
-        case 'help':
-        case 'searchPatient':
-        case 'photo':
         default:
           break;
       }
@@ -238,10 +218,10 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
     [navBy, openHold, router, target, writeHandlers],
   );
 
-  // ---- 物理 F1〜F12 キーのバインド（レセコン風キーボード操作・デスクトップ専用）----
+  // ---- 物理 F-key のバインド（レセコン風キーボード操作・デスクトップ専用）----
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // 安価な前置ガード（F1〜F12 以外を即除外）してから実在 F-key を検索。
+      // 安価な前置ガード（F1〜F12 以外を即除外）してから実装済み F-key を検索。
       if (!e.key.startsWith('F')) return;
       const fk = view.fkeys.find((f) => f.key === e.key);
       if (!fk) return;
@@ -253,39 +233,9 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
   }, [view.fkeys, runAction]);
 
   const cur = view.cur;
-  const menuActive = activeMenu(phase);
 
   return (
     <div className={`${styles.root} ${inShell ? styles.rootInShell : ''}`}>
-      {/* ===== TITLE BAR ===== */}
-      <div className={styles.titleBar}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div className={styles.titleIcon}>調</div>
-          <span style={{ fontWeight: 700, letterSpacing: '.5px' }}>ファーマ在宅 調剤システム</span>
-          <span style={{ opacity: 0.7 }}>— 一包化・調剤・お薬カレンダー</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-          <span style={{ opacity: 0.78, fontSize: 11 }}>Ver 4.3 / みやま中央薬局</span>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <div style={{ width: 11, height: 11, borderRadius: '50%', background: '#f6c453' }} />
-            <div style={{ width: 11, height: 11, borderRadius: '50%', background: '#8fd07a' }} />
-            <div style={{ width: 11, height: 11, borderRadius: '50%', background: '#e87a6b' }} />
-          </div>
-        </div>
-      </div>
-
-      {/* ===== MENU BAR ===== */}
-      <nav className={styles.menuBar} aria-label="メインメニュー">
-        {MENU_ITEMS.map((item) => (
-          <span
-            key={item}
-            className={`${styles.menuItem} ${item === menuActive ? styles.menuItemActive : ''}`}
-          >
-            {item}
-          </span>
-        ))}
-      </nav>
-
       {/* ===== PATIENT RIBBON ===== */}
       <div className={styles.ribbon}>
         <div
@@ -384,31 +334,6 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
           handlers={writeHandlers}
           isPending={mutations.isAnyPending}
         />
-      </div>
-
-      {/* ===== FUNCTION KEYS ===== */}
-      <div className={styles.fkeyBar}>
-        {view.fkeys.map((f) => (
-          <button
-            key={f.key}
-            type="button"
-            className={styles.fkey}
-            onClick={() => runAction(f.action)}
-            aria-label={`${f.key} ${f.label}`}
-          >
-            <span
-              className={styles.mono}
-              style={{ fontSize: 9.5, fontWeight: 700, color: f.keyColor }}
-            >
-              {f.key}
-            </span>
-            <span
-              style={{ fontSize: 11, fontWeight: 700, color: f.labelColor, whiteSpace: 'nowrap' }}
-            >
-              {f.label}
-            </span>
-          </button>
-        ))}
       </div>
 
       {/* ===== STATUS BAR ===== */}

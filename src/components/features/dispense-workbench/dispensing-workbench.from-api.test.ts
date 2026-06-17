@@ -159,6 +159,21 @@ describe('patientRowToSeed / patientsFromApi', () => {
 // ── ワークベンチ写像: 時点数量（朝昼夕眠前 slots） ──
 
 describe('workbenchFromApi — 朝昼夕眠前 slots の逆算割付', () => {
+  it('dispense result rows are restored as checked done state for direct audit entry', () => {
+    const data = workbenchData({
+      count_rows: [
+        countRow({ line_id: 'L1', result_id: 'result-1', dispensed_at: null }),
+        countRow({ line_id: 'L2', result_id: null, dispensed_at: '2026-06-18T09:00:00.000Z' }),
+        countRow({ line_id: 'L3', result_id: null, dispensed_at: null }),
+      ],
+    });
+
+    const { done, audit } = workbenchFromApi(data);
+
+    expect(done).toEqual({ L1: true, L2: true });
+    expect(audit).toEqual({});
+  });
+
   it('毎食後（3時点）の錠剤は朝昼夕に均等割付・眠前は空', () => {
     const data = workbenchData({
       count_rows: [
