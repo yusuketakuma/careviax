@@ -525,6 +525,7 @@ export const GET = withAuthContext(
           id: true,
           visit_type: true,
           proposal_status: true,
+          patient_contact_status: true,
           proposed_date: true,
           time_window_start: true,
           time_window_end: true,
@@ -713,14 +714,17 @@ export const GET = withAuthContext(
         id: proposal.id,
         patient_name: proposal.case_.patient.name,
         pharmacist_name: pharmacistNameById.get(proposal.proposed_pharmacist_id) ?? null,
+        patient_contact_status: proposal.patient_contact_status,
         proposed_date: proposedDateKey,
         time_start: proposal.time_window_start?.toISOString() ?? null,
         badge_label:
-          proposal.proposal_status === 'reschedule_pending'
-            ? '再調整'
-            : proposal.visit_type === 'initial'
-              ? '受入判断'
-              : '確定待ち',
+          proposal.patient_contact_status === 'change_requested'
+            ? '変更希望'
+            : proposal.proposal_status === 'reschedule_pending'
+              ? '再調整'
+              : proposal.visit_type === 'initial'
+                ? '受入判断'
+                : '確定待ち',
         response_due_at: latestContactLog?.callback_due_at?.toISOString() ?? null,
         idle_before_minutes: idleBefore,
         idle_after_minutes: idleAfter,

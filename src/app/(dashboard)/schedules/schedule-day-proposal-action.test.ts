@@ -243,7 +243,7 @@ describe('schedule day proposal action helpers', () => {
 
     expect(notifySuccess).toHaveBeenCalledWith('候補を承認して架電待ちへ移しました');
     expect(closeContactLogDialog).not.toHaveBeenCalled();
-    expect(invalidateQueries).toHaveBeenCalledTimes(4);
+    expect(invalidateQueries).toHaveBeenCalledTimes(5);
     expect(invalidateQueries).toHaveBeenNthCalledWith(1, {
       queryKey: ['visit-schedule-proposals', 'org_1'],
     });
@@ -251,9 +251,12 @@ describe('schedule day proposal action helpers', () => {
       queryKey: ['visit-schedules', 'week-board', 'org_1'],
     });
     expect(invalidateQueries).toHaveBeenNthCalledWith(3, {
-      queryKey: ['tasks', 'schedule-board', 'org_1'],
+      queryKey: ['schedule-day-board', 'org_1'],
     });
     expect(invalidateQueries).toHaveBeenNthCalledWith(4, {
+      queryKey: ['tasks', 'schedule-board', 'org_1'],
+    });
+    expect(invalidateQueries).toHaveBeenNthCalledWith(5, {
       queryKey: ['tasks', 'visit-contact-followup', 'org_1'],
     });
   });

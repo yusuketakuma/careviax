@@ -66,15 +66,24 @@ export type DayBoardStaff = {
   audit_task_count: number;
 };
 
+export type DayBoardPatientContactStatus =
+  | 'pending'
+  | 'attempted'
+  | 'confirmed'
+  | 'declined'
+  | 'change_requested'
+  | 'unreachable';
+
 export type DayBoardPendingProposal = {
   id: string;
   patient_name: string;
   pharmacist_name: string | null;
+  patient_contact_status: DayBoardPatientContactStatus;
   /** YYYY-MM-DD */
   proposed_date: string;
   /** time_window_start(ISO)。未設定は null */
   time_start: string | null;
-  /** 受入判断 / 再調整 / 確定待ち */
+  /** 受入判断 / 再調整 / 確定待ち / 変更希望 */
   badge_label: string;
   /** 返答期限(最新コンタクトログの callback_due_at) */
   response_due_at: string | null;

@@ -534,6 +534,7 @@ export const PREPARATION_ITEMS = [
 export const TASK_TYPE_LABELS: Record<string, string> = {
   visit_preparation: '訪問準備',
   visit_contact_followup: '架電フォロー',
+  visit_schedule_reproposal_needed: '再提案',
   visit_schedule_override_approval: '変更承認',
   visit_demand: '訪問需要',
   visit_followup: '次回訪問',
@@ -826,7 +827,9 @@ export function buildProposalFlowSteps(proposal: {
   patient_contact_status: PatientContactStatus;
 }): ProposalFlowStep[] {
   const contactConfirmed = proposal.patient_contact_status === 'confirmed';
-  const contactStarted = proposal.patient_contact_status !== 'pending';
+  const contactStarted =
+    proposal.patient_contact_status !== 'pending' &&
+    proposal.patient_contact_status !== 'change_requested';
   const isConfirmed = proposal.proposal_status === 'confirmed';
 
   let currentIndex: number;

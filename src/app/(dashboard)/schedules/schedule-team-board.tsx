@@ -76,6 +76,7 @@ async function fetchCockpitForRail(orgId: string): Promise<DashboardCockpitRespo
 const SCHEDULE_BOARD_TASK_TYPES = [
   'visit_preparation',
   'visit_contact_followup',
+  'visit_schedule_reproposal_needed',
   'visit_schedule_override_approval',
   'visit_carry_item_review',
   'facility_batch_tracker',
@@ -938,10 +939,14 @@ function PendingProposalRow({
   const pharmacistLabel = proposal.pharmacist_name
     ? `仮枠(${familyName(proposal.pharmacist_name)})`
     : '仮枠';
+  const isChangeRequested = proposal.patient_contact_status === 'change_requested';
   const showImpact =
     proposal.idle_before_minutes != null &&
     proposal.idle_after_minutes != null &&
     proposal.pharmacist_name != null;
+  const proposalDetailHref = isChangeRequested
+    ? `/schedules/proposals?workspace=dashboard&status=reschedule_pending&preset=reschedule&detail=${encodeURIComponent(proposal.id)}`
+    : `/schedules/proposals?workspace=dashboard&status=patient_contact_pending&preset=contact&detail=${encodeURIComponent(proposal.id)}`;
 
   return (
     <li
@@ -962,14 +967,14 @@ function PendingProposalRow({
           </span>
         ) : null}
         <Link
-          href={`/schedules/proposals?workspace=dashboard&status=patient_contact_pending&preset=contact&detail=${encodeURIComponent(proposal.id)}`}
+          href={proposalDetailHref}
           className={buttonVariants({
             variant: 'outline',
             size: 'sm',
             className: 'shrink-0 bg-card',
           })}
         >
-          → 確定フローへ
+          {isChangeRequested ? '→ 再提案へ' : '→ 確定フローへ'}
         </Link>
       </div>
       {showImpact ? (
@@ -1096,6 +1101,9 @@ function operationalTaskActionHref(task: ScheduleTask) {
   if (task.task_type === 'visit_contact_followup' && task.related_entity_id) {
     return `/schedules/proposals?workspace=dashboard&status=patient_contact_pending&preset=contact&detail=${encodeURIComponent(task.related_entity_id)}`;
   }
+  if (task.task_type === 'visit_schedule_reproposal_needed' && task.related_entity_id) {
+    return `/schedules/proposals?workspace=dashboard&status=reschedule_pending&preset=reschedule&detail=${encodeURIComponent(task.related_entity_id)}`;
+  }
   return '/tasks';
 }
 
@@ -1105,6 +1113,7 @@ function operationalTaskActionLabel(task: ScheduleTask) {
   }
   if (task.task_type === 'visit_schedule_override_approval') return '変更承認へ';
   if (task.task_type === 'visit_contact_followup') return '連絡結果を記録';
+  if (task.task_type === 'visit_schedule_reproposal_needed') return '再提案へ';
   return 'タスクへ';
 }
 

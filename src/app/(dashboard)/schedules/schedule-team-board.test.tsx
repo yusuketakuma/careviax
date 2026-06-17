@@ -249,6 +249,7 @@ function buildBoardFixture(): ScheduleDayBoardResponse {
         id: 'proposal_1',
         patient_name: '鈴木 新',
         pharmacist_name: '佐藤 真',
+        patient_contact_status: 'pending',
         proposed_date: TOMORROW_KEY,
         time_start: localIso(10, 0),
         badge_label: '受入判断',
@@ -635,6 +636,33 @@ describe('ScheduleTeamBoard', () => {
 
     // 主操作(青)が 1 つだけ: 次にやることのリンク以外の主ボタンは存在しない
     expect(screen.getByRole('link', { name: '予定を作る' })).toBeTruthy();
+  });
+
+  it('routes change-requested pending proposals to reproposal from the day board', () => {
+    const board = buildBoardFixture();
+    const changeRequested = {
+      ...board.pending_proposals[0],
+      id: 'proposal_change',
+      patient_name: '佐藤 変更',
+      patient_contact_status: 'change_requested' as const,
+      badge_label: '変更希望',
+    };
+
+    mockQueries({
+      board: {
+        ...board,
+        pending_proposals: [changeRequested],
+      },
+    });
+    render(<ScheduleTeamBoard initialDate={TODAY_KEY} activeView="list" />);
+
+    const pending = screen.getByTestId('schedule-pending-proposals');
+    expect(within(pending).getByText('変更希望')).toBeTruthy();
+    expect(within(pending).getByText(/佐藤 変更様 — 明日 10:00 仮枠\(佐藤\)/)).toBeTruthy();
+    const proposalDetailLink = within(pending).getByRole('link', { name: '→ 再提案へ' });
+    expect(proposalDetailLink.getAttribute('href')).toBe(
+      '/schedules/proposals?workspace=dashboard&status=reschedule_pending&preset=reschedule&detail=proposal_change',
+    );
   });
 
   it('offers visit status changes from the staff gantt', () => {

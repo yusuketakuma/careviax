@@ -163,6 +163,7 @@ describe('/api/visit-schedules/day-board', () => {
         id: 'proposal_1',
         visit_type: 'regular',
         proposal_status: 'proposed',
+        patient_contact_status: 'pending',
         proposed_date: new Date('2026-06-13T00:00:00.000Z'),
         time_window_start: null,
         time_window_end: null,
@@ -201,6 +202,7 @@ describe('/api/visit-schedules/day-board', () => {
         id: 'proposal_1',
         visit_type: 'regular',
         proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'attempted',
         proposed_date: new Date('2026-06-13T00:00:00.000Z'),
         time_window_start: null,
         time_window_end: null,
@@ -211,6 +213,7 @@ describe('/api/visit-schedules/day-board', () => {
         id: 'proposal_2',
         visit_type: 'initial',
         proposal_status: 'proposed',
+        patient_contact_status: 'pending',
         proposed_date: new Date('2026-06-14T00:00:00.000Z'),
         time_window_start: null,
         time_window_end: null,
@@ -252,6 +255,42 @@ describe('/api/visit-schedules/day-board', () => {
       expect.objectContaining({
         id: 'proposal_2',
         response_due_at: '2026-06-13T05:00:00.000Z',
+      }),
+    ]);
+  });
+
+  it('marks change-requested pending proposals for reproposal on the day board', async () => {
+    proposalFindManyMock.mockResolvedValue([
+      {
+        id: 'proposal_change',
+        visit_type: 'regular',
+        proposal_status: 'reschedule_pending',
+        patient_contact_status: 'change_requested',
+        proposed_date: new Date('2026-06-13T00:00:00.000Z'),
+        time_window_start: null,
+        time_window_end: null,
+        proposed_pharmacist_id: 'user_1',
+        case_: { patient: { name: '鈴木 修' } },
+      },
+    ]);
+    visitScheduleFindManyMock.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+    const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+    expect(response.status).toBe(200);
+    const json = await response.json();
+
+    expect(proposalFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          patient_contact_status: true,
+        }),
+      }),
+    );
+    expect(json.data.pending_proposals).toEqual([
+      expect.objectContaining({
+        id: 'proposal_change',
+        patient_contact_status: 'change_requested',
+        badge_label: '変更希望',
       }),
     ]);
   });

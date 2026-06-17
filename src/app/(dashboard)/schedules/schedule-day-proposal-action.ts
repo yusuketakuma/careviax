@@ -213,6 +213,7 @@ export async function handleScheduleDayProposalActionSuccess({
   await Promise.all([
     invalidateQueries({ queryKey: ['visit-schedule-proposals', orgId] }),
     invalidateQueries({ queryKey: ['visit-schedules', 'week-board', orgId] }),
+    invalidateQueries({ queryKey: ['schedule-day-board', orgId] }),
     invalidateQueries({ queryKey: ['tasks', 'schedule-board', orgId] }),
     invalidateQueries({
       queryKey: ['tasks', 'visit-contact-followup', orgId],

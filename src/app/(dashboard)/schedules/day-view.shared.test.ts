@@ -35,6 +35,17 @@ describe('buildProposalFlowSteps', () => {
     ).toEqual(['done', 'done', 'current', 'pending', 'pending']);
   });
 
+  it('keeps change-requested contact results at the clerk-confirmation step until reproposal', () => {
+    expect(
+      states(
+        buildProposalFlowSteps({
+          proposal_status: 'patient_contact_pending',
+          patient_contact_status: 'change_requested',
+        }),
+      ),
+    ).toEqual(['done', 'current', 'pending', 'pending', 'pending']);
+  });
+
   it('points at the formal-decision step once the patient confirms', () => {
     expect(
       states(
