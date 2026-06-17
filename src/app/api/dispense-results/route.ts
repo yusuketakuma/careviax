@@ -60,8 +60,8 @@ const createDispenseResultSchema = z.object({
   lines: z.array(dispenseResultLineSchema).min(1, '調剤実績を1件以上入力してください'),
   safety_checklist: dispenseSafetyChecklistSchema.optional(),
   // 楽観的ロック: ワークベンチ表示時の cycle.version。
-  // 受領した場合のみ書込前に現在値と照合し、ズレていれば 409 競合を返す。
-  expected_version: z.number().int().nonnegative().optional(),
+  // 調剤結果は訪問 carry_items まで再投影するため、必ず現在 version と照合する。
+  expected_version: z.number().int().nonnegative(),
 });
 
 function resolveCarryItemsStatus(lines: Array<{ carry_type: string | null | undefined }>) {
@@ -269,7 +269,7 @@ export const POST = withAuthContext(
 
       // 楽観的ロック(§12-4): クライアントがワークベンチ表示時の cycle.version を
       // 送ってきた場合のみ、書込前に現在値と照合する。ズレていれば他者更新として 409。
-      if (expected_version !== undefined && task.cycle.version !== expected_version) {
+      if (typeof task.cycle.version === 'number' && task.cycle.version !== expected_version) {
         return {
           error: 'version_conflict' as const,
           message: new VersionConflictError().message,

@@ -275,6 +275,9 @@ describe('/api/dispense-audits POST', () => {
     const cycleUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
     const cycleTransitionLogCreateMock = vi.fn().mockResolvedValue({});
     const workflowExceptionCreateMock = vi.fn().mockResolvedValue({});
+    const dispenseAuditCreateMock = vi
+      .fn()
+      .mockResolvedValue({ id: 'audit_1', result: 'rejected' });
     const membershipFindFirstMock = vi.fn().mockResolvedValue({ id: 'membership_admin' });
     const membershipFindManyMock = vi
       .fn()
@@ -310,7 +313,7 @@ describe('/api/dispense-audits POST', () => {
           findMany: membershipFindManyMock,
         },
         dispenseAudit: {
-          create: vi.fn().mockResolvedValue({ id: 'audit_1', result: 'rejected' }),
+          create: dispenseAuditCreateMock,
           findFirst: vi.fn().mockResolvedValue(null),
         },
         medicationCycle: {
@@ -333,6 +336,7 @@ describe('/api/dispense-audits POST', () => {
         task_id: 'task_1',
         result: 'rejected',
         reject_reason: 'wrong_drug',
+        reject_reason_code: 'drug_name_mismatch',
         reject_detail: '別規格が混入',
       }),
     );
@@ -356,6 +360,12 @@ describe('/api/dispense-audits POST', () => {
       }),
     );
     expect(workflowExceptionCreateMock).toHaveBeenCalled();
+    expect(dispenseAuditCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        reject_reason: 'wrong_drug',
+        reject_reason_code: 'drug_name_mismatch',
+      }),
+    });
     expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -365,6 +375,28 @@ describe('/api/dispense-audits POST', () => {
         explicitUserIds: expect.arrayContaining(['user_dispense', 'pharmacist_1', 'admin_1']),
       }),
     );
+  });
+
+  it('requires a structured reject_reason_code for rejected audits before side effects', async () => {
+    const response = await POST(
+      createRequest({
+        task_id: 'task_1',
+        result: 'rejected',
+        reject_reason: 'wrong_drug',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '差戻し時は構造化理由コードが必須です',
+      details: {
+        reject_reason_code: ['required'],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('denies unassigned tasks before creating audits or notifications', async () => {
@@ -460,6 +492,14 @@ describe('/api/dispense-audits POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        cycle_id: 'cycle_stale',
+        expected_version: 1,
+        current_version: 2,
+      },
+    });
     expect(dispenseAuditCreateMock).not.toHaveBeenCalled();
     expect(taskUpdateMock).not.toHaveBeenCalled();
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();

@@ -25,6 +25,17 @@ const updateDispenseResultSchema = z.object({
   version: z.number().int().min(1).optional(),
 });
 
+function resolveCarryItemsStatus(lines: Array<{ carry_type: string | null | undefined }>) {
+  const hasDeferred = lines.some((line) => line.carry_type === 'deferred');
+  const hasReadyItem = lines.some(
+    (line) => line.carry_type === 'carry' || line.carry_type === 'facility_deposit',
+  );
+
+  if (!hasDeferred) return 'ready' as const;
+  if (hasReadyItem) return 'partial' as const;
+  return 'blocked' as const;
+}
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req);
   if ('response' in authResult) return authResult.response;
@@ -134,6 +145,77 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         return { error: err.message, conflict: true } as const;
       }
       throw err;
+    }
+
+    const visitSchedules = await tx.visitSchedule.findMany({
+      where: {
+        org_id: ctx.orgId,
+        cycle_id: task.cycle_id,
+        schedule_status: { in: ['planned', 'in_preparation', 'ready'] },
+      },
+      select: { id: true, schedule_status: true },
+    });
+
+    if (visitSchedules.length > 0) {
+      const persistedResults = await tx.dispenseResult.findMany({
+        where: {
+          org_id: ctx.orgId,
+          task_id: existing.task_id,
+        },
+        select: {
+          line_id: true,
+          actual_drug_name: true,
+          actual_drug_code: true,
+          actual_quantity: true,
+          actual_unit: true,
+          carry_type: true,
+          special_notes: true,
+        },
+      });
+      const carryItemsStatus = resolveCarryItemsStatus(persistedResults);
+      const carryItems = persistedResults.map((line) => ({
+        line_id: line.line_id,
+        drug_name: line.actual_drug_name,
+        drug_code: line.actual_drug_code,
+        quantity: line.actual_quantity,
+        unit: line.actual_unit,
+        carry_type: line.carry_type,
+        special_notes: line.special_notes,
+      }));
+      const readyScheduleIdsToReopen = visitSchedules
+        .filter((visitSchedule) => visitSchedule.schedule_status === 'ready')
+        .map((visitSchedule) => visitSchedule.id);
+
+      if (readyScheduleIdsToReopen.length > 0) {
+        await tx.visitPreparation.updateMany({
+          where: {
+            org_id: ctx.orgId,
+            schedule_id: { in: readyScheduleIdsToReopen },
+          },
+          data: {
+            carry_items_confirmed: false,
+            prepared_at: null,
+          },
+        });
+      }
+
+      for (const visitSchedule of visitSchedules) {
+        const shouldReopenReadySchedule = visitSchedule.schedule_status === 'ready';
+
+        await tx.visitSchedule.update({
+          where: { id: visitSchedule.id },
+          data: {
+            carry_items: carryItems,
+            carry_items_status: carryItemsStatus,
+            ...(shouldReopenReadySchedule
+              ? {
+                  schedule_status: 'in_preparation',
+                  pre_visit_checklist_completed: false,
+                }
+              : {}),
+          },
+        });
+      }
     }
 
     return result;

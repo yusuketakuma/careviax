@@ -246,7 +246,7 @@ type DispenseAuditMutationError =
   | { error: 'self_audit_reason_required' }
   | { error: 'self_audit_not_authorized' }
   | { error: 'already_audited' }
-  | { error: string; conflict?: true };
+  | { error: string; conflict?: true; details?: unknown };
 
 class DispenseAuditRollback extends Error {
   constructor(public readonly result: DispenseAuditMutationError) {
@@ -302,6 +302,11 @@ export const POST = withAuthContext(
     if (result === 'rejected' && !reject_reason) {
       return validationError('差戻し時は理由コードが必須です');
     }
+    if (result === 'rejected' && !reject_reason_code) {
+      return validationError('差戻し時は構造化理由コードが必須です', {
+        reject_reason_code: ['required'],
+      });
+    }
     if (result === 'emergency_approved' && !reject_detail?.trim()) {
       return validationError('緊急例外承認時は理由の記録が必須です');
     }
@@ -352,6 +357,11 @@ export const POST = withAuthContext(
           return {
             error: 'cycle_version_conflict',
             conflict: true,
+            details: {
+              cycle_id: task.cycle_id,
+              expected_version,
+              current_version: task.cycle.version,
+            },
           } as const;
         }
 
@@ -633,7 +643,7 @@ export const POST = withAuthContext(
         return conflict('この調剤タスクは既に監査済みです');
       }
       if ('conflict' in auditError && auditError.conflict) {
-        return conflict(auditError.error);
+        return conflict(auditError.error, auditError.details);
       }
       return validationError(auditError.error);
     }

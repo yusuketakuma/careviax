@@ -71,6 +71,14 @@ function createUniqueConstraintError() {
 }
 
 function createRequest(body: unknown) {
+  const normalizedBody =
+    body && typeof body === 'object' && !Array.isArray(body) && !('expected_version' in body)
+      ? { ...body, expected_version: 1 }
+      : body;
+  return createRawRequest(normalizedBody);
+}
+
+function createRawRequest(body: unknown) {
   return new NextRequest('http://localhost/api/dispense-results', {
     method: 'POST',
     headers: {
@@ -115,6 +123,31 @@ describe('/api/dispense-results POST', () => {
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
     });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+
+  it('requires expected_version before transaction or notification side effects', async () => {
+    const response = await POST(
+      createRawRequest({
+        task_id: 'task_1',
+        safety_checklist: safetyChecklist,
+        lines: [
+          {
+            line_id: 'line_1',
+            actual_drug_name: 'アムロジピン',
+            actual_drug_code: '123',
+            actual_quantity: 14,
+            carry_type: 'carry',
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(checkDispenseAlertsMock).not.toHaveBeenCalled();
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();

@@ -345,13 +345,17 @@ export function useWorkbenchWriteHandlers(args: {
           // ゲート通過時のみ確定書込（調剤完了 / セット監査承認）を発火。
           if (isRealDataEnabled()) {
             const s = snap();
-            if (phase === 'dispense' && s.writeContext.taskId) {
+            if (
+              phase === 'dispense' &&
+              s.writeContext.taskId &&
+              s.writeContext.cycleVersion !== null
+            ) {
               const submittedLineIds = collectDispenseLines(s).map((line) => line.line_id);
               mutations.completeDispense.mutate(
                 {
                   task_id: s.writeContext.taskId,
                   lines: collectDispenseLines(s),
-                  expected_version: s.writeContext.cycleVersion ?? undefined,
+                  expected_version: s.writeContext.cycleVersion,
                 },
                 {
                   onSuccess: () => onAdvance?.(next),

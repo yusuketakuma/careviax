@@ -5,9 +5,13 @@ const {
   authMock,
   membershipFindFirstMock,
   dispenseResultFindFirstMock,
+  dispenseResultFindManyMock,
   dispenseAuditFindFirstMock,
   dispenseResultUpdateMock,
   dispenseTaskUpdateMock,
+  visitScheduleFindManyMock,
+  visitScheduleUpdateMock,
+  visitPreparationUpdateManyMock,
   medicationCycleFindFirstMock,
   medicationCycleUpdateManyMock,
   cycleTransitionLogCreateMock,
@@ -17,9 +21,13 @@ const {
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
   dispenseResultFindFirstMock: vi.fn(),
+  dispenseResultFindManyMock: vi.fn(),
   dispenseAuditFindFirstMock: vi.fn(),
   dispenseResultUpdateMock: vi.fn(),
   dispenseTaskUpdateMock: vi.fn(),
+  visitScheduleFindManyMock: vi.fn(),
+  visitScheduleUpdateMock: vi.fn(),
+  visitPreparationUpdateManyMock: vi.fn(),
   medicationCycleFindFirstMock: vi.fn(),
   medicationCycleUpdateManyMock: vi.fn(),
   cycleTransitionLogCreateMock: vi.fn(),
@@ -90,9 +98,23 @@ describe('/api/dispense-results/[id]', () => {
       version: 1,
       line: { id: 'line_1' },
     });
+    dispenseResultFindManyMock.mockResolvedValue([
+      {
+        line_id: 'line_1',
+        actual_drug_name: 'Drug B',
+        actual_drug_code: 'drug-b',
+        actual_quantity: 14,
+        actual_unit: '錠',
+        carry_type: 'carry',
+        special_notes: '再調剤',
+      },
+    ]);
     dispenseAuditFindFirstMock.mockResolvedValue({ id: 'audit_1', result: 'rejected' });
     dispenseResultUpdateMock.mockResolvedValue({ id: 'result_1' });
     dispenseTaskUpdateMock.mockResolvedValue({ cycle_id: 'cycle_1' });
+    visitScheduleFindManyMock.mockResolvedValue([]);
+    visitScheduleUpdateMock.mockResolvedValue({});
+    visitPreparationUpdateManyMock.mockResolvedValue({ count: 0 });
     medicationCycleFindFirstMock.mockResolvedValue({
       id: 'cycle_1',
       overall_status: 'dispensing',
@@ -104,6 +126,7 @@ describe('/api/dispense-results/[id]', () => {
       callback({
         dispenseResult: {
           findFirst: dispenseResultFindFirstMock,
+          findMany: dispenseResultFindManyMock,
           update: dispenseResultUpdateMock,
         },
         dispenseAudit: {
@@ -111,6 +134,13 @@ describe('/api/dispense-results/[id]', () => {
         },
         dispenseTask: {
           update: dispenseTaskUpdateMock,
+        },
+        visitSchedule: {
+          findMany: visitScheduleFindManyMock,
+          update: visitScheduleUpdateMock,
+        },
+        visitPreparation: {
+          updateMany: visitPreparationUpdateManyMock,
         },
         medicationCycle: {
           findFirst: medicationCycleFindFirstMock,
@@ -167,6 +197,11 @@ describe('/api/dispense-results/[id]', () => {
   });
 
   it('patches a dispense result only after a rejected audit and resets statuses', async () => {
+    visitScheduleFindManyMock.mockResolvedValue([
+      { id: 'visit_ready', schedule_status: 'ready' },
+      { id: 'visit_planned', schedule_status: 'planned' },
+    ]);
+
     const response = (await PATCH(
       createRequest('http://localhost/api/dispense-results/result_1', {
         actual_drug_name: 'Drug B',
@@ -204,6 +239,75 @@ describe('/api/dispense-results/[id]', () => {
     expect(medicationCycleUpdateManyMock).toHaveBeenCalledWith({
       where: { id: 'cycle_1', org_id: 'org_1', version: 1 },
       data: { overall_status: 'audit_pending', version: { increment: 1 } },
+    });
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        cycle_id: 'cycle_1',
+        schedule_status: { in: ['planned', 'in_preparation', 'ready'] },
+      },
+      select: { id: true, schedule_status: true },
+    });
+    expect(dispenseResultFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        task_id: 'task_1',
+      },
+      select: {
+        line_id: true,
+        actual_drug_name: true,
+        actual_drug_code: true,
+        actual_quantity: true,
+        actual_unit: true,
+        carry_type: true,
+        special_notes: true,
+      },
+    });
+    expect(visitPreparationUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        schedule_id: { in: ['visit_ready'] },
+      },
+      data: {
+        carry_items_confirmed: false,
+        prepared_at: null,
+      },
+    });
+    expect(visitScheduleUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'visit_ready' },
+      data: {
+        carry_items: [
+          {
+            line_id: 'line_1',
+            drug_name: 'Drug B',
+            drug_code: 'drug-b',
+            quantity: 14,
+            unit: '錠',
+            carry_type: 'carry',
+            special_notes: '再調剤',
+          },
+        ],
+        carry_items_status: 'ready',
+        schedule_status: 'in_preparation',
+        pre_visit_checklist_completed: false,
+      },
+    });
+    expect(visitScheduleUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'visit_planned' },
+      data: {
+        carry_items: [
+          {
+            line_id: 'line_1',
+            drug_name: 'Drug B',
+            drug_code: 'drug-b',
+            quantity: 14,
+            unit: '錠',
+            carry_type: 'carry',
+            special_notes: '再調剤',
+          },
+        ],
+        carry_items_status: 'ready',
+      },
     });
     expect(cycleTransitionLogCreateMock).toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({

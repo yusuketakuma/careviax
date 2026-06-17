@@ -207,7 +207,7 @@ export interface DispenseResultLineInput {
 export interface SubmitDispenseResultsInput {
   task_id: string;
   lines: DispenseResultLineInput[];
-  expected_version?: number;
+  expected_version: number;
 }
 
 export interface SubmitDispenseAuditInput {
