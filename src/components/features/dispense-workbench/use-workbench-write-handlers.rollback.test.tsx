@@ -174,6 +174,69 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
     expect(useWorkbenchStore.getState().writeContext.cellMeta[key].versions).toEqual([8]);
   });
 
+  it('submits one atomic cell mutation when a visible cell contains multiple batches', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const key = 'patient_1:0:朝';
+    const cellMutation = mutationStub((_input, options) =>
+      options?.onSuccess?.({
+        data: {
+          batches: [
+            { id: 'batch_1', version: 8 },
+            { id: 'batch_2', version: 9 },
+          ],
+        },
+      }),
+    );
+
+    act(() => {
+      useWorkbenchStore.setState({
+        selId: 'patient_1',
+        target: { di: 0, tk: '朝' },
+        setCells: { [key]: 'pending' },
+        writeContext: {
+          taskId: null,
+          cycleId: 'cycle_1',
+          cycleVersion: 4,
+          planId: 'plan_1',
+          lineGroupByDid: {},
+          groupIdByGid: {},
+          cellMeta: {
+            [key]: {
+              batchIds: ['batch_1', 'batch_2'],
+              versions: [7, 8],
+              dayNumber: 1,
+              slot: 'morning',
+            },
+          },
+        },
+      });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'setp',
+        mutations: fakeMutations({ cellMutation }),
+      }),
+    );
+
+    act(() => {
+      result.current.onSetCell();
+    });
+
+    expect(cellMutation.mutate).toHaveBeenCalledTimes(1);
+    expect(cellMutation.mutate).toHaveBeenCalledWith(
+      {
+        action: 'set',
+        cells: [
+          { batch_id: 'batch_1', expected_version: 7 },
+          { batch_id: 'batch_2', expected_version: 8 },
+        ],
+      },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
+    expect(useWorkbenchStore.getState().writeContext.cellMeta[key].versions).toEqual([8, 9]);
+  });
+
   it('does not downgrade the local cell version from a stale mutation success response', async () => {
     const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
     const key = 'patient_1:0:朝';

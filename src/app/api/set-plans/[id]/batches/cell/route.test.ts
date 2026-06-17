@@ -12,6 +12,7 @@ const { authMock, prismaMock, withOrgContextMock, txMock, notifyWorkflowMutation
       setPlan: { findFirst: vi.fn() },
       setBatch: {
         findFirst: vi.fn(),
+        findMany: vi.fn(),
         updateMany: vi.fn(),
       },
       setBatchChangeLog: { create: vi.fn() },
@@ -81,6 +82,12 @@ function buildBatch(overrides: Record<string, unknown> = {}) {
 describe('set-plans/[id]/batches/cell PATCH', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    txMock.setPlan.findFirst.mockReset();
+    txMock.setBatch.findFirst.mockReset();
+    txMock.setBatch.findMany.mockReset();
+    txMock.setBatch.updateMany.mockReset();
+    txMock.setBatchChangeLog.create.mockReset();
+    txMock.auditLog.create.mockReset();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     prismaMock.membership.findFirst.mockResolvedValue({ role: 'pharmacist' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(txMock));
@@ -266,6 +273,115 @@ describe('set-plans/[id]/batches/cell PATCH', () => {
       held_reason: 'stock_shortage',
       held_detail: '在庫不足',
     });
+  });
+
+  it('holds all batch lines in one visible cell atomically', async () => {
+    txMock.setBatch.findMany
+      .mockResolvedValueOnce([
+        buildBatch({ id: 'batch_1', line_id: 'line_1' }),
+        buildBatch({ id: 'batch_2', line_id: 'line_2' }),
+      ])
+      .mockResolvedValueOnce([
+        buildBatch({
+          id: 'batch_1',
+          line_id: 'line_1',
+          set_state: 'hold',
+          held_reason: 'stock_shortage',
+          version: 2,
+        }),
+        buildBatch({
+          id: 'batch_2',
+          line_id: 'line_2',
+          set_state: 'hold',
+          held_reason: 'stock_shortage',
+          version: 2,
+        }),
+      ]);
+
+    const response = await PATCH(
+      createRequest({
+        action: 'hold',
+        held_reason: 'stock_shortage',
+        cells: [
+          { batch_id: 'batch_1', expected_version: 1 },
+          { batch_id: 'batch_2', expected_version: 1 },
+        ],
+      }),
+      params,
+    );
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.data.batches).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'batch_1', version: 2 }),
+        expect.objectContaining({ id: 'batch_2', version: 2 }),
+      ]),
+    );
+    expect(txMock.setBatch.updateMany).toHaveBeenCalledTimes(2);
+    expect(txMock.setBatch.updateMany.mock.calls[0][0].where).toMatchObject({
+      id: 'batch_1',
+      version: 1,
+      plan: { cycle: { overall_status: 'setting' } },
+    });
+    expect(txMock.auditLog.create).toHaveBeenCalledTimes(1);
+    expect(txMock.auditLog.create.mock.calls[0][0].data).toMatchObject({
+      action: 'set_batch.cell_hold',
+      target_type: 'SetPlan',
+      target_id: 'plan_1',
+    });
+    expect(txMock.setBatchChangeLog.create).toHaveBeenCalledTimes(1);
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects grouped cell updates that span different visible cells', async () => {
+    txMock.setBatch.findMany.mockResolvedValueOnce([
+      buildBatch({ id: 'batch_1', line_id: 'line_1', day_number: 1, slot: 'morning' }),
+      buildBatch({ id: 'batch_2', line_id: 'line_2', day_number: 2, slot: 'morning' }),
+    ]);
+
+    const response = await PATCH(
+      createRequest({
+        action: 'set',
+        cells: [
+          { batch_id: 'batch_1', expected_version: 1 },
+          { batch_id: 'batch_2', expected_version: 1 },
+        ],
+      }),
+      params,
+    );
+
+    expect(response.status).toBe(400);
+    expect(txMock.setBatch.updateMany).not.toHaveBeenCalled();
+    expect(txMock.auditLog.create).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rolls back grouped cell updates when any optimistic update loses the race', async () => {
+    txMock.setBatch.findMany.mockResolvedValueOnce([
+      buildBatch({ id: 'batch_1', line_id: 'line_1', set_state: 'set' }),
+      buildBatch({ id: 'batch_2', line_id: 'line_2', set_state: 'set' }),
+    ]);
+    txMock.setBatch.updateMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+
+    const response = await PATCH(
+      createRequest({
+        action: 'clear',
+        cells: [
+          { batch_id: 'batch_1', expected_version: 1 },
+          { batch_id: 'batch_2', expected_version: 1 },
+        ],
+      }),
+      params,
+    );
+
+    expect(response.status).toBe(409);
+    expect(txMock.setBatch.updateMany).toHaveBeenCalledTimes(2);
+    expect(txMock.auditLog.create).not.toHaveBeenCalled();
+    expect(txMock.setBatchChangeLog.create).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('returns 409 with details when expected_version mismatches', async () => {

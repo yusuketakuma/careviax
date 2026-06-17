@@ -23,25 +23,75 @@ const HOLD_REASONS = [
   'other',
 ] as const;
 
-const cellMutationSchema = z.discriminatedUnion('action', [
-  z.object({
-    action: z.literal('set'),
-    batch_id: z.string().min(1, 'セルIDは必須です'),
-    expected_version: z.number().int().min(1),
-  }),
-  z.object({
-    action: z.literal('hold'),
-    batch_id: z.string().min(1, 'セルIDは必須です'),
-    held_reason: z.enum(HOLD_REASONS, { error: '保留理由を選択してください' }),
-    held_detail: z.string().max(1000).optional(),
-    expected_version: z.number().int().min(1),
-  }),
-  z.object({
-    action: z.literal('clear'),
-    batch_id: z.string().min(1, 'セルIDは必須です'),
-    expected_version: z.number().int().min(1),
-  }),
-]);
+const cellMutationSchema = z
+  .discriminatedUnion('action', [
+    z.object({
+      action: z.literal('set'),
+      batch_id: z.string().min(1, 'セルIDは必須です').optional(),
+      expected_version: z.number().int().min(1).optional(),
+      cells: z
+        .array(
+          z.object({
+            batch_id: z.string().min(1, 'セルIDは必須です'),
+            expected_version: z.number().int().min(1),
+          }),
+        )
+        .min(1, 'セルIDは必須です')
+        .max(200, '一度に更新できるセル明細は200件までです')
+        .optional(),
+    }),
+    z.object({
+      action: z.literal('hold'),
+      batch_id: z.string().min(1, 'セルIDは必須です').optional(),
+      held_reason: z.enum(HOLD_REASONS, { error: '保留理由を選択してください' }),
+      held_detail: z.string().max(1000).optional(),
+      expected_version: z.number().int().min(1).optional(),
+      cells: z
+        .array(
+          z.object({
+            batch_id: z.string().min(1, 'セルIDは必須です'),
+            expected_version: z.number().int().min(1),
+          }),
+        )
+        .min(1, 'セルIDは必須です')
+        .max(200, '一度に更新できるセル明細は200件までです')
+        .optional(),
+    }),
+    z.object({
+      action: z.literal('clear'),
+      batch_id: z.string().min(1, 'セルIDは必須です').optional(),
+      expected_version: z.number().int().min(1).optional(),
+      cells: z
+        .array(
+          z.object({
+            batch_id: z.string().min(1, 'セルIDは必須です'),
+            expected_version: z.number().int().min(1),
+          }),
+        )
+        .min(1, 'セルIDは必須です')
+        .max(200, '一度に更新できるセル明細は200件までです')
+        .optional(),
+    }),
+  ])
+  .superRefine((input, ctx) => {
+    const hasSingle = input.batch_id !== undefined || input.expected_version !== undefined;
+    const hasGroup = input.cells !== undefined;
+    if (hasSingle === hasGroup) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['cells'],
+        message: '単一セルまたはセル明細リストのどちらか一方を指定してください',
+      });
+      return;
+    }
+    if (hasSingle && (!input.batch_id || input.expected_version === undefined)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['expected_version'],
+        message: 'セルIDとバージョンは必須です',
+      });
+    }
+  });
 
 const batchInclude = {
   line: {
@@ -56,6 +106,12 @@ const batchInclude = {
 } as const;
 
 const MUTABLE_SET_BATCH_CYCLE_STATUS = 'setting';
+
+class CellMutationRollback extends Error {
+  constructor(readonly response: NextResponse) {
+    super('cell mutation transaction rolled back');
+  }
+}
 
 /**
  * PATCH /api/set-plans/[id]/batches/cell
@@ -108,6 +164,160 @@ export const PATCH = withAuthContext<{ id: string }>(
         };
       }
 
+      if (input.cells) {
+        const duplicateId = findDuplicateBatchId(input.cells.map((cell) => cell.batch_id));
+        if (duplicateId) {
+          return {
+            kind: 'error' as const,
+            response: validationError('同じセルが重複して指定されています'),
+          };
+        }
+
+        const batchIds = input.cells.map((cell) => cell.batch_id);
+        const expectedById = new Map(
+          input.cells.map((cell) => [cell.batch_id, cell.expected_version] as const),
+        );
+        const batches = await tx.setBatch.findMany({
+          where: { id: { in: batchIds }, org_id: ctx.orgId, plan_id: planId },
+          include: batchInclude,
+          orderBy: [{ day_number: 'asc' }, { slot: 'asc' }],
+        });
+        if (batches.length !== batchIds.length) {
+          return {
+            kind: 'error' as const,
+            response: notFound('指定されたセルの一部が見つかりません'),
+          };
+        }
+
+        const firstBatch = batches[0];
+        const isSameVisibleCell = batches.every(
+          (batch) => batch.day_number === firstBatch.day_number && batch.slot === firstBatch.slot,
+        );
+        if (!isSameVisibleCell) {
+          return {
+            kind: 'error' as const,
+            response: validationError('同一のカレンダーセルだけを指定してください'),
+          };
+        }
+
+        for (const batch of batches) {
+          const expectedVersion = expectedById.get(batch.id);
+          if (expectedVersion !== batch.version) {
+            return {
+              kind: 'error' as const,
+              response: conflict(
+                '他のユーザーによって更新されました。最新データを取得してから再試行してください',
+                {
+                  current: {
+                    id: batch.id,
+                    version: batch.version,
+                    set_state: batch.set_state,
+                    audit_state: batch.audit_state,
+                  },
+                  expected_version: expectedVersion,
+                },
+              ),
+            };
+          }
+        }
+
+        const beforeSnapshots: ReturnType<typeof buildSetBatchHistorySnapshot>[] = [];
+        const afterSnapshots: ReturnType<typeof buildSetBatchHistorySnapshot>[] = [];
+        const changedBatchIds: string[] = [];
+        const lineIds = new Set<string>();
+        const now = new Date();
+        const { data, auditAction, changeAction, reason } = buildCellMutationWrite(
+          input,
+          ctx.userId,
+          now,
+        );
+
+        for (const batch of batches) {
+          if (isCellMutationNoop(input, batch)) continue;
+          beforeSnapshots.push(buildSetBatchHistorySnapshot(batch));
+          const updatedCount = await tx.setBatch.updateMany({
+            where: {
+              id: batch.id,
+              org_id: ctx.orgId,
+              plan_id: planId,
+              version: batch.version,
+              plan: { cycle: { overall_status: MUTABLE_SET_BATCH_CYCLE_STATUS } },
+            },
+            data,
+          });
+          if (updatedCount.count === 0) {
+            throw new CellMutationRollback(
+              conflict(
+                '他のユーザーによって更新されました。最新データを取得してから再試行してください',
+                { current: { id: batch.id, version: batch.version } },
+              ),
+            );
+          }
+          changedBatchIds.push(batch.id);
+          lineIds.add(batch.line_id);
+        }
+
+        const updatedBatches =
+          changedBatchIds.length > 0
+            ? await tx.setBatch.findMany({
+                where: { id: { in: batchIds }, org_id: ctx.orgId, plan_id: planId },
+                include: batchInclude,
+                orderBy: [{ day_number: 'asc' }, { slot: 'asc' }],
+              })
+            : batches;
+
+        if (changedBatchIds.length > 0) {
+          for (const updated of updatedBatches) {
+            if (changedBatchIds.includes(updated.id)) {
+              afterSnapshots.push(buildSetBatchHistorySnapshot(updated));
+            }
+          }
+
+          await createSetBatchChangeLog(tx, {
+            orgId: ctx.orgId,
+            planId,
+            action: changeAction,
+            triggerSource: 'workbench_cell',
+            reason: `${changedBatchIds.length}件の明細を${reason}`,
+            lineIds: Array.from(lineIds),
+            beforeSnapshot: beforeSnapshots,
+            afterSnapshot: afterSnapshots,
+            changedBy: ctx.userId,
+          });
+
+          await createAuditLogEntry(tx, ctx, {
+            action: auditAction,
+            targetType: 'SetPlan',
+            targetId: planId,
+            changes: {
+              plan_id: planId,
+              day_number: firstBatch.day_number,
+              slot: firstBatch.slot,
+              batch_ids: changedBatchIds,
+              line_ids: Array.from(lineIds),
+              set_state: input.action === 'clear' ? 'pending' : input.action,
+              ...(input.action === 'hold'
+                ? { held_reason: input.held_reason, held_detail: input.held_detail ?? null }
+                : {}),
+            },
+          });
+        }
+
+        return {
+          kind: 'success' as const,
+          batch: null,
+          batches: updatedBatches,
+          changed: changedBatchIds.length > 0,
+        };
+      }
+
+      if (!input.batch_id || input.expected_version === undefined) {
+        return {
+          kind: 'error' as const,
+          response: validationError('セルIDとバージョンは必須です'),
+        };
+      }
+
       const batch = await tx.setBatch.findFirst({
         where: { id: input.batch_id, org_id: ctx.orgId, plan_id: planId },
         include: batchInclude,
@@ -144,46 +354,7 @@ export const PATCH = withAuthContext<{ id: string }>(
 
       const beforeSnapshot = buildSetBatchHistorySnapshot(batch);
       const now = new Date();
-
-      let data;
-      let auditAction: string;
-      let changeAction: string;
-      if (input.action === 'set') {
-        data = {
-          set_state: 'set' as const,
-          set_by: ctx.userId,
-          set_at: now,
-          held_reason: null,
-          held_by: null,
-          held_at: null,
-          version: { increment: 1 },
-        };
-        auditAction = 'set_batch.cell_set';
-        changeAction = 'cell_set';
-      } else if (input.action === 'hold') {
-        data = {
-          set_state: 'hold' as const,
-          held_reason: input.held_reason,
-          held_by: ctx.userId,
-          held_at: now,
-          version: { increment: 1 },
-        };
-        auditAction = 'set_batch.cell_hold';
-        changeAction = 'cell_hold';
-      } else {
-        // clear: 未セットへ戻す（保留解除を含む）
-        data = {
-          set_state: 'pending' as const,
-          set_by: null,
-          set_at: null,
-          held_reason: null,
-          held_by: null,
-          held_at: null,
-          version: { increment: 1 },
-        };
-        auditAction = 'set_batch.cell_clear';
-        changeAction = 'cell_clear';
-      }
+      const { data, auditAction, changeAction } = buildCellMutationWrite(input, ctx.userId, now);
 
       // OCC: updateMany WHERE version で TOCTOU 窓を閉じる。
       const updatedCount = await tx.setBatch.updateMany({
@@ -253,7 +424,12 @@ export const PATCH = withAuthContext<{ id: string }>(
         },
       });
 
-      return { kind: 'success' as const, batch: updated, changed: true };
+      return { kind: 'success' as const, batch: updated, batches: null, changed: true };
+    }).catch((err: unknown) => {
+      if (err instanceof CellMutationRollback) {
+        return { kind: 'error' as const, response: err.response };
+      }
+      throw err;
     });
 
     if (result.kind === 'error') return result.response;
@@ -266,10 +442,71 @@ export const PATCH = withAuthContext<{ id: string }>(
       });
     }
 
+    if (result.batches) return success({ data: { batches: result.batches } });
     return success({ data: result.batch });
   },
   { permission: 'canSet', message: 'セット作業の権限がありません' },
 );
+
+function findDuplicateBatchId(batchIds: string[]): string | null {
+  const seen = new Set<string>();
+  for (const batchId of batchIds) {
+    if (seen.has(batchId)) return batchId;
+    seen.add(batchId);
+  }
+  return null;
+}
+
+function buildCellMutationWrite(
+  input: z.infer<typeof cellMutationSchema>,
+  userId: string,
+  now: Date,
+) {
+  if (input.action === 'set') {
+    return {
+      data: {
+        set_state: 'set' as const,
+        set_by: userId,
+        set_at: now,
+        held_reason: null,
+        held_by: null,
+        held_at: null,
+        version: { increment: 1 },
+      },
+      auditAction: 'set_batch.cell_set',
+      changeAction: 'cell_set',
+      reason: 'セット済にしました',
+    };
+  }
+  if (input.action === 'hold') {
+    return {
+      data: {
+        set_state: 'hold' as const,
+        held_reason: input.held_reason,
+        held_by: userId,
+        held_at: now,
+        version: { increment: 1 },
+      },
+      auditAction: 'set_batch.cell_hold',
+      changeAction: 'cell_hold',
+      reason: '保留にしました',
+    };
+  }
+  return {
+    data: {
+      set_state: 'pending' as const,
+      set_by: null,
+      set_at: null,
+      held_reason: null,
+      held_by: null,
+      held_at: null,
+      version: { increment: 1 },
+    },
+    auditAction: 'set_batch.cell_clear',
+    changeAction: 'cell_clear',
+    reason: '未セットに戻しました',
+  };
+}
 
 function isCellMutationNoop(
   input: z.infer<typeof cellMutationSchema>,

@@ -388,7 +388,7 @@ export async function submitDispenseAudit(
 export async function mutateCell(
   planId: string,
   input: CellMutationInput,
-): Promise<{ data: SetBatchDto } | MockWriteNoop> {
+): Promise<{ data: SetBatchDto | { batches: SetBatchDto[] } } | MockWriteNoop> {
   if (USE_MOCK) return MOCK_WRITE_NOOP;
   return mutateJson(`/api/set-plans/${encodeURIComponent(planId)}/batches/cell`, 'PATCH', input);
 }

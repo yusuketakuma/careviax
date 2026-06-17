@@ -219,13 +219,19 @@ export interface SubmitDispenseAuditInput {
   same_operator_reason?: string;
 }
 
-export interface CellMutationInput {
-  batch_id: string;
+export type CellMutationTarget =
+  | { batch_id: string; expected_version: number; cells?: never }
+  | {
+      batch_id?: never;
+      expected_version?: never;
+      cells: Array<{ batch_id: string; expected_version: number }>;
+    };
+
+export type CellMutationInput = CellMutationTarget & {
   action: 'set' | 'hold' | 'clear';
   held_reason?: HoldReason;
   held_detail?: string;
-  expected_version?: number;
-}
+};
 
 export interface SubmitSetAuditInput {
   plan_id: string;

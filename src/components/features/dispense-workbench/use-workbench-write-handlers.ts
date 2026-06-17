@@ -30,6 +30,7 @@ import {
   type CellMeta,
   type RejectCode,
   type SetAuditChecklistKey,
+  type CellMutationTarget,
   type SubmitSetAuditInput,
 } from './dispensing-workbench.write-types';
 import { cellKey } from './dispensing-workbench.logic';
@@ -149,6 +150,18 @@ function applyReturnedBatchVersions(data: unknown): void {
       },
     };
   });
+}
+
+function buildCellMutationTarget(meta: CellMeta): CellMutationTarget {
+  if (meta.batchIds.length === 1) {
+    return { batch_id: meta.batchIds[0], expected_version: meta.versions[0] };
+  }
+  return {
+    cells: meta.batchIds.map((batchId, index) => ({
+      batch_id: batchId,
+      expected_version: meta.versions[index],
+    })),
+  };
 }
 
 /**
@@ -376,21 +389,18 @@ export function useWorkbenchWriteHandlers(args: {
           const s = snap();
           const meta = resolveCellMeta(s.writeContext.cellMeta, s.selId, target);
           if (!meta) return;
-          meta.batchIds.forEach((batchId, i) => {
-            mutations.cellMutation.mutate(
-              {
-                batch_id: batchId,
-                action: 'set',
-                expected_version: meta.versions[i],
+          mutations.cellMutation.mutate(
+            {
+              ...buildCellMutationTarget(meta),
+              action: 'set',
+            },
+            {
+              onSuccess: applyReturnedBatchVersions,
+              onError: () => {
+                restoreCell(phase, before.selId, target, previousSetState);
               },
-              {
-                onSuccess: applyReturnedBatchVersions,
-                onError: () => {
-                  restoreCell(phase, before.selId, target, previousSetState);
-                },
-              },
-            );
-          });
+            },
+          );
         });
       },
       onToggleOut: (name) => toggleOut(name),
@@ -459,22 +469,19 @@ export function useWorkbenchWriteHandlers(args: {
           const meta = s.writeContext.cellMeta[key];
           if (!meta) return;
           // セットへ戻す＝当該セルを未セット化（clear）。
-          meta.batchIds.forEach((batchId, i) => {
-            mutations.cellMutation.mutate(
-              {
-                batch_id: batchId,
-                action: 'clear',
-                expected_version: meta.versions[i],
+          mutations.cellMutation.mutate(
+            {
+              ...buildCellMutationTarget(meta),
+              action: 'clear',
+            },
+            {
+              onSuccess: applyReturnedBatchVersions,
+              onError: () => {
+                restoreCell('setp', before.selId, target, previousSetState);
+                restoreCell('seta', before.selId, target, previousAuditState);
               },
-              {
-                onSuccess: applyReturnedBatchVersions,
-                onError: () => {
-                  restoreCell('setp', before.selId, target, previousSetState);
-                  restoreCell('seta', before.selId, target, previousAuditState);
-                },
-              },
-            );
-          });
+            },
+          );
         });
       },
 
@@ -509,24 +516,21 @@ export function useWorkbenchWriteHandlers(args: {
               restoreHoldInfo(before.selId, target, previousHoldInfo);
               return;
             }
-            meta.batchIds.forEach((batchId, i) => {
-              mutations.cellMutation.mutate(
-                {
-                  batch_id: batchId,
-                  action: 'hold',
-                  held_reason: reasonCode,
-                  held_detail: draft.memo || undefined,
-                  expected_version: meta.versions[i],
+            mutations.cellMutation.mutate(
+              {
+                ...buildCellMutationTarget(meta),
+                action: 'hold',
+                held_reason: reasonCode,
+                held_detail: draft.memo || undefined,
+              },
+              {
+                onSuccess: applyReturnedBatchVersions,
+                onError: () => {
+                  restoreCell(phase, before.selId, target, previousCellState);
+                  restoreHoldInfo(before.selId, target, previousHoldInfo);
                 },
-                {
-                  onSuccess: applyReturnedBatchVersions,
-                  onError: () => {
-                    restoreCell(phase, before.selId, target, previousCellState);
-                    restoreHoldInfo(before.selId, target, previousHoldInfo);
-                  },
-                },
-              );
-            });
+              },
+            );
             return;
           }
 
