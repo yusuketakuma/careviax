@@ -20,7 +20,12 @@
  */
 
 import { useCallback } from 'react';
-import { useMutation, useQueryClient, type QueryKey } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQueryClient,
+  type QueryClient,
+  type QueryKey,
+} from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -66,7 +71,7 @@ export function calendarQueryKey(orgId: string, planId: string): QueryKey {
  */
 export function reportWorkbenchError(error: unknown, fallback = '保存に失敗しました'): void {
   if (error instanceof WorkbenchConflictError) {
-    toast.error('他の操作と競合しました。最新の状態を再読み込みします。');
+    toast.error(`${conflictMessage(error.details)} 最新の状態を再読み込みします。`);
     return;
   }
   if (error instanceof WorkbenchWriteError) {
@@ -74,6 +79,21 @@ export function reportWorkbenchError(error: unknown, fallback = '保存に失敗
     return;
   }
   toast.error(error instanceof Error && error.message ? error.message : fallback);
+}
+
+function conflictMessage(details: unknown): string {
+  if (typeof details !== 'object' || details === null) {
+    return '他の操作と競合しました。';
+  }
+  const payload = details as { message?: unknown };
+  return typeof payload.message === 'string' && payload.message
+    ? payload.message
+    : '他の操作と競合しました。';
+}
+
+function recoverActiveQuery(queryClient: QueryClient, queryKey: QueryKey): void {
+  void queryClient.invalidateQueries({ queryKey });
+  void queryClient.refetchQueries({ queryKey, type: 'active' });
 }
 
 /**
@@ -91,9 +111,18 @@ export function useWorkbenchMutations(args: { patientId: string; planId: string 
     void queryClient.invalidateQueries({ queryKey: workbenchQueryKey(orgId, patientId) });
   }, [queryClient, orgId, patientId]);
 
+  const recoverWorkbench = useCallback(() => {
+    recoverActiveQuery(queryClient, workbenchQueryKey(orgId, patientId));
+  }, [queryClient, orgId, patientId]);
+
   const invalidateCalendar = useCallback(() => {
     if (!planId) return;
     void queryClient.invalidateQueries({ queryKey: calendarQueryKey(orgId, planId) });
+  }, [queryClient, orgId, planId]);
+
+  const recoverCalendar = useCallback(() => {
+    if (!planId) return;
+    recoverActiveQuery(queryClient, calendarQueryKey(orgId, planId));
   }, [queryClient, orgId, planId]);
 
   // ── 調剤完了（POST /api/dispense-results, OCC=cycle.version）──
@@ -104,7 +133,7 @@ export function useWorkbenchMutations(args: { patientId: string; planId: string 
     },
     onError: (error) => {
       reportWorkbenchError(error, '調剤完了の登録に失敗しました');
-      if (error instanceof WorkbenchConflictError) invalidateWorkbench();
+      if (error instanceof WorkbenchConflictError) recoverWorkbench();
     },
     onSettled: () => {
       if (isRealDataEnabled()) invalidateWorkbench();
@@ -119,7 +148,7 @@ export function useWorkbenchMutations(args: { patientId: string; planId: string 
     },
     onError: (error) => {
       reportWorkbenchError(error, '調剤監査の登録に失敗しました');
-      if (error instanceof WorkbenchConflictError) invalidateWorkbench();
+      if (error instanceof WorkbenchConflictError) recoverWorkbench();
     },
     onSettled: () => {
       if (isRealDataEnabled()) invalidateWorkbench();
@@ -134,7 +163,7 @@ export function useWorkbenchMutations(args: { patientId: string; planId: string 
     },
     onError: (error) => {
       reportWorkbenchError(error, 'セルの更新に失敗しました');
-      if (error instanceof WorkbenchConflictError) invalidateCalendar();
+      if (error instanceof WorkbenchConflictError) recoverCalendar();
     },
     onSettled: () => {
       if (isRealDataEnabled()) invalidateCalendar();
@@ -149,7 +178,7 @@ export function useWorkbenchMutations(args: { patientId: string; planId: string 
     },
     onError: (error) => {
       reportWorkbenchError(error, '一括セットに失敗しました');
-      if (error instanceof WorkbenchConflictError) invalidateCalendar();
+      if (error instanceof WorkbenchConflictError) recoverCalendar();
     },
     onSettled: () => {
       if (isRealDataEnabled()) invalidateCalendar();
@@ -164,7 +193,7 @@ export function useWorkbenchMutations(args: { patientId: string; planId: string 
     },
     onError: (error) => {
       reportWorkbenchError(error, 'セット監査の登録に失敗しました');
-      if (error instanceof WorkbenchConflictError) invalidateCalendar();
+      if (error instanceof WorkbenchConflictError) recoverCalendar();
     },
     onSettled: () => {
       if (isRealDataEnabled()) invalidateCalendar();
@@ -179,7 +208,7 @@ export function useWorkbenchMutations(args: { patientId: string; planId: string 
     },
     onError: (error) => {
       reportWorkbenchError(error, '保留の保存に失敗しました');
-      if (error instanceof WorkbenchConflictError) invalidateWorkbench();
+      if (error instanceof WorkbenchConflictError) recoverWorkbench();
     },
     onSettled: () => {
       if (isRealDataEnabled()) invalidateWorkbench();
@@ -194,7 +223,7 @@ export function useWorkbenchMutations(args: { patientId: string; planId: string 
     },
     onError: (error) => {
       reportWorkbenchError(error, '保留の解決に失敗しました');
-      if (error instanceof WorkbenchConflictError) invalidateWorkbench();
+      if (error instanceof WorkbenchConflictError) recoverWorkbench();
     },
     onSettled: () => {
       if (isRealDataEnabled()) invalidateWorkbench();
@@ -218,7 +247,7 @@ export function useWorkbenchMutations(args: { patientId: string; planId: string 
     },
     onError: (error) => {
       reportWorkbenchError(error, 'グループの作成に失敗しました');
-      if (error instanceof WorkbenchConflictError) invalidateWorkbench();
+      if (error instanceof WorkbenchConflictError) recoverWorkbench();
     },
     onSettled: () => {
       if (isRealDataEnabled()) invalidateWorkbench();
@@ -243,7 +272,7 @@ export function useWorkbenchMutations(args: { patientId: string; planId: string 
     },
     onError: (error) => {
       reportWorkbenchError(error, 'グループの保存に失敗しました');
-      if (error instanceof WorkbenchConflictError) invalidateWorkbench();
+      if (error instanceof WorkbenchConflictError) recoverWorkbench();
     },
     onSettled: () => {
       if (isRealDataEnabled()) invalidateWorkbench();
@@ -261,7 +290,7 @@ export function useWorkbenchMutations(args: { patientId: string; planId: string 
     },
     onError: (error) => {
       reportWorkbenchError(error, 'グループ割当の保存に失敗しました');
-      if (error instanceof WorkbenchConflictError) invalidateWorkbench();
+      if (error instanceof WorkbenchConflictError) recoverWorkbench();
     },
     onSettled: () => {
       if (isRealDataEnabled()) invalidateWorkbench();
@@ -288,7 +317,7 @@ export function useWorkbenchMutations(args: { patientId: string; planId: string 
     },
     onError: (error) => {
       reportWorkbenchError(error, '明細の保存に失敗しました');
-      if (error instanceof WorkbenchConflictError) invalidateWorkbench();
+      if (error instanceof WorkbenchConflictError) recoverWorkbench();
     },
     onSettled: () => {
       if (isRealDataEnabled()) invalidateWorkbench();

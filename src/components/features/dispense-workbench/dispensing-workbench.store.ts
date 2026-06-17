@@ -178,6 +178,11 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           model: { ...s.model, ...model },
           setCells: replacePatientCellState(s.setCells, patientId, setCells),
           auditCells: replacePatientCellState(s.auditCells, patientId, auditCells),
+          outChk: removePatientPrefixedState(s.outChk, patientId),
+          checks: removePatientPrefixedState(s.checks, patientId),
+          ng: removePatientPrefixedState(s.ng, patientId),
+          holdInfo: removePatientPrefixedState(s.holdInfo, patientId),
+          packet: removePatientPrefixedState(s.packet, patientId),
           target: null,
           holdModal: null,
         })),
@@ -475,4 +480,12 @@ function replacePatientCellState(
     Object.entries(existing).filter(([key]) => !key.startsWith(prefix)),
   );
   return { ...retained, ...replacement };
+}
+
+function removePatientPrefixedState<T>(
+  existing: Record<string, T>,
+  patientId: string,
+): Record<string, T> {
+  const prefix = `${patientId}:`;
+  return Object.fromEntries(Object.entries(existing).filter(([key]) => !key.startsWith(prefix)));
 }

@@ -106,6 +106,20 @@ function membershipOf(groups: Group[]): Record<string, string> {
   return out;
 }
 
+function clearBooleanKeys(
+  values: Record<string, boolean>,
+  keys: readonly string[],
+): Record<string, boolean> {
+  const next = { ...values };
+  for (const key of keys) delete next[key];
+  return next;
+}
+
+function removePatientPrefixed<T>(values: Record<string, T>, patientId: string): Record<string, T> {
+  const prefix = `${patientId}:`;
+  return Object.fromEntries(Object.entries(values).filter(([key]) => !key.startsWith(prefix)));
+}
+
 function readReturnedBatchVersions(data: unknown): Array<{ id: string; version: number }> {
   const body = data as
     | { data?: { id?: unknown; version?: unknown; batches?: unknown } }
@@ -332,6 +346,7 @@ export function useWorkbenchWriteHandlers(args: {
           if (isRealDataEnabled()) {
             const s = snap();
             if (phase === 'dispense' && s.writeContext.taskId) {
+              const submittedLineIds = collectDispenseLines(s).map((line) => line.line_id);
               mutations.completeDispense.mutate(
                 {
                   task_id: s.writeContext.taskId,
@@ -340,6 +355,11 @@ export function useWorkbenchWriteHandlers(args: {
                 },
                 {
                   onSuccess: () => onAdvance?.(next),
+                  onError: () => {
+                    useWorkbenchStore.setState((state) => ({
+                      done: clearBooleanKeys(state.done, submittedLineIds),
+                    }));
+                  },
                 },
               );
             } else if (
@@ -347,6 +367,7 @@ export function useWorkbenchWriteHandlers(args: {
               s.writeContext.taskId &&
               s.writeContext.cycleVersion !== null
             ) {
+              const submittedLineIds = Object.keys(s.audit).filter((lineId) => s.audit[lineId]);
               mutations.completeAudit.mutate(
                 {
                   task_id: s.writeContext.taskId,
@@ -355,9 +376,15 @@ export function useWorkbenchWriteHandlers(args: {
                 },
                 {
                   onSuccess: () => onAdvance?.(next),
+                  onError: () => {
+                    useWorkbenchStore.setState((state) => ({
+                      audit: clearBooleanKeys(state.audit, submittedLineIds),
+                    }));
+                  },
                 },
               );
             } else if (phase === 'seta' && s.writeContext.planId) {
+              const patientId = s.selId;
               const cellAudits = collectSetAuditCellAudits(s, 'ok');
               mutations.setAudit.mutate(
                 {
@@ -368,6 +395,13 @@ export function useWorkbenchWriteHandlers(args: {
                 },
                 {
                   onSuccess: () => onAdvance?.(next),
+                  onError: () => {
+                    useWorkbenchStore.setState((state) => ({
+                      auditCells: removePatientPrefixed(state.auditCells, patientId),
+                      checks: removePatientPrefixed(state.checks, patientId),
+                      ng: removePatientPrefixed(state.ng, patientId),
+                    }));
+                  },
                 },
               );
             }
