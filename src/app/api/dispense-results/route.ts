@@ -16,6 +16,13 @@ import {
   VersionConflictError,
 } from '@/lib/db/cycle-transition';
 import { DISPENSE_SAFETY_CHECKLIST_ACK } from '@/lib/dispensing/safety-checklist';
+import {
+  buildActualQuantityConfirmationErrors,
+  buildActualQuantityUnitErrors,
+  buildDiscrepancyReasonErrors,
+  buildUnresolvedPrescribedQuantityErrors,
+  resolveCanonicalActualUnit,
+} from '@/lib/dispensing/dispense-result-validation';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
@@ -25,6 +32,10 @@ const dispenseResultLineSchema = z.object({
   actual_drug_name: z.string().min(1, '実薬剤名は必須です'),
   actual_drug_code: z.string().optional(),
   actual_quantity: z.number().positive('数量は正の数を入力してください'),
+  actual_quantity_confirmed: z.boolean().optional(),
+  actual_quantity_source: z
+    .enum(['existing_result', 'prescription_quantity_confirmed', 'manual_entry'])
+    .optional(),
   actual_unit: z.string().optional(),
   discrepancy_reason: z.string().optional(),
   carry_type: z.enum(['carry', 'facility_deposit', 'deferred']),
@@ -85,43 +96,6 @@ function countCdsAlertsBySeverity(alerts: Array<{ severity: 'critical' | 'warnin
   );
 }
 
-function buildDiscrepancyReasonErrors(input: {
-  submittedLines: Array<z.infer<typeof dispenseResultLineSchema>>;
-  prescribedLines: Array<{
-    id: string;
-    drug_name: string;
-    drug_code: string | null;
-    quantity: number | null;
-  }>;
-}) {
-  const prescribedByLineId = new Map(input.prescribedLines.map((line) => [line.id, line]));
-
-  return input.submittedLines.flatMap((line) => {
-    const prescribed = prescribedByLineId.get(line.line_id);
-    if (!prescribed) return [];
-
-    const hasDrugDiff =
-      line.actual_drug_name !== prescribed.drug_name ||
-      (line.actual_drug_code?.trim() || null) !== (prescribed.drug_code?.trim() || null);
-    const hasQuantityDiff =
-      prescribed.quantity != null && line.actual_quantity !== prescribed.quantity;
-    const requiresReason = hasDrugDiff || hasQuantityDiff || line.carry_type === 'deferred';
-
-    if (!requiresReason || line.discrepancy_reason?.trim()) return [];
-
-    return [
-      {
-        line_id: line.line_id,
-        prescribed_drug_name: prescribed.drug_name,
-        reason:
-          line.carry_type === 'deferred'
-            ? '後日対応時は理由コードが必須です'
-            : '処方との差異があるため理由コードが必須です',
-      },
-    ];
-  });
-}
-
 function resolveDispensingDecision(line: z.infer<typeof dispenseResultLineSchema>) {
   const method =
     line.packaging_method ??
@@ -143,6 +117,38 @@ function resolveDispensingDecision(line: z.infer<typeof dispenseResultLineSchema
     packaging_instructions: line.special_notes?.trim() || null,
     packaging_group_id: groupId,
   };
+}
+
+async function findInvalidPackagingGroupAssignments(args: {
+  tx: Prisma.TransactionClient;
+  orgId: string;
+  cycleId: string;
+  lines: Array<z.infer<typeof dispenseResultLineSchema>>;
+}) {
+  const requestedGroupIds = Array.from(
+    new Set(
+      args.lines
+        .map((line) => line.packaging_group_id?.trim())
+        .filter((groupId): groupId is string => Boolean(groupId)),
+    ),
+  );
+  if (requestedGroupIds.length === 0) return [];
+
+  const groups = await args.tx.packagingGroup.findMany({
+    where: {
+      org_id: args.orgId,
+      cycle_id: args.cycleId,
+      id: { in: requestedGroupIds },
+    },
+    select: { id: true },
+  });
+  const validGroupIds = new Set(groups.map((group) => group.id));
+
+  return args.lines.flatMap((line) => {
+    const groupId = line.packaging_group_id?.trim();
+    if (!groupId || validGroupIds.has(groupId)) return [];
+    return [{ line_id: line.line_id, packaging_group_id: groupId }];
+  });
 }
 
 function isUniqueConstraintError(error: unknown) {
@@ -241,6 +247,7 @@ export const POST = withAuthContext(
                       drug_name: true,
                       drug_code: true,
                       quantity: true,
+                      unit: true,
                     },
                   },
                 },
@@ -338,8 +345,46 @@ export const POST = withAuthContext(
         };
       }
 
+      const unresolvedQuantityLines = buildUnresolvedPrescribedQuantityErrors({
+        submittedLines: lines,
+        prescribedLines: latestIntake?.lines ?? [],
+      });
+      if (unresolvedQuantityLines.length > 0) {
+        return {
+          error: 'prescribed_quantity_required' as const,
+          reasons: unresolvedQuantityLines,
+        };
+      }
+
+      const invalidQuantityUnitLines = buildActualQuantityUnitErrors({
+        submittedLines: lines,
+        prescribedLines: latestIntake?.lines ?? [],
+      });
+      if (invalidQuantityUnitLines.length > 0) {
+        return {
+          error: 'actual_quantity_unit_step_invalid' as const,
+          reasons: invalidQuantityUnitLines,
+        };
+      }
+
+      const invalidPackagingGroups = await findInvalidPackagingGroupAssignments({
+        tx,
+        orgId: ctx.orgId,
+        cycleId: task.cycle_id,
+        lines,
+      });
+      if (invalidPackagingGroups.length > 0) {
+        return {
+          error: 'invalid_packaging_groups' as const,
+          reasons: invalidPackagingGroups,
+        };
+      }
+
       const now = new Date();
       const existingResultByLineId = new Map(task.results.map((item) => [item.line_id, item]));
+      const latestIntakeLineById = new Map(
+        (latestIntake?.lines ?? []).map((line) => [line.id, line]),
+      );
       const latestIntakeLineIds = latestIntake?.lines.map((line) => line.id) ?? [];
       const completedLineIds = new Set([
         ...task.results.map((item) => item.line_id),
@@ -362,6 +407,18 @@ export const POST = withAuthContext(
 
       if (!safety_checklist) {
         return { error: 'safety_checklist_required' as const };
+      }
+
+      const actualQuantityConfirmationErrors = buildActualQuantityConfirmationErrors({
+        submittedLines: lines,
+        prescribedLines: latestIntake?.lines ?? [],
+        existingResults: task.results,
+      });
+      if (actualQuantityConfirmationErrors.length > 0) {
+        return {
+          error: 'actual_quantity_confirmation_required' as const,
+          reasons: actualQuantityConfirmationErrors,
+        };
       }
 
       let cdsAlertCounts: ReturnType<typeof countCdsAlertsBySeverity>;
@@ -441,11 +498,16 @@ export const POST = withAuthContext(
             });
           }
 
+          const prescribedLine = latestIntakeLineById.get(line.line_id);
+          const canonicalActualUnit = resolveCanonicalActualUnit({
+            prescribedUnit: prescribedLine?.unit,
+            actualUnit: line.actual_unit,
+          });
           const resultData = {
             actual_drug_name: line.actual_drug_name,
             actual_drug_code: line.actual_drug_code,
             actual_quantity: line.actual_quantity,
-            actual_unit: line.actual_unit,
+            actual_unit: canonicalActualUnit,
             discrepancy_reason: line.discrepancy_reason,
             carry_type: line.carry_type,
             special_notes: line.special_notes,
@@ -501,6 +563,11 @@ export const POST = withAuthContext(
           task_id,
           cycle_id: task.cycle_id,
           checklist: safety_checklist,
+          quantity_confirmations: lines.map((line) => ({
+            line_id: line.line_id,
+            confirmed: line.actual_quantity_confirmed === true,
+            source: line.actual_quantity_source ?? 'legacy_unmarked',
+          })),
           cds_alert_counts: cdsAlertCounts,
           line_count: results.length,
           partial: !canComplete,
@@ -713,6 +780,32 @@ export const POST = withAuthContext(
       if (result.error === 'invalid_lines') {
         return validationError('指定された処方明細は現在の処方に属していません', {
           invalid_line_ids: result.reasons,
+        });
+      }
+      if (result.error === 'prescribed_quantity_required') {
+        return validationError(
+          '処方数量が未確定の明細があります。処方取込で数量を確認してから調剤完了してください',
+          {
+            unresolved_quantity_lines: result.reasons,
+          },
+        );
+      }
+      if (result.error === 'actual_quantity_confirmation_required') {
+        return validationError(
+          '調剤実数量の確認元が未確定の明細があります。数量確認後に調剤完了してください',
+          {
+            actual_quantity_confirmation_lines: result.reasons,
+          },
+        );
+      }
+      if (result.error === 'actual_quantity_unit_step_invalid') {
+        return validationError('実数量が単位に合う刻みではありません', {
+          actual_quantity_unit_lines: result.reasons,
+        });
+      }
+      if (result.error === 'invalid_packaging_groups') {
+        return validationError('指定された包装グループは現在の調剤サイクルに属していません', {
+          invalid_packaging_groups: result.reasons,
         });
       }
       if (result.error === 'safety_checklist_required') {

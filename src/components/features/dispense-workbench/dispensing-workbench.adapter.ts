@@ -43,6 +43,7 @@ import {
   type SetBatchDto,
   type SubmitDispenseResultsInput,
   type SubmitDispenseAuditInput,
+  type UpdatePrescriptionLinesInput,
   type CellMutationInput,
   type SubmitSetAuditInput,
   type CreateCycleHoldInput,
@@ -169,6 +170,7 @@ export async function loadWorkbenchAsync(
   groups: Group[];
   done: Record<string, boolean>;
   audit: Record<string, boolean>;
+  quantityConfirmedByDid: Record<string, boolean>;
   writeContext: WorkbenchWriteContextPatch;
 } | null> {
   if (USE_MOCK) return null;
@@ -181,10 +183,17 @@ export async function loadWorkbenchAsync(
     `/api/dispense-tasks/${encodeURIComponent(taskId)}/workbench`,
   );
   if (!data) return null;
-  const { patient, groups, done, audit } = workbenchFromApi(data);
+  const { patient, groups, done, audit, quantityConfirmedByDid } = workbenchFromApi(data);
   // 書込結線の id 束（task_id / cycle_id / cycle.version / グループ割当）を同時に返し、
   // シェルが setWriteContext で store に充填できるようにする（mutations hook が読む）。
-  return { patient, groups, done, audit, writeContext: writeContextFromApi(data) };
+  return {
+    patient,
+    groups,
+    done,
+    audit,
+    quantityConfirmedByDid,
+    writeContext: writeContextFromApi(data),
+  };
 }
 
 /**
@@ -324,7 +333,7 @@ async function mutateJson<T>(url: string, method: 'POST' | 'PATCH', body: unknow
 export async function createGroup(
   taskId: string,
   body: { group_key: string; label: string; method: string; slot?: string; sort_order?: number },
-): Promise<{ data: { id: string } } | MockWriteNoop> {
+): Promise<{ data: { id: string; version?: number } } | MockWriteNoop> {
   if (USE_MOCK) return MOCK_WRITE_NOOP;
   return mutateJson(`/api/dispense-tasks/${encodeURIComponent(taskId)}/groups`, 'POST', body);
 }
@@ -338,7 +347,7 @@ export async function updateGroups(
     method?: string;
     slot?: string | null;
     sort_order?: number;
-    version?: number;
+    version: number;
   }>,
 ): Promise<{ data: unknown } | MockWriteNoop> {
   if (USE_MOCK) return MOCK_WRITE_NOOP;
@@ -350,7 +359,11 @@ export async function updateGroups(
 /** 処方明細のグループ割当（PATCH /api/dispense-tasks/[taskId]/groups, assignments[]）。 */
 export async function assignLinesToGroup(
   taskId: string,
-  assignments: Array<{ line_id: string; packaging_group_id: string | null }>,
+  assignments: Array<{
+    line_id: string;
+    packaging_group_id: string | null;
+    expected_packaging_group_id: string | null;
+  }>,
 ): Promise<{ data: unknown } | MockWriteNoop> {
   if (USE_MOCK) return MOCK_WRITE_NOOP;
   return mutateJson(`/api/dispense-tasks/${encodeURIComponent(taskId)}/groups`, 'PATCH', {
@@ -374,6 +387,18 @@ export async function updatePrescriptionLine(
 ): Promise<{ data: unknown } | MockWriteNoop> {
   if (USE_MOCK) return MOCK_WRITE_NOOP;
   return mutateJson(`/api/prescription-lines/${encodeURIComponent(lineId)}`, 'PATCH', body);
+}
+
+/** 処方明細の一括期間編集（PATCH /api/dispense-tasks/[taskId]/lines）。 */
+export async function updatePrescriptionLines(
+  input: UpdatePrescriptionLinesInput,
+): Promise<{ data: unknown } | MockWriteNoop> {
+  if (USE_MOCK) return MOCK_WRITE_NOOP;
+  return mutateJson(`/api/dispense-tasks/${encodeURIComponent(input.taskId)}/lines`, 'PATCH', {
+    client_action_id: input.client_action_id,
+    packaging_group_id: input.packaging_group_id,
+    lines: input.lines,
+  });
 }
 
 /** 調剤完了（POST /api/dispense-results）。OCC は expected_version=cycle.version。 */

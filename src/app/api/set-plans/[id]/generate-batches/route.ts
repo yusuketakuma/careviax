@@ -13,6 +13,10 @@ import {
 } from '@/lib/prescription/set-batch-history';
 import { buildSetPlanPackagingSummary } from '@/lib/prescription/set-plan-packaging';
 import {
+  collectNarcoticCandidateYjCode,
+  handlingTagsWithMasterNarcotic,
+} from '@/lib/prescription/controlled-handling-tags';
+import {
   extractPackagingInstructionTags,
   resolvePackagingSettings,
   type PackagingInstructionTagValue,
@@ -90,6 +94,14 @@ function diffInDays(start: Date, end: Date): number {
   return Math.floor((end.getTime() - start.getTime()) / msPerDay) + 1;
 }
 
+function latestDate(...values: Array<Date | null | undefined>) {
+  return values.reduce<Date | null>((latest, value) => {
+    if (!value) return latest;
+    if (!latest || value > latest) return value;
+    return latest;
+  }, null);
+}
+
 function resolveQuantityPerSlot(args: {
   totalQuantity: number | null;
   totalDays: number;
@@ -121,6 +133,85 @@ async function findExistingSetBatches(tx: Prisma.TransactionClient, planId: stri
       },
     },
   });
+}
+
+async function findLatestSetInputUpdatedAt(
+  tx: Prisma.TransactionClient,
+  input: {
+    orgId: string;
+    cycleId: string;
+    lineIds: string[];
+    latestIntakeUpdatedAt: Date | null;
+  },
+) {
+  if (input.lineIds.length === 0) return input.latestIntakeUpdatedAt;
+
+  const latestApprovedResult = await tx.dispenseResult.findFirst({
+    where: {
+      org_id: input.orgId,
+      line_id: { in: input.lineIds },
+      task: {
+        cycle_id: input.cycleId,
+        audits: {
+          some: {
+            org_id: input.orgId,
+            result: { in: ['approved', 'emergency_approved'] },
+          },
+        },
+      },
+    },
+    orderBy: { updated_at: 'desc' },
+    select: { updated_at: true },
+  });
+
+  const latestDecisionByUpdatedAt = await tx.dispensingDecision.findFirst({
+    where: {
+      org_id: input.orgId,
+      line_id: { in: input.lineIds },
+      task: { cycle_id: input.cycleId },
+    },
+    orderBy: { updated_at: 'desc' },
+    select: { updated_at: true },
+  });
+
+  const latestDecisionByDecidedAt = await tx.dispensingDecision.findFirst({
+    where: {
+      org_id: input.orgId,
+      line_id: { in: input.lineIds },
+      task: { cycle_id: input.cycleId },
+    },
+    orderBy: { decided_at: 'desc' },
+    select: { decided_at: true },
+  });
+
+  return latestDate(
+    input.latestIntakeUpdatedAt,
+    latestApprovedResult?.updated_at,
+    latestDecisionByUpdatedAt?.updated_at,
+    latestDecisionByDecidedAt?.decided_at,
+  );
+}
+
+function latestSetBatchUpdatedAt(batches: Array<{ updated_at: Date }>) {
+  return latestDate(...batches.map((batch) => batch.updated_at));
+}
+
+function isSetInputNewerThanBatch(input: {
+  latestSetInputUpdatedAt: Date | null;
+  latestBatchUpdatedAt: Date | null;
+}) {
+  return (
+    input.latestSetInputUpdatedAt != null &&
+    input.latestBatchUpdatedAt != null &&
+    input.latestSetInputUpdatedAt > input.latestBatchUpdatedAt
+  );
+}
+
+function staleSetBatchReuseResult() {
+  return {
+    kind: 'error' as const,
+    message: '処方・調剤結果・包装判断に変更があるため、影響セットを再確認して再生成してください',
+  };
 }
 
 export const POST = withAuthContext<{ id: string }>(
@@ -203,24 +294,72 @@ export const POST = withAuthContext<{ id: string }>(
 
     const intakes = await prisma.prescriptionIntake.findMany({
       where: { cycle_id: plan.cycle_id, org_id: ctx.orgId },
+      orderBy: { created_at: 'desc' },
+      take: 1,
       select: {
         updated_at: true,
         lines: {
           select: {
             id: true,
             drug_name: true,
+            drug_code: true,
             frequency: true,
             quantity: true,
+            unit: true,
+            packaging_group_id: true,
             packaging_method: true,
             packaging_instructions: true,
             packaging_instruction_tags: true,
             notes: true,
+            dispensing_decisions: {
+              where: {
+                org_id: ctx.orgId,
+                task: { cycle_id: plan.cycle_id },
+              },
+              orderBy: { decided_at: 'desc' },
+              take: 1,
+              select: {
+                packaging_method: true,
+                packaging_instructions: true,
+                packaging_instruction_tags: true,
+                packaging_group_id: true,
+                carry_type_override: true,
+                decided_at: true,
+                updated_at: true,
+              },
+            },
+            dispense_results: {
+              where: {
+                org_id: ctx.orgId,
+                task: {
+                  cycle_id: plan.cycle_id,
+                  audits: {
+                    some: {
+                      org_id: ctx.orgId,
+                      result: { in: ['approved', 'emergency_approved'] },
+                    },
+                  },
+                },
+              },
+              orderBy: { dispensed_at: 'desc' },
+              take: 1,
+              select: {
+                id: true,
+                actual_drug_code: true,
+                actual_quantity: true,
+                actual_unit: true,
+                updated_at: true,
+              },
+            },
           },
         },
       },
     });
 
-    const allLines = intakes.flatMap((intake) => intake.lines);
+    const latestIntake = intakes[0] ?? null;
+    const allLines = latestIntake?.lines ?? [];
+    const latestIntakeUpdatedAt = latestIntake?.updated_at ?? null;
+    const lineIds = allLines.map((line) => line.id);
 
     if (allLines.length === 0) {
       return validationError('処方ラインが存在しません。処方を先に登録してください');
@@ -250,13 +389,15 @@ export const POST = withAuthContext<{ id: string }>(
     let result;
     try {
       result = await withSerializableSetBatchGenerateTransaction(ctx.orgId, ctx, async (tx) => {
+        const latestSetInputUpdatedAt = await findLatestSetInputUpdatedAt(tx, {
+          orgId: ctx.orgId,
+          cycleId: plan.cycle_id,
+          lineIds,
+          latestIntakeUpdatedAt,
+        });
         const existingCount = await tx.setBatch.count({
           where: { plan_id: id, org_id: ctx.orgId },
         });
-        const latestIntakeUpdatedAt = intakes.reduce<Date | null>((latest, intake) => {
-          if (!latest || intake.updated_at > latest) return intake.updated_at;
-          return latest;
-        }, null);
 
         if (existingCount > 0 && !force) {
           const latestBatch = await tx.setBatch.findFirst({
@@ -265,14 +406,12 @@ export const POST = withAuthContext<{ id: string }>(
             select: { updated_at: true },
           });
           if (
-            latestBatch &&
-            latestIntakeUpdatedAt &&
-            latestIntakeUpdatedAt > latestBatch.updated_at
+            isSetInputNewerThanBatch({
+              latestSetInputUpdatedAt,
+              latestBatchUpdatedAt: latestBatch?.updated_at ?? null,
+            })
           ) {
-            return {
-              kind: 'error' as const,
-              message: '処方変更があるため、影響セットを再確認して再生成してください',
-            } as const;
+            return staleSetBatchReuseResult();
           }
           const existing = await findExistingSetBatches(tx, id, ctx.orgId);
 
@@ -337,15 +476,50 @@ export const POST = withAuthContext<{ id: string }>(
           packaging_method_snapshot: PackagingMethodValue | null;
           packaging_instructions_snapshot: string | null;
           packaging_instruction_tags_snapshot: PackagingInstructionTagValue[];
+          packaging_group_id: string | null;
         }[] = [];
 
+        const narcoticCandidateYjCodes = new Set<string>();
         for (const line of allLines) {
+          const decision = line.dispensing_decisions?.[0] ?? null;
+          const auditedResult = line.dispense_results?.[0] ?? null;
+          collectNarcoticCandidateYjCode(
+            narcoticCandidateYjCodes,
+            decision?.packaging_instruction_tags ?? line.packaging_instruction_tags,
+            line.drug_code,
+            auditedResult?.actual_drug_code,
+          );
+        }
+        const narcoticMasters =
+          narcoticCandidateYjCodes.size > 0
+            ? await tx.drugMaster.findMany({
+                where: { yj_code: { in: [...narcoticCandidateYjCodes] }, is_narcotic: true },
+                select: { yj_code: true },
+              })
+            : [];
+        const narcoticYjCodes = new Set(narcoticMasters.map((master) => master.yj_code));
+
+        for (const line of allLines) {
+          const decision = line.dispensing_decisions?.[0] ?? null;
+          const auditedResult = line.dispense_results?.[0] ?? null;
+          if (!auditedResult) {
+            return {
+              kind: 'error' as const,
+              message: `監査済み調剤結果がない処方があります: ${line.drug_name}`,
+            } as const;
+          }
+          const packagingMethod = decision?.packaging_method ?? line.packaging_method ?? undefined;
+          const packagingInstructions =
+            decision?.packaging_instructions ?? line.packaging_instructions ?? undefined;
+          const packagingInstructionTags =
+            decision?.packaging_instruction_tags ?? line.packaging_instruction_tags;
+          const packagingGroupId = decision?.packaging_group_id ?? line.packaging_group_id ?? null;
           const slots = resolveSlotsForMethod({
             frequency: line.frequency,
             setMethod: plan.set_method,
           });
           const quantityPerSlot = resolveQuantityPerSlot({
-            totalQuantity: line.quantity,
+            totalQuantity: auditedResult.actual_quantity,
             totalDays,
             slotCount: slots.length,
           });
@@ -355,20 +529,27 @@ export const POST = withAuthContext<{ id: string }>(
               message: `セット数量を計算できない処方があります: ${line.drug_name}`,
             } as const;
           }
-          const carryType = resolveCarryType(line.notes, line.packaging_instructions);
+          const carryType =
+            decision?.carry_type_override ?? resolveCarryType(line.notes, packagingInstructions);
           const resolvedPackaging = resolvePackagingSettings({
-            packagingMethod: line.packaging_method ?? undefined,
-            packagingInstructions: line.packaging_instructions ?? undefined,
+            packagingMethod,
+            packagingInstructions,
             profile: patientPackagingProfile,
           });
-          const packagingTags =
-            line.packaging_instruction_tags.length > 0
-              ? line.packaging_instruction_tags
+          const basePackagingTags =
+            packagingInstructionTags.length > 0
+              ? packagingInstructionTags
               : extractPackagingInstructionTags({
                   packagingInstructions: resolvedPackaging.packaging_instructions,
                   notes: line.notes,
                   packagingMethod: resolvedPackaging.packaging_method,
                 });
+          const packagingTags = handlingTagsWithMasterNarcotic(
+            basePackagingTags,
+            narcoticYjCodes,
+            line.drug_code,
+            auditedResult.actual_drug_code,
+          );
 
           for (let day = 1; day <= totalDays; day++) {
             for (const slot of slots) {
@@ -383,6 +564,7 @@ export const POST = withAuthContext<{ id: string }>(
                 packaging_method_snapshot: resolvedPackaging.packaging_method,
                 packaging_instructions_snapshot: resolvedPackaging.packaging_instructions,
                 packaging_instruction_tags_snapshot: packagingTags,
+                packaging_group_id: packagingGroupId,
               });
             }
           }
@@ -390,6 +572,14 @@ export const POST = withAuthContext<{ id: string }>(
 
         const concurrentlyCreated = force ? [] : await findExistingSetBatches(tx, id, ctx.orgId);
         if (concurrentlyCreated.length > 0) {
+          if (
+            isSetInputNewerThanBatch({
+              latestSetInputUpdatedAt,
+              latestBatchUpdatedAt: latestSetBatchUpdatedAt(concurrentlyCreated),
+            })
+          ) {
+            return staleSetBatchReuseResult();
+          }
           return {
             count: concurrentlyCreated.length,
             batches: concurrentlyCreated,
@@ -407,7 +597,7 @@ export const POST = withAuthContext<{ id: string }>(
           planId: id,
           action: force ? 'regenerated' : 'generated',
           triggerSource:
-            force && latestIntakeUpdatedAt
+            force && latestSetInputUpdatedAt
               ? 'prescription_update'
               : force
                 ? 'manual_generate'

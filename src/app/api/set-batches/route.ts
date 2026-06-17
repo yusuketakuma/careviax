@@ -10,6 +10,10 @@ import {
   createSetBatchChangeLog,
 } from '@/lib/prescription/set-batch-history';
 import {
+  collectNarcoticCandidateYjCode,
+  handlingTagsWithMasterNarcotic,
+} from '@/lib/prescription/controlled-handling-tags';
+import {
   extractPackagingInstructionTags,
   resolvePackagingSettings,
 } from '@/lib/prescription/packaging';
@@ -33,6 +37,8 @@ const createSetBatchSchema = z.object({
     error: '持参区分を選択してください',
   }),
 });
+
+const QUANTITY_TOLERANCE = 0.000001;
 
 function isUniqueConstraintError(error: unknown) {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
@@ -130,15 +136,65 @@ export const POST = withAuthContext<Record<string, string>>(
         };
       }
 
+      const latestIntake = await tx.prescriptionIntake.findFirst({
+        where: { org_id: ctx.orgId, cycle_id: plan.cycle_id },
+        orderBy: { created_at: 'desc' },
+        select: { id: true },
+      });
+      if (!latestIntake) {
+        return {
+          kind: 'error' as const,
+          response: validationError('処方ラインが存在しません。処方を先に登録してください'),
+        };
+      }
+
       const line = await tx.prescriptionLine.findFirst({
-        where: { id: line_id, org_id: ctx.orgId },
+        where: { id: line_id, org_id: ctx.orgId, intake_id: latestIntake.id },
         select: {
           id: true,
           drug_name: true,
+          drug_code: true,
+          packaging_group_id: true,
           packaging_method: true,
           packaging_instructions: true,
           packaging_instruction_tags: true,
           notes: true,
+          dispensing_decisions: {
+            where: {
+              org_id: ctx.orgId,
+              task: { cycle_id: plan.cycle_id },
+            },
+            orderBy: { decided_at: 'desc' },
+            take: 1,
+            select: {
+              packaging_method: true,
+              packaging_instructions: true,
+              packaging_instruction_tags: true,
+              packaging_group_id: true,
+              carry_type_override: true,
+            },
+          },
+          dispense_results: {
+            where: {
+              org_id: ctx.orgId,
+              task: {
+                cycle_id: plan.cycle_id,
+                audits: {
+                  some: {
+                    org_id: ctx.orgId,
+                    result: { in: ['approved', 'emergency_approved'] },
+                  },
+                },
+              },
+            },
+            orderBy: { dispensed_at: 'desc' },
+            take: 1,
+            select: {
+              id: true,
+              actual_drug_code: true,
+              actual_quantity: true,
+            },
+          },
           intake: {
             select: {
               cycle_id: true,
@@ -160,6 +216,14 @@ export const POST = withAuthContext<Record<string, string>>(
         };
       }
 
+      const auditedResult = line.dispense_results[0] ?? null;
+      if (!auditedResult) {
+        return {
+          kind: 'error' as const,
+          response: validationError('監査済み調剤結果がない処方ラインはセットに追加できません'),
+        };
+      }
+
       const duplicate = await tx.setBatch.findFirst({
         where: {
           org_id: ctx.orgId,
@@ -177,19 +241,66 @@ export const POST = withAuthContext<Record<string, string>>(
         };
       }
 
+      const existingLineQuantity = await tx.setBatch.aggregate({
+        where: {
+          org_id: ctx.orgId,
+          plan_id,
+          line_id,
+        },
+        _sum: {
+          quantity: true,
+        },
+      });
+      const currentLineQuantity = existingLineQuantity._sum.quantity ?? 0;
+      if (currentLineQuantity + quantity - auditedResult.actual_quantity > QUANTITY_TOLERANCE) {
+        return {
+          kind: 'error' as const,
+          response: validationError('セット数量が監査済み調剤実数量を超えています'),
+        };
+      }
+
+      const decision = line.dispensing_decisions[0] ?? null;
+      const packagingMethod = decision?.packaging_method ?? line.packaging_method ?? undefined;
+      const packagingInstructions =
+        decision?.packaging_instructions ?? line.packaging_instructions ?? undefined;
+      const packagingInstructionTags =
+        decision?.packaging_instruction_tags ?? line.packaging_instruction_tags;
+      const packagingGroupId = decision?.packaging_group_id ?? line.packaging_group_id ?? null;
+      const effectiveCarryType = decision?.carry_type_override ?? carry_type;
       const resolvedPackaging = resolvePackagingSettings({
-        packagingMethod: line.packaging_method ?? undefined,
-        packagingInstructions: line.packaging_instructions ?? undefined,
+        packagingMethod,
+        packagingInstructions,
         profile: plan.cycle.case_?.patient.packaging_profile ?? null,
       });
-      const packagingTags =
-        line.packaging_instruction_tags.length > 0
-          ? line.packaging_instruction_tags
+      const basePackagingTags =
+        packagingInstructionTags.length > 0
+          ? packagingInstructionTags
           : extractPackagingInstructionTags({
               packagingInstructions: resolvedPackaging.packaging_instructions,
               notes: line.notes,
               packagingMethod: resolvedPackaging.packaging_method,
             });
+      const narcoticCandidateYjCodes = new Set<string>();
+      collectNarcoticCandidateYjCode(
+        narcoticCandidateYjCodes,
+        basePackagingTags,
+        line.drug_code,
+        auditedResult.actual_drug_code,
+      );
+      const narcoticMasters =
+        narcoticCandidateYjCodes.size > 0
+          ? await tx.drugMaster.findMany({
+              where: { yj_code: { in: [...narcoticCandidateYjCodes] }, is_narcotic: true },
+              select: { yj_code: true },
+            })
+          : [];
+      const narcoticYjCodes = new Set(narcoticMasters.map((master) => master.yj_code));
+      const packagingTags = handlingTagsWithMasterNarcotic(
+        basePackagingTags,
+        narcoticYjCodes,
+        line.drug_code,
+        auditedResult.actual_drug_code,
+      );
 
       let batch;
       try {
@@ -201,10 +312,11 @@ export const POST = withAuthContext<Record<string, string>>(
             slot,
             day_number,
             quantity,
-            carry_type,
+            carry_type: effectiveCarryType,
             packaging_method_snapshot: resolvedPackaging.packaging_method,
             packaging_instructions_snapshot: resolvedPackaging.packaging_instructions,
             packaging_instruction_tags_snapshot: packagingTags,
+            packaging_group_id: packagingGroupId,
           },
           include: {
             line: {

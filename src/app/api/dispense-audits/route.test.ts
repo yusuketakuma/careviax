@@ -102,6 +102,111 @@ function createGetRequest(search = '') {
   return new NextRequest(`http://localhost/api/dispense-audits${search}`);
 }
 
+function doubleCountResultRow(
+  overrides: Partial<{
+    line_id: string;
+    actual_drug_name: string;
+    actual_drug_code: string | null;
+    actual_quantity: number;
+    actual_unit: string | null;
+    drug_name: string;
+    drug_code: string | null;
+    unit: string | null;
+    packaging_instruction_tags: string[];
+  }> = {},
+) {
+  return {
+    line_id: overrides.line_id ?? 'line_narcotic',
+    actual_drug_name: overrides.actual_drug_name ?? 'モルヒネ徐放錠',
+    actual_drug_code: overrides.actual_drug_code ?? 'YJ_NARCOTIC',
+    actual_quantity: overrides.actual_quantity ?? 12,
+    actual_unit: overrides.actual_unit ?? '錠',
+    line: {
+      drug_name: overrides.drug_name ?? 'モルヒネ徐放錠',
+      drug_code: overrides.drug_code ?? 'YJ_NARCOTIC',
+      unit: overrides.unit ?? '錠',
+      packaging_instruction_tags: overrides.packaging_instruction_tags ?? ['narcotic'],
+    },
+  };
+}
+
+function setupApprovedDoubleCountAuditTx(args: {
+  resultRows: Array<ReturnType<typeof doubleCountResultRow>>;
+  narcoticMasterYjCodes?: string[];
+}) {
+  const dispenseResultFindManyMock = vi
+    .fn()
+    .mockResolvedValueOnce([{ dispensed_by: 'user_dispense' }])
+    .mockResolvedValueOnce(args.resultRows);
+  const dispenseAuditCreateMock = vi.fn();
+  const auditLogCreateMock = vi.fn();
+  const cycleUpdateManyMock = vi.fn();
+  const drugMasterFindManyMock = vi
+    .fn()
+    .mockResolvedValue((args.narcoticMasterYjCodes ?? []).map((yjCode) => ({ yj_code: yjCode })));
+
+  withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+    callback({
+      dispenseTask: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'task_double_count',
+          cycle_id: 'cycle_double_count',
+          assigned_to: 'user_dispense',
+          due_date: null,
+          priority: 'normal',
+          cycle: {
+            patient_id: 'patient_double_count',
+            overall_status: 'audit_pending',
+            set_plans: [],
+            case_: {
+              primary_pharmacist_id: 'pharmacist_1',
+              patient: {
+                name: '佐藤 花子',
+              },
+            },
+          },
+        }),
+        update: vi.fn(),
+      },
+      dispenseResult: {
+        findMany: dispenseResultFindManyMock,
+      },
+      membership: {
+        findFirst: vi.fn().mockResolvedValue({ id: 'membership_admin' }),
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      dispenseAudit: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: dispenseAuditCreateMock,
+      },
+      drugMaster: {
+        findMany: drugMasterFindManyMock,
+      },
+      auditLog: {
+        create: auditLogCreateMock,
+      },
+      medicationCycle: {
+        findFirst: vi.fn(),
+        findFirstOrThrow: vi.fn(),
+        updateMany: cycleUpdateManyMock,
+      },
+      cycleTransitionLog: { create: vi.fn() },
+      workflowException: {
+        create: vi.fn(),
+        updateMany: vi.fn(),
+      },
+    }),
+  );
+
+  return {
+    dispenseResultFindManyMock,
+    dispenseAuditCreateMock,
+    auditLogCreateMock,
+    cycleUpdateManyMock,
+    drugMasterFindManyMock,
+  };
+}
+
 // 新ポリシー: pharmacist は組織内フルアクセス(担当割当スコープ撤廃)のため
 // buildMedicationCycleAssignmentWhere が null を返し、WHERE に cycle 句は付与されない。
 
@@ -160,10 +265,35 @@ describe('/api/dispense-audits GET', () => {
           prescription_intakes: [],
         },
       },
+      {
+        id: 'task_rejected_corrected',
+        priority: 'normal',
+        due_date: null,
+        updated_at: new Date('2026-03-29T12:00:00.000Z'),
+        audits: [
+          { id: 'audit_3', result: 'rejected', audited_at: new Date('2026-03-29T11:45:00.000Z') },
+        ],
+        results: [],
+        cycle: {
+          id: 'cycle_3',
+          patient_id: 'patient_3',
+          overall_status: 'audit_pending',
+          case_: {
+            id: 'case_3',
+            patient: {
+              id: 'patient_3',
+              name: '鈴木 一郎',
+              name_kana: 'スズキ イチロウ',
+              residences: [{ building_id: 'facility_3', address: '施設C' }],
+            },
+          },
+          prescription_intakes: [],
+        },
+      },
     ]);
   });
 
-  it('shows hold items again and excludes already approved audits', async () => {
+  it('shows hold and corrected rejected items again while excluding already approved audits', async () => {
     const response = await GET(createGetRequest());
 
     if (!response) throw new Error('response is required');
@@ -171,13 +301,19 @@ describe('/api/dispense-audits GET', () => {
     const payload = (await response.json()) as {
       data: Array<{ id: string; facility_label: string | null; is_overdue: boolean }>;
     };
-    expect(payload.data).toEqual([
-      expect.objectContaining({
-        id: 'task_hold',
-        facility_label: 'facility_1',
-        is_overdue: true,
-      }),
-    ]);
+    expect(payload.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'task_hold',
+          facility_label: 'facility_1',
+          is_overdue: true,
+        }),
+        expect.objectContaining({
+          id: 'task_rejected_corrected',
+          facility_label: 'facility_3',
+        }),
+      ]),
+    );
     expect(payload.data).not.toContainEqual(
       expect.objectContaining({
         id: 'task_approved',
@@ -188,6 +324,11 @@ describe('/api/dispense-audits GET', () => {
         where: {
           org_id: 'org_1',
           status: 'completed',
+          audits: {
+            none: {
+              result: { in: ['approved', 'emergency_approved'] },
+            },
+          },
         },
       }),
     );
@@ -205,7 +346,7 @@ describe('/api/dispense-audits GET', () => {
         status: 'completed',
         audits: {
           none: {
-            result: { notIn: ['hold'] },
+            result: { in: ['approved', 'emergency_approved'] },
           },
         },
       },
@@ -578,6 +719,129 @@ describe('/api/dispense-audits POST', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it('allows approval re-audit after a rejected audit has been corrected', async () => {
+    const dispenseAuditFindFirstMock = vi.fn().mockImplementation((args) => {
+      expect(args).toMatchObject({
+        where: {
+          task_id: 'task_reaudit',
+          result: { in: ['approved', 'emergency_approved'] },
+        },
+      });
+      return Promise.resolve(null);
+    });
+    const dispenseAuditCreateMock = vi.fn().mockResolvedValue({
+      id: 'audit_reapproved',
+      result: 'approved',
+    });
+    const taskUpdateMock = vi.fn().mockResolvedValue({});
+    const cycleUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    const cycleFindFirstMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: 'cycle_reaudit',
+        overall_status: 'audit_pending',
+        version: 4,
+      })
+      .mockResolvedValueOnce({ id: 'cycle_reaudit', overall_status: 'audited', version: 5 });
+    const workflowExceptionUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'task_reaudit',
+            cycle_id: 'cycle_reaudit',
+            assigned_to: 'user_dispense',
+            due_date: null,
+            priority: 'normal',
+            cycle: {
+              patient_id: 'patient_reaudit',
+              overall_status: 'audit_pending',
+              version: 4,
+              set_plans: [],
+              case_: {
+                primary_pharmacist_id: 'pharmacist_1',
+                patient: { name: '山田 太郎' },
+              },
+            },
+          }),
+          update: taskUpdateMock,
+        },
+        dispenseResult: {
+          findMany: vi
+            .fn()
+            .mockResolvedValueOnce([{ dispensed_by: 'user_dispense' }])
+            .mockResolvedValueOnce([
+              doubleCountResultRow({
+                line_id: 'line_plain',
+                actual_drug_code: null,
+                drug_code: null,
+                packaging_instruction_tags: [],
+              }),
+            ]),
+        },
+        membership: {
+          findFirst: vi.fn(),
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+        dispenseAudit: {
+          findFirst: dispenseAuditFindFirstMock,
+          create: dispenseAuditCreateMock,
+        },
+        drugMaster: {
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+        medicationCycle: {
+          findFirst: cycleFindFirstMock,
+          findFirstOrThrow: vi
+            .fn()
+            .mockResolvedValue({ id: 'cycle_reaudit', overall_status: 'visit_ready' }),
+          updateMany: cycleUpdateManyMock,
+        },
+        cycleTransitionLog: { create: vi.fn().mockResolvedValue({}) },
+        workflowException: {
+          create: vi.fn().mockResolvedValue({}),
+          updateMany: workflowExceptionUpdateManyMock,
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_reaudit',
+        result: 'approved',
+        expected_version: 4,
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      id: 'audit_reapproved',
+      result: 'approved',
+    });
+    expect(dispenseAuditCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        task_id: 'task_reaudit',
+        result: 'approved',
+      }),
+    });
+    expect(workflowExceptionUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          cycle_id: 'cycle_reaudit',
+          exception_type: 'dispense_audit_rejected',
+          status: 'open',
+        }),
+      }),
+    );
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      eventType: 'cycle_transition',
+      payload: { source: 'dispense_audits', task_id: 'task_reaudit' },
+    });
+  });
+
   it('rejects invalid cycle transitions before creating a dispense audit record', async () => {
     const dispenseAuditCreateMock = vi.fn();
     const taskUpdateMock = vi.fn();
@@ -734,6 +998,414 @@ describe('/api/dispense-audits POST', () => {
         data: expect.objectContaining({ overall_status: 'visit_ready' }),
       }),
     );
+  });
+
+  it('stores double-count evidence after validating it against saved actual quantity', async () => {
+    const dispenseResultFindManyMock = vi
+      .fn()
+      .mockResolvedValueOnce([{ dispensed_by: 'user_dispense' }])
+      .mockResolvedValueOnce([doubleCountResultRow()]);
+    const dispenseAuditCreateMock = vi.fn().mockResolvedValue({
+      id: 'audit_double_count',
+      result: 'approved',
+    });
+    const auditLogCreateMock = vi.fn().mockResolvedValue({ id: 'log_double_count' });
+    const cycleFindFirstMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        id: 'cycle_double_count',
+        overall_status: 'audit_pending',
+        version: 1,
+      })
+      .mockResolvedValueOnce({ id: 'cycle_double_count', overall_status: 'audited', version: 2 });
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'task_double_count',
+            cycle_id: 'cycle_double_count',
+            assigned_to: 'user_dispense',
+            due_date: null,
+            priority: 'normal',
+            cycle: {
+              patient_id: 'patient_double_count',
+              overall_status: 'audit_pending',
+              set_plans: [],
+              case_: {
+                primary_pharmacist_id: 'pharmacist_1',
+                patient: {
+                  name: '佐藤 花子',
+                },
+              },
+            },
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        dispenseResult: {
+          findMany: dispenseResultFindManyMock,
+        },
+        membership: {
+          findFirst: vi.fn().mockResolvedValue({ id: 'membership_admin' }),
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+        dispenseAudit: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: dispenseAuditCreateMock,
+        },
+        auditLog: {
+          create: auditLogCreateMock,
+        },
+        medicationCycle: {
+          findFirst: cycleFindFirstMock,
+          findFirstOrThrow: vi
+            .fn()
+            .mockResolvedValue({ id: 'cycle_double_count', overall_status: 'visit_ready' }),
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        },
+        cycleTransitionLog: { create: vi.fn().mockResolvedValue({}) },
+        workflowException: {
+          create: vi.fn().mockResolvedValue({}),
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_double_count',
+        result: 'approved',
+        double_count: [
+          {
+            line_id: 'line_narcotic',
+            drug_name: 'モルヒネ徐放錠',
+            dispensed_quantity: 12,
+            first_count: 12,
+            second_count: 12,
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(dispenseResultFindManyMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          task_id: 'task_double_count',
+        },
+        select: {
+          line_id: true,
+          actual_drug_name: true,
+          actual_drug_code: true,
+          actual_quantity: true,
+          actual_unit: true,
+          line: {
+            select: {
+              drug_name: true,
+              drug_code: true,
+              unit: true,
+              packaging_instruction_tags: true,
+            },
+          },
+        },
+      }),
+    );
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'dispense_audit_double_count',
+        target_type: 'DispenseAudit',
+        target_id: 'audit_double_count',
+        changes: expect.objectContaining({
+          task_id: 'task_double_count',
+          result: 'approved',
+          counts: [
+            {
+              line_id: 'line_narcotic',
+              drug_name: 'モルヒネ徐放錠',
+              drug_code: 'YJ_NARCOTIC',
+              dispensed_quantity: 12,
+              unit: '錠',
+              first_count: 12,
+              second_count: 12,
+              is_narcotic: true,
+            },
+          ],
+        }),
+      }),
+    });
+  });
+
+  it('requires approved double-count evidence for every narcotic dispense result before side effects', async () => {
+    const { dispenseAuditCreateMock, auditLogCreateMock, cycleUpdateManyMock } =
+      setupApprovedDoubleCountAuditTx({
+        resultRows: [doubleCountResultRow()],
+      });
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_double_count',
+        result: 'approved',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    const payload = await response.json();
+    expect(payload).toMatchObject({
+      message: '麻薬ダブルカウントが調剤実績と一致しません',
+      details: {
+        double_count: [
+          {
+            line_id: 'line_narcotic',
+            reason: 'required_line_missing',
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(payload.details)).not.toContain('モルヒネ');
+    expect(dispenseAuditCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(cycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('requires approved double-count evidence when DrugMaster marks an untagged result as narcotic', async () => {
+    const {
+      dispenseAuditCreateMock,
+      auditLogCreateMock,
+      cycleUpdateManyMock,
+      drugMasterFindManyMock,
+    } = setupApprovedDoubleCountAuditTx({
+      resultRows: [
+        doubleCountResultRow({
+          line_id: 'line_master_narcotic',
+          actual_drug_name: 'タグ漏れ麻薬',
+          actual_drug_code: 'YJ_MASTER_NARCOTIC',
+          packaging_instruction_tags: [],
+        }),
+      ],
+      narcoticMasterYjCodes: ['YJ_MASTER_NARCOTIC'],
+    });
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_double_count',
+        result: 'approved',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    const payload = await response.json();
+    expect(drugMasterFindManyMock).toHaveBeenCalledWith({
+      where: {
+        yj_code: { in: expect.arrayContaining(['YJ_MASTER_NARCOTIC']) },
+        is_narcotic: true,
+      },
+      select: { yj_code: true },
+    });
+    expect(payload).toMatchObject({
+      message: '麻薬ダブルカウントが調剤実績と一致しません',
+      details: {
+        double_count: [
+          {
+            line_id: 'line_master_narcotic',
+            reason: 'required_line_missing',
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(payload.details)).not.toContain('タグ漏れ麻薬');
+    expect(dispenseAuditCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(cycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects approved double-count mismatches before creating audits or logs', async () => {
+    const dispenseResultFindManyMock = vi
+      .fn()
+      .mockResolvedValueOnce([{ dispensed_by: 'user_dispense' }])
+      .mockResolvedValueOnce([doubleCountResultRow()]);
+    const dispenseAuditCreateMock = vi.fn();
+    const auditLogCreateMock = vi.fn();
+    const cycleUpdateManyMock = vi.fn();
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'task_double_count',
+            cycle_id: 'cycle_double_count',
+            assigned_to: 'user_dispense',
+            due_date: null,
+            priority: 'normal',
+            cycle: {
+              patient_id: 'patient_double_count',
+              overall_status: 'audit_pending',
+              set_plans: [],
+              case_: {
+                primary_pharmacist_id: 'pharmacist_1',
+                patient: {
+                  name: '佐藤 花子',
+                },
+              },
+            },
+          }),
+          update: vi.fn(),
+        },
+        dispenseResult: {
+          findMany: dispenseResultFindManyMock,
+        },
+        membership: {
+          findFirst: vi.fn().mockResolvedValue({ id: 'membership_admin' }),
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+        dispenseAudit: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: dispenseAuditCreateMock,
+        },
+        auditLog: {
+          create: auditLogCreateMock,
+        },
+        medicationCycle: {
+          findFirst: vi.fn(),
+          findFirstOrThrow: vi.fn(),
+          updateMany: cycleUpdateManyMock,
+        },
+        cycleTransitionLog: { create: vi.fn() },
+        workflowException: {
+          create: vi.fn(),
+          updateMany: vi.fn(),
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_double_count',
+        result: 'approved',
+        double_count: [
+          {
+            line_id: 'line_narcotic',
+            drug_name: 'モルヒネ徐放錠',
+            dispensed_quantity: 12,
+            first_count: 11,
+            second_count: 12,
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    const payload = await response.json();
+    expect(payload).toMatchObject({
+      message: '麻薬ダブルカウントが調剤実績と一致しません',
+      details: {
+        double_count: [
+          {
+            line_id: 'line_narcotic',
+            field: 'first_count',
+            reason: 'actual_quantity_mismatch',
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(payload.details)).not.toContain('モルヒネ');
+    expect(dispenseAuditCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(cycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects approved double-count rows whose line has no saved dispense result', async () => {
+    const { dispenseAuditCreateMock, auditLogCreateMock, cycleUpdateManyMock } =
+      setupApprovedDoubleCountAuditTx({ resultRows: [] });
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_double_count',
+        result: 'approved',
+        double_count: [
+          {
+            line_id: 'line_unknown',
+            drug_name: 'モルヒネ徐放錠',
+            dispensed_quantity: 12,
+            first_count: 12,
+            second_count: 12,
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    const payload = await response.json();
+    expect(payload).toMatchObject({
+      message: '麻薬ダブルカウントが調剤実績と一致しません',
+      details: {
+        double_count: [
+          {
+            line_id: 'line_unknown',
+            reason: 'result_missing',
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(payload.details)).not.toContain('モルヒネ');
+    expect(dispenseAuditCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(cycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('requires both approved double-count count entries before creating audits or logs', async () => {
+    const { dispenseAuditCreateMock, auditLogCreateMock, cycleUpdateManyMock } =
+      setupApprovedDoubleCountAuditTx({
+        resultRows: [doubleCountResultRow()],
+      });
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_double_count',
+        result: 'approved',
+        double_count: [
+          {
+            line_id: 'line_narcotic',
+            drug_name: 'モルヒネ徐放錠',
+            dispensed_quantity: 12,
+            first_count: null,
+            second_count: 12,
+          },
+        ],
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    const payload = await response.json();
+    expect(payload).toMatchObject({
+      message: '麻薬ダブルカウントが調剤実績と一致しません',
+      details: {
+        double_count: [
+          {
+            line_id: 'line_narcotic',
+            field: 'first_count',
+            reason: 'value_required',
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(payload.details)).not.toContain('モルヒネ');
+    expect(dispenseAuditCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(cycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('allows a self-audit exception when an admin supplies a reason (D1=B)', async () => {

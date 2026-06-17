@@ -38,9 +38,6 @@ const patientFixture: SeedPatient = {
 const MISSING_WRITE_CONTEXT_MESSAGE =
   '保存に必要な実データを取得できませんでした。患者を再選択してから実行してください。';
 
-const UNSUPPORTED_REAL_WRITE_MESSAGE =
-  'この項目は実データではまだ保存できません。最新状態を再読み込みしてください。';
-
 type MutationOptions = {
   onError?: (error: unknown) => void;
   onSuccess?: (data: unknown) => void;
@@ -69,6 +66,7 @@ function fakeMutations(
     saveGroups: mutationStub(),
     assignLines: mutationStub(),
     editLine: mutationStub(),
+    editLines: mutationStub(),
     isAnyPending: false,
     ...overrides,
   } as WorkbenchMutations;
@@ -727,6 +725,165 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
     expect(onAdvance).toHaveBeenCalledWith('setp');
   });
 
+  it('submits narcotic double-count evidence with dispense audit approval', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const completeAudit = mutationStub((_input, options) => options?.onSuccess?.({}));
+    const onAdvance = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState({
+        selId: 'patient_1',
+        model: {
+          patient_1: [
+            {
+              gid: 'group_1',
+              label: '朝食後',
+              method: '一包化',
+              start: '2026-06-17',
+              days: 1,
+              drugs: [
+                {
+                  did: 'line_narcotic',
+                  name: 'モルヒネ徐放錠',
+                  yoho: '朝食後',
+                  a: '1',
+                  h: '',
+                  y: '',
+                  n: '',
+                  tag: '麻薬',
+                  funsai: false,
+                  note: '',
+                  dispensedQuantity: 12,
+                  isNarcotic: true,
+                },
+              ],
+            },
+          ],
+        },
+        done: { line_narcotic: true },
+        audit: { line_narcotic: true },
+        auditDoubleCountByDid: {
+          line_narcotic: { first: '12', second: '12' },
+        },
+        writeContext: {
+          taskId: 'task_1',
+          cycleId: 'cycle_1',
+          cycleVersion: 4,
+          planId: null,
+          lineGroupByDid: {},
+          groupIdByGid: {},
+          cellMeta: {},
+        },
+      });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'audit',
+        mutations: fakeMutations({ completeAudit }),
+        onAdvance,
+      }),
+    );
+
+    let nextPhase: unknown;
+    act(() => {
+      nextPhase = result.current.onPrimary();
+    });
+
+    expect(nextPhase).toBeNull();
+    expect(completeAudit.mutate).toHaveBeenCalledWith(
+      {
+        task_id: 'task_1',
+        result: 'approved',
+        expected_version: 4,
+        double_count: [
+          {
+            line_id: 'line_narcotic',
+            drug_name: 'モルヒネ徐放錠',
+            dispensed_quantity: 12,
+            first_count: 12,
+            second_count: 12,
+          },
+        ],
+      },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
+    expect(onAdvance).toHaveBeenCalledWith('setp');
+  });
+
+  it('does not submit narcotic audit approval until both double counts match actual quantity', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const completeAudit = mutationStub();
+    const onAdvance = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState({
+        selId: 'patient_1',
+        model: {
+          patient_1: [
+            {
+              gid: 'group_1',
+              label: '朝食後',
+              method: '一包化',
+              start: '2026-06-17',
+              days: 1,
+              drugs: [
+                {
+                  did: 'line_narcotic',
+                  name: 'モルヒネ徐放錠',
+                  yoho: '朝食後',
+                  a: '1',
+                  h: '',
+                  y: '',
+                  n: '',
+                  tag: '麻薬',
+                  funsai: false,
+                  note: '',
+                  dispensedQuantity: 12,
+                  isNarcotic: true,
+                },
+              ],
+            },
+          ],
+        },
+        done: { line_narcotic: true },
+        audit: { line_narcotic: true },
+        auditDoubleCountByDid: {
+          line_narcotic: { first: '12', second: '' },
+        },
+        writeContext: {
+          taskId: 'task_1',
+          cycleId: 'cycle_1',
+          cycleVersion: 4,
+          planId: null,
+          lineGroupByDid: {},
+          groupIdByGid: {},
+          cellMeta: {},
+        },
+      });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'audit',
+        mutations: fakeMutations({ completeAudit }),
+        onAdvance,
+      }),
+    );
+
+    let nextPhase: unknown;
+    act(() => {
+      nextPhase = result.current.onPrimary();
+    });
+
+    expect(nextPhase).toBeNull();
+    expect(completeAudit.mutate).not.toHaveBeenCalled();
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      '麻薬ダブルカウントが未完了です。1回目・2回目を実数量と一致する値で入力してください。',
+    );
+    expect(onAdvance).not.toHaveBeenCalled();
+  });
+
   it('does not submit audit approval when rows are audited but not dispensed', async () => {
     const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
     const completeAudit = mutationStub();
@@ -891,6 +1048,7 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
           ],
         },
         done: { line_1: true },
+        quantityConfirmedByDid: { line_1: true },
         writeContext: {
           taskId: 'task_1',
           cycleId: 'cycle_1',
@@ -1166,7 +1324,7 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
   it('creates a real packaging group and maps the local gid to the backend id', async () => {
     const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
     const createGroup = mutationStub((_input, options) =>
-      options?.onSuccess?.({ data: { id: 'packaging_group_1' } }),
+      options?.onSuccess?.({ data: { id: 'packaging_group_1', version: 0 } }),
     );
 
     act(() => {
@@ -1232,6 +1390,7 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
     expect(useWorkbenchStore.getState().writeContext.groupIdByGid[group.gid]).toBe(
       'packaging_group_1',
     );
+    expect(useWorkbenchStore.getState().writeContext.groupVersionByGid?.[group.gid]).toBe(0);
   });
 
   it('reports missing real-data context instead of silently no-oping a group create', async () => {
@@ -1267,6 +1426,42 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
     });
 
     expect(toastErrorMock).toHaveBeenCalledWith(MISSING_WRITE_CONTEXT_MESSAGE);
+    expect(createGroup.mutate).not.toHaveBeenCalled();
+    expect(useWorkbenchStore.getState().model.patient_1).toEqual([]);
+  });
+
+  it('does not create a local group while another real-data write is pending', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const createGroup = mutationStub();
+
+    act(() => {
+      useWorkbenchStore.setState({
+        selId: 'patient_1',
+        patients: [patientFixture],
+        model: { patient_1: [] },
+        writeContext: {
+          taskId: 'task_1',
+          cycleId: 'cycle_1',
+          cycleVersion: 4,
+          planId: null,
+          lineGroupByDid: {},
+          groupIdByGid: {},
+          cellMeta: {},
+        },
+      });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'dispense',
+        mutations: fakeMutations({ createGroup, isAnyPending: true }),
+      }),
+    );
+
+    act(() => {
+      result.current.onAddGroup();
+    });
+
     expect(createGroup.mutate).not.toHaveBeenCalled();
     expect(useWorkbenchStore.getState().model.patient_1).toEqual([]);
   });
@@ -1335,6 +1530,217 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
     expect(completeDispense.mutate).not.toHaveBeenCalled();
   });
 
+  it('blocks dispense completion when a checked real-data line has unresolved prescribed quantity', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const completeDispense = mutationStub();
+    const onAdvance = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState({
+        selId: 'patient_1',
+        patients: [patientFixture],
+        model: {
+          patient_1: [
+            {
+              gid: 'g_1',
+              label: '朝食後',
+              method: '一包化',
+              start: '2026-04-01',
+              days: 14,
+              drugs: [
+                {
+                  did: 'line_1',
+                  name: '薬剤A',
+                  yoho: '朝食後',
+                  a: '1',
+                  h: '',
+                  y: '',
+                  n: '',
+                  tag: '',
+                  funsai: false,
+                  note: '',
+                  prescribedQuantity: null,
+                },
+              ],
+            },
+          ],
+        },
+        done: { line_1: true },
+        writeContext: {
+          taskId: 'task_1',
+          cycleId: 'cycle_1',
+          cycleVersion: 4,
+          planId: null,
+          lineGroupByDid: {},
+          groupIdByGid: {},
+          cellMeta: {},
+        },
+      });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'dispense',
+        mutations: fakeMutations({ completeDispense }),
+        onAdvance,
+      }),
+    );
+
+    let nextPhase: unknown;
+    act(() => {
+      nextPhase = result.current.onPrimary();
+    });
+
+    expect(nextPhase).toBeNull();
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      '処方数量が未確定の薬剤があります。処方取込で数量を確認してから調剤完了してください。',
+    );
+    expect(completeDispense.mutate).not.toHaveBeenCalled();
+    expect(onAdvance).not.toHaveBeenCalled();
+  });
+
+  it('blocks dispense completion when actual quantity has not been explicitly confirmed', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const completeDispense = mutationStub();
+    const onAdvance = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState({
+        selId: 'patient_1',
+        patients: [patientFixture],
+        model: {
+          patient_1: [
+            {
+              gid: 'g_1',
+              label: '朝食後',
+              method: '一包化',
+              start: '2026-04-01',
+              days: 14,
+              drugs: [
+                {
+                  did: 'line_1',
+                  name: '薬剤A',
+                  yoho: '朝食後',
+                  a: '1',
+                  h: '',
+                  y: '',
+                  n: '',
+                  tag: '',
+                  funsai: false,
+                  note: '',
+                  prescribedQuantity: 14,
+                },
+              ],
+            },
+          ],
+        },
+        done: { line_1: true },
+        quantityConfirmedByDid: {},
+        writeContext: {
+          taskId: 'task_1',
+          cycleId: 'cycle_1',
+          cycleVersion: 4,
+          planId: null,
+          lineGroupByDid: {},
+          groupIdByGid: {},
+          cellMeta: {},
+        },
+      });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'dispense',
+        mutations: fakeMutations({ completeDispense }),
+        onAdvance,
+      }),
+    );
+
+    let nextPhase: unknown;
+    act(() => {
+      nextPhase = result.current.onPrimary();
+    });
+
+    expect(nextPhase).toBeNull();
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      '実数量の確認が未完了の薬剤があります。数量確認を押してから調剤完了してください。',
+    );
+    expect(completeDispense.mutate).not.toHaveBeenCalled();
+    expect(onAdvance).not.toHaveBeenCalled();
+  });
+
+  it('blocks manual actual quantity completion when discrepancy reason is missing', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const completeDispense = mutationStub();
+    const onAdvance = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState({
+        selId: 'patient_1',
+        patients: [patientFixture],
+        model: {
+          patient_1: [
+            {
+              gid: 'g_1',
+              label: '朝食後',
+              method: '一包化',
+              start: '2026-04-01',
+              days: 14,
+              drugs: [
+                {
+                  did: 'line_1',
+                  name: '薬剤A',
+                  yoho: '朝食後',
+                  a: '1',
+                  h: '',
+                  y: '',
+                  n: '',
+                  tag: '',
+                  funsai: false,
+                  note: '',
+                  prescribedQuantity: 14,
+                },
+              ],
+            },
+          ],
+        },
+        done: { line_1: true },
+        quantityConfirmedByDid: { line_1: true },
+        actualQuantityInputByDid: { line_1: '12' },
+        discrepancyReasonByDid: {},
+        writeContext: {
+          taskId: 'task_1',
+          cycleId: 'cycle_1',
+          cycleVersion: 4,
+          planId: null,
+          lineGroupByDid: {},
+          groupIdByGid: {},
+          cellMeta: {},
+        },
+      });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'dispense',
+        mutations: fakeMutations({ completeDispense }),
+        onAdvance,
+      }),
+    );
+
+    let nextPhase: unknown;
+    act(() => {
+      nextPhase = result.current.onPrimary();
+    });
+
+    expect(nextPhase).toBeNull();
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      '処方数量と異なる実数量には差異理由を入力してください。',
+    );
+    expect(completeDispense.mutate).not.toHaveBeenCalled();
+    expect(onAdvance).not.toHaveBeenCalled();
+  });
+
   it('reports missing context before changing a group method locally without persistence', async () => {
     const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
     const saveGroups = mutationStub();
@@ -1383,8 +1789,11 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
     expect(useWorkbenchStore.getState().model.patient_1?.[0]?.method).toBe('一包化');
   });
 
-  it('reports unsupported real-data group date edits instead of changing local-only values', async () => {
+  it('sends the packaging group version when changing a real group method', async () => {
     const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const saveGroups = mutationStub((_input, options) =>
+      options?.onSuccess?.({ data: { updated: [{ id: 'packaging_group_1', version: 4 }] } }),
+    );
 
     act(() => {
       useWorkbenchStore.setState({
@@ -1402,27 +1811,508 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
             },
           ],
         },
+        writeContext: {
+          taskId: 'task_1',
+          cycleId: 'cycle_1',
+          cycleVersion: 4,
+          planId: null,
+          lineGroupByDid: {},
+          groupIdByGid: { group_1: 'packaging_group_1' },
+          groupVersionByGid: { group_1: 3 },
+          cellMeta: {},
+        },
       });
     });
 
     const { result } = renderHook(() =>
       useWorkbenchWriteHandlers({
         phase: 'dispense',
-        mutations: fakeMutations(),
+        mutations: fakeMutations({ saveGroups }),
       }),
     );
 
     act(() => {
-      result.current.onGroupStart('group_1', '2026-06-18');
-      result.current.onGroupDays('group_1', '14');
+      result.current.onGroupMethod('group_1', 'PTP（手撒き）');
     });
 
-    expect(toastErrorMock).toHaveBeenCalledWith(UNSUPPORTED_REAL_WRITE_MESSAGE);
-    expect(toastErrorMock).toHaveBeenCalledTimes(2);
+    expect(saveGroups.mutate).toHaveBeenCalledWith(
+      {
+        taskId: 'task_1',
+        groups: [{ id: 'packaging_group_1', method: 'PTP（手撒き）', version: 3 }],
+      },
+      expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }),
+    );
+    expect(useWorkbenchStore.getState().model.patient_1?.[0]?.method).toBe('PTP（手撒き）');
+    expect(useWorkbenchStore.getState().writeContext.groupVersionByGid?.group_1).toBe(4);
+  });
+
+  it('reports missing context before changing a real group method without a version', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const saveGroups = mutationStub();
+
+    act(() => {
+      useWorkbenchStore.setState({
+        selId: 'patient_1',
+        patients: [patientFixture],
+        model: {
+          patient_1: [
+            {
+              gid: 'group_1',
+              label: '朝食後',
+              method: '一包化',
+              start: '2026-06-17',
+              days: 1,
+              drugs: [],
+            },
+          ],
+        },
+        writeContext: {
+          taskId: 'task_1',
+          cycleId: 'cycle_1',
+          cycleVersion: 4,
+          planId: null,
+          lineGroupByDid: {},
+          groupIdByGid: { group_1: 'packaging_group_1' },
+          cellMeta: {},
+        },
+      });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'dispense',
+        mutations: fakeMutations({ saveGroups }),
+      }),
+    );
+
+    act(() => {
+      result.current.onGroupMethod('group_1', 'PTP（手撒き）');
+    });
+
+    expect(toastErrorMock).toHaveBeenCalledWith(MISSING_WRITE_CONTEXT_MESSAGE);
+    expect(saveGroups.mutate).not.toHaveBeenCalled();
+    expect(useWorkbenchStore.getState().model.patient_1?.[0]?.method).toBe('一包化');
+  });
+
+  it('rolls back a real group method change when save fails', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const saveGroups = mutationStub((_input, options) => options?.onError?.(new Error('fail')));
+
+    act(() => {
+      useWorkbenchStore.setState({
+        selId: 'patient_1',
+        patients: [patientFixture],
+        model: {
+          patient_1: [
+            {
+              gid: 'group_1',
+              label: '朝食後',
+              method: '一包化',
+              start: '2026-06-17',
+              days: 1,
+              drugs: [],
+            },
+          ],
+        },
+        writeContext: {
+          taskId: 'task_1',
+          cycleId: 'cycle_1',
+          cycleVersion: 4,
+          planId: null,
+          lineGroupByDid: {},
+          groupIdByGid: { group_1: 'packaging_group_1' },
+          groupVersionByGid: { group_1: 3 },
+          cellMeta: {},
+        },
+      });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'dispense',
+        mutations: fakeMutations({ saveGroups }),
+      }),
+    );
+
+    act(() => {
+      result.current.onGroupMethod('group_1', 'PTP（手撒き）');
+    });
+
+    expect(saveGroups.mutate).toHaveBeenCalled();
+    expect(useWorkbenchStore.getState().model.patient_1?.[0]?.method).toBe('一包化');
+    expect(useWorkbenchStore.getState().writeContext.groupVersionByGid?.group_1).toBe(3);
+  });
+
+  it('persists real-data group start date through an atomic line-period update', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const editLines = mutationStub((_input, options) =>
+      options?.onSuccess?.({
+        data: {
+          updated: [
+            {
+              id: 'line_1',
+              start_date: '2026-06-20',
+              end_date: '2026-07-03',
+              days: 14,
+              updated_at: '2026-06-18T01:00:00.000Z',
+            },
+            {
+              id: 'line_2',
+              start_date: '2026-06-20',
+              end_date: '2026-07-03',
+              days: 14,
+              updated_at: '2026-06-18T01:01:00.000Z',
+            },
+          ],
+        },
+      }),
+    );
+
+    act(() => {
+      useWorkbenchStore.setState({
+        selId: 'patient_1',
+        patients: [patientFixture],
+        model: {
+          patient_1: [
+            {
+              gid: 'group_1',
+              label: '朝食後',
+              method: '一包化',
+              start: '2026-06-17',
+              days: 14,
+              drugs: [
+                {
+                  did: 'line_1',
+                  name: 'アムロジピン錠5mg',
+                  yoho: '朝食後',
+                  a: '1',
+                  h: '',
+                  y: '',
+                  n: '',
+                  tag: '',
+                  funsai: false,
+                  note: '',
+                },
+                {
+                  did: 'line_2',
+                  name: 'マグミット錠250mg',
+                  yoho: '夕食後',
+                  a: '',
+                  h: '',
+                  y: '1',
+                  n: '',
+                  tag: '',
+                  funsai: false,
+                  note: '',
+                },
+              ],
+            },
+          ],
+        },
+        writeContext: {
+          taskId: 'task_1',
+          cycleId: 'cycle_1',
+          cycleVersion: 4,
+          planId: null,
+          lineGroupByDid: {
+            line_1: 'packaging_group_1',
+            line_2: 'packaging_group_1',
+          },
+          lineMetaByDid: {
+            line_1: {
+              updatedAt: '2026-06-18T00:00:00.000Z',
+              startDate: '2026-06-17',
+              endDate: '2026-06-30',
+              days: 14,
+            },
+            line_2: {
+              updatedAt: '2026-06-18T00:01:00.000Z',
+              startDate: '2026-06-17',
+              endDate: '2026-06-30',
+              days: 14,
+            },
+          },
+          groupIdByGid: { group_1: 'packaging_group_1' },
+          cellMeta: {},
+        },
+      });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'dispense',
+        mutations: fakeMutations({ editLines }),
+      }),
+    );
+
+    act(() => {
+      result.current.onGroupStart('group_1', '2026-06-20');
+    });
+
+    expect(editLines.mutate).toHaveBeenCalledWith(
+      {
+        taskId: 'task_1',
+        client_action_id: expect.stringMatching(/^group-period:/),
+        packaging_group_id: 'packaging_group_1',
+        lines: [
+          {
+            line_id: 'line_1',
+            expected_updated_at: '2026-06-18T00:00:00.000Z',
+            start_date: '2026-06-20',
+            end_date: '2026-07-03',
+          },
+          {
+            line_id: 'line_2',
+            expected_updated_at: '2026-06-18T00:01:00.000Z',
+            start_date: '2026-06-20',
+            end_date: '2026-07-03',
+          },
+        ],
+      },
+      expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }),
+    );
+    expect(useWorkbenchStore.getState().model.patient_1?.[0]?.start).toBe('2026-06-20');
+    expect(useWorkbenchStore.getState().writeContext.lineMetaByDid?.line_1).toMatchObject({
+      updatedAt: '2026-06-18T01:00:00.000Z',
+      startDate: '2026-06-20',
+      endDate: '2026-07-03',
+      days: 14,
+    });
+  });
+
+  it('persists real-data group days with computed end_date', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const editLines = mutationStub((_input, options) =>
+      options?.onSuccess?.({
+        data: {
+          updated: [
+            {
+              id: 'line_1',
+              start_date: '2026-06-20',
+              end_date: '2026-07-17',
+              days: 28,
+              updated_at: '2026-06-18T01:00:00.000Z',
+            },
+          ],
+        },
+      }),
+    );
+
+    act(() => {
+      useWorkbenchStore.setState({
+        selId: 'patient_1',
+        patients: [patientFixture],
+        model: {
+          patient_1: [
+            {
+              gid: 'group_1',
+              label: '朝食後',
+              method: '一包化',
+              start: '2026-06-20',
+              days: 14,
+              drugs: [
+                {
+                  did: 'line_1',
+                  name: 'アムロジピン錠5mg',
+                  yoho: '朝食後',
+                  a: '1',
+                  h: '',
+                  y: '',
+                  n: '',
+                  tag: '',
+                  funsai: false,
+                  note: '',
+                },
+              ],
+            },
+          ],
+        },
+        writeContext: {
+          taskId: 'task_1',
+          cycleId: 'cycle_1',
+          cycleVersion: 4,
+          planId: null,
+          lineGroupByDid: { line_1: 'packaging_group_1' },
+          lineMetaByDid: {
+            line_1: {
+              updatedAt: '2026-06-18T00:00:00.000Z',
+              startDate: '2026-06-20',
+              endDate: '2026-07-03',
+              days: 14,
+            },
+          },
+          groupIdByGid: { group_1: 'packaging_group_1' },
+          cellMeta: {},
+        },
+      });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'dispense',
+        mutations: fakeMutations({ editLines }),
+      }),
+    );
+
+    act(() => {
+      result.current.onGroupDays('group_1', '28');
+    });
+
+    expect(editLines.mutate).toHaveBeenCalledWith(
+      {
+        taskId: 'task_1',
+        client_action_id: expect.stringMatching(/^group-period:/),
+        packaging_group_id: 'packaging_group_1',
+        lines: [
+          {
+            line_id: 'line_1',
+            expected_updated_at: '2026-06-18T00:00:00.000Z',
+            days: 28,
+            start_date: '2026-06-20',
+            end_date: '2026-07-17',
+          },
+        ],
+      },
+      expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }),
+    );
+    expect(useWorkbenchStore.getState().model.patient_1?.[0]?.days).toBe(28);
+    expect(useWorkbenchStore.getState().writeContext.lineMetaByDid?.line_1).toMatchObject({
+      updatedAt: '2026-06-18T01:00:00.000Z',
+      days: 28,
+      endDate: '2026-07-17',
+    });
+  });
+
+  it('reports missing line context before real-data group period edits create local-only state', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const editLines = mutationStub();
+
+    act(() => {
+      useWorkbenchStore.setState({
+        selId: 'patient_1',
+        patients: [patientFixture],
+        model: {
+          patient_1: [
+            {
+              gid: 'group_1',
+              label: '朝食後',
+              method: '一包化',
+              start: '2026-06-17',
+              days: 14,
+              drugs: [
+                {
+                  did: 'line_1',
+                  name: 'アムロジピン錠5mg',
+                  yoho: '朝食後',
+                  a: '1',
+                  h: '',
+                  y: '',
+                  n: '',
+                  tag: '',
+                  funsai: false,
+                  note: '',
+                },
+              ],
+            },
+          ],
+        },
+        writeContext: {
+          taskId: 'task_1',
+          cycleId: 'cycle_1',
+          cycleVersion: 4,
+          planId: null,
+          lineGroupByDid: { line_1: 'packaging_group_1' },
+          groupIdByGid: { group_1: 'packaging_group_1' },
+          cellMeta: {},
+        },
+      });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'dispense',
+        mutations: fakeMutations({ editLines }),
+      }),
+    );
+
+    act(() => {
+      result.current.onGroupDays('group_1', '28');
+    });
+
+    expect(toastErrorMock).toHaveBeenCalledWith(MISSING_WRITE_CONTEXT_MESSAGE);
+    expect(editLines.mutate).not.toHaveBeenCalled();
     expect(useWorkbenchStore.getState().model.patient_1?.[0]).toMatchObject({
       start: '2026-06-17',
-      days: 1,
+      days: 14,
     });
+  });
+
+  it('rolls back a real-data group period edit when the atomic save fails', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const editLines = mutationStub((_input, options) => options?.onError?.(new Error('fail')));
+
+    act(() => {
+      useWorkbenchStore.setState({
+        selId: 'patient_1',
+        patients: [patientFixture],
+        model: {
+          patient_1: [
+            {
+              gid: 'group_1',
+              label: '朝食後',
+              method: '一包化',
+              start: '2026-06-17',
+              days: 14,
+              drugs: [
+                {
+                  did: 'line_1',
+                  name: 'アムロジピン錠5mg',
+                  yoho: '朝食後',
+                  a: '1',
+                  h: '',
+                  y: '',
+                  n: '',
+                  tag: '',
+                  funsai: false,
+                  note: '',
+                },
+              ],
+            },
+          ],
+        },
+        writeContext: {
+          taskId: 'task_1',
+          cycleId: 'cycle_1',
+          cycleVersion: 4,
+          planId: null,
+          lineGroupByDid: { line_1: 'packaging_group_1' },
+          lineMetaByDid: {
+            line_1: {
+              updatedAt: '2026-06-18T00:00:00.000Z',
+              startDate: '2026-06-17',
+              endDate: '2026-06-30',
+              days: 14,
+            },
+          },
+          groupIdByGid: { group_1: 'packaging_group_1' },
+          cellMeta: {},
+        },
+      });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'dispense',
+        mutations: fakeMutations({ editLines }),
+      }),
+    );
+
+    act(() => {
+      result.current.onGroupStart('group_1', '2026-06-20');
+    });
+
+    expect(editLines.mutate).toHaveBeenCalled();
+    expect(useWorkbenchStore.getState().model.patient_1?.[0]?.start).toBe('2026-06-17');
   });
 
   it('reports missing task context before dragging a line into a local-only group assignment', async () => {
@@ -1496,6 +2386,246 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
       useWorkbenchStore.getState().model.patient_1?.[0]?.drugs.map((drug) => drug.did),
     ).toEqual(['line_1']);
     expect(useWorkbenchStore.getState().model.patient_1?.[1]?.drugs).toEqual([]);
+  });
+
+  it('rejects real-data drag into a group without a backend id before local movement', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const assignLines = mutationStub();
+
+    act(() => {
+      useWorkbenchStore.setState({
+        selId: 'patient_1',
+        patients: [patientFixture],
+        model: {
+          patient_1: [
+            {
+              gid: 'group_1',
+              label: '朝食後',
+              method: '一包化',
+              start: '2026-06-17',
+              days: 1,
+              drugs: [
+                {
+                  did: 'line_1',
+                  name: 'アムロジピン錠5mg',
+                  yoho: '朝食後',
+                  a: '1',
+                  h: '',
+                  y: '',
+                  n: '',
+                  tag: '',
+                  funsai: false,
+                  note: '',
+                },
+              ],
+            },
+            {
+              gid: 'group_2',
+              label: '夕食後',
+              method: '一包化',
+              start: '2026-06-17',
+              days: 1,
+              drugs: [],
+            },
+          ],
+        },
+        writeContext: {
+          taskId: 'task_1',
+          cycleId: 'cycle_1',
+          cycleVersion: 4,
+          planId: null,
+          lineGroupByDid: { line_1: 'packaging_group_1' },
+          groupIdByGid: { group_1: 'packaging_group_1' },
+          cellMeta: {},
+        },
+      });
+      useWorkbenchStore.getState().dragStart('line_1');
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'dispense',
+        mutations: fakeMutations({ assignLines }),
+      }),
+    );
+
+    act(() => {
+      result.current.onDropTo('group_2');
+    });
+
+    expect(toastErrorMock).toHaveBeenCalledWith(MISSING_WRITE_CONTEXT_MESSAGE);
+    expect(assignLines.mutate).not.toHaveBeenCalled();
+    expect(
+      useWorkbenchStore.getState().model.patient_1?.[0]?.drugs.map((drug) => drug.did),
+    ).toEqual(['line_1']);
+    expect(useWorkbenchStore.getState().model.patient_1?.[1]?.drugs).toEqual([]);
+  });
+
+  it('sends the expected current group when dragging a real line to another group', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const assignLines = mutationStub((_input, options) => options?.onSuccess?.({ data: {} }));
+
+    act(() => {
+      useWorkbenchStore.setState({
+        selId: 'patient_1',
+        patients: [patientFixture],
+        model: {
+          patient_1: [
+            {
+              gid: 'group_1',
+              label: '朝食後',
+              method: '一包化',
+              start: '2026-06-17',
+              days: 1,
+              drugs: [
+                {
+                  did: 'line_1',
+                  name: 'アムロジピン錠5mg',
+                  yoho: '朝食後',
+                  a: '1',
+                  h: '',
+                  y: '',
+                  n: '',
+                  tag: '',
+                  funsai: false,
+                  note: '',
+                },
+              ],
+            },
+            {
+              gid: 'group_2',
+              label: '夕食後',
+              method: '一包化',
+              start: '2026-06-17',
+              days: 1,
+              drugs: [],
+            },
+          ],
+        },
+        writeContext: {
+          taskId: 'task_1',
+          cycleId: 'cycle_1',
+          cycleVersion: 4,
+          planId: null,
+          lineGroupByDid: { line_1: 'packaging_group_1' },
+          groupIdByGid: {
+            group_1: 'packaging_group_1',
+            group_2: 'packaging_group_2',
+          },
+          cellMeta: {},
+        },
+      });
+      useWorkbenchStore.getState().dragStart('line_1');
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'dispense',
+        mutations: fakeMutations({ assignLines }),
+      }),
+    );
+
+    act(() => {
+      result.current.onDropTo('group_2');
+    });
+
+    expect(assignLines.mutate).toHaveBeenCalledWith(
+      {
+        taskId: 'task_1',
+        assignments: [
+          {
+            line_id: 'line_1',
+            packaging_group_id: 'packaging_group_2',
+            expected_packaging_group_id: 'packaging_group_1',
+          },
+        ],
+      },
+      expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }),
+    );
+    expect(useWorkbenchStore.getState().writeContext.lineGroupByDid.line_1).toBe(
+      'packaging_group_2',
+    );
+    expect(
+      useWorkbenchStore.getState().model.patient_1?.[1]?.drugs.map((drug) => drug.did),
+    ).toEqual(['line_1']);
+  });
+
+  it('rolls back a real line drag when the assignment save fails', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const assignLines = mutationStub((_input, options) => options?.onError?.(new Error('fail')));
+
+    act(() => {
+      useWorkbenchStore.setState({
+        selId: 'patient_1',
+        patients: [patientFixture],
+        model: {
+          patient_1: [
+            {
+              gid: 'group_1',
+              label: '朝食後',
+              method: '一包化',
+              start: '2026-06-17',
+              days: 1,
+              drugs: [
+                {
+                  did: 'line_1',
+                  name: 'アムロジピン錠5mg',
+                  yoho: '朝食後',
+                  a: '1',
+                  h: '',
+                  y: '',
+                  n: '',
+                  tag: '',
+                  funsai: false,
+                  note: '',
+                },
+              ],
+            },
+            {
+              gid: 'group_2',
+              label: '夕食後',
+              method: '一包化',
+              start: '2026-06-17',
+              days: 1,
+              drugs: [],
+            },
+          ],
+        },
+        writeContext: {
+          taskId: 'task_1',
+          cycleId: 'cycle_1',
+          cycleVersion: 4,
+          planId: null,
+          lineGroupByDid: { line_1: 'packaging_group_1' },
+          groupIdByGid: {
+            group_1: 'packaging_group_1',
+            group_2: 'packaging_group_2',
+          },
+          cellMeta: {},
+        },
+      });
+      useWorkbenchStore.getState().dragStart('line_1');
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'dispense',
+        mutations: fakeMutations({ assignLines }),
+      }),
+    );
+
+    act(() => {
+      result.current.onDropTo('group_2');
+    });
+
+    expect(assignLines.mutate).toHaveBeenCalled();
+    expect(
+      useWorkbenchStore.getState().model.patient_1?.[0]?.drugs.map((drug) => drug.did),
+    ).toEqual(['line_1']);
+    expect(useWorkbenchStore.getState().model.patient_1?.[1]?.drugs).toEqual([]);
+    expect(useWorkbenchStore.getState().writeContext.lineGroupByDid.line_1).toBe(
+      'packaging_group_1',
+    );
   });
 
   it('reports missing plan context before bulk set creates local-only cell state', async () => {

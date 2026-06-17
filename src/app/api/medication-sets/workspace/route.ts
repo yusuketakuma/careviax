@@ -3,6 +3,10 @@ import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
 import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { withOrgContext } from '@/lib/db/rls';
+import {
+  collectNarcoticCandidateYjCode,
+  handlingTagsWithMasterNarcotic,
+} from '@/lib/prescription/controlled-handling-tags';
 import type {
   SetLaneCounts,
   SetPendingItem,
@@ -108,82 +112,83 @@ export const GET = withAuthContext(
       });
 
       const caseIds = [...new Set(schedules.map((schedule) => schedule.case_id))];
-      const [plans, auditWaitingCycles, tomorrowSchedules, coldExceptionCount] =
-        await Promise.all([
-          caseIds.length > 0
-            ? tx.setPlan.findMany({
-                where: { org_id: ctx.orgId, cycle: { case_id: { in: caseIds } } },
-                orderBy: { created_at: 'desc' },
-                select: {
-                  id: true,
-                  target_period_start: true,
-                  target_period_end: true,
-                  cycle: { select: { case_id: true } },
-                  batches: {
-                    select: {
-                      line_id: true,
-                      slot: true,
-                      day_number: true,
-                      packaging_instruction_tags_snapshot: true,
-                    },
-                  },
-                  audits: {
-                    orderBy: { audited_at: 'desc' },
-                    take: 1,
-                    select: { result: true },
-                  },
-                  change_logs: {
-                    orderBy: { created_at: 'desc' },
-                    take: 1,
-                    select: { changed_by: true },
+      const [plans, auditWaitingCycles, tomorrowSchedules, coldExceptionCount] = await Promise.all([
+        caseIds.length > 0
+          ? tx.setPlan.findMany({
+              where: { org_id: ctx.orgId, cycle: { case_id: { in: caseIds } } },
+              orderBy: { created_at: 'desc' },
+              select: {
+                id: true,
+                target_period_start: true,
+                target_period_end: true,
+                cycle: { select: { case_id: true } },
+                batches: {
+                  select: {
+                    line_id: true,
+                    line: { select: { drug_code: true } },
+                    slot: true,
+                    day_number: true,
+                    packaging_instruction_tags_snapshot: true,
                   },
                 },
-              })
-            : Promise.resolve([]),
-          scope === 'today' && caseIds.length > 0
-            ? tx.medicationCycle.findMany({
-                where: {
-                  org_id: ctx.orgId,
-                  case_id: { in: caseIds },
-                  overall_status: { in: ['dispensed', 'audit_pending'] },
+                audits: {
+                  orderBy: { audited_at: 'desc' },
+                  take: 1,
+                  select: { result: true },
                 },
-                select: {
-                  id: true,
-                  case_id: true,
-                  case_: { select: { patient: { select: { name: true } } } },
-                  prescription_intakes: {
-                    orderBy: { created_at: 'desc' },
-                    take: 1,
-                    select: {
-                      lines: { select: { packaging_instruction_tags: true } },
-                    },
+                change_logs: {
+                  orderBy: { created_at: 'desc' },
+                  take: 1,
+                  select: { changed_by: true },
+                },
+              },
+            })
+          : Promise.resolve([]),
+        scope === 'today' && caseIds.length > 0
+          ? tx.medicationCycle.findMany({
+              where: {
+                org_id: ctx.orgId,
+                case_id: { in: caseIds },
+                overall_status: { in: ['dispensed', 'audit_pending'] },
+              },
+              select: {
+                id: true,
+                case_id: true,
+                case_: { select: { patient: { select: { name: true } } } },
+                prescription_intakes: {
+                  orderBy: { created_at: 'desc' },
+                  take: 1,
+                  select: {
+                    lines: { select: { drug_code: true, packaging_instruction_tags: true } },
                   },
                 },
-              })
-            : Promise.resolve([]),
-          scope === 'today'
-            ? tx.visitSchedule.findMany({
-                where: {
-                  org_id: ctx.orgId,
-                  scheduled_date: { gte: tomorrow, lt: addUtcDays(tomorrow, 1) },
-                  schedule_status: { notIn: ['cancelled', 'rescheduled'] },
-                  case_: { medication_cycles: { some: { overall_status: 'audited' } } },
-                },
-                orderBy: [{ time_window_start: 'asc' }],
-                select: {
-                  id: true,
-                  case_: {
-                    select: {
-                      patient: { select: { id: true, name: true } },
-                      medication_cycles: {
-                        where: { overall_status: 'audited' },
-                        take: 1,
-                        select: {
-                          prescription_intakes: {
-                            orderBy: { created_at: 'desc' },
-                            take: 1,
-                            select: {
-                              lines: { select: { packaging_instruction_tags: true } },
+              },
+            })
+          : Promise.resolve([]),
+        scope === 'today'
+          ? tx.visitSchedule.findMany({
+              where: {
+                org_id: ctx.orgId,
+                scheduled_date: { gte: tomorrow, lt: addUtcDays(tomorrow, 1) },
+                schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+                case_: { medication_cycles: { some: { overall_status: 'audited' } } },
+              },
+              orderBy: [{ time_window_start: 'asc' }],
+              select: {
+                id: true,
+                case_: {
+                  select: {
+                    patient: { select: { id: true, name: true } },
+                    medication_cycles: {
+                      where: { overall_status: 'audited' },
+                      take: 1,
+                      select: {
+                        prescription_intakes: {
+                          orderBy: { created_at: 'desc' },
+                          take: 1,
+                          select: {
+                            lines: {
+                              select: { drug_code: true, packaging_instruction_tags: true },
                             },
                           },
                         },
@@ -191,16 +196,17 @@ export const GET = withAuthContext(
                     },
                   },
                 },
-              })
-            : Promise.resolve([]),
-          tx.workflowException.count({
-            where: {
-              org_id: ctx.orgId,
-              status: 'open',
-              exception_type: { contains: 'cold' },
-            },
-          }),
-        ]);
+              },
+            })
+          : Promise.resolve([]),
+        tx.workflowException.count({
+          where: {
+            org_id: ctx.orgId,
+            status: 'open',
+            exception_type: { contains: 'cold' },
+          },
+        }),
+      ]);
 
       // 担当ラベル用のユーザー名+ロール(変更ログの actor / 訪問担当薬剤師)
       const userIds = new Set<string>();
@@ -225,6 +231,43 @@ export const GET = withAuthContext(
             })
           : [];
 
+      const narcoticCandidateYjCodes = new Set<string>();
+      for (const plan of plans) {
+        for (const batch of plan.batches) {
+          collectNarcoticCandidateYjCode(
+            narcoticCandidateYjCodes,
+            batch.packaging_instruction_tags_snapshot,
+            batch.line?.drug_code,
+          );
+        }
+      }
+      for (const cycle of auditWaitingCycles) {
+        for (const line of cycle.prescription_intakes[0]?.lines ?? []) {
+          collectNarcoticCandidateYjCode(
+            narcoticCandidateYjCodes,
+            line.packaging_instruction_tags,
+            line.drug_code,
+          );
+        }
+      }
+      for (const schedule of tomorrowSchedules) {
+        for (const line of schedule.case_.medication_cycles[0]?.prescription_intakes[0]?.lines ??
+          []) {
+          collectNarcoticCandidateYjCode(
+            narcoticCandidateYjCodes,
+            line.packaging_instruction_tags,
+            line.drug_code,
+          );
+        }
+      }
+      const narcoticMasters =
+        narcoticCandidateYjCodes.size > 0
+          ? await tx.drugMaster.findMany({
+              where: { yj_code: { in: [...narcoticCandidateYjCodes] }, is_narcotic: true },
+              select: { yj_code: true },
+            })
+          : [];
+
       return {
         schedules,
         plans,
@@ -232,14 +275,13 @@ export const GET = withAuthContext(
         tomorrowSchedules,
         coldExceptionCount,
         users,
+        narcoticYjCodes: narcoticMasters.map((master) => master.yj_code),
       };
     });
+    const narcoticYjCodes = new Set(data.narcoticYjCodes);
 
     const userById = new Map(
-      data.users.map((user) => [
-        user.id,
-        buildAssigneeLabel(user.name, user.memberships[0]),
-      ]),
+      data.users.map((user) => [user.id, buildAssigneeLabel(user.name, user.memberships[0])]),
     );
 
     // 最新プランを case_id ごとに 1 件(findMany は created_at desc 済み)
@@ -304,7 +346,11 @@ export const GET = withAuthContext(
       });
 
       for (const batch of plan?.batches ?? []) {
-        const tags = batch.packaging_instruction_tags_snapshot;
+        const tags = handlingTagsWithMasterNarcotic(
+          batch.packaging_instruction_tags_snapshot,
+          narcoticYjCodes,
+          batch.line?.drug_code,
+        );
         if (tags.includes('narcotic')) {
           group.lane_lines.narcotic.add(batch.line_id);
         } else if (tags.includes('cold_storage')) {
@@ -339,12 +385,18 @@ export const GET = withAuthContext(
 
     // 工程待ちのセット: (1) 調剤監査待ち=監査合格と同時にセットへ来る分
     const pendingItems: SetPendingItem[] = [];
-    const scheduleByCaseId = new Map(data.schedules.map((schedule) => [schedule.case_id, schedule]));
+    const scheduleByCaseId = new Map(
+      data.schedules.map((schedule) => [schedule.case_id, schedule]),
+    );
     for (const cycle of data.auditWaitingCycles) {
       const schedule = scheduleByCaseId.get(cycle.case_id) ?? null;
       const tags = new Set<string>(
-        (cycle.prescription_intakes[0]?.lines ?? []).flatMap(
-          (line) => line.packaging_instruction_tags,
+        (cycle.prescription_intakes[0]?.lines ?? []).flatMap((line) =>
+          handlingTagsWithMasterNarcotic(
+            line.packaging_instruction_tags,
+            narcoticYjCodes,
+            line.drug_code,
+          ),
         ),
       );
       const tagLabels = ['narcotic', 'cold_storage']
@@ -375,11 +427,19 @@ export const GET = withAuthContext(
       const titles = data.tomorrowSchedules.map((schedule) => {
         const tags = new Set<string>(
           (schedule.case_.medication_cycles[0]?.prescription_intakes[0]?.lines ?? []).flatMap(
-            (line) => line.packaging_instruction_tags,
+            (line) =>
+              handlingTagsWithMasterNarcotic(
+                line.packaging_instruction_tags,
+                narcoticYjCodes,
+                line.drug_code,
+              ),
           ),
         );
-        return tags.has('cold_storage')
-          ? `${schedule.case_.patient.name} 様(冷所)`
+        const tagLabels = ['narcotic', 'cold_storage']
+          .filter((tag) => tags.has(tag))
+          .map((tag) => HANDLING_TAG_SHORT_LABELS[tag]);
+        return tagLabels.length > 0
+          ? `${schedule.case_.patient.name} 様(${tagLabels.join('・')})`
           : `${schedule.case_.patient.name} 様`;
       });
       pendingItems.push({

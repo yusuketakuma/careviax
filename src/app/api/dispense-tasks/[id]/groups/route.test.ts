@@ -1,15 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
-import type { MemberRole } from '@prisma/client';
+import { Prisma, type MemberRole } from '@prisma/client';
 
 const {
   authCtx,
   withOrgContextMock,
   dispenseTaskFindFirstMock,
   packagingGroupCreateMock,
+  packagingGroupRootFindFirstMock,
+  packagingGroupFindFirstMock,
   packagingGroupFindManyMock,
   packagingGroupUpdateManyMock,
   prescriptionLineFindManyMock,
+  prescriptionLineFindFirstMock,
   prescriptionLineUpdateManyMock,
   createAuditLogEntryMock,
   buildMedicationCycleAssignmentWhereMock,
@@ -25,9 +28,12 @@ const {
   withOrgContextMock: vi.fn(),
   dispenseTaskFindFirstMock: vi.fn(),
   packagingGroupCreateMock: vi.fn(),
+  packagingGroupRootFindFirstMock: vi.fn(),
+  packagingGroupFindFirstMock: vi.fn(),
   packagingGroupFindManyMock: vi.fn(),
   packagingGroupUpdateManyMock: vi.fn(),
   prescriptionLineFindManyMock: vi.fn(),
+  prescriptionLineFindFirstMock: vi.fn(),
   prescriptionLineUpdateManyMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
   buildMedicationCycleAssignmentWhereMock: vi.fn(),
@@ -50,7 +56,10 @@ vi.mock('@/lib/auth/context', () => ({
 vi.mock('@/lib/db/client', () => ({
   prisma: {
     dispenseTask: { findFirst: dispenseTaskFindFirstMock },
-    packagingGroup: { findMany: packagingGroupFindManyMock },
+    packagingGroup: {
+      findFirst: packagingGroupRootFindFirstMock,
+      findMany: packagingGroupFindManyMock,
+    },
     prescriptionLine: { findMany: prescriptionLineFindManyMock },
   },
 }));
@@ -91,6 +100,13 @@ function createPatchRequest(body: unknown) {
 
 const routeContext = { params: Promise.resolve({ id: 'task_1' }) };
 
+function createUniqueConstraintError() {
+  return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+    code: 'P2002',
+    clientVersion: 'test',
+  });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   authCtx.orgId = 'org_1';
@@ -98,15 +114,19 @@ beforeEach(() => {
   authCtx.role = 'pharmacist';
   buildMedicationCycleAssignmentWhereMock.mockReturnValue(null);
   dispenseTaskFindFirstMock.mockResolvedValue({ cycle_id: 'cycle_1' });
+  packagingGroupRootFindFirstMock.mockResolvedValue(null);
+  packagingGroupFindFirstMock.mockResolvedValue(null);
   createAuditLogEntryMock.mockResolvedValue(undefined);
   notifyWorkflowMutationMock.mockResolvedValue(undefined);
   withOrgContextMock.mockImplementation(async (_orgId, callback) =>
     callback({
       packagingGroup: {
+        findFirst: packagingGroupFindFirstMock,
         create: packagingGroupCreateMock,
         updateMany: packagingGroupUpdateManyMock,
       },
       prescriptionLine: {
+        findFirst: prescriptionLineFindFirstMock,
         updateMany: prescriptionLineUpdateManyMock,
       },
     }),
@@ -197,8 +217,115 @@ describe('/api/dispense-tasks/[id]/groups POST', () => {
     );
     expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
       orgId: 'org_1',
-      payload: { source: 'dispense_tasks_update', task_id: 'task_1', packaging_group_id: 'group_1' },
+      payload: {
+        source: 'dispense_tasks_update',
+        task_id: 'task_1',
+        packaging_group_id: 'group_1',
+      },
     });
+  });
+
+  it('returns an existing group for the same group_key without duplicate create side effects', async () => {
+    packagingGroupFindFirstMock.mockResolvedValue({
+      id: 'group_existing',
+      cycle_id: 'cycle_1',
+      group_key: 'morning',
+      label: '朝食後',
+      method: 'unit_dose',
+      slot: 'morning',
+      sort_order: 1,
+      version: 3,
+    });
+
+    const response = await POST(
+      createPostRequest({
+        group_key: 'morning',
+        label: '朝食後',
+        method: 'unit_dose',
+        slot: 'morning',
+        sort_order: 1,
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: { id: 'group_existing', version: 3, created: false },
+    });
+    expect(packagingGroupCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when the same group_key already exists with different create fields', async () => {
+    packagingGroupFindFirstMock.mockResolvedValue({
+      id: 'group_existing',
+      cycle_id: 'cycle_1',
+      group_key: 'morning',
+      label: '朝食後',
+      method: 'unit_dose',
+      slot: 'morning',
+      sort_order: 1,
+      version: 3,
+    });
+
+    const response = await POST(
+      createPostRequest({
+        group_key: 'morning',
+        label: '夕食後',
+        method: 'unit_dose',
+        slot: 'evening',
+        sort_order: 2,
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        packaging_group_id: 'group_existing',
+        group_key: 'morning',
+      },
+    });
+    expect(packagingGroupCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('recovers a duplicate group create race by returning the winning existing group', async () => {
+    packagingGroupFindFirstMock.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      id: 'group_winner',
+      cycle_id: 'cycle_1',
+      group_key: 'morning',
+      label: '朝食後',
+      method: 'unit_dose',
+      slot: 'morning',
+      sort_order: 1,
+      version: 0,
+    });
+    packagingGroupCreateMock.mockRejectedValue(createUniqueConstraintError());
+
+    const response = await POST(
+      createPostRequest({
+        group_key: 'morning',
+        label: '朝食後',
+        method: 'unit_dose',
+        slot: 'morning',
+        sort_order: 1,
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: { id: 'group_winner', version: 0, created: false },
+    });
+    expect(withOrgContextMock).toHaveBeenCalledTimes(2);
+    expect(packagingGroupRootFindFirstMock).not.toHaveBeenCalled();
+    expect(packagingGroupCreateMock).toHaveBeenCalledTimes(1);
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('defaults sort_order to 0 when omitted', async () => {
@@ -241,13 +368,15 @@ describe('/api/dispense-tasks/[id]/groups PATCH (groups update)', () => {
     packagingGroupUpdateManyMock.mockResolvedValue({ count: 1 });
 
     const response = await PATCH(
-      createPatchRequest({ groups: [{ id: 'group_1', label: '朝・昼食後', sort_order: 2 }] }),
+      createPatchRequest({
+        groups: [{ id: 'group_1', label: '朝・昼食後', sort_order: 2, version: 0 }],
+      }),
       routeContext,
     );
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
-      data: { updated: [{ id: 'group_1' }] },
+      data: { updated: [{ id: 'group_1', version: 1 }] },
     });
     expect(packagingGroupUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -278,7 +407,7 @@ describe('/api/dispense-tasks/[id]/groups PATCH (groups update)', () => {
     packagingGroupFindManyMock.mockResolvedValue([]);
 
     const response = await PATCH(
-      createPatchRequest({ groups: [{ id: 'group_x', label: 'X' }] }),
+      createPatchRequest({ groups: [{ id: 'group_x', label: 'X', version: 0 }] }),
       routeContext,
     );
 
@@ -311,19 +440,34 @@ describe('/api/dispense-tasks/[id]/groups PATCH (groups update)', () => {
     });
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
+
+  it('returns 400 when group update omits version', async () => {
+    const response = await PATCH(
+      createPatchRequest({ groups: [{ id: 'group_1', label: '朝・昼食後' }] }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('/api/dispense-tasks/[id]/groups PATCH (line assignment)', () => {
   it('assigns lines to a group and records audit entries', async () => {
-    prescriptionLineFindManyMock.mockResolvedValue([
-      { id: 'line_1', packaging_group_id: null },
-    ]);
+    prescriptionLineFindManyMock.mockResolvedValue([{ id: 'line_1', packaging_group_id: null }]);
     packagingGroupFindManyMock.mockResolvedValue([{ id: 'group_1' }]);
     prescriptionLineUpdateManyMock.mockResolvedValue({ count: 1 });
 
     const response = await PATCH(
       createPatchRequest({
-        assignments: [{ line_id: 'line_1', packaging_group_id: 'group_1' }],
+        assignments: [
+          {
+            line_id: 'line_1',
+            packaging_group_id: 'group_1',
+            expected_packaging_group_id: null,
+          },
+        ],
       }),
       routeContext,
     );
@@ -338,6 +482,7 @@ describe('/api/dispense-tasks/[id]/groups PATCH (line assignment)', () => {
           id: 'line_1',
           org_id: 'org_1',
           intake: { cycle_id: 'cycle_1' },
+          packaging_group_id: null,
         }),
         data: { packaging_group_id: 'group_1' },
       }),
@@ -364,7 +509,15 @@ describe('/api/dispense-tasks/[id]/groups PATCH (line assignment)', () => {
     prescriptionLineUpdateManyMock.mockResolvedValue({ count: 1 });
 
     const response = await PATCH(
-      createPatchRequest({ assignments: [{ line_id: 'line_1', packaging_group_id: null }] }),
+      createPatchRequest({
+        assignments: [
+          {
+            line_id: 'line_1',
+            packaging_group_id: null,
+            expected_packaging_group_id: 'group_1',
+          },
+        ],
+      }),
       routeContext,
     );
 
@@ -372,7 +525,10 @@ describe('/api/dispense-tasks/[id]/groups PATCH (line assignment)', () => {
     // null 解除時はグループ存在検証をスキップする
     expect(packagingGroupFindManyMock).not.toHaveBeenCalled();
     expect(prescriptionLineUpdateManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { packaging_group_id: null } }),
+      expect.objectContaining({
+        where: expect.objectContaining({ packaging_group_id: 'group_1' }),
+        data: { packaging_group_id: null },
+      }),
     );
   });
 
@@ -380,7 +536,15 @@ describe('/api/dispense-tasks/[id]/groups PATCH (line assignment)', () => {
     prescriptionLineFindManyMock.mockResolvedValue([]);
 
     const response = await PATCH(
-      createPatchRequest({ assignments: [{ line_id: 'line_x', packaging_group_id: 'group_1' }] }),
+      createPatchRequest({
+        assignments: [
+          {
+            line_id: 'line_x',
+            packaging_group_id: 'group_1',
+            expected_packaging_group_id: null,
+          },
+        ],
+      }),
       routeContext,
     );
 
@@ -389,13 +553,19 @@ describe('/api/dispense-tasks/[id]/groups PATCH (line assignment)', () => {
   });
 
   it('returns 404 when the target group is outside the cycle', async () => {
-    prescriptionLineFindManyMock.mockResolvedValue([
-      { id: 'line_1', packaging_group_id: null },
-    ]);
+    prescriptionLineFindManyMock.mockResolvedValue([{ id: 'line_1', packaging_group_id: null }]);
     packagingGroupFindManyMock.mockResolvedValue([]);
 
     const response = await PATCH(
-      createPatchRequest({ assignments: [{ line_id: 'line_1', packaging_group_id: 'group_1' }] }),
+      createPatchRequest({
+        assignments: [
+          {
+            line_id: 'line_1',
+            packaging_group_id: 'group_1',
+            expected_packaging_group_id: null,
+          },
+        ],
+      }),
       routeContext,
     );
 
@@ -403,8 +573,60 @@ describe('/api/dispense-tasks/[id]/groups PATCH (line assignment)', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
+  it('returns 409 when the current line assignment no longer matches the expected group', async () => {
+    prescriptionLineFindManyMock.mockResolvedValue([
+      { id: 'line_1', packaging_group_id: 'group_1' },
+    ]);
+    packagingGroupFindManyMock.mockResolvedValue([{ id: 'group_2' }]);
+    prescriptionLineUpdateManyMock.mockResolvedValue({ count: 0 });
+    prescriptionLineFindFirstMock.mockResolvedValue({ packaging_group_id: 'group_3' });
+
+    const response = await PATCH(
+      createPatchRequest({
+        assignments: [
+          {
+            line_id: 'line_1',
+            packaging_group_id: 'group_2',
+            expected_packaging_group_id: 'group_1',
+          },
+        ],
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(409);
+    const payloadText = await response.clone().text();
+    expect(payloadText).not.toContain('アムロジピン');
+    expect(payloadText).not.toContain('計画 花子');
+    expect(payloadText).not.toContain('朝食後');
+    expect(payloadText).not.toContain('5mg');
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        line_id: 'line_1',
+        expected_packaging_group_id: 'group_1',
+        current_packaging_group_id: 'group_3',
+      },
+    });
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('returns 400 when the body matches neither groups nor assignments', async () => {
     const response = await PATCH(createPatchRequest({ foo: 'bar' }), routeContext);
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when assignment omits expected_packaging_group_id', async () => {
+    const response = await PATCH(
+      createPatchRequest({
+        assignments: [{ line_id: 'line_1', packaging_group_id: 'group_1' }],
+      }),
+      routeContext,
+    );
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({ code: 'VALIDATION_ERROR' });

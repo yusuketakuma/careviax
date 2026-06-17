@@ -10,6 +10,15 @@ import {
   InvalidTransitionError,
   VersionConflictError,
 } from '@/lib/db/cycle-transition';
+import {
+  buildActualQuantityConfirmationErrors,
+  buildActualQuantityUnitErrors,
+  buildDiscrepancyReasonErrors,
+  buildUnresolvedPrescribedQuantityErrors,
+  resolveCanonicalActualUnit,
+  type DispenseResultValidationLine,
+  type PrescribedDispenseLine,
+} from '@/lib/dispensing/dispense-result-validation';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
 import { z } from 'zod';
@@ -18,6 +27,10 @@ const updateDispenseResultSchema = z.object({
   actual_drug_name: z.string().min(1).optional(),
   actual_drug_code: z.string().optional(),
   actual_quantity: z.number().positive().optional(),
+  actual_quantity_confirmed: z.boolean().optional(),
+  actual_quantity_source: z
+    .enum(['existing_result', 'prescription_quantity_confirmed', 'manual_entry'])
+    .optional(),
   actual_unit: z.string().optional(),
   discrepancy_reason: z.string().optional(),
   carry_type: z.enum(['carry', 'facility_deposit', 'deferred']).optional(),
@@ -34,6 +47,17 @@ function resolveCarryItemsStatus(lines: Array<{ carry_type: string | null | unde
   if (!hasDeferred) return 'ready' as const;
   if (hasReadyItem) return 'partial' as const;
   return 'blocked' as const;
+}
+
+function touchesDispenseResultSafetyFields(data: z.infer<typeof updateDispenseResultSchema>) {
+  return (
+    data.actual_drug_name !== undefined ||
+    data.actual_drug_code !== undefined ||
+    data.actual_quantity !== undefined ||
+    data.actual_unit !== undefined ||
+    data.discrepancy_reason !== undefined ||
+    data.carry_type !== undefined
+  );
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -92,7 +116,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       select: {
         id: true,
         task_id: true,
+        line_id: true,
+        actual_drug_name: true,
+        actual_drug_code: true,
+        actual_quantity: true,
+        actual_unit: true,
+        discrepancy_reason: true,
+        carry_type: true,
         version: true,
+        line: {
+          select: {
+            id: true,
+            drug_name: true,
+            drug_code: true,
+            quantity: true,
+            unit: true,
+          },
+        },
       },
     });
     if (!existing) return null;
@@ -112,13 +152,98 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return { error: '差戻しされていないタスクの結果は修正できません' } as const;
     }
 
+    const shouldValidateSafetyFields = touchesDispenseResultSafetyFields(parsed.data);
+    const shouldValidateQuantityConfirmation = shouldValidateSafetyFields;
+    const prescribedLine: PrescribedDispenseLine = {
+      id: existing.line.id,
+      drug_name: existing.line.drug_name,
+      drug_code: existing.line.drug_code,
+      quantity: existing.line.quantity,
+      unit: existing.line.unit,
+    };
+    const effectiveLine: DispenseResultValidationLine = {
+      line_id: existing.line_id,
+      actual_drug_name: parsed.data.actual_drug_name ?? existing.actual_drug_name,
+      actual_drug_code: parsed.data.actual_drug_code ?? existing.actual_drug_code,
+      actual_quantity: parsed.data.actual_quantity ?? existing.actual_quantity,
+      actual_quantity_confirmed: parsed.data.actual_quantity_confirmed,
+      actual_quantity_source: parsed.data.actual_quantity_source,
+      actual_unit: parsed.data.actual_unit ?? existing.actual_unit,
+      discrepancy_reason: parsed.data.discrepancy_reason ?? existing.discrepancy_reason,
+      carry_type: (parsed.data.carry_type ??
+        existing.carry_type) as DispenseResultValidationLine['carry_type'],
+    };
+
+    if (shouldValidateSafetyFields) {
+      const discrepancyReasonErrors = buildDiscrepancyReasonErrors({
+        submittedLines: [effectiveLine],
+        prescribedLines: [prescribedLine],
+      });
+      if (discrepancyReasonErrors.length > 0) {
+        return {
+          error: 'reason_required' as const,
+          reasons: discrepancyReasonErrors,
+        };
+      }
+
+      const unresolvedQuantityLines = buildUnresolvedPrescribedQuantityErrors({
+        submittedLines: [effectiveLine],
+        prescribedLines: [prescribedLine],
+      });
+      if (unresolvedQuantityLines.length > 0) {
+        return {
+          error: 'prescribed_quantity_required' as const,
+          reasons: unresolvedQuantityLines,
+        };
+      }
+
+      const invalidQuantityUnitLines = buildActualQuantityUnitErrors({
+        submittedLines: [effectiveLine],
+        prescribedLines: [prescribedLine],
+      });
+      if (invalidQuantityUnitLines.length > 0) {
+        return {
+          error: 'actual_quantity_unit_step_invalid' as const,
+          reasons: invalidQuantityUnitLines,
+        };
+      }
+    }
+
+    if (shouldValidateQuantityConfirmation) {
+      const actualQuantityConfirmationErrors = buildActualQuantityConfirmationErrors({
+        submittedLines: [effectiveLine],
+        prescribedLines: [prescribedLine],
+        existingResults: [
+          {
+            line_id: existing.line_id,
+            actual_quantity: existing.actual_quantity,
+          },
+        ],
+      });
+      if (actualQuantityConfirmationErrors.length > 0) {
+        return {
+          error: 'actual_quantity_confirmation_required' as const,
+          reasons: actualQuantityConfirmationErrors,
+        };
+      }
+    }
+
+    const shouldUpdateActualUnit =
+      parsed.data.actual_quantity !== undefined || parsed.data.actual_unit !== undefined;
+    const canonicalActualUnit = shouldUpdateActualUnit
+      ? resolveCanonicalActualUnit({
+          prescribedUnit: prescribedLine.unit,
+          actualUnit: effectiveLine.actual_unit,
+        })
+      : undefined;
+
     const result = await tx.dispenseResult.update({
       where: { id },
       data: {
         actual_drug_name: parsed.data.actual_drug_name,
         actual_drug_code: parsed.data.actual_drug_code,
         actual_quantity: parsed.data.actual_quantity,
-        actual_unit: parsed.data.actual_unit,
+        actual_unit: canonicalActualUnit,
         discrepancy_reason: parsed.data.discrepancy_reason,
         carry_type: parsed.data.carry_type,
         special_notes: parsed.data.special_notes,
@@ -224,6 +349,32 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!updated) return notFound('指定された調剤実績が見つかりません');
   if ('error' in updated) {
     if ('conflict' in updated && updated.conflict) return conflict(updated.error);
+    if (updated.error === 'reason_required') {
+      return validationError('差異/欠品/代替がある明細は理由コードを入力してください', {
+        discrepancy_lines: updated.reasons,
+      });
+    }
+    if (updated.error === 'prescribed_quantity_required') {
+      return validationError(
+        '処方数量が未確定の明細があります。処方取込で数量を確認してから調剤完了してください',
+        {
+          unresolved_quantity_lines: updated.reasons,
+        },
+      );
+    }
+    if (updated.error === 'actual_quantity_confirmation_required') {
+      return validationError(
+        '調剤実数量の確認元が未確定の明細があります。数量確認後に調剤完了してください',
+        {
+          actual_quantity_confirmation_lines: updated.reasons,
+        },
+      );
+    }
+    if (updated.error === 'actual_quantity_unit_step_invalid') {
+      return validationError('実数量が単位に合う刻みではありません', {
+        actual_quantity_unit_lines: updated.reasons,
+      });
+    }
     return validationError(updated.error);
   }
 

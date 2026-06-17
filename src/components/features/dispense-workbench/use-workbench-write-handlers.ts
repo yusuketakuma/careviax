@@ -20,6 +20,11 @@ import { useMemo } from 'react';
 import type { HoldScope } from '@prisma/client';
 import { toast } from 'sonner';
 
+import { parsePackagingMethod, type PackagingMethodValue } from '@/lib/prescription/packaging';
+import {
+  areQuantitiesEquivalentForUnit,
+  isQuantityAllowedForUnit,
+} from '@/lib/dispensing/quantity-unit';
 import { useWorkbenchStore } from './dispensing-workbench.store';
 import { isRealDataEnabled } from './dispensing-workbench.adapter';
 import type { WorkbenchMutations } from './use-workbench-mutations';
@@ -33,9 +38,12 @@ import {
   type CarryPacketEvidenceInput,
   type CarryPacketItemKey,
   type OutsideMedEvidenceKind,
+  type PrescriptionLineMeta,
   type RejectCode,
   type SetAuditChecklistKey,
   type CellMutationTarget,
+  type DispenseResultLineInput,
+  type SubmitDispenseAuditInput,
   type SubmitSetAuditInput,
 } from './dispensing-workbench.write-types';
 import { calc, cellKey, packetKeys } from './dispensing-workbench.logic';
@@ -44,10 +52,57 @@ import type { CellTarget, Group, Phase } from './dispensing-workbench.types';
 
 /** カレンダーセルの保留スコープ（API HoldScope）。1 セル＝cell 単位。 */
 const CELL_HOLD_SCOPE: HoldScope = 'cell';
+const UNRESOLVED_DISPENSE_QUANTITY_MESSAGE =
+  '処方数量が未確定の薬剤があります。処方取込で数量を確認してから調剤完了してください。';
+const UNCONFIRMED_DISPENSE_QUANTITY_MESSAGE =
+  '実数量の確認が未完了の薬剤があります。数量確認を押してから調剤完了してください。';
+const INVALID_DISPENSE_QUANTITY_MESSAGE = '実数量は1以上で、単位に合う刻みで入力してください。';
+const DISCREPANCY_REASON_REQUIRED_MESSAGE =
+  '処方数量と異なる実数量には差異理由を入力してください。';
+const INVALID_AUDIT_DOUBLE_COUNT_MESSAGE =
+  '麻薬ダブルカウントが未完了です。1回目・2回目を実数量と一致する値で入力してください。';
+
+type DispenseQuantityIssue = {
+  line_id: string;
+  reason:
+    | 'prescribed_quantity_required'
+    | 'actual_quantity_confirmation_required'
+    | 'actual_quantity_invalid'
+    | 'discrepancy_reason_required';
+};
+
+type DispenseAuditDoubleCountIssue = {
+  line_id: string;
+  reason:
+    | 'dispensed_quantity_required'
+    | 'first_count_required'
+    | 'second_count_required'
+    | 'first_count_mismatch'
+    | 'second_count_mismatch';
+};
+
+const GROUP_METHOD_PACKAGING_METHODS: Record<string, PackagingMethodValue> = {
+  一包化: 'unit_dose',
+  錠剤分包機: 'unit_dose',
+  散剤分包機: 'unit_dose',
+  自動分包機: 'unit_dose',
+  'PTP（手撒き）': 'blister_pack',
+  別包: 'other',
+  頓用: 'none',
+};
+
 export interface WorkbenchWriteHandlers {
   // ── グリッド（dispense / audit）──
   /** 行チェック（調剤済 / 監査OK のトグル）。 */
   onToggleRow: (did: string) => void;
+  /** 調剤実数量確認（行チェックとは分離）。 */
+  onToggleQuantityConfirm: (did: string) => void;
+  /** 調剤実数量入力。 */
+  onActualQuantityInput: (did: string, value: string) => void;
+  /** 処方数量との差異理由入力。 */
+  onDiscrepancyReason: (did: string, value: string) => void;
+  /** 麻薬ダブルカウント入力。 */
+  onAuditDoubleCount: (did: string, field: 'first' | 'second', value: string) => void;
   /** グループ 調剤方法変更。 */
   onGroupMethod: (gid: string, value: string) => void;
   /** グループ 服用開始日変更。 */
@@ -141,6 +196,287 @@ function readReturnedBatchVersions(data: unknown): Array<{ id: string; version: 
   });
 }
 
+function readReturnedGroupVersions(data: unknown): Array<{ id: string; version: number }> {
+  const body = data as { data?: { updated?: unknown } } | null | undefined;
+  const updated = body?.data?.updated;
+  if (!Array.isArray(updated)) return [];
+  return updated.flatMap((group) => {
+    const candidate = group as { id?: unknown; version?: unknown };
+    return typeof candidate.id === 'string' && typeof candidate.version === 'number'
+      ? [{ id: candidate.id, version: candidate.version }]
+      : [];
+  });
+}
+
+function normalizeDateKey(value: unknown): string | null | undefined {
+  if (value === null) return null;
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  if (/^\d{4}-\d{2}-\d{2}T/.test(trimmed)) return trimmed.slice(0, 10);
+  return undefined;
+}
+
+function parsePositiveDays(value: string): number | null {
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const days = Number.parseInt(trimmed, 10);
+  return Number.isSafeInteger(days) && days > 0 ? days : null;
+}
+
+function addDaysToDateKey(startDate: string, days: number): string | null {
+  const parsed = normalizeDateKey(startDate);
+  if (!parsed || days < 1) return null;
+  const [year, month, day] = parsed.split('-').map((part) => Number.parseInt(part, 10));
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (Number.isNaN(date.getTime())) return null;
+  date.setUTCDate(date.getUTCDate() + days - 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function isPositiveFiniteQuantity(value: number | null | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
+function parseActualQuantityInput(value: string | undefined): number | null {
+  const trimmed = value?.trim() ?? '';
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function hasExplicitActualQuantityInput(value: string | undefined): boolean {
+  return Boolean(value?.trim());
+}
+
+function isValidActualQuantityForDrug(input: {
+  quantity: number | null;
+  unit?: string | null;
+  prescribedQuantity?: number | null;
+}) {
+  return (
+    input.quantity != null &&
+    isQuantityAllowedForUnit({
+      quantity: input.quantity,
+      unit: input.unit,
+      referenceQuantity: input.prescribedQuantity,
+    })
+  );
+}
+
+function countMatchesActualQuantity(input: {
+  count: number | null;
+  actualQuantity: number;
+  unit?: string | null;
+}) {
+  return (
+    input.count != null &&
+    areQuantitiesEquivalentForUnit({
+      left: input.count,
+      right: input.actualQuantity,
+      unit: input.unit,
+      referenceQuantity: input.actualQuantity,
+    })
+  );
+}
+
+export function collectDispenseQuantityIssues(
+  s: ReturnType<typeof useWorkbenchStore.getState>,
+): DispenseQuantityIssue[] {
+  const actualQuantityInputByDid = s.actualQuantityInputByDid ?? {};
+  const discrepancyReasonByDid = s.discrepancyReasonByDid ?? {};
+  const quantityConfirmedByDid = s.quantityConfirmedByDid ?? {};
+  const groups = s.model[s.selId] ?? [];
+  return groups.flatMap((group) =>
+    group.drugs.flatMap((drug): DispenseQuantityIssue[] => {
+      if (!isPositiveFiniteQuantity(drug.prescribedQuantity)) {
+        return [{ line_id: drug.did, reason: 'prescribed_quantity_required' as const }];
+      }
+      if (isPositiveFiniteQuantity(drug.dispensedQuantity)) {
+        if (
+          !areQuantitiesEquivalentForUnit({
+            left: drug.dispensedQuantity,
+            right: drug.prescribedQuantity,
+            unit: drug.unit,
+            referenceQuantity: drug.prescribedQuantity,
+          }) &&
+          !(discrepancyReasonByDid[drug.did]?.trim() || drug.discrepancyReason?.trim())
+        ) {
+          return [{ line_id: drug.did, reason: 'discrepancy_reason_required' as const }];
+        }
+        return [];
+      }
+      const rawActualQuantity = actualQuantityInputByDid[drug.did];
+      const hasManualInput = hasExplicitActualQuantityInput(rawActualQuantity);
+      const parsedActualQuantity = parseActualQuantityInput(rawActualQuantity);
+      if (
+        hasManualInput &&
+        !isValidActualQuantityForDrug({
+          quantity: parsedActualQuantity,
+          unit: drug.unit,
+          prescribedQuantity: drug.prescribedQuantity,
+        })
+      ) {
+        return [{ line_id: drug.did, reason: 'actual_quantity_invalid' as const }];
+      }
+      if (!quantityConfirmedByDid[drug.did]) {
+        return [{ line_id: drug.did, reason: 'actual_quantity_confirmation_required' as const }];
+      }
+      if (
+        parsedActualQuantity != null &&
+        !areQuantitiesEquivalentForUnit({
+          left: parsedActualQuantity,
+          right: drug.prescribedQuantity,
+          unit: drug.unit,
+          referenceQuantity: drug.prescribedQuantity,
+        }) &&
+        !discrepancyReasonByDid[drug.did]?.trim()
+      ) {
+        return [{ line_id: drug.did, reason: 'discrepancy_reason_required' as const }];
+      }
+      return [];
+    }),
+  );
+}
+
+export function collectDispenseAuditDoubleCountIssues(
+  s: ReturnType<typeof useWorkbenchStore.getState>,
+): DispenseAuditDoubleCountIssue[] {
+  const groups = s.model[s.selId] ?? [];
+  const auditDoubleCountByDid = s.auditDoubleCountByDid ?? {};
+  return groups.flatMap((group) =>
+    group.drugs.flatMap((drug): DispenseAuditDoubleCountIssue[] => {
+      if (!s.audit[drug.did] || !drug.isNarcotic) return [];
+      if (!isPositiveFiniteQuantity(drug.dispensedQuantity)) {
+        return [{ line_id: drug.did, reason: 'dispensed_quantity_required' as const }];
+      }
+      const input = auditDoubleCountByDid[drug.did] ?? { first: '', second: '' };
+      const firstCount = parseActualQuantityInput(input.first);
+      const secondCount = parseActualQuantityInput(input.second);
+      const issues: DispenseAuditDoubleCountIssue[] = [];
+      if (firstCount == null) {
+        issues.push({ line_id: drug.did, reason: 'first_count_required' as const });
+      } else if (
+        !countMatchesActualQuantity({
+          count: firstCount,
+          actualQuantity: drug.dispensedQuantity,
+          unit: drug.unit,
+        })
+      ) {
+        issues.push({ line_id: drug.did, reason: 'first_count_mismatch' as const });
+      }
+      if (secondCount == null) {
+        issues.push({ line_id: drug.did, reason: 'second_count_required' as const });
+      } else if (
+        !countMatchesActualQuantity({
+          count: secondCount,
+          actualQuantity: drug.dispensedQuantity,
+          unit: drug.unit,
+        })
+      ) {
+        issues.push({ line_id: drug.did, reason: 'second_count_mismatch' as const });
+      }
+      return issues;
+    }),
+  );
+}
+
+export function collectDispenseAuditDoubleCount(
+  s: ReturnType<typeof useWorkbenchStore.getState>,
+): NonNullable<SubmitDispenseAuditInput['double_count']> {
+  const groups = s.model[s.selId] ?? [];
+  const auditDoubleCountByDid = s.auditDoubleCountByDid ?? {};
+  return groups.flatMap((group) =>
+    group.drugs.flatMap((drug) => {
+      if (!s.audit[drug.did] || !drug.isNarcotic) return [];
+      const input = auditDoubleCountByDid[drug.did] ?? { first: '', second: '' };
+      return [
+        {
+          line_id: drug.did,
+          drug_name: drug.name,
+          dispensed_quantity: isPositiveFiniteQuantity(drug.dispensedQuantity)
+            ? drug.dispensedQuantity
+            : null,
+          first_count: parseActualQuantityInput(input.first),
+          second_count: parseActualQuantityInput(input.second),
+        },
+      ];
+    }),
+  );
+}
+
+function readReturnedLineMeta(data: unknown): Partial<PrescriptionLineMeta> {
+  const payload = (data as { data?: Record<string, unknown> } | null | undefined)?.data;
+  if (!payload) return {};
+  const startDate = normalizeDateKey(payload.start_date);
+  const endDate = normalizeDateKey(payload.end_date);
+  return {
+    ...(typeof payload.updated_at === 'string' ? { updatedAt: payload.updated_at } : {}),
+    ...(startDate !== undefined ? { startDate } : {}),
+    ...(endDate !== undefined ? { endDate } : {}),
+    ...(typeof payload.days === 'number' || payload.days === null ? { days: payload.days } : {}),
+  };
+}
+
+function applyReturnedLineMetas(
+  data: unknown,
+  fallbackByDid: Record<string, Partial<PrescriptionLineMeta>>,
+): void {
+  const updated = (data as { data?: { updated?: unknown } } | null | undefined)?.data?.updated;
+  if (!Array.isArray(updated)) return;
+  const returnedByDid = new Map<string, Partial<PrescriptionLineMeta>>();
+  for (const line of updated) {
+    const candidate = line as Record<string, unknown>;
+    if (typeof candidate.id !== 'string') continue;
+    returnedByDid.set(candidate.id, readReturnedLineMeta({ data: candidate }));
+  }
+  useWorkbenchStore.setState((state) => {
+    const lineMetaByDid = { ...(state.writeContext.lineMetaByDid ?? {}) };
+    let changed = false;
+    for (const [did, returned] of returnedByDid.entries()) {
+      const previous = lineMetaByDid[did];
+      if (!previous) continue;
+      const fallback = fallbackByDid[did] ?? {};
+      lineMetaByDid[did] = {
+        updatedAt: returned.updatedAt ?? fallback.updatedAt ?? previous.updatedAt,
+        startDate:
+          returned.startDate !== undefined
+            ? returned.startDate
+            : fallback.startDate !== undefined
+              ? fallback.startDate
+              : previous.startDate,
+        endDate:
+          returned.endDate !== undefined
+            ? returned.endDate
+            : fallback.endDate !== undefined
+              ? fallback.endDate
+              : previous.endDate,
+        days:
+          returned.days !== undefined
+            ? returned.days
+            : fallback.days !== undefined
+              ? fallback.days
+              : previous.days,
+      };
+      changed = true;
+    }
+    if (!changed) return state;
+    return {
+      writeContext: {
+        ...state.writeContext,
+        lineMetaByDid,
+      },
+    };
+  });
+}
+
+function createClientActionId(prefix: string): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return `${prefix}:${crypto.randomUUID()}`;
+  }
+  return `${prefix}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+}
+
 function applyReturnedBatchVersions(data: unknown): void {
   const updates = readReturnedBatchVersions(data);
   if (updates.length === 0) return;
@@ -183,6 +519,24 @@ function buildCellMutationTarget(meta: CellMeta): CellMutationTarget {
   };
 }
 
+function resolveGroupPackagingDecision(method: Group['method']): {
+  packaging_method: PackagingMethodValue;
+  special_notes?: string;
+} {
+  const label = String(method).trim();
+  if (!label) return { packaging_method: 'none' };
+
+  const mapped = GROUP_METHOD_PACKAGING_METHODS[label];
+  const packagingMethod = mapped ?? parsePackagingMethod(label).method ?? 'other';
+  const shouldPreserveLabel =
+    label !== '一包化' || packagingMethod !== 'unit_dose' || !GROUP_METHOD_PACKAGING_METHODS[label];
+
+  return {
+    packaging_method: packagingMethod,
+    ...(shouldPreserveLabel ? { special_notes: label } : {}),
+  };
+}
+
 /**
  * フェーズ別の書込ハンドラ束を返す。子はこれを props で受け取り onClick から呼ぶ。
  */
@@ -195,6 +549,10 @@ export function useWorkbenchWriteHandlers(args: {
 
   // store アクション（楽観更新 / モック挙動の正本）。
   const toggleRow = useWorkbenchStore((s) => s.toggleRow);
+  const toggleQuantityConfirm = useWorkbenchStore((s) => s.toggleQuantityConfirm);
+  const setActualQuantityInput = useWorkbenchStore((s) => s.setActualQuantityInput);
+  const setDiscrepancyReason = useWorkbenchStore((s) => s.setDiscrepancyReason);
+  const setAuditDoubleCount = useWorkbenchStore((s) => s.setAuditDoubleCount);
   const setGMethod = useWorkbenchStore((s) => s.setGMethod);
   const setGStart = useWorkbenchStore((s) => s.setGStart);
   const setGDays = useWorkbenchStore((s) => s.setGDays);
@@ -274,52 +632,230 @@ export function useWorkbenchWriteHandlers(args: {
         // 正本のため、行チェック単発では API を叩かない（現行 UI と同じく即時トグルのみ）。
         toggleRow(phase, did);
       },
+      onToggleQuantityConfirm: (did) => {
+        toggleQuantityConfirm(did);
+      },
+      onActualQuantityInput: (did, value) => {
+        setActualQuantityInput(did, value);
+      },
+      onDiscrepancyReason: (did, value) => {
+        setDiscrepancyReason(did, value);
+      },
+      onAuditDoubleCount: (did, field, value) => {
+        setAuditDoubleCount(did, field, value);
+      },
       onGroupMethod: (gid, value) => {
+        const beforeState = snap();
+        const previousMethod =
+          beforeState.model[beforeState.selId]?.find((group) => group.gid === gid)?.method ?? null;
         if (isRealDataEnabled()) {
-          const s = snap();
-          const groupId = s.writeContext.groupIdByGid[gid];
-          if (!s.writeContext.taskId || !groupId) {
+          const groupId = beforeState.writeContext.groupIdByGid[gid];
+          const version = beforeState.writeContext.groupVersionByGid?.[gid];
+          if (!beforeState.writeContext.taskId || !groupId || version === undefined) {
             reportMissingWriteContext();
             return;
           }
         }
         setGMethod(gid, value);
         real(() => {
-          const s = snap();
-          const taskId = s.writeContext.taskId;
-          const groupId = s.writeContext.groupIdByGid[gid];
+          const taskId = beforeState.writeContext.taskId;
+          const groupId = beforeState.writeContext.groupIdByGid[gid];
           if (!taskId || !groupId) {
             reportMissingWriteContext();
             return;
           }
-          mutations.saveGroups.mutate({
-            taskId,
-            groups: [{ id: groupId, method: value }],
-          });
+          const version = beforeState.writeContext.groupVersionByGid?.[gid];
+          if (version === undefined) {
+            reportMissingWriteContext();
+            return;
+          }
+          mutations.saveGroups.mutate(
+            {
+              taskId,
+              groups: [
+                {
+                  id: groupId,
+                  method: value,
+                  version,
+                },
+              ],
+            },
+            {
+              onSuccess: (data) => {
+                const returned = readReturnedGroupVersions(data).find(
+                  (group) => group.id === groupId,
+                );
+                if (!returned) return;
+                useWorkbenchStore.setState((state) => ({
+                  writeContext: {
+                    ...state.writeContext,
+                    groupVersionByGid: {
+                      ...state.writeContext.groupVersionByGid,
+                      [gid]: returned.version,
+                    },
+                  },
+                }));
+              },
+              onError: () => {
+                if (previousMethod) setGMethod(gid, previousMethod);
+              },
+            },
+          );
         });
       },
       onGroupStart: (gid, value) => {
-        if (isRealDataEnabled()) {
+        if (!isRealDataEnabled()) {
+          setGStart(gid, value);
+          return;
+        }
+        const beforeState = snap();
+        const group =
+          beforeState.model[beforeState.selId]?.find((candidate) => candidate.gid === gid) ?? null;
+        const previousStart = group?.start ?? '';
+        if (!group || group.drugs.length === 0) {
           reportUnsupportedRealWrite();
           return;
         }
+        if (!beforeState.writeContext.taskId) {
+          reportMissingWriteContext();
+          return;
+        }
+        const normalizedStart = value.trim() ? normalizeDateKey(value) : null;
+        if (value.trim() && !normalizedStart) {
+          toast.error('服用開始日はYYYY-MM-DD形式で入力してください。');
+          return;
+        }
+        const lineMetas = group.drugs.map((drug) => ({
+          did: drug.did,
+          meta: beforeState.writeContext.lineMetaByDid?.[drug.did],
+        }));
+        if (lineMetas.some((line) => !line.meta)) {
+          reportMissingWriteContext();
+          return;
+        }
+        const lines = lineMetas.map(({ did, meta }) => {
+          const lineMeta = meta!;
+          const days =
+            lineMeta.days && lineMeta.days > 0 ? lineMeta.days : group.days > 0 ? group.days : null;
+          const endDate =
+            normalizedStart && days ? addDaysToDateKey(normalizedStart, days) : normalizedStart;
+          return {
+            line_id: did,
+            expected_updated_at: lineMeta.updatedAt,
+            start_date: normalizedStart,
+            ...(endDate !== undefined ? { end_date: endDate } : {}),
+          };
+        });
+        const fallbackByDid = Object.fromEntries(
+          lines.map((line) => [
+            line.line_id,
+            {
+              startDate: line.start_date,
+              ...(line.end_date !== undefined ? { endDate: line.end_date } : {}),
+            },
+          ]),
+        );
         setGStart(gid, value);
-        // 服用開始日はグループ属性 API（method/slot/label/sort_order）に無く、明細 start_date は
-        // line 単位。グループ一括での開始日変更 API は未提供のため実データでも store のみ更新。
+        mutations.editLines.mutate(
+          {
+            taskId: beforeState.writeContext.taskId,
+            client_action_id: createClientActionId('group-period'),
+            packaging_group_id: beforeState.writeContext.groupIdByGid[gid] ?? null,
+            lines,
+          },
+          {
+            onSuccess: (data) => {
+              applyReturnedLineMetas(data, fallbackByDid);
+            },
+            onError: () => {
+              setGStart(gid, previousStart);
+            },
+          },
+        );
       },
       onGroupDays: (gid, value) => {
-        if (isRealDataEnabled()) {
+        if (!isRealDataEnabled()) {
+          setGDays(gid, value);
+          return;
+        }
+        const days = parsePositiveDays(value);
+        if (days === null) {
+          toast.error('処方日数は1以上の整数で入力してください。');
+          return;
+        }
+        const beforeState = snap();
+        const group =
+          beforeState.model[beforeState.selId]?.find((candidate) => candidate.gid === gid) ?? null;
+        const previousDays = group?.days ?? 0;
+        if (!group || group.drugs.length === 0) {
           reportUnsupportedRealWrite();
           return;
         }
+        if (!beforeState.writeContext.taskId) {
+          reportMissingWriteContext();
+          return;
+        }
+        const lineMetas = group.drugs.map((drug) => ({
+          did: drug.did,
+          meta: beforeState.writeContext.lineMetaByDid?.[drug.did],
+        }));
+        if (lineMetas.some((line) => !line.meta)) {
+          reportMissingWriteContext();
+          return;
+        }
+        const lines = lineMetas.map(({ did, meta }) => {
+          const lineMeta = meta!;
+          const startDate = normalizeDateKey(group.start) ?? lineMeta.startDate;
+          const endDate = startDate ? addDaysToDateKey(startDate, days) : undefined;
+          return {
+            line_id: did,
+            expected_updated_at: lineMeta.updatedAt,
+            days,
+            ...(startDate ? { start_date: startDate } : {}),
+            ...(endDate !== undefined ? { end_date: endDate } : {}),
+          };
+        });
+        const fallbackByDid = Object.fromEntries(
+          lines.map((line) => [
+            line.line_id,
+            {
+              days,
+              ...(line.start_date !== undefined ? { startDate: line.start_date } : {}),
+              ...(line.end_date !== undefined ? { endDate: line.end_date } : {}),
+            },
+          ]),
+        );
         setGDays(gid, value);
-        // 処方日数も同様にグループ属性 API に無いため store のみ更新。
+        mutations.editLines.mutate(
+          {
+            taskId: beforeState.writeContext.taskId,
+            client_action_id: createClientActionId('group-period'),
+            packaging_group_id: beforeState.writeContext.groupIdByGid[gid] ?? null,
+            lines,
+          },
+          {
+            onSuccess: (data) => {
+              applyReturnedLineMetas(data, fallbackByDid);
+            },
+            onError: () => {
+              setGDays(gid, String(previousDays));
+            },
+          },
+        );
       },
       onDropTo: (gid) => {
         // dropTo は内部の dragId を消費するため、移動前後の model を diff して移動 did を特定する。
         const beforeState = snap();
         if (!requireRealTaskContext(beforeState)) return;
+        if (
+          isRealDataEnabled() &&
+          !Object.prototype.hasOwnProperty.call(beforeState.writeContext.groupIdByGid, gid)
+        ) {
+          reportMissingWriteContext();
+          return;
+        }
         const before = membershipOf(beforeState.model[beforeState.selId] ?? []);
+        const previousModel = beforeState.model;
         dropTo(gid);
         real(() => {
           const s = snap();
@@ -335,13 +871,46 @@ export function useWorkbenchWriteHandlers(args: {
             (did) => after[did] === gid && before[did] !== gid,
           );
           if (!movedDid) return;
-          mutations.assignLines.mutate({
-            taskId,
-            assignments: [{ line_id: movedDid, packaging_group_id: groupId }],
-          });
+          if (
+            !Object.prototype.hasOwnProperty.call(beforeState.writeContext.lineGroupByDid, movedDid)
+          ) {
+            useWorkbenchStore.setState({ model: previousModel });
+            reportMissingWriteContext();
+            return;
+          }
+          const expectedGroupId = beforeState.writeContext.lineGroupByDid[movedDid] ?? null;
+          mutations.assignLines.mutate(
+            {
+              taskId,
+              assignments: [
+                {
+                  line_id: movedDid,
+                  packaging_group_id: groupId,
+                  expected_packaging_group_id: expectedGroupId,
+                },
+              ],
+            },
+            {
+              onSuccess: () => {
+                useWorkbenchStore.setState((state) => ({
+                  writeContext: {
+                    ...state.writeContext,
+                    lineGroupByDid: {
+                      ...state.writeContext.lineGroupByDid,
+                      [movedDid]: groupId,
+                    },
+                  },
+                }));
+              },
+              onError: () => {
+                useWorkbenchStore.setState({ model: previousModel });
+              },
+            },
+          );
         });
       },
       onAddGroup: () => {
+        if (isRealDataEnabled() && isAnyPending) return;
         const before = snap();
         if (isRealDataEnabled() && !before.writeContext.taskId) {
           reportMissingWriteContext();
@@ -371,6 +940,8 @@ export function useWorkbenchWriteHandlers(args: {
               onSuccess: (data) => {
                 const createdId = (data as { data?: { id?: unknown } } | null)?.data?.id;
                 if (typeof createdId !== 'string' || !createdId) return;
+                const createdVersion = (data as { data?: { version?: unknown } } | null)?.data
+                  ?.version;
                 useWorkbenchStore.setState((state) => ({
                   writeContext: {
                     ...state.writeContext,
@@ -378,6 +949,13 @@ export function useWorkbenchWriteHandlers(args: {
                       ...state.writeContext.groupIdByGid,
                       [gid]: createdId,
                     },
+                    groupVersionByGid:
+                      typeof createdVersion === 'number'
+                        ? {
+                            ...state.writeContext.groupVersionByGid,
+                            [gid]: createdVersion,
+                          }
+                        : state.writeContext.groupVersionByGid,
                   },
                 }));
               },
@@ -436,6 +1014,21 @@ export function useWorkbenchWriteHandlers(args: {
               s.writeContext.taskId &&
               s.writeContext.cycleVersion !== null
             ) {
+              const quantityIssues = collectDispenseQuantityIssues(s);
+              if (quantityIssues.length > 0) {
+                toast.error(
+                  quantityIssues.some((issue) => issue.reason === 'prescribed_quantity_required')
+                    ? UNRESOLVED_DISPENSE_QUANTITY_MESSAGE
+                    : quantityIssues.some((issue) => issue.reason === 'actual_quantity_invalid')
+                      ? INVALID_DISPENSE_QUANTITY_MESSAGE
+                      : quantityIssues.some(
+                            (issue) => issue.reason === 'discrepancy_reason_required',
+                          )
+                        ? DISCREPANCY_REASON_REQUIRED_MESSAGE
+                        : UNCONFIRMED_DISPENSE_QUANTITY_MESSAGE,
+                );
+                return null;
+              }
               const lines = collectDispenseLines(s);
               const submittedLineIds = lines.map((line) => line.line_id);
               mutations.completeDispense.mutate(
@@ -458,12 +1051,19 @@ export function useWorkbenchWriteHandlers(args: {
               s.writeContext.taskId &&
               s.writeContext.cycleVersion !== null
             ) {
+              const doubleCountIssues = collectDispenseAuditDoubleCountIssues(s);
+              if (doubleCountIssues.length > 0) {
+                toast.error(INVALID_AUDIT_DOUBLE_COUNT_MESSAGE);
+                return null;
+              }
+              const doubleCount = collectDispenseAuditDoubleCount(s);
               const submittedLineIds = Object.keys(s.audit).filter((lineId) => s.audit[lineId]);
               mutations.completeAudit.mutate(
                 {
                   task_id: s.writeContext.taskId,
                   result: 'approved',
                   expected_version: s.writeContext.cycleVersion,
+                  ...(doubleCount.length > 0 ? { double_count: doubleCount } : {}),
                 },
                 {
                   onSuccess: () => onAdvance?.(next),
@@ -712,6 +1312,10 @@ export function useWorkbenchWriteHandlers(args: {
     mutations,
     isAnyPending,
     toggleRow,
+    toggleQuantityConfirm,
+    setActualQuantityInput,
+    setDiscrepancyReason,
+    setAuditDoubleCount,
     setGMethod,
     setGStart,
     setGDays,
@@ -736,30 +1340,93 @@ export function useWorkbenchWriteHandlers(args: {
 }
 
 /**
- * 調剤完了の line 入力を store から組む。実データ由来の prescribedQuantity を初期実数量
- * （処方量どおり）として使う。数量未取得行はサーバ差異判定対象外なので安全な正数に倒す。
+ * Build dispense completion lines from store state.
+ * The caller must block unresolved or unconfirmed quantities before calling this helper.
  */
-export function collectDispenseLines(s: ReturnType<typeof useWorkbenchStore.getState>): Array<{
-  line_id: string;
-  actual_drug_name: string;
-  actual_quantity: number;
-  carry_type: 'carry' | 'facility_deposit' | 'deferred';
-}> {
+export function collectDispenseLines(
+  s: ReturnType<typeof useWorkbenchStore.getState>,
+): DispenseResultLineInput[] {
   const groups = s.model[s.selId] ?? [];
-  const lines: Array<{
-    line_id: string;
-    actual_drug_name: string;
-    actual_quantity: number;
-    carry_type: 'carry';
-  }> = [];
+  const lines: DispenseResultLineInput[] = [];
+  const actualQuantityInputByDid = s.actualQuantityInputByDid ?? {};
+  const discrepancyReasonByDid = s.discrepancyReasonByDid ?? {};
+  const quantityConfirmedByDid = s.quantityConfirmedByDid ?? {};
   for (const g of groups) {
+    const groupId = s.writeContext.groupIdByGid[g.gid];
+    const packagingDecision = resolveGroupPackagingDecision(g.method);
     for (const d of g.drugs) {
+      const existingQuantity = d.dispensedQuantity;
+      const prescribedQuantity = d.prescribedQuantity;
+      const hasExistingQuantity = isPositiveFiniteQuantity(existingQuantity);
+      if (!hasExistingQuantity && !isPositiveFiniteQuantity(prescribedQuantity)) {
+        throw new Error('UNRESOLVED_DISPENSE_QUANTITY');
+      }
+      if (!hasExistingQuantity && !quantityConfirmedByDid[d.did]) {
+        throw new Error('UNCONFIRMED_DISPENSE_QUANTITY');
+      }
+      const rawManualQuantity = actualQuantityInputByDid[d.did];
+      const manualQuantity = parseActualQuantityInput(rawManualQuantity);
+      if (
+        hasExplicitActualQuantityInput(rawManualQuantity) &&
+        !isValidActualQuantityForDrug({
+          quantity: manualQuantity,
+          unit: d.unit,
+          prescribedQuantity,
+        })
+      ) {
+        throw new Error('INVALID_DISPENSE_QUANTITY');
+      }
+      const actualQuantity = hasExistingQuantity
+        ? existingQuantity
+        : (manualQuantity ?? prescribedQuantity);
+      if (!isPositiveFiniteQuantity(actualQuantity)) {
+        throw new Error('UNRESOLVED_DISPENSE_QUANTITY');
+      }
+      const isManualQuantity =
+        !hasExistingQuantity &&
+        manualQuantity != null &&
+        isPositiveFiniteQuantity(prescribedQuantity) &&
+        !areQuantitiesEquivalentForUnit({
+          left: manualQuantity,
+          right: prescribedQuantity,
+          unit: d.unit,
+          referenceQuantity: prescribedQuantity,
+        });
+      const discrepancyReason = discrepancyReasonByDid[d.did]?.trim();
+      const existingDiscrepancyReason = d.discrepancyReason?.trim();
+      const effectiveDiscrepancyReason = discrepancyReason || existingDiscrepancyReason;
+      const needsDiscrepancyReason =
+        isPositiveFiniteQuantity(prescribedQuantity) &&
+        !areQuantitiesEquivalentForUnit({
+          left: actualQuantity,
+          right: prescribedQuantity,
+          unit: d.unit,
+          referenceQuantity: prescribedQuantity,
+        });
+      if (needsDiscrepancyReason && !effectiveDiscrepancyReason) {
+        throw new Error('DISCREPANCY_REASON_REQUIRED');
+      }
+      const assignedGroupId = groupId ?? s.writeContext.lineGroupByDid[d.did] ?? undefined;
       lines.push({
         line_id: d.did,
         actual_drug_name: d.name,
-        actual_quantity:
-          d.prescribedQuantity && d.prescribedQuantity > 0 ? d.prescribedQuantity : 1,
+        actual_quantity: actualQuantity,
+        actual_quantity_confirmed: true,
+        actual_quantity_source: hasExistingQuantity
+          ? 'existing_result'
+          : isManualQuantity
+            ? 'manual_entry'
+            : 'prescription_quantity_confirmed',
+        ...(d.unit ? { actual_unit: d.unit } : {}),
         carry_type: 'carry',
+        ...(needsDiscrepancyReason && effectiveDiscrepancyReason
+          ? { discrepancy_reason: effectiveDiscrepancyReason }
+          : {}),
+        packaging_method: packagingDecision.packaging_method,
+        ...(assignedGroupId ? { packaging_group_id: assignedGroupId } : {}),
+        ...(packagingDecision.special_notes
+          ? { special_notes: packagingDecision.special_notes }
+          : {}),
       });
     }
   }

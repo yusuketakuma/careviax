@@ -37,6 +37,11 @@ import {
 } from './dispensing-workbench.logic';
 import { loadPatients } from './dispensing-workbench.adapter';
 import { SET_AUDIT_CHECK_ITEMS } from './dispensing-workbench.write-types';
+import {
+  areQuantitiesEquivalentForUnit,
+  quantityInputModeForUnit,
+  quantityStepAttribute,
+} from '@/lib/dispensing/quantity-unit';
 import type {
   CalcResult,
   CellTarget,
@@ -145,6 +150,10 @@ export function useWorkbenchView(phase: Phase): WorkbenchView {
   const sortMode = useWorkbenchStore((s) => s.sortMode);
   const done = useWorkbenchStore((s) => s.done);
   const audit = useWorkbenchStore((s) => s.audit);
+  const quantityConfirmedByDid = useWorkbenchStore((s) => s.quantityConfirmedByDid);
+  const actualQuantityInputByDid = useWorkbenchStore((s) => s.actualQuantityInputByDid);
+  const discrepancyReasonByDid = useWorkbenchStore((s) => s.discrepancyReasonByDid);
+  const auditDoubleCountByDid = useWorkbenchStore((s) => s.auditDoubleCountByDid);
   const setCells = useWorkbenchStore((s) => s.setCells);
   const auditCells = useWorkbenchStore((s) => s.auditCells);
   const outChk = useWorkbenchStore((s) => s.outChk);
@@ -166,6 +175,10 @@ export function useWorkbenchView(phase: Phase): WorkbenchView {
         sortMode,
         done,
         audit,
+        quantityConfirmedByDid,
+        actualQuantityInputByDid,
+        discrepancyReasonByDid,
+        auditDoubleCountByDid,
         setCells,
         auditCells,
         outChk,
@@ -185,6 +198,10 @@ export function useWorkbenchView(phase: Phase): WorkbenchView {
       sortMode,
       done,
       audit,
+      quantityConfirmedByDid,
+      actualQuantityInputByDid,
+      discrepancyReasonByDid,
+      auditDoubleCountByDid,
       setCells,
       auditCells,
       outChk,
@@ -207,6 +224,10 @@ interface BuildViewArgs {
   sortMode: 'start' | 'regist';
   done: Record<string, boolean>;
   audit: Record<string, boolean>;
+  quantityConfirmedByDid?: Record<string, boolean>;
+  actualQuantityInputByDid?: Record<string, string>;
+  discrepancyReasonByDid?: Record<string, string>;
+  auditDoubleCountByDid?: Record<string, { first: string; second: string }>;
   setCells: Record<string, string>;
   auditCells: Record<string, string>;
   outChk: Record<string, boolean>;
@@ -232,6 +253,10 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     sortMode,
     done,
     audit,
+    quantityConfirmedByDid = {},
+    actualQuantityInputByDid = {},
+    discrepancyReasonByDid = {},
+    auditDoubleCountByDid = {},
     setCells,
     auditCells,
     outChk,
@@ -335,12 +360,64 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
       start: g.start,
       days: g.days,
       endDate: endDate(g.start, g.days),
+      periodWarning: g.periodWarning,
     });
     g.drugs.forEach((r) => {
       no++;
       const did = r.did;
       const isDone = !!done[did];
       const isAu = !!audit[did];
+      const auditDoubleCount = auditDoubleCountByDid[did] ?? { first: '', second: '' };
+      const hasSavedQuantity = typeof r.dispensedQuantity === 'number';
+      const quantityConfirmed = hasSavedQuantity || !!quantityConfirmedByDid[did];
+      const prescribedQuantity =
+        typeof r.prescribedQuantity === 'number' ? r.prescribedQuantity : null;
+      const savedOrPrescribedQuantity =
+        typeof r.dispensedQuantity === 'number' ? r.dispensedQuantity : prescribedQuantity;
+      const actualQuantityInput =
+        actualQuantityInputByDid[did] ??
+        (typeof savedOrPrescribedQuantity === 'number'
+          ? formatQuantity(savedOrPrescribedQuantity)
+          : '');
+      const parsedActualQuantity = parseQuantityInput(actualQuantityInput);
+      const requiresDiscrepancyReason =
+        ph === 'dispense' &&
+        typeof parsedActualQuantity === 'number' &&
+        typeof prescribedQuantity === 'number' &&
+        !areQuantitiesEquivalentForUnit({
+          left: parsedActualQuantity,
+          right: prescribedQuantity,
+          unit: r.unit,
+          referenceQuantity: prescribedQuantity,
+        });
+      const hasSavedQuantityDifference =
+        typeof r.dispensedQuantity === 'number' &&
+        typeof r.prescribedQuantity === 'number' &&
+        !areQuantitiesEquivalentForUnit({
+          left: r.dispensedQuantity,
+          right: r.prescribedQuantity,
+          unit: r.unit,
+          referenceQuantity: r.prescribedQuantity,
+        });
+      const hasInputQuantityDifference =
+        parsedActualQuantity != null &&
+        typeof r.prescribedQuantity === 'number' &&
+        !areQuantitiesEquivalentForUnit({
+          left: parsedActualQuantity,
+          right: r.prescribedQuantity,
+          unit: r.unit,
+          referenceQuantity: r.prescribedQuantity,
+        });
+      const quantityLabel =
+        typeof r.dispensedQuantity === 'number'
+          ? prescribedQuantity != null && hasSavedQuantityDifference
+            ? `処方 ${formatQuantity(prescribedQuantity)}${r.unit ?? ''} / 実 ${formatQuantity(r.dispensedQuantity)}${r.unit ?? ''}`
+            : `実 ${formatQuantity(r.dispensedQuantity)}${r.unit ?? ''}`
+          : parsedActualQuantity != null && prescribedQuantity != null && hasInputQuantityDifference
+            ? `処方 ${formatQuantity(prescribedQuantity)}${r.unit ?? ''} / 実 ${formatQuantity(parsedActualQuantity)}${r.unit ?? ''}`
+            : prescribedQuantity != null
+              ? `処方 ${formatQuantity(prescribedQuantity)}${r.unit ?? ''}`
+              : '数量未確定';
       let cBg = '#fff';
       let cBd = '#9aa8b8';
       let cMk = '';
@@ -411,6 +488,30 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
         checkBg: cBg,
         checkBorder: cBd,
         checkMark: cMk,
+        showQuantityConfirm: ph === 'dispense',
+        quantityConfirmed,
+        quantityConfirmLocked: hasSavedQuantity,
+        quantityConfirmLabel: hasSavedQuantity
+          ? '実績あり'
+          : quantityConfirmed
+            ? '確認済'
+            : '実数量確認',
+        quantityLabel,
+        actualQuantityInput,
+        actualQuantityStep: quantityStepAttribute(r.unit, r.prescribedQuantity),
+        actualQuantityInputMode: quantityInputModeForUnit(r.unit, r.prescribedQuantity),
+        actualQuantityDisabled: hasSavedQuantity,
+        discrepancyReasonValue: discrepancyReasonByDid[did] ?? r.discrepancyReason ?? '',
+        requiresDiscrepancyReason,
+        showAuditDoubleCount: ph === 'audit' && !!r.isNarcotic,
+        auditFirstCountInput: auditDoubleCount.first,
+        auditSecondCountInput: auditDoubleCount.second,
+        auditCountExpectedLabel:
+          typeof r.dispensedQuantity === 'number'
+            ? `${formatQuantity(r.dispensedQuantity)}${r.unit ?? ''}`
+            : '実績なし',
+        auditCountExpectedQuantity:
+          typeof r.dispensedQuantity === 'number' ? r.dispensedQuantity : null,
       });
     });
   });
@@ -570,6 +671,18 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
   if (/残薬/.test(sjoin)) SC('残薬調整', '#b75a28', '#fdeee6', '#f3cbb3');
   if (p.chips.indexOf('小児') >= 0) SC('小児', '#a04a6a', '#fbe9f0', '#eec4d4');
   if (/懸濁|冷所/.test(sjoin)) SC('冷所/特殊', '#2a7d8f', '#e4f3f5', '#bce0e5');
+  const narcoticClassificationUnresolvedCount = groups.reduce(
+    (sum, group) => sum + (group.narcoticClassification?.unresolvedLineCount ?? 0),
+    0,
+  );
+  if (narcoticClassificationUnresolvedCount > 0) {
+    SC(
+      `麻薬分類未確認 ${narcoticClassificationUnresolvedCount}剤`,
+      '#9a6a18',
+      '#fff6e6',
+      '#e8c884',
+    );
+  }
   if (!setChips.length) SC('特記なし', '#5a6878', '#eef1f4', '#d4dae1');
 
   // ---- 比較 ----
@@ -757,6 +870,20 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
   let gateBg = '#eef8f0';
   let gateBorder = '#9ed6ad';
   let gateOk = gateResult.ok;
+  const auditDoubleCountIncomplete =
+    ph === 'audit' &&
+    rows.some((row) => {
+      if (row.kind !== 'drug' || !row.showAuditDoubleCount || !audit[row.did]) return false;
+      if (row.auditCountExpectedQuantity == null) return true;
+      const first = parseQuantityInput(row.auditFirstCountInput);
+      const second = parseQuantityInput(row.auditSecondCountInput);
+      return (
+        first == null ||
+        second == null ||
+        !quantitiesMatch(first, row.auditCountExpectedQuantity) ||
+        !quantitiesMatch(second, row.auditCountExpectedQuantity)
+      );
+    });
 
   if (ph === 'dispense') {
     const pct = prog.total ? Math.round((prog.done / prog.total) * 100) : 0;
@@ -790,7 +917,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     primaryBg = dataUnavailable ? '#b8bfc8' : '#2c9a4e';
     primaryBorder = dataUnavailable ? '#a3abb5' : '#218040';
     checkHead = '監査';
-    if (!gateResult.ok) {
+    if (!gateResult.ok || auditDoubleCountIncomplete) {
       primaryBg = '#b8bfc8';
       primaryBorder = '#a3abb5';
       primaryCursor = 'not-allowed';
@@ -855,6 +982,13 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     primaryBorder = '#a3abb5';
     primaryCursor = 'not-allowed';
     primaryOpacity = '.7';
+  }
+  if (auditDoubleCountIncomplete) {
+    gateOk = false;
+    gateText = '麻薬ダブルカウント未完了';
+    gateColor = '#9a6a18';
+    gateBg = '#fff6e6';
+    gateBorder = '#e8c884';
   }
 
   // ---- 実装済み物理 F-key shortcuts ----
@@ -997,6 +1131,21 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     compareSections,
     cmpCount,
   };
+}
+
+function formatQuantity(value: number): string {
+  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(3)));
+}
+
+function parseQuantityInput(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function quantitiesMatch(left: number, right: number) {
+  return Number.isFinite(left) && Number.isFinite(right) && Math.abs(left - right) < 1e-9;
 }
 
 function fkey(

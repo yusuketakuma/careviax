@@ -8,6 +8,7 @@ const {
   cycleFindManyMock,
   exceptionCountMock,
   userFindManyMock,
+  drugMasterFindManyMock,
 } = vi.hoisted(() => ({
   authContextMock: { orgId: 'org_1', userId: 'user_1', role: 'admin' },
   visitScheduleFindManyMock: vi.fn(),
@@ -15,6 +16,7 @@ const {
   cycleFindManyMock: vi.fn(),
   exceptionCountMock: vi.fn(),
   userFindManyMock: vi.fn(),
+  drugMasterFindManyMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -32,6 +34,7 @@ vi.mock('@/lib/db/rls', () => ({
       medicationCycle: { findMany: cycleFindManyMock },
       workflowException: { count: exceptionCountMock },
       user: { findMany: userFindManyMock },
+      drugMaster: { findMany: drugMasterFindManyMock },
     }),
 }));
 
@@ -84,7 +87,13 @@ function buildSchedule(args: {
 function buildPlan(args: {
   id: string;
   caseId: string;
-  slots?: Array<{ slot: string; day: number; lineId: string; tags?: string[] }>;
+  slots?: Array<{
+    slot: string;
+    day: number;
+    lineId: string;
+    tags?: string[];
+    drugCode?: string | null;
+  }>;
   auditResult?: string | null;
   changedBy?: string | null;
   periodDays?: number;
@@ -97,6 +106,7 @@ function buildPlan(args: {
     cycle: { case_id: args.caseId },
     batches: (args.slots ?? []).map((slot) => ({
       line_id: slot.lineId,
+      line: { drug_code: slot.drugCode ?? null },
       slot: slot.slot,
       day_number: slot.day,
       packaging_instruction_tags_snapshot: slot.tags ?? [],
@@ -115,6 +125,7 @@ describe('/api/medication-sets/workspace', () => {
     setPlanFindManyMock.mockResolvedValue([]);
     cycleFindManyMock.mockResolvedValue([]);
     exceptionCountMock.mockResolvedValue(0);
+    drugMasterFindManyMock.mockResolvedValue([]);
     userFindManyMock.mockResolvedValue([
       {
         id: 'user_suzuki',
@@ -216,6 +227,55 @@ describe('/api/medication-sets/workspace', () => {
     expect(data.evidence.cold_storage_log_status).toBe('正常');
   });
 
+  it('DrugMaster が麻薬扱いする未タグ行を麻薬レーンに分類する', async () => {
+    visitScheduleFindManyMock.mockImplementation(() => {
+      if (visitScheduleFindManyMock.mock.calls.length === 1) {
+        return Promise.resolve([
+          buildSchedule({
+            id: 'visit_1',
+            caseId: 'case_narcotic',
+            patientId: 'patient_narcotic',
+            patientName: '麻薬 太郎',
+            room: '105',
+          }),
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+    drugMasterFindManyMock.mockResolvedValue([{ yj_code: 'YJ_MASTER_NARCOTIC' }]);
+    setPlanFindManyMock.mockResolvedValue([
+      buildPlan({
+        id: 'plan_narcotic',
+        caseId: 'case_narcotic',
+        slots: [
+          {
+            slot: 'morning',
+            day: 1,
+            lineId: 'line_master_narcotic',
+            drugCode: 'YJ_MASTER_NARCOTIC',
+          },
+        ],
+      }),
+    ]);
+
+    const res = await GET(createRequest('?scope=today'), { params: Promise.resolve({}) });
+    const body = await res.json();
+    const data = body.data;
+
+    expect(drugMasterFindManyMock).toHaveBeenCalledWith({
+      where: {
+        yj_code: { in: ['YJ_MASTER_NARCOTIC'] },
+        is_narcotic: true,
+      },
+      select: { yj_code: true },
+    });
+    expect(data.facility_groups[0].lane_counts).toEqual({
+      normal: 0,
+      cold: 0,
+      narcotic: 1,
+    });
+  });
+
   it('調剤監査待ちサイクルを「工程待ちのセット」に出す(麻薬・冷所と担当文つき)', async () => {
     visitScheduleFindManyMock.mockImplementation(() => {
       if (visitScheduleFindManyMock.mock.calls.length === 1) {
@@ -261,6 +321,90 @@ describe('/api/medication-sets/workspace', () => {
     expect(item.subtitle).toContain('麻薬・冷所のため山田が直接セットします。');
     expect(item.meta_label).toBe('所要15分');
     expect(item.action_href).toBe('/audit');
+  });
+
+  it('DrugMaster が麻薬扱いする監査待ち未タグ行を工程待ち文言に反映する', async () => {
+    visitScheduleFindManyMock.mockImplementation(() => {
+      if (visitScheduleFindManyMock.mock.calls.length === 1) {
+        return Promise.resolve([
+          buildSchedule({
+            id: 'visit_1',
+            caseId: 'case_master_narcotic',
+            patientId: 'patient_master_narcotic',
+            patientName: '佐藤 二郎',
+            facility: null,
+            time: new Date(2026, 5, 11, 16, 15),
+          }),
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+    drugMasterFindManyMock.mockResolvedValue([{ yj_code: 'YJ_MASTER_NARCOTIC' }]);
+    cycleFindManyMock.mockResolvedValue([
+      {
+        id: 'cycle_master_narcotic',
+        case_id: 'case_master_narcotic',
+        case_: { patient: { name: '佐藤 二郎' } },
+        prescription_intakes: [
+          {
+            lines: [
+              {
+                drug_code: 'YJ_MASTER_NARCOTIC',
+                packaging_instruction_tags: [],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const res = await GET(createRequest(), { params: Promise.resolve({}) });
+    const body = await res.json();
+    const data = body.data;
+
+    expect(data.pending_items).toHaveLength(1);
+    expect(data.pending_items[0].subtitle).toContain('麻薬のため山田が直接セットします。');
+  });
+
+  it('DrugMaster が麻薬扱いする明日分の未タグ行を先行可タイトルに表示する', async () => {
+    visitScheduleFindManyMock.mockImplementation(() => {
+      if (visitScheduleFindManyMock.mock.calls.length === 1) {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve([
+        {
+          id: 'visit_tomorrow',
+          case_: {
+            patient: { id: 'patient_tomorrow', name: '明日 花子' },
+            medication_cycles: [
+              {
+                prescription_intakes: [
+                  {
+                    lines: [
+                      {
+                        drug_code: 'YJ_MASTER_NARCOTIC',
+                        packaging_instruction_tags: [],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ]);
+    });
+    drugMasterFindManyMock.mockResolvedValue([{ yj_code: 'YJ_MASTER_NARCOTIC' }]);
+
+    const res = await GET(createRequest(), { params: Promise.resolve({}) });
+    const body = await res.json();
+    const data = body.data;
+
+    expect(data.pending_items).toHaveLength(1);
+    expect(data.pending_items[0]).toMatchObject({
+      kind: 'preworkable',
+      title: '明日 花子 様(麻薬)',
+    });
   });
 
   it('不正な scope はバリデーションエラー', async () => {

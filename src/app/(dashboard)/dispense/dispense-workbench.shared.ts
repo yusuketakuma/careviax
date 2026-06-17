@@ -34,15 +34,28 @@ export type WorkbenchCountRow = {
   is_generic: boolean;
   prescribed_label: string;
   prescribed_quantity: number | null;
+  start_date: string | null;
+  end_date: string | null;
   days: number | null;
+  line_updated_at: string;
   dispensed_label: string | null;
   dispensed_at: string | null;
   dispensed_quantity: number | null;
+  discrepancy_reason: string | null;
   unit: string;
   dispensing_method: string | null;
   packaging_method: string | null;
   packaging_instructions: string | null;
   packaging_group_id: string | null;
+};
+
+export type WorkbenchPackagingGroup = {
+  id: string;
+  label: string;
+  method: string;
+  slot: string | null;
+  sort_order: number;
+  version: number;
 };
 
 export type DispenseWorkbenchData = {
@@ -65,6 +78,7 @@ export type DispenseWorkbenchData = {
   };
   comparison: WorkbenchComparisonRow[];
   count_rows: WorkbenchCountRow[];
+  packaging_groups?: WorkbenchPackagingGroup[];
   dispenser: { id: string; name: string; time_label: string | null } | null;
   auditor: { id: string; name: string };
   is_self_audit: boolean;

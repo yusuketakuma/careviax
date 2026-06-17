@@ -9,6 +9,7 @@ type SetBatchHistorySnapshot = {
   packaging_method_snapshot: string | null;
   packaging_instructions_snapshot: string | null;
   packaging_instruction_tags_snapshot: string[];
+  packaging_group_id: string | null;
 };
 
 type SetBatchHistoryTarget = {
@@ -21,13 +22,14 @@ type SetBatchHistoryTarget = {
   packaging_method_snapshot?: string | null;
   packaging_instructions_snapshot?: string | null;
   packaging_instruction_tags_snapshot?: string[] | null;
+  packaging_group_id?: string | null;
   line?: {
     drug_name?: string | null;
   } | null;
 };
 
 export function buildSetBatchHistorySnapshot(
-  target: SetBatchHistoryTarget
+  target: SetBatchHistoryTarget,
 ): SetBatchHistorySnapshot {
   return {
     batch_id: target.id ?? null,
@@ -40,6 +42,7 @@ export function buildSetBatchHistorySnapshot(
     packaging_method_snapshot: target.packaging_method_snapshot ?? null,
     packaging_instructions_snapshot: target.packaging_instructions_snapshot ?? null,
     packaging_instruction_tags_snapshot: target.packaging_instruction_tags_snapshot ?? [],
+    packaging_group_id: target.packaging_group_id ?? null,
   };
 }
 
@@ -51,13 +54,13 @@ export function collectChangedLineIds(args: {
     args.before.map((snapshot) => [
       `${snapshot.line_id}:${snapshot.day_number}:${snapshot.slot}`,
       JSON.stringify(snapshot),
-    ])
+    ]),
   );
   const afterMap = new Map(
     args.after.map((snapshot) => [
       `${snapshot.line_id}:${snapshot.day_number}:${snapshot.slot}`,
       JSON.stringify(snapshot),
-    ])
+    ]),
   );
   const keys = new Set([...beforeMap.keys(), ...afterMap.keys()]);
   const lineIds = new Set<string>();
@@ -74,9 +77,7 @@ export function collectChangedLineIds(args: {
 export async function createSetBatchChangeLog(
   tx: {
     setBatchChangeLog: {
-      create: (args: {
-        data: Prisma.SetBatchChangeLogUncheckedCreateInput;
-      }) => Promise<unknown>;
+      create: (args: { data: Prisma.SetBatchChangeLogUncheckedCreateInput }) => Promise<unknown>;
     };
   },
   args: {
@@ -90,7 +91,7 @@ export async function createSetBatchChangeLog(
     beforeSnapshot: Prisma.InputJsonValue;
     afterSnapshot?: Prisma.InputJsonValue;
     changedBy?: string | null;
-  }
+  },
 ) {
   await tx.setBatchChangeLog.create({
     data: {

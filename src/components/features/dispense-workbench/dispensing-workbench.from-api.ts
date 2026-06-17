@@ -19,6 +19,7 @@ import type {
   DispenseWorkbenchPatientRow,
   WorkbenchComparisonRow,
   WorkbenchCountRow,
+  WorkbenchPackagingGroup,
 } from '@/app/(dashboard)/dispense/dispense-workbench.shared';
 
 import type {
@@ -26,6 +27,7 @@ import type {
   DiscontinuedMed,
   Drug,
   Group,
+  GroupPeriodWarning,
   HoldInfo,
   SeedChange,
   SeedPatient,
@@ -37,6 +39,7 @@ import {
   SLOT_TO_TIMING,
   type CalendarMatrixResponse,
   type CellMeta,
+  type PrescriptionLineMeta,
 } from './dispensing-workbench.write-types';
 import { cellKey } from './dispensing-workbench.logic';
 
@@ -52,6 +55,56 @@ function toSlashDate(iso: string | null | undefined): string {
 function initialOf(name: string): string {
   const trimmed = name.trim();
   return trimmed ? Array.from(trimmed)[0] : '?';
+}
+
+const UNGROUPED_GROUP_KEY = '__ungrouped__';
+
+function packagingGroupsOf(data: DispenseWorkbenchData): WorkbenchPackagingGroup[] {
+  return data.packaging_groups ?? [];
+}
+
+function packagingGroupMetaById(data: DispenseWorkbenchData): Map<string, WorkbenchPackagingGroup> {
+  return new Map(packagingGroupsOf(data).map((group) => [group.id, group]));
+}
+
+function periodKeyOf(row: WorkbenchCountRow) {
+  return [row.start_date ?? '', row.end_date ?? '', row.days ?? ''].join('|');
+}
+
+function periodLabelOf(row: WorkbenchCountRow) {
+  const start = row.start_date ?? '開始日未設定';
+  const end = row.end_date ?? '終了日未設定';
+  const days = row.days != null ? `${row.days}日` : '日数未設定';
+  return `${start}〜${end} ${days}`;
+}
+
+function groupPeriodWarning(rows: WorkbenchCountRow[]): GroupPeriodWarning | undefined {
+  const periods = new Map<string, string>();
+  for (const row of rows) {
+    periods.set(periodKeyOf(row), periodLabelOf(row));
+  }
+  if (periods.size <= 1) return undefined;
+  const labels = Array.from(periods.values());
+  const preview = labels.slice(0, 3).join(' / ');
+  const omitted = labels.length > 3 ? ` / 他${labels.length - 3}種類` : '';
+  return {
+    kind: 'mixed_period',
+    label: `期間混在 ${labels.length}種類`,
+    detail: `${preview}${omitted}`,
+  };
+}
+
+function workbenchGroupOrder(data: DispenseWorkbenchData): string[] {
+  const groupOrder: string[] = [];
+  const seen = new Set<string>();
+  const add = (key: string) => {
+    if (seen.has(key)) return;
+    seen.add(key);
+    groupOrder.push(key);
+  };
+  for (const group of packagingGroupsOf(data)) add(group.id);
+  for (const row of data.count_rows) add(row.packaging_group_id ?? UNGROUPED_GROUP_KEY);
+  return groupOrder;
 }
 
 /** 時点キー（packaging-group の slot）→ SeedDrug の a/h/y/n のどれに載せるか。 */
@@ -182,6 +235,7 @@ export function workbenchFromApi(data: DispenseWorkbenchData): {
   groups: Group[];
   done: Record<string, boolean>;
   audit: Record<string, boolean>;
+  quantityConfirmedByDid: Record<string, boolean>;
 } {
   // comparison: line_id（comparison.key）→ chg / prevText を引くマップ + 中止薬。
   // Legacy fallback by drug_name is used only when the name maps to exactly one comparison row.
@@ -235,6 +289,10 @@ export function workbenchFromApi(data: DispenseWorkbenchData): {
       funsai: funsaiOf(row),
       note: noteOf(row),
       prescribedQuantity: row.prescribed_quantity,
+      dispensedQuantity: row.dispensed_quantity,
+      discrepancyReason: row.discrepancy_reason,
+      isNarcotic: row.is_narcotic,
+      unit: row.unit,
     };
     const chg = changeKindOf(cmp?.change_type ?? null);
     if (chg) {
@@ -244,30 +302,44 @@ export function workbenchFromApi(data: DispenseWorkbenchData): {
     return { row, drug };
   });
 
-  // packaging_group_id でグループ化（順序は最初に出現したグループ順を保持）
-  const groupOrder: string[] = [];
+  // PackagingGroup 正本がある場合はその順序・ラベル・方法を優先し、未知グループは行の出現順で補う。
+  const groupOrder = workbenchGroupOrder(data);
+  const groupMetaById = packagingGroupMetaById(data);
   const groupMap = new Map<string, Drug[]>();
+  const groupRows = new Map<string, WorkbenchCountRow[]>();
+  for (const key of groupOrder) {
+    groupMap.set(key, []);
+    groupRows.set(key, []);
+  }
   for (const { row, drug } of drugs) {
-    const key = row.packaging_group_id ?? '__ungrouped__';
-    if (!groupMap.has(key)) {
-      groupMap.set(key, []);
-      groupOrder.push(key);
-    }
+    const key = row.packaging_group_id ?? UNGROUPED_GROUP_KEY;
     groupMap.get(key)!.push(drug);
+    groupRows.get(key)!.push(row);
   }
 
   const seedStart = data.intake ? data.intake.prescribed_date : '';
-  const groups: Group[] = groupOrder.map((key, idx) => ({
-    gid: `${data.task.id}-g${idx}`,
-    label: key === '__ungrouped__' ? '定期薬' : `グループ ${idx + 1}`,
-    method: '一包化',
-    start: seedStart,
-    days: 0,
-    drugs: groupMap.get(key)!,
-  }));
+  const groups: Group[] = groupOrder.map((key, idx) => {
+    const meta = key === UNGROUPED_GROUP_KEY ? null : groupMetaById.get(key);
+    const rows = groupRows.get(key) ?? [];
+    const start = rows.find((row) => row.start_date)?.start_date ?? seedStart;
+    return {
+      gid: `${data.task.id}-g${idx}`,
+      label: key === UNGROUPED_GROUP_KEY ? '定期薬' : meta?.label.trim() || `グループ ${idx + 1}`,
+      method: meta?.method.trim() || '一包化',
+      start,
+      days: rows.find((row) => row.days != null)?.days ?? 0,
+      periodWarning: groupPeriodWarning(rows),
+      drugs: groupMap.get(key) ?? [],
+    };
+  });
   const done = Object.fromEntries(
     data.count_rows
       .filter((row) => row.result_id || row.dispensed_at)
+      .map((row) => [row.line_id, true]),
+  );
+  const quantityConfirmedByDid = Object.fromEntries(
+    data.count_rows
+      .filter((row) => row.result_id || row.dispensed_quantity != null)
       .map((row) => [row.line_id, true]),
   );
 
@@ -294,7 +366,7 @@ export function workbenchFromApi(data: DispenseWorkbenchData): {
     rows: [],
   };
 
-  return { patient, groups, done, audit: {} };
+  return { patient, groups, done, audit: {}, quantityConfirmedByDid };
 }
 
 // ── 公開: 書込結線の実データ識別子（writeContext の dispense/audit 部分） ──
@@ -313,27 +385,33 @@ export function writeContextFromApi(data: DispenseWorkbenchData): {
   cycleId: string;
   cycleVersion: number;
   lineGroupByDid: Record<string, string | null>;
+  lineMetaByDid: Record<string, PrescriptionLineMeta>;
   groupIdByGid: Record<string, string>;
+  groupVersionByGid: Record<string, number>;
 } {
   const lineGroupByDid: Record<string, string | null> = {};
+  const lineMetaByDid: Record<string, PrescriptionLineMeta> = {};
   for (const row of data.count_rows) {
     lineGroupByDid[row.line_id] = row.packaging_group_id ?? null;
+    lineMetaByDid[row.line_id] = {
+      updatedAt: row.line_updated_at,
+      startDate: row.start_date,
+      endDate: row.end_date,
+      days: row.days,
+    };
   }
 
-  // workbenchFromApi の groupOrder と同じ規則で gid を再構成する（出現順）。
-  const groupOrder: string[] = [];
-  const seen = new Set<string>();
-  for (const row of data.count_rows) {
-    const key = row.packaging_group_id ?? '__ungrouped__';
-    if (!seen.has(key)) {
-      seen.add(key);
-      groupOrder.push(key);
-    }
-  }
+  // workbenchFromApi の groupOrder と同じ規則で gid を再構成する。
+  const groupOrder = workbenchGroupOrder(data);
+  const groupMetaById = packagingGroupMetaById(data);
   const groupIdByGid: Record<string, string> = {};
+  const groupVersionByGid: Record<string, number> = {};
   groupOrder.forEach((key, idx) => {
-    if (key === '__ungrouped__') return;
-    groupIdByGid[`${data.task.id}-g${idx}`] = key;
+    if (key === UNGROUPED_GROUP_KEY) return;
+    const gid = `${data.task.id}-g${idx}`;
+    groupIdByGid[gid] = key;
+    const version = groupMetaById.get(key)?.version;
+    if (version !== undefined) groupVersionByGid[gid] = version;
   });
 
   return {
@@ -341,7 +419,9 @@ export function writeContextFromApi(data: DispenseWorkbenchData): {
     cycleId: data.cycle.id,
     cycleVersion: data.cycle.version,
     lineGroupByDid,
+    lineMetaByDid,
     groupIdByGid,
+    groupVersionByGid,
   };
 }
 
@@ -442,6 +522,10 @@ export function calendarWorkbenchStateFromApi(
   ng: Record<string, string>;
   holdInfo: Record<string, HoldInfo>;
 } {
+  const narcoticClassification = matrix.narcotic_classification ?? {
+    unresolved_line_count: 0,
+    status: 'normal' as const,
+  };
   const group: Group = {
     gid: `${patientId}-set-g0`,
     label: 'セット対象',
@@ -450,6 +534,10 @@ export function calendarWorkbenchStateFromApi(
     days: matrix.day_count,
     calendarStart: matrix.period_start,
     calendarDayCount: matrix.day_count,
+    narcoticClassification: {
+      unresolvedLineCount: narcoticClassification.unresolved_line_count,
+      status: narcoticClassification.status,
+    },
     drugs: matrix.rows.map((row) => ({
       did: row.line.id,
       name: row.line.drug_name,

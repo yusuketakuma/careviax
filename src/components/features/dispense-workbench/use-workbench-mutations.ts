@@ -45,12 +45,14 @@ import {
   updateGroups,
   assignLinesToGroup,
   updatePrescriptionLine,
+  updatePrescriptionLines,
 } from './dispensing-workbench.adapter';
 import {
   WorkbenchConflictError,
   WorkbenchWriteError,
   type SubmitDispenseResultsInput,
   type SubmitDispenseAuditInput,
+  type UpdatePrescriptionLinesInput,
   type CellMutationInput,
   type SubmitSetAuditInput,
   type CreateCycleHoldInput,
@@ -317,7 +319,7 @@ export function useWorkbenchMutations(args: {
         method?: string;
         slot?: string | null;
         sort_order?: number;
-        version?: number;
+        version: number;
       }>;
     }) => {
       if (!isRealDataEnabled()) return null;
@@ -336,7 +338,11 @@ export function useWorkbenchMutations(args: {
   const assignLines = useMutation({
     mutationFn: async (vars: {
       taskId: string;
-      assignments: Array<{ line_id: string; packaging_group_id: string | null }>;
+      assignments: Array<{
+        line_id: string;
+        packaging_group_id: string | null;
+        expected_packaging_group_id: string | null;
+      }>;
     }) => {
       if (!isRealDataEnabled()) return null;
       return assignLinesToGroup(vars.taskId, vars.assignments);
@@ -377,6 +383,21 @@ export function useWorkbenchMutations(args: {
     },
   });
 
+  // ── 処方明細の一括期間編集（PATCH /api/dispense-tasks/[taskId]/lines）──
+  const editLines = useMutation({
+    mutationFn: async (input: UpdatePrescriptionLinesInput) => {
+      if (!isRealDataEnabled()) return null;
+      return updatePrescriptionLines(input);
+    },
+    onError: (error) => {
+      reportWorkbenchError(error, '明細の一括保存に失敗しました');
+      if (error instanceof WorkbenchConflictError) recoverWorkbench();
+    },
+    onSettled: () => {
+      if (isRealDataEnabled()) invalidateWorkbench();
+    },
+  });
+
   return {
     completeDispense,
     completeAudit,
@@ -389,6 +410,7 @@ export function useWorkbenchMutations(args: {
     saveGroups,
     assignLines,
     editLine,
+    editLines,
     /** いずれかの書込が進行中（シェルがグローバルな二重送信ガードに使える）。 */
     isAnyPending:
       completeDispense.isPending ||
@@ -401,7 +423,8 @@ export function useWorkbenchMutations(args: {
       createPackagingGroup.isPending ||
       saveGroups.isPending ||
       assignLines.isPending ||
-      editLine.isPending,
+      editLine.isPending ||
+      editLines.isPending,
   };
 }
 

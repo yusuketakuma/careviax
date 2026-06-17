@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import { withAuthContext } from '@/lib/auth/context';
 import { hasPermission } from '@/lib/auth/permissions';
 import { withOrgContext } from '@/lib/db/rls';
@@ -18,12 +19,25 @@ class PackagingGroupConflict extends Error {
   }
 }
 
+/** 処方明細グループ割当の期待所属不一致。 */
+class PackagingAssignmentConflict extends Error {
+  constructor(
+    public readonly lineId: string,
+    public readonly expectedPackagingGroupId: string | null,
+    public readonly currentPackagingGroupId: string | null,
+  ) {
+    super(`PrescriptionLine ${lineId} packaging group conflict`);
+    this.name = 'PackagingAssignmentConflict';
+  }
+}
+
 /**
  * 調剤ワークベンチ 一包化グループ(PackagingGroup) CRUD + 行割当 API。
  *
  * `[id]` は DispenseTask.id。タスクの cycle 配下で:
  * - POST: 新しい一包化グループを作成する(group_key / label / method / slot / sort_order)
  * - PATCH: グループ属性の一括更新(groups[]) または 処方明細のグループ割当(assignments[])
+ *   assignments[] は stale D&D 防止のため expected_packaging_group_id を必須にする
  *
  * 権限は canDispense(薬剤師の調剤方法決定)。確定操作は監査ログ(createAuditLogEntry)に
  * 記録し、サーバ信頼時刻(AuditLog.created_at @default(now()))・操作者(ctx.userId)を残す。
@@ -54,6 +68,60 @@ async function resolveTaskCycleId(
 
 // ── POST: グループ作成 ──
 
+const packagingGroupCreateSelect = {
+  id: true,
+  cycle_id: true,
+  group_key: true,
+  label: true,
+  method: true,
+  slot: true,
+  sort_order: true,
+  version: true,
+} as const;
+
+type PackagingGroupCreateDto = Prisma.PackagingGroupGetPayload<{
+  select: typeof packagingGroupCreateSelect;
+}>;
+
+type PackagingGroupReader = {
+  packagingGroup: {
+    findFirst: (args: {
+      where: Prisma.PackagingGroupWhereInput;
+      select: typeof packagingGroupCreateSelect;
+    }) => Promise<PackagingGroupCreateDto | null>;
+  };
+};
+
+function isUniqueConstraintError(error: unknown) {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}
+
+function findPackagingGroupByKey(
+  client: PackagingGroupReader,
+  args: { orgId: string; cycleId: string; groupKey: string },
+) {
+  return client.packagingGroup.findFirst({
+    where: {
+      org_id: args.orgId,
+      cycle_id: args.cycleId,
+      group_key: args.groupKey,
+    },
+    select: packagingGroupCreateSelect,
+  });
+}
+
+function sameCreatePayload(
+  existing: PackagingGroupCreateDto,
+  input: z.infer<typeof createGroupSchema>,
+) {
+  return (
+    existing.label === input.label &&
+    existing.method === input.method &&
+    (existing.slot ?? null) === (input.slot ?? null) &&
+    existing.sort_order === (input.sort_order ?? 0)
+  );
+}
+
 const createGroupSchema = z.object({
   group_key: z.string().trim().min(1, 'group_key は必須です'),
   label: z.string().trim().min(1, 'label は必須です'),
@@ -81,42 +149,89 @@ export const POST = withAuthContext(async (req, ctx, { params }) => {
   const cycleId = await resolveTaskCycleId(ctx, id);
   if (!cycleId) return notFound('タスクが見つかりません');
 
-  const group = await withOrgContext(ctx.orgId, async (tx) => {
-    const created = await tx.packagingGroup.create({
-      data: {
-        org_id: ctx.orgId,
-        cycle_id: cycleId,
-        group_key: parsed.data.group_key,
-        label: parsed.data.label,
-        method: parsed.data.method,
-        slot: parsed.data.slot ?? null,
-        sort_order: parsed.data.sort_order ?? 0,
+  let result:
+    | { kind: 'success'; group: PackagingGroupCreateDto; created: boolean }
+    | { kind: 'conflict'; group: PackagingGroupCreateDto };
+  try {
+    result = await withOrgContext(ctx.orgId, async (tx) => {
+      const existing = await findPackagingGroupByKey(tx, {
+        orgId: ctx.orgId,
+        cycleId,
+        groupKey: parsed.data.group_key,
+      });
+      if (existing) {
+        return sameCreatePayload(existing, parsed.data)
+          ? { kind: 'success' as const, group: existing, created: false }
+          : { kind: 'conflict' as const, group: existing };
+      }
+
+      const created = await tx.packagingGroup.create({
+        data: {
+          org_id: ctx.orgId,
+          cycle_id: cycleId,
+          group_key: parsed.data.group_key,
+          label: parsed.data.label,
+          method: parsed.data.method,
+          slot: parsed.data.slot ?? null,
+          sort_order: parsed.data.sort_order ?? 0,
+        },
+        select: packagingGroupCreateSelect,
+      });
+
+      await createAuditLogEntry(tx, ctx, {
+        action: 'packaging_group.create',
+        targetType: 'PackagingGroup',
+        targetId: created.id,
+        changes: {
+          cycle_id: cycleId,
+          group_key: created.group_key,
+          label: created.label,
+          method: created.method,
+          slot: created.slot,
+          sort_order: created.sort_order,
+        },
+      });
+
+      return { kind: 'success' as const, group: created, created: true };
+    });
+  } catch (cause) {
+    if (!isUniqueConstraintError(cause)) throw cause;
+
+    const existing = await withOrgContext(ctx.orgId, (tx) =>
+      findPackagingGroupByKey(tx, {
+        orgId: ctx.orgId,
+        cycleId,
+        groupKey: parsed.data.group_key,
+      }),
+    );
+    if (!existing) throw cause;
+    result = sameCreatePayload(existing, parsed.data)
+      ? { kind: 'success', group: existing, created: false }
+      : { kind: 'conflict', group: existing };
+  }
+
+  if (result.kind === 'conflict') {
+    return conflict('同じ group_key の一包化グループが別内容で既に存在します', {
+      packaging_group_id: result.group.id,
+      group_key: result.group.group_key,
+    });
+  }
+
+  if (result.created) {
+    await notifyWorkflowMutation({
+      orgId: ctx.orgId,
+      payload: {
+        source: 'dispense_tasks_update',
+        task_id: id,
+        packaging_group_id: result.group.id,
       },
     });
+  }
 
-    await createAuditLogEntry(tx, ctx, {
-      action: 'packaging_group.create',
-      targetType: 'PackagingGroup',
-      targetId: created.id,
-      changes: {
-        cycle_id: cycleId,
-        group_key: created.group_key,
-        label: created.label,
-        method: created.method,
-        slot: created.slot,
-        sort_order: created.sort_order,
-      },
-    });
-
-    return created;
-  });
-
-  await notifyWorkflowMutation({
-    orgId: ctx.orgId,
-    payload: { source: 'dispense_tasks_update', task_id: id, packaging_group_id: group.id },
-  });
-
-  return success({ data: group }, 201);
+  return success(
+    { data: { ...result.group, created: result.created } },
+    result.created ? 201 : 200,
+  );
 });
 
 // ── PATCH: グループ更新(groups[]) / 行割当(assignments[])──
@@ -128,7 +243,7 @@ const groupUpdateItemSchema = z
     method: z.string().trim().min(1).optional(),
     slot: z.string().trim().min(1).nullable().optional(),
     sort_order: z.number().int().min(0).optional(),
-    version: z.number().int().min(0).optional(),
+    version: z.number().int().min(0, 'version は必須です'),
   })
   .refine(
     (item) =>
@@ -142,6 +257,7 @@ const groupUpdateItemSchema = z
 const assignmentItemSchema = z.object({
   line_id: z.string().trim().min(1, 'line_id は必須です'),
   packaging_group_id: z.string().trim().min(1).nullable(),
+  expected_packaging_group_id: z.string().trim().min(1).nullable(),
 });
 
 const patchSchema = z.union([
@@ -198,10 +314,10 @@ async function updateGroups(
     return notFound('対象の一包化グループが見つかりません');
   }
 
-  let updated: { id: string }[];
+  let updated: { id: string; version: number }[];
   try {
     updated = await withOrgContext(ctx.orgId, async (tx) => {
-      const results: { id: string }[] = [];
+      const results: { id: string; version: number }[] = [];
 
       for (const group of groups) {
         const before = existingById.get(group.id);
@@ -253,11 +369,12 @@ async function updateGroups(
               method: data.method ?? before.method,
               slot: data.slot !== undefined ? data.slot : before.slot,
               sort_order: data.sort_order ?? before.sort_order,
+              version: before.version + 1,
             },
           },
         });
 
-        results.push({ id: group.id });
+        results.push({ id: group.id, version: before.version + 1 });
       }
 
       return results;
@@ -318,35 +435,63 @@ async function assignLines(
     }
   }
 
-  const assigned = await withOrgContext(ctx.orgId, async (tx) => {
-    const results: { line_id: string }[] = [];
+  let assigned: { line_id: string }[];
+  try {
+    assigned = await withOrgContext(ctx.orgId, async (tx) => {
+      const results: { line_id: string }[] = [];
 
-    for (const assignment of assignments) {
-      const before = lineById.get(assignment.line_id);
-      if (!before) {
-        throw new Error(`PrescriptionLine ${assignment.line_id} disappeared mid-transaction`);
+      for (const assignment of assignments) {
+        const before = lineById.get(assignment.line_id);
+        if (!before) {
+          throw new Error(`PrescriptionLine ${assignment.line_id} disappeared mid-transaction`);
+        }
+
+        const result = await tx.prescriptionLine.updateMany({
+          where: {
+            id: assignment.line_id,
+            org_id: ctx.orgId,
+            intake: { cycle_id: cycleId },
+            packaging_group_id: assignment.expected_packaging_group_id,
+          },
+          data: { packaging_group_id: assignment.packaging_group_id },
+        });
+        if (result.count === 0) {
+          const current = await tx.prescriptionLine.findFirst({
+            where: { id: assignment.line_id, org_id: ctx.orgId, intake: { cycle_id: cycleId } },
+            select: { packaging_group_id: true },
+          });
+          throw new PackagingAssignmentConflict(
+            assignment.line_id,
+            assignment.expected_packaging_group_id,
+            current?.packaging_group_id ?? null,
+          );
+        }
+
+        await createAuditLogEntry(tx, ctx, {
+          action: 'packaging_group.assign',
+          targetType: 'PrescriptionLine',
+          targetId: assignment.line_id,
+          changes: {
+            before: { packaging_group_id: before.packaging_group_id },
+            after: { packaging_group_id: assignment.packaging_group_id },
+          },
+        });
+
+        results.push({ line_id: assignment.line_id });
       }
 
-      await tx.prescriptionLine.updateMany({
-        where: { id: assignment.line_id, org_id: ctx.orgId, intake: { cycle_id: cycleId } },
-        data: { packaging_group_id: assignment.packaging_group_id },
+      return results;
+    });
+  } catch (cause) {
+    if (cause instanceof PackagingAssignmentConflict) {
+      return conflict('処方明細のグループ割当が他の操作で更新されています', {
+        line_id: cause.lineId,
+        expected_packaging_group_id: cause.expectedPackagingGroupId,
+        current_packaging_group_id: cause.currentPackagingGroupId,
       });
-
-      await createAuditLogEntry(tx, ctx, {
-        action: 'packaging_group.assign',
-        targetType: 'PrescriptionLine',
-        targetId: assignment.line_id,
-        changes: {
-          before: { packaging_group_id: before.packaging_group_id },
-          after: { packaging_group_id: assignment.packaging_group_id },
-        },
-      });
-
-      results.push({ line_id: assignment.line_id });
     }
-
-    return results;
-  });
+    throw cause;
+  }
 
   await notifyWorkflowMutation({
     orgId: ctx.orgId,

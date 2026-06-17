@@ -6,6 +6,7 @@ import {
   createInstrumentedPage,
   openStableRoute,
 } from './helpers/local-auth';
+import { apiPathPattern, fulfillJson, readRouteBody } from './helpers/route-mocks';
 
 const E2E_DB_CONNECTION_STRING = (
   process.env.DATABASE_URL ?? 'postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public'
@@ -49,6 +50,266 @@ type SetAuditChainState = {
   create_audit_logs_with_full_carry_packet_evidence: number;
   cell_audit_logs: number;
 };
+
+type DispenseResultsPayload = {
+  task_id: string;
+  expected_version: number;
+  lines: Array<{
+    line_id: string;
+    actual_quantity: number;
+    actual_quantity_source?: string;
+    actual_unit?: string;
+    discrepancy_reason?: string;
+  }>;
+};
+
+const ROUTE_MOCK_PATIENT_ID = 'dispense_route_mock_patient';
+const ROUTE_MOCK_CYCLE_ID = 'dispense_route_mock_cycle';
+const ROUTE_MOCK_TASK_ID = 'dispense_route_mock_task';
+const ROUTE_MOCK_SET_PATIENT_ID = 'set_route_mock_patient';
+const ROUTE_MOCK_SET_PLAN_ID = 'set_route_mock_plan';
+const ROUTE_MOCK_SET_CYCLE_ID = 'set_route_mock_cycle';
+
+async function routeMockDispenseWorkbench(page: Page) {
+  await page.route(apiPathPattern('/api/dispense-workbench/patients'), async (route) => {
+    await fulfillJson(route, {
+      data: [
+        {
+          patient_id: ROUTE_MOCK_PATIENT_ID,
+          cycle_id: ROUTE_MOCK_CYCLE_ID,
+          name: '経路 花子',
+          name_kana: 'ケイロ ハナコ',
+          overall_status: 'dispensing',
+          badge: 'in_progress',
+          start_date: '2026-06-10',
+          registered_date: '2026-06-09',
+          latest_set_plan_id: null,
+          latest_set_plan_cycle_id: null,
+        },
+      ],
+    });
+  });
+
+  await page.route(apiPathPattern('/api/dispense-tasks'), async (route) => {
+    await fulfillJson(route, {
+      data: [{ id: ROUTE_MOCK_TASK_ID, status: 'in_progress', cycle_id: ROUTE_MOCK_CYCLE_ID }],
+    });
+  });
+
+  await page.route(
+    apiPathPattern(`/api/dispense-tasks/${ROUTE_MOCK_TASK_ID}/workbench`),
+    async (route) => {
+      await fulfillJson(route, {
+        task: { id: ROUTE_MOCK_TASK_ID, status: 'in_progress', priority: 'normal', due_date: null },
+        cycle: { id: ROUTE_MOCK_CYCLE_ID, overall_status: 'dispensing', version: 9 },
+        patient: { id: ROUTE_MOCK_PATIENT_ID, name: '経路 花子' },
+        intake: {
+          id: 'dispense_route_mock_intake',
+          prescribed_date: '2026-06-10',
+          prescriber_institution: '経路クリニック',
+          prescriber_name: '検証 医師',
+        },
+        previous_intake: { prescribed_date: '2026-05-20' },
+        safety: {
+          allergy: null,
+          renal: null,
+          handling_tags: [],
+          swallowing: null,
+          cautions: ['Route-mocked workbench smoke'],
+        },
+        comparison: [
+          {
+            key: 'cmp-1',
+            drug_name: 'アムロジピン錠5mg',
+            previous_label: '前回 7錠',
+            current_label: '今回 14錠',
+            change_type: 'days_changed',
+            direction: 'increase',
+            inquiry_origin: false,
+          },
+        ],
+        count_rows: [
+          {
+            line_id: 'line_tablet',
+            result_id: null,
+            line_number: 1,
+            drug_name: 'アムロジピン錠5mg',
+            dose: '1回1錠',
+            frequency: '朝夕食後',
+            route: 'internal',
+            tags: ['unit_dose'],
+            is_narcotic: false,
+            is_generic: true,
+            prescribed_label: '14錠',
+            prescribed_quantity: 14,
+            start_date: '2026-06-10',
+            end_date: '2026-06-23',
+            days: 14,
+            line_updated_at: '2026-06-10T00:00:00.000Z',
+            dispensed_label: null,
+            dispensed_at: null,
+            dispensed_quantity: null,
+            discrepancy_reason: null,
+            unit: '錠',
+            dispensing_method: null,
+            packaging_method: 'unit_dose',
+            packaging_instructions: null,
+            packaging_group_id: 'group_route_mock',
+          },
+          {
+            line_id: 'line_package',
+            result_id: null,
+            line_number: 2,
+            drug_name: '酸化マグネシウム包',
+            dose: '1回1包',
+            frequency: '夕食後',
+            route: 'internal',
+            tags: ['unit_dose'],
+            is_narcotic: false,
+            is_generic: false,
+            prescribed_label: '7包',
+            prescribed_quantity: 7,
+            start_date: '2026-06-17',
+            end_date: '2026-06-23',
+            days: 7,
+            line_updated_at: '2026-06-11T00:00:00.000Z',
+            dispensed_label: null,
+            dispensed_at: null,
+            dispensed_quantity: null,
+            discrepancy_reason: null,
+            unit: '包',
+            dispensing_method: null,
+            packaging_method: 'unit_dose',
+            packaging_instructions: null,
+            packaging_group_id: 'group_route_mock',
+          },
+        ],
+        packaging_groups: [
+          {
+            id: 'group_route_mock',
+            label: '朝夕食後袋',
+            method: '一包化',
+            slot: 'morning_evening',
+            sort_order: 1,
+            version: 1,
+          },
+        ],
+        dispenser: null,
+        auditor: { id: 'auditor_route_mock', name: '監査 太郎' },
+        is_self_audit: false,
+        has_narcotic: false,
+        visit_time_label: null,
+        resolved_inquiry: null,
+        team_audit_total: 0,
+        stock_check_date_label: null,
+      });
+    },
+  );
+}
+
+function emptySetCalendarCell(overrides: Record<string, unknown> = {}) {
+  return {
+    batch_id: null,
+    state: 'empty',
+    quantity: null,
+    carry_type: null,
+    set_state: null,
+    audit_state: null,
+    ng_code: null,
+    held_reason: null,
+    version: null,
+    ...overrides,
+  };
+}
+
+async function routeMockSetWorkbench(page: Page) {
+  await page.route(apiPathPattern('/api/dispense-workbench/patients'), async (route) => {
+    await fulfillJson(route, {
+      data: [
+        {
+          patient_id: ROUTE_MOCK_SET_PATIENT_ID,
+          cycle_id: ROUTE_MOCK_SET_CYCLE_ID,
+          name: '分類 太郎',
+          name_kana: 'ブンルイ タロウ',
+          overall_status: 'setting',
+          badge: 'audited',
+          start_date: '2026-06-17',
+          registered_date: '2026-06-01',
+          latest_set_plan_id: ROUTE_MOCK_SET_PLAN_ID,
+          latest_set_plan_cycle_id: ROUTE_MOCK_SET_CYCLE_ID,
+        },
+      ],
+    });
+  });
+
+  await page.route(
+    apiPathPattern(`/api/set-plans/${ROUTE_MOCK_SET_PLAN_ID}/calendar`),
+    async (route) => {
+      await fulfillJson(route, {
+        data: {
+          plan_id: ROUTE_MOCK_SET_PLAN_ID,
+          cycle_id: ROUTE_MOCK_SET_CYCLE_ID,
+          cycle_version: 3,
+          cycle_status: 'setting',
+          set_method: 'facility_calendar',
+          narcotic_classification: {
+            unresolved_line_count: 1,
+            status: 'needs_review',
+          },
+          period_start: '2026-06-17',
+          period_end: '2026-06-17',
+          day_count: 1,
+          slots: ['morning', 'noon', 'evening', 'bedtime', 'prn'],
+          rows: [
+            {
+              line: {
+                id: 'line_unclassified',
+                drug_name: 'コード未登録薬',
+                dose: '1錠',
+                frequency: '朝食後',
+                route: 'internal',
+                unit: '錠',
+                packaging_instruction_tags: [],
+              },
+              days: [
+                {
+                  day_number: 1,
+                  date: '2026-06-17',
+                  cells: {
+                    morning: emptySetCalendarCell({
+                      batch_id: 'batch_unclassified_morning',
+                      state: 'set',
+                      quantity: 1,
+                      carry_type: 'carry',
+                      set_state: 'set',
+                      audit_state: 'pending',
+                      version: 2,
+                    }),
+                    noon: emptySetCalendarCell(),
+                    evening: emptySetCalendarCell(),
+                    bedtime: emptySetCalendarCell(),
+                    prn: emptySetCalendarCell(),
+                  },
+                },
+              ],
+            },
+          ],
+          completion_gate: {
+            total_cells: 1,
+            set_cells: 1,
+            pending_cells: 0,
+            hold_cells: 0,
+            audited_ok_cells: 0,
+            audited_ng_cells: 0,
+            unaudited_cells: 1,
+            set_complete: true,
+            audit_complete: false,
+          },
+        },
+      });
+    },
+  );
+}
 
 function formatSetCalendarPeriod(start: string, dayCount: number) {
   const [yearText, monthText, dayText] = start.split('-');
@@ -505,6 +766,80 @@ test.describe('dispense → audit flow', () => {
     expect(errors).toEqual([]);
   });
 
+  test('route-mocked workbench preserves key controls and submits unit-aware quantities', async ({
+    context,
+  }) => {
+    test.slow();
+    const { page, errors } = await createInstrumentedPage(context);
+    let submitted: DispenseResultsPayload | null = null;
+
+    await page.addInitScript(() => {
+      window.localStorage.removeItem('chouzai-workbench');
+    });
+    await routeMockDispenseWorkbench(page);
+    await page.route(apiPathPattern('/api/dispense-results'), async (route) => {
+      submitted = readRouteBody<DispenseResultsPayload>(route);
+      await fulfillJson(route, { task_id: ROUTE_MOCK_TASK_ID }, 201);
+    });
+
+    await openStableRoute(page, '/dispense');
+
+    const main = page.locator('main');
+    await expect(main.getByRole('navigation', { name: '工程タブ' })).toBeVisible();
+    await expect(main.getByRole('link', { name: '調剤', exact: true })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await expect(main.getByText('患者(P)')).toHaveCount(0);
+    await expect(main.getByText('調剤(C)')).toHaveCount(0);
+    await expect(main.getByRole('button', { name: /前回処方と比較/ })).toBeVisible();
+    await expect(main.getByRole('button', { name: /新規グループ/ })).toBeVisible();
+    await expect(main.getByText('期間混在 2種類')).toBeVisible();
+
+    const tabletQuantityInput = main.getByLabel('アムロジピン錠5mg 実数量');
+    const packageQuantityInput = main.getByLabel('酸化マグネシウム包 実数量');
+    await expect(tabletQuantityInput).toHaveAttribute('step', '0.5');
+    await expect(packageQuantityInput).toHaveAttribute('step', '1');
+
+    await main.getByRole('button', { name: /前回処方と比較/ }).click();
+    const compareDialog = main.getByRole('dialog', { name: /前回処方との比較/ });
+    await expect(compareDialog).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(compareDialog).toBeHidden();
+
+    await main.getByRole('button', { name: '全て調剤済' }).click();
+    await tabletQuantityInput.fill('12.5');
+    await main.getByRole('button', { name: /アムロジピン錠5mg.*実数量確認/ }).click();
+    await main.getByLabel('アムロジピン錠5mg 数量差異理由').fill('残薬調整');
+    await main.getByRole('button', { name: /酸化マグネシウム包.*実数量確認/ }).click();
+
+    await main.getByRole('button', { name: '調剤完了 → 監査へ ▶' }).click();
+    await expect.poll(() => submitted, { timeout: 15_000 }).not.toBeNull();
+    expect(submitted).toMatchObject({
+      task_id: ROUTE_MOCK_TASK_ID,
+      expected_version: 9,
+      lines: expect.arrayContaining([
+        expect.objectContaining({
+          line_id: 'line_tablet',
+          actual_quantity: 12.5,
+          actual_quantity_confirmed: true,
+          actual_quantity_source: 'manual_entry',
+          actual_unit: '錠',
+          discrepancy_reason: '残薬調整',
+        }),
+        expect.objectContaining({
+          line_id: 'line_package',
+          actual_quantity: 7,
+          actual_quantity_confirmed: true,
+          actual_quantity_source: 'prescription_quantity_confirmed',
+          actual_unit: '包',
+        }),
+      ]),
+    });
+
+    expect(errors).toEqual([]);
+  });
+
   test('dispense → audit navigation works', async ({ context }) => {
     test.slow();
     const { page, errors } = await createInstrumentedPage(context);
@@ -585,6 +920,25 @@ test.describe('dispense → audit flow', () => {
 test.describe('set → set-audit real-data direct entry', () => {
   test.beforeEach(async ({ context }) => {
     await attachLocalSession(context);
+  });
+
+  test('route-mocked set workbench shows narcotic classification review chip', async ({
+    context,
+  }) => {
+    const { page, errors } = await createInstrumentedPage(context);
+    await page.addInitScript(() => {
+      window.localStorage.removeItem('chouzai-workbench');
+    });
+    await routeMockSetWorkbench(page);
+
+    await openStableRoute(page, '/set');
+
+    const main = page.locator('main');
+    await expect(main.getByRole('navigation', { name: '工程タブ' })).toBeVisible();
+    await expect(main.getByText('麻薬分類未確認 1剤')).toBeVisible();
+    await expect(main.getByText('特記なし')).toHaveCount(0);
+
+    expect(errors).toEqual([]);
   });
 
   test('set workbench resolves patient SetPlan calendar data on direct entry', async ({

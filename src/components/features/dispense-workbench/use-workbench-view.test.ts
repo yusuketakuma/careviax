@@ -105,6 +105,41 @@ describe('buildView calendar period', () => {
     expect(view.gate.text).toContain('未セット 1');
   });
 
+  it('shows a narcotic classification review chip without falling back to no-notes', () => {
+    const view = buildView({
+      phase: 'setp',
+      selId: patient.id,
+      sortMode: 'start',
+      done: {},
+      audit: {},
+      setCells: {},
+      auditCells: {},
+      outChk: {},
+      checks: {},
+      ng: {},
+      target: null,
+      holdModal: null,
+      holdInfo: {},
+      packet: {},
+      compareOpen: false,
+      model: {
+        patient_api: [
+          {
+            ...singleRowGroup,
+            narcoticClassification: {
+              unresolvedLineCount: 2,
+              status: 'needs_review',
+            },
+          },
+        ],
+      },
+      patients: [patient],
+    });
+
+    expect(view.setChips.map((chip) => chip.label)).toContain('麻薬分類未確認 2剤');
+    expect(view.setChips.map((chip) => chip.label)).not.toContain('特記なし');
+  });
+
   it('does not fall back to seed patients when real-data hydration reports an empty patient list', () => {
     const view = buildView({
       phase: 'dispense',
@@ -175,6 +210,142 @@ describe('buildView calendar period', () => {
       audit: { line_1: true },
     });
     expect(allowedAudit.primary.cursor).toBe('pointer');
+  });
+
+  it('blocks audit primary when narcotic double-count evidence is incomplete', () => {
+    const narcoticModel: WorkbenchModel = {
+      patient_api: [
+        {
+          ...singleRowGroup,
+          drugs: [
+            {
+              ...singleRowGroup.drugs[0]!,
+              isNarcotic: true,
+              dispensedQuantity: 12,
+              unit: '錠',
+            },
+          ],
+        },
+      ],
+    };
+    const base = {
+      phase: 'audit' as const,
+      selId: patient.id,
+      sortMode: 'start' as const,
+      done: { line_1: true },
+      audit: { line_1: true },
+      setCells: {},
+      auditCells: {},
+      outChk: {},
+      checks: {},
+      ng: {},
+      target: null,
+      holdModal: null,
+      holdInfo: {},
+      packet: {},
+      compareOpen: false,
+      model: narcoticModel,
+      patients: [patient],
+    };
+
+    const blocked = buildView({
+      ...base,
+      auditDoubleCountByDid: { line_1: { first: '12', second: '' } },
+    });
+    expect(blocked.primary.cursor).toBe('not-allowed');
+    expect(blocked.gate).toMatchObject({
+      ok: false,
+      text: '麻薬ダブルカウント未完了',
+    });
+
+    const allowed = buildView({
+      ...base,
+      auditDoubleCountByDid: { line_1: { first: '12', second: '12' } },
+    });
+    expect(allowed.primary.cursor).toBe('pointer');
+  });
+
+  it('derives actual quantity input step from the prescription unit', () => {
+    const view = buildView({
+      phase: 'dispense',
+      selId: patient.id,
+      sortMode: 'start',
+      done: {},
+      audit: {},
+      setCells: {},
+      auditCells: {},
+      outChk: {},
+      checks: {},
+      ng: {},
+      target: null,
+      holdModal: null,
+      holdInfo: {},
+      packet: {},
+      compareOpen: false,
+      model: {
+        patient_api: [
+          {
+            ...singleRowGroup,
+            drugs: [
+              {
+                ...singleRowGroup.drugs[0]!,
+                prescribedQuantity: 14,
+                unit: '包',
+              },
+            ],
+          },
+        ],
+      },
+      patients: [patient],
+    });
+
+    const drugRow = view.rows.find((row) => row.kind === 'drug');
+    expect(drugRow).toMatchObject({
+      actualQuantityStep: '1',
+      actualQuantityInputMode: 'numeric',
+      actualQuantityInput: '14',
+    });
+  });
+
+  it('passes group period warnings through to section rows', () => {
+    const view = buildView({
+      phase: 'dispense',
+      selId: patient.id,
+      sortMode: 'start',
+      done: {},
+      audit: {},
+      setCells: {},
+      auditCells: {},
+      outChk: {},
+      checks: {},
+      ng: {},
+      target: null,
+      holdModal: null,
+      holdInfo: {},
+      packet: {},
+      compareOpen: false,
+      model: {
+        patient_api: [
+          {
+            ...singleRowGroup,
+            periodWarning: {
+              kind: 'mixed_period',
+              label: '期間混在 2種類',
+              detail: '2026-06-10〜2026-06-23 14日 / 2026-06-17〜2026-06-23 7日',
+            },
+          },
+        ],
+      },
+      patients: [patient],
+    });
+
+    expect(view.rows[0]).toMatchObject({
+      kind: 'sec',
+      periodWarning: {
+        kind: 'mixed_period',
+        label: '期間混在 2種類',
+      },
+    });
   });
 
   it('keeps dispense and audit primary actions disabled when only some visible rows are checked', () => {

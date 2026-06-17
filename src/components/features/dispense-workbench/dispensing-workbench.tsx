@@ -132,6 +132,7 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
         model: { [wb.patient.id]: wb.groups },
         done: wb.done,
         audit: wb.audit,
+        quantityConfirmedByDid: wb.quantityConfirmedByDid,
       });
       // 書込結線の id 束を store へ充填（mutations hook が読む）。
       setWriteContext(wb.writeContext);

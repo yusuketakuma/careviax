@@ -5,8 +5,20 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mutateCellMock, loadCalendarWriteContextAsyncMock, toastErrorMock } = vi.hoisted(() => ({
+const {
+  mutateCellMock,
+  assignLinesToGroupMock,
+  updatePrescriptionLinesMock,
+  loadPatientsAsyncMock,
+  loadWorkbenchAsyncMock,
+  loadCalendarWriteContextAsyncMock,
+  toastErrorMock,
+} = vi.hoisted(() => ({
   mutateCellMock: vi.fn(),
+  assignLinesToGroupMock: vi.fn(),
+  updatePrescriptionLinesMock: vi.fn(),
+  loadPatientsAsyncMock: vi.fn(),
+  loadWorkbenchAsyncMock: vi.fn(),
   loadCalendarWriteContextAsyncMock: vi.fn(),
   toastErrorMock: vi.fn(),
 }));
@@ -23,8 +35,8 @@ vi.mock('sonner', () => ({
 
 vi.mock('./dispensing-workbench.adapter', () => ({
   isRealDataEnabled: () => true,
-  loadPatientsAsync: vi.fn(),
-  loadWorkbenchAsync: vi.fn(),
+  loadPatientsAsync: loadPatientsAsyncMock,
+  loadWorkbenchAsync: loadWorkbenchAsyncMock,
   loadCalendarWriteContextAsync: loadCalendarWriteContextAsyncMock,
   submitDispenseResults: vi.fn(),
   submitDispenseAudit: vi.fn(),
@@ -35,13 +47,18 @@ vi.mock('./dispensing-workbench.adapter', () => ({
   resolveCycleHold: vi.fn(),
   createGroup: vi.fn(),
   updateGroups: vi.fn(),
-  assignLinesToGroup: vi.fn(),
+  assignLinesToGroup: assignLinesToGroupMock,
   updatePrescriptionLine: vi.fn(),
+  updatePrescriptionLines: updatePrescriptionLinesMock,
 }));
 
 import { WorkbenchConflictError } from './dispensing-workbench.write-types';
 import { useWorkbenchStore } from './dispensing-workbench.store';
-import { calendarQueryKey, useWorkbenchMutations } from './use-workbench-mutations';
+import {
+  calendarQueryKey,
+  useWorkbenchMutations,
+  workbenchQueryKey,
+} from './use-workbench-mutations';
 
 function createWrapper(queryClient: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {
@@ -156,5 +173,92 @@ describe('useWorkbenchMutations recovery', () => {
     expect(useWorkbenchStore.getState().writeContext.cellMeta['patient_1:0:朝'].versions).toEqual([
       9,
     ]);
+  });
+
+  it('refetches and directly rehydrates the active workbench after a line assignment conflict', async () => {
+    const patient = {
+      id: 'patient_1',
+      name: '計画 花子',
+      kana: 'ケイカク ハナコ',
+      dob: '1940/01/01',
+      age: 86,
+      sex: '女',
+      sub: '',
+      short: '計',
+      chips: [],
+      regist: '2026/04/01',
+      seedStart: '2026-04-01',
+      seedDays: 14,
+      yosei: '可',
+      changes: [],
+      biko: [],
+      rows: [],
+    };
+    assignLinesToGroupMock.mockRejectedValue(
+      new WorkbenchConflictError({
+        message: '処方明細のグループ割当が他の操作で更新されています',
+      }),
+    );
+    loadPatientsAsyncMock.mockResolvedValue([patient]);
+    loadWorkbenchAsyncMock.mockResolvedValue({
+      patient,
+      groups: [
+        {
+          gid: 'group_3',
+          label: '夕食後',
+          method: '一包化',
+          start: '2026-04-01',
+          days: 14,
+          drugs: [],
+        },
+      ],
+      done: {},
+      audit: {},
+      writeContext: {
+        taskId: 'task_1',
+        cycleId: 'cycle_1',
+        cycleVersion: 5,
+        lineGroupByDid: { line_1: 'packaging_group_3' },
+        groupIdByGid: { group_3: 'packaging_group_3' },
+      },
+    });
+
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+    const refetchSpy = vi.spyOn(queryClient, 'refetchQueries');
+    const { result } = renderHook(
+      () => useWorkbenchMutations({ patientId: 'patient_1', planId: null, phase: 'dispense' }),
+      { wrapper: createWrapper(queryClient) },
+    );
+
+    result.current.assignLines.mutate({
+      taskId: 'task_1',
+      assignments: [
+        {
+          line_id: 'line_1',
+          packaging_group_id: 'packaging_group_2',
+          expected_packaging_group_id: 'packaging_group_1',
+        },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        '処方明細のグループ割当が他の操作で更新されています 最新の状態を再読み込みします。',
+      );
+    });
+    const queryKey = workbenchQueryKey('org_1', 'patient_1');
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey });
+    expect(refetchSpy).toHaveBeenCalledWith({ queryKey, type: 'active' });
+    await waitFor(() => {
+      expect(useWorkbenchStore.getState().writeContext.lineGroupByDid.line_1).toBe(
+        'packaging_group_3',
+      );
+    });
   });
 });

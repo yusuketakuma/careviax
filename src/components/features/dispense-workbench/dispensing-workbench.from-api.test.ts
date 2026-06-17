@@ -5,6 +5,7 @@ import {
   cellMetaFromCalendar,
   patientRowToSeed,
   patientsFromApi,
+  writeContextFromApi,
   workbenchFromApi,
 } from './dispensing-workbench.from-api';
 import type { CalendarMatrixResponse } from './dispensing-workbench.write-types';
@@ -41,10 +42,14 @@ function countRow(over: Partial<WorkbenchCountRow>): WorkbenchCountRow {
     is_generic: false,
     prescribed_label: '',
     prescribed_quantity: null,
+    start_date: null,
+    end_date: null,
     days: null,
+    line_updated_at: '2026-06-18T00:00:00.000Z',
     dispensed_label: null,
     dispensed_at: null,
     dispensed_quantity: null,
+    discrepancy_reason: null,
     unit: '錠',
     dispensing_method: null,
     packaging_method: null,
@@ -248,6 +253,45 @@ describe('workbenchFromApi — 朝昼夕眠前 slots の逆算割付', () => {
     expect(d).toMatchObject({ a: '', h: '', y: '', n: '' });
   });
 
+  it('既存調剤実績数量をDrugと数量確認状態へ写像する', () => {
+    const data = workbenchData({
+      count_rows: [
+        countRow({
+          line_id: 'L4-result',
+          result_id: 'result_1',
+          frequency: '毎食後',
+          prescribed_quantity: 14,
+          dispensed_quantity: 12,
+          discrepancy_reason: '残薬調整',
+          dispensed_at: '2026-06-18',
+          unit: '錠',
+        }),
+      ],
+    });
+    const result = workbenchFromApi(data);
+    const d = result.groups[0].drugs[0];
+    expect(d.prescribedQuantity).toBe(14);
+    expect(d.dispensedQuantity).toBe(12);
+    expect(d.discrepancyReason).toBe('残薬調整');
+    expect(d.unit).toBe('錠');
+    expect(result.done).toEqual({ 'L4-result': true });
+    expect(result.quantityConfirmedByDid).toEqual({ 'L4-result': true });
+  });
+
+  it('麻薬フラグをDrugへ写像する', () => {
+    const data = workbenchData({
+      count_rows: [
+        countRow({
+          line_id: 'L4-narcotic',
+          is_narcotic: true,
+          dispensed_quantity: 12,
+        }),
+      ],
+    });
+
+    expect(workbenchFromApi(data).groups[0].drugs[0].isNarcotic).toBe(true);
+  });
+
   it('頓用は slot を割り付けず tag=頓用', () => {
     const data = workbenchData({
       count_rows: [
@@ -350,11 +394,108 @@ describe('workbenchFromApi — グループ化', () => {
     expect(groups[0].drugs.map((d) => d.did)).toEqual(['U1', 'U2']);
   });
 
-  it('グループ start は intake.prescribed_date を継承', () => {
+  it('グループ start は明細 start_date を優先し、未設定なら intake.prescribed_date を継承', () => {
     const data = workbenchData({
-      count_rows: [countRow({ line_id: 'S1' })],
+      count_rows: [countRow({ line_id: 'S1', start_date: '2026-06-20' })],
     });
-    expect(workbenchFromApi(data).groups[0].start).toBe('2026-06-15');
+    expect(workbenchFromApi(data).groups[0].start).toBe('2026-06-20');
+
+    const fallback = workbenchData({
+      count_rows: [countRow({ line_id: 'S2', start_date: null })],
+    });
+    expect(workbenchFromApi(fallback).groups[0].start).toBe('2026-06-15');
+  });
+
+  it('同一グループ内で服用期間が混在する場合は警告メタを付与する', () => {
+    const data = workbenchData({
+      count_rows: [
+        countRow({
+          line_id: 'M1',
+          drug_name: 'M1',
+          packaging_group_id: 'g-alpha',
+          start_date: '2026-06-10',
+          end_date: '2026-06-23',
+          days: 14,
+        }),
+        countRow({
+          line_id: 'M2',
+          drug_name: 'M2',
+          packaging_group_id: 'g-alpha',
+          start_date: '2026-06-17',
+          end_date: '2026-06-23',
+          days: 7,
+        }),
+      ],
+    });
+
+    expect(workbenchFromApi(data).groups[0]).toMatchObject({
+      periodWarning: {
+        kind: 'mixed_period',
+        label: '期間混在 2種類',
+        detail: '2026-06-10〜2026-06-23 14日 / 2026-06-17〜2026-06-23 7日',
+      },
+    });
+  });
+
+  it('PackagingGroup 正本の label/method/order/version を反映', () => {
+    const data = workbenchData({
+      packaging_groups: [
+        {
+          id: 'g-beta',
+          label: '夕食後袋',
+          method: 'PTP（手撒き）',
+          slot: 'evening',
+          sort_order: 1,
+          version: 7,
+        },
+        {
+          id: 'g-empty',
+          label: '予備袋',
+          method: '一包化',
+          slot: null,
+          sort_order: 2,
+          version: 4,
+        },
+      ],
+      count_rows: [
+        countRow({ line_id: 'B1', drug_name: 'B1', days: 14, packaging_group_id: 'g-beta' }),
+      ],
+    });
+
+    const { groups } = workbenchFromApi(data);
+    expect(groups).toHaveLength(2);
+    expect(groups[0]).toMatchObject({
+      gid: 'task-1-g0',
+      label: '夕食後袋',
+      method: 'PTP（手撒き）',
+      days: 14,
+    });
+    expect(groups[0].drugs.map((drug) => drug.did)).toEqual(['B1']);
+    expect(groups[1]).toMatchObject({
+      gid: 'task-1-g1',
+      label: '予備袋',
+      method: '一包化',
+      drugs: [],
+    });
+
+    expect(writeContextFromApi(data)).toMatchObject({
+      lineMetaByDid: {
+        B1: {
+          updatedAt: '2026-06-18T00:00:00.000Z',
+          startDate: null,
+          endDate: null,
+          days: 14,
+        },
+      },
+      groupIdByGid: {
+        'task-1-g0': 'g-beta',
+        'task-1-g1': 'g-empty',
+      },
+      groupVersionByGid: {
+        'task-1-g0': 7,
+        'task-1-g1': 4,
+      },
+    });
   });
 });
 
@@ -543,6 +684,10 @@ function calendarMatrix(): CalendarMatrixResponse {
     cycle_version: 7,
     cycle_status: 'setting',
     set_method: 'facility_calendar',
+    narcotic_classification: {
+      unresolved_line_count: 2,
+      status: 'needs_review',
+    },
     period_start: '2026-06-17',
     period_end: '2026-06-18',
     day_count: 2,
@@ -674,6 +819,10 @@ describe('calendarWorkbenchStateFromApi / cellMetaFromCalendar', () => {
       days: 2,
       calendarStart: '2026-06-17',
       calendarDayCount: 2,
+      narcoticClassification: {
+        unresolvedLineCount: 2,
+        status: 'needs_review',
+      },
     });
     expect(state.model.patient_1[0].drugs).toEqual([
       expect.objectContaining({

@@ -14,7 +14,7 @@
  * オーバーレイ素地クリックでのみ dismiss（hold-reason-dialog と同方式に統一）。
  */
 
-import { useEffect, useRef, type KeyboardEvent } from 'react';
+import { useLayoutEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 
 import type { Phase, WorkbenchView } from './dispensing-workbench.types';
 import styles from './dispensing-workbench.module.css';
@@ -32,15 +32,28 @@ export function PrescriptionCompareDialog({ view }: PrescriptionCompareDialogPro
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   // 開いたら閉じるボタンへフォーカス（キーボード操作の起点を明示）
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (view.compareOpen) closeButtonRef.current?.focus();
   }, [view.compareOpen]);
+
+  useLayoutEffect(() => {
+    if (!view.compareOpen) return;
+
+    const onDocumentKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      closeCompare();
+    };
+
+    document.addEventListener('keydown', onDocumentKeyDown, { capture: true });
+    return () => document.removeEventListener('keydown', onDocumentKeyDown, { capture: true });
+  }, [closeCompare, view.compareOpen]);
 
   if (!view.compareOpen) return null;
 
   const { cur, cmpCount, compareSections } = view;
 
-  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+  const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Escape') {
       e.stopPropagation();
       closeCompare();
@@ -73,7 +86,8 @@ export function PrescriptionCompareDialog({ view }: PrescriptionCompareDialogPro
         <div className={styles.modalHeaderCompare}>
           <span>前回処方との比較 — {cur.name} 様</span>
           <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.9 }}>
-            継続 {cmpCount.cont} ・ 新規 {cmpCount.neu} ・ 変更 {cmpCount.chg} ・ 中止 {cmpCount.disc}
+            継続 {cmpCount.cont} ・ 新規 {cmpCount.neu} ・ 変更 {cmpCount.chg} ・ 中止{' '}
+            {cmpCount.disc}
           </span>
         </div>
 
@@ -126,9 +140,7 @@ export function PrescriptionCompareDialog({ view }: PrescriptionCompareDialogPro
                       padding: '6px 10px',
                     }}
                   >
-                    <span
-                      style={{ flex: 1, fontSize: 12, fontWeight: 700, color: '#1f3350' }}
-                    >
+                    <span style={{ flex: 1, fontSize: 12, fontWeight: 700, color: '#1f3350' }}>
                       {it.name}
                     </span>
                     <span style={{ fontSize: 11, color: '#69788c' }}>{it.sub}</span>

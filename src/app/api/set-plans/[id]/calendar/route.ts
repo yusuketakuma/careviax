@@ -10,6 +10,11 @@ import {
   type CalendarPivotBatch,
   type CalendarPivotLine,
 } from '@/app/api/medication-sets/workspace/set-derivations';
+import { normalizedDrugCode } from '@/lib/prescription/controlled-handling-tags';
+
+function hasKnownNarcoticClassificationTag(tags: readonly string[]): boolean {
+  return tags.includes('narcotic');
+}
 
 /**
  * GET /api/set-plans/[id]/calendar
@@ -73,6 +78,7 @@ export const GET = withAuthContext<{ id: string }>(
           audit_state: true,
           ng_code: true,
           held_reason: true,
+          packaging_instruction_tags_snapshot: true,
           version: true,
         },
       }),
@@ -84,6 +90,7 @@ export const GET = withAuthContext<{ id: string }>(
             orderBy: { line_number: 'asc' },
             select: {
               id: true,
+              drug_code: true,
               drug_name: true,
               dosage_form: true,
               dose: true,
@@ -99,8 +106,46 @@ export const GET = withAuthContext<{ id: string }>(
       }),
     ]);
 
-    const lines: CalendarPivotLine[] = intakes.flatMap((intake) =>
-      intake.lines.map((line) => ({
+    const lineSafetyTags = new Map<string, Set<string>>();
+    for (const batch of batches) {
+      const snapshotTags = batch.packaging_instruction_tags_snapshot ?? [];
+      if (!snapshotTags.length) continue;
+      const tags = lineSafetyTags.get(batch.line_id) ?? new Set<string>();
+      for (const tag of snapshotTags) tags.add(tag);
+      lineSafetyTags.set(batch.line_id, tags);
+    }
+
+    const intakeLines = intakes.flatMap((intake) => intake.lines);
+    const lineSafetyData = intakeLines.map((line) => ({
+      line,
+      drugCode: normalizedDrugCode(line.drug_code),
+      tags: [...(line.packaging_instruction_tags ?? []), ...(lineSafetyTags.get(line.id) ?? [])],
+    }));
+    const classificationCandidateCodes = new Set<string>();
+    for (const item of lineSafetyData) {
+      if (item.drugCode && !hasKnownNarcoticClassificationTag(item.tags)) {
+        classificationCandidateCodes.add(item.drugCode);
+      }
+    }
+    const classificationMasters =
+      classificationCandidateCodes.size > 0
+        ? await prisma.drugMaster.findMany({
+            where: { yj_code: { in: [...classificationCandidateCodes] } },
+            select: { yj_code: true },
+          })
+        : [];
+    const knownMasterYjCodes = new Set(classificationMasters.map((master) => master.yj_code));
+
+    const narcoticClassificationUnresolvedLineIds = new Set<string>();
+    const lines: CalendarPivotLine[] = lineSafetyData.map(({ line, drugCode, tags }) => {
+      const hasKnownClassification =
+        hasKnownNarcoticClassificationTag(tags) ||
+        (drugCode != null && knownMasterYjCodes.has(drugCode));
+      if (!hasKnownClassification) {
+        narcoticClassificationUnresolvedLineIds.add(line.id);
+      }
+
+      return {
         id: line.id,
         drug_name: line.drug_name,
         dosage_form: line.dosage_form,
@@ -111,8 +156,8 @@ export const GET = withAuthContext<{ id: string }>(
         packaging_instructions: line.packaging_instructions,
         packaging_instruction_tags: line.packaging_instruction_tags,
         notes: line.notes,
-      })),
-    );
+      };
+    });
 
     const pivotBatches: CalendarPivotBatch[] = batches.map((batch) => ({
       id: batch.id,
@@ -142,6 +187,13 @@ export const GET = withAuthContext<{ id: string }>(
         cycle_version: plan.cycle.version,
         cycle_status: plan.cycle.overall_status,
         set_method: plan.set_method,
+        narcotic_classification: {
+          unresolved_line_count: narcoticClassificationUnresolvedLineIds.size,
+          status:
+            narcoticClassificationUnresolvedLineIds.size > 0
+              ? ('needs_review' as const)
+              : ('normal' as const),
+        },
         ...matrix,
       },
     });

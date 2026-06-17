@@ -86,18 +86,48 @@ function createMalformedJsonPatchRequest(id = 'result_1') {
 // org-only の WHERE になる。担当割当の OR 句は付与されない。
 const expectedResultAssignmentWhere = {};
 
+function createExistingDispenseResult(
+  overrides: Partial<{
+    actual_drug_name: string;
+    actual_drug_code: string | null;
+    actual_quantity: number;
+    actual_unit: string | null;
+    discrepancy_reason: string | null;
+    carry_type: string;
+    prescribed_drug_name: string;
+    prescribed_drug_code: string | null;
+    prescribed_quantity: number | null;
+    prescribed_unit: string | null;
+  }> = {},
+) {
+  return {
+    id: 'result_1',
+    org_id: 'org_1',
+    task_id: 'task_1',
+    line_id: 'line_1',
+    actual_drug_name: overrides.actual_drug_name ?? 'Drug B',
+    actual_drug_code: overrides.actual_drug_code ?? 'drug-b',
+    actual_quantity: overrides.actual_quantity ?? 14,
+    actual_unit: overrides.actual_unit ?? '錠',
+    discrepancy_reason: overrides.discrepancy_reason ?? null,
+    carry_type: overrides.carry_type ?? 'carry',
+    version: 1,
+    line: {
+      id: 'line_1',
+      drug_name: overrides.prescribed_drug_name ?? 'Drug B',
+      drug_code: overrides.prescribed_drug_code ?? 'drug-b',
+      quantity: overrides.prescribed_quantity ?? 14,
+      unit: overrides.prescribed_unit ?? '錠',
+    },
+  };
+}
+
 describe('/api/dispense-results/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
-    dispenseResultFindFirstMock.mockResolvedValue({
-      id: 'result_1',
-      org_id: 'org_1',
-      task_id: 'task_1',
-      version: 1,
-      line: { id: 'line_1' },
-    });
+    dispenseResultFindFirstMock.mockResolvedValue(createExistingDispenseResult());
     dispenseResultFindManyMock.mockResolvedValue([
       {
         line_id: 'line_1',
@@ -205,6 +235,8 @@ describe('/api/dispense-results/[id]', () => {
     const response = (await PATCH(
       createRequest('http://localhost/api/dispense-results/result_1', {
         actual_drug_name: 'Drug B',
+        actual_quantity_confirmed: true,
+        actual_quantity_source: 'existing_result',
       }),
       {
         params: Promise.resolve({ id: 'result_1' }),
@@ -221,7 +253,23 @@ describe('/api/dispense-results/[id]', () => {
       select: {
         id: true,
         task_id: true,
+        line_id: true,
+        actual_drug_name: true,
+        actual_drug_code: true,
+        actual_quantity: true,
+        actual_unit: true,
+        discrepancy_reason: true,
+        carry_type: true,
         version: true,
+        line: {
+          select: {
+            id: true,
+            drug_name: true,
+            drug_code: true,
+            quantity: true,
+            unit: true,
+          },
+        },
       },
     });
     expect(dispenseResultUpdateMock).toHaveBeenCalledWith({
@@ -310,6 +358,182 @@ describe('/api/dispense-results/[id]', () => {
       },
     });
     expect(cycleTransitionLogCreateMock).toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      eventType: 'cycle_transition',
+      payload: { source: 'dispense_results_rework', result_id: 'result_1' },
+    });
+  });
+
+  it('rejects non-quantity safety corrections without quantity confirmation evidence', async () => {
+    const response = (await PATCH(
+      createRequest('http://localhost/api/dispense-results/result_1', {
+        actual_drug_name: 'Drug C',
+        discrepancy_reason: '代替調剤',
+      }),
+      {
+        params: Promise.resolve({ id: 'result_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '調剤実数量の確認元が未確定の明細があります。数量確認後に調剤完了してください',
+      details: {
+        actual_quantity_confirmation_lines: [
+          { line_id: 'line_1', reason: 'actual_quantity_confirmation_required' },
+        ],
+      },
+    });
+    expect(dispenseResultUpdateMock).not.toHaveBeenCalled();
+    expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      name: 'missing confirmation flag',
+      payload: {
+        actual_quantity: 12,
+        discrepancy_reason: '残薬調整',
+      },
+      reason: 'actual_quantity_confirmation_required',
+    },
+    {
+      name: 'missing quantity source',
+      payload: {
+        actual_quantity: 12,
+        actual_quantity_confirmed: true,
+        discrepancy_reason: '残薬調整',
+      },
+      reason: 'actual_quantity_source_required',
+    },
+    {
+      name: 'prescription quantity source mismatch',
+      payload: {
+        actual_quantity: 12,
+        actual_quantity_confirmed: true,
+        actual_quantity_source: 'prescription_quantity_confirmed',
+        discrepancy_reason: '残薬調整',
+      },
+      reason: 'prescription_quantity_mismatch',
+    },
+  ])(
+    'rejects quantity correction patches with $name before rework side effects',
+    async ({ payload, reason }) => {
+      const response = (await PATCH(
+        createRequest('http://localhost/api/dispense-results/result_1', payload),
+        {
+          params: Promise.resolve({ id: 'result_1' }),
+        },
+      ))!;
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        message: '調剤実数量の確認元が未確定の明細があります。数量確認後に調剤完了してください',
+        details: {
+          actual_quantity_confirmation_lines: [{ line_id: 'line_1', reason }],
+        },
+      });
+      expect(dispenseResultUpdateMock).not.toHaveBeenCalled();
+      expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
+      expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects quantity correction patches that do not match the prescription unit step', async () => {
+    dispenseResultFindFirstMock.mockResolvedValue(
+      createExistingDispenseResult({
+        actual_unit: '包',
+        prescribed_unit: '包',
+      }),
+    );
+
+    const response = (await PATCH(
+      createRequest('http://localhost/api/dispense-results/result_1', {
+        actual_quantity: 12.5,
+        actual_quantity_confirmed: true,
+        actual_quantity_source: 'manual_entry',
+        actual_unit: 'g',
+        discrepancy_reason: '残薬調整',
+      }),
+      {
+        params: Promise.resolve({ id: 'result_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '実数量が単位に合う刻みではありません',
+      details: {
+        actual_quantity_unit_lines: [
+          {
+            line_id: 'line_1',
+            reason: 'actual_quantity_unit_step_invalid',
+            unit: '包',
+            step: '1',
+          },
+        ],
+      },
+    });
+    expect(dispenseResultUpdateMock).not.toHaveBeenCalled();
+    expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects quantity correction patches without discrepancy reason before writes', async () => {
+    const response = (await PATCH(
+      createRequest('http://localhost/api/dispense-results/result_1', {
+        actual_quantity: 12,
+        actual_quantity_confirmed: true,
+        actual_quantity_source: 'manual_entry',
+      }),
+      {
+        params: Promise.resolve({ id: 'result_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '差異/欠品/代替がある明細は理由コードを入力してください',
+      details: {
+        discrepancy_lines: [
+          {
+            line_id: 'line_1',
+            reason: '処方との差異があるため理由コードが必須です',
+          },
+        ],
+      },
+    });
+    expect(dispenseResultUpdateMock).not.toHaveBeenCalled();
+    expect(dispenseTaskUpdateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts a confirmed quantity correction and stores the prescription unit as canonical', async () => {
+    const response = (await PATCH(
+      createRequest('http://localhost/api/dispense-results/result_1', {
+        actual_quantity: 12,
+        actual_quantity_confirmed: true,
+        actual_quantity_source: 'manual_entry',
+        actual_unit: 'g',
+        discrepancy_reason: '残薬調整',
+      }),
+      {
+        params: Promise.resolve({ id: 'result_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(dispenseResultUpdateMock).toHaveBeenCalledWith({
+      where: { id: 'result_1' },
+      data: expect.objectContaining({
+        actual_quantity: 12,
+        actual_unit: '錠',
+        discrepancy_reason: '残薬調整',
+        version: { increment: 1 },
+      }),
+    });
     expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
       orgId: 'org_1',
       eventType: 'cycle_transition',

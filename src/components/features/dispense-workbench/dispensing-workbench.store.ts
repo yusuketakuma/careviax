@@ -53,6 +53,14 @@ export interface WorkbenchState {
   done: Record<string, boolean>;
   /** 調剤監査チェック（did → bool）*/
   audit: Record<string, boolean>;
+  /** 実数量確認（did → bool）。行チェックとは分離する。 */
+  quantityConfirmedByDid: Record<string, boolean>;
+  /** 実数量入力（did → input string）。空なら処方数量を確認対象にする。 */
+  actualQuantityInputByDid: Record<string, string>;
+  /** 実数量が処方数量と異なる場合の理由（did → reason）。 */
+  discrepancyReasonByDid: Record<string, string>;
+  /** 麻薬ダブルカウント入力（did → 1回目/2回目）。監査工程の揮発 state。 */
+  auditDoubleCountByDid: Record<string, { first: string; second: string }>;
   /** セットセル状態（'{id}:{di}:{tk}' → ''/'set'/'hold'）*/
   setCells: Record<string, string>;
   /** セット監査セル状態（'{id}:{di}:{tk}' → ''/'ok'/'ng'/'hold'）*/
@@ -98,6 +106,7 @@ export interface WorkbenchState {
     model?: WorkbenchModel;
     done?: Record<string, boolean>;
     audit?: Record<string, boolean>;
+    quantityConfirmedByDid?: Record<string, boolean>;
   }) => void;
   /**
    * 書込結線の実データ識別子を部分マージする（実データ時のみ呼ばれる）。
@@ -120,6 +129,10 @@ export interface WorkbenchState {
   navBy: (delta: number) => void;
   setSort: (mode: SortMode) => void;
   toggleRow: (phase: Phase, did: string) => void;
+  toggleQuantityConfirm: (did: string) => void;
+  setActualQuantityInput: (did: string, value: string) => void;
+  setDiscrepancyReason: (did: string, value: string) => void;
+  setAuditDoubleCount: (did: string, field: 'first' | 'second', value: string) => void;
   setGMethod: (gid: string, value: string) => void;
   setGStart: (gid: string, value: string) => void;
   setGDays: (gid: string, value: string) => void;
@@ -162,6 +175,10 @@ export const useWorkbenchStore = create<WorkbenchState>()(
       sortMode: 'start',
       done: {},
       audit: {},
+      quantityConfirmedByDid: {},
+      actualQuantityInputByDid: {},
+      discrepancyReasonByDid: {},
+      auditDoubleCountByDid: {},
       setCells: {},
       auditCells: {},
       outChk: {},
@@ -211,7 +228,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           };
         }),
 
-      hydrate: ({ patients, selId, model, done, audit }) =>
+      hydrate: ({ patients, selId, model, done, audit, quantityConfirmedByDid }) =>
         set((s) => {
           if (patients.length === 0) {
             return {
@@ -222,6 +239,10 @@ export const useWorkbenchStore = create<WorkbenchState>()(
               holdModal: null,
               done: {},
               audit: {},
+              quantityConfirmedByDid: {},
+              actualQuantityInputByDid: {},
+              discrepancyReasonByDid: {},
+              auditDoubleCountByDid: {},
               model: {},
               writeContext: emptyWriteContext(),
             };
@@ -234,7 +255,16 @@ export const useWorkbenchStore = create<WorkbenchState>()(
             hydrated: true,
             target: null,
             holdModal: null,
-            ...(model ? { done: done ?? {}, audit: audit ?? {} } : {}),
+            ...(model
+              ? {
+                  done: done ?? {},
+                  audit: audit ?? {},
+                  quantityConfirmedByDid: quantityConfirmedByDid ?? {},
+                  actualQuantityInputByDid: {},
+                  discrepancyReasonByDid: {},
+                  auditDoubleCountByDid: {},
+                }
+              : {}),
             ...(nextSelId !== s.selId ? { writeContext: emptyWriteContext() } : {}),
             ...(model ? { model: { ...s.model, ...model } } : {}),
           };
@@ -258,16 +288,70 @@ export const useWorkbenchStore = create<WorkbenchState>()(
             : { audit: { ...s.audit, [did]: !s.audit[did] } },
         ),
 
+      toggleQuantityConfirm: (did) =>
+        set((s) => ({
+          quantityConfirmedByDid: {
+            ...s.quantityConfirmedByDid,
+            [did]: !s.quantityConfirmedByDid[did],
+          },
+        })),
+
+      setActualQuantityInput: (did, value) =>
+        set((s) => {
+          const quantityConfirmedByDid = { ...s.quantityConfirmedByDid };
+          delete quantityConfirmedByDid[did];
+          return {
+            actualQuantityInputByDid: {
+              ...s.actualQuantityInputByDid,
+              [did]: value,
+            },
+            quantityConfirmedByDid,
+          };
+        }),
+
+      setDiscrepancyReason: (did, value) =>
+        set((s) => ({
+          discrepancyReasonByDid: {
+            ...s.discrepancyReasonByDid,
+            [did]: value,
+          },
+        })),
+
+      setAuditDoubleCount: (did, field, value) =>
+        set((s) => {
+          const current = s.auditDoubleCountByDid[did] ?? { first: '', second: '' };
+          return {
+            auditDoubleCountByDid: {
+              ...s.auditDoubleCountByDid,
+              [did]: { ...current, [field]: value },
+            },
+          };
+        }),
+
       setGMethod: (gid, value) =>
         set((s) => updateGroups(s, (gs) => gs.forEach((g) => g.gid === gid && (g.method = value)))),
 
       setGStart: (gid, value) =>
-        set((s) => updateGroups(s, (gs) => gs.forEach((g) => g.gid === gid && (g.start = value)))),
+        set((s) =>
+          updateGroups(s, (gs) =>
+            gs.forEach((g) => {
+              if (g.gid !== gid) return;
+              g.start = value;
+              delete g.periodWarning;
+            }),
+          ),
+        ),
 
       setGDays: (gid, value) => {
         const n = parseInt(value, 10);
         set((s) =>
-          updateGroups(s, (gs) => gs.forEach((g) => g.gid === gid && (g.days = isNaN(n) ? 0 : n))),
+          updateGroups(s, (gs) =>
+            gs.forEach((g) => {
+              if (g.gid !== gid) return;
+              g.days = isNaN(n) ? 0 : n;
+              delete g.periodWarning;
+            }),
+          ),
         );
       },
 
@@ -281,13 +365,21 @@ export const useWorkbenchStore = create<WorkbenchState>()(
         set((s) =>
           updateGroups(s, (gs) => {
             let moved = null;
+            let sourceGid: string | null = null;
             gs.forEach((g) => {
               const i = g.drugs.findIndex((x) => x.did === did);
-              if (i >= 0) moved = g.drugs.splice(i, 1)[0];
+              if (i >= 0) {
+                moved = g.drugs.splice(i, 1)[0];
+                sourceGid = g.gid;
+                delete g.periodWarning;
+              }
             });
             if (moved) {
               const t = gs.find((g) => g.gid === gid);
-              if (t) t.drugs.push(moved);
+              if (t) {
+                t.drugs.push(moved);
+                if (sourceGid !== gid) delete t.periodWarning;
+              }
             }
           }),
         );
@@ -468,6 +560,10 @@ export const useWorkbenchStore = create<WorkbenchState>()(
               sortMode: state.sortMode,
               done: state.done,
               audit: state.audit,
+              quantityConfirmedByDid: state.quantityConfirmedByDid,
+              actualQuantityInputByDid: state.actualQuantityInputByDid,
+              discrepancyReasonByDid: state.discrepancyReasonByDid,
+              auditDoubleCountByDid: state.auditDoubleCountByDid,
               setCells: state.setCells,
               auditCells: state.auditCells,
               outChk: state.outChk,

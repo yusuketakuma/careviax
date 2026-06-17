@@ -49,18 +49,34 @@ const COL = {
   daily: 64,
   days: 58,
   funsai: 44,
-  note: 132,
+  note: 220,
 } as const;
 
 const HEADER_BORDER = '1px solid #b6c5d8';
 const CELL_BORDER = '1px solid #e6eaef';
 const TOTAL_BORDER = '1px solid #dde3ea';
+const auditCountInputStyle: CSSProperties = {
+  width: 40,
+  flex: 'none',
+  fontSize: 10.5,
+  color: '#173a63',
+  background: '#fff',
+  border: '1px solid #ebcf96',
+  borderRadius: 4,
+  padding: '2px 3px',
+  textAlign: 'right',
+  font: 'inherit',
+};
 
 export function PrescriptionGrid({ view, phase, handlers, isPending }: PrescriptionGridProps) {
   // 書込操作はシェルから渡される handlers（store アクション + 実データ mutation 結線）を優先し、
   // handlers 未提供時（単体レンダリング・既存テスト）は従来どおり store アクションへフォールバック。
   // dragStart / openCompare は読取・UI 内状態のみで API 書込を伴わないため store 直結のまま。
   const storeToggleRow = useWorkbenchStore((s) => s.toggleRow);
+  const storeToggleQuantityConfirm = useWorkbenchStore((s) => s.toggleQuantityConfirm);
+  const storeSetActualQuantityInput = useWorkbenchStore((s) => s.setActualQuantityInput);
+  const storeSetDiscrepancyReason = useWorkbenchStore((s) => s.setDiscrepancyReason);
+  const storeSetAuditDoubleCount = useWorkbenchStore((s) => s.setAuditDoubleCount);
   const storeSetGMethod = useWorkbenchStore((s) => s.setGMethod);
   const storeSetGStart = useWorkbenchStore((s) => s.setGStart);
   const storeSetGDays = useWorkbenchStore((s) => s.setGDays);
@@ -73,6 +89,16 @@ export function PrescriptionGrid({ view, phase, handlers, isPending }: Prescript
 
   const toggleRow = (did: string) =>
     handlers ? handlers.onToggleRow(did) : storeToggleRow(phase, did);
+  const toggleQuantityConfirm = (did: string) =>
+    handlers ? handlers.onToggleQuantityConfirm(did) : storeToggleQuantityConfirm(did);
+  const setActualQuantityInput = (did: string, value: string) =>
+    handlers ? handlers.onActualQuantityInput(did, value) : storeSetActualQuantityInput(did, value);
+  const setDiscrepancyReason = (did: string, value: string) =>
+    handlers ? handlers.onDiscrepancyReason(did, value) : storeSetDiscrepancyReason(did, value);
+  const setAuditDoubleCount = (did: string, field: 'first' | 'second', value: string) =>
+    handlers
+      ? handlers.onAuditDoubleCount(did, field, value)
+      : storeSetAuditDoubleCount(did, field, value);
   const setGMethod = (gid: string, value: string) =>
     handlers ? handlers.onGroupMethod(gid, value) : storeSetGMethod(gid, value);
   const setGStart = (gid: string, value: string) =>
@@ -247,6 +273,10 @@ export function PrescriptionGrid({ view, phase, handlers, isPending }: Prescript
               key={r.did}
               row={r}
               onCheck={() => toggleRow(r.did)}
+              onQuantityConfirm={() => toggleQuantityConfirm(r.did)}
+              onActualQuantityInput={(value) => setActualQuantityInput(r.did, value)}
+              onDiscrepancyReason={(value) => setDiscrepancyReason(r.did, value)}
+              onAuditDoubleCount={(field, value) => setAuditDoubleCount(r.did, field, value)}
               onDragStart={() => dragStart(r.did)}
               onDrop={() => dropTo(r.gid)}
             />
@@ -447,6 +477,24 @@ function SectionRow({ row, methodOptions, onMethod, onStart, onDays, onDrop }: S
       <span style={{ fontSize: 12, fontWeight: 700, color: '#244268', whiteSpace: 'nowrap' }}>
         {row.secLabel}
       </span>
+      {row.periodWarning && (
+        <span
+          aria-label={`${row.secLabel} ${row.periodWarning.label}: ${row.periodWarning.detail}`}
+          title={row.periodWarning.detail}
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            color: '#7b4a14',
+            background: '#fff7e8',
+            border: '1px solid #ebcf96',
+            borderRadius: 4,
+            padding: '2px 6px',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {row.periodWarning.label}
+        </span>
+      )}
       <span style={{ flex: 1 }} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <span style={{ fontSize: 10.5, color: '#3a5170', fontWeight: 700 }}>調剤方法</span>
@@ -529,12 +577,25 @@ function SectionRow({ row, methodOptions, onMethod, onStart, onDays, onDrop }: S
 interface DrugRowProps {
   row: GridDrugRow;
   onCheck: () => void;
+  onQuantityConfirm: () => void;
+  onActualQuantityInput: (value: string) => void;
+  onDiscrepancyReason: (value: string) => void;
+  onAuditDoubleCount: (field: 'first' | 'second', value: string) => void;
   onDragStart: () => void;
   onDrop: () => void;
 }
 
 /** 薬剤行（ドラッグ把手 + チェック + 剤形 + 変更/タグバッジ + 薬品名 + 用法 + 朝昼夕眠前 + 頓外他 + 1日量 + 処方日数 + 粉砕 + 賦形備考） */
-function DrugRow({ row, onCheck, onDragStart, onDrop }: DrugRowProps) {
+function DrugRow({
+  row,
+  onCheck,
+  onQuantityConfirm,
+  onActualQuantityInput,
+  onDiscrepancyReason,
+  onAuditDoubleCount,
+  onDragStart,
+  onDrop,
+}: DrugRowProps) {
   const allowDrop = (e: DragEvent) => e.preventDefault();
   return (
     <div
@@ -774,13 +835,132 @@ function DrugRow({ row, onCheck, onDragStart, onDrop }: DrugRowProps) {
           flex: 'none',
           display: 'flex',
           alignItems: 'center',
+          gap: 4,
           padding: '3px 8px',
           fontSize: 11,
           color: row.noteColor,
           lineHeight: 1.2,
         }}
       >
-        {row.note}
+        {row.showQuantityConfirm && (
+          <>
+            <input
+              type="number"
+              min="0"
+              step={row.actualQuantityStep}
+              inputMode={row.actualQuantityInputMode}
+              value={row.actualQuantityInput}
+              onChange={(event) => onActualQuantityInput(event.target.value)}
+              disabled={row.actualQuantityDisabled}
+              aria-label={`${row.name} 実数量`}
+              style={{
+                width: 48,
+                flex: 'none',
+                fontSize: 10.5,
+                color: '#173a63',
+                background: row.actualQuantityDisabled ? '#eef1f5' : '#fff',
+                border: '1px solid #9db4d2',
+                borderRadius: 4,
+                padding: '2px 3px',
+                textAlign: 'right',
+                font: 'inherit',
+              }}
+            />
+            <button
+              type="button"
+              onClick={row.quantityConfirmLocked ? undefined : onQuantityConfirm}
+              disabled={row.quantityConfirmLocked}
+              aria-pressed={row.quantityConfirmed}
+              aria-label={`${row.name} ${row.quantityLabel} ${row.quantityConfirmLabel}`}
+              style={{
+                flex: 'none',
+                cursor: row.quantityConfirmLocked ? 'default' : 'pointer',
+                fontSize: 10,
+                fontWeight: 700,
+                color: row.quantityConfirmed ? '#1f6f3d' : '#7b4a14',
+                background: row.quantityConfirmed ? '#eaf6ec' : '#fff7e8',
+                border: `1px solid ${row.quantityConfirmed ? '#bfe0c4' : '#ebcf96'}`,
+                borderRadius: 4,
+                padding: '2px 5px',
+                whiteSpace: 'nowrap',
+                font: 'inherit',
+              }}
+            >
+              {row.quantityConfirmLabel}
+            </button>
+            {row.requiresDiscrepancyReason && (
+              <input
+                type="text"
+                value={row.discrepancyReasonValue}
+                onChange={(event) => onDiscrepancyReason(event.target.value)}
+                aria-label={`${row.name} 数量差異理由`}
+                placeholder="差異理由"
+                style={{
+                  width: 42,
+                  flex: 'none',
+                  fontSize: 10,
+                  color: '#7b4a14',
+                  background: '#fff7e8',
+                  border: '1px solid #ebcf96',
+                  borderRadius: 4,
+                  padding: '2px 3px',
+                  font: 'inherit',
+                }}
+              />
+            )}
+          </>
+        )}
+        {row.showAuditDoubleCount && (
+          <>
+            <span
+              style={{
+                flex: 'none',
+                fontSize: 10,
+                fontWeight: 700,
+                color: '#7b4a14',
+                background: '#fff7e8',
+                border: '1px solid #ebcf96',
+                borderRadius: 4,
+                padding: '2px 4px',
+                whiteSpace: 'nowrap',
+              }}
+              title={`${row.name} 実数量 ${row.auditCountExpectedLabel}`}
+            >
+              麻薬計数
+            </span>
+            <input
+              type="number"
+              min="0"
+              step={row.actualQuantityStep}
+              inputMode={row.actualQuantityInputMode}
+              value={row.auditFirstCountInput}
+              onChange={(event) => onAuditDoubleCount('first', event.target.value)}
+              aria-label={`${row.name} ダブルカウント1回目`}
+              style={auditCountInputStyle}
+            />
+            <input
+              type="number"
+              min="0"
+              step={row.actualQuantityStep}
+              inputMode={row.actualQuantityInputMode}
+              value={row.auditSecondCountInput}
+              onChange={(event) => onAuditDoubleCount('second', event.target.value)}
+              aria-label={`${row.name} ダブルカウント2回目`}
+              style={auditCountInputStyle}
+            />
+          </>
+        )}
+        <span
+          style={{
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+          title={[row.quantityLabel, row.note].filter(Boolean).join(' / ')}
+        >
+          {row.showQuantityConfirm ? row.quantityLabel : row.note}
+        </span>
       </div>
     </div>
   );

@@ -145,8 +145,24 @@ export interface Drug {
   note: string;
   /** API-backed prescribed total quantity. Used as the initial dispense result quantity. */
   prescribedQuantity?: number | null;
+  /** API-backed saved actual dispense quantity, when this line already has a result. */
+  dispensedQuantity?: number | null;
+  discrepancyReason?: string | null;
+  isNarcotic?: boolean;
+  unit?: string;
   chg?: ChangeKind;
   prevText?: string;
+}
+
+export interface GroupPeriodWarning {
+  kind: 'mixed_period';
+  label: string;
+  detail: string;
+}
+
+export interface NarcoticClassificationWarning {
+  unresolvedLineCount: number;
+  status: 'normal' | 'needs_review';
 }
 
 /** 調剤グループ（見出し単位）。D&D 移動・方法/開始日/日数編集の対象 */
@@ -163,6 +179,8 @@ export interface Group {
   calendarStart?: string;
   /** Calendar UI day count. Defaults to the legacy 7-day workbench window. */
   calendarDayCount?: number;
+  periodWarning?: GroupPeriodWarning;
+  narcoticClassification?: NarcoticClassificationWarning;
   drugs: Drug[];
 }
 
@@ -418,6 +436,7 @@ export interface GridSectionRow {
   start: string;
   days: number;
   endDate: string;
+  periodWarning?: GroupPeriodWarning;
 }
 
 /** グリッド行（薬剤）*/
@@ -454,6 +473,22 @@ export interface GridDrugRow {
   checkBg: string;
   checkBorder: string;
   checkMark: string;
+  showQuantityConfirm: boolean;
+  quantityConfirmed: boolean;
+  quantityConfirmLocked: boolean;
+  quantityConfirmLabel: string;
+  quantityLabel: string;
+  actualQuantityInput: string;
+  actualQuantityStep: string;
+  actualQuantityInputMode: 'numeric' | 'decimal';
+  actualQuantityDisabled: boolean;
+  discrepancyReasonValue: string;
+  requiresDiscrepancyReason: boolean;
+  showAuditDoubleCount: boolean;
+  auditFirstCountInput: string;
+  auditSecondCountInput: string;
+  auditCountExpectedLabel: string;
+  auditCountExpectedQuantity: number | null;
 }
 
 /** グリッド行（見出し or 薬剤）*/

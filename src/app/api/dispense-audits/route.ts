@@ -18,6 +18,7 @@ import {
 } from '@/lib/db/cycle-transition';
 import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
 
 export const GET = withAuthContext(
@@ -35,7 +36,7 @@ export const GET = withAuthContext(
           ...(cycleAssignmentWhere ? { cycle: cycleAssignmentWhere } : {}),
           audits: {
             none: {
-              result: { notIn: ['hold'] },
+              result: { in: ['approved', 'emergency_approved'] },
             },
           },
         },
@@ -49,6 +50,11 @@ export const GET = withAuthContext(
         org_id: ctx.orgId,
         status: 'completed',
         ...(cycleAssignmentWhere ? { cycle: cycleAssignmentWhere } : {}),
+        audits: {
+          none: {
+            result: { in: ['approved', 'emergency_approved'] },
+          },
+        },
       },
       orderBy: [{ priority: 'asc' }, { updated_at: 'asc' }],
       include: {
@@ -150,7 +156,9 @@ export const GET = withAuthContext(
 
     const visible = sortDispenseTasks(tasks, 'updated_at').filter((task) => {
       const latestAudit = task.audits[0] ?? null;
-      return latestAudit == null || latestAudit.result === 'hold';
+      return (
+        latestAudit == null || latestAudit.result === 'hold' || latestAudit.result === 'rejected'
+      );
     });
 
     return success({
@@ -197,9 +205,9 @@ const createDispenseAuditSchema = z.object({
       z.object({
         line_id: z.string().min(1),
         drug_name: z.string().min(1),
-        dispensed_quantity: z.number().nullable(),
-        first_count: z.number().nullable(),
-        second_count: z.number().nullable(),
+        dispensed_quantity: z.number().finite().nullable(),
+        first_count: z.number().finite().nullable(),
+        second_count: z.number().finite().nullable(),
       }),
     )
     .optional(),
@@ -211,6 +219,32 @@ const createDispenseAuditSchema = z.object({
    */
   same_operator_reason: z.string().optional(),
 });
+
+type DispenseAuditDoubleCountInput = NonNullable<
+  z.infer<typeof createDispenseAuditSchema>['double_count']
+>;
+
+type DoubleCountValidationIssue = {
+  line_id: string;
+  field?: 'dispensed_quantity' | 'first_count' | 'second_count';
+  reason:
+    | 'duplicate_line'
+    | 'required_line_missing'
+    | 'result_missing'
+    | 'value_required'
+    | 'actual_quantity_mismatch';
+};
+
+type DispenseAuditDoubleCountEvidence = {
+  line_id: string;
+  drug_name: string;
+  drug_code: string | null;
+  dispensed_quantity: number;
+  unit: string | null;
+  first_count: number | null;
+  second_count: number | null;
+  is_narcotic: boolean;
+};
 
 function mergeRejectDetail(args: {
   rejectDetail?: string;
@@ -241,11 +275,144 @@ function mergeRejectDetail(args: {
     .join('\n');
 }
 
+function quantitiesMatch(left: number, right: number) {
+  return Number.isFinite(left) && Number.isFinite(right) && Math.abs(left - right) < 1e-9;
+}
+
+async function validateDispenseAuditDoubleCount(args: {
+  tx: Prisma.TransactionClient;
+  orgId: string;
+  taskId: string;
+  result: 'approved' | 'rejected' | 'hold' | 'emergency_approved';
+  doubleCount?: DispenseAuditDoubleCountInput;
+}) {
+  const submittedCounts = args.doubleCount ?? [];
+
+  const issues: DoubleCountValidationIssue[] = [];
+  const seenLineIds = new Set<string>();
+  const submittedByLineId = new Map<string, DispenseAuditDoubleCountInput[number]>();
+  for (const count of submittedCounts) {
+    if (seenLineIds.has(count.line_id)) {
+      issues.push({ line_id: count.line_id, reason: 'duplicate_line' });
+      continue;
+    }
+    seenLineIds.add(count.line_id);
+    submittedByLineId.set(count.line_id, count);
+  }
+
+  const resultRows = await args.tx.dispenseResult.findMany({
+    where: {
+      org_id: args.orgId,
+      task_id: args.taskId,
+    },
+    select: {
+      line_id: true,
+      actual_drug_name: true,
+      actual_drug_code: true,
+      actual_quantity: true,
+      actual_unit: true,
+      line: {
+        select: {
+          drug_name: true,
+          drug_code: true,
+          unit: true,
+          packaging_instruction_tags: true,
+        },
+      },
+    },
+  });
+  const resultByLineId = new Map(resultRows.map((row) => [row.line_id, row]));
+  const yjCodesToCheck = Array.from(
+    new Set(
+      resultRows.flatMap((row) => {
+        const lineTags = row.line?.packaging_instruction_tags ?? [];
+        if (lineTags.includes('narcotic')) return [];
+        return [row.actual_drug_code, row.line?.drug_code].filter(
+          (code): code is string => typeof code === 'string' && code.trim().length > 0,
+        );
+      }),
+    ),
+  );
+  const narcoticMasters =
+    yjCodesToCheck.length > 0
+      ? await args.tx.drugMaster.findMany({
+          where: { yj_code: { in: yjCodesToCheck }, is_narcotic: true },
+          select: { yj_code: true },
+        })
+      : [];
+  const narcoticYjCodes = new Set(narcoticMasters.map((master) => master.yj_code));
+  const isNarcoticResult = (row: (typeof resultRows)[number]) =>
+    (row.line?.packaging_instruction_tags ?? []).includes('narcotic') ||
+    (row.actual_drug_code != null && narcoticYjCodes.has(row.actual_drug_code)) ||
+    (row.line?.drug_code != null && narcoticYjCodes.has(row.line.drug_code));
+  const approvalResult = args.result === 'approved' || args.result === 'emergency_approved';
+
+  if (approvalResult) {
+    for (const row of resultRows) {
+      if (isNarcoticResult(row) && !submittedByLineId.has(row.line_id)) {
+        issues.push({ line_id: row.line_id, reason: 'required_line_missing' });
+      }
+    }
+  }
+
+  for (const count of submittedCounts) {
+    const resultRow = resultByLineId.get(count.line_id);
+    if (!resultRow) {
+      issues.push({ line_id: count.line_id, reason: 'result_missing' });
+      continue;
+    }
+
+    const values = [
+      ['dispensed_quantity', count.dispensed_quantity],
+      ['first_count', count.first_count],
+      ['second_count', count.second_count],
+    ] as const;
+    for (const [field, value] of values) {
+      if (value == null) {
+        if (approvalResult) {
+          issues.push({ line_id: count.line_id, field, reason: 'value_required' });
+        }
+        continue;
+      }
+      if (approvalResult && !quantitiesMatch(value, resultRow.actual_quantity)) {
+        issues.push({ line_id: count.line_id, field, reason: 'actual_quantity_mismatch' });
+      }
+    }
+  }
+
+  if (issues.length > 0) {
+    return {
+      error: 'double_count_invalid' as const,
+      details: { double_count: issues },
+    };
+  }
+
+  const evidence: DispenseAuditDoubleCountEvidence[] = submittedCounts.flatMap((count) => {
+    const resultRow = resultByLineId.get(count.line_id);
+    if (!resultRow) return [];
+    return [
+      {
+        line_id: resultRow.line_id,
+        drug_name: resultRow.actual_drug_name || resultRow.line?.drug_name || count.drug_name,
+        drug_code: resultRow.actual_drug_code ?? resultRow.line?.drug_code ?? null,
+        dispensed_quantity: resultRow.actual_quantity,
+        unit: resultRow.actual_unit ?? resultRow.line?.unit ?? null,
+        first_count: count.first_count,
+        second_count: count.second_count,
+        is_narcotic: isNarcoticResult(resultRow),
+      },
+    ];
+  });
+
+  return { evidence };
+}
+
 type DispenseAuditMutationError =
   | { error: 'self_audit' }
   | { error: 'self_audit_reason_required' }
   | { error: 'self_audit_not_authorized' }
   | { error: 'already_audited' }
+  | { error: 'double_count_invalid'; details: { double_count: DoubleCountValidationIssue[] } }
   | { error: string; conflict?: true; details?: unknown };
 
 type ExistingDispenseAuditForReplay = {
@@ -400,7 +567,7 @@ export const POST = withAuthContext(
         if (!task) return null;
 
         const existingAudit = await tx.dispenseAudit.findFirst({
-          where: { task_id, result: { notIn: ['hold'] } },
+          where: { task_id, result: { in: ['approved', 'emergency_approved'] } },
           select: {
             id: true,
             result: true,
@@ -494,6 +661,16 @@ export const POST = withAuthContext(
           }
         }
 
+        const doubleCountValidation = await validateDispenseAuditDoubleCount({
+          tx,
+          orgId: ctx.orgId,
+          taskId: task_id,
+          result,
+          doubleCount: double_count,
+        });
+        if ('error' in doubleCountValidation) return doubleCountValidation;
+        const doubleCountEvidence = doubleCountValidation.evidence;
+
         const plannedStatuses =
           result === 'approved' || result === 'emergency_approved'
             ? ['audited', task.cycle.set_plans.length > 0 ? 'setting' : 'visit_ready']
@@ -530,7 +707,7 @@ export const POST = withAuthContext(
           } catch (err) {
             if (isPrismaUniqueConstraintError(err)) {
               const concurrentAudit = await tx.dispenseAudit.findFirst({
-                where: { task_id, result: { notIn: ['hold'] } },
+                where: { task_id, result: { in: ['approved', 'emergency_approved'] } },
                 select: {
                   id: true,
                   result: true,
@@ -582,12 +759,12 @@ export const POST = withAuthContext(
         }
 
         // 麻薬ダブルカウントの計数値を監査証跡として保存(操作ログ = AuditLog)
-        if (double_count && double_count.length > 0) {
+        if (doubleCountEvidence.length > 0) {
           await createAuditLogEntry(tx, ctx, {
             action: 'dispense_audit_double_count',
             targetType: 'DispenseAudit',
             targetId: audit.id,
-            changes: { task_id, result, counts: double_count },
+            changes: { task_id, result, counts: doubleCountEvidence },
           });
         }
 
@@ -731,6 +908,9 @@ export const POST = withAuthContext(
       }
       if (auditError.error === 'already_audited') {
         return conflict('この調剤タスクは既に監査済みです');
+      }
+      if (auditError.error === 'double_count_invalid') {
+        return validationError('麻薬ダブルカウントが調剤実績と一致しません', auditError.details);
       }
       if ('conflict' in auditError && auditError.conflict) {
         return conflict(auditError.error, auditError.details);

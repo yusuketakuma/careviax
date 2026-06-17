@@ -17,6 +17,7 @@ import type { HoldReason, RejectCode, HoldScope } from '@prisma/client';
 export type { RejectCode } from '@prisma/client';
 
 import type { CalendarMatrix } from '@/app/api/medication-sets/workspace/set-derivations';
+import type { PackagingMethodValue } from '@/lib/prescription/packaging';
 import type { Phase, TimingKey } from './dispensing-workbench.types';
 
 // ============================================================================
@@ -64,6 +65,13 @@ export interface CellMeta {
   slot: string;
 }
 
+export interface PrescriptionLineMeta {
+  updatedAt: string;
+  startDate: string | null;
+  endDate: string | null;
+  days: number | null;
+}
+
 /**
  * ワークベンチ書込に必要な実データ識別子の束（非永続・実データ時のみ充填）。
  * mock では全フィールド未設定（mutations hook はゲートで何もしない）。
@@ -79,8 +87,12 @@ export interface WorkbenchWriteContext {
   planId: string | null;
   /** did(line_id) → packaging_group_id（グループ割当の現在値）。 */
   lineGroupByDid: Record<string, string | null>;
+  /** did(line_id) → PrescriptionLine.updated_at/start/end/days（明細編集の OCC アンカー）。 */
+  lineMetaByDid?: Record<string, PrescriptionLineMeta>;
   /** gid(view 合成) → packaging_group_id（PackagingGroup.id）。 */
   groupIdByGid: Record<string, string>;
+  /** gid(view 合成) → PackagingGroup.version（グループ属性更新の OCC アンカー）。 */
+  groupVersionByGid?: Record<string, number>;
   /** cellKey('{id}:{di}:{tk}') → CellMeta（セル set/hold/bulk のアンカー）。 */
   cellMeta: Record<string, CellMeta>;
 }
@@ -99,7 +111,9 @@ export function emptyWriteContext(): WorkbenchWriteContext {
     cycleVersion: null,
     planId: null,
     lineGroupByDid: {},
+    lineMetaByDid: {},
     groupIdByGid: {},
+    groupVersionByGid: {},
     cellMeta: {},
   };
 }
@@ -206,6 +220,13 @@ export interface CarryPacketEvidenceInput {
 // API I/O DTO（W2 レスポンスの最小サブセット）
 // ============================================================================
 
+export type NarcoticClassificationStatus = 'normal' | 'needs_review';
+
+export interface NarcoticClassificationSummary {
+  unresolved_line_count: number;
+  status: NarcoticClassificationStatus;
+}
+
 /** GET /api/set-plans/[id]/calendar のレスポンス（success({data})）。 */
 export type CalendarMatrixResponse = CalendarMatrix & {
   plan_id: string;
@@ -213,6 +234,7 @@ export type CalendarMatrixResponse = CalendarMatrix & {
   cycle_version: number;
   cycle_status: string;
   set_method: string;
+  narcotic_classification?: NarcoticClassificationSummary;
 };
 
 /** cell/bulk-set が返す SetBatch DTO（version 追従に使用）。 */
@@ -238,8 +260,29 @@ export interface DispenseResultLineInput {
   line_id: string;
   actual_drug_name: string;
   actual_quantity: number;
+  actual_quantity_confirmed?: boolean;
+  actual_quantity_source?: 'existing_result' | 'prescription_quantity_confirmed' | 'manual_entry';
+  actual_unit?: string;
   carry_type: 'carry' | 'facility_deposit' | 'deferred';
   discrepancy_reason?: string;
+  packaging_method?: PackagingMethodValue;
+  packaging_group_id?: string;
+  special_notes?: string;
+}
+
+export interface PrescriptionLinePeriodUpdateInput {
+  line_id: string;
+  expected_updated_at: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  days?: number;
+}
+
+export interface UpdatePrescriptionLinesInput {
+  taskId: string;
+  client_action_id?: string;
+  packaging_group_id?: string | null;
+  lines: PrescriptionLinePeriodUpdateInput[];
 }
 
 export interface SubmitDispenseResultsInput {
@@ -256,6 +299,13 @@ export interface SubmitDispenseAuditInput {
   reject_reason_code?: string;
   reject_detail?: string;
   same_operator_reason?: string;
+  double_count?: Array<{
+    line_id: string;
+    drug_name: string;
+    dispensed_quantity: number | null;
+    first_count: number | null;
+    second_count: number | null;
+  }>;
 }
 
 export type CellMutationTarget =

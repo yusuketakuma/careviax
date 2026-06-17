@@ -8,6 +8,7 @@ const { authMock, prismaMock } = vi.hoisted(() => ({
     setPlan: { findFirst: vi.fn() },
     setBatch: { findMany: vi.fn() },
     prescriptionIntake: { findMany: vi.fn() },
+    drugMaster: { findMany: vi.fn() },
   },
 }));
 
@@ -66,14 +67,21 @@ describe('/api/set-plans/[id]/calendar GET', () => {
         lines: [
           {
             id: 'line_1',
+            drug_code: 'YJ_NORMAL_001',
             drug_name: 'アムロジピン錠5mg',
+            dosage_form: '錠剤',
             dose: '1錠',
             frequency: '朝',
             unit: '錠',
+            route: 'internal',
+            packaging_instructions: null,
+            packaging_instruction_tags: [],
+            notes: null,
           },
         ],
       },
     ]);
+    prismaMock.drugMaster.findMany.mockResolvedValue([{ yj_code: 'YJ_NORMAL_001' }]);
     prismaMock.setBatch.findMany.mockResolvedValue([
       {
         id: 'batch_d1_morning',
@@ -86,6 +94,7 @@ describe('/api/set-plans/[id]/calendar GET', () => {
         audit_state: 'unaudited',
         ng_code: null,
         held_reason: null,
+        packaging_instruction_tags_snapshot: [],
         version: 1,
       },
       {
@@ -99,6 +108,7 @@ describe('/api/set-plans/[id]/calendar GET', () => {
         audit_state: 'unaudited',
         ng_code: null,
         held_reason: null,
+        packaging_instruction_tags_snapshot: [],
         version: 1,
       },
     ]);
@@ -117,6 +127,10 @@ describe('/api/set-plans/[id]/calendar GET', () => {
     expect(payload.data.cycle_id).toBe('cycle_1');
     expect(payload.data.cycle_version).toBe(5);
     expect(payload.data.cycle_status).toBe('setting');
+    expect(payload.data.narcotic_classification).toEqual({
+      unresolved_line_count: 0,
+      status: 'normal',
+    });
     expect(payload.data.day_count).toBe(7);
     expect(payload.data.slots).toEqual(['morning', 'noon', 'evening', 'bedtime', 'prn']);
 
@@ -139,6 +153,131 @@ describe('/api/set-plans/[id]/calendar GET', () => {
     expect(payload.data.completion_gate.pending_cells).toBe(1);
     expect(payload.data.completion_gate.set_complete).toBe(false);
     expect(payload.data.completion_gate.audit_complete).toBe(false);
+  });
+
+  it('returns aggregate-only narcotic classification review status for lines without drug code or tag evidence', async () => {
+    prismaMock.prescriptionIntake.findMany.mockResolvedValue([
+      {
+        lines: [
+          {
+            id: 'line_known',
+            drug_code: 'YJ_NORMAL_001',
+            drug_name: '分類済み薬',
+            dosage_form: '錠剤',
+            dose: '1錠',
+            frequency: '朝',
+            unit: '錠',
+            route: 'internal',
+            packaging_instructions: null,
+            packaging_instruction_tags: [],
+            notes: null,
+          },
+          {
+            id: 'line_snapshot_narcotic',
+            drug_code: null,
+            drug_name: 'タグ済み薬',
+            dosage_form: '錠剤',
+            dose: '1錠',
+            frequency: '夕',
+            unit: '錠',
+            route: 'internal',
+            packaging_instructions: null,
+            packaging_instruction_tags: [],
+            notes: null,
+          },
+          {
+            id: 'line_unresolved',
+            drug_code: null,
+            drug_name: 'コード未登録薬',
+            dosage_form: '錠剤',
+            dose: '1錠',
+            frequency: '眠前',
+            unit: '錠',
+            route: 'internal',
+            packaging_instructions: null,
+            packaging_instruction_tags: [],
+            notes: null,
+          },
+        ],
+      },
+    ]);
+    prismaMock.drugMaster.findMany.mockResolvedValue([{ yj_code: 'YJ_NORMAL_001' }]);
+    prismaMock.setBatch.findMany.mockResolvedValue([
+      {
+        id: 'batch_known',
+        line_id: 'line_known',
+        slot: 'morning',
+        day_number: 1,
+        quantity: 1,
+        carry_type: 'carry',
+        set_state: 'pending',
+        audit_state: 'unaudited',
+        ng_code: null,
+        held_reason: null,
+        packaging_instruction_tags_snapshot: [],
+        version: 1,
+      },
+      {
+        id: 'batch_snapshot_narcotic',
+        line_id: 'line_snapshot_narcotic',
+        slot: 'evening',
+        day_number: 1,
+        quantity: 1,
+        carry_type: 'carry',
+        set_state: 'pending',
+        audit_state: 'unaudited',
+        ng_code: null,
+        held_reason: null,
+        packaging_instruction_tags_snapshot: ['narcotic'],
+        version: 1,
+      },
+      {
+        id: 'batch_unresolved',
+        line_id: 'line_unresolved',
+        slot: 'bedtime',
+        day_number: 1,
+        quantity: 1,
+        carry_type: 'carry',
+        set_state: 'pending',
+        audit_state: 'unaudited',
+        ng_code: null,
+        held_reason: null,
+        packaging_instruction_tags_snapshot: [],
+        version: 1,
+      },
+      {
+        id: 'batch_unresolved_second_cell',
+        line_id: 'line_unresolved',
+        slot: 'bedtime',
+        day_number: 2,
+        quantity: 1,
+        carry_type: 'carry',
+        set_state: 'pending',
+        audit_state: 'unaudited',
+        ng_code: null,
+        held_reason: null,
+        packaging_instruction_tags_snapshot: [],
+        version: 1,
+      },
+    ]);
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'plan_1' }),
+    });
+    if (!response) throw new Error('response is required');
+
+    const payload = await response.json();
+    expect(payload.data.narcotic_classification).toEqual({
+      unresolved_line_count: 1,
+      status: 'needs_review',
+    });
+    expect(prismaMock.drugMaster.findMany).toHaveBeenCalledWith({
+      where: { yj_code: { in: ['YJ_NORMAL_001'] } },
+      select: { yj_code: true },
+    });
+    expect(payload.data.narcotic_classification).not.toHaveProperty('line_ids');
+    expect(payload.data.narcotic_classification).not.toHaveProperty('drug_codes');
+    expect(JSON.stringify(payload.data.narcotic_classification)).not.toContain('コード未登録薬');
   });
 
   it('computes set_complete and audit_complete when all cells are set and audited ok', async () => {

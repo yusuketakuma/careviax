@@ -83,6 +83,7 @@ export const GET = withAuthContext(async (_req, ctx, { params }) => {
           actual_drug_name: true,
           actual_quantity: true,
           actual_unit: true,
+          discrepancy_reason: true,
           dispensed_by: true,
           dispensed_at: true,
         },
@@ -124,6 +125,17 @@ export const GET = withAuthContext(async (_req, ctx, { params }) => {
               resolved_at: true,
             },
           },
+          packaging_groups: {
+            orderBy: [{ sort_order: 'asc' }, { created_at: 'asc' }],
+            select: {
+              id: true,
+              label: true,
+              method: true,
+              slot: true,
+              sort_order: true,
+              version: true,
+            },
+          },
           prescription_intakes: {
             orderBy: { created_at: 'desc' },
             take: 2,
@@ -143,6 +155,8 @@ export const GET = withAuthContext(async (_req, ctx, { params }) => {
                   is_generic: true,
                   dose: true,
                   frequency: true,
+                  start_date: true,
+                  end_date: true,
                   days: true,
                   quantity: true,
                   unit: true,
@@ -152,6 +166,7 @@ export const GET = withAuthContext(async (_req, ctx, { params }) => {
                   packaging_instructions: true,
                   packaging_instruction_tags: true,
                   packaging_group_id: true,
+                  updated_at: true,
                   dispensing_decisions: {
                     where: { task_id: id },
                     take: 1,
@@ -380,21 +395,26 @@ export const GET = withAuthContext(async (_req, ctx, { params }) => {
       is_generic: line.is_generic,
       prescribed_label: formatQuantityLabel(line),
       prescribed_quantity: line.quantity,
+      start_date: line.start_date ? format(line.start_date, 'yyyy-MM-dd') : null,
+      end_date: line.end_date ? format(line.end_date, 'yyyy-MM-dd') : null,
       days: line.days,
+      line_updated_at: line.updated_at.toISOString(),
       dispensed_label: result
         ? `${result.actual_quantity}${result.actual_unit ?? line.unit ?? ''}`
         : null,
       dispensed_at: result?.dispensed_at ? format(result.dispensed_at, 'yyyy-MM-dd') : null,
       dispensed_quantity: result?.actual_quantity ?? null,
+      discrepancy_reason: result?.discrepancy_reason ?? null,
       unit: result?.actual_unit ?? line.unit ?? '',
       dispensing_method: decision?.dispensing_method ?? line.dispensing_method ?? null,
       packaging_method: decision?.packaging_method ?? line.packaging_method ?? null,
       packaging_instructions:
         decision?.packaging_instructions ?? line.packaging_instructions ?? null,
-      packaging_group_id: decision?.packaging_group_id ?? line.packaging_group_id ?? null,
+      packaging_group_id: line.packaging_group_id ?? null,
     };
   });
   countRows.sort((left, right) => Number(right.is_narcotic) - Number(left.is_narcotic));
+  const packagingGroups = task.cycle.packaging_groups ?? [];
 
   // ── 二人制(調剤者 → 監査者)──
   const lastDispensedAt =
@@ -439,6 +459,7 @@ export const GET = withAuthContext(async (_req, ctx, { params }) => {
     safety,
     comparison,
     count_rows: countRows,
+    packaging_groups: packagingGroups,
     dispenser,
     auditor: { id: ctx.userId, name: nameMap.get(ctx.userId) ?? '担当者' },
     is_self_audit: dispenserIds.includes(ctx.userId),

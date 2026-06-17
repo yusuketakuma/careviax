@@ -302,24 +302,24 @@ model DispenseResult {
 }
 
 model DispenseAudit {
-  id                 String              @id @default(cuid())
-  org_id             String
-  task_id            String
-  task               DispenseTask        @relation(fields: [task_id], references: [id])
-  result             DispenseAuditResult
-  reject_reason      String?
-  reject_reason_code String? // drug_name_mismatch | quantity_error | packaging_error | carry_type_error | labeling_error | other
+  id                        String              @id @default(cuid())
+  org_id                    String
+  task_id                   String
+  task                      DispenseTask        @relation(fields: [task_id], references: [id])
+  result                    DispenseAuditResult
+  reject_reason             String?
+  reject_reason_code        String? // drug_name_mismatch | quantity_error | packaging_error | carry_type_error | labeling_error | other
   // NOTE: 後方互換のため TEXT のまま温存 (enum RejectCode とは語彙が重ならない)。
   // 将来 RejectCode へ移行する場合は値マッピング + 既存行のデータ移行が必要。
-  reject_detail      String?
-  audited_by         String // User ID
-  audited_at         DateTime
+  reject_detail             String?
+  audited_by                String // User ID
+  audited_at                DateTime
   // --- 単独薬剤師の自己監査=限定例外 (D1=B)。既存行は NULL で後方互換。---
   // two-person rule の限定例外。調剤者=監査者の場合のみ admin 承認 + 理由必須。
   same_operator_reason      String? // 自己監査を要した理由 (必須入力, サーバ検証)
   same_operator_approved_by String? // 例外を承認した admin の User ID
-  created_at         DateTime            @default(now())
-  updated_at         DateTime            @updatedAt
+  created_at                DateTime            @default(now())
+  updated_at                DateTime            @updatedAt
 
   @@index([org_id])
   @@index([task_id])
@@ -424,25 +424,25 @@ model SetBatch {
 }
 
 model SetAudit {
-  id              String         @id @default(cuid())
-  org_id          String
-  plan_id         String
-  plan            SetPlan        @relation(fields: [plan_id], references: [id])
-  result          SetAuditResult
-  approved_scope  Json? // 部分承認の範囲
-  reject_reason   String?
+  id                        String         @id @default(cuid())
+  org_id                    String
+  plan_id                   String
+  plan                      SetPlan        @relation(fields: [plan_id], references: [id])
+  result                    SetAuditResult
+  approved_scope            Json? // 部分承認の範囲
+  reject_reason             String?
   // --- セット監査 3ペイン再構築 (p0_15): 写真確認 + 6項目チェックリスト ---
   // 既存行は NULL/空配列で後方互換。
-  checklist       Json? // 6項目チェックリストの結果 [{ key, label, checked }]
-  photo_asset_ids String[]       @default([]) // 確認した写真 (FileAsset.id, purpose=set-photo)
-  audited_by      String // User ID
-  audited_at      DateTime
+  checklist                 Json? // 6項目チェックリストの結果 [{ key, label, checked }]
+  photo_asset_ids           String[]       @default([]) // 確認した写真 (FileAsset.id, purpose=set-photo)
+  audited_by                String // User ID
+  audited_at                DateTime
   // --- 単独薬剤師の自己監査=限定例外 (D1=B)。既存行は NULL で後方互換。---
   // two-person rule の限定例外。実施者=監査者の場合のみ admin 承認 + 理由必須。
   same_operator_reason      String? // 自己監査を要した理由 (必須入力, サーバ検証)
   same_operator_approved_by String? // 例外を承認した admin の User ID
-  created_at      DateTime       @default(now())
-  updated_at      DateTime       @updatedAt
+  created_at                DateTime       @default(now())
+  updated_at                DateTime       @updatedAt
 
   @@index([org_id])
   @@index([plan_id])
@@ -486,6 +486,7 @@ model PackagingGroup {
   created_at DateTime        @default(now())
   updated_at DateTime        @updatedAt
 
+  @@unique([org_id, cycle_id, group_key])
   @@index([org_id, cycle_id])
 }
 
