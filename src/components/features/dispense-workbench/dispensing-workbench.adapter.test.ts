@@ -89,6 +89,29 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
     delete process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA;
   });
 
+  it('returns an empty patient list instead of seed fallback when the real-data patient API fails', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    const fetchMock = vi.fn(async () => new Response('server error', { status: 500 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { loadPatientsAsync } = await import('./dispensing-workbench.adapter');
+    const result = await loadPatientsAsync();
+
+    expect(result).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledWith('/api/dispense-workbench/patients', expect.any(Object));
+  });
+
+  it('returns an empty patient list instead of seed fallback when the real-data patient API is empty', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    const fetchMock = vi.fn(async () => jsonResponse({ data: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { loadPatientsAsync } = await import('./dispensing-workbench.adapter');
+    const result = await loadPatientsAsync();
+
+    expect(result).toEqual([]);
+  });
+
   it('resolves direct /set entry from patient cycle to latest SetPlan calendar', async () => {
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {

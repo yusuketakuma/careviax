@@ -117,6 +117,26 @@ const CHIP_PAL: Pick<ChipView, 'bg' | 'border' | 'color'>[] = [
 
 const DNW = ['日', '月', '火', '水', '木', '金', '土'];
 
+const UNAVAILABLE_PATIENT: SeedPatient = {
+  id: '',
+  name: '実データ未取得',
+  kana: '',
+  dob: '—',
+  age: 0,
+  sex: '—',
+  sub: '患者データを取得できません',
+  short: '未',
+  chips: ['取得失敗'],
+  regist: '—',
+  seedStart: '',
+  seedDays: 0,
+  yosei: '—',
+  changes: [],
+  biko: ['実データ取得に失敗しました。再読み込み後も続く場合は管理者に確認してください。'],
+  discontinued: [],
+  rows: [],
+};
+
 /**
  * phase 用 view model を組み立てて返す。コンポーネントはこの view と store actions を消費する。
  */
@@ -226,9 +246,11 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
   } = args;
 
   // patients は store 由来（実データ hydrate 後は実患者、既定はモック seed）。
-  const pts = args.patients && args.patients.length > 0 ? args.patients : SEED_PATIENTS;
+  // 実データ取得失敗時は patients=[] を明示して seed/mock に戻さない。
+  const pts = args.patients === undefined ? SEED_PATIENTS : args.patients;
+  const dataUnavailable = pts.length === 0;
 
-  const p = pts.find((x) => x.id === id) ?? pts[0];
+  const p = pts.find((x) => x.id === id) ?? pts[0] ?? UNAVAILABLE_PATIENT;
   const isGrid = isGridPhase(ph);
   const isSet = ph === 'setp';
   const isSeta = ph === 'seta';
@@ -417,7 +439,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
   const cal: CalcResult = calc(model, id);
   const calendarStart = calendarStartKeyOf(groups);
   const calendarStartDate = parseISO(calendarStart) ?? new Date(2026, 5, 17);
-  const calendarDayCount = calendarDayCountOf(groups);
+  const calendarDayCount = dataUnavailable ? 0 : calendarDayCountOf(groups);
   const days = [...Array(calendarDayCount)].map((_, i) => {
     const dt = new Date(calendarStartDate);
     dt.setDate(calendarStartDate.getDate() + i);
@@ -734,8 +756,8 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     };
     bulkLabel = '全て調剤済';
     primaryLabel = '調剤完了 → 監査へ ▶';
-    primaryBg = '#2f6fd6';
-    primaryBorder = '#245aad';
+    primaryBg = dataUnavailable ? '#b8bfc8' : '#2f6fd6';
+    primaryBorder = dataUnavailable ? '#a3abb5' : '#245aad';
     checkHead = '調剤';
   } else if (ph === 'audit') {
     const pct = prog.total ? Math.round((prog.audit / prog.total) * 100) : 0;
@@ -747,8 +769,8 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     };
     bulkLabel = '全て監査OK';
     primaryLabel = '監査確定 → セットへ ▶';
-    primaryBg = '#2c9a4e';
-    primaryBorder = '#218040';
+    primaryBg = dataUnavailable ? '#b8bfc8' : '#2c9a4e';
+    primaryBorder = dataUnavailable ? '#a3abb5' : '#218040';
     checkHead = '監査';
   } else {
     const totC = cal.active.length * calendarDayCount;
@@ -798,6 +820,10 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
       primaryCursor = 'not-allowed';
       primaryOpacity = '.7';
     }
+  }
+  if (dataUnavailable) {
+    primaryCursor = 'not-allowed';
+    primaryOpacity = '.7';
   }
 
   // ---- F-keys ----
@@ -866,11 +892,11 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
       kana: SHOW_KANA ? p.kana : '',
       name: p.name,
       dob: p.dob,
-      ageSex: p.age + '歳 / ' + p.sex,
+      ageSex: dataUnavailable ? '—' : p.age + '歳 / ' + p.sex,
       kubun: '在宅（訪問）',
       regist: p.regist,
       period: periodLabel,
-      avatarBg: AV_PAL[idxOf(id) % AV_PAL.length],
+      avatarBg: AV_PAL[Math.max(idxOf(p.id), 0) % AV_PAL.length],
       initial: p.short,
       chips,
       rule: '※基本 0.2g/包になるよう賦形',

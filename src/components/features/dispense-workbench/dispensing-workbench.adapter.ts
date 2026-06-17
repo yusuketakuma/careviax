@@ -8,8 +8,8 @@
  * - 同期 loadPatients/loadWorkbench/loadCalendar: 従来どおり seed を返す（view が module-load
  *   時に loadPatients() を呼ぶ初期化経路を壊さないため温存）。
  * - 非同期 loadPatientsAsync/loadWorkbenchAsync: USE_MOCK=false 時のみ実 API を fetch し、
- *   from-api で公開型へ写像して返す。fetch 失敗 / 未認証 / 該当無しは安全にフォールバック
- *   （patients=seed 全件、workbench=null）。
+ *   from-api で公開型へ写像して返す。fetch 失敗 / 未認証 / 該当無しは空状態 / null を返し、
+ *   実データ画面で seed/mock 患者を操作可能にしない。
  *
  * 段階1b スコープは dispense / audit の読取のみ。set / seta（カレンダー）はモック継続。
  */
@@ -88,7 +88,7 @@ export function loadCalendar(patientId: string): CalcResult {
 
 // ── 非同期（実データ）API: USE_MOCK ゲートの裏 ──
 
-/** 安全な JSON fetch。非 2xx / 例外は null（呼び出し側がフォールバック）。 */
+/** 安全な JSON fetch。非 2xx / 例外は null（呼び出し側が fail-closed する）。 */
 async function fetchJson<T>(url: string): Promise<T | null> {
   try {
     const res = await fetch(url, {
@@ -104,8 +104,8 @@ async function fetchJson<T>(url: string): Promise<T | null> {
 }
 
 /**
- * 患者リスト（実データ）。USE_MOCK 時 / fetch 失敗時は seed 全件へフォールバック。
- * 戻り値は常に SeedPatient[]（空配列にはしない＝左ペインが空表示で固まらない安全側）。
+ * 患者リスト（実データ）。USE_MOCK 時は seed 全件、実データ fetch 失敗時は空配列。
+ * 実データ画面では seed/mock 患者を表示・操作可能にしない。
  */
 export async function loadPatientsAsync(): Promise<SeedPatient[]> {
   if (USE_MOCK) return buildPatients();
@@ -113,7 +113,7 @@ export async function loadPatientsAsync(): Promise<SeedPatient[]> {
     '/api/dispense-workbench/patients',
   );
   if (!body || !Array.isArray(body.data) || body.data.length === 0) {
-    return buildPatients();
+    return [];
   }
   return patientsFromApi(body.data);
 }
@@ -149,7 +149,7 @@ async function resolveTaskId(cycleId: string): Promise<string | null> {
  * 工程ワークベンチ（実データ・dispense|audit の読取のみ）。
  * patientId → 患者リスト行の cycle_id → DispenseTask 解決 →
  * GET /api/dispense-tasks/[id]/workbench → from-api で写像。
- * 解決不能 / fetch 失敗 / 未認証は null（呼び出し側が hydrate をスキップ＝モック表示維持）。
+ * 解決不能 / fetch 失敗 / 未認証は null（呼び出し側が空状態へ倒して mock 操作を閉じる）。
  */
 export async function loadWorkbenchAsync(
   _phase: Phase,
@@ -193,7 +193,7 @@ export async function loadCalendarAsync(planId: string): Promise<CalendarMatrixR
 
 /**
  * カレンダー読取 + writeContext 充填用の束（set/seta フェーズのシェルが使用）。
- * USE_MOCK 時 / 取得失敗時は null（呼び出し側が seed 継続・writeContext 未充填）。
+ * USE_MOCK 時 / 取得失敗時は null（実データシェル側は空状態へ倒す）。
  * 戻り値の writeContext は planId / cellMeta（batch_id・version アンカー）を持つ。
  */
 export async function loadCalendarWriteContextAsync(

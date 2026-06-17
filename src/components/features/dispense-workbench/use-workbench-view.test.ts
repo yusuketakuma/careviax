@@ -78,4 +78,34 @@ describe('buildView calendar period', () => {
     expect(view.progress.fraction).toBe('0 / 1');
     expect(view.gate.text).toContain('未セット 1');
   });
+
+  it('does not fall back to seed patients when real-data hydration reports an empty patient list', () => {
+    const view = buildView({
+      phase: 'dispense',
+      selId: '',
+      sortMode: 'start',
+      done: {},
+      audit: {},
+      setCells: {},
+      auditCells: {},
+      outChk: {},
+      checks: {},
+      ng: {},
+      target: null,
+      holdModal: null,
+      holdInfo: {},
+      packet: {},
+      compareOpen: false,
+      model: {},
+      patients: [],
+    });
+
+    expect(view.patientCount).toBe('0');
+    expect(view.patients).toEqual([]);
+    expect(view.rows).toEqual([]);
+    expect(view.cur.name).toBe('実データ未取得');
+    expect(view.cur.period).toBe('—');
+    expect(view.progress.fraction).toBe('0 / 0');
+    expect(view.primary.cursor).toBe('not-allowed');
+  });
 });

@@ -113,24 +113,32 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
   // opt-in 時のみ患者リスト + 選択患者の model を取得して hydrate（dispense/audit 読取）。
   // 取得した writeContext（task_id / cycle_id / cycle.version / グループ割当）を store へ充填し、
   // 書込 mutation が API 単位を解決できるようにする。
-  // fetch 失敗 / 未認証 / 該当無しは hydrate を呼ばず現行 UI（seed 表示）を維持。
+  // fetch 失敗 / 未認証 / 該当無しは空状態へ倒し、seed/mock 患者を操作可能にしない。
   useEffect(() => {
     if (!isRealDataEnabled()) return;
     if (phase !== 'dispense' && phase !== 'audit') return; // set/seta は別 effect
     let cancelled = false;
     void (async () => {
       const patients = await loadPatientsAsync();
-      if (cancelled || patients.length === 0) return;
+      if (cancelled) return;
+      if (patients.length === 0) {
+        hydrate({ patients: [] });
+        return;
+      }
       const targetId = patients.some((p) => p.id === selId) ? selId : patients[0].id;
       const wb = await loadWorkbenchAsync(phase, targetId);
       if (cancelled) return;
+      if (!wb) {
+        hydrate({ patients: [] });
+        return;
+      }
       hydrate({
         patients,
         selId: targetId,
-        model: wb ? { [wb.patient.id]: wb.groups } : undefined,
+        model: { [wb.patient.id]: wb.groups },
       });
       // 書込結線の id 束を store へ充填（mutations hook が読む）。
-      if (wb) setWriteContext(wb.writeContext);
+      setWriteContext(wb.writeContext);
     })();
     return () => {
       cancelled = true;
@@ -141,7 +149,7 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
   // ---- 実データ結線（カレンダー: set / seta）----
   // 既定（モック）では no-op。opt-in 時は direct /set entry でも cycle_id -> SetPlan -> calendar
   // を解決し、model + set/audit cells + cellMeta を実データ由来に置き換える。
-  // 取得失敗時はモック表示を維持（writeContext は未充填）。
+  // 取得失敗時は空状態へ倒し、seed/mock カレンダーを操作可能にしない。
   useEffect(() => {
     if (!isRealDataEnabled()) return;
     if (!isCalendarPhase(phase)) return;
@@ -149,14 +157,22 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
     void (async () => {
       if (planId) {
         const result = await loadCalendarWriteContextAsync(selId, planId);
-        if (cancelled || !result) return;
+        if (cancelled) return;
+        if (!result) {
+          hydrate({ patients: [] });
+          return;
+        }
         setCalendarState({ patientId: selId, ...result.calendarState });
         setWriteContext(result.writeContext);
         return;
       }
 
       const result = await loadSetCalendarForPatientAsync(selId);
-      if (cancelled || !result) return;
+      if (cancelled) return;
+      if (!result) {
+        hydrate({ patients: [] });
+        return;
+      }
       hydrate({ patients: result.patients, selId: result.selId });
       setCalendarState({ patientId: result.selId, ...result.calendarState });
       setWriteContext(result.writeContext);

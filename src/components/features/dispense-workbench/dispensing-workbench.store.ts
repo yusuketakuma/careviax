@@ -179,7 +179,17 @@ export const useWorkbenchStore = create<WorkbenchState>()(
 
       hydrate: ({ patients, selId, model }) =>
         set((s) => {
-          if (patients.length === 0) return {};
+          if (patients.length === 0) {
+            return {
+              patients: [],
+              selId: '',
+              hydrated: true,
+              target: null,
+              holdModal: null,
+              model: {},
+              writeContext: emptyWriteContext(),
+            };
+          }
           const nextSelId =
             selId ?? (patients.some((p) => p.id === s.selId) ? s.selId : patients[0].id);
           return {
@@ -196,6 +206,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
       navBy: (delta) => {
         const { model, sortMode, selId, patients } = get();
         const sorted = sortedIds(patients, model, sortMode);
+        if (sorted.length === 0) return;
         const i = sorted.indexOf(selId);
         const ni = (i + delta + sorted.length) % sorted.length;
         set({ selId: sorted[ni], target: null, holdModal: null });
