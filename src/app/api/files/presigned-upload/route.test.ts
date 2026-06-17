@@ -104,6 +104,7 @@ describe('/api/files/presigned-upload POST', () => {
     assertFileUploadConstraintsMock.mockImplementation(() => undefined);
     visitRecordFindFirstMock.mockResolvedValue({
       id: 'visit_1',
+      patient_id: 'patient_1',
       schedule: {
         pharmacist_id: 'user_1',
         case_: {
@@ -112,7 +113,12 @@ describe('/api/files/presigned-upload POST', () => {
         },
       },
     });
-    careReportFindFirstMock.mockResolvedValue({ id: 'report_1' });
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      patient_id: 'patient_1',
+      case_id: null,
+      visit_record_id: null,
+    });
     createPresignedUploadMock.mockResolvedValue({
       id: 'file_1',
       uploadUrl: 'https://example.com/upload',
@@ -277,6 +283,27 @@ describe('/api/files/presigned-upload POST', () => {
     });
   });
 
+  it('rejects report upload presigns for archived patients before storage metadata creation', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    const response = await POST(
+      createRequest({
+        purpose: 'report',
+        file_name: 'report.pdf',
+        mime_type: 'application/pdf',
+        size_bytes: 1024,
+        report_id: 'report_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(createPresignedUploadMock).not.toHaveBeenCalled();
+  });
+
   it('rejects unsupported upload constraints before entity lookup or presign', async () => {
     assertFileUploadConstraintsMock.mockImplementationOnce(() => {
       throw new FileStorageErrorMock(
@@ -388,6 +415,7 @@ describe('/api/files/presigned-upload POST', () => {
     });
     visitRecordFindFirstMock.mockResolvedValue({
       id: 'visit_1',
+      patient_id: 'patient_1',
       schedule: {
         pharmacist_id: 'other_user',
         case_: {
@@ -417,6 +445,27 @@ describe('/api/files/presigned-upload POST', () => {
     );
   });
 
+  it('rejects visit-photo upload presigns for archived patients before storage metadata creation', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    const response = await POST(
+      createRequest({
+        purpose: 'visit-photo',
+        file_name: 'visit-photo.png',
+        mime_type: 'image/png',
+        size_bytes: 1024,
+        visit_record_id: 'visit_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(createPresignedUploadMock).not.toHaveBeenCalled();
+  });
+
   it('returns a presigned upload url when the prescription patient is accessible', async () => {
     requireAuthContextMock.mockResolvedValue({
       ctx: {
@@ -443,7 +492,7 @@ describe('/api/files/presigned-upload POST', () => {
         id: 'patient_1',
         org_id: 'org_1',
       },
-      select: { id: true },
+      select: { id: true, archived_at: true },
     });
     // org-wide ロール(pharmacist)は担当割当チェックをバイパスするため visitSchedule 照会は行われない
     expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
@@ -457,6 +506,27 @@ describe('/api/files/presigned-upload POST', () => {
       visitRecordId: undefined,
       reportId: undefined,
     });
+  });
+
+  it('rejects prescription upload presigns for archived patients before storage metadata creation', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    const response = await POST(
+      createRequest({
+        purpose: 'prescription',
+        file_name: 'prescription.pdf',
+        mime_type: 'application/pdf',
+        size_bytes: 1024,
+        patient_id: 'patient_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(createPresignedUploadMock).not.toHaveBeenCalled();
   });
 
   it('allows prescription upload for org-wide roles without patient assignment', async () => {

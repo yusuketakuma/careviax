@@ -1,7 +1,5 @@
 import { Metadata } from 'next';
-import { Suspense } from 'react';
-import { Loading } from '@/components/ui/loading';
-import { DispenseWorkbench } from './dispense-workbench';
+import { DispensingWorkbench } from '@/components/features/dispense-workbench/dispensing-workbench';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 export const metadata: Metadata = {
@@ -9,17 +7,15 @@ export const metadata: Metadata = {
 };
 
 /**
- * /dispense。ビューポート最上部は new_07_dispense の 3 ペイン調剤ワークベンチ
- * (左キュー / いまの1件 / 右レール)のみを表示する。
+ * /dispense。レセコン風の調剤ワークベンチ（段階1・モックデータ駆動）を全面マウントする。
+ * PageScaffold variant="bare" + 外側 padding/min-h の中和で、ワークベンチ自身の
+ * .rootInShell（ヘッダ高 3.5rem 控除の 100vh レイアウト）をそのまま使う。
  */
 export default function DispensePage() {
   return (
-    <PageScaffold variant="bare">
-      <div className="rounded-xl border border-border/70 bg-background px-4 py-4 sm:px-6 sm:py-5">
-        <Suspense fallback={<Loading />}>
-          <DispenseWorkbench />
-        </Suspense>
-      </div>
+    <PageScaffold variant="bare" className="min-h-0 bg-transparent p-0 sm:p-0 lg:p-0 xl:p-0">
+      <h1 className="sr-only">調剤</h1>
+      <DispensingWorkbench phase="dispense" />
     </PageScaffold>
   );
 }

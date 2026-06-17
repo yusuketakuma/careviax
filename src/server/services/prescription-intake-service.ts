@@ -27,6 +27,7 @@ import {
   buildMedicationCycleAssignmentWhere,
   type PrescriptionAccessContext,
 } from '@/server/services/prescription-access';
+import { findCurrentAndPreviousPrescriptionIntakesForMedicationDiff } from '@/server/services/prescription-intake-pair';
 import { validatePrescriptionDateWindow } from '@/lib/prescription/prescription-date-window';
 import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
 
@@ -59,6 +60,10 @@ export interface CreateIntakeLineInput {
   dispensing_method?: 'standard' | 'unit_dose' | 'crushed' | 'other';
   start_date?: string;
   end_date?: string;
+  source_intake_id?: string;
+  source_line_id?: string;
+  source_intake_updated_at_snapshot?: string;
+  source_line_updated_at_snapshot?: string;
 }
 
 export interface CreateIntakeInput {
@@ -66,6 +71,7 @@ export interface CreateIntakeInput {
   case_id?: string;
   patient_id?: string;
   source_type: PrescriptionSourceType;
+  external_prescription_id?: string;
   prescribed_date: string;
   prescription_expiry_date?: string;
   prescriber_name?: string;
@@ -137,6 +143,7 @@ type Tx = {
   prescriberInstitution: Pick<Prisma.TransactionClient['prescriberInstitution'], 'findFirst'>;
   prescriptionIntake: Pick<Prisma.TransactionClient['prescriptionIntake'], 'create'> &
     Partial<Pick<Prisma.TransactionClient['prescriptionIntake'], 'update'>>;
+  prescriptionLine: Pick<Prisma.TransactionClient['prescriptionLine'], 'findMany'>;
   task: Pick<Prisma.TransactionClient['task'], 'create' | 'updateMany' | 'upsert'>;
   workflowException: Pick<Prisma.TransactionClient['workflowException'], 'create' | 'findFirst'>;
 };
@@ -171,6 +178,8 @@ type TransactionResult =
     }
   | { kind: 'error'; error: 'expiry_exceeded' }
   | { kind: 'error'; error: 'future_prescribed_date' }
+  | { kind: 'error'; error: 'invalid_source_prescription_line' }
+  | { kind: 'error'; error: 'source_revision_conflict' }
   | { kind: 'error'; error: 'invalid_transition' }
   | { kind: 'error'; error: 'version_conflict' };
 
@@ -222,6 +231,8 @@ export type CreateIntakeServiceResult =
   | { ok: false; error: 'expiry_exceeded' }
   | { ok: false; error: 'future_prescribed_date' }
   | { ok: false; error: 'prescriber_institution_not_found'; message: string }
+  | { ok: false; error: 'invalid_source_prescription_line' }
+  | { ok: false; error: 'source_revision_conflict' }
   | { ok: false; error: 'invalid_transition' }
   | { ok: false; error: 'version_conflict' };
 
@@ -558,6 +569,84 @@ async function ensureFaxOriginalFollowupTaskTx(
   });
 }
 
+type SourcePrescriptionLineValidationResult =
+  | { ok: true }
+  | { ok: false; error: 'invalid_source_prescription_line' | 'source_revision_conflict' };
+
+function sameInstant(left: Date, right: string) {
+  return left.getTime() === new Date(right).getTime();
+}
+
+async function validatePreviousPrescriptionLineSources(
+  tx: Tx,
+  args: {
+    orgId: string;
+    cycle: LoadedCycleContext;
+    lines: CreateIntakeLineInput[];
+  },
+): Promise<SourcePrescriptionLineValidationResult> {
+  const sourcedLines = args.lines.filter((line) => line.source_line_id);
+  if (sourcedLines.length === 0) return { ok: true };
+
+  const sourceLineIds = Array.from(new Set(sourcedLines.map((line) => line.source_line_id!)));
+  const sourceRows = await tx.prescriptionLine.findMany({
+    where: {
+      org_id: args.orgId,
+      id: { in: sourceLineIds },
+    },
+    select: {
+      id: true,
+      intake_id: true,
+      updated_at: true,
+      intake: {
+        select: {
+          id: true,
+          updated_at: true,
+          cycle: {
+            select: {
+              patient_id: true,
+              case_id: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  const sourceById = new Map(sourceRows.map((source) => [source.id, source]));
+
+  for (const line of sourcedLines) {
+    if (
+      !line.source_intake_id ||
+      !line.source_line_id ||
+      !line.source_intake_updated_at_snapshot ||
+      !line.source_line_updated_at_snapshot
+    ) {
+      return { ok: false, error: 'invalid_source_prescription_line' };
+    }
+
+    const source = sourceById.get(line.source_line_id);
+    if (!source) {
+      return { ok: false, error: 'invalid_source_prescription_line' };
+    }
+    if (
+      source.intake_id !== line.source_intake_id ||
+      source.intake.id !== line.source_intake_id ||
+      source.intake.cycle.patient_id !== args.cycle.patient_id ||
+      source.intake.cycle.case_id !== args.cycle.case_id
+    ) {
+      return { ok: false, error: 'invalid_source_prescription_line' };
+    }
+    if (
+      !sameInstant(source.updated_at, line.source_line_updated_at_snapshot) ||
+      !sameInstant(source.intake.updated_at, line.source_intake_updated_at_snapshot)
+    ) {
+      return { ok: false, error: 'source_revision_conflict' };
+    }
+  }
+
+  return { ok: true };
+}
+
 // 調剤ドラフト生成は dispense-draft-service.ts に分離。
 // 処方登録完了後、createDispenseDraft() 経由で DispenseTask を自動生成する。
 
@@ -607,6 +696,15 @@ export async function createPrescriptionIntakeInTx(
   });
   if (!cycle) {
     return { kind: 'error', error: 'cycle_not_found' };
+  }
+
+  const sourceValidation = await validatePreviousPrescriptionLineSources(tx, {
+    orgId,
+    cycle,
+    lines,
+  });
+  if (!sourceValidation.ok) {
+    return { kind: 'error', error: sourceValidation.error };
   }
 
   if (source_type === 'refill') {
@@ -759,6 +857,12 @@ export async function createPrescriptionIntakeInTx(
           return {
             org_id: orgId,
             ...line,
+            source_intake_updated_at_snapshot: line.source_intake_updated_at_snapshot
+              ? new Date(line.source_intake_updated_at_snapshot)
+              : undefined,
+            source_line_updated_at_snapshot: line.source_line_updated_at_snapshot
+              ? new Date(line.source_line_updated_at_snapshot)
+              : undefined,
             packaging_method: packagingMethod,
             packaging_instruction_tags:
               line.packaging_instruction_tags && line.packaging_instruction_tags.length > 0
@@ -927,6 +1031,12 @@ export async function createPrescriptionIntake(
     if (txResult.error === 'future_prescribed_date') {
       return { ok: false, error: 'future_prescribed_date' };
     }
+    if (txResult.error === 'invalid_source_prescription_line') {
+      return { ok: false, error: 'invalid_source_prescription_line' };
+    }
+    if (txResult.error === 'source_revision_conflict') {
+      return { ok: false, error: 'source_revision_conflict' };
+    }
     if (txResult.error === 'invalid_transition') {
       return { ok: false, error: 'invalid_transition' };
     }
@@ -981,6 +1091,7 @@ export async function runPrescriptionIntakePostCreateHooks(args: {
     drug_code?: string | null;
     dose: string;
     frequency: string;
+    days?: number | null;
     start_date?: string | Date | null;
   }>;
   prescriberName: string | null;
@@ -994,7 +1105,7 @@ export async function runPrescriptionIntakePostCreateHooks(args: {
 
   try {
     const [changes, syncResult] = await Promise.all([
-      detectIntakeChanges(args.cycleId, args.intakeId, args.lines),
+      detectIntakeChanges(args.orgId, args.patientId, args.intakeId),
       syncMedicationProfiles(
         args.patientId,
         args.orgId,
@@ -1017,32 +1128,22 @@ export async function runPrescriptionIntakePostCreateHooks(args: {
 // ────────────────────────────────────────────────────────────────────────────
 
 async function detectIntakeChanges(
-  cycleId: string,
+  orgId: string,
+  patientId: string,
   currentIntakeId: string,
-  currentLines: Array<{
-    drug_name: string;
-    drug_code?: string | null;
-    dose: string;
-    frequency: string;
-  }>,
 ): Promise<MedicationChange[]> {
-  // 同一サイクルの前回処方を取得
-  const previousIntake = await prisma.prescriptionIntake.findFirst({
-    where: {
-      cycle_id: cycleId,
-      id: { not: currentIntakeId },
+  const { current, previous } = await findCurrentAndPreviousPrescriptionIntakesForMedicationDiff(
+    prisma,
+    {
+      orgId,
+      patientId,
+      currentIntakeId,
     },
-    orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }],
-    select: {
-      lines: {
-        select: { drug_name: true, drug_code: true, dose: true, frequency: true },
-      },
-    },
-  });
+  );
 
-  if (!previousIntake) return [];
+  if (!current || !previous) return [];
 
-  return detectMedicationChanges(currentLines, previousIntake.lines);
+  return detectMedicationChanges(current.lines, previous.lines);
 }
 
 // ────────────────────────────────────────────────────────────────────────────

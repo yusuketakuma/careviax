@@ -151,6 +151,13 @@ export type HomeVisit2026Evidence = {
   initial_transition_management?: InitialTransitionManagementEvidence;
 };
 
+export type PreviousVisitReuseSource = {
+  source_visit_record_id: string;
+  source_visit_record_version: number | null;
+  source_visit_record_updated_at: string | null;
+  carry_forward_items: string[];
+};
+
 export type StructuredSoap = {
   subjective: SoapSubjective;
   objective: SoapObjective;
@@ -159,4 +166,5 @@ export type StructuredSoap = {
   residual_medications?: ResidualMedicationEntry[];
   home_visit_2026?: HomeVisit2026Evidence;
   handoff?: HandoffData | null;
+  previous_visit_reuse?: PreviousVisitReuseSource;
 };

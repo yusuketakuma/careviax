@@ -10,6 +10,7 @@ import {
   sortHandlingTags,
   type WorkspaceConditionInput,
 } from '@/server/services/patient-detail-helpers';
+import { findPreviousPrescriptionIntakeForMedicationDiff } from '@/server/services/prescription-intake-pair';
 
 type DbClient = typeof prisma | Prisma.TransactionClient;
 
@@ -58,10 +59,11 @@ export async function buildPatientWorkspace(db: DbClient, args: BuildPatientWork
     orderBy: { created_at: 'desc' },
     select: {
       id: true,
+      case_id: true,
       overall_status: true,
       exception_status: true,
       prescription_intakes: {
-        orderBy: { prescribed_date: 'desc' },
+        orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }],
         take: 2,
         select: {
           id: true,
@@ -182,7 +184,17 @@ export async function buildPatientWorkspace(db: DbClient, args: BuildPatientWork
     ]),
   ]);
 
-  const [currentIntake, previousIntake] = cycle.prescription_intakes;
+  const [currentIntake] = cycle.prescription_intakes;
+  const previousIntake = currentIntake
+    ? await findPreviousPrescriptionIntakeForMedicationDiff(db, {
+        orgId: args.orgId,
+        patientId: args.patientId,
+        caseId: cycle.case_id,
+        currentIntakeId: currentIntake.id,
+        currentPrescribedDate: currentIntake.prescribed_date,
+        currentCreatedAt: currentIntake.created_at,
+      })
+    : null;
 
   const toPeriod = (lines: Array<{ start_date: Date | null; end_date: Date | null }>) => {
     const starts = lines.map((line) => line.start_date).filter((d): d is Date => d != null);
@@ -277,7 +289,7 @@ export async function buildPatientWorkspace(db: DbClient, args: BuildPatientWork
             tone: 'deadline' as const,
             time_label: auditDueTime ? `期限 ${auditDueTime}` : '監査待ち',
             label: hasNarcotic ? '麻薬監査' : '調剤監査',
-            href: '/auditing',
+            href: '/audit',
             action_label: '監査へ',
             due_time: auditDueTime,
           },
@@ -294,7 +306,7 @@ export async function buildPatientWorkspace(db: DbClient, args: BuildPatientWork
                 ? '進行中'
                 : '未着手',
             label: 'セット作成',
-            href: '/medication-sets',
+            href: '/set',
             action_label: 'セットへ',
             due_time: null,
           },

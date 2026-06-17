@@ -309,6 +309,304 @@ export async function verifyMigrationPreconditions(client: MigrationPrecondition
     });
   }
 
+  const duplicatePrimaryContactGroups = await queryCount(
+    client,
+    `
+      SELECT COUNT(*)::int AS value
+      FROM (
+        SELECT org_id, patient_id
+        FROM "ContactParty"
+        WHERE "is_primary" IS TRUE
+        GROUP BY org_id, patient_id
+        HAVING COUNT(*) > 1
+      ) AS duplicate_primary_contacts
+    `,
+  );
+  if (duplicatePrimaryContactGroups > 0) {
+    issues.push({
+      name: 'patient-contact-duplicate-primary',
+      severity: 'error',
+      detail: `${duplicatePrimaryContactGroups} patient contact primary group(s) must be reconciled before ContactParty_one_primary_per_patient_idx`,
+    });
+  }
+
+  const duplicatePrimaryCareTeamGroups = await queryCount(
+    client,
+    `
+      SELECT COUNT(*)::int AS value
+      FROM (
+        SELECT
+          org_id,
+          case_id,
+          CASE
+            WHEN role IN ('doctor', 'clinic', 'prescriber') THEN 'physician'
+            WHEN role IN ('visiting_nurse', 'home_nurse') THEN 'nurse'
+            WHEN role IN ('caremanager', 'cm') THEN 'care_manager'
+            ELSE role
+          END AS canonical_role
+        FROM "CareTeamLink"
+        WHERE "is_primary" IS TRUE
+        GROUP BY org_id, case_id, canonical_role
+        HAVING COUNT(*) > 1
+      ) AS duplicate_primary_care_team_links
+    `,
+  );
+  if (duplicatePrimaryCareTeamGroups > 0) {
+    issues.push({
+      name: 'care-team-duplicate-primary-role',
+      severity: 'error',
+      detail: `${duplicatePrimaryCareTeamGroups} care-team primary role group(s) must be reconciled before CareTeamLink_one_primary_per_case_role_idx`,
+    });
+  }
+
+  const nonCanonicalCareTeamRoleGroups = await queryCount(
+    client,
+    `
+      SELECT COUNT(*)::int AS value
+      FROM (
+        SELECT role
+        FROM "CareTeamLink"
+        WHERE role NOT IN (
+          'physician',
+          'nurse',
+          'care_manager',
+          'pharmacist',
+          'other',
+          'doctor',
+          'clinic',
+          'prescriber',
+          'visiting_nurse',
+          'home_nurse',
+          'caremanager',
+          'cm'
+        )
+        GROUP BY role
+      ) AS non_canonical_care_team_roles
+    `,
+  );
+  if (nonCanonicalCareTeamRoleGroups > 0) {
+    issues.push({
+      name: 'care-team-non-canonical-role',
+      severity: 'error',
+      detail: `${nonCanonicalCareTeamRoleGroups} unsupported CareTeamLink role value group(s) would violate CareTeamLink_role_canonical_check`,
+    });
+  }
+
+  const duplicateDeliveryIntentKeys = await queryCount(
+    client,
+    `
+      SELECT COUNT(*)::int AS value
+      FROM (
+        SELECT org_id, delivery_intent_key
+        FROM "DeliveryRecord"
+        WHERE delivery_intent_key IS NOT NULL
+        GROUP BY org_id, delivery_intent_key
+        HAVING COUNT(*) > 1
+      ) AS duplicate_delivery_intent_keys
+    `,
+  );
+  if (duplicateDeliveryIntentKeys > 0) {
+    issues.push({
+      name: 'delivery-record-duplicate-intent-key',
+      severity: 'error',
+      detail: `${duplicateDeliveryIntentKeys} DeliveryRecord intent key group(s) would violate DeliveryRecord_org_id_delivery_intent_key_key`,
+    });
+  }
+
+  const legacyDuplicateDeliveryIntents = await queryCount(
+    client,
+    `
+      SELECT COUNT(*)::int AS value
+      FROM (
+        SELECT
+          org_id,
+          report_id,
+          channel,
+          CASE
+            WHEN channel IN ('email', 'ses') THEN lower(btrim(recipient_contact))
+            WHEN channel IN ('phone', 'fax') THEN regexp_replace(btrim(recipient_contact), '\\D', '', 'g')
+            ELSE lower(regexp_replace(btrim(recipient_contact), '\\s+', ' ', 'g'))
+          END AS recipient_contact_key
+        FROM "DeliveryRecord"
+        WHERE delivery_intent_key IS NULL
+        GROUP BY
+          org_id,
+          report_id,
+          channel,
+          CASE
+            WHEN channel IN ('email', 'ses') THEN lower(btrim(recipient_contact))
+            WHEN channel IN ('phone', 'fax') THEN regexp_replace(btrim(recipient_contact), '\\D', '', 'g')
+            ELSE lower(regexp_replace(btrim(recipient_contact), '\\s+', ' ', 'g'))
+          END
+        HAVING COUNT(*) > 1
+      ) AS legacy_duplicate_delivery_intents
+    `,
+  );
+  if (legacyDuplicateDeliveryIntents > 0) {
+    issues.push({
+      name: 'delivery-record-legacy-duplicate-intent',
+      severity: 'warn',
+      detail: `${legacyDuplicateDeliveryIntents} legacy DeliveryRecord duplicate intent group(s) have null delivery_intent_key and should be reconciled before relying on idempotent retry matching`,
+    });
+  }
+
+  const duplicateCommunicationResponseIntentKeys = await queryCount(
+    client,
+    `
+      SELECT COUNT(*)::int AS value
+      FROM (
+        SELECT org_id, response_intent_key
+        FROM "CommunicationResponse"
+        WHERE response_intent_key IS NOT NULL
+        GROUP BY org_id, response_intent_key
+        HAVING COUNT(*) > 1
+      ) AS duplicate_response_intent_keys
+    `,
+  );
+  if (duplicateCommunicationResponseIntentKeys > 0) {
+    issues.push({
+      name: 'communication-response-duplicate-intent-key',
+      severity: 'error',
+      detail: `${duplicateCommunicationResponseIntentKeys} CommunicationResponse intent key group(s) would violate CommunicationResponse_org_id_response_intent_key_key`,
+    });
+  }
+
+  const legacyDuplicateCommunicationResponseIntents = await queryCount(
+    client,
+    `
+      SELECT COUNT(*)::int AS value
+      FROM (
+        SELECT
+          org_id,
+          request_id,
+          lower(regexp_replace(btrim(responder_name), '\\s+', ' ', 'g')) AS responder_name_key,
+          lower(regexp_replace(btrim(content), '\\s+', ' ', 'g')) AS content_key,
+          responded_at
+        FROM "CommunicationResponse"
+        WHERE response_intent_key IS NULL
+        GROUP BY
+          org_id,
+          request_id,
+          lower(regexp_replace(btrim(responder_name), '\\s+', ' ', 'g')),
+          lower(regexp_replace(btrim(content), '\\s+', ' ', 'g')),
+          responded_at
+        HAVING COUNT(*) > 1
+      ) AS legacy_duplicate_response_intents
+    `,
+  );
+  if (legacyDuplicateCommunicationResponseIntents > 0) {
+    issues.push({
+      name: 'communication-response-legacy-duplicate-intent',
+      severity: 'warn',
+      detail: `${legacyDuplicateCommunicationResponseIntents} legacy CommunicationResponse duplicate intent group(s) have null response_intent_key and should be reconciled before relying on idempotent retry matching`,
+    });
+  }
+
+  const duplicateDispenseResultLineGroups = await queryCount(
+    client,
+    `
+      SELECT COUNT(*)::int AS value
+      FROM (
+        SELECT org_id, task_id, line_id
+        FROM "DispenseResult"
+        GROUP BY org_id, task_id, line_id
+        HAVING COUNT(*) > 1
+      ) AS duplicate_dispense_result_lines
+    `,
+  );
+  if (duplicateDispenseResultLineGroups > 0) {
+    issues.push({
+      name: 'dispense-result-duplicate-task-line',
+      severity: 'error',
+      detail: `${duplicateDispenseResultLineGroups} DispenseResult task/line group(s) would violate DispenseResult_org_id_task_id_line_id_key`,
+    });
+  }
+
+  const duplicateSetBatchCellGroups = await queryCount(
+    client,
+    `
+      SELECT COUNT(*)::int AS value
+      FROM (
+        SELECT org_id, plan_id, line_id, slot, day_number
+        FROM "SetBatch"
+        GROUP BY org_id, plan_id, line_id, slot, day_number
+        HAVING COUNT(*) > 1
+      ) AS duplicate_set_batch_cells
+    `,
+  );
+  if (duplicateSetBatchCellGroups > 0) {
+    issues.push({
+      name: 'set-batch-duplicate-cell',
+      severity: 'error',
+      detail: `${duplicateSetBatchCellGroups} SetBatch cell group(s) would violate SetBatch_org_id_plan_id_line_id_slot_day_number_key`,
+    });
+  }
+
+  const duplicateSetPlanPeriodGroups = await queryCount(
+    client,
+    `
+      SELECT COUNT(*)::int AS value
+      FROM (
+        SELECT org_id, cycle_id, target_period_start, target_period_end, set_method
+        FROM "SetPlan"
+        GROUP BY org_id, cycle_id, target_period_start, target_period_end, set_method
+        HAVING COUNT(*) > 1
+      ) AS duplicate_set_plan_periods
+    `,
+  );
+  if (duplicateSetPlanPeriodGroups > 0) {
+    issues.push({
+      name: 'set-plan-duplicate-period',
+      severity: 'error',
+      detail: `${duplicateSetPlanPeriodGroups} SetPlan period group(s) would violate SetPlan_org_id_cycle_id_target_period_start_target_period_end_set_method_key`,
+    });
+  }
+
+  const duplicateActiveVisitScheduleRouteCells = await queryCount(
+    client,
+    `
+      SELECT COUNT(*)::int AS value
+      FROM (
+        SELECT org_id, pharmacist_id, scheduled_date, route_order
+        FROM "VisitSchedule"
+        WHERE route_order IS NOT NULL
+          AND schedule_status NOT IN ('cancelled', 'rescheduled')
+        GROUP BY org_id, pharmacist_id, scheduled_date, route_order
+        HAVING COUNT(*) > 1
+      ) AS duplicate_active_visit_route_cells
+    `,
+  );
+  if (duplicateActiveVisitScheduleRouteCells > 0) {
+    issues.push({
+      name: 'visit-schedule-duplicate-active-route-order',
+      severity: 'error',
+      detail: `${duplicateActiveVisitScheduleRouteCells} active VisitSchedule route-order cell group(s) would violate VisitSchedule_active_route_order_key`,
+    });
+  }
+
+  const duplicateOpenVisitProposalRouteCells = await queryCount(
+    client,
+    `
+      SELECT COUNT(*)::int AS value
+      FROM (
+        SELECT org_id, proposed_pharmacist_id, proposed_date, route_order
+        FROM "VisitScheduleProposal"
+        WHERE route_order IS NOT NULL
+          AND finalized_schedule_id IS NULL
+          AND proposal_status IN ('proposed', 'patient_contact_pending', 'reschedule_pending')
+        GROUP BY org_id, proposed_pharmacist_id, proposed_date, route_order
+        HAVING COUNT(*) > 1
+      ) AS duplicate_open_visit_proposal_route_cells
+    `,
+  );
+  if (duplicateOpenVisitProposalRouteCells > 0) {
+    issues.push({
+      name: 'visit-schedule-proposal-duplicate-open-route-order',
+      severity: 'error',
+      detail: `${duplicateOpenVisitProposalRouteCells} open VisitScheduleProposal route-order cell group(s) would violate VisitScheduleProposal_open_route_order_key`,
+    });
+  }
+
   return {
     ok: issues.every((issue) => issue.severity !== 'error'),
     issues,
@@ -326,6 +624,18 @@ export async function verifyMigrationPreconditions(client: MigrationPrecondition
       'file-asset-size-bytes-out-of-range',
       'file-asset-invalid-timestamps',
       'file-asset-missing-organization',
+      'patient-contact-duplicate-primary',
+      'care-team-duplicate-primary-role',
+      'care-team-non-canonical-role',
+      'delivery-record-duplicate-intent-key',
+      'delivery-record-legacy-duplicate-intent',
+      'communication-response-duplicate-intent-key',
+      'communication-response-legacy-duplicate-intent',
+      'dispense-result-duplicate-task-line',
+      'set-batch-duplicate-cell',
+      'set-plan-duplicate-period',
+      'visit-schedule-duplicate-active-route-order',
+      'visit-schedule-proposal-duplicate-open-route-order',
     ],
   };
 }

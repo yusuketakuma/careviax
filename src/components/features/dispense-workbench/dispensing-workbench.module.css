@@ -1,0 +1,357 @@
+/*
+ * 調剤ワークベンチ 忠実再現スタイル（設計プロト 調剤ワークベンチ.dc.html のインライン CSS を
+ * CSS Module 定数として隔離）。globals.css / Tailwind テーマには手を入れない（計画 §段階1）。
+ *
+ * 寸法・配色は設計プロトの実値を厳守する：
+ *  - フォント: Meiryo → Hiragino → Yu Gothic → MS PGothic → sans-serif
+ *  - タイトルバー 30px / メニュー 26px / ペインヘッダ 24px / グリッド帯 30/23px
+ *  - 左ペイン 212px / 右ペイン 300px / 本体 min-width 1540px
+ *  - スクロールバー 13px / 青グラデ #2c558a→#193454, #3a5e8c→#27466c
+ *  - 主要パレット #1f4e79（accent）等
+ */
+
+/* ===== ルート（デスクトップ専用・height:100vh 忠実再現）===== */
+.root {
+  height: 100vh;
+  min-width: 1540px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: Meiryo, 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'MS PGothic', sans-serif;
+  background: #e8ebee;
+  color: #1c2530;
+  -webkit-font-smoothing: antialiased;
+  position: relative;
+}
+
+/* AppShell 配下にマウントする場合のヘッダ控除高（計画 §3・単一変更点） */
+.rootInShell {
+  height: calc(100vh - 3.5rem);
+}
+
+/* スクロールバー（13px・設計プロト helmet）。CSS Module スコープ内に閉じる */
+.root ::-webkit-scrollbar {
+  width: 13px;
+  height: 13px;
+}
+.root ::-webkit-scrollbar-track {
+  background: #e7eaee;
+}
+.root ::-webkit-scrollbar-thumb {
+  background: #b3bcc6;
+  border: 3px solid #e7eaee;
+  border-radius: 7px;
+}
+.root ::-webkit-scrollbar-thumb:hover {
+  background: #94a0ad;
+}
+
+.root select,
+.root input,
+.root textarea {
+  font-family: inherit;
+}
+
+@media (max-width: 767px) {
+  .root button,
+  .root a,
+  .root select,
+  .root input,
+  .root textarea {
+    min-height: 44px;
+    box-sizing: border-box;
+  }
+}
+
+/* ===== タイトルバー（30px・青グラデ）===== */
+.titleBar {
+  height: 30px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(180deg, #2c558a, #193454);
+  color: #fff;
+  padding: 0 8px;
+  font-size: 12.5px;
+}
+.titleIcon {
+  width: 17px;
+  height: 17px;
+  border-radius: 3px;
+  background: #7fb0e8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #173050;
+}
+
+/* ===== メニューバー（26px）===== */
+.menuBar {
+  height: 26px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: #f3f4f6;
+  border-bottom: 1px solid #c6ccd4;
+  padding: 0 4px;
+  font-size: 12.5px;
+  color: #243040;
+}
+.menuItem {
+  padding: 3px 9px;
+  border-radius: 3px;
+}
+.menuItemActive {
+  background: #dde8f6;
+  color: #1b3a63;
+  font-weight: 700;
+}
+
+/* ===== 患者リボン ===== */
+.ribbon {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  background: #d4e3f4;
+  border-bottom: 2px solid #9fb8d6;
+}
+.ribbonCell {
+  padding: 5px 14px;
+  border-right: 1px solid #b6cbe5;
+}
+.ribbonLabel {
+  font-size: 10.5px;
+  color: #3f5878;
+}
+.ribbonValue {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1a3656;
+}
+.ribbonName {
+  font-size: 21px;
+  font-weight: 700;
+  color: #10294a;
+  line-height: 1.15;
+  letter-spacing: 0.5px;
+}
+
+/* ===== 本体 3 ペイン ===== */
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+/* 左ペイン（212px） */
+.leftPane {
+  width: 212px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  background: #f5f6f8;
+  border-right: 1px solid #c6ccd4;
+}
+
+/* ペインヘッダ（24px・青グラデ） */
+.paneHeader {
+  flex: none;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 9px;
+  background: linear-gradient(180deg, #3a5e8c, #27466c);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.patientList {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.patientRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 9px;
+  border-bottom: 1px solid #e3e6ea;
+  cursor: pointer;
+}
+.patientAvatar {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* 中央ペイン */
+.centerPane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+}
+
+/* 工程タブ */
+.phaseTabBar {
+  flex: none;
+  background: #eef1f5;
+  border-bottom: 1px solid #c6ccd4;
+}
+.phaseTab {
+  padding: 6px 18px 7px 18px;
+  font-size: 12.5px;
+  font-weight: 700;
+  border: 1px solid #c2cad4;
+  border-bottom: none;
+  border-radius: 5px 5px 0 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+/* ===== グリッド ===== */
+.gridHeader {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  background: linear-gradient(180deg, #e2eaf3, #d2deec);
+  border-bottom: 1.5px solid #9fb3cc;
+  font-size: 11px;
+  font-weight: 700;
+  color: #1c3d63;
+}
+.gridSection {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 10px;
+  background: linear-gradient(180deg, #cedbea, #bfd0e3);
+  border-top: 1px solid #a9bdd6;
+  border-bottom: 1px solid #a9bdd6;
+  flex-wrap: wrap;
+}
+/* 薬剤行（帯高さ 30px・zebra は inline bg で制御） */
+.gridDrugRow {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid #e0e4e9;
+  font-size: 12.5px;
+  min-height: 30px;
+}
+/* 合計行（帯高さ 28px） */
+.gridTotalRow {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 2px solid #b6c5d8;
+  border-top: 1px solid #b6c5d8;
+  background: #eef2f7;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1c3d63;
+  min-height: 28px;
+}
+
+/* ===== 右ペイン（300px）===== */
+.rightPane {
+  width: 300px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  background: #f5f6f8;
+  border-left: 1px solid #c6ccd4;
+}
+
+/* ===== F-key バー ===== */
+.fkeyBar {
+  flex: none;
+  display: flex;
+  gap: 3px;
+  padding: 4px 5px;
+  background: #d9dee4;
+  border-top: 1px solid #b3bac3;
+}
+.fkey {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  background: linear-gradient(180deg, #fbfcfd, #eef1f4);
+  border: 1px solid #bcc3cc;
+  border-radius: 4px;
+  padding: 4px 2px;
+  cursor: pointer;
+}
+
+/* ===== ステータスバー（23px・青グラデ）===== */
+.statusBar {
+  flex: none;
+  height: 23px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: linear-gradient(180deg, #2c4a6e, #1e3450);
+  color: #cfdcec;
+  font-size: 11px;
+  padding: 0 10px;
+}
+
+/* ===== モーダル共通 ===== */
+.modalOverlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 32, 50, 0.42);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+.modalCard {
+  background: #fff;
+  border-radius: 9px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+.modalHeaderHold {
+  background: linear-gradient(180deg, #e0972b, #c97f18);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 9px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.modalHeaderCompare {
+  background: linear-gradient(180deg, #5a78a8, #3f5e8c);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 9px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ===== monospace（患者番号・時計 等）===== */
+.mono {
+  font-family: Consolas, monospace;
+}

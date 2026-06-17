@@ -222,11 +222,7 @@ function ReviewTableSection({ data }: { data: BillingCheckResponse }) {
 
 function BillingCheckSkeleton() {
   return (
-    <div
-      className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)]"
-      role="status"
-      aria-label="算定チェック読み込み中"
-    >
+    <div className="space-y-4" role="status" aria-label="算定チェック読み込み中">
       <div className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-3">
           {Array.from({ length: 3 }).map((_, index) => (
@@ -235,11 +231,6 @@ function BillingCheckSkeleton() {
         </div>
         <Skeleton className="h-64 w-full rounded-lg" />
         <Skeleton className="h-12 w-full rounded-lg" />
-      </div>
-      <div className="space-y-4">
-        {Array.from({ length: 3 }).map((_, index) => (
-          <Skeleton key={index} className="h-32 w-full rounded-lg" />
-        ))}
       </div>
     </div>
   );
@@ -309,7 +300,7 @@ export function BillingCheckContent() {
         />
       </div>
 
-      <div className="mt-4 xl:min-h-[920px]">
+      <div className="mt-4 xl:min-h-[calc(100dvh-10rem)]">
         {isBootstrappingOrg || checkQuery.isLoading ? (
           <BillingCheckSkeleton />
         ) : checkQuery.isError || !data ? (
@@ -323,7 +314,7 @@ export function BillingCheckContent() {
             />
           </div>
         ) : (
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)]">
+          <div className="space-y-4">
             <div className="min-w-0 space-y-4">
               <KpiStrip data={data} />
               <ReviewTableSection data={data} />
@@ -334,19 +325,17 @@ export function BillingCheckContent() {
                 レセプト摘要欄の文言は算定項目から自動生成されます。手で書くのは「確認すること」列の事実確認だけです。
               </p>
             </div>
-            <div className="space-y-4">
-              <WorkspaceActionRail
-                nextAction={{
-                  actionLabel: data.rail.next_action.label,
-                  description: data.rail.next_action.description,
-                  actionHref: data.rail.next_action.href,
-                }}
-                blockedReasons={blockedReasons}
-                blockedReasonsEmptyLabel="止まっている作業はありません"
-                evidence={evidence}
-                evidenceOpenLabel="開く"
-              />
-            </div>
+            <WorkspaceActionRail
+              nextAction={{
+                actionLabel: data.rail.next_action.label,
+                description: data.rail.next_action.description,
+                actionHref: data.rail.next_action.href,
+              }}
+              blockedReasons={blockedReasons}
+              blockedReasonsEmptyLabel="止まっている作業はありません"
+              evidence={evidence}
+              evidenceOpenLabel="開く"
+            />
           </div>
         )}
       </div>

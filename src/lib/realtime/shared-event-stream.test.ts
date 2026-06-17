@@ -17,6 +17,16 @@ function createOpenSseResponse(chunks: string[]) {
   );
 }
 
+function createHangingSseResponse() {
+  return new Response(
+    new ReadableStream({
+      start() {
+        // Keep the connection open until the AbortSignal is triggered by the shared stream.
+      },
+    }),
+  );
+}
+
 describe('subscribeSharedRealtimeStream', () => {
   afterEach(() => {
     resetSharedRealtimeStreamsForTests();
@@ -78,5 +88,73 @@ describe('subscribeSharedRealtimeStream', () => {
     expect(signal?.aborted).toBe(false);
     unsubscribeSecond();
     expect(signal?.aborted).toBe(true);
+  });
+
+  it('passes requested presence targets on the shared SSE URL', async () => {
+    const listener = vi.fn();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        createOpenSseResponse([
+          'data: {"type":"presence_update","entity_type":"visit_record","entity_id":"vr_1"}\n\n',
+        ]),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const unsubscribe = subscribeSharedRealtimeStream({
+      orgId: 'org_1',
+      onEvent: listener,
+      presenceTargets: [{ entityType: 'visit_record', entityId: 'vr_1' }],
+    });
+
+    await vi.waitFor(() => {
+      expect(listener).toHaveBeenCalledWith({
+        type: 'presence_update',
+        entity_type: 'visit_record',
+        entity_id: 'vr_1',
+      });
+    });
+
+    const url = String(fetchMock.mock.calls[0]?.[0]);
+    expect(url).toMatch(/^\/api\/notifications\/stream\?/);
+    expect(new URLSearchParams(url.split('?')[1]).getAll('presence')).toEqual([
+      JSON.stringify(['visit_record', 'vr_1']),
+    ]);
+
+    unsubscribe();
+  });
+
+  it('aborts the active SSE connection when a new presence target is added', async () => {
+    const firstListener = vi.fn();
+    const secondListener = vi.fn();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(createHangingSseResponse())
+      .mockResolvedValueOnce(createHangingSseResponse());
+    vi.stubGlobal('fetch', fetchMock);
+
+    const unsubscribeFirst = subscribeSharedRealtimeStream({
+      orgId: 'org_1',
+      onEvent: firstListener,
+    });
+
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    const firstSignal = (fetchMock.mock.calls[0]?.[1] as { signal: AbortSignal } | undefined)
+      ?.signal;
+
+    const unsubscribeSecond = subscribeSharedRealtimeStream({
+      orgId: 'org_1',
+      onEvent: secondListener,
+      presenceTargets: [{ entityType: 'patient', entityId: 'patient_1' }],
+    });
+
+    await vi.waitFor(() => {
+      expect(firstSignal?.aborted).toBe(true);
+    });
+
+    unsubscribeSecond();
+    unsubscribeFirst();
   });
 });

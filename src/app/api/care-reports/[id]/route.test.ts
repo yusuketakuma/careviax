@@ -214,6 +214,11 @@ describe('care-reports/[id] route', () => {
         prescriber_institution_suggestion: {
           id: 'institution_1',
           recommended_channels: ['fax', 'phone', 'postal'],
+          contact_reliability: {
+            ready: true,
+            warnings: [],
+            missing_channel_labels: [],
+          },
           prescribed_date: '2026-03-28T00:00:00.000Z',
         },
       },

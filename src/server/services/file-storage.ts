@@ -180,6 +180,7 @@ export class FileStorageError extends Error {
       | 'FILE_COMPLETE_FORBIDDEN'
       | 'FILE_DOWNLOAD_FORBIDDEN'
       | 'FILE_DELETE_FORBIDDEN'
+      | 'PATIENT_ARCHIVED'
       | 'FILE_EXPIRED',
     message: string,
     readonly status: number,
@@ -790,6 +791,7 @@ async function assertVisitRecordFileAccess(args: {
     },
     select: {
       id: true,
+      patient_id: true,
       schedule: {
         select: {
           pharmacist_id: true,
@@ -811,6 +813,13 @@ async function assertVisitRecordFileAccess(args: {
   if (!canAccessVisitScheduleAssignment(args.accessContext, visitRecord.schedule)) {
     throwFileAccessForbidden(args.mode, 'この訪問記録に紐づくファイルへのアクセス権限がありません');
   }
+
+  if (args.mode === 'complete') {
+    await assertPatientNotArchivedForFileCompletion({
+      orgId: args.orgId,
+      patientId: visitRecord.patient_id,
+    });
+  }
 }
 
 async function assertCareCaseFileAccess(args: {
@@ -829,6 +838,7 @@ async function assertCareCaseFileAccess(args: {
       org_id: args.orgId,
     },
     select: {
+      patient_id: true,
       primary_pharmacist_id: true,
       backup_pharmacist_id: true,
     },
@@ -845,6 +855,42 @@ async function assertCareCaseFileAccess(args: {
     })
   ) {
     throwFileAccessForbidden(args.mode, 'このケースに紐づくファイルへのアクセス権限がありません');
+  }
+
+  if (args.mode === 'complete') {
+    await assertPatientNotArchivedForFileCompletion({
+      orgId: args.orgId,
+      patientId: careCase.patient_id,
+    });
+  }
+}
+
+async function assertPatientNotArchivedForFileCompletion(args: {
+  orgId: string;
+  patientId: string | null | undefined;
+}) {
+  if (!args.patientId) {
+    throwFileMetadataNotFound('ファイルに紐づく患者が見つかりません');
+  }
+
+  const patient = await prisma.patient.findFirst({
+    where: {
+      id: args.patientId,
+      org_id: args.orgId,
+    },
+    select: { id: true, archived_at: true },
+  });
+
+  if (!patient) {
+    throwFileMetadataNotFound('ファイルに紐づく患者が見つかりません');
+  }
+
+  if (patient.archived_at) {
+    throw new FileStorageError(
+      'PATIENT_ARCHIVED',
+      'アーカイブ中の患者は復元するまで更新できません',
+      409,
+    );
   }
 }
 
@@ -863,11 +909,19 @@ async function assertPatientFileAccess(args: {
       id: args.patientId,
       org_id: args.orgId,
     },
-    select: { id: true },
+    select: { id: true, archived_at: true },
   });
 
   if (!patient) {
     throwFileMetadataNotFound('ファイルに紐づく患者が見つかりません');
+  }
+
+  if (args.mode === 'complete' && patient.archived_at) {
+    throw new FileStorageError(
+      'PATIENT_ARCHIVED',
+      'アーカイブ中の患者は復元するまで更新できません',
+      409,
+    );
   }
 
   if (canBypassVisitScheduleAssignmentAccess(args.accessContext)) {
@@ -935,10 +989,6 @@ async function assertReportFileAccess(args: {
 
   if (!report) {
     throwFileMetadataNotFound('ファイルに紐づく報告書が見つかりません');
-  }
-
-  if (canBypassVisitScheduleAssignmentAccess(args.accessContext)) {
-    return;
   }
 
   if (report.visit_record_id) {

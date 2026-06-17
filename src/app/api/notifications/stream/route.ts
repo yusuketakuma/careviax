@@ -4,6 +4,12 @@ import { prisma } from '@/lib/db/client';
 import { acquireSseConnection, releaseSseConnection } from '@/lib/api/rate-limit';
 import { getRealtimeAdapter } from '@/server/adapters/realtime';
 import { sanitizeOrgRealtimeEvent } from '@/server/services/org-realtime';
+import {
+  buildCollaborationRoomName,
+  canAccessCollaborationEntity,
+  collaborationEntityRefSchema,
+  type CollaborationEntityType,
+} from '@/server/services/collaboration-access';
 import { scheduleSseTimer } from './sse-timer';
 
 export const dynamic = 'force-dynamic';
@@ -11,12 +17,135 @@ export const runtime = 'nodejs';
 
 const KEEPALIVE_INTERVAL_MS = 30_000;
 const POLL_INTERVAL_MS = 5_000;
+const SUBSCRIBED_SAFETY_POLL_INTERVAL_MS = 60_000;
 const MAX_STREAM_DURATION_MS = 5 * 60_000;
+const MAX_PRESENCE_STREAM_ROOMS = 8;
+
+type AuthContext = Extract<Awaited<ReturnType<typeof requireAuthContext>>, { ctx: unknown }>['ctx'];
+
+type PresenceStreamTarget = {
+  entityType: CollaborationEntityType;
+  entityId: string;
+  channel: string;
+};
+
+function jsonError(status: number, code: string, message: string) {
+  return new Response(JSON.stringify({ code, message }), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+function readPresenceStreamTarget(
+  raw: string,
+): { entity_type: CollaborationEntityType; entity_id: string } | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+
+  if (!Array.isArray(parsed) || parsed.length !== 2) return null;
+  const [entityType, entityId] = parsed;
+  const result = collaborationEntityRefSchema.safeParse({
+    entity_type: entityType,
+    entity_id: entityId,
+  });
+  return result.success ? result.data : null;
+}
+
+async function resolvePresenceStreamTargets(
+  req: NextRequest,
+  ctx: AuthContext,
+): Promise<PresenceStreamTarget[] | Response> {
+  const rawTargets = req.nextUrl.searchParams.getAll('presence');
+  if (rawTargets.length === 0) return [];
+  if (rawTargets.length > MAX_PRESENCE_STREAM_ROOMS) {
+    return jsonError(400, 'TOO_MANY_PRESENCE_STREAM_ROOMS', 'プレゼンス購読数の上限を超えています');
+  }
+
+  const dedupedTargets = new Map<
+    string,
+    { entity_type: CollaborationEntityType; entity_id: string }
+  >();
+  for (const rawTarget of rawTargets) {
+    const target = readPresenceStreamTarget(rawTarget);
+    if (!target) {
+      return jsonError(400, 'INVALID_PRESENCE_STREAM_ROOM', 'プレゼンス購読指定が不正です');
+    }
+    dedupedTargets.set(`${target.entity_type}\u0000${target.entity_id}`, target);
+  }
+
+  const targets: PresenceStreamTarget[] = [];
+  for (const target of dedupedTargets.values()) {
+    const canAccessEntity = await canAccessCollaborationEntity(
+      ctx,
+      target.entity_type,
+      target.entity_id,
+    );
+    if (!canAccessEntity) {
+      return jsonError(404, 'PRESENCE_STREAM_ROOM_NOT_FOUND', 'プレゼンス対象が見つかりません');
+    }
+
+    const room = buildCollaborationRoomName({
+      orgId: ctx.orgId,
+      entityType: target.entity_type,
+      entityId: target.entity_id,
+    });
+    targets.push({
+      entityType: target.entity_type,
+      entityId: target.entity_id,
+      channel: `presence:${room}`,
+    });
+  }
+
+  return targets;
+}
+
+function readString(value: unknown) {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function sanitizePresenceRealtimeEvent(
+  data: unknown,
+  target: PresenceStreamTarget,
+): Record<string, unknown> | null {
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) return null;
+  const event = data as Record<string, unknown>;
+  if (event.type !== 'presence_update') return null;
+  if (event.entity_type !== target.entityType || event.entity_id !== target.entityId) return null;
+
+  const userId = readString(event.user_id);
+  const displayName = readString(event.display_name);
+  const updatedAt = readString(event.updated_at);
+  let activeField: string | null;
+  if (event.active_field == null) {
+    activeField = null;
+  } else {
+    activeField = readString(event.active_field);
+    if (activeField == null) return null;
+  }
+  if (!userId || !displayName || !updatedAt) return null;
+
+  return {
+    type: 'presence_update',
+    entity_type: target.entityType,
+    entity_id: target.entityId,
+    user_id: userId,
+    display_name: displayName,
+    active_field: activeField,
+    updated_at: updatedAt,
+  };
+}
+
 export async function GET(req: NextRequest) {
   const authResult = await requireAuthContext(req);
   if ('response' in authResult) return authResult.response;
 
   const { orgId, userId } = authResult.ctx;
+  const presenceTargets = await resolvePresenceStreamTargets(req, authResult.ctx);
+  if (presenceTargets instanceof Response) return presenceTargets;
 
   const sseResult = acquireSseConnection(userId);
   if (!sseResult.allowed) {
@@ -43,6 +172,13 @@ export async function GET(req: NextRequest) {
       const userChannel = `user:${userId}`;
       const orgListener = (data: unknown) => sendEvent(sanitizeOrgRealtimeEvent(data));
       const userListener = (data: unknown) => sendEvent(data);
+      const presenceChannelListeners = presenceTargets.map((target) => ({
+        channel: target.channel,
+        listener: (data: unknown) => {
+          const event = sanitizePresenceRealtimeEvent(data, target);
+          if (event) sendEvent(event);
+        },
+      }));
       let abortHandler: (() => void) | null = null;
 
       const teardown = () => {
@@ -123,6 +259,9 @@ export async function GET(req: NextRequest) {
         const subscriptionResults = await Promise.allSettled([
           subscribeToTrackedChannel(orgChannel, orgListener),
           subscribeToTrackedChannel(userChannel, userListener),
+          ...presenceChannelListeners.map(({ channel, listener }) =>
+            subscribeToTrackedChannel(channel, listener),
+          ),
         ]);
         userChannelSubscribed = subscriptionResults[1]?.status === 'fulfilled';
       } catch {
@@ -130,7 +269,8 @@ export async function GET(req: NextRequest) {
       }
       if (stopped) return;
 
-      // Poll unread notifications only when the user-channel subscription is unavailable.
+      // Keep a low-frequency DB safety poll even when the user channel is subscribed.
+      // Some legacy jobs still create notifications directly and cannot publish realtime payloads.
       const poll = async () => {
         if (stopped) return;
         const windowEnd = new Date();
@@ -158,13 +298,17 @@ export async function GET(req: NextRequest) {
           // Swallow DB errors to keep stream alive
         }
         if (!stopped) {
-          pollTimer = scheduleSseTimer(poll, POLL_INTERVAL_MS);
+          pollTimer = scheduleSseTimer(
+            poll,
+            userChannelSubscribed ? SUBSCRIBED_SAFETY_POLL_INTERVAL_MS : POLL_INTERVAL_MS,
+          );
         }
       };
 
-      if (!userChannelSubscribed) {
-        pollTimer = scheduleSseTimer(poll, POLL_INTERVAL_MS);
-      }
+      pollTimer = scheduleSseTimer(
+        poll,
+        userChannelSubscribed ? SUBSCRIBED_SAFETY_POLL_INTERVAL_MS : POLL_INTERVAL_MS,
+      );
     },
     cancel() {
       teardownStream?.();

@@ -303,6 +303,7 @@ export const PATCH = withAuthContext(
                   where: {
                     org_id: ctx.orgId,
                     id: { notIn: targetScheduleIds },
+                    schedule_status: { notIn: ['cancelled', 'rescheduled'] },
                     OR: routeCells.map((cell) => ({
                       pharmacist_id: cell.pharmacistId,
                       scheduled_date: new Date(cell.scheduledDate),
@@ -418,9 +419,13 @@ export const PATCH = withAuthContext(
           const routeOrderLocked = effectiveUpdates.find((item) => {
             const schedule = scheduleById.get(item.schedule_id);
             if (!schedule) return false;
-            const routeOrderChanging =
-              item.route_order !== undefined && schedule.route_order !== item.route_order;
-            return routeOrderChanging && !ROUTE_REORDERABLE_STATUSES.has(schedule.schedule_status);
+            const routeMutationRequested =
+              item.route_order !== undefined ||
+              item.scheduled_date !== undefined ||
+              item.pharmacist_id !== undefined;
+            return (
+              routeMutationRequested && !ROUTE_REORDERABLE_STATUSES.has(schedule.schedule_status)
+            );
           });
           if (routeOrderLocked) return { error: 'route_status_locked' as const };
 

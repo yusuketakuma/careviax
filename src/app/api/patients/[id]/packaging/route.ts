@@ -8,6 +8,7 @@ import { notFound, success, validationError } from '@/lib/api/response';
 import { buildPackagingInstructions } from '@/lib/prescription/packaging';
 import { patientPackagingProfileSchema } from '@/lib/validations/patient-packaging';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
@@ -75,14 +76,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const patient = await prisma.patient.findFirst({
-    where: applyPatientAssignmentWhere(
-      { id, org_id: ctx.orgId },
-      { userId: ctx.userId, role: ctx.role },
-    ),
-    select: { id: true },
-  });
-  if (!patient) return notFound('患者が見つかりません');
+  const writable = await requireWritablePatient(prisma, ctx, id);
+  if ('response' in writable) return writable.response;
 
   const profileData = {
     default_packaging_method: parsed.data.default_packaging_method ?? null,

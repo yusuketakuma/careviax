@@ -42,6 +42,11 @@ export const generateVisitScheduleProposalSchema = z
     vehicle_resource_id: z.string().trim().min(1).optional(),
     reschedule_source_schedule_id: z.string().optional(),
     special_cap_eligible: z.boolean().optional(),
+    idempotency_key: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9._:-]{1,128}$/, 'idempotency_key が不正です')
+      .min(1, 'idempotency_key は必須です'),
   })
   .superRefine((data, ctx) => {
     if (data.preferred_time_from && data.preferred_time_to) {

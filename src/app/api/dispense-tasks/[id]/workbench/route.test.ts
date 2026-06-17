@@ -6,6 +6,7 @@ const {
   authCtx,
   withOrgContextMock,
   dispenseTaskFindFirstMock,
+  prescriptionIntakeFindFirstMock,
   patientLabObservationFindFirstMock,
   visitScheduleFindFirstMock,
   drugMasterFindManyMock,
@@ -20,6 +21,7 @@ const {
   authCtx: { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' as MemberRole },
   withOrgContextMock: vi.fn(),
   dispenseTaskFindFirstMock: vi.fn(),
+  prescriptionIntakeFindFirstMock: vi.fn(),
   patientLabObservationFindFirstMock: vi.fn(),
   visitScheduleFindFirstMock: vi.fn(),
   drugMasterFindManyMock: vi.fn(),
@@ -50,6 +52,9 @@ vi.mock('@/lib/db/client', () => ({
     dispenseTask: {
       findFirst: dispenseTaskFindFirstMock,
       count: dispenseTaskCountMock,
+    },
+    prescriptionIntake: {
+      findFirst: prescriptionIntakeFindFirstMock,
     },
     patientLabObservation: {
       findFirst: patientLabObservationFindFirstMock,
@@ -107,6 +112,7 @@ describe('/api/dispense-tasks/[id]/workbench POST', () => {
     authCtx.userId = 'user_1';
     authCtx.role = 'pharmacist';
     buildMedicationCycleAssignmentWhereMock.mockReturnValue(null);
+    prescriptionIntakeFindFirstMock.mockResolvedValue(null);
     dispenseTaskFindFirstMock.mockResolvedValue({
       id: 'task_1',
       cycle_id: 'cycle_1',
@@ -161,12 +167,14 @@ describe('/api/dispense-tasks/[id]/workbench POST', () => {
             id: 'intake_1',
             prescribed_date: new Date('2026-06-10T00:00:00.000Z'),
             prescriber_institution: '青葉クリニック',
+            prescriber_name: '佐藤 一郎',
             lines: [
               {
                 id: 'line_1',
                 line_number: 1,
                 drug_name: 'アムロジピン 5mg',
                 drug_code: 'yj_1',
+                is_generic: true,
                 dose: '1回1錠',
                 frequency: '朝夕食後',
                 days: 14,
@@ -196,17 +204,142 @@ describe('/api/dispense-tasks/[id]/workbench POST', () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
+      intake: {
+        id: 'intake_1',
+        prescribed_date: '2026-06-10',
+        prescriber_institution: '青葉クリニック',
+        prescriber_name: '佐藤 一郎',
+      },
       count_rows: [
         {
           line_id: 'line_1',
           line_number: 1,
           dose: '1回1錠',
           days: 14,
+          is_generic: true,
+          dispensed_at: '2026-06-11',
           packaging_method: 'unit_dose',
           packaging_group_id: 'group_morning_evening',
         },
       ],
     });
+  });
+
+  it('compares current intake with the previous same-case intake across cycles', async () => {
+    const currentPrescribedDate = new Date('2026-06-10T00:00:00.000Z');
+    const currentCreatedAt = new Date('2026-06-10T01:00:00.000Z');
+    dispenseTaskFindFirstMock.mockResolvedValue({
+      id: 'task_1',
+      status: 'pending',
+      priority: 'normal',
+      due_date: null,
+      results: [],
+      cycle: {
+        id: 'cycle_current',
+        overall_status: 'ready_to_dispense',
+        version: 1,
+        case_id: 'case_1',
+        case_: {
+          id: 'case_1',
+          patient: {
+            id: 'patient_1',
+            name: '山田 太郎',
+            allergy_info: null,
+            scheduling_preference: null,
+            conditions: [],
+          },
+        },
+        inquiries: [],
+        prescription_intakes: [
+          {
+            id: 'intake_current',
+            prescribed_date: currentPrescribedDate,
+            created_at: currentCreatedAt,
+            prescriber_institution: '青葉クリニック',
+            prescriber_name: '佐藤 一郎',
+            lines: [
+              {
+                id: 'line_current',
+                line_number: 1,
+                drug_name: 'アムロジピン 5mg',
+                drug_code: 'yj_1',
+                is_generic: false,
+                dose: '1回0.5錠',
+                frequency: '朝食後',
+                days: 14,
+                quantity: 7,
+                unit: '錠',
+                route: 'internal',
+                dispensing_method: null,
+                packaging_method: null,
+                packaging_instructions: null,
+                packaging_instruction_tags: [],
+                packaging_group_id: null,
+                dispensing_decisions: [],
+              },
+            ],
+          },
+        ],
+      },
+    });
+    prescriptionIntakeFindFirstMock.mockResolvedValue({
+      id: 'intake_previous_cycle',
+      prescribed_date: new Date('2026-05-27T00:00:00.000Z'),
+      created_at: new Date('2026-05-27T01:00:00.000Z'),
+      lines: [
+        {
+          id: 'line_previous',
+          drug_name: 'アムロジピン 5mg',
+          drug_code: 'yj_1',
+          dose: '1回1錠',
+          frequency: '朝食後',
+          days: 14,
+          start_date: null,
+          end_date: null,
+        },
+      ],
+    });
+    patientLabObservationFindFirstMock.mockResolvedValue(null);
+    visitScheduleFindFirstMock.mockResolvedValue(null);
+    drugMasterFindManyMock.mockResolvedValue([]);
+    batchResolveNamesMock.mockResolvedValue(new Map());
+    dispenseTaskCountMock.mockResolvedValue(0);
+    pharmacyDrugStockFindFirstMock.mockResolvedValue(null);
+
+    const response = await GET(createGetRequest(), { params: Promise.resolve({ id: 'task_1' }) });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      previous_intake: { prescribed_date: '2026-05-27' },
+      comparison: [
+        {
+          key: 'line_current',
+          drug_name: 'アムロジピン 5mg',
+          previous_label: '1回1錠 朝食後',
+          current_label: '1回0.5錠 朝食後',
+          change_type: 'dose_changed',
+        },
+      ],
+    });
+    expect(prescriptionIntakeFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          id: { not: 'intake_current' },
+          cycle: {
+            patient_id: 'patient_1',
+            case_id: 'case_1',
+          },
+          OR: [
+            { prescribed_date: { lt: currentPrescribedDate } },
+            {
+              prescribed_date: currentPrescribedDate,
+              created_at: { lt: currentCreatedAt },
+            },
+          ],
+        }),
+      }),
+    );
   });
 
   it('returns 403 when the role lacks dispense permission', async () => {

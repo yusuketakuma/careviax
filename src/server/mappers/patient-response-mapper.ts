@@ -1,9 +1,5 @@
 import type { PatientPrivacyFlags } from '@/lib/patient/privacy';
-import {
-  maskAddressDetail,
-  maskInsuranceNumber,
-  maskPhoneNumber,
-} from '@/lib/patient/privacy';
+import { maskAddressDetail, maskInsuranceNumber, maskPhoneNumber } from '@/lib/patient/privacy';
 
 type PatientRiskLevel = 'stable' | 'watch' | 'high';
 
@@ -53,6 +49,13 @@ type PatientRow = {
     building_id: string | null;
     unit_name: string | null;
   }>;
+  scheduling_preference: {
+    preferred_contact_name: string | null;
+    preferred_contact_phone: string | null;
+    visit_before_contact_required?: boolean | null;
+    parking_available: boolean | null;
+    care_level: string | null;
+  } | null;
   _count: { contacts: number };
   conditions: Array<{
     id: string;
@@ -62,6 +65,11 @@ type PatientRow = {
   }>;
   contacts: Array<{
     id: string;
+    is_primary?: boolean | null;
+    is_emergency_contact?: boolean | null;
+    phone?: string | null;
+    email?: string | null;
+    fax?: string | null;
   }>;
   cases: Array<{
     id: string;
@@ -70,6 +78,11 @@ type PatientRow = {
     primary_pharmacist_id: string | null;
     care_team_links: Array<{
       id: string;
+      role: string;
+      phone?: string | null;
+      email?: string | null;
+      fax?: string | null;
+      is_primary?: boolean | null;
     }>;
   }>;
   consents: Array<{ id: string }>;
@@ -103,9 +116,7 @@ export function mapPatientListItem(
   const hasVisitConsent = patient.consents.length > 0;
   const hasEmergencyContact = patient.contacts.length > 0;
   const hasPrimaryPhysician = (latestCase?.care_team_links.length ?? 0) > 0;
-  const hasFirstVisitDocument = latestCase
-    ? deliveredFirstVisitCaseIds.has(latestCase.id)
-    : false;
+  const hasFirstVisitDocument = latestCase ? deliveredFirstVisitCaseIds.has(latestCase.id) : false;
   const facilityMode = primaryResidence?.building_id ? 'facility' : 'home';
 
   const risk: PatientRiskSummary = riskSummary ?? {
@@ -134,7 +145,7 @@ export function mapPatientListItem(
       ? {
           ...latestCase,
           primary_pharmacist_name: latestCase.primary_pharmacist_id
-            ? pharmacistNameById.get(latestCase.primary_pharmacist_id) ?? null
+            ? (pharmacistNameById.get(latestCase.primary_pharmacist_id) ?? null)
             : null,
         }
       : null,
@@ -150,9 +161,7 @@ export function mapPatientListItem(
     },
     risk_summary: risk,
     last_visit_bucket:
-      latestVisit && latestVisit.visit_date >= recentVisitThreshold
-        ? 'within_30_days'
-        : 'none',
+      latestVisit && latestVisit.visit_date >= recentVisitThreshold ? 'within_30_days' : 'none',
   };
 }
 
@@ -162,9 +171,7 @@ export function buildPatientListSummary(items: MappedPatientListItem[]) {
   return {
     total: items.length,
     facility_count: items.filter((p) => p.facility_mode === 'facility').length,
-    missing_consent_count: items.filter(
-      (p) => !p.consent.has_visit_medication_management,
-    ).length,
+    missing_consent_count: items.filter((p) => !p.consent.has_visit_medication_management).length,
     by_risk: {
       stable: items.filter((p) => p.risk_summary.level === 'stable').length,
       watch: items.filter((p) => p.risk_summary.level === 'watch').length,

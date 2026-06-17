@@ -367,6 +367,35 @@ describe('/api/patients/[id]/mcs GET', () => {
     });
   });
 
+  it('rejects archived patients before saving the MCS participation profile', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    const response = await PATCH(
+      createRequest('patient_1', '', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          linked_status: 'linked',
+          participation_status: 'joined',
+          pharmacy_participants: ['薬剤師 佐藤'],
+          counterpart_roles: ['physician'],
+        }),
+      }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
+    if (!response) {
+      throw new Error('response was not returned');
+    }
+
+    expect(response.status).toBe(409);
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
   it('rejects malformed MCS profile payloads before writing tasks', async () => {
     const response = await PATCH(
       createRequest('patient_1', '', {

@@ -4,7 +4,7 @@ import { NextRequest } from 'next/server';
 const {
   requireAuthContextMock,
   visitScheduleOverrideFindFirstMock,
-  visitScheduleOverrideUpdateMock,
+  visitScheduleOverrideUpdateManyMock,
   visitScheduleUpdateMock,
   contactPartyFindManyMock,
   withOrgContextMock,
@@ -14,7 +14,7 @@ const {
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   visitScheduleOverrideFindFirstMock: vi.fn(),
-  visitScheduleOverrideUpdateMock: vi.fn(),
+  visitScheduleOverrideUpdateManyMock: vi.fn(),
   visitScheduleUpdateMock: vi.fn(),
   contactPartyFindManyMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -81,17 +81,16 @@ describe('/api/visit-schedules/[id]/reschedule/approve', () => {
         case_: { patient_id: 'patient_1' },
       },
     });
-    visitScheduleOverrideUpdateMock.mockResolvedValue({
-      id: 'override_1',
-    });
+    visitScheduleOverrideUpdateManyMock.mockResolvedValue({ count: 1 });
+    visitScheduleUpdateMock.mockResolvedValue({ count: 1 });
     contactPartyFindManyMock.mockResolvedValue([]);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         visitScheduleOverride: {
-          update: visitScheduleOverrideUpdateMock,
+          updateMany: visitScheduleOverrideUpdateManyMock,
         },
         visitSchedule: {
-          update: visitScheduleUpdateMock,
+          updateMany: visitScheduleUpdateMock,
         },
         contactParty: {
           findMany: contactPartyFindManyMock,
@@ -114,7 +113,7 @@ describe('/api/visit-schedules/[id]/reschedule/approve', () => {
     }))!;
 
     expect(response.status).toBe(400);
-    expect(visitScheduleOverrideUpdateMock).not.toHaveBeenCalled();
+    expect(visitScheduleOverrideUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank schedule ids before loading override requests', async () => {
@@ -129,7 +128,7 @@ describe('/api/visit-schedules/[id]/reschedule/approve', () => {
     });
     expect(visitScheduleOverrideFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(visitScheduleOverrideUpdateMock).not.toHaveBeenCalled();
+    expect(visitScheduleOverrideUpdateManyMock).not.toHaveBeenCalled();
     expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
     expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
@@ -155,7 +154,7 @@ describe('/api/visit-schedules/[id]/reschedule/approve', () => {
       }),
     );
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(visitScheduleOverrideUpdateMock).not.toHaveBeenCalled();
+    expect(visitScheduleOverrideUpdateManyMock).not.toHaveBeenCalled();
     expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
     expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
     expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
@@ -169,8 +168,30 @@ describe('/api/visit-schedules/[id]/reschedule/approve', () => {
     }))!;
 
     expect(response.status).toBe(200);
-    expect(visitScheduleOverrideUpdateMock).toHaveBeenCalled();
+    expect(visitScheduleOverrideUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'override_1',
+        org_id: 'org_1',
+        status: 'pending',
+        approved_at: null,
+      },
+      data: {
+        approved_by: 'admin_1',
+        approved_at: expect.any(Date),
+      },
+    });
     expect(visitScheduleUpdateMock).toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).toHaveBeenCalledWith({
+      where: {
+        id: 'schedule_1',
+        org_id: 'org_1',
+        schedule_status: { notIn: ['completed', 'cancelled', 'rescheduled'] },
+      },
+      data: {
+        schedule_status: 'rescheduled',
+        version: { increment: 1 },
+      },
+    });
     expect(resolveOperationalTasksMock).toHaveBeenCalledTimes(2);
     expect(dispatchNotificationEventMock).toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
@@ -196,5 +217,55 @@ describe('/api/visit-schedules/[id]/reschedule/approve', () => {
       },
       orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
     });
+  });
+
+  it('returns conflict without side effects when another approver wins the pending claim race', async () => {
+    visitScheduleOverrideUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = (await POST(createRequest(), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    }))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'リスケ承認が同時に更新されました。再読み込みしてください',
+    });
+    expect(visitScheduleOverrideUpdateManyMock).toHaveBeenCalledTimes(1);
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(contactPartyFindManyMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns conflict and skips side effects when the source schedule is already terminal', async () => {
+    visitScheduleUpdateMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = (await POST(createRequest(), {
+      params: Promise.resolve({ id: 'schedule_1' }),
+    }))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'リスケ承認が同時に更新されました。再読み込みしてください',
+    });
+    expect(visitScheduleOverrideUpdateManyMock).toHaveBeenCalledTimes(1);
+    expect(visitScheduleUpdateMock).toHaveBeenCalledWith({
+      where: {
+        id: 'schedule_1',
+        org_id: 'org_1',
+        schedule_status: { notIn: ['completed', 'cancelled', 'rescheduled'] },
+      },
+      data: {
+        schedule_status: 'rescheduled',
+        version: { increment: 1 },
+      },
+    });
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(contactPartyFindManyMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 });

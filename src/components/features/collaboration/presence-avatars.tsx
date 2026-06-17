@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRealtimeEvents } from '@/lib/hooks/use-realtime-events';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -46,6 +46,23 @@ export function PresenceAvatars({ entityType, entityId }: PresenceAvatarsProps) 
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const queryKey = ['presence', entityType, entityId, orgId];
+  const presenceTargets = useMemo(() => [{ entityType, entityId }], [entityType, entityId]);
+
+  // Listen for SSE presence_update events to invalidate query instantly.
+  const realtime = useRealtimeEvents({
+    onEvent: (event) => {
+      const e = event as { type?: string; entity_type?: string; entity_id?: string };
+      if (
+        e.type === 'presence_update' &&
+        e.entity_type === entityType &&
+        e.entity_id === entityId
+      ) {
+        queryClient.invalidateQueries({ queryKey });
+      }
+    },
+    enabled: !!orgId && !!entityId,
+    presenceTargets,
+  });
 
   const { data: allUsers = [] } = useQuery<PresenceUser[]>({
     queryKey,
@@ -58,22 +75,8 @@ export function PresenceAvatars({ entityType, entityId }: PresenceAvatarsProps) 
       const json = (await res.json()) as { data: PresenceUser[] };
       return json.data ?? [];
     },
-    refetchInterval: PRESENCE_REFETCH_INTERVAL_MS,
+    refetchInterval: realtime.connected ? false : PRESENCE_REFETCH_INTERVAL_MS,
     enabled: !!orgId && !!entityId,
-  });
-
-  // Listen for SSE presence_update events to invalidate query instantly
-  useRealtimeEvents({
-    onEvent: (event) => {
-      const e = event as { type?: string; entity_type?: string; entity_id?: string };
-      if (
-        e.type === 'presence_update' &&
-        e.entity_type === entityType &&
-        e.entity_id === entityId
-      ) {
-        queryClient.invalidateQueries({ queryKey });
-      }
-    },
   });
 
   // Heartbeat: POST on mount and every 30s

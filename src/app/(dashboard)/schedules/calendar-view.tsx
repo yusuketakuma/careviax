@@ -68,7 +68,7 @@ function useMonthSchedules(orgId: string, year: number, month: number) {
     },
     enabled: Boolean(orgId),
     staleTime: 30_000,
-    refetchInterval: 60_000,
+    fallbackRefetchInterval: 60_000,
     invalidateOn: ['workflow_refresh'],
   });
 }

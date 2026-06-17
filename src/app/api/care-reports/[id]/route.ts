@@ -21,6 +21,7 @@ import {
   getChannelStatsByName,
   getRecommendedChannels,
 } from '@/lib/contact-profiles';
+import { buildCareTeamContactChannelReadiness } from '@/lib/patient/care-team-contact';
 import {
   inferCareReportTargetRole,
   resolveDocumentDeliveryRule,
@@ -217,6 +218,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
               fax: prescriberInstitutionSuggestion.fax,
               address: prescriberInstitutionSuggestion.address,
               stats: prescriberInstitutionStats.get(prescriberInstitutionSuggestion.name),
+            }),
+            contact_reliability: buildCareTeamContactChannelReadiness({
+              role: 'physician',
+              phone: prescriberInstitutionSuggestion.phone,
+              fax: prescriberInstitutionSuggestion.fax,
             }),
             prescribed_date: prescriberInstitutionSuggestion.prescribed_date.toISOString(),
           }

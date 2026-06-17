@@ -250,6 +250,30 @@ describe('/api/patients/[id]/visit-constraints', () => {
     expect(residenceUpdateMock).not.toHaveBeenCalled();
   });
 
+  it('rejects archived patients before upserting visit constraints', async () => {
+    patientFindFirstMock.mockReset();
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    const response = (await PUT(
+      createPutRequest({
+        preferred_weekdays: [1, 3],
+        preferred_time_from: '09:00',
+        preferred_time_to: '12:00',
+      }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(409);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientSchedulePreferenceUpsertMock).not.toHaveBeenCalled();
+    expect(residenceUpdateMock).not.toHaveBeenCalled();
+  });
+
   it('upserts visit constraints and geocoding fields', async () => {
     const response = (await PUT(
       createPutRequest({

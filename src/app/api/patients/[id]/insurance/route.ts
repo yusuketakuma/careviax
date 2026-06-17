@@ -9,6 +9,8 @@ import { z } from 'zod';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { dateKeySchema } from '@/lib/validations/date-key';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { classifyPatientInsurances } from '@/lib/patient/insurance-summary';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
 
 const dateStringSchema = dateKeySchema('日付形式が不正です（YYYY-MM-DD）');
 const publicProgramCodeSchema = z
@@ -167,20 +169,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     orderBy: [{ is_active: 'desc' }, { valid_from: 'desc' }, { created_at: 'desc' }],
   });
 
-  const current = insurances.filter(
-    (ins) =>
-      ins.is_active &&
-      (!ins.valid_from || ins.valid_from <= today) &&
-      (!ins.valid_until || ins.valid_until >= today),
-  );
-  const upcoming = insurances.filter(
-    (ins) => ins.is_active && ins.valid_from && ins.valid_from > today,
-  );
-  const history = insurances.filter(
-    (ins) => !ins.is_active || (ins.valid_until && ins.valid_until < today),
-  );
+  const { current, upcoming, history, all } = classifyPatientInsurances(insurances, today);
 
-  return success({ data: { current, upcoming, history, all: insurances } });
+  return success({ data: { current, upcoming, history, all } });
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -203,14 +194,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const patient = await prisma.patient.findFirst({
-    where: applyPatientAssignmentWhere(
-      { id, org_id: ctx.orgId },
-      { userId: ctx.userId, role: ctx.role },
-    ),
-    select: { id: true },
-  });
-  if (!patient) return notFound('患者が見つかりません');
+  const writable = await requireWritablePatient(prisma, ctx, id);
+  if ('response' in writable) return writable.response;
 
   const { valid_from, valid_until, application_submitted_at, decision_at, ...rest } = parsed.data;
 

@@ -50,6 +50,59 @@ enum PackagingInstructionTag {
   label_required
 }
 
+/// 調剤ワークベンチ 共通 NG 分類 (14種)。
+/// 監査(SetAudit/SetBatch のセル単位)で差戻し理由を構造化する。
+/// 注意: 既存の DispenseAudit.reject_reason_code (String?, 独自6種) は
+/// この enum とは語彙が重ならず、TEXT のまま温存する (将来移行は値マッピング + データ移行が必要)。
+enum RejectCode {
+  patient_mismatch
+  set_period_mismatch
+  date_mismatch
+  frequency_mismatch
+  drug_mismatch
+  quantity_short
+  quantity_over
+  discontinued_mixed
+  washout_missed
+  previous_drug_mixed
+  outside_med_missing
+  residual_instruction_missed
+  photo_unclear
+  undeterminable
+}
+
+/// SetBatch セル単位のセット状態 (一包化セットの進捗)。
+enum SetCellState {
+  pending
+  set
+  hold
+}
+
+/// SetBatch セル単位の監査状態 (quad-state: 未監査/OK/NG)。
+enum SetAuditCellState {
+  unaudited
+  ok
+  ng
+}
+
+/// 保留(ホールド)の適用範囲。
+enum HoldScope {
+  cycle
+  line
+  cell
+}
+
+/// 保留(ホールド)の理由分類。
+enum HoldReason {
+  prescription_change_wait
+  doctor_confirm_wait
+  residual_confirm_wait
+  stock_shortage
+  family_facility_confirm_wait
+  onsite_set_at_visit
+  other
+}
+
 model MedicationCycle {
   id                   String                @id @default(cuid())
   org_id               String
@@ -73,6 +126,8 @@ model MedicationCycle {
   visit_schedules          VisitSchedule[]
   visit_schedule_proposals VisitScheduleProposal[]
   transition_logs          CycleTransitionLog[]
+  packaging_groups         PackagingGroup[]
+  cycle_holds              CycleHold[]
 
   @@index([org_id])
   @@index([case_id])
@@ -100,6 +155,7 @@ model PrescriptionIntake {
   cycle_id                   String
   cycle                      MedicationCycle        @relation(fields: [cycle_id], references: [id])
   source_type                PrescriptionSourceType
+  external_prescription_id   String?
   rx_number                  String?
   prescribed_date            DateTime
   prescriber_name            String?
@@ -124,39 +180,44 @@ model PrescriptionIntake {
   jahis_supplemental_records JahisSupplementalRecord[]
 
   @@unique([org_id, rx_number])
+  @@unique([org_id, source_type, external_prescription_id])
   @@index([org_id])
   @@index([cycle_id])
   @@index([prescriber_institution_id])
 }
 
 model PrescriptionLine {
-  id                           String                    @id @default(cuid())
-  org_id                       String
-  intake_id                    String
-  intake                       PrescriptionIntake        @relation(fields: [intake_id], references: [id])
-  line_number                  Int
-  drug_name                    String
-  drug_code                    String? // YJコード
-  dosage_form                  String? // 錠剤/散剤/液剤/軟膏/貼付剤/坐剤/注射剤/吸入剤/点眼剤/点鼻剤 等
-  dose                         String
-  frequency                    String // 用法
-  days                         Int // 投与日数
-  quantity                     Float?
-  unit                         String?
-  is_generic                   Boolean                   @default(false)
-  is_generic_name_prescription Boolean                   @default(false)
-  packaging_method             PackagingMethod?
-  packaging_instructions       String?
-  packaging_instruction_tags   PackagingInstructionTag[] @default([])
-  notes                        String?
+  id                                String                    @id @default(cuid())
+  org_id                            String
+  intake_id                         String
+  intake                            PrescriptionIntake        @relation(fields: [intake_id], references: [id])
+  line_number                       Int
+  drug_name                         String
+  drug_code                         String? // YJコード
+  dosage_form                       String? // 錠剤/散剤/液剤/軟膏/貼付剤/坐剤/注射剤/吸入剤/点眼剤/点鼻剤 等
+  dose                              String
+  frequency                         String // 用法
+  days                              Int // 投与日数
+  quantity                          Float?
+  unit                              String?
+  is_generic                        Boolean                   @default(false)
+  is_generic_name_prescription      Boolean                   @default(false)
+  packaging_method                  PackagingMethod?
+  packaging_instructions            String?
+  packaging_instruction_tags        PackagingInstructionTag[] @default([])
+  notes                             String?
   // 剤形分類・調剤方法
-  route                        String? // internal(内服)/external(外用)/injection(注射)/other
-  dispensing_method            String? // standard(通常)/unit_dose(一包化)/crushed(粉砕)/other
-  start_date                   DateTime?                 @db.Date // 服用開始日
-  end_date                     DateTime?                 @db.Date // 服用終了日（start_date + days で自動計算可能）
-  packaging_group_id           String?
-  created_at                   DateTime                  @default(now())
-  updated_at                   DateTime                  @updatedAt
+  route                             String? // internal(内服)/external(外用)/injection(注射)/other
+  dispensing_method                 String? // standard(通常)/unit_dose(一包化)/crushed(粉砕)/other
+  start_date                        DateTime?                 @db.Date // 服用開始日
+  end_date                          DateTime?                 @db.Date // 服用終了日（start_date + days で自動計算可能）
+  packaging_group_id                String?
+  source_intake_id                  String?
+  source_line_id                    String?
+  source_intake_updated_at_snapshot DateTime?
+  source_line_updated_at_snapshot   DateTime?
+  created_at                        DateTime                  @default(now())
+  updated_at                        DateTime                  @updatedAt
 
   inquiry_records      InquiryRecord[]
   dispense_results     DispenseResult[]
@@ -165,6 +226,8 @@ model PrescriptionLine {
 
   @@index([org_id])
   @@index([intake_id])
+  @@index([source_intake_id])
+  @@index([source_line_id])
 }
 
 model InquiryRecord {
@@ -233,6 +296,7 @@ model DispenseResult {
   created_at         DateTime         @default(now())
   updated_at         DateTime         @updatedAt
 
+  @@unique([org_id, task_id, line_id])
   @@index([org_id])
   @@index([task_id])
 }
@@ -245,9 +309,15 @@ model DispenseAudit {
   result             DispenseAuditResult
   reject_reason      String?
   reject_reason_code String? // drug_name_mismatch | quantity_error | packaging_error | carry_type_error | labeling_error | other
+  // NOTE: 後方互換のため TEXT のまま温存 (enum RejectCode とは語彙が重ならない)。
+  // 将来 RejectCode へ移行する場合は値マッピング + 既存行のデータ移行が必要。
   reject_detail      String?
   audited_by         String // User ID
   audited_at         DateTime
+  // --- 単独薬剤師の自己監査=限定例外 (D1=B)。既存行は NULL で後方互換。---
+  // two-person rule の限定例外。調剤者=監査者の場合のみ admin 承認 + 理由必須。
+  same_operator_reason      String? // 自己監査を要した理由 (必須入力, サーバ検証)
+  same_operator_approved_by String? // 例外を承認した admin の User ID
   created_at         DateTime            @default(now())
   updated_at         DateTime            @updatedAt
 
@@ -310,6 +380,7 @@ model SetPlan {
   audits      SetAudit[]
   change_logs SetBatchChangeLog[]
 
+  @@unique([org_id, cycle_id, target_period_start, target_period_end, set_method])
   @@index([org_id])
   @@index([cycle_id])
   @@index([packaging_method_id])
@@ -330,12 +401,24 @@ model SetBatch {
   packaging_instructions_snapshot     String?
   packaging_instruction_tags_snapshot PackagingInstructionTag[] @default([])
   packaging_group_id                  String?
+  // --- 調剤ワークベンチ セル状態 (P0)。既存行は default/null で後方互換。---
+  set_state                           SetCellState              @default(pending)
+  audit_state                         SetAuditCellState         @default(unaudited)
+  ng_code                             RejectCode?
+  set_by                              String?
+  set_at                              DateTime?
+  audited_by                          String?
+  audited_at                          DateTime?
+  held_reason                         String?
+  held_by                             String?
+  held_at                             DateTime?
   version                             Int                       @default(1) // 楽観的ロック
   created_at                          DateTime                  @default(now())
   updated_at                          DateTime                  @updatedAt
 
   change_logs SetBatchChangeLog[]
 
+  @@unique([org_id, plan_id, line_id, slot, day_number])
   @@index([org_id])
   @@index([plan_id])
 }
@@ -354,6 +437,10 @@ model SetAudit {
   photo_asset_ids String[]       @default([]) // 確認した写真 (FileAsset.id, purpose=set-photo)
   audited_by      String // User ID
   audited_at      DateTime
+  // --- 単独薬剤師の自己監査=限定例外 (D1=B)。既存行は NULL で後方互換。---
+  // two-person rule の限定例外。実施者=監査者の場合のみ admin 承認 + 理由必須。
+  same_operator_reason      String? // 自己監査を要した理由 (必須入力, サーバ検証)
+  same_operator_approved_by String? // 例外を承認した admin の User ID
   created_at      DateTime       @default(now())
   updated_at      DateTime       @updatedAt
 
@@ -380,6 +467,51 @@ model SetBatchChangeLog {
   @@index([org_id])
   @@index([plan_id, created_at])
   @@index([batch_id])
+}
+
+/// 調剤ワークベンチ 一包化グループ (P0)。
+/// PrescriptionLine.packaging_group_id (String?, loose) と group_key で対応させる。
+/// 既存の loose 参照列は型変更/FK 化しない (破壊的回避)。
+model PackagingGroup {
+  id         String          @id @default(cuid())
+  org_id     String
+  cycle_id   String
+  cycle      MedicationCycle @relation(fields: [cycle_id], references: [id])
+  group_key  String
+  label      String
+  slot       String?
+  method     String
+  sort_order Int
+  version    Int             @default(0)
+  created_at DateTime        @default(now())
+  updated_at DateTime        @updatedAt
+
+  @@index([org_id, cycle_id])
+}
+
+/// 調剤ワークベンチ 保留(ホールド)記録 (P0)。
+/// cycle / line / cell 単位で保留理由・期限・担当・解消を構造化する。
+model CycleHold {
+  id            String          @id @default(cuid())
+  org_id        String
+  cycle_id      String
+  cycle         MedicationCycle @relation(fields: [cycle_id], references: [id])
+  phase         String
+  scope         HoldScope
+  line_id       String?
+  day_number    Int?
+  slot          String?
+  reason        HoldReason
+  reason_detail String?
+  due_at        DateTime?
+  assigned_to   String?
+  resolved_at   DateTime?
+  resolved_by   String?
+  note          String?
+  created_at    DateTime        @default(now())
+  updated_at    DateTime        @updatedAt
+
+  @@index([org_id, cycle_id])
 }
 
 model WorkflowException {

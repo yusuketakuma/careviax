@@ -34,8 +34,8 @@ import {
 
 /**
  * p0_32 薬の安全チェック(docs/design-gap-analysis.md)。
- * 3 カラム構成: 左「気になる点」(カテゴリ別カード・critical は赤見出し)→
- * 中央「確認の流れ」(4 ステップ・済は薄緑)→ 右「次にやること」
+ * 2 カラム構成: 左「気になる点」(カテゴリ別カード・critical は赤見出し)→
+ * 中央「確認の流れ」(4 ステップ・済は薄緑)。補助操作は右ドロワーの「次にやること」
  * (主操作「医師への確認を記録」+ 副操作「問題なしにする」)。
  * データ源は /api/medication-issues(主)+ /api/cds/check(現行サイクルがあるときの補強)。
  */
@@ -227,8 +227,8 @@ function ConsultationDialog({
 
 function SafetyCheckSkeleton() {
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,17fr)_minmax(0,22fr)_minmax(280px,10fr)]">
-      {[0, 1, 2].map((column) => (
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,17fr)_minmax(0,22fr)]">
+      {[0, 1].map((column) => (
         <div key={column} className="space-y-3 rounded-lg border border-border/70 bg-card p-4">
           <Skeleton className="h-5 w-24" />
           <Skeleton className="h-20 w-full" />
@@ -389,7 +389,7 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
             />
           </div>
         ) : (
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,17fr)_minmax(0,22fr)_minmax(280px,10fr)]">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,17fr)_minmax(0,22fr)]">
             <section
               aria-labelledby="safety-concerns-heading"
               className="rounded-lg border border-border/70 bg-card p-4"
@@ -429,21 +429,19 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
               </div>
             </section>
 
-            <div className="space-y-4">
-              <WorkspaceActionRail
-                nextAction={{
-                  actionLabel: '医師への確認を記録',
-                  onAction: () => setConsultDialogOpen(true),
-                  actionDisabled: !selectedConcern || consultationMutation.isPending,
-                  secondaryActionLabel: '問題なしにする',
-                  onSecondaryAction: () => setResolveDialogOpen(true),
-                  secondaryActionDisabled: !selectedIssue || resolveMutation.isPending,
-                  description: selectedConcern
-                    ? `対象: ${selectedConcern.label}(${selectedConcern.subLabel})`
-                    : undefined,
-                }}
-              />
-            </div>
+            <WorkspaceActionRail
+              nextAction={{
+                actionLabel: '医師への確認を記録',
+                onAction: () => setConsultDialogOpen(true),
+                actionDisabled: !selectedConcern || consultationMutation.isPending,
+                secondaryActionLabel: '問題なしにする',
+                onSecondaryAction: () => setResolveDialogOpen(true),
+                secondaryActionDisabled: !selectedIssue || resolveMutation.isPending,
+                description: selectedConcern
+                  ? `対象: ${selectedConcern.label}(${selectedConcern.subLabel})`
+                  : undefined,
+              }}
+            />
           </div>
         )}
       </div>

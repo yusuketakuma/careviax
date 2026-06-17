@@ -59,6 +59,7 @@ type HealthPayload = {
 };
 
 const EMPTY_SETTING_ITEMS: SettingValueItem[] = [];
+const HEALTH_REFETCH_INTERVAL_MS = 60_000;
 
 function statusBadgeClass(status: string) {
   switch (status) {
@@ -367,7 +368,7 @@ export function SettingsContent() {
       }
       return response.json() as Promise<HealthPayload>;
     },
-    refetchInterval: 30000,
+    refetchInterval: HEALTH_REFETCH_INTERVAL_MS,
   });
 
   const sites = sitesQuery.data?.data ?? [];
@@ -385,7 +386,7 @@ export function SettingsContent() {
             <Activity className="size-4" aria-hidden="true" />
             外部連携監視
           </CardTitle>
-          <CardDescription>DB・バックアップ系の健全性を 30 秒ごとに確認します</CardDescription>
+          <CardDescription>DB・バックアップ系の健全性を 60 秒ごとに確認します</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-3">
           <HealthCard

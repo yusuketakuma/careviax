@@ -157,6 +157,22 @@ function buildPatient(overrides: Partial<PatientOverview> = {}): PatientOverview
       drug_cautions: [],
     },
     lab_summary: [],
+    foundation: {
+      summary: {
+        status: 'ready',
+        label: '基盤確認済',
+        items: ['主要項目あり'],
+      },
+      items: [],
+      changes_since_last_visit: [],
+      latest_labs: [],
+      insurances: [],
+      archive: {
+        archived: false,
+        archived_at: null,
+        archived_by_name: null,
+      },
+    },
     jahis_supplemental_records: [],
     workspace: null,
     privacy: {

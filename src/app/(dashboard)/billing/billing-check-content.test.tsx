@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { useUIStore } from '@/lib/stores/ui-store';
 import type { BillingCheckResponse } from '@/types/billing-check';
 
 setupDomTestEnv();
@@ -73,7 +74,7 @@ function buildFixture(): BillingCheckResponse {
       next_action: {
         label: '麻薬監査を開始 — 12:00期限',
         description: '14:00訪問(田中様)の持参薬です。完了で午後の予定がすべて確定します。',
-        href: '/auditing',
+        href: '/audit',
       },
       blocked_reasons: [
         {
@@ -101,6 +102,7 @@ function buildFixture(): BillingCheckResponse {
 
 describe('BillingCheckContent', () => {
   beforeEach(() => {
+    useUIStore.setState({ workspaceRailOpen: true });
     refetchMock.mockClear();
     useQueryMock.mockReturnValue({
       data: buildFixture(),

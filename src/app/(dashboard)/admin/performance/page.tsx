@@ -22,6 +22,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { HelpPopover } from '@/components/ui/help-popover';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { StaffKpiPanel } from '@/app/(dashboard)/admin/staff/staff-kpi-panel';
 
 type WorkflowData = {
@@ -178,7 +179,7 @@ export default function PerformancePage() {
   const dateFrom = format(weekStart, 'yyyy-MM-dd');
   const dateTo = format(weekEnd, 'yyyy-MM-dd');
 
-  const workflowQuery = useQuery({
+  const workflowQuery = useRealtimeQuery({
     queryKey: ['admin-performance-workflow', orgId],
     queryFn: async () => {
       const res = await fetch('/api/dashboard/workflow?view=performance', {
@@ -188,10 +189,11 @@ export default function PerformancePage() {
       return res.json() as Promise<{ data: WorkflowData }>;
     },
     enabled: !!orgId,
-    refetchInterval: 30_000,
+    invalidateOn: ['workflow_refresh', 'cycle_transition'],
+    fallbackRefetchInterval: 60_000,
   });
 
-  const schedulesQuery = useQuery({
+  const schedulesQuery = useRealtimeQuery({
     queryKey: ['admin-performance-schedules', orgId, dateFrom, dateTo],
     queryFn: async () => {
       const params = new URLSearchParams({
@@ -206,10 +208,11 @@ export default function PerformancePage() {
       return res.json() as Promise<{ data: VisitSchedule[] }>;
     },
     enabled: !!orgId,
-    refetchInterval: 30_000,
+    invalidateOn: ['workflow_refresh'],
+    fallbackRefetchInterval: 60_000,
   });
 
-  const proposalsQuery = useQuery({
+  const proposalsQuery = useRealtimeQuery({
     queryKey: ['admin-performance-proposals', orgId, dateFrom, dateTo],
     queryFn: async () => {
       const params = new URLSearchParams({
@@ -223,7 +226,8 @@ export default function PerformancePage() {
       return res.json() as Promise<{ data: Proposal[] }>;
     },
     enabled: !!orgId,
-    refetchInterval: 30_000,
+    invalidateOn: ['workflow_refresh'],
+    fallbackRefetchInterval: 60_000,
   });
 
   const runtimeQuery = useQuery({
@@ -236,7 +240,7 @@ export default function PerformancePage() {
       return res.json() as Promise<{ data: RuntimePerformanceSnapshot }>;
     },
     enabled: !!orgId,
-    refetchInterval: 30_000,
+    refetchInterval: 60_000,
   });
 
   const workflow = workflowQuery.data?.data;

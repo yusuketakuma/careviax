@@ -4,17 +4,23 @@ import { NextRequest } from 'next/server';
 const {
   requireAuthContextMock,
   careCaseFindManyMock,
+  careCaseFindFirstMock,
+  patientFindFirstMock,
   taskFindManyMock,
   userFindManyMock,
   membershipFindFirstMock,
+  taskFindFirstMock,
   taskCreateMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
+  careCaseFindFirstMock: vi.fn(),
+  patientFindFirstMock: vi.fn(),
   taskFindManyMock: vi.fn(),
   userFindManyMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
+  taskFindFirstMock: vi.fn(),
   taskCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
@@ -27,9 +33,14 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     careCase: {
       findMany: careCaseFindManyMock,
+      findFirst: careCaseFindFirstMock,
+    },
+    patient: {
+      findFirst: patientFindFirstMock,
     },
     task: {
       findMany: taskFindManyMock,
+      findFirst: taskFindFirstMock,
     },
     user: {
       findMany: userFindManyMock,
@@ -81,9 +92,12 @@ describe('/api/tasks', () => {
       },
     });
     careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
+    careCaseFindFirstMock.mockResolvedValue({ patient_id: 'patient_1' });
+    patientFindFirstMock.mockResolvedValue({ id: 'patient_1', archived_at: null });
     taskFindManyMock.mockResolvedValue([]);
     userFindManyMock.mockResolvedValue([]);
     membershipFindFirstMock.mockResolvedValue({ user_id: 'user_1' });
+    taskFindFirstMock.mockResolvedValue(null);
     taskCreateMock.mockResolvedValue({ id: 'task_1', title: '折返し対応' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -220,6 +234,96 @@ describe('/api/tasks', () => {
         metadata: { source: 'self_report', severity: 'high' },
       }),
     });
+  });
+
+  it('returns the existing task when a duplicate dedupe key create races', async () => {
+    taskCreateMock.mockRejectedValueOnce({ code: 'P2002' });
+    taskFindFirstMock.mockResolvedValueOnce({
+      id: 'task_existing',
+      org_id: 'org_1',
+      dedupe_key: 'share-reply-task:response_1',
+      title: '返信内容を次回確認',
+    });
+
+    const response = await POST(
+      createRequest('http://localhost/api/tasks', {
+        task_type: 'care_report_followup',
+        title: '返信内容を次回確認',
+        priority: 'normal',
+        assigned_to: 'user_1',
+        dedupe_key: 'share-reply-task:response_1',
+        related_entity_type: 'patient',
+        related_entity_id: 'patient_1',
+      }),
+    );
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(200);
+    expect(taskFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        dedupe_key: 'share-reply-task:response_1',
+      },
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'task_existing',
+        dedupe_key: 'share-reply-task:response_1',
+      },
+    });
+  });
+
+  it('rejects archived related patients before creating operational tasks', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    const response = await POST(
+      createRequest('http://localhost/api/tasks', {
+        task_type: 'patient_self_report_followup',
+        title: '患者A: 服薬の困りごと',
+        priority: 'high',
+        related_entity_type: 'patient',
+        related_entity_id: 'patient_1',
+      }),
+    );
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(409);
+    expect(membershipFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(taskCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects archived patients resolved from related cases before creating operational tasks', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    const response = await POST(
+      createRequest('http://localhost/api/tasks', {
+        task_type: 'patient_self_report_followup',
+        title: 'ケースA: 服薬の困りごと',
+        priority: 'high',
+        related_entity_type: 'case',
+        related_entity_id: 'case_1',
+      }),
+    );
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(409);
+    expect(careCaseFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'case_1',
+        org_id: 'org_1',
+      },
+      select: { patient_id: true },
+    });
+    expect(membershipFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(taskCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects create payloads assigned to inactive or unknown staff', async () => {

@@ -55,6 +55,11 @@ describe('/api/contact-profiles', () => {
         last_contacted_at: new Date('2026-03-30T00:00:00.000Z'),
         last_success_channel: 'fax',
         recommended_channels: ['fax', 'phone'],
+        contact_reliability: {
+          ready: true,
+          warnings: [],
+          missing_channel_labels: [],
+        },
         active_patient_count: 4,
         pending_response_count: 2,
       },
@@ -80,6 +85,11 @@ describe('/api/contact-profiles', () => {
           id: 'contact_1',
           last_contacted_at: '2026-03-30T00:00:00.000Z',
           recommended_channels: ['fax', 'phone'],
+          contact_reliability: {
+            ready: true,
+            warnings: [],
+            missing_channel_labels: [],
+          },
           active_patient_count: 4,
           pending_response_count: 2,
         },

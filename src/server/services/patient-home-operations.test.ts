@@ -941,6 +941,8 @@ describe('getPatientHomeOperationsData', () => {
   });
 
   it('keeps expiry as the primary prescription status while still surfacing unresolved inquiries', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-16T00:00:00.000Z'));
     const db = createDb({
       prescriptionIntake: {
         findFirst: vi.fn().mockResolvedValue({

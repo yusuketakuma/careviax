@@ -66,9 +66,20 @@ const patientAssignmentLookup = {
   },
   select: { id: true },
 };
+const writablePatientLookup = {
+  where: {
+    id: 'patient_1',
+    org_id: 'org_1',
+  },
+  select: { id: true, archived_at: true },
+};
 
 function expectPatientAssignmentLookup() {
   expect(patientFindFirstMock).toHaveBeenCalledWith(patientAssignmentLookup);
+}
+
+function expectWritablePatientLookup() {
+  expect(patientFindFirstMock).toHaveBeenCalledWith(writablePatientLookup);
 }
 
 describe('/api/patients/[id]/insurance', () => {
@@ -83,7 +94,7 @@ describe('/api/patients/[id]/insurance', () => {
         role: 'pharmacist',
       },
     });
-    patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
+    patientFindFirstMock.mockResolvedValue({ id: 'patient_1', archived_at: null });
     patientInsuranceFindManyMock.mockResolvedValue([]);
     patientInsuranceCreateMock.mockResolvedValue({ id: 'insurance_1' });
     patientInsuranceOverlapFindFirstMock.mockResolvedValue(null);
@@ -139,6 +150,8 @@ describe('/api/patients/[id]/insurance', () => {
 
     const response = await GET(createGetRequest(), routeParams);
 
+    if (!response) throw new Error('response is required');
+
     expect(response.status).toBe(200);
     expectPatientAssignmentLookup();
     expect(patientInsuranceFindManyMock).toHaveBeenCalledWith({
@@ -188,6 +201,8 @@ describe('/api/patients/[id]/insurance', () => {
 
       const response = await GET(createGetRequest(), routeParams);
 
+      if (!response) throw new Error('response is required');
+
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toMatchObject({
         data: {
@@ -210,9 +225,37 @@ describe('/api/patients/[id]/insurance', () => {
 
     const response = await GET(createGetRequest(), routeParams);
 
+    if (!response) throw new Error('response is required');
+
     expect(response.status).toBe(404);
     expectPatientAssignmentLookup();
     expect(patientInsuranceFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('POST returns 409 for an archived patient before writing insurance records', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-04-01T00:00:00.000Z'),
+    });
+
+    const response = await POST(
+      createRequest({
+        insurance_type: 'medical',
+        insurer_number: '12345678',
+        valid_from: '2026-04-01',
+      }),
+      routeParams,
+    );
+
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'アーカイブ中の患者は復元するまで更新できません',
+    });
+    expectWritablePatientLookup();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
   });
@@ -221,6 +264,8 @@ describe('/api/patients/[id]/insurance', () => {
     const response = await GET(createGetRequest(), {
       params: Promise.resolve({ id: '   ' }),
     });
+
+    if (!response) throw new Error('response is required');
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
@@ -244,8 +289,10 @@ describe('/api/patients/[id]/insurance', () => {
       routeParams,
     );
 
+    if (!response) throw new Error('response is required');
+
     expect(response.status).toBe(404);
-    expectPatientAssignmentLookup();
+    expectWritablePatientLookup();
     expect(patientInsuranceFindManyMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(patientInsuranceCreateMock).not.toHaveBeenCalled();
@@ -255,6 +302,8 @@ describe('/api/patients/[id]/insurance', () => {
     const response = await POST(createMalformedJsonRequest(), {
       params: Promise.resolve({ id: '\t\n' }),
     });
+
+    if (!response) throw new Error('response is required');
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
@@ -269,6 +318,8 @@ describe('/api/patients/[id]/insurance', () => {
   it('POST rejects non-object payloads before patient lookup or DB writes', async () => {
     const response = await POST(createRequest([]), routeParams);
 
+    if (!response) throw new Error('response is required');
+
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
       message: 'リクエストボディが不正です',
@@ -281,6 +332,8 @@ describe('/api/patients/[id]/insurance', () => {
 
   it('POST rejects malformed JSON payloads before patient lookup or DB writes', async () => {
     const response = await POST(createMalformedJsonRequest(), routeParams);
+
+    if (!response) throw new Error('response is required');
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
@@ -301,6 +354,8 @@ describe('/api/patients/[id]/insurance', () => {
       routeParams,
     );
 
+    if (!response) throw new Error('response is required');
+
     expect(response.status).toBe(400);
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(patientInsuranceFindManyMock).not.toHaveBeenCalled();
@@ -318,6 +373,8 @@ describe('/api/patients/[id]/insurance', () => {
       routeParams,
     );
 
+    if (!response) throw new Error('response is required');
+
     expect(response.status).toBe(400);
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
@@ -332,6 +389,8 @@ describe('/api/patients/[id]/insurance', () => {
       }),
       routeParams,
     );
+
+    if (!response) throw new Error('response is required');
 
     expect(response.status).toBe(400);
     expect(patientFindFirstMock).not.toHaveBeenCalled();
@@ -350,6 +409,8 @@ describe('/api/patients/[id]/insurance', () => {
       }),
       routeParams,
     );
+
+    if (!response) throw new Error('response is required');
 
     expect(response.status).toBe(400);
     expect(patientFindFirstMock).not.toHaveBeenCalled();
@@ -380,8 +441,10 @@ describe('/api/patients/[id]/insurance', () => {
       routeParams,
     );
 
+    if (!response) throw new Error('response is required');
+
     expect(response.status).toBe(200);
-    expectPatientAssignmentLookup();
+    expectWritablePatientLookup();
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
     expect(patientInsuranceOverlapFindFirstMock).toHaveBeenCalledWith({
       where: {
@@ -434,6 +497,8 @@ describe('/api/patients/[id]/insurance', () => {
       routeParams,
     );
 
+    if (!response) throw new Error('response is required');
+
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
       message: '同じ期間に有効な保険情報が既に存在します',
@@ -461,8 +526,10 @@ describe('/api/patients/[id]/insurance', () => {
       routeParams,
     );
 
+    if (!response) throw new Error('response is required');
+
     expect(response.status).toBe(200);
-    expectPatientAssignmentLookup();
+    expectWritablePatientLookup();
     expect(patientInsuranceCreateMock).toHaveBeenCalledWith({
       data: {
         org_id: 'org_1',

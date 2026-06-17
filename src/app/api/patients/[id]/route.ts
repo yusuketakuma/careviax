@@ -5,7 +5,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { conflict, success, validationError, notFound } from '@/lib/api/response';
 import { updatePatientSchema, type UpdatePatientData } from '@/lib/validations/patient';
 import { prisma } from '@/lib/db/client';
 import { Prisma } from '@prisma/client';
@@ -47,6 +47,11 @@ import {
   VISIT_OUTCOME_LABELS,
 } from '@/lib/constants/status-labels';
 import { getHomeVisitIntake, type HomeVisitIntake } from '@/lib/patient/home-visit-intake';
+import { normalizePatientPrimaryContacts } from '@/lib/patient/care-team-contact';
+import {
+  findPatientDuplicateCandidates,
+  parsePatientDuplicateBirthDate,
+} from '@/lib/patient/duplicate-detection';
 import { KEY_LAB_ANALYTE_CODES } from '@/lib/patient/lab-analytes';
 import { CYCLE_STATUS_LABELS } from '@/lib/prescription/cycle-workspace';
 import {
@@ -1930,6 +1935,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
+  const duplicateAcknowledged = payload.duplicate_acknowledged === true;
 
   const existing = await prisma.patient.findFirst({
     where: buildPatientDetailWhere({
@@ -1940,6 +1946,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }),
   });
   if (!existing) return notFound('患者が見つかりません');
+  if (existing.archived_at) return conflict('アーカイブ中の患者は復元するまで更新できません');
 
   const {
     address,
@@ -1957,6 +1964,39 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     source_visit_record_id,
     ...rest
   } = parsed.data;
+  const nextName = rest.name ?? existing.name;
+  const nextGender = rest.gender ?? existing.gender;
+  const nextBirthDateKey =
+    birth_date ??
+    (existing.birth_date instanceof Date
+      ? format(existing.birth_date, 'yyyy-MM-dd')
+      : String(existing.birth_date).slice(0, 10));
+  const identityChanged =
+    rest.name !== undefined || rest.gender !== undefined || birth_date !== undefined;
+  const duplicateBirthDate = identityChanged
+    ? parsePatientDuplicateBirthDate(nextBirthDateKey)
+    : null;
+  if (identityChanged && !duplicateBirthDate) return validationError('生年月日の形式が不正です');
+  const duplicateCandidates =
+    identityChanged && duplicateBirthDate
+      ? await findPatientDuplicateCandidates(prisma, {
+          orgId: ctx.orgId,
+          name: nextName,
+          birthDate: duplicateBirthDate,
+          gender: nextGender,
+          excludePatientId: id,
+          access: {
+            userId: ctx.userId,
+            role: ctx.role,
+          },
+        })
+      : [];
+  if (duplicateCandidates.length > 0 && !duplicateAcknowledged) {
+    return conflict('重複している可能性がある患者が存在します', {
+      duplicate_type: 'patient_identity',
+      duplicates: duplicateCandidates,
+    });
+  }
 
   try {
     const patient = await withOrgContext(
@@ -2176,19 +2216,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             },
             orderBy: { created_at: 'asc' },
           });
-          const nextContacts = contacts.map((contact) => ({
-            name: contact.name,
-            relation: contact.relation,
-            phone: contact.phone || null,
-            email: contact.email || null,
-            fax: contact.fax || null,
-            organization_name: contact.organization_name || null,
-            department: contact.department || null,
-            address: contact.address || null,
-            is_primary: contact.is_primary,
-            is_emergency_contact: contact.is_emergency_contact,
-            notes: contact.notes || null,
-          }));
+          const nextContacts = normalizePatientPrimaryContacts(
+            contacts.map((contact) => ({
+              name: contact.name,
+              relation: contact.relation,
+              phone: contact.phone || null,
+              email: contact.email || null,
+              fax: contact.fax || null,
+              organization_name: contact.organization_name || null,
+              department: contact.department || null,
+              address: contact.address || null,
+              is_primary: contact.is_primary,
+              is_emergency_contact: contact.is_emergency_contact,
+              notes: contact.notes || null,
+            })),
+          );
 
           await tx.contactParty.deleteMany({
             where: { org_id: ctx.orgId, patient_id: id },
@@ -2259,12 +2301,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             name: condition.name,
             is_primary: condition.is_primary,
             is_active: condition.is_active,
-            noted_at: condition.noted_at ? format(new Date(condition.noted_at), 'yyyy-MM-dd') : null,
+            noted_at: condition.noted_at
+              ? format(new Date(condition.noted_at), 'yyyy-MM-dd')
+              : null,
             notes: condition.notes ?? null,
           });
           // 順序のみの差(GET は is_primary desc, 保存経路は created_at asc)で偽の履歴を出さないため安定ソートする
           const previousSnapshot = sortJsonArrayStable(
-            previousConditions.map(normalizeConditionSnapshot)
+            previousConditions.map(normalizeConditionSnapshot),
           );
           const nextSnapshot = sortJsonArrayStable(conditions.map(normalizeConditionSnapshot));
           revisionEntries.push({
@@ -2413,7 +2457,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           };
           const patchRecord = schedulePreferencePatchData as Record<string, unknown>;
           const hasClinicalChange = Object.keys(clinicalFieldLabels).some(
-            (key) => key in schedulePreferencePatchData
+            (key) => key in schedulePreferencePatchData,
           );
           // upsert が上書きする前に旧値を取得する
           const existingPreference = hasClinicalChange
@@ -2626,7 +2670,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           const changedFieldKeys = new Set(
             revisionEntries
               .filter((entry) => !isJsonEqual(entry.old_value, entry.new_value))
-              .map((entry) => entry.field_key)
+              .map((entry) => entry.field_key),
           );
           if (changedFieldKeys.has('care_level')) {
             await upsertOperationalTask(tx, {
@@ -2657,7 +2701,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       { requestContext: ctx },
     );
 
-    return success(patient);
+    return success({
+      ...patient,
+      warnings:
+        duplicateCandidates.length > 0
+          ? [
+              {
+                code: 'PATIENT_DUPLICATE_ACKNOWLEDGED',
+                severity: 'warning',
+                message: '重複候補を確認済みとして患者情報を更新しました。',
+              },
+            ]
+          : [],
+      metadata: {
+        duplicate_candidates: duplicateCandidates,
+      },
+    });
   } catch (error) {
     if (
       error instanceof FacilityReferenceValidationError ||

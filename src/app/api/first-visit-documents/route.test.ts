@@ -11,6 +11,7 @@ const {
   firstVisitDocumentCreateMock,
   firstVisitDocumentFindManyMock,
   templateFindFirstMock,
+  requireWritablePatientMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
@@ -22,6 +23,7 @@ const {
   firstVisitDocumentCreateMock: vi.fn(),
   firstVisitDocumentFindManyMock: vi.fn(),
   templateFindFirstMock: vi.fn(),
+  requireWritablePatientMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
 
@@ -54,6 +56,10 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
+vi.mock('@/server/services/patient-write-guard', () => ({
+  requireWritablePatient: requireWritablePatientMock,
+}));
+
 import { GET as rawGET, POST as rawPOST } from './route';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
@@ -76,6 +82,9 @@ describe('/api/first-visit-documents', () => {
     vi.clearAllMocks();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+    requireWritablePatientMock.mockResolvedValue({
+      patient: { id: 'patient_1', archived_at: null },
+    });
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
     careCaseFindManyMock.mockResolvedValue([{ id: 'case_1' }]);
     firstVisitDocumentFindManyMock.mockResolvedValue([
@@ -252,6 +261,30 @@ describe('/api/first-visit-documents', () => {
           }),
         }),
       });
+    });
+
+    it('rejects archived patients before deriving contacts or creating documents', async () => {
+      requireWritablePatientMock.mockResolvedValue({
+        response: Response.json(
+          { message: 'アーカイブ中の患者は復元するまで更新できません' },
+          { status: 409 },
+        ),
+      });
+
+      const response = (await POST(
+        createRequest('http://localhost/api/first-visit-documents', {
+          patient_id: 'patient_1',
+          case_id: 'case_1',
+          template_id: 'template_default',
+        }),
+      ))!;
+
+      expect(response.status).toBe(409);
+      expect(contactPartyFindManyMock).not.toHaveBeenCalled();
+      expect(templateFindFirstMock).not.toHaveBeenCalled();
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(firstVisitDocumentCreateMock).not.toHaveBeenCalled();
+      expect(auditLogCreateMock).not.toHaveBeenCalled();
     });
 
     it('fills emergency contacts from patient contacts when creating from a template', async () => {

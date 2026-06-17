@@ -518,6 +518,8 @@ describe('Workflow: prescription intake to care report', () => {
             priority: 'normal',
             cycle: {
               patient_id: IDS.patient,
+              overall_status: 'audit_pending',
+              version: 1,
               set_plans: [],
               case_: {
                 primary_pharmacist_id: IDS.user,
@@ -564,6 +566,7 @@ describe('Workflow: prescription intake to care report', () => {
       createPostRequest({
         task_id: IDS.dispenseTask,
         result: 'approved',
+        expected_version: 1,
       }),
       emptyRouteContext,
     );
@@ -664,7 +667,29 @@ describe('Workflow: prescription intake to care report', () => {
             name_kana: 'ヤマダ タロウ',
             birth_date: new Date('1945-05-10T00:00:00.000Z'),
             gender: 'male',
+            phone: null,
+            medical_insurance_number: null,
+            care_insurance_number: null,
+            billing_support_flag: false,
+            allergy_info: null,
+            notes: null,
+            archived_at: null,
+            archived_by: null,
+            residences: [],
+            scheduling_preference: null,
+            contacts: [],
+            conditions: [],
+            consents: [],
+            cases: [
+              {
+                id: IDS.case,
+                care_team_links: [],
+              },
+            ],
           }),
+        },
+        patientInsurance: {
+          findMany: vi.fn().mockResolvedValue([]),
         },
         visitSchedule: {
           findFirst: vi.fn().mockResolvedValue({
@@ -695,6 +720,10 @@ describe('Workflow: prescription intake to care report', () => {
           create: visitRecordCreateMock,
         },
         residualMedication: {
+          deleteMany: vi.fn().mockResolvedValue({}),
+          createMany: vi.fn().mockResolvedValue({}),
+        },
+        patientLabObservation: {
           deleteMany: vi.fn().mockResolvedValue({}),
           createMany: vi.fn().mockResolvedValue({}),
         },

@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 export default function HandoffPage() {
   return (
     <PageScaffold variant="bare">
-      <div className="xl:min-h-[calc(100vh-4rem)]">
+      <div className="xl:min-h-[calc(100dvh-4rem)]">
         <HandoffWorkspace />
       </div>
     </PageScaffold>

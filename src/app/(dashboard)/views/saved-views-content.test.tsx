@@ -65,7 +65,7 @@ describe('SavedViewsContent', () => {
     const useLinks = screen.getAllByTestId('saved-view-preset-use');
     expect(useLinks.map((link) => link.getAttribute('href'))).toEqual([
       '/my-day?focus=visits&visit_filter=unprepared',
-      '/medication-sets',
+      '/set',
       '/clerk-support',
       '/dashboard',
     ]);

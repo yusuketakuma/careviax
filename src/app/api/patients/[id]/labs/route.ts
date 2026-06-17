@@ -12,6 +12,7 @@ import {
   buildVisitRecordScheduleAssignmentWhere,
 } from '@/lib/auth/visit-schedule-access';
 import { LAB_ANALYTE_CODES } from '@/lib/patient/lab-analytes';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
 
 const labAnalyteCodeSchema = z.enum(LAB_ANALYTE_CODES);
 const labQuerySchema = z.object({
@@ -123,14 +124,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const patient = await prisma.patient.findFirst({
-    where: applyPatientAssignmentWhere(
-      { id, org_id: ctx.orgId },
-      { userId: ctx.userId, role: ctx.role },
-    ),
-    select: { id: true },
-  });
-  if (!patient) return notFound('患者が見つかりません');
+  const writable = await requireWritablePatient(prisma, ctx, id);
+  if ('response' in writable) return writable.response;
 
   const sourceVisitRecordId = parsed.data.source_visit_record_id?.trim() || undefined;
   let normalizedSourceVisitRecordId: string | null = null;

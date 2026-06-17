@@ -1,0 +1,128 @@
+name: AWS Container Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      aws_region:
+        description: AWS region for ECR
+        required: true
+        default: ap-northeast-1
+      ecr_repository:
+        description: ECR repository name
+        required: true
+        default: ph-os/app
+      image_tag:
+        description: Image tag. Leave empty to use sha-<commit>
+        required: false
+        default: ''
+      next_public_app_url:
+        description: Public app URL frozen into the browser bundle
+        required: true
+        default: https://example.invalid
+      next_public_cognito_user_pool_id:
+        description: Cognito user pool ID frozen into the browser bundle
+        required: true
+        default: ap-northeast-1_placeholder
+      next_public_cognito_client_id:
+        description: Cognito app client ID frozen into the browser bundle
+        required: true
+        default: placeholder-client-id
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  NODE_VERSION: '24.16.0'
+  PNPM_VERSION: '11.5.2'
+
+jobs:
+  build-and-push:
+    name: Build and push PH-OS image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies for validation
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate AWS deployment artifacts
+        run: |
+          pnpm aws:deploy:readiness
+          pnpm aws:github-oidc:template:validate
+          pnpm aws:lightsail:template:validate
+          pnpm aws:lightsail:runtime:plan -- --json >/tmp/phos-runtime-plan.json
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ inputs.aws_region }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Prepare image tags
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${{ inputs.image_tag }}" ]; then
+            tag="${{ inputs.image_tag }}"
+          else
+            tag="sha-${GITHUB_SHA::12}"
+          fi
+          image="${{ steps.login-ecr.outputs.registry }}/${{ inputs.ecr_repository }}:${tag}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "IMAGE=$image"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: |
+            ${{ steps.image.outputs.image }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            APP_ENV=production
+            NEXT_PUBLIC_APP_ENV=production
+            NEXT_PUBLIC_APP_URL=${{ inputs.next_public_app_url }}
+            NEXT_PUBLIC_COGNITO_USER_POOL_ID=${{ inputs.next_public_cognito_user_pool_id }}
+            NEXT_PUBLIC_COGNITO_CLIENT_ID=${{ inputs.next_public_cognito_client_id }}
+            NEXT_PUBLIC_SENTRY_DSN=
+            DATABASE_URL=postgresql://build:build@localhost:5432/build
+            DIRECT_URL=postgresql://build:build@localhost:5432/build
+            NEXTAUTH_URL=${{ inputs.next_public_app_url }}
+            NEXTAUTH_SECRET=build-time-placeholder-secret
+            AUTH_SECRET=build-time-placeholder-secret
+            ENCRYPTION_KEY=YnVpbGQtdGltZS1wbGFjZWhvbGRlci0zMmJ5dGVzLTEyMw==
+            JWT_SIGNING_SECRET=build-time-placeholder-jwt-secret
+            AWS_REGION=${{ inputs.aws_region }}
+
+      - name: Print runtime plan command
+        run: |
+          echo "Container image pushed:"
+          echo "${{ steps.image.outputs.image }}"
+          echo
+          echo "Next runtime command:"
+          echo "pnpm aws:lightsail:runtime:plan -- --host <STATIC_IP_OR_DOMAIN> --image '${{ steps.image.outputs.image }}' --env-file <UNTRACKED_ENV_FILE>"

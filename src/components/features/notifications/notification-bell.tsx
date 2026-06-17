@@ -33,6 +33,29 @@ type Notification = {
 };
 
 const NOTIFICATION_STREAM_DISABLED = process.env.NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM === '1';
+export const NOTIFICATION_DISPLAY_LIMIT = 50;
+export const NOTIFICATION_SEEN_ID_LIMIT = 250;
+
+export function pruneSeenNotificationIds(
+  seenIds: Set<string>,
+  visibleIds: Iterable<string>,
+  limit = NOTIFICATION_SEEN_ID_LIMIT,
+) {
+  if (seenIds.size <= limit) return;
+  const visibleIdSet = new Set(visibleIds);
+
+  for (const id of Array.from(seenIds)) {
+    if (seenIds.size <= limit) return;
+    if (!visibleIdSet.has(id)) {
+      seenIds.delete(id);
+    }
+  }
+
+  for (const id of Array.from(seenIds)) {
+    if (seenIds.size <= limit) return;
+    seenIds.delete(id);
+  }
+}
 
 export function NotificationBell() {
   const orgId = useOrgId();
@@ -91,7 +114,12 @@ export function NotificationBell() {
           (left, right) =>
             new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
         );
-        return unique.slice(0, 50);
+        const next = unique.slice(0, NOTIFICATION_DISPLAY_LIMIT);
+        pruneSeenNotificationIds(
+          seenIdsRef.current,
+          next.map((notification) => notification.id),
+        );
+        return next;
       });
       setUnreadSummaryCount(0);
     },

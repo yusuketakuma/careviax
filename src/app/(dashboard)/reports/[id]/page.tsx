@@ -54,6 +54,7 @@ import { PatientCareTeamSourcePanel } from '@/components/features/visits/patient
 import type { PhysicianReportContent, CareManagerReportContent } from '@/types/care-report-content';
 import { ReportAiDraftReview } from './report-ai-draft-review';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
 import {
   readReportBillingContext,
   readReportContentObject,
@@ -588,6 +589,7 @@ export default function ReportDetailPage() {
   if (isBootstrappingOrg || isLoading) {
     return (
       <PageScaffold>
+        <WorkflowBackLink href="/reports" label="報告書一覧へ戻る" className="mb-3" />
         <Loading />
       </PageScaffold>
     );

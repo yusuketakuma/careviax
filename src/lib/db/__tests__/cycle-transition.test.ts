@@ -58,7 +58,7 @@ describe('transitionCycleStatus', () => {
 
     expect(result).toEqual({ id: CYCLE_ID, overall_status: 'structuring', version: 2 });
     expect(mockUpdateMany).toHaveBeenCalledWith({
-      where: { id: CYCLE_ID, version: 1 },
+      where: { id: CYCLE_ID, org_id: ORG_ID, version: 1 },
       data: expect.objectContaining({
         overall_status: 'structuring',
         version: { increment: 1 },
@@ -71,7 +71,7 @@ describe('transitionCycleStatus', () => {
     mockFindFirst.mockResolvedValueOnce(fakeCycle);
 
     await expect(
-      transitionCycleStatus(tx, CYCLE_ID, ORG_ID, 'structuring', USER_ID)
+      transitionCycleStatus(tx, CYCLE_ID, ORG_ID, 'structuring', USER_ID),
     ).rejects.toThrow(InvalidTransitionError);
   });
 
@@ -80,7 +80,7 @@ describe('transitionCycleStatus', () => {
     mockFindFirst.mockResolvedValueOnce(fakeCycle);
 
     await expect(
-      transitionCycleStatus(tx, CYCLE_ID, ORG_ID, 'dispensing', USER_ID)
+      transitionCycleStatus(tx, CYCLE_ID, ORG_ID, 'dispensing', USER_ID),
     ).rejects.toMatchObject({
       fromStatus: 'reported',
       toStatus: 'dispensing',
@@ -93,7 +93,7 @@ describe('transitionCycleStatus', () => {
     mockUpdateMany.mockResolvedValueOnce({ count: 0 });
 
     await expect(
-      transitionCycleStatus(tx, CYCLE_ID, ORG_ID, 'structuring', USER_ID)
+      transitionCycleStatus(tx, CYCLE_ID, ORG_ID, 'structuring', USER_ID),
     ).rejects.toThrow(VersionConflictError);
   });
 
@@ -128,7 +128,7 @@ describe('transitionCycleStatus', () => {
     });
 
     expect(mockUpdateMany).toHaveBeenCalledWith({
-      where: { id: CYCLE_ID, version: 2 },
+      where: { id: CYCLE_ID, org_id: ORG_ID, version: 2 },
       data: expect.objectContaining({
         exception_status: 'no_show',
       }),
@@ -146,7 +146,7 @@ describe('transitionCycleStatus', () => {
     });
 
     expect(mockUpdateMany).toHaveBeenCalledWith({
-      where: { id: CYCLE_ID, version: 1 },
+      where: { id: CYCLE_ID, org_id: ORG_ID, version: 1 },
       data: expect.objectContaining({
         exception_status: null,
       }),
@@ -174,7 +174,7 @@ describe('transitionCycleStatus', () => {
     mockFindFirst.mockResolvedValueOnce(null);
 
     await expect(
-      transitionCycleStatus(tx, CYCLE_ID, ORG_ID, 'structuring', USER_ID)
+      transitionCycleStatus(tx, CYCLE_ID, ORG_ID, 'structuring', USER_ID),
     ).rejects.toThrow(`MedicationCycle not found: ${CYCLE_ID}`);
   });
 });

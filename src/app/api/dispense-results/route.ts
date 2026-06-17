@@ -16,6 +16,7 @@ import {
   VersionConflictError,
 } from '@/lib/db/cycle-transition';
 import { DISPENSE_SAFETY_CHECKLIST_ACK } from '@/lib/dispensing/safety-checklist';
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
 
@@ -58,6 +59,9 @@ const createDispenseResultSchema = z.object({
   task_id: z.string().min(1),
   lines: z.array(dispenseResultLineSchema).min(1, '調剤実績を1件以上入力してください'),
   safety_checklist: dispenseSafetyChecklistSchema.optional(),
+  // 楽観的ロック: ワークベンチ表示時の cycle.version。
+  // 調剤結果は訪問 carry_items まで再投影するため、必ず現在 version と照合する。
+  expected_version: z.number().int().nonnegative(),
 });
 
 function resolveCarryItemsStatus(lines: Array<{ carry_type: string | null | undefined }>) {
@@ -141,6 +145,10 @@ function resolveDispensingDecision(line: z.infer<typeof dispenseResultLineSchema
   };
 }
 
+function isUniqueConstraintError(error: unknown) {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}
+
 async function promoteCycleToDispensingIfNeeded(args: {
   tx: Parameters<typeof transitionCycleStatus>[0];
   cycleId: string;
@@ -179,7 +187,7 @@ export const POST = withAuthContext(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const { task_id, lines, safety_checklist } = parsed.data;
+    const { task_id, lines, safety_checklist, expected_version } = parsed.data;
 
     const result = await withOrgContext(ctx.orgId, async (tx) => {
       const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
@@ -208,6 +216,7 @@ export const POST = withAuthContext(
               id: true,
               patient_id: true,
               overall_status: true,
+              version: true,
               inquiries: {
                 where: {
                   OR: [{ result: null }, { result: 'pending' }],
@@ -257,6 +266,20 @@ export const POST = withAuthContext(
       });
 
       if (!task) return null;
+
+      // 楽観的ロック(§12-4): クライアントがワークベンチ表示時の cycle.version を
+      // 送ってきた場合のみ、書込前に現在値と照合する。ズレていれば他者更新として 409。
+      if (typeof task.cycle.version === 'number' && task.cycle.version !== expected_version) {
+        return {
+          error: 'version_conflict' as const,
+          message: new VersionConflictError().message,
+          details: {
+            cycle_id: task.cycle_id,
+            expected_version,
+            current_version: task.cycle.version,
+          },
+        };
+      }
 
       const blockedInquiryByLineId = new Map(
         task.cycle.inquiries
@@ -353,6 +376,38 @@ export const POST = withAuthContext(
         return { error: 'cds_check_unavailable' as const };
       }
 
+      try {
+        if (canComplete) {
+          await promoteCycleToDispensingIfNeeded({
+            tx,
+            cycleId: task.cycle_id,
+            orgId: ctx.orgId,
+            userId: ctx.userId,
+            currentStatus: task.cycle.overall_status,
+          });
+          await transitionCycleStatus(tx, task.cycle_id, ctx.orgId, 'audit_pending', ctx.userId);
+        } else if (task.cycle.overall_status !== 'inquiry_pending') {
+          await promoteCycleToDispensingIfNeeded({
+            tx,
+            cycleId: task.cycle_id,
+            orgId: ctx.orgId,
+            userId: ctx.userId,
+            currentStatus: task.cycle.overall_status,
+          });
+        }
+      } catch (err) {
+        if (err instanceof InvalidTransitionError) {
+          return {
+            error: 'transition_error' as const,
+            message: `ステータス遷移が不正です: ${err.fromStatus} → ${err.toStatus}`,
+          };
+        }
+        if (err instanceof VersionConflictError) {
+          return { error: 'version_conflict' as const, message: err.message };
+        }
+        throw err;
+      }
+
       const results = await Promise.all(
         lines.map(async (line) => {
           const decision = resolveDispensingDecision(line);
@@ -386,37 +441,50 @@ export const POST = withAuthContext(
             });
           }
 
-          return existingResultByLineId.has(line.line_id)
-            ? tx.dispenseResult.update({
-                where: { id: existingResultByLineId.get(line.line_id)!.id },
-                data: {
-                  actual_drug_name: line.actual_drug_name,
-                  actual_drug_code: line.actual_drug_code,
-                  actual_quantity: line.actual_quantity,
-                  actual_unit: line.actual_unit,
-                  discrepancy_reason: line.discrepancy_reason,
-                  carry_type: line.carry_type,
-                  special_notes: line.special_notes,
-                  dispensed_by: ctx.userId,
-                  dispensed_at: now,
-                },
-              })
-            : tx.dispenseResult.create({
-                data: {
-                  org_id: ctx.orgId,
-                  task_id,
-                  line_id: line.line_id,
-                  actual_drug_name: line.actual_drug_name,
-                  actual_drug_code: line.actual_drug_code,
-                  actual_quantity: line.actual_quantity,
-                  actual_unit: line.actual_unit,
-                  discrepancy_reason: line.discrepancy_reason,
-                  carry_type: line.carry_type,
-                  special_notes: line.special_notes,
-                  dispensed_by: ctx.userId,
-                  dispensed_at: now,
-                },
-              });
+          const resultData = {
+            actual_drug_name: line.actual_drug_name,
+            actual_drug_code: line.actual_drug_code,
+            actual_quantity: line.actual_quantity,
+            actual_unit: line.actual_unit,
+            discrepancy_reason: line.discrepancy_reason,
+            carry_type: line.carry_type,
+            special_notes: line.special_notes,
+            dispensed_by: ctx.userId,
+            dispensed_at: now,
+          };
+
+          if (existingResultByLineId.has(line.line_id)) {
+            return tx.dispenseResult.update({
+              where: { id: existingResultByLineId.get(line.line_id)!.id },
+              data: resultData,
+            });
+          }
+
+          try {
+            return await tx.dispenseResult.create({
+              data: {
+                org_id: ctx.orgId,
+                task_id,
+                line_id: line.line_id,
+                ...resultData,
+              },
+            });
+          } catch (err) {
+            if (!isUniqueConstraintError(err)) throw err;
+            const concurrentResult = await tx.dispenseResult.findFirst({
+              where: {
+                org_id: ctx.orgId,
+                task_id,
+                line_id: line.line_id,
+              },
+              select: { id: true },
+            });
+            if (!concurrentResult) throw err;
+            return tx.dispenseResult.update({
+              where: { id: concurrentResult.id },
+              data: resultData,
+            });
+          }
         }),
       );
 
@@ -441,29 +509,6 @@ export const POST = withAuthContext(
       });
 
       if (!canComplete) {
-        if (task.cycle.overall_status !== 'inquiry_pending') {
-          try {
-            await promoteCycleToDispensingIfNeeded({
-              tx,
-              cycleId: task.cycle_id,
-              orgId: ctx.orgId,
-              userId: ctx.userId,
-              currentStatus: task.cycle.overall_status,
-            });
-          } catch (err) {
-            if (err instanceof InvalidTransitionError) {
-              return {
-                error: 'transition_error' as const,
-                message: `ステータス遷移が不正です: ${err.fromStatus} → ${err.toStatus}`,
-              };
-            }
-            if (err instanceof VersionConflictError) {
-              return { error: 'version_conflict' as const, message: err.message };
-            }
-            throw err;
-          }
-        }
-
         // B3: Create WorkflowException for partial dispense (guard against duplicates)
         const missingLineIds = latestIntakeLineIds.filter(
           (lineId) => !completedLineIds.has(lineId),
@@ -527,28 +572,6 @@ export const POST = withAuthContext(
         data: { status: 'resolved' satisfies ExceptionStatus, resolved_at: new Date() },
       });
 
-      try {
-        await promoteCycleToDispensingIfNeeded({
-          tx,
-          cycleId: task.cycle_id,
-          orgId: ctx.orgId,
-          userId: ctx.userId,
-          currentStatus: task.cycle.overall_status,
-        });
-        await transitionCycleStatus(tx, task.cycle_id, ctx.orgId, 'audit_pending', ctx.userId);
-      } catch (err) {
-        if (err instanceof InvalidTransitionError) {
-          return {
-            error: 'transition_error' as const,
-            message: `ステータス遷移が不正です: ${err.fromStatus} → ${err.toStatus}`,
-          };
-        }
-        if (err instanceof VersionConflictError) {
-          return { error: 'version_conflict' as const, message: err.message };
-        }
-        throw err;
-      }
-
       const auditRecipients = await tx.membership.findMany({
         where: {
           org_id: ctx.orgId,
@@ -571,7 +594,7 @@ export const POST = withAuthContext(
           type: 'business',
           title: '調剤鑑査待ちの処方があります',
           message: `${task.cycle.case_.patient.name} の調剤結果が鑑査待ちになりました`,
-          link: `/auditing?taskId=${encodeURIComponent(task_id)}`,
+          link: `/audit?taskId=${encodeURIComponent(task_id)}`,
           metadata: {
             task_id,
             cycle_id: task.cycle_id,
@@ -712,7 +735,7 @@ export const POST = withAuthContext(
         return validationError(result.message);
       }
       if (result.error === 'version_conflict') {
-        return conflict(result.message);
+        return conflict(result.message, 'details' in result ? result.details : undefined);
       }
     }
 

@@ -2,7 +2,7 @@ import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { requireAuthContext } from '@/lib/auth/context';
 import { fetchEmergencyContacts } from '@/lib/patient/emergency-contacts';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound, forbidden } from '@/lib/api/response';
+import { success, validationError, notFound, forbidden, conflict } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -17,6 +17,30 @@ import {
   canAccessCommunicationRequestRecord,
   resolveTracingReportCommunicationScope,
 } from '@/server/services/communication-request-access';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
+import {
+  buildCommunicationResponseIntentKey,
+  isUniqueConstraintError,
+} from '@/lib/communication-response-idempotency';
+
+async function requireWritableCommunicationPatient(
+  ctx: Parameters<typeof requireWritablePatient>[1],
+  scope: { patient_id: string | null; case_id: string | null },
+) {
+  if (scope.patient_id) {
+    return requireWritablePatient(prisma, ctx, scope.patient_id);
+  }
+
+  if (!scope.case_id) return null;
+
+  const careCase = await prisma.careCase.findFirst({
+    where: { id: scope.case_id, org_id: ctx.orgId },
+    select: { patient_id: true },
+  });
+  if (!careCase) return null;
+
+  return requireWritablePatient(prisma, ctx, careCase.patient_id);
+}
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
@@ -193,6 +217,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return notFound('依頼が見つかりません');
   }
 
+  const writable = await requireWritableCommunicationPatient(ctx, existing);
+  if (writable && 'response' in writable) return writable.response;
+
   if (existing.status === 'closed' || existing.status === 'cancelled') {
     return forbidden('完了または取消済みの依頼は変更できません');
   }
@@ -269,25 +296,79 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const result = await withOrgContext(
     orgId,
     async (tx) => {
-      let responseId: string | null = null;
-      if (response) {
-        const createdResponse = await tx.communicationResponse.create({
-          data: {
+      if (nextStatus) {
+        const claim = await tx.communicationRequest.updateMany({
+          where: {
+            id,
             org_id: orgId,
-            request_id: id,
-            responder_name: response.responder_name,
-            content: response.content,
-            responded_at: response.responded_at ? new Date(response.responded_at) : new Date(),
+            status: existing.status,
+          },
+          data: {
+            status: nextStatus,
           },
         });
-        responseId = createdResponse.id;
+        if (claim.count !== 1) {
+          return { error: 'state_changed' as const };
+        }
       }
 
-      const updated = await tx.communicationRequest.update({
-        where: { id },
-        data: {
-          ...(nextStatus ? { status: nextStatus } : {}),
-        },
+      let responseId: string | null = null;
+      if (response) {
+        const respondedAt = response.responded_at ? new Date(response.responded_at) : new Date();
+        const responseIntentKey = buildCommunicationResponseIntentKey({
+          requestId: id,
+          responderName: response.responder_name,
+          content: response.content,
+          respondedAt: response.responded_at ? respondedAt : null,
+        });
+        const existingResponse = await tx.communicationResponse.findFirst({
+          where: {
+            org_id: orgId,
+            request_id: id,
+            OR: [
+              { response_intent_key: responseIntentKey },
+              {
+                response_intent_key: null,
+                responder_name: response.responder_name,
+                content: response.content,
+                responded_at: respondedAt,
+              },
+            ],
+          },
+        });
+        if (existingResponse) {
+          responseId = existingResponse.id;
+        } else {
+          let createdResponse;
+          try {
+            createdResponse = await tx.communicationResponse.create({
+              data: {
+                org_id: orgId,
+                request_id: id,
+                responder_name: response.responder_name,
+                content: response.content,
+                responded_at: respondedAt,
+                response_intent_key: responseIntentKey,
+              },
+            });
+          } catch (error) {
+            if (!isUniqueConstraintError(error)) throw error;
+
+            createdResponse = await tx.communicationResponse.findFirst({
+              where: {
+                org_id: orgId,
+                request_id: id,
+                response_intent_key: responseIntentKey,
+              },
+            });
+            if (!createdResponse) throw error;
+          }
+          responseId = createdResponse.id;
+        }
+      }
+
+      const updated = await tx.communicationRequest.findFirst({
+        where: { id, org_id: orgId },
         select: {
           id: true,
           org_id: true,
@@ -318,6 +399,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           },
         },
       });
+      if (!updated) {
+        return { error: 'state_changed' as const };
+      }
 
       if (statusChanged) {
         await createAuditLogEntry(tx, ctx, {
@@ -387,6 +471,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     },
     { requestContext: ctx },
   );
+
+  if ('error' in result) {
+    return conflict('連携依頼が同時に更新されました。再読み込みしてください');
+  }
 
   return success({ data: result });
 }

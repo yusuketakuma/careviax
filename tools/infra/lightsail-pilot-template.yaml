@@ -1,0 +1,142 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: PH-OS cost-minimal Lightsail pilot stack. Creates one app instance, one static IP, and one non-public managed PostgreSQL database.
+
+Parameters:
+  Prefix:
+    Type: String
+    Default: ph-os-pilot
+    AllowedPattern: '^[a-zA-Z0-9][a-zA-Z0-9._-]{1,252}[a-zA-Z0-9]$'
+    Description: Prefix used for Lightsail resource names.
+  AvailabilityZone:
+    Type: String
+    Default: ap-northeast-1a
+    Description: Lightsail availability zone for the pilot resources.
+  InstanceBlueprintId:
+    Type: String
+    Default: amazon_linux_2023
+    Description: Lightsail instance blueprint ID confirmed by aws lightsail get-blueprints.
+  InstanceBundleId:
+    Type: String
+    Description: Lightsail instance bundle ID confirmed by aws lightsail get-bundles.
+  DatabaseBlueprintId:
+    Type: String
+    Description: Lightsail PostgreSQL blueprint ID confirmed by aws lightsail get-relational-database-blueprints.
+  DatabaseBundleId:
+    Type: String
+    Default: small_2_0
+    Description: Lightsail database bundle ID. small_2_0 is the current encrypted 2 GB pilot baseline.
+  MasterDatabaseName:
+    Type: String
+    Default: ph_os
+    AllowedPattern: '^[A-Za-z][A-Za-z0-9_]{0,62}$'
+    Description: Initial PostgreSQL database name.
+  MasterUsername:
+    Type: String
+    Default: phosadmin
+    AllowedPattern: '^[A-Za-z][A-Za-z0-9_]{0,62}$'
+    Description: Initial PostgreSQL admin user.
+  MasterUserPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 16
+    Description: Initial PostgreSQL admin password. Store the chosen value in the approved secrets store.
+
+Resources:
+  PilotDatabase:
+    Type: AWS::Lightsail::Database
+    Properties:
+      RelationalDatabaseName: !Sub '${Prefix}-db'
+      AvailabilityZone: !Ref AvailabilityZone
+      RelationalDatabaseBlueprintId: !Ref DatabaseBlueprintId
+      RelationalDatabaseBundleId: !Ref DatabaseBundleId
+      MasterDatabaseName: !Ref MasterDatabaseName
+      MasterUsername: !Ref MasterUsername
+      MasterUserPassword: !Ref MasterUserPassword
+      BackupRetention: true
+      PubliclyAccessible: false
+      PreferredBackupWindow: '17:00-17:30'
+      PreferredMaintenanceWindow: 'sun:18:00-sun:18:30'
+      Tags:
+        - Key: Project
+          Value: ph-os
+        - Key: Environment
+          Value: pilot
+        - Key: ManagedBy
+          Value: cloudformation
+        - Key: Name
+          Value: !Ref Prefix
+
+  PilotInstance:
+    Type: AWS::Lightsail::Instance
+    Properties:
+      InstanceName: !Sub '${Prefix}-app'
+      AvailabilityZone: !Ref AvailabilityZone
+      BlueprintId: !Ref InstanceBlueprintId
+      BundleId: !Ref InstanceBundleId
+      UserData: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        dnf update -y
+        dnf install -y docker
+        systemctl enable --now docker
+        usermod -aG docker ec2-user || true
+        install -d -m 0755 /opt/phos
+        cat >/opt/phos/README.txt <<'README'
+        PH-OS host bootstrap is complete.
+        Do not store long-lived AWS access keys on this host.
+        Configure /opt/phos/.env from approved runtime secrets before starting the app container.
+        README
+      Networking:
+        Ports:
+          - Protocol: tcp
+            FromPort: 80
+            ToPort: 80
+            AccessDirection: inbound
+            AccessType: public
+            AccessFrom: Anywhere (0.0.0.0/0)
+            Cidrs:
+              - 0.0.0.0/0
+            Ipv6Cidrs:
+              - ::/0
+          - Protocol: tcp
+            FromPort: 443
+            ToPort: 443
+            AccessDirection: inbound
+            AccessType: public
+            AccessFrom: Anywhere (0.0.0.0/0)
+            Cidrs:
+              - 0.0.0.0/0
+            Ipv6Cidrs:
+              - ::/0
+      Tags:
+        - Key: Project
+          Value: ph-os
+        - Key: Environment
+          Value: pilot
+        - Key: ManagedBy
+          Value: cloudformation
+        - Key: Name
+          Value: !Ref Prefix
+
+  PilotStaticIp:
+    Type: AWS::Lightsail::StaticIp
+    DependsOn:
+      - PilotInstance
+    Properties:
+      StaticIpName: !Sub '${Prefix}-ip'
+      AttachedTo: !Sub '${Prefix}-app'
+
+Outputs:
+  InstanceName:
+    Description: Lightsail app instance name.
+    Value: !Sub '${Prefix}-app'
+  StaticIpName:
+    Description: Lightsail static IP resource name.
+    Value: !Sub '${Prefix}-ip'
+  StaticIpAddress:
+    Description: Public static IP address for DNS or smoke tests.
+    Value: !GetAtt PilotStaticIp.IpAddress
+  DatabaseName:
+    Description: Lightsail managed PostgreSQL database name.
+    Value: !Sub '${Prefix}-db'

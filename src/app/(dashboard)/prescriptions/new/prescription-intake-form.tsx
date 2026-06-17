@@ -73,6 +73,10 @@ type PrescriptionLineInput = {
   end_date?: string;
   packaging_instructions?: string;
   notes?: string;
+  source_intake_id?: string;
+  source_line_id?: string;
+  source_intake_updated_at_snapshot?: string;
+  source_line_updated_at_snapshot?: string;
 };
 
 type PatientOption = {
@@ -108,6 +112,7 @@ type FacilityBatchEntryDraft = {
 
 type PreviousPrescriptionLine = {
   id: string;
+  updated_at: string;
   drug_name: string;
   drug_code?: string | null;
   dosage_form?: string | null;
@@ -127,6 +132,7 @@ type PreviousPrescriptionLine = {
 
 type PreviousPrescriptionIntake = {
   id: string;
+  updated_at: string;
   source_type: string;
   prescribed_date: string;
   prescriber_name: string | null;
@@ -604,15 +610,16 @@ export function PrescriptionIntakeForm() {
   });
 
   const { data: previousPrescriptionsData } = useQuery({
-    queryKey: ['patient-prescriptions', orgId, selectedPatientId],
+    queryKey: ['patient-prescriptions', orgId, selectedPatientId, selectedCaseId],
     queryFn: async () => {
+      const params = new URLSearchParams({ limit: '5', case_id: selectedCaseId });
       return fetchOrgJson<{ data: PreviousPrescriptionIntake[] }>({
-        url: `/api/patients/${selectedPatientId}/prescriptions?limit=5`,
+        url: `/api/patients/${selectedPatientId}/prescriptions?${params.toString()}`,
         orgId,
         errorMessage: '過去処方の取得に失敗しました',
       });
     },
-    enabled: !!orgId && !!selectedPatientId,
+    enabled: !!orgId && !!selectedPatientId && !!selectedCaseId,
   });
   const latestPreviousIntake = previousPrescriptionsData?.data?.[0] ?? null;
 
@@ -934,8 +941,19 @@ export function PrescriptionIntakeForm() {
 
   type LineBadgeTone = 'neutral' | 'info' | 'success' | 'warning';
 
-  function medicationKey(line: { drug_name: string; drug_code?: string | null }) {
-    return line.drug_code?.trim() || line.drug_name.trim();
+  function medicationKey(line: {
+    drug_name: string;
+    drug_code?: string | null;
+    dose?: string | null;
+    frequency?: string | null;
+    days?: number | null;
+  }) {
+    return [
+      line.drug_code?.trim() || line.drug_name.trim(),
+      line.dose?.trim() ?? '',
+      line.frequency?.trim() ?? '',
+      line.days ?? '',
+    ].join('|');
   }
 
   function buildLineBadges(line: {
@@ -1008,24 +1026,21 @@ export function PrescriptionIntakeForm() {
     return 'border-border/70 bg-background text-muted-foreground';
   }
 
-  function toFormLineFromPrevious(line: PreviousPrescriptionLine): PrescriptionLineInput {
+  function previousSourceFields(
+    line: PreviousPrescriptionLine,
+    intake: PreviousPrescriptionIntake,
+  ): Pick<
+    PrescriptionLineInput,
+    | 'source_intake_id'
+    | 'source_line_id'
+    | 'source_intake_updated_at_snapshot'
+    | 'source_line_updated_at_snapshot'
+  > {
     return {
-      line_number: 1,
-      drug_name: line.drug_name,
-      drug_code: line.drug_code ?? undefined,
-      dosage_form: line.dosage_form ?? undefined,
-      dose: line.dose,
-      frequency: line.frequency,
-      days: line.days,
-      quantity: line.quantity ?? undefined,
-      unit: line.unit ?? undefined,
-      is_generic: Boolean(line.is_generic),
-      route: line.route ?? undefined,
-      dispensing_method: line.dispensing_method ?? undefined,
-      start_date: line.start_date ?? undefined,
-      end_date: line.end_date ?? undefined,
-      packaging_instructions: line.packaging_instructions ?? undefined,
-      notes: line.notes ?? undefined,
+      source_intake_id: intake.id,
+      source_line_id: line.id,
+      source_intake_updated_at_snapshot: intake.updated_at,
+      source_line_updated_at_snapshot: line.updated_at,
     };
   }
 
@@ -1070,8 +1085,8 @@ export function PrescriptionIntakeForm() {
       return {
         ...line,
         line_number: index + 1,
-        start_date: line.start_date || previous.start_date || undefined,
-        end_date: line.end_date || previous.end_date || undefined,
+        start_date: line.start_date || undefined,
+        end_date: line.end_date || undefined,
         route: line.route || previous.route || undefined,
         dispensing_method: line.dispensing_method || previous.dispensing_method || undefined,
         packaging_instructions:
@@ -1080,6 +1095,7 @@ export function PrescriptionIntakeForm() {
         dosage_form: line.dosage_form || previous.dosage_form || undefined,
         quantity: line.quantity ?? previous.quantity ?? undefined,
         unit: line.unit || previous.unit || undefined,
+        ...previousSourceFields(previous, previousIntake),
       };
     });
   }
@@ -1177,10 +1193,31 @@ export function PrescriptionIntakeForm() {
     setFacilityBatchEntries((prev) => prev.filter((entry) => entry.case_id !== caseId));
   };
 
-  const applyLatestPreviousPrescription = useCallback(() => {
+  const applyLatestPreviousPrescription = () => {
     if (!latestPreviousIntake) return;
     const hydratedLines = hydrateLinesWithPrevious(
-      latestPreviousIntake.lines.map(toFormLineFromPrevious),
+      latestPreviousIntake.lines.map((line) => ({
+        line_number: 1,
+        drug_name: line.drug_name,
+        drug_code: line.drug_code ?? undefined,
+        dosage_form: line.dosage_form ?? undefined,
+        dose: line.dose,
+        frequency: line.frequency,
+        days: line.days,
+        quantity: line.quantity ?? undefined,
+        unit: line.unit ?? undefined,
+        is_generic: Boolean(line.is_generic),
+        route: line.route ?? undefined,
+        dispensing_method: line.dispensing_method ?? undefined,
+        start_date: undefined,
+        end_date: undefined,
+        packaging_instructions: line.packaging_instructions ?? undefined,
+        notes: line.notes ?? undefined,
+        source_intake_id: latestPreviousIntake.id,
+        source_line_id: line.id,
+        source_intake_updated_at_snapshot: latestPreviousIntake.updated_at,
+        source_line_updated_at_snapshot: line.updated_at,
+      })),
       latestPreviousIntake,
     );
     setLines(hydratedLines);
@@ -1195,7 +1232,7 @@ export function PrescriptionIntakeForm() {
       });
     }
     setError(null);
-  }, [hydrateLinesWithPrevious, latestPreviousIntake, qrDraftSubmissionId, updatePrescriptionMeta]);
+  };
 
   const requestLatestPreviousPrescription = useCallback(() => {
     if (!latestPreviousIntake) return;
@@ -1645,7 +1682,7 @@ export function PrescriptionIntakeForm() {
             <div className="space-y-1">
               <p className="text-sm font-medium text-foreground">前回処方を引用</p>
               <p className="text-xs text-muted-foreground">
-                直近処方の明細、包装指示、開始日を現在の入力へ反映できます。
+                直近処方の明細、包装指示、用法分類を引用します。服用開始日と終了日は今回処方で確認します。
               </p>
             </div>
             <button

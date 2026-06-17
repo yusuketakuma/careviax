@@ -22,6 +22,7 @@ import {
   canAccessCommunicationRequestRecord,
   resolveTracingReportCommunicationScope,
 } from '@/server/services/communication-request-access';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
 
 function isInputJsonObject(
   value: Prisma.InputJsonValue | null | undefined,
@@ -236,6 +237,11 @@ export const POST = withAuthContext(
       }))
     ) {
       return validationError('患者またはケースの割当権限がありません');
+    }
+
+    if (effectivePatientId) {
+      const writable = await requireWritablePatient(prisma, ctx, effectivePatientId);
+      if ('response' in writable) return writable.response;
     }
 
     const suggestedInstitution =

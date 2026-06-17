@@ -208,4 +208,22 @@ describe('/api/patients/[id]/conditions PUT', () => {
     expect(deleteManyMock).not.toHaveBeenCalled();
     expect(createManyMock).not.toHaveBeenCalled();
   });
+
+  it('rejects archived patients before replacing conditions', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    const response = await PUT(
+      createRequest({ conditions: [] }, { 'x-org-id': 'corg1234567890123456789012' }),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(deleteManyMock).not.toHaveBeenCalled();
+    expect(createManyMock).not.toHaveBeenCalled();
+  });
 });

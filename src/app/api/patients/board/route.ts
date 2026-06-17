@@ -7,7 +7,13 @@ import { formatUtcDateKey } from '@/lib/date-key';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { getProcessStepKeyForStatus } from '@/lib/prescription/cycle-workspace';
 import { careLevelLabels } from '@/lib/patient/home-visit-intake';
+import {
+  buildCareTeamReliabilitySummary,
+  buildPatientContactReadiness,
+  selectPrimaryCareTeamCase,
+} from '@/lib/patient/care-team-contact';
 import { buildBlockedReasons } from '@/lib/workflow/blocked-reason-projection';
+import { buildPatientFoundationSummary } from '@/server/services/patient-detail-foundation';
 import {
   buildCareCaseAssignmentWhere,
   canBypassVisitScheduleAssignmentAccess,
@@ -29,10 +35,14 @@ import type {
  */
 
 const PATIENT_FETCH_LIMIT = 80;
+const PATIENT_FILTERED_FETCH_LIMIT = 500;
 const BLOCKED_REASONS_LIMIT = 2;
 
 const boardQuerySchema = z.object({
   scope: z.enum(['mine', 'all']).optional(),
+  foundation_issue: z
+    .enum(['needs_confirmation', 'missing_contact', 'missing_care_team'])
+    .optional(),
 });
 
 const ACTIVE_SCHEDULE_STATUSES = [
@@ -68,14 +78,23 @@ const ATTENTION_PRIORITY: Record<PatientAttentionKey, number> = {
   paused: 8,
 };
 
+const FOUNDATION_STATUS_PRIORITY: Record<
+  NonNullable<PatientBoardCard['foundation_summary']>['status'],
+  number
+> = {
+  missing: 0,
+  needs_confirmation: 1,
+  ready: 2,
+};
+
 /** 現在工程 → 工程ショートカット(「→ 監査へ」等)。 */
 const STEP_LINKS: Record<string, { label: string; href: string }> = {
   intake: { label: '取込へ', href: '/prescriptions' },
   entry: { label: '入力へ', href: '/prescriptions' },
   decision: { label: 'カードへ', href: '' }, // href は患者詳細(呼び出し側で補完)
   dispense: { label: '調剤へ', href: '/dispense' },
-  audit: { label: '監査へ', href: '/auditing' },
-  set: { label: 'セットへ', href: '/medication-sets' },
+  audit: { label: '監査へ', href: '/audit' },
+  set: { label: 'セットへ', href: '/set' },
   visit: { label: '訪問へ', href: '/visits' },
   report: { label: '報告・共有へ', href: '/reports' },
   billing: { label: '算定チェックへ', href: '/billing' },
@@ -127,12 +146,14 @@ function hasAllergyInfo(value: unknown): boolean {
 
 function buildOperationSummary(
   patient: PatientQueryRow,
-  args: { visitToday: boolean; visitPrepared: boolean; facilityBatchPatientCount: number },
+  args: {
+    visitToday: boolean;
+    visitPrepared: boolean;
+    facilityBatchPatientCount: number;
+    contactReady: boolean;
+  },
 ): string[] {
   const preference = patient.scheduling_preference;
-  const hasPreferredContact = Boolean(
-    preference?.preferred_contact_name?.trim() || preference?.preferred_contact_phone?.trim(),
-  );
   const parking =
     preference?.parking_available === true
       ? '駐車場あり'
@@ -150,7 +171,7 @@ function buildOperationSummary(
       ]
     : [];
 
-  return [...visitLabels, hasPreferredContact ? '連絡先あり' : '連絡先未設定', parking, careLevel]
+  return [...visitLabels, args.contactReady ? '連絡先あり' : '連絡先未設定', parking, careLevel]
     .filter((item): item is string => Boolean(item))
     .slice(0, 4);
 }
@@ -164,9 +185,17 @@ type PatientQueryRow = {
     swallowing_route: string | null;
     preferred_contact_name: string | null;
     preferred_contact_phone: string | null;
+    visit_before_contact_required: boolean | null;
     parking_available: boolean | null;
     care_level: string | null;
   } | null;
+  contacts: Array<{
+    is_primary: boolean | null;
+    is_emergency_contact: boolean | null;
+    phone: string | null;
+    email: string | null;
+    fax: string | null;
+  }>;
   residences: Array<{
     address: string;
     facility: { name: string } | null;
@@ -176,6 +205,13 @@ type PatientQueryRow = {
   cases: Array<{
     id: string;
     status: string;
+    care_team_links: Array<{
+      role: string;
+      phone: string | null;
+      email: string | null;
+      fax: string | null;
+      is_primary: boolean | null;
+    }>;
     medication_cycles: Array<{
       id: string;
       overall_status: string;
@@ -217,7 +253,7 @@ type DerivedCard = PatientBoardCard & {
 function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCard {
   const todayKey = localDateKey(now);
 
-  const careCase = patient.cases[0] ?? null;
+  const careCase = selectPrimaryCareTeamCase(patient.cases);
   const cycle = careCase?.medication_cycles[0] ?? null;
   const nextSchedule = careCase?.visit_schedules[0] ?? null;
   const openException = cycle?.workflow_exceptions[0] ?? null;
@@ -340,11 +376,32 @@ function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCar
 
   const batchPatientIds = nextSchedule?.facility_batch?.patient_ids;
   const facilityBatchPatientCount = Array.isArray(batchPatientIds) ? batchPatientIds.length : 0;
+  const preference = patient.scheduling_preference;
+  const contactReadiness = buildPatientContactReadiness({
+    contacts: patient.contacts,
+    preferredContactName: preference?.preferred_contact_name,
+    preferredContactPhone: preference?.preferred_contact_phone,
+    visitBeforeContactRequired: preference?.visit_before_contact_required,
+  });
+  const careTeamReliability = buildCareTeamReliabilitySummary({
+    contacts: patient.contacts,
+    careTeamLinks: careCase?.care_team_links ?? [],
+  });
 
   const operationSummary = buildOperationSummary(patient, {
     visitToday,
     visitPrepared: Boolean(nextSchedule?.preparation?.prepared_at),
     facilityBatchPatientCount,
+    contactReady: contactReadiness.ready,
+  });
+  const foundationSummary = buildPatientFoundationSummary({
+    hasPreferredContact: contactReadiness.ready,
+    parkingAvailable: preference?.parking_available,
+    careLevel: preference?.care_level,
+    visitToday,
+    visitPrepared: Boolean(nextSchedule?.preparation?.prepared_at),
+    safetyTagCount: safetyTags.length,
+    careTeamReliabilityAlertCount: careTeamReliability.alert_count,
   });
 
   return {
@@ -365,6 +422,8 @@ function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCar
     status_text: statusText,
     status_tone: tone,
     operation_summary: operationSummary,
+    foundation_summary: foundationSummary,
+    foundation_href: `${patientHref}#patient-foundation`,
     link_label: resolvedLink.label,
     link_href: linkHref,
     facility_batch_id: visitToday ? (nextSchedule?.facility_batch_id ?? null) : null,
@@ -375,10 +434,29 @@ function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCar
 function compareCards(left: DerivedCard, right: DerivedCard): number {
   const priorityDiff = ATTENTION_PRIORITY[left.attention] - ATTENTION_PRIORITY[right.attention];
   if (priorityDiff !== 0) return priorityDiff;
+  const foundationDiff =
+    FOUNDATION_STATUS_PRIORITY[left.foundation_summary?.status ?? 'ready'] -
+    FOUNDATION_STATUS_PRIORITY[right.foundation_summary?.status ?? 'ready'];
+  if (foundationDiff !== 0) return foundationDiff;
   const leftDate = left.next_visit_date ?? '9999-99-99';
   const rightDate = right.next_visit_date ?? '9999-99-99';
   if (leftDate !== rightDate) return leftDate.localeCompare(rightDate);
   return left.name.localeCompare(right.name, 'ja');
+}
+
+function matchesFoundationIssue(
+  card: DerivedCard,
+  issue: z.infer<typeof boardQuerySchema>['foundation_issue'],
+) {
+  if (!issue) return true;
+  if (issue === 'needs_confirmation') return card.foundation_summary?.status !== 'ready';
+  if (issue === 'missing_contact') {
+    return card.foundation_summary?.items.some((item) => item.includes('連絡先')) ?? false;
+  }
+  if (issue === 'missing_care_team') {
+    return card.foundation_summary?.items.some((item) => item.includes('連携先')) ?? false;
+  }
+  return true;
 }
 
 export const GET = withAuthContext(
@@ -389,6 +467,7 @@ export const GET = withAuthContext(
       return validationError('クエリパラメータが不正です', parsed.error.flatten().fieldErrors);
     }
     const scope = parsed.data.scope ?? 'mine';
+    const foundationIssue = parsed.data.foundation_issue;
 
     const now = new Date();
     const todayKey = localDateKey(now);
@@ -417,7 +496,7 @@ export const GET = withAuthContext(
       prisma.patient.findMany({
         where: patientWhere,
         orderBy: { name_kana: 'asc' },
-        take: PATIENT_FETCH_LIMIT,
+        take: foundationIssue ? PATIENT_FILTERED_FETCH_LIMIT : PATIENT_FETCH_LIMIT,
         select: {
           id: true,
           name: true,
@@ -428,8 +507,18 @@ export const GET = withAuthContext(
               swallowing_route: true,
               preferred_contact_name: true,
               preferred_contact_phone: true,
+              visit_before_contact_required: true,
               parking_available: true,
               care_level: true,
+            },
+          },
+          contacts: {
+            select: {
+              is_primary: true,
+              is_emergency_contact: true,
+              phone: true,
+              email: true,
+              fax: true,
             },
           },
           residences: {
@@ -449,10 +538,20 @@ export const GET = withAuthContext(
           cases: {
             where: caseScopeWhere,
             orderBy: { updated_at: 'desc' },
-            take: 1,
+            take: 5,
             select: {
               id: true,
               status: true,
+              care_team_links: {
+                orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
+                select: {
+                  role: true,
+                  phone: true,
+                  email: true,
+                  fax: true,
+                  is_primary: true,
+                },
+              },
               medication_cycles: {
                 where: { overall_status: { not: 'cancelled' } },
                 orderBy: { updated_at: 'desc' },
@@ -562,6 +661,8 @@ export const GET = withAuthContext(
 
     const cards = patients
       .map((patient) => derivePatientBoardCard(patient as PatientQueryRow, now))
+      .filter((card) => matchesFoundationIssue(card, foundationIssue))
+      .slice(0, PATIENT_FETCH_LIMIT)
       .sort(compareCards);
 
     // 本日訪問は対応カテゴリに関わらず「今日訪問がある患者」を数える

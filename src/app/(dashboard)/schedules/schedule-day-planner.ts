@@ -383,11 +383,13 @@ export function buildScheduleDayProposalGenerationPayload({
   plannerForm,
   routeTravelMode,
   effectiveCandidateCount,
+  idempotencyKey,
 }: {
   resolvedCaseId: string;
   plannerForm: ScheduleDayPlannerForm;
   routeTravelMode: ScheduleDayRouteTravelMode;
   effectiveCandidateCount: string | number;
+  idempotencyKey?: string;
 }) {
   return {
     case_id: resolvedCaseId,
@@ -399,7 +401,12 @@ export function buildScheduleDayProposalGenerationPayload({
     preferred_time_to: plannerForm.preferred_time_to || undefined,
     vehicle_resource_id: plannerForm.vehicle_resource_id || undefined,
     candidate_count: Number(effectiveCandidateCount),
+    ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
   };
+}
+
+function createProposalIdempotencyKey() {
+  return `schedule-day:${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}:${Math.random()}`}`;
 }
 
 export async function generateScheduleDayProposals({
@@ -429,6 +436,7 @@ export async function generateScheduleDayProposals({
         plannerForm,
         routeTravelMode,
         effectiveCandidateCount,
+        idempotencyKey: createProposalIdempotencyKey(),
       }),
     ),
   });

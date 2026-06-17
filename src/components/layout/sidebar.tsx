@@ -82,9 +82,10 @@ function SidebarNavItem({
 interface SidebarProps {
   className?: string;
   closeOnNavigate?: boolean;
+  showToggle?: boolean;
 }
 
-export function Sidebar({ className, closeOnNavigate = false }: SidebarProps) {
+export function Sidebar({ className, closeOnNavigate = false, showToggle = true }: SidebarProps) {
   const { sidebarOpen, toggleSidebar, workMode, sidebarPinned, setSidebarOpen } = useUIStore();
   const currentUserName = useAuthStore((state) => state.currentUser?.name ?? null);
   const currentUserRole = useAuthStore((state) => state.currentUser?.role ?? null);
@@ -119,19 +120,21 @@ export function Sidebar({ className, closeOnNavigate = false }: SidebarProps) {
             </span>
           </Link>
         )}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={toggleSidebar}
-          className="min-h-[44px] min-w-[44px] shrink-0 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground sm:h-8 sm:min-h-0 sm:w-8 sm:min-w-0"
-          aria-label={sidebarOpen ? 'サイドバーを折りたたむ' : 'サイドバーを展開する'}
-        >
-          {sidebarOpen ? (
-            <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
-          ) : (
-            <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
-          )}
-        </Button>
+        {showToggle ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleSidebar}
+            className="min-h-[44px] min-w-[44px] shrink-0 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground sm:h-8 sm:min-h-0 sm:w-8 sm:min-w-0"
+            aria-label={sidebarOpen ? 'サイドバーを折りたたむ' : 'サイドバーを展開する'}
+          >
+            {sidebarOpen ? (
+              <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
+            ) : (
+              <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
+            )}
+          </Button>
+        ) : null}
       </div>
 
       {/* Main nav: design/images/new のグループ構成(今日/患者/工程/連携/管理) */}

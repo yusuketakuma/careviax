@@ -232,7 +232,7 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
   const readyCount = statusCounts['ready_to_dispense'] ?? 0;
 
   return (
-    <div className={cn('flex h-[calc(100vh-64px)] flex-col overflow-hidden', className)}>
+    <div className={cn('flex h-[calc(100dvh-64px)] flex-col overflow-hidden', className)}>
       <div className="flex flex-col gap-2 border-b bg-muted/40 px-3 py-2 lg:flex-row lg:items-center">
         <div className="flex shrink-0 items-center gap-2">
           <FileText className="size-4 text-primary" aria-hidden="true" />

@@ -74,7 +74,7 @@ export function buildDailyOpsNextAction(
         ? `${auditLabel}を開始 — ${formatDailyOpsTime(topAudit.due_at)}期限`
         : `${auditLabel}を開始する`,
       description: describeTopAudit(topAudit, data),
-      actionHref: '/auditing',
+      actionHref: '/audit',
     };
   }
   return {

@@ -964,14 +964,14 @@ export function PatientMcsContent({ patientId }: { patientId: string }) {
   return (
     <div className="space-y-6">
       <PatientMcsSyncPanel
-        key={link?.sourceUrl ?? 'empty'}
+        key={link?.sourceUrl ? `sync:${link.sourceUrl}` : 'sync:empty'}
         link={link}
         isLoading={mcsQuery.isLoading}
         isSyncing={syncMutation.isPending}
         onSync={(sourceUrl) => syncMutation.mutate(sourceUrl)}
       />
       <PatientMcsProfilePanel
-        key={profile?.updatedAt ?? 'empty'}
+        key={profile?.updatedAt ? `profile:${profile.updatedAt}` : 'profile:empty'}
         profile={profile}
         isSaving={profileMutation.isPending}
         onSave={(input) => profileMutation.mutate(input)}

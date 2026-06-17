@@ -1,9 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { requireAuthContextMock, visitRecordFindFirstMock, confirmHandoffMock } = vi.hoisted(() => ({
+const {
+  requireAuthContextMock,
+  visitRecordFindFirstMock,
+  visitHandoffExtractionFindUniqueMock,
+  confirmHandoffMock,
+} = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   visitRecordFindFirstMock: vi.fn(),
+  visitHandoffExtractionFindUniqueMock: vi.fn(),
   confirmHandoffMock: vi.fn(),
 }));
 
@@ -14,6 +20,7 @@ vi.mock('@/lib/auth/context', () => ({
 vi.mock('@/lib/db/client', () => ({
   prisma: {
     visitRecord: { findFirst: visitRecordFindFirstMock },
+    visitHandoffExtraction: { findUnique: visitHandoffExtractionFindUniqueMock },
   },
 }));
 
@@ -56,6 +63,7 @@ describe('/api/visit-records/[id]/handoff', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     requireAuthContextMock.mockResolvedValue(authCtx);
+    visitHandoffExtractionFindUniqueMock.mockResolvedValue(null);
   });
 
   describe('GET', () => {
@@ -66,12 +74,28 @@ describe('/api/visit-records/[id]/handoff', () => {
           handoff: { next_check_items: ['item1'], ongoing_monitoring: [] },
         },
       });
+      visitHandoffExtractionFindUniqueMock.mockResolvedValue({
+        status: 'succeeded',
+        retry_count: 0,
+        last_attempted_at: new Date('2026-04-01T00:00:00.000Z'),
+        last_succeeded_at: new Date('2026-04-01T00:01:00.000Z'),
+        last_failed_at: null,
+        error_message: null,
+        retryable: false,
+        source_visit_record_version: 2,
+        source_visit_record_updated_at: new Date('2026-04-01T00:00:00.000Z'),
+      });
 
       const req = createRequest('http://localhost/api/visit-records/vr_1/handoff');
       const res = await GET(req, { params: Promise.resolve({ id: 'vr_1' }) });
       expect(res!.status).toBe(200);
       const json = await res!.json();
       expect(json.data.next_check_items).toEqual(['item1']);
+      expect(json.extraction).toMatchObject({
+        status: 'succeeded',
+        retryable: false,
+        source_visit_record_version: 2,
+      });
     });
 
     it('rejects blank visit record ids before loading handoff data', async () => {
@@ -103,6 +127,37 @@ describe('/api/visit-records/[id]/handoff', () => {
       const req = createRequest('http://localhost/api/visit-records/vr_1/handoff');
       const res = await GET(req, { params: Promise.resolve({ id: 'vr_1' }) });
       expect(res!.status).toBe(404);
+    });
+
+    it('returns extraction status even when handoff data is not yet available', async () => {
+      visitRecordFindFirstMock.mockResolvedValue({
+        id: 'vr_1',
+        structured_soap: null,
+      });
+      visitHandoffExtractionFindUniqueMock.mockResolvedValue({
+        status: 'failed',
+        retry_count: 2,
+        last_attempted_at: new Date('2026-04-01T00:00:00.000Z'),
+        last_succeeded_at: null,
+        last_failed_at: new Date('2026-04-01T00:00:30.000Z'),
+        error_message: 'model timeout',
+        retryable: true,
+        source_visit_record_version: 2,
+        source_visit_record_updated_at: new Date('2026-04-01T00:00:00.000Z'),
+      });
+
+      const req = createRequest('http://localhost/api/visit-records/vr_1/handoff');
+      const res = await GET(req, { params: Promise.resolve({ id: 'vr_1' }) });
+      expect(res!.status).toBe(200);
+      await expect(res!.json()).resolves.toMatchObject({
+        data: null,
+        extraction: {
+          status: 'failed',
+          retry_count: 2,
+          error_message: 'model timeout',
+          retryable: true,
+        },
+      });
     });
   });
 

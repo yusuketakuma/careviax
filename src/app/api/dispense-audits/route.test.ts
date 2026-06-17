@@ -7,6 +7,7 @@ const {
   dispatchNotificationEventMock,
   notifyWorkflowMutationMock,
   dispenseTaskFindManyMock,
+  dispenseTaskCountMock,
 } = vi.hoisted(() => ({
   withAuthMock: vi.fn(
     (
@@ -27,6 +28,7 @@ const {
   dispatchNotificationEventMock: vi.fn(),
   notifyWorkflowMutationMock: vi.fn(),
   dispenseTaskFindManyMock: vi.fn(),
+  dispenseTaskCountMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -41,6 +43,7 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     dispenseTask: {
       findMany: dispenseTaskFindManyMock,
+      count: dispenseTaskCountMock,
     },
   },
 }));
@@ -63,6 +66,23 @@ const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 type NextRequestInit = ConstructorParameters<typeof NextRequest>[1];
 
 function createRequest(body: unknown) {
+  const requestBody =
+    body &&
+    typeof body === 'object' &&
+    !Array.isArray(body) &&
+    'task_id' in body &&
+    'result' in body &&
+    !('expected_version' in body)
+      ? { ...body, expected_version: 1 }
+      : body;
+  return new NextRequest('http://localhost/api/dispense-audits', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(requestBody),
+  } satisfies NextRequestInit);
+}
+
+function createRawRequest(body: unknown) {
   return new NextRequest('http://localhost/api/dispense-audits', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -88,6 +108,7 @@ function createGetRequest(search = '') {
 describe('/api/dispense-audits GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    dispenseTaskCountMock.mockResolvedValue(2);
     dispenseTaskFindManyMock.mockResolvedValue([
       {
         id: 'task_hold',
@@ -173,28 +194,23 @@ describe('/api/dispense-audits GET', () => {
   });
 
   it('returns only the visible audit count for nav badges', async () => {
-    dispenseTaskFindManyMock.mockResolvedValue([
-      { id: 'task_no_audit', audits: [] },
-      { id: 'task_hold', audits: [{ result: 'hold' }] },
-      { id: 'task_approved', audits: [{ result: 'approved' }] },
-    ]);
-
     const response = await GET(createGetRequest('?badge=1'));
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ data: { count: 2 } });
-    expect(dispenseTaskFindManyMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        select: {
-          id: true,
-          audits: expect.objectContaining({
-            take: 1,
-            select: { result: true },
-          }),
+    expect(dispenseTaskCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        status: 'completed',
+        audits: {
+          none: {
+            result: { notIn: ['hold'] },
+          },
         },
-      }),
-    );
+      },
+    });
+    expect(dispenseTaskFindManyMock).not.toHaveBeenCalled();
   });
 });
 
@@ -236,6 +252,21 @@ describe('/api/dispense-audits POST', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it('requires expected_version before transaction or notification side effects', async () => {
+    const response = await POST(
+      createRawRequest({
+        task_id: 'task_1',
+        result: 'approved',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('moves a rejected task back to dispensing and notifies the assignee', async () => {
     const taskUpdateMock = vi.fn().mockResolvedValue({});
     const cycleFindFirstMock = vi
@@ -244,6 +275,9 @@ describe('/api/dispense-audits POST', () => {
     const cycleUpdateManyMock = vi.fn().mockResolvedValue({ count: 1 });
     const cycleTransitionLogCreateMock = vi.fn().mockResolvedValue({});
     const workflowExceptionCreateMock = vi.fn().mockResolvedValue({});
+    const dispenseAuditCreateMock = vi
+      .fn()
+      .mockResolvedValue({ id: 'audit_1', result: 'rejected' });
     const membershipFindFirstMock = vi.fn().mockResolvedValue({ id: 'membership_admin' });
     const membershipFindManyMock = vi
       .fn()
@@ -260,6 +294,7 @@ describe('/api/dispense-audits POST', () => {
             priority: 'urgent',
             cycle: {
               patient_id: 'patient_1',
+              overall_status: 'audit_pending',
               case_: {
                 primary_pharmacist_id: 'pharmacist_1',
                 patient: {
@@ -278,7 +313,7 @@ describe('/api/dispense-audits POST', () => {
           findMany: membershipFindManyMock,
         },
         dispenseAudit: {
-          create: vi.fn().mockResolvedValue({ id: 'audit_1', result: 'rejected' }),
+          create: dispenseAuditCreateMock,
           findFirst: vi.fn().mockResolvedValue(null),
         },
         medicationCycle: {
@@ -301,6 +336,7 @@ describe('/api/dispense-audits POST', () => {
         task_id: 'task_1',
         result: 'rejected',
         reject_reason: 'wrong_drug',
+        reject_reason_code: 'drug_name_mismatch',
         reject_detail: '別規格が混入',
       }),
     );
@@ -308,7 +344,7 @@ describe('/api/dispense-audits POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
     expect(cycleUpdateManyMock).toHaveBeenCalledWith({
-      where: { id: 'cycle_1', version: 1 },
+      where: { id: 'cycle_1', org_id: 'org_1', version: 1 },
       data: { overall_status: 'dispensing', version: { increment: 1 } },
     });
     expect(taskUpdateMock).toHaveBeenCalledWith({
@@ -324,6 +360,12 @@ describe('/api/dispense-audits POST', () => {
       }),
     );
     expect(workflowExceptionCreateMock).toHaveBeenCalled();
+    expect(dispenseAuditCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        reject_reason: 'wrong_drug',
+        reject_reason_code: 'drug_name_mismatch',
+      }),
+    });
     expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -333,6 +375,28 @@ describe('/api/dispense-audits POST', () => {
         explicitUserIds: expect.arrayContaining(['user_dispense', 'pharmacist_1', 'admin_1']),
       }),
     );
+  });
+
+  it('requires a structured reject_reason_code for rejected audits before side effects', async () => {
+    const response = await POST(
+      createRequest({
+        task_id: 'task_1',
+        result: 'rejected',
+        reject_reason: 'wrong_drug',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '差戻し時は構造化理由コードが必須です',
+      details: {
+        reject_reason_code: ['required'],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('denies unassigned tasks before creating audits or notifications', async () => {
@@ -378,6 +442,212 @@ describe('/api/dispense-audits POST', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it('rejects stale expected_version before creating an audit record', async () => {
+    const dispenseAuditCreateMock = vi.fn();
+    const taskUpdateMock = vi.fn();
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'task_stale',
+            cycle_id: 'cycle_stale',
+            assigned_to: 'user_dispense',
+            due_date: null,
+            priority: 'normal',
+            cycle: {
+              patient_id: 'patient_1',
+              overall_status: 'audit_pending',
+              version: 2,
+              set_plans: [],
+              case_: {
+                primary_pharmacist_id: 'pharmacist_1',
+                patient: { name: '山田 太郎' },
+              },
+            },
+          }),
+          update: taskUpdateMock,
+        },
+        dispenseResult: {
+          findMany: vi.fn().mockResolvedValue([{ dispensed_by: 'user_dispense' }]),
+        },
+        membership: {
+          findFirst: vi.fn(),
+          findMany: vi.fn(),
+        },
+        dispenseAudit: {
+          findFirst: vi.fn(),
+          create: dispenseAuditCreateMock,
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_stale',
+        result: 'approved',
+        expected_version: 1,
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: {
+        cycle_id: 'cycle_stale',
+        expected_version: 1,
+        current_version: 2,
+      },
+    });
+    expect(dispenseAuditCreateMock).not.toHaveBeenCalled();
+    expect(taskUpdateMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns an existing matching audit on an exact retry without duplicate side effects', async () => {
+    const dispenseResultFindManyMock = vi.fn();
+    const dispenseAuditCreateMock = vi.fn();
+    const taskUpdateMock = vi.fn();
+    const existingAudit = {
+      id: 'audit_existing',
+      result: 'approved',
+      reject_reason: null,
+      reject_reason_code: null,
+      reject_detail: null,
+      audited_by: 'user_1',
+      same_operator_reason: null,
+    };
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'task_retry',
+            cycle_id: 'cycle_retry',
+            assigned_to: 'user_dispense',
+            due_date: null,
+            priority: 'normal',
+            cycle: {
+              patient_id: 'patient_1',
+              overall_status: 'setting',
+              version: 2,
+              set_plans: [{ id: 'plan_1' }],
+              case_: {
+                primary_pharmacist_id: 'pharmacist_1',
+                patient: { name: '山田 太郎' },
+              },
+            },
+          }),
+          update: taskUpdateMock,
+        },
+        dispenseResult: {
+          findMany: dispenseResultFindManyMock,
+        },
+        dispenseAudit: {
+          findFirst: vi.fn().mockResolvedValue(existingAudit),
+          create: dispenseAuditCreateMock,
+        },
+        membership: {
+          findFirst: vi.fn(),
+          findMany: vi.fn(),
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_retry',
+        result: 'approved',
+        expected_version: 1,
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      id: 'audit_existing',
+      result: 'approved',
+      idempotent: true,
+    });
+    expect(dispenseResultFindManyMock).not.toHaveBeenCalled();
+    expect(dispenseAuditCreateMock).not.toHaveBeenCalled();
+    expect(taskUpdateMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid cycle transitions before creating a dispense audit record', async () => {
+    const dispenseAuditCreateMock = vi.fn();
+    const taskUpdateMock = vi.fn();
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'task_wrong_phase',
+            cycle_id: 'cycle_wrong_phase',
+            assigned_to: 'user_dispense',
+            due_date: null,
+            priority: 'normal',
+            cycle: {
+              patient_id: 'patient_1',
+              overall_status: 'visit_completed',
+              set_plans: [],
+              case_: {
+                primary_pharmacist_id: 'pharmacist_1',
+                patient: {
+                  name: '山田 太郎',
+                },
+              },
+            },
+          }),
+          update: taskUpdateMock,
+        },
+        dispenseResult: {
+          findMany: vi.fn().mockResolvedValue([{ dispensed_by: 'user_dispense' }]),
+        },
+        membership: {
+          findFirst: vi.fn().mockResolvedValue({ id: 'membership_admin' }),
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+        dispenseAudit: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: dispenseAuditCreateMock,
+        },
+        medicationCycle: {
+          findFirst: vi
+            .fn()
+            .mockResolvedValue({ id: 'cycle_wrong_phase', overall_status: 'visit_completed' }),
+          updateMany: vi.fn(),
+        },
+        cycleTransitionLog: { create: vi.fn() },
+        workflowException: {
+          create: vi.fn(),
+          updateMany: vi.fn(),
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_wrong_phase',
+        result: 'approved',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'ステータス遷移が不正です: visit_completed → audited',
+    });
+    expect(dispenseAuditCreateMock).not.toHaveBeenCalled();
+    expect(taskUpdateMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('rejects emergency approval for non-admin users without a reason', async () => {
     const response = await POST(
       createRequest({
@@ -412,6 +682,7 @@ describe('/api/dispense-audits POST', () => {
             priority: 'normal',
             cycle: {
               patient_id: 'patient_2',
+              overall_status: 'audit_pending',
               set_plans: [],
               case_: {
                 primary_pharmacist_id: 'pharmacist_1',
@@ -465,6 +736,245 @@ describe('/api/dispense-audits POST', () => {
     );
   });
 
+  it('allows a self-audit exception when an admin supplies a reason (D1=B)', async () => {
+    // ctx.userId = 'user_1' が調剤者でもある → 自己監査。admin 承認 + 理由ありで許可される。
+    const dispenseAuditCreateMock = vi.fn().mockResolvedValue({
+      id: 'audit_self',
+      result: 'approved',
+    });
+    const auditLogCreateMock = vi.fn().mockResolvedValue({ id: 'log_1' });
+    const membershipFindFirstMock = vi.fn().mockResolvedValue({ id: 'membership_admin' });
+    // 2 回の遷移: audit_pending→audited, audited→visit_ready
+    const cycleFindFirstMock = vi
+      .fn()
+      .mockResolvedValueOnce({ id: 'cycle_self', overall_status: 'audit_pending', version: 1 })
+      .mockResolvedValueOnce({ id: 'cycle_self', overall_status: 'audited', version: 2 });
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'task_self',
+            cycle_id: 'cycle_self',
+            assigned_to: 'user_1',
+            due_date: null,
+            priority: 'normal',
+            cycle: {
+              patient_id: 'patient_self',
+              overall_status: 'audit_pending',
+              set_plans: [],
+              case_: {
+                primary_pharmacist_id: 'user_1',
+                patient: { name: '田中 一郎' },
+              },
+            },
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        dispenseResult: {
+          // 調剤者 = ctx.userId('user_1') → 自己監査が成立する
+          findMany: vi.fn().mockResolvedValue([{ dispensed_by: 'user_1' }]),
+        },
+        membership: {
+          findFirst: membershipFindFirstMock,
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+        dispenseAudit: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: dispenseAuditCreateMock,
+        },
+        auditLog: {
+          create: auditLogCreateMock,
+        },
+        medicationCycle: {
+          findFirst: cycleFindFirstMock,
+          findFirstOrThrow: vi
+            .fn()
+            .mockResolvedValue({ id: 'cycle_self', overall_status: 'visit_ready' }),
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        },
+        cycleTransitionLog: { create: vi.fn().mockResolvedValue({}) },
+        workflowException: {
+          create: vi.fn().mockResolvedValue({}),
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_self',
+        result: 'approved',
+        same_operator_reason: '単独勤務のため自己監査',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    // admin 承認確認のため membership を参照している
+    expect(membershipFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          user_id: 'user_1',
+          role: { in: ['owner', 'admin'] },
+        }),
+      }),
+    );
+    // 例外フィールド(理由・承認 admin)が DispenseAudit に記録される
+    expect(dispenseAuditCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        same_operator_reason: '単独勤務のため自己監査',
+        same_operator_approved_by: 'user_1',
+        audited_by: 'user_1',
+      }),
+    });
+    // append-only の操作証跡 (AuditLog self_audit_exception) が残る
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'self_audit_exception',
+        target_type: 'DispenseAudit',
+        target_id: 'audit_self',
+        actor_id: 'user_1',
+        changes: expect.objectContaining({
+          same_operator_reason: '単独勤務のため自己監査',
+          same_operator_approved_by: 'user_1',
+        }),
+      }),
+    });
+  });
+
+  it('rejects a self-audit with 422 when no reason is supplied', async () => {
+    const dispenseAuditCreateMock = vi.fn();
+    const membershipFindFirstMock = vi.fn();
+    const auditLogCreateMock = vi.fn();
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'task_self',
+            cycle_id: 'cycle_self',
+            assigned_to: 'user_1',
+            due_date: null,
+            priority: 'normal',
+            cycle: {
+              patient_id: 'patient_self',
+              overall_status: 'audit_pending',
+              set_plans: [],
+              case_: {
+                primary_pharmacist_id: 'user_1',
+                patient: { name: '田中 一郎' },
+              },
+            },
+          }),
+          update: vi.fn(),
+        },
+        dispenseResult: {
+          findMany: vi.fn().mockResolvedValue([{ dispensed_by: 'user_1' }]),
+        },
+        membership: {
+          findFirst: membershipFindFirstMock,
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+        dispenseAudit: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: dispenseAuditCreateMock,
+        },
+        auditLog: { create: auditLogCreateMock },
+        medicationCycle: {
+          findFirst: vi.fn(),
+          updateMany: vi.fn(),
+        },
+        cycleTransitionLog: { create: vi.fn() },
+        workflowException: { create: vi.fn(), updateMany: vi.fn() },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_self',
+        result: 'approved',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '自己監査（調剤者=監査者）の例外には理由の記録が必須です',
+    });
+    // two-person rule 保護: 監査レコード・操作証跡は作らない
+    expect(dispenseAuditCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a self-audit with 403 when the operator lacks admin approval', async () => {
+    const dispenseAuditCreateMock = vi.fn();
+    // 自己監査だが admin 権限なし → membership.findFirst が null を返す
+    const membershipFindFirstMock = vi.fn().mockResolvedValue(null);
+    const auditLogCreateMock = vi.fn();
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'task_self',
+            cycle_id: 'cycle_self',
+            assigned_to: 'user_1',
+            due_date: null,
+            priority: 'normal',
+            cycle: {
+              patient_id: 'patient_self',
+              overall_status: 'audit_pending',
+              set_plans: [],
+              case_: {
+                primary_pharmacist_id: 'user_1',
+                patient: { name: '田中 一郎' },
+              },
+            },
+          }),
+          update: vi.fn(),
+        },
+        dispenseResult: {
+          findMany: vi.fn().mockResolvedValue([{ dispensed_by: 'user_1' }]),
+        },
+        membership: {
+          findFirst: membershipFindFirstMock,
+          findMany: vi.fn().mockResolvedValue([]),
+        },
+        dispenseAudit: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: dispenseAuditCreateMock,
+        },
+        auditLog: { create: auditLogCreateMock },
+        medicationCycle: {
+          findFirst: vi.fn(),
+          updateMany: vi.fn(),
+        },
+        cycleTransitionLog: { create: vi.fn() },
+        workflowException: { create: vi.fn(), updateMany: vi.fn() },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_self',
+        result: 'approved',
+        same_operator_reason: '単独勤務のため自己監査',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '自己監査（調剤者=監査者）の例外は管理者のみ承認できます',
+    });
+    expect(membershipFindFirstMock).toHaveBeenCalled();
+    expect(dispenseAuditCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('stores external packaging-audit metadata in reject_detail', async () => {
     const dispenseAuditCreateMock = vi.fn().mockResolvedValue({
       id: 'audit_3',
@@ -482,6 +992,7 @@ describe('/api/dispense-audits POST', () => {
             priority: 'normal',
             cycle: {
               patient_id: 'patient_3',
+              overall_status: 'audit_pending',
               set_plans: [],
               case_: {
                 primary_pharmacist_id: 'pharmacist_1',

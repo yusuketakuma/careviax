@@ -78,11 +78,14 @@ const COVERAGE_CATEGORY_ENTRIES = {
     'DispenseAudit',
     'DispensingDecision',
     'SetBatch',
+    'PackagingGroup',
+    'CycleHold',
     'WorkflowException',
     'VisitSchedule',
     'FacilityVisitBatch',
     'VisitPreparation',
     'VisitScheduleProposal',
+    'VisitScheduleProposalBatch',
     'QrScanDraft',
     'JahisSupplementalRecord',
     'VisitVehicleResource',
@@ -127,6 +130,7 @@ const COVERAGE_CATEGORY_ENTRIES = {
     'PrescriptionLine',
     'VisitScheduleContactLog',
     'VisitScheduleOverride',
+    'VisitHandoffExtraction',
   ],
 } as const satisfies Record<CoverageCategory, readonly string[]>;
 

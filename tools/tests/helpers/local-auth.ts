@@ -237,22 +237,28 @@ export async function clickAndWaitForStableRoute(
   const timeout = options.timeout ?? 90_000;
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const [waitResult] = await Promise.all([
-      Promise.race([
-        page.waitForURL(targetUrl, {
-          timeout,
-          waitUntil: 'domcontentloaded',
-        }),
-        waitForCurrentUrlTarget(page, targetUrl, timeout),
-      ])
-        .then(() => null)
-        .catch((error: unknown) => error),
-      clickAction(),
-    ]);
+    let clickError: unknown = null;
+    const clickPromise = clickAction().catch((error: unknown) => {
+      clickError = error;
+    });
+    const waitResult = await Promise.any([
+      page.waitForURL(targetUrl, {
+        timeout,
+        waitUntil: 'domcontentloaded',
+      }),
+      waitForCurrentUrlTarget(page, targetUrl, timeout),
+    ])
+      .then(() => null)
+      .catch((error: unknown) => error);
+    await Promise.race([clickPromise, delay(1_000)]);
 
     if (!waitResult || currentUrlMatchesTarget(page, targetUrl)) {
       await waitForStableUi(page);
       return;
+    }
+
+    if (clickError) {
+      throw clickError;
     }
 
     if (

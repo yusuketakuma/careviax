@@ -236,6 +236,16 @@ describe('set-batches POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
+    expect(txMock.setBatch.findFirst).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        plan_id: 'plan_1',
+        line_id: 'line_1',
+        slot: 'morning',
+        day_number: 1,
+      },
+      select: { id: true },
+    });
   });
 
   it('broadcasts a workflow refresh after a batch is created', async () => {

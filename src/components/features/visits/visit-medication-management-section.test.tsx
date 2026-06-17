@@ -45,6 +45,8 @@ describe('VisitMedicationManagementSection', () => {
         previousVisitSummary="前回はふらつきと昼分の飲み忘れを確認。"
         previousVisitStructuredReuse={{
           source_visit_record_id: 'record_prev',
+          source_visit_record_version: 3,
+          source_visit_record_updated_at: '2026-06-01T03:00:00.000Z',
           subjective: ['昼分の飲み忘れあり'],
           objective: ['残薬: アムロジピン錠 6錠 / 3日分過多', '副作用確認: 眠気'],
           assessment: ['残薬と眠気を次回も確認'],

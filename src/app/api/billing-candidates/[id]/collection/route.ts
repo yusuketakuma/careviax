@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { NextRequest } from 'next/server';
+import { NextRequest, type NextResponse } from 'next/server';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
@@ -8,6 +8,7 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { readJsonObject } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { updateBillingCollectionSchema } from '@/lib/validations/billing-collection';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
 
 class BillingCollectionConflictError extends Error {}
 
@@ -77,7 +78,10 @@ function isInvoiceManagedBilling(input: {
   );
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+): Promise<NextResponse> {
   const authResult = await requireAuthContext(req, {
     permission: 'canManageBilling',
     message: '集金記録の更新権限がありません',
@@ -118,6 +122,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const candidatePatientId =
       candidate.patient_id ??
       (candidate.billing_target_type === 'patient' ? candidate.billing_target_id : null);
+    if (candidatePatientId) {
+      const writable = await requireWritablePatient(tx, ctx, candidatePatientId);
+      if ('response' in writable) return { error: writable.response };
+    }
     const billingPaymentProfileTask = candidatePatientId
       ? await tx.task.findFirst({
           where: {
@@ -256,6 +264,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       invoice_issue_status: ['請求書発行が必要な患者では請求・集金時に発行済み状態が必須です'],
     });
   }
+  if (result && typeof result === 'object' && 'error' in result) return result.error;
   if (!result) return notFound('請求候補が見つかりません');
 
   return success({ data: result });

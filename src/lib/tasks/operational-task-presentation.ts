@@ -27,8 +27,8 @@ export function describeOperationalTask(
       return {
         actionHref:
           task.related_entity_type === 'dispense_task' && task.related_entity_id
-            ? `/auditing?taskId=${encodeURIComponent(task.related_entity_id)}`
-            : '/auditing',
+            ? `/audit?taskId=${encodeURIComponent(task.related_entity_id)}`
+            : '/audit',
         actionLabel: '監査依頼を確認',
         queueLabel: '監査依頼',
       };
@@ -97,6 +97,15 @@ export function describeOperationalTask(
         actionHref: '/patients',
         actionLabel: '連絡先と文書を確認',
         queueLabel: '初回整備',
+      };
+    case 'patient_foundation_review':
+      return {
+        actionHref:
+          task.related_entity_type === 'patient' && task.related_entity_id
+            ? `/patients/${encodeURIComponent(task.related_entity_id)}#patient-foundation`
+            : '/patients?foundation_gap=1',
+        actionLabel: '患者基盤を整備',
+        queueLabel: '正本確認',
       };
     case 'dosage_form_support':
       return {

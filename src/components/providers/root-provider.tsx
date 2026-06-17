@@ -5,14 +5,19 @@ import { ThemeProvider } from 'next-themes';
 import { NavigationConfirmProvider } from '@/components/providers/navigation-confirm-provider';
 import { Toaster } from '@/components/ui/sonner';
 import { OFFLINE_CACHE_TTL_MS } from '@/lib/offline/cache-policy';
-import { offlineDb } from '@/lib/stores/offline-db';
+
+export async function pruneExpiredOfflineVisitBriefCache(now = Date.now()) {
+  const { offlineDb } = await import('@/lib/stores/offline-db');
+  const cutoff = new Date(now - OFFLINE_CACHE_TTL_MS);
+
+  await offlineDb.visitBriefCache.where('updatedAt').below(cutoff).delete();
+}
 
 function OfflineCacheBootstrap() {
   useEffect(() => {
-    void (async () => {
-      const cutoff = new Date(Date.now() - OFFLINE_CACHE_TTL_MS);
-      await offlineDb.visitBriefCache.where('updatedAt').below(cutoff).delete();
-    })();
+    void pruneExpiredOfflineVisitBriefCache().catch((error) => {
+      console.warn('Failed to prune expired offline visit brief cache', error);
+    });
   }, []);
 
   return null;

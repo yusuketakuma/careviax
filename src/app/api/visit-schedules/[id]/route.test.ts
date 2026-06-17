@@ -1035,6 +1035,7 @@ describe('/api/visit-schedules/[id] GET', () => {
         pharmacist_id: 'user_1',
         scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
         route_order: 2,
+        schedule_status: { notIn: ['cancelled', 'rescheduled'] },
       },
       select: { id: true },
     });
@@ -1097,6 +1098,50 @@ describe('/api/visit-schedules/[id] GET', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it.each(['cancelled', 'rescheduled'] as const)(
+    'rejects route_order changes for %s schedules before conflict checks',
+    async (scheduleStatus) => {
+      visitScheduleFindFirstMock.mockResolvedValueOnce({
+        id: 'schedule_1',
+        case_id: 'case_1',
+        cycle_id: 'cycle_1',
+        visit_type: 'regular',
+        schedule_status: scheduleStatus,
+        scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
+        time_window_start: null,
+        time_window_end: null,
+        version: 1,
+        confirmed_at: null,
+        pharmacist_id: 'user_1',
+        site_id: 'site_1',
+        vehicle_resource_id: null,
+        visit_record: null,
+        preparation: null,
+        case_: {
+          primary_pharmacist_id: 'user_primary',
+          backup_pharmacist_id: null,
+        },
+      });
+
+      const response = await PATCH(createPatchRequest({ route_order: 1 }), {
+        params: Promise.resolve({ id: 'schedule_1' }),
+      });
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: '完了済みまたは中止済みの訪問予定は順路を変更できません',
+      });
+      expect(visitScheduleFindFirstMock).toHaveBeenCalledTimes(1);
+      expect(visitScheduleProposalFindFirstMock).not.toHaveBeenCalled();
+      expect(withOrgContextMock).not.toHaveBeenCalled();
+      expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+      expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+      expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+    },
+  );
+
   it('rechecks route_order conflicts inside the update transaction', async () => {
     visitScheduleFindFirstMock
       .mockResolvedValueOnce({
@@ -1139,6 +1184,7 @@ describe('/api/visit-schedules/[id] GET', () => {
         pharmacist_id: 'user_1',
         scheduled_date: new Date('2026-03-26T00:00:00.000Z'),
         route_order: 2,
+        schedule_status: { notIn: ['cancelled', 'rescheduled'] },
       },
       select: { id: true },
     });

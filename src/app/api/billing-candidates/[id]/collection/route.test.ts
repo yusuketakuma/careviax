@@ -5,6 +5,7 @@ const {
   requireAuthContextMock,
   withOrgContextMock,
   findFirstMock,
+  patientFindFirstMock,
   updateManyMock,
   findUniqueMock,
   taskFindFirstMock,
@@ -13,6 +14,7 @@ const {
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   findFirstMock: vi.fn(),
+  patientFindFirstMock: vi.fn(),
   updateManyMock: vi.fn(),
   findUniqueMock: vi.fn(),
   taskFindFirstMock: vi.fn(),
@@ -61,6 +63,7 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
       calculation_breakdown: { amount_yen: 3240 },
       updated_at: updatedAt,
     });
+    patientFindFirstMock.mockResolvedValue({ id: 'patient_1', archived_at: null });
     updateManyMock.mockResolvedValue({ count: 1 });
     findUniqueMock.mockResolvedValue({
       id: 'candidate_1',
@@ -86,6 +89,9 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
           findFirst: findFirstMock,
           updateMany: updateManyMock,
           findUnique: findUniqueMock,
+        },
+        patient: {
+          findFirst: patientFindFirstMock,
         },
         task: {
           findFirst: taskFindFirstMock,
@@ -282,6 +288,28 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
         ]),
       },
     });
+    expect(updateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects archived patients before writing collection metadata', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    const response = await PATCH(
+      createRequest({
+        status: 'billed',
+        billed_amount: 3240,
+        collected_amount: 0,
+        invoice_issue_status: 'issued',
+      }),
+      { params: Promise.resolve({ id: 'candidate_1' }) },
+    );
+
+    expect(response.status).toBe(409);
+    expect(taskFindFirstMock).not.toHaveBeenCalled();
     expect(updateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });

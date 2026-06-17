@@ -13,7 +13,7 @@ export async function refreshCareServiceOfficeMaster(
     ? [...new Set(options.targetOrgIds.filter(Boolean))].sort()
     : undefined;
   const dedupeKey =
-    targetOrgIds && targetOrgIds.length > 0 ? `org:${targetOrgIds.join(',')}` : 'all-orgs';
+    targetOrgIds && targetOrgIds.length > 0 ? `target-orgs:${targetOrgIds.join(',')}` : 'all-orgs';
 
   return runJob(
     'care_service_office_master_auto_refresh',

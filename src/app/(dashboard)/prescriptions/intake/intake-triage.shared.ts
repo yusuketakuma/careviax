@@ -156,9 +156,9 @@ export const INTAKE_ACTION_PRESENTATIONS: Record<
   send_to_entry: { label: '入力へ送る', primary: true, href: () => '/prescriptions' },
   compare: { label: '並べて比較', href: () => '/prescriptions' },
   to_dashboard: { label: '→ ダッシュボードへ', href: () => '/dashboard' },
-  to_audit: { label: '→ 監査へ', href: () => '/auditing' },
+  to_audit: { label: '→ 監査へ', href: () => '/audit' },
   to_dispensing: { label: '→ 調剤へ', href: () => '/dispense' },
-  to_set: { label: '→ セットへ', href: () => '/medication-sets' },
+  to_set: { label: '→ セットへ', href: () => '/set' },
   to_card: { label: '→ カードへ', href: (row) => `/patients/${row.patient_id}` },
 };
 

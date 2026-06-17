@@ -8,6 +8,7 @@ import { notFound, success, validationError } from '@/lib/api/response';
 import { z } from 'zod';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { dateKeySchema } from '@/lib/validations/date-key';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
 
 const dateStringSchema = dateKeySchema('日付形式が不正です（YYYY-MM-DD）');
 const publicProgramCodeSchema = z
@@ -162,6 +163,9 @@ export async function PUT(
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
+  const writable = await requireWritablePatient(prisma, ctx, id);
+  if ('response' in writable) return writable.response;
+
   // Fold the patient-assignment access check into the resource query (single
   // round-trip). buildCareCaseAssignmentWhere returns null for owner/admin so
   // the relation filter is unset for privileged roles (bypass).
@@ -284,6 +288,9 @@ export async function DELETE(
   if (!id) return validationError('患者IDが不正です');
   const insuranceId = normalizeRequiredRouteParam(rawInsuranceId);
   if (!insuranceId) return validationError('保険情報IDが不正です');
+
+  const writable = await requireWritablePatient(prisma, ctx, id);
+  if ('response' in writable) return writable.response;
 
   const caseAssignmentWhereDelete = buildCareCaseAssignmentWhere({
     userId: ctx.userId,

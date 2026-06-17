@@ -329,4 +329,21 @@ describe('/api/patients/[id]/mcs/logs POST', () => {
     expect(response.status).toBe(404);
     expect(communicationEventCreateMock).not.toHaveBeenCalled();
   });
+
+  it('rejects archived patients before creating MCS log events', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    const response = await POST(createRequest({ summary: '確認済み' }), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(taskUpsertMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
 });

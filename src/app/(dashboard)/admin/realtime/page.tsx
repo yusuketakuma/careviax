@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState, type ElementType } from 'react';
+import { useCallback, type ElementType } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -11,7 +11,8 @@ import { getAdminRealtimeShortcutLinks } from '@/components/features/admin/admin
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { parseNotificationStreamPayload } from '@/lib/notifications/stream-payload';
+import { useRealtimeEvents } from '@/lib/hooks/use-realtime-events';
+import { normalizeNotificationStreamPayload } from '@/lib/notifications/stream-payload';
 
 type NotificationType = 'urgent' | 'business' | 'reminder' | 'system';
 
@@ -24,8 +25,6 @@ type Notification = {
   is_read: boolean;
   created_at: string;
 };
-
-const NOTIFICATION_STREAM_DISABLED = process.env.NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM === '1';
 
 type WorkflowSnapshot = {
   route_control: {
@@ -76,7 +75,34 @@ function mergeNotifications(current: Notification[], incoming: Notification[]) {
 export default function RealtimePage() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
-  const [isStreamConnected, setIsStreamConnected] = useState(false);
+  const handleRealtimeEvent = useCallback(
+    (event: unknown) => {
+      const nextNotifications = normalizeNotificationStreamPayload(event);
+      if (nextNotifications.length > 0) {
+        queryClient.setQueryData<{ data: Notification[] }>(
+          ['admin-realtime-notifications', orgId],
+          (current) => ({
+            data: mergeNotifications(current?.data ?? [], nextNotifications),
+          }),
+        );
+        return;
+      }
+
+      const eventType =
+        typeof event === 'object' && event !== null && 'type' in event
+          ? (event as { type: string }).type
+          : undefined;
+      if (eventType === 'workflow_refresh' || eventType === 'cycle_transition') {
+        queryClient.invalidateQueries({ queryKey: ['admin-realtime-workflow', orgId] });
+      }
+    },
+    [orgId, queryClient],
+  );
+
+  const realtime = useRealtimeEvents({
+    onEvent: handleRealtimeEvent,
+    enabled: Boolean(orgId),
+  });
 
   const workflowQuery = useQuery({
     queryKey: ['admin-realtime-workflow', orgId],
@@ -88,7 +114,7 @@ export default function RealtimePage() {
       return res.json() as Promise<{ data: WorkflowSnapshot }>;
     },
     enabled: !!orgId,
-    refetchInterval: 15_000,
+    refetchInterval: realtime.connected ? false : 15_000,
   });
 
   const notificationsQuery = useQuery({
@@ -101,65 +127,8 @@ export default function RealtimePage() {
       return res.json() as Promise<{ data: Notification[] }>;
     },
     enabled: !!orgId,
-    refetchInterval: 60_000,
+    refetchInterval: realtime.connected ? false : 60_000,
   });
-
-  useEffect(() => {
-    if (!orgId || NOTIFICATION_STREAM_DISABLED) return;
-    const controller = new AbortController();
-    let active = true;
-
-    (async () => {
-      try {
-        const response = await fetch('/api/notifications/stream', {
-          headers: { 'x-org-id': orgId },
-          signal: controller.signal,
-        });
-        if (!response.ok || !response.body) return;
-
-        if (active) {
-          setIsStreamConnected(true);
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        while (active) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const chunks = buffer.split('\n\n');
-          buffer = chunks.pop() ?? '';
-
-          for (const chunk of chunks) {
-            if (!chunk.startsWith('data: ')) continue;
-            const nextNotifications = parseNotificationStreamPayload(chunk.slice(6));
-            if (nextNotifications.length > 0) {
-              queryClient.setQueryData<{ data: Notification[] }>(
-                ['admin-realtime-notifications', orgId],
-                (current) => ({
-                  data: mergeNotifications(current?.data ?? [], nextNotifications),
-                }),
-              );
-            }
-          }
-        }
-      } catch {
-        // Network aborts and reconnects fall back to the periodic query refresh.
-      } finally {
-        if (active) {
-          setIsStreamConnected(false);
-        }
-      }
-    })();
-
-    return () => {
-      active = false;
-      setIsStreamConnected(false);
-      controller.abort();
-    };
-  }, [orgId, queryClient]);
 
   const workflow = workflowQuery.data?.data;
   const notifications = notificationsQuery.data?.data ?? [];
@@ -216,7 +185,7 @@ export default function RealtimePage() {
               <span className="font-medium">{workbenchItems.length}</span>
             </div>
             <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
-              {isStreamConnected
+              {realtime.connected
                 ? 'SSE 接続中です。新着通知は即時反映されます。'
                 : 'SSE 再接続中です。未接続時は定期再取得へフォールバックします。'}
             </div>

@@ -50,8 +50,11 @@ import { PatientBoardLoadingShell } from './patient-board-loading';
 export async function fetchPatientBoard(
   orgId: string,
   scope: 'mine' | 'all',
+  foundationIssue?: 'needs_confirmation',
 ): Promise<PatientBoardResponse> {
-  const res = await fetch(`/api/patients/board?scope=${scope}`, {
+  const params = new URLSearchParams({ scope });
+  if (foundationIssue) params.set('foundation_issue', foundationIssue);
+  const res = await fetch(`/api/patients/board?${params}`, {
     headers: { 'x-org-id': orgId },
   });
   if (!res.ok) throw new Error('患者一覧の取得に失敗しました');
@@ -74,7 +77,7 @@ const SORT_OPTIONS: Array<{ value: BoardSort; label: string }> = [
 ];
 
 /** フィルタチップ。「今すぐ対応」=既定(優先順で全件表示)、他は絞り込み。 */
-type BoardChipValue = 'priority' | 'external' | 'visit_today' | 'paused';
+type BoardChipValue = 'priority' | 'external' | 'visit_today' | 'foundation_gap' | 'paused';
 
 type AttentionPresentation = {
   label: string;
@@ -144,6 +147,15 @@ const PATIENT_SAFETY_TAGS: Record<string, { label: string; className: string }> 
   renal: { label: '腎機能', className: 'border-amber-400 bg-amber-50 text-amber-700' },
   swallowing: { label: '嚥下', className: 'border-amber-400 bg-amber-50 text-amber-700' },
   allergy: { label: 'アレルギー', className: 'border-amber-400 bg-amber-50 text-amber-700' },
+};
+
+const FOUNDATION_STATUS_CLASSES: Record<
+  NonNullable<PatientBoardCard['foundation_summary']>['status'],
+  string
+> = {
+  ready: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+  needs_confirmation: 'border-amber-200 bg-amber-50 text-amber-900',
+  missing: 'border-red-200 bg-red-50 text-red-800',
 };
 
 const SAFETY_TAG_DISPLAY_LIMIT = 3;
@@ -411,6 +423,29 @@ function PatientBoardCardItem({ card, now }: { card: PatientBoardCard; now: Date
         </div>
       ) : null}
 
+      {card.foundation_summary ? (
+        <div
+          className={cn(
+            'rounded-md border px-2.5 py-2 text-xs leading-5',
+            FOUNDATION_STATUS_CLASSES[card.foundation_summary.status],
+          )}
+          aria-label={`${card.name} 様の情報基盤`}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <p className="font-semibold">{card.foundation_summary.label}</p>
+            {card.foundation_href ? (
+              <Link
+                href={card.foundation_href}
+                className="inline-flex min-h-7 shrink-0 items-center text-[11px] font-semibold underline-offset-4 hover:underline"
+              >
+                正本確認
+              </Link>
+            ) : null}
+          </div>
+          <p className="text-[11px] opacity-85">{card.foundation_summary.items.join(' / ')}</p>
+        </div>
+      ) : null}
+
       {card.current_step ? <ProcessProgressDots currentStep={card.current_step} /> : <PausedDots />}
 
       <p className={cn('text-sm leading-5', STATUS_TONE_CLASSES[card.status_tone])}>
@@ -426,7 +461,7 @@ function PatientBoardCardItem({ card, now }: { card: PatientBoardCard; now: Date
           → {card.link_label}
         </Link>
         <Link
-          href={`/patients/${card.patient_id}`}
+          href={card.foundation_href ?? `/patients/${card.patient_id}`}
           className={buttonVariants({ variant: 'ghost', size: 'sm' })}
         >
           患者詳細
@@ -446,7 +481,7 @@ function buildNextAction(data: PatientBoardResponse): NextActionPanelProps {
       description: `${data.next_action.patient_name} 様の${
         data.next_action.has_narcotic ? '持参薬の麻薬監査' : '調剤監査'
       }が待ちです。完了で午後の予定がすべて確定します。`,
-      actionHref: '/auditing',
+      actionHref: '/audit',
     };
   }
   return {
@@ -465,9 +500,10 @@ export function PatientsBoard() {
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const isBootstrappingOrg = !orgId;
 
+  const foundationIssue = chip === 'foundation_gap' ? 'needs_confirmation' : undefined;
   const boardQuery = useRealtimeQuery({
-    queryKey: ['patients', 'board', orgId, scope],
-    queryFn: () => fetchPatientBoard(orgId, scope),
+    queryKey: ['patients', 'board', orgId, scope, foundationIssue],
+    queryFn: () => fetchPatientBoard(orgId, scope, foundationIssue),
     staleTime: 30_000,
     enabled: !isBootstrappingOrg,
     invalidateOn: ['cycle_transition', 'workflow_refresh'],
@@ -491,6 +527,9 @@ export function PatientsBoard() {
             }
             // 本日訪問: 対応カテゴリに関わらず「今日訪問がある患者」
             if (chip === 'visit_today') return card.next_visit_date === todayKey;
+            if (chip === 'foundation_gap') {
+              return card.foundation_summary?.status !== 'ready';
+            }
             return card.attention === 'paused';
           });
     const query = normalizeSearchText(deferredSearchQuery);
@@ -503,6 +542,8 @@ export function PatientsBoard() {
             card.next_visit_label,
             card.status_text,
             ...(card.operation_summary ?? []),
+            card.foundation_summary?.label,
+            ...(card.foundation_summary?.items ?? []),
           ]
             .map(normalizeSearchText)
             .some((value) => value.includes(query)),
@@ -524,6 +565,13 @@ export function PatientsBoard() {
         value: 'visit_today' as const,
         label: visitTodayLabel,
         count: data && data.today_facility_patient_count > 0 ? undefined : counts?.visit_today,
+      },
+      {
+        value: 'foundation_gap' as const,
+        label: '正本未整備',
+        count: data
+          ? countCards(data.cards, (card) => card.foundation_summary?.status !== 'ready')
+          : 0,
       },
       { value: 'paused' as const, label: '休止', count: counts?.paused ?? 0 },
     ];
@@ -694,7 +742,7 @@ export function PatientsBoard() {
             />
           </div>
         ) : (
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]">
+          <div className="space-y-4">
             <div className="min-w-0">
               {visibleCards.length === 0 ? (
                 <div className="phos-patient-empty-state rounded-lg border border-border/70 bg-card px-4 py-6">
@@ -716,15 +764,13 @@ export function PatientsBoard() {
                 </div>
               )}
             </div>
-            <div className="space-y-4">
-              <WorkspaceActionRail
-                nextAction={buildNextAction(data)}
-                blockedReasons={blockedReasons}
-                blockedReasonsEmptyLabel="止まっている作業はありません"
-                evidence={evidence}
-                evidenceOpenLabel="開く"
-              />
-            </div>
+            <WorkspaceActionRail
+              nextAction={buildNextAction(data)}
+              blockedReasons={blockedReasons}
+              blockedReasonsEmptyLabel="止まっている作業はありません"
+              evidence={evidence}
+              evidenceOpenLabel="開く"
+            />
           </div>
         )}
       </div>

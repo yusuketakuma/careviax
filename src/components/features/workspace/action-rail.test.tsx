@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { useUIStore } from '@/lib/stores/ui-store';
 import {
   BlockedReasonsPanel,
   EvidencePanel,
@@ -11,6 +12,10 @@ import {
 } from './action-rail';
 
 setupDomTestEnv();
+
+beforeEach(() => {
+  useUIStore.setState({ workspaceRailOpen: true, workspaceRailAvailable: false });
+});
 
 describe('NextActionPanel', () => {
   it('shows the heading, description and a single primary action', () => {
@@ -148,9 +153,7 @@ describe('BlockedReasonsPanel', () => {
   it('renders rich reasons without category chip when only ageLabel is provided', () => {
     render(
       <BlockedReasonsPanel
-        reasons={[
-          { id: 'r1', label: '医師回答待ち', severity: 'warning', ageLabel: '2日' },
-        ]}
+        reasons={[{ id: 'r1', label: '医師回答待ち', severity: 'warning', ageLabel: '2日' }]}
       />,
     );
 
@@ -213,6 +216,18 @@ describe('EvidencePanel', () => {
 });
 
 describe('WorkspaceActionRail', () => {
+  it('registers the auxiliary panel as available only while mounted', () => {
+    const { unmount } = render(
+      <WorkspaceActionRail nextAction={{ actionLabel: '確認する', description: '確認します。' }} />,
+    );
+
+    expect(useUIStore.getState().workspaceRailAvailable).toBe(true);
+
+    unmount();
+    expect(useUIStore.getState().workspaceRailAvailable).toBe(false);
+    expect(useUIStore.getState().workspaceRailOpen).toBe(false);
+  });
+
   it('composes the three panels in order with extra children', () => {
     render(
       <WorkspaceActionRail
@@ -243,5 +258,25 @@ describe('WorkspaceActionRail', () => {
     );
 
     expect(screen.getByRole('button', { name: '開く' })).toBeTruthy();
+  });
+
+  it('uses a Japanese accessible name for the drawer close button', () => {
+    render(
+      <WorkspaceActionRail nextAction={{ actionLabel: '確認する', description: '確認します。' }} />,
+    );
+
+    expect(screen.getByRole('button', { name: '補助パネルを閉じる' })).toBeTruthy();
+  });
+
+  it('closes the auxiliary panel on Escape', () => {
+    render(
+      <WorkspaceActionRail
+        nextAction={{ description: '医師への確認を記録します。', actionLabel: '確認する' }}
+      />,
+    );
+
+    expect(screen.getByTestId('workspace-action-rail')).toBeTruthy();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(useUIStore.getState().workspaceRailOpen).toBe(false);
   });
 });

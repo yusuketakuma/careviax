@@ -1,5 +1,19 @@
-import { describe, expect, it } from 'vitest';
-import { countMyHandoffItems, toBadgeCount } from './use-nav-badges';
+// @vitest-environment jsdom
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { renderHook, waitFor } from '@testing-library/react';
+import { createElement, type ReactNode } from 'react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { useOrgIdMock } = vi.hoisted(() => ({
+  useOrgIdMock: vi.fn(),
+}));
+
+vi.mock('@/lib/hooks/use-org-id', () => ({
+  useOrgId: useOrgIdMock,
+}));
+
+import { countMyHandoffItems, toBadgeCount, useNavBadges } from './use-nav-badges';
 
 describe('countMyHandoffItems', () => {
   const me = 'user_me';
@@ -36,5 +50,38 @@ describe('toBadgeCount', () => {
 
   it('passes through positive counts', () => {
     expect(toBadgeCount(6)).toBe(6);
+  });
+});
+
+describe('useNavBadges', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useOrgIdMock.mockReturnValue('org_1');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { audit: 6, handoff: 3 } }),
+      }),
+    );
+  });
+
+  it('loads sidebar badges through the aggregated endpoint', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: queryClient }, children);
+
+    const { result } = renderHook(() => useNavBadges(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current).toEqual({ '/audit': 6, '/handoff': 3 });
+    });
+
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(fetch).toHaveBeenCalledWith('/api/nav-badges', {
+      headers: { 'x-org-id': 'org_1' },
+    });
   });
 });

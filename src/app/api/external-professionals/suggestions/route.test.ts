@@ -71,6 +71,11 @@ describe('/api/external-professionals/suggestions', () => {
         last_contacted_at: new Date('2026-03-30T00:00:00.000Z'),
         last_success_channel: 'fax',
         recommended_channels: ['fax', 'phone'],
+        contact_reliability: {
+          ready: true,
+          warnings: [],
+          missing_channel_labels: [],
+        },
         is_primary: true,
       },
     ]);
@@ -105,6 +110,11 @@ describe('/api/external-professionals/suggestions', () => {
           id: 'external_1',
           last_contacted_at: '2026-03-30T00:00:00.000Z',
           recommended_channels: ['fax', 'phone'],
+          contact_reliability: {
+            ready: true,
+            warnings: [],
+            missing_channel_labels: [],
+          },
         },
       ],
     });

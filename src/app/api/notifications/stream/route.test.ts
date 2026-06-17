@@ -9,6 +9,7 @@ const {
   releaseSseConnectionMock,
   subscribeToChannelMock,
   unsubscribeFromChannelMock,
+  canAccessCollaborationEntityMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   notificationFindManyMock: vi.fn(),
@@ -16,6 +17,7 @@ const {
   releaseSseConnectionMock: vi.fn(),
   subscribeToChannelMock: vi.fn(),
   unsubscribeFromChannelMock: vi.fn(),
+  canAccessCollaborationEntityMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -42,10 +44,18 @@ vi.mock('@/server/adapters/realtime', () => ({
   }),
 }));
 
+vi.mock('@/server/services/collaboration-access', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/server/services/collaboration-access')>();
+  return {
+    ...actual,
+    canAccessCollaborationEntity: canAccessCollaborationEntityMock,
+  };
+});
+
 import { GET } from './route';
 
-function streamRequest(signal: AbortSignal) {
-  return new NextRequest('http://localhost/api/notifications/stream', { signal });
+function streamRequest(signal: AbortSignal, url = 'http://localhost/api/notifications/stream') {
+  return new NextRequest(url, { signal });
 }
 
 async function flushAsyncWork() {
@@ -63,8 +73,12 @@ function createDeferred<T = void>() {
 }
 
 async function openStreamForTest() {
+  return openStreamForTestWithUrl('http://localhost/api/notifications/stream');
+}
+
+async function openStreamForTestWithUrl(url: string) {
   const controller = new AbortController();
-  const response = (await GET(streamRequest(controller.signal)))!;
+  const response = (await GET(streamRequest(controller.signal, url)))!;
   const reader = response.body?.getReader();
   if (!reader) throw new Error('reader is required');
   await reader.read();
@@ -93,6 +107,7 @@ describe('/api/notifications/stream', () => {
     notificationFindManyMock.mockResolvedValue([]);
     acquireSseConnectionMock.mockReturnValue({ allowed: true });
     subscribeToChannelMock.mockResolvedValue(undefined);
+    canAccessCollaborationEntityMock.mockResolvedValue(true);
   });
 
   it('opens an SSE stream and immediately emits keepalive', async () => {
@@ -104,7 +119,7 @@ describe('/api/notifications/stream', () => {
     if (!reader) throw new Error('reader is required');
     const firstChunk = await reader.read();
     controller.abort();
-    await flushAsyncWork();
+    await Promise.resolve();
     const text = new TextDecoder().decode(firstChunk.value);
     expect(text).toBe(': keepalive\n\n');
     expect(releaseSseConnectionMock).toHaveBeenCalledWith('user_1');
@@ -147,7 +162,7 @@ describe('/api/notifications/stream', () => {
     await reader.read();
 
     await reader.cancel();
-    await flushAsyncWork();
+    await Promise.resolve();
 
     expect(releaseSseConnectionMock).toHaveBeenCalledWith('user_1');
     expect(releaseSseConnectionMock).toHaveBeenCalledTimes(1);
@@ -315,6 +330,86 @@ describe('/api/notifications/stream', () => {
     await flushAsyncWork();
   });
 
+  it('subscribes authorized presence rooms and streams only sanitized presence payloads', async () => {
+    const presence = encodeURIComponent(JSON.stringify(['visit_record', 'vr_1']));
+    const { controller, reader } = await openStreamForTestWithUrl(
+      `http://localhost/api/notifications/stream?presence=${presence}`,
+    );
+    const presenceListener = subscribeToChannelMock.mock.calls.find(
+      ([channel]) => channel === 'presence:org_1:visit_record:vr_1',
+    )?.[1] as ((data: unknown) => void) | undefined;
+    if (!presenceListener) throw new Error('presence listener is required');
+
+    expect(canAccessCollaborationEntityMock).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      'visit_record',
+      'vr_1',
+    );
+
+    presenceListener({
+      type: 'presence_update',
+      entity_type: 'visit_record',
+      entity_id: 'vr_1',
+      user_id: 'user_2',
+      display_name: '田中',
+      active_field: 'note',
+      updated_at: '2026-06-17T00:00:00.000Z',
+      leaked: 'drop-me',
+    });
+
+    await expect(readSseData(reader)).resolves.toEqual({
+      type: 'presence_update',
+      entity_type: 'visit_record',
+      entity_id: 'vr_1',
+      user_id: 'user_2',
+      display_name: '田中',
+      active_field: 'note',
+      updated_at: '2026-06-17T00:00:00.000Z',
+    });
+
+    controller.abort();
+    await flushAsyncWork();
+    expect(unsubscribeFromChannelMock).toHaveBeenCalledWith(
+      'presence:org_1:visit_record:vr_1',
+      expect.any(Function),
+    );
+  });
+
+  it('rejects invalid presence stream targets before acquiring an SSE slot', async () => {
+    const response = (await GET(
+      streamRequest(
+        new AbortController().signal,
+        'http://localhost/api/notifications/stream?presence=not-json',
+      ),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'INVALID_PRESENCE_STREAM_ROOM',
+    });
+    expect(acquireSseConnectionMock).not.toHaveBeenCalled();
+    expect(subscribeToChannelMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects inaccessible presence stream targets before subscribing channels', async () => {
+    canAccessCollaborationEntityMock.mockResolvedValue(false);
+    const presence = encodeURIComponent(JSON.stringify(['visit_record', 'vr_unassigned']));
+
+    const response = (await GET(
+      streamRequest(
+        new AbortController().signal,
+        `http://localhost/api/notifications/stream?presence=${presence}`,
+      ),
+    ))!;
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'PRESENCE_STREAM_ROOM_NOT_FOUND',
+    });
+    expect(acquireSseConnectionMock).not.toHaveBeenCalled();
+    expect(subscribeToChannelMock).not.toHaveBeenCalled();
+  });
+
   it('allows redacted QR draft invalidation events without identifier payloads', async () => {
     const { controller, reader } = await openStreamForTest();
     const orgListener = subscribeToChannelMock.mock.calls.find(
@@ -377,5 +472,25 @@ describe('/api/notifications/stream', () => {
 
     controller.abort();
     await vi.runOnlyPendingTimersAsync();
+  });
+
+  it('keeps a low-frequency safety poll when the user realtime channel is subscribed', async () => {
+    const timeoutHandle = { unref: vi.fn() } as unknown as ReturnType<typeof setTimeout>;
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout').mockReturnValue(timeoutHandle);
+
+    const controller = new AbortController();
+    const response = (await GET(streamRequest(controller.signal)))!;
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('reader is required');
+    await reader.read();
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(notificationFindManyMock).not.toHaveBeenCalled();
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 60_000);
+
+    controller.abort();
+    await Promise.resolve();
+    setTimeoutSpy.mockRestore();
   });
 });

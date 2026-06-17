@@ -1,9 +1,10 @@
 import { differenceInCalendarDays, format, startOfWeek } from 'date-fns';
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
-import { forbiddenResponse, success, validationError } from '@/lib/api/response';
+import { conflict, forbiddenResponse, success, validationError } from '@/lib/api/response';
 import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-access';
 import { generateVisitSchedulesSchema } from '@/lib/validations/visit-schedule';
 import { parseSimpleRruleDates } from '@/lib/visits/rrule';
@@ -32,6 +33,41 @@ const WEEKLY_LIMITS: Record<string, number> = {
 
 const MAX_GENERATED_VISIT_SCHEDULE_RANGE_DAYS = 120;
 const MAX_GENERATED_VISIT_SCHEDULE_CANDIDATES = 100;
+const SCHEDULABLE_CYCLE_STATUSES = ['audited', 'setting', 'set_audited', 'visit_ready'] as const;
+const SCHEDULE_GENERATE_SERIALIZABLE_RETRY_LIMIT = 3;
+
+class VisitScheduleGenerateRetryLimitError extends Error {
+  constructor() {
+    super('visit schedule generation transaction retry limit exceeded');
+    this.name = 'VisitScheduleGenerateRetryLimitError';
+  }
+}
+
+function isSerializableTransactionConflict(cause: unknown) {
+  return cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2034';
+}
+
+async function withSerializableScheduleGenerateTransaction<T>(
+  orgId: string,
+  work: (tx: Prisma.TransactionClient) => Promise<T>,
+) {
+  for (let attempt = 0; attempt < SCHEDULE_GENERATE_SERIALIZABLE_RETRY_LIMIT; attempt += 1) {
+    try {
+      return await withOrgContext(orgId, work, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (cause) {
+      if (!isSerializableTransactionConflict(cause)) {
+        throw cause;
+      }
+      if (attempt === SCHEDULE_GENERATE_SERIALIZABLE_RETRY_LIMIT - 1) {
+        throw new VisitScheduleGenerateRetryLimitError();
+      }
+    }
+  }
+
+  throw new VisitScheduleGenerateRetryLimitError();
+}
 
 function normalizeWeekdays(value: unknown) {
   if (!Array.isArray(value)) return [];
@@ -326,6 +362,21 @@ export const POST = withAuthContext(
       }
     }
 
+    const medicationCycle = await prisma.medicationCycle.findFirst({
+      where: {
+        org_id: ctx.orgId,
+        case_id,
+        overall_status: { in: [...SCHEDULABLE_CYCLE_STATUSES] },
+      },
+      orderBy: [{ updated_at: 'desc' }, { created_at: 'desc' }],
+      select: { id: true, overall_status: true },
+    });
+    if (!medicationCycle) {
+      return validationError(
+        '訪問予定に紐付けられる処方サイクルがありません。セット監査まで完了した処方を確認してください',
+      );
+    }
+
     const schedulingPreference = careCase.patient.scheduling_preference;
     const preferredWeekdays = normalizeWeekdays(schedulingPreference?.preferred_weekdays);
     if (
@@ -424,7 +475,23 @@ export const POST = withAuthContext(
       }
     }
 
-    const schedules = await withOrgContext(ctx.orgId, async (tx) => {
+    const result = await withSerializableScheduleGenerateTransaction(ctx.orgId, async (tx) => {
+      const duplicateScheduleCount = await tx.visitSchedule.count({
+        where: {
+          org_id: ctx.orgId,
+          case_id,
+          cycle_id: medicationCycle.id,
+          visit_type,
+          scheduled_date: { in: candidateDates },
+          schedule_status: { notIn: ['cancelled', 'rescheduled'] },
+        },
+      });
+      if (duplicateScheduleCount > 0) {
+        return {
+          error: 'duplicate_schedule' as const,
+        };
+      }
+
       const existingRouteOrders = await tx.visitSchedule.findMany({
         where: {
           org_id: ctx.orgId,
@@ -481,6 +548,7 @@ export const POST = withAuthContext(
             data: {
               org_id: ctx.orgId,
               case_id,
+              cycle_id: medicationCycle.id,
               visit_type,
               priority: 'normal',
               pharmacist_id,
@@ -506,7 +574,21 @@ export const POST = withAuthContext(
         }),
       );
       return created;
+    }).catch((cause: unknown) => {
+      if (cause instanceof VisitScheduleGenerateRetryLimitError) {
+        return { error: 'serialization_conflict' as const };
+      }
+      throw cause;
     });
+
+    if ('error' in result) {
+      if (result.error === 'duplicate_schedule') {
+        return conflict('同一ケース・同一日付の訪問予定が既に存在します。再読み込みしてください');
+      }
+      return conflict('訪問予定の生成が同時に更新されました。再読み込みしてください');
+    }
+
+    const schedules = result;
 
     await notifyWorkflowMutation({
       orgId: ctx.orgId,

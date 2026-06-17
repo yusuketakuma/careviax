@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
+import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
@@ -11,6 +12,7 @@ import {
   buildDashboardTaskAssignmentWhere,
   resolveDashboardAssignmentScope,
 } from '@/server/services/dashboard-assignment-scope';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
 import { z } from 'zod';
 
 const taskStatusSchema = z.enum(taskStatusValues);
@@ -150,6 +152,22 @@ export async function POST(req: NextRequest) {
   if (!canCreateTaskInAssignmentScope(assignmentScope, parsed.data)) {
     return validationError('担当外リソースのタスクは作成できません');
   }
+  if (parsed.data.related_entity_type === 'patient' && parsed.data.related_entity_id) {
+    const writable = await requireWritablePatient(prisma, ctx, parsed.data.related_entity_id);
+    if ('response' in writable) return writable.response;
+  }
+  if (parsed.data.related_entity_type === 'case' && parsed.data.related_entity_id) {
+    const careCase = await prisma.careCase.findFirst({
+      where: {
+        id: parsed.data.related_entity_id,
+        org_id: ctx.orgId,
+      },
+      select: { patient_id: true },
+    });
+    if (!careCase) return validationError('担当外リソースのタスクは作成できません');
+    const writable = await requireWritablePatient(prisma, ctx, careCase.patient_id);
+    if ('response' in writable) return writable.response;
+  }
   if (parsed.data.assigned_to) {
     const assignee = await prisma.membership.findFirst({
       where: {
@@ -165,29 +183,44 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const task = await withOrgContext(
-    ctx.orgId,
-    async (tx) => {
-      return tx.task.create({
-        data: {
+  try {
+    const task = await withOrgContext(
+      ctx.orgId,
+      async (tx) => {
+        return tx.task.create({
+          data: {
+            org_id: ctx.orgId,
+            task_type: parsed.data.task_type,
+            title: parsed.data.title,
+            description: parsed.data.description ?? null,
+            priority: parsed.data.priority,
+            assigned_to: parsed.data.assigned_to ?? null,
+            due_date: parsed.data.due_date ? new Date(parsed.data.due_date) : null,
+            sla_due_at: parsed.data.sla_due_at ? new Date(parsed.data.sla_due_at) : null,
+            dedupe_key: parsed.data.dedupe_key ?? null,
+            related_entity_type: parsed.data.related_entity_type ?? null,
+            related_entity_id: parsed.data.related_entity_id ?? null,
+            metadata:
+              parsed.data.metadata != null ? toPrismaJsonInput(parsed.data.metadata) : undefined,
+          },
+        });
+      },
+      { requestContext: ctx },
+    );
+
+    return success({ data: task }, 201);
+  } catch (cause) {
+    if (parsed.data.dedupe_key && isPrismaUniqueConstraintError(cause)) {
+      const existingTask = await prisma.task.findFirst({
+        where: {
           org_id: ctx.orgId,
-          task_type: parsed.data.task_type,
-          title: parsed.data.title,
-          description: parsed.data.description ?? null,
-          priority: parsed.data.priority,
-          assigned_to: parsed.data.assigned_to ?? null,
-          due_date: parsed.data.due_date ? new Date(parsed.data.due_date) : null,
-          sla_due_at: parsed.data.sla_due_at ? new Date(parsed.data.sla_due_at) : null,
-          dedupe_key: parsed.data.dedupe_key ?? null,
-          related_entity_type: parsed.data.related_entity_type ?? null,
-          related_entity_id: parsed.data.related_entity_id ?? null,
-          metadata:
-            parsed.data.metadata != null ? toPrismaJsonInput(parsed.data.metadata) : undefined,
+          dedupe_key: parsed.data.dedupe_key,
         },
       });
-    },
-    { requestContext: ctx },
-  );
-
-  return success({ data: task }, 201);
+      if (existingTask) {
+        return success({ data: existingTask }, 200);
+      }
+    }
+    throw cause;
+  }
 }

@@ -72,7 +72,7 @@ const EXCEPTION_PRESENTATIONS: Record<string, BlockedReasonPresentation> = {
   set_audit_rejected: {
     category: '調剤',
     actionLabel: '状況を見る →',
-    actionHref: '/medication-sets',
+    actionHref: '/set-audit',
   },
 };
 

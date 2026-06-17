@@ -2,6 +2,11 @@ import { format } from 'date-fns';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { getHomeVisitIntake } from '@/lib/patient/home-visit-intake';
+import {
+  formatCareTeamContactChannels,
+  pickPrimaryCareTeamLink,
+  selectPrimaryCareTeamCase,
+} from '@/lib/patient/care-team-contact';
 import { compactPreviewValues } from '@/server/services/patient-detail-helpers';
 import { listPatientLabSummary } from '@/server/services/patient-detail-labs';
 import {
@@ -16,26 +21,6 @@ import {
 } from '@/server/services/visit-schedule-communication';
 
 type PatientWorkflowPreviewDb = typeof prisma | Prisma.TransactionClient;
-
-function pickPrimaryCareTeamLink<
-  T extends {
-    role: string;
-    name: string;
-    phone: string | null;
-    email?: string | null;
-    fax?: string | null;
-    is_primary?: boolean;
-    organization_name?: string | null;
-  },
->(links: T[], role: string) {
-  return (
-    [...links]
-      .filter((link) => link.role === role)
-      .sort(
-        (left, right) => Number(Boolean(right.is_primary)) - Number(Boolean(left.is_primary)),
-      )[0] ?? null
-  );
-}
 
 export async function getPatientWorkflowPreviewData(
   db: PatientWorkflowPreviewDb,
@@ -135,12 +120,7 @@ export async function getPatientWorkflowPreviewData(
   });
   if (!patient) return null;
 
-  const currentCase =
-    patient.cases.find((item) =>
-      ['referral_received', 'assessment', 'active', 'on_hold'].includes(item.status),
-    ) ??
-    patient.cases[0] ??
-    null;
+  const currentCase = selectPrimaryCareTeamCase(patient.cases);
   const intake = currentCase ? getHomeVisitIntake(currentCase.required_visit_support) : null;
   const schedulingPreference = patient.scheduling_preference;
   const careTeamLinks = currentCase?.care_team_links ?? [];
@@ -302,12 +282,7 @@ export async function getPatientWorkflowPreviewData(
             : 'missing',
         recipient_name: physicianTarget?.name ?? null,
         recipient_organization: physicianTarget?.organization_name ?? null,
-        contact:
-          compactPreviewValues([
-            physicianTarget?.phone ? `TEL ${physicianTarget.phone}` : null,
-            physicianTarget?.fax ? `FAX ${physicianTarget.fax}` : null,
-            physicianTarget?.email ? physicianTarget.email : null,
-          ]).join(' / ') || null,
+        contact: physicianTarget ? formatCareTeamContactChannels(physicianTarget) : null,
       },
       {
         key: 'care_manager_report' as const,
@@ -320,12 +295,7 @@ export async function getPatientWorkflowPreviewData(
             : 'missing',
         recipient_name: careManagerTarget?.name ?? null,
         recipient_organization: careManagerTarget?.organization_name ?? null,
-        contact:
-          compactPreviewValues([
-            careManagerTarget?.phone ? `TEL ${careManagerTarget.phone}` : null,
-            careManagerTarget?.fax ? `FAX ${careManagerTarget.fax}` : null,
-            careManagerTarget?.email ? careManagerTarget.email : null,
-          ]).join(' / ') || null,
+        contact: careManagerTarget ? formatCareTeamContactChannels(careManagerTarget) : null,
       },
       {
         key: 'nurse_share' as const,
@@ -334,12 +304,7 @@ export async function getPatientWorkflowPreviewData(
         source: nurseCareTeamTarget ? 'care_team' : nurseIntakeTarget ? 'intake' : 'missing',
         recipient_name: nurseTarget?.name ?? null,
         recipient_organization: nurseTarget?.organization_name ?? null,
-        contact:
-          compactPreviewValues([
-            nurseTarget?.phone ? `TEL ${nurseTarget.phone}` : null,
-            nurseTarget?.fax ? `FAX ${nurseTarget.fax}` : null,
-            nurseTarget?.email ? nurseTarget.email : null,
-          ]).join(' / ') || null,
+        contact: nurseTarget ? formatCareTeamContactChannels(nurseTarget) : null,
       },
       {
         key: 'mcs' as const,

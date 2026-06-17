@@ -8,13 +8,18 @@ import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import type { Prisma } from '@prisma/client';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { listAccessiblePatientCaseIds } from '@/server/services/patient-access';
-import { detectMedicationChanges, prescriptionLineKey } from '@/lib/prescription/medication-diff';
+import {
+  detectMedicationChanges,
+  matchMedicationDiffLines,
+  prescriptionLineKey,
+} from '@/lib/prescription/medication-diff';
 
 const PATIENT_PRESCRIPTION_CURSOR_KEYS = ['prescribed_date', 'created_at'] as const;
 
 // p0_11「処方の変化を確認」: 変化 / 前回 / 今回 / 薬剤師メモ の 4 列 + サブカード用の差分集約
 
 type DiffReviewLine = {
+  id: string;
   drug_name: string;
   drug_code: string | null;
   dose: string;
@@ -52,6 +57,10 @@ const CHANGE_LABELS: Record<DiffReviewChangeType, string> = {
   unchanged: '変化なし',
 };
 
+function optionalTrimmedSearchParam(value: string | null) {
+  return value?.trim() || undefined;
+}
+
 /** dose / frequency / days を 1 行ラベルへ。例: 「4mg 朝食後 28日」 */
 function formatLineLabel(line: DiffReviewLine): string {
   return [line.dose, line.frequency, `${line.days}日`].filter(Boolean).join(' ');
@@ -70,6 +79,14 @@ function hasSetProcessing(line: DiffReviewLine): boolean {
   return /一包化|粉砕|別包/.test(pkg);
 }
 
+function hasDiffReviewLineChange(line: DiffReviewLine, previous: DiffReviewLine): boolean {
+  return (
+    previous.dose !== line.dose ||
+    previous.frequency !== line.frequency ||
+    (previous.days ?? null) !== (line.days ?? null)
+  );
+}
+
 /**
  * 最新 intake と前回 intake から p0_11 の差分レビュー構造を組み立てる。
  * 既存の detectMedicationChanges を流用し、変化なしの行も含めて 4 列テーブルを作る。
@@ -77,64 +94,62 @@ function hasSetProcessing(line: DiffReviewLine): boolean {
 function buildDiffReview(latest: DiffReviewLine[], previous: DiffReviewLine[]) {
   // サブカード集約・件数には既存の detectMedicationChanges を流用する
   const changes = detectMedicationChanges(latest, previous);
-  const prevByKey = new Map(previous.map((line) => [prescriptionLineKey(line), line]));
 
   const rows: DiffReviewRow[] = [];
 
-  // 今回処方に存在する行(追加 / 変更 / 変化なし)。
-  // detectMedicationChanges と同じ prescriptionLineKey 同定で前回行と突き合わせる
-  for (const line of latest) {
-    const key = prescriptionLineKey(line);
-    const prev = prevByKey.get(key) ?? null;
+  // 今回処方に存在する行(追加 / 変更 / 変化なし)と前回のみ存在する行(中止)。
+  // detectMedicationChanges と同じ matcher で前回行と突き合わせる。
+  for (const match of matchMedicationDiffLines(latest, previous)) {
+    const line = match.current;
+    const prev = match.previous;
+    const rowSource = line ?? prev;
+    if (!rowSource) continue;
+
     let changeType: DiffReviewChangeType;
-    if (!prev) {
+    if (line && !prev) {
       changeType = 'added';
-    } else if (
-      prev.dose !== line.dose ||
-      prev.frequency !== line.frequency ||
-      (prev.days ?? null) !== (line.days ?? null)
-    ) {
+    } else if (!line && prev) {
+      changeType = 'removed';
+    } else if (line && prev && hasDiffReviewLineChange(line, prev)) {
       // 用量・用法に加えて投与日数の変化も「変更」として検出する
       // (日数のみの変化を薬剤師が見落とさないよう、変化なし扱いにしない)。
       changeType = 'changed';
     } else {
       changeType = 'unchanged';
     }
+
     rows.push({
-      key,
-      drug_name: line.drug_name,
+      key: line ? line.id : `removed-${prev?.id ?? prescriptionLineKey(rowSource)}`,
+      drug_name: rowSource.drug_name,
       change_type: changeType,
       change_label: CHANGE_LABELS[changeType],
       previous_label: prev ? formatLineLabel(prev) : 'なし',
-      current_label: changeType === 'unchanged' ? '同じ' : formatLineLabel(line),
-      pharmacist_memo: line.notes?.trim() || null,
-    });
-  }
-
-  // 前回のみ存在する行(中止)
-  for (const line of previous) {
-    const key = prescriptionLineKey(line);
-    if (latest.some((current) => prescriptionLineKey(current) === key)) continue;
-    rows.push({
-      key,
-      drug_name: line.drug_name,
-      change_type: 'removed',
-      change_label: CHANGE_LABELS.removed,
-      previous_label: formatLineLabel(line),
-      current_label: '中止',
-      pharmacist_memo: line.notes?.trim() || null,
+      current_label:
+        changeType === 'removed'
+          ? '中止'
+          : changeType === 'unchanged'
+            ? '同じ'
+            : line
+              ? formatLineLabel(line)
+              : null,
+      pharmacist_memo: (line ?? prev)?.notes?.trim() || null,
     });
   }
 
   // 変化のある行を上に、変化なしを下に並べる
-  const order: Record<DiffReviewChangeType, number> = { added: 0, removed: 1, changed: 2, unchanged: 3 };
+  const order: Record<DiffReviewChangeType, number> = {
+    added: 0,
+    removed: 1,
+    changed: 2,
+    unchanged: 3,
+  };
   rows.sort((a, b) => order[a.change_type] - order[b.change_type]);
 
   // サブカード「セットにも影響する変化」: 中止薬回収 / 加工指定 / 開始日指定
   const setImpacts: string[] = [];
-  const removedLines = previous.filter(
-    (line) => !latest.some((current) => prescriptionLineKey(current) === prescriptionLineKey(line)),
-  );
+  const removedLines = matchMedicationDiffLines(latest, previous)
+    .filter((match) => !match.current && match.previous)
+    .map((match) => match.previous!);
   if (removedLines.length > 0) {
     setImpacts.push(`中止薬回収が必要: ${removedLines.map((line) => line.drug_name).join('、')}`);
   }
@@ -205,6 +220,7 @@ export const GET = withAuthContext(
 
     const { searchParams } = new URL(req.url);
     const { cursor, limit } = parsePaginationParams(searchParams);
+    const caseId = optionalTrimmedSearchParam(searchParams.get('case_id'));
     const keysetWhere = buildKeysetWhere(
       decodeKeysetCursor(PATIENT_PRESCRIPTION_CURSOR_KEYS, cursor),
     );
@@ -223,11 +239,22 @@ export const GET = withAuthContext(
       patientId,
       accessContext: { userId: ctx.userId, role: ctx.role },
     });
+    const scopedCaseIds = caseId ? caseIds.filter((id) => id === caseId) : caseIds;
+    if (scopedCaseIds.length === 0) {
+      return success({
+        patient,
+        data: [],
+        hasMore: false,
+        nextCursor: undefined,
+        diff_review: null,
+        diff_meta: null,
+      });
+    }
 
     const intakes = await prisma.prescriptionIntake.findMany({
       where: {
         org_id: ctx.orgId,
-        cycle: { patient_id: patientId, case_id: { in: caseIds } },
+        cycle: { patient_id: patientId, case_id: { in: scopedCaseIds } },
         ...(keysetWhere ?? {}),
       },
       orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }, { id: 'desc' }],
@@ -237,6 +264,7 @@ export const GET = withAuthContext(
         cycle_id: true,
         source_type: true,
         prescribed_date: true,
+        updated_at: true,
         prescriber_name: true,
         prescriber_institution: true,
         prescription_expiry_date: true,
@@ -257,6 +285,7 @@ export const GET = withAuthContext(
           select: {
             id: true,
             line_number: true,
+            updated_at: true,
             drug_name: true,
             drug_code: true,
             dosage_form: true,
@@ -284,10 +313,7 @@ export const GET = withAuthContext(
     // p0_11「処方の変化を確認」用の差分。最初のページ(カーソル無し)でのみ最新 2 件を比較する
     const diffReview =
       !cursor && data.length >= 2
-        ? buildDiffReview(
-            data[0].lines as DiffReviewLine[],
-            data[1].lines as DiffReviewLine[],
-          )
+        ? buildDiffReview(data[0].lines as DiffReviewLine[], data[1].lines as DiffReviewLine[])
         : null;
     const diffMeta =
       !cursor && data.length >= 2

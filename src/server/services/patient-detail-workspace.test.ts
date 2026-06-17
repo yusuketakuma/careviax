@@ -32,6 +32,9 @@ function buildDb(cycle: unknown) {
         },
       ]),
     },
+    prescriptionIntake: {
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
   };
 }
 
@@ -85,6 +88,7 @@ describe('buildPatientWorkspace', () => {
     };
     const cycle = {
       id: 'cycle_1',
+      case_id: 'case_1',
       overall_status: 'dispensed',
       exception_status: 'open',
       prescription_intakes: [
@@ -157,6 +161,12 @@ describe('buildPatientWorkspace', () => {
       ],
     };
     const db = buildDb(cycle);
+    db.prescriptionIntake.findFirst.mockResolvedValue({
+      id: 'intake_previous',
+      prescribed_date: new Date(2026, 5, 5),
+      created_at: new Date(2026, 5, 5, 7, 0),
+      lines: [previousLine],
+    });
 
     const result = await buildPatientWorkspace(
       db as unknown as Parameters<typeof buildPatientWorkspace>[0],
@@ -178,6 +188,36 @@ describe('buildPatientWorkspace', () => {
       },
     );
 
+    expect(db.medicationCycle.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          case_id: true,
+          prescription_intakes: expect.objectContaining({
+            orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }],
+            take: 2,
+          }),
+        }),
+      }),
+    );
+    expect(db.prescriptionIntake.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          id: { not: 'intake_current' },
+          cycle: {
+            patient_id: 'patient_1',
+            case_id: 'case_1',
+          },
+          OR: [
+            { prescribed_date: { lt: new Date(2026, 5, 12) } },
+            {
+              prescribed_date: new Date(2026, 5, 12),
+              created_at: { lt: new Date(2026, 5, 12, 7, 0) },
+            },
+          ],
+        }),
+      }),
+    );
     expect(result).toMatchObject({
       cycle_id: 'cycle_1',
       overall_status: 'dispensed',
@@ -213,6 +253,12 @@ describe('buildPatientWorkspace', () => {
       }),
       prescription_document_url: 's3://prescription.pdf',
     });
+    expect(result?.medication_changes).toEqual([
+      expect.objectContaining({
+        change_type: 'dose_changed',
+        drug_name: 'モルヒネ錠',
+      }),
+    ]);
     expect(result?.recent_activities).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -232,7 +278,7 @@ describe('buildPatientWorkspace', () => {
         tone: 'deadline',
         time_label: '期限 09:30',
         label: '麻薬監査',
-        href: '/auditing',
+        href: '/audit',
         action_label: '監査へ',
         due_time: '09:30',
       },
@@ -246,5 +292,106 @@ describe('buildPatientWorkspace', () => {
       }),
     ]);
     expect(result?.recent_activities).toHaveLength(4);
+  });
+
+  it('compares the current workspace intake with the previous patient case intake across cycles', async () => {
+    const currentLine = {
+      id: 'line_current',
+      drug_name: 'アムロジピン錠',
+      drug_code: 'drug_1',
+      dose: '2.5mg 1錠',
+      frequency: '朝',
+      days: 14,
+      quantity: 14,
+      unit: '錠',
+      start_date: new Date(2026, 5, 12),
+      end_date: new Date(2026, 5, 25),
+      dispensing_method: null,
+      packaging_instruction_tags: [],
+    };
+    const previousLine = {
+      ...currentLine,
+      id: 'line_previous',
+      dose: '5mg 1錠',
+      start_date: new Date(2026, 4, 29),
+      end_date: new Date(2026, 5, 11),
+    };
+    const currentIntake = {
+      id: 'intake_current',
+      prescribed_date: new Date(2026, 5, 12),
+      original_document_url: null,
+      prescription_category: 'regular',
+      prescriber_institution: '在宅クリニック',
+      created_at: new Date(2026, 5, 12, 7, 0),
+      lines: [currentLine],
+    };
+    const cycle = {
+      id: 'cycle_current',
+      case_id: 'case_1',
+      overall_status: 'dispensed',
+      exception_status: null,
+      prescription_intakes: [currentIntake],
+      set_plans: [],
+      workflow_exceptions: [],
+      transition_logs: [],
+      inquiries: [],
+      dispense_tasks: [],
+    };
+    const db = buildDb(cycle);
+    db.prescriptionIntake.findFirst.mockResolvedValue({
+      id: 'intake_previous_cycle',
+      prescribed_date: new Date(2026, 4, 29),
+      created_at: new Date(2026, 4, 29, 7, 0),
+      lines: [previousLine],
+    });
+
+    const result = await buildPatientWorkspace(
+      db as unknown as Parameters<typeof buildPatientWorkspace>[0],
+      {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        caseIds: ['case_1'],
+        allergyInfo: null,
+        conditions: [],
+        swallowingRoute: null,
+      },
+    );
+
+    expect(db.prescriptionIntake.findFirst).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        id: { not: 'intake_current' },
+        cycle: {
+          patient_id: 'patient_1',
+          case_id: 'case_1',
+        },
+        OR: [
+          { prescribed_date: { lt: currentIntake.prescribed_date } },
+          {
+            prescribed_date: currentIntake.prescribed_date,
+            created_at: { lt: currentIntake.created_at },
+          },
+        ],
+      },
+      orderBy: [{ prescribed_date: 'desc' }, { created_at: 'desc' }],
+      select: expect.objectContaining({
+        id: true,
+        lines: expect.objectContaining({
+          orderBy: { line_number: 'asc' },
+        }),
+      }),
+    });
+    expect(result?.medication_changes).toEqual([
+      {
+        change_type: 'dose_changed',
+        drug_name: 'アムロジピン錠',
+        frequency: '朝',
+        days: 14,
+      },
+    ]);
+    expect(result?.previous_medication).toEqual({
+      start: previousLine.start_date,
+      end: previousLine.end_date,
+    });
   });
 });

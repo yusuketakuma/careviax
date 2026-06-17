@@ -7,6 +7,7 @@ import {
   buildMedicationFormatGroups,
   buildPausedLabel,
   canApproveCounts,
+  deriveListBadge,
   familyName,
   findNextCountTarget,
   formatAgeMinutesLabel,
@@ -29,10 +30,12 @@ function countRow(overrides: Partial<WorkbenchCountRow> = {}): WorkbenchCountRow
     route: 'internal',
     tags: ['narcotic'],
     is_narcotic: true,
+    is_generic: false,
     prescribed_label: '14錠',
     prescribed_quantity: 14,
     days: 14,
     dispensed_label: '14錠',
+    dispensed_at: '2026-06-11',
     dispensed_quantity: 14,
     unit: '錠',
     dispensing_method: null,
@@ -46,9 +49,14 @@ function countRow(overrides: Partial<WorkbenchCountRow> = {}): WorkbenchCountRow
 function workbench(overrides: Partial<DispenseWorkbenchData> = {}): DispenseWorkbenchData {
   return {
     task: { id: 'task_1', status: 'pending', priority: 'normal', due_date: null },
-    cycle: { id: 'cycle_1', overall_status: 'inquiry_resolved' },
+    cycle: { id: 'cycle_1', overall_status: 'inquiry_resolved', version: 1 },
     patient: { id: 'patient_1', name: '佐々木 ハル' },
-    intake: { id: 'intake_1', prescribed_date: '2026-06-11' },
+    intake: {
+      id: 'intake_1',
+      prescribed_date: '2026-06-11',
+      prescriber_institution: '青葉クリニック',
+      prescriber_name: '佐藤 一郎',
+    },
     previous_intake: { prescribed_date: '2026-05-14' },
     safety: {
       allergy: null,
@@ -389,5 +397,41 @@ describe('dispense-workbench.shared', () => {
         line_plain: { first: 14, second: 14 },
       }),
     ).toBeNull();
+  });
+});
+
+describe('deriveListBadge', () => {
+  it('maps audited and downstream statuses to audited', () => {
+    for (const status of [
+      'audited',
+      'setting',
+      'set_audited',
+      'visit_ready',
+      'visit_completed',
+      'reported',
+    ]) {
+      expect(deriveListBadge(status)).toBe('audited');
+    }
+  });
+
+  it('maps dispensing/dispensed/audit_pending to in_progress', () => {
+    for (const status of ['dispensing', 'dispensed', 'audit_pending']) {
+      expect(deriveListBadge(status)).toBe('in_progress');
+    }
+  });
+
+  it('maps pre-dispense, hold, cancelled and null to not_started', () => {
+    for (const status of [
+      'intake_received',
+      'structuring',
+      'inquiry_pending',
+      'inquiry_resolved',
+      'ready_to_dispense',
+      'on_hold',
+      'cancelled',
+      null,
+    ]) {
+      expect(deriveListBadge(status)).toBe('not_started');
+    }
   });
 });

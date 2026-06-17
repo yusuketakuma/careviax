@@ -15,6 +15,7 @@ const E2E_ENV = {
   NEXTAUTH_SECRET: 'ph-os-local-auth-secret',
   NEXTAUTH_URL: APP_ORIGIN,
   NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM: '1',
+  NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA: '1',
   NEXT_FONT_GOOGLE_MOCKED_RESPONSES: `${process.cwd()}/tools/tests/helpers/next-font-google-mocked-responses.cjs`,
 };
 

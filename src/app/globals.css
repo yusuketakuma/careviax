@@ -7,7 +7,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  --font-sans:
+    Meiryo, 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Yu Gothic Medium', var(--font-noto-jp),
+    system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -67,8 +69,8 @@
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.15 0.01 250);
 
-  /* Primary: Calm blue (trust, medical) */
-  --primary: oklch(0.45 0.12 240);
+  /* Primary: Deep navy (レセコン #1f4e79 相当, trust, medical) */
+  --primary: oklch(0.38 0.09 252);
   --primary-foreground: oklch(0.98 0 0);
 
   /* Secondary: Blue-grey */
@@ -89,7 +91,7 @@
   /* Border / Input */
   --border: oklch(0.88 0.01 240);
   --input: oklch(0.88 0.01 240);
-  --ring: oklch(0.55 0.1 240);
+  --ring: oklch(0.45 0.1 252);
 
   /* Charts: medical data visualization */
   --chart-1: oklch(0.45 0.12 240);
@@ -128,7 +130,7 @@
   --card-foreground: oklch(0.95 0.005 240);
   --popover: oklch(0.18 0.01 240);
   --popover-foreground: oklch(0.95 0.005 240);
-  --primary: oklch(0.6 0.12 240);
+  --primary: oklch(0.62 0.1 250);
   --primary-foreground: oklch(0.98 0 0);
   --secondary: oklch(0.22 0.02 240);
   --secondary-foreground: oklch(0.9 0.01 240);
@@ -139,7 +141,7 @@
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.55 0.1 240);
+  --ring: oklch(0.62 0.1 250);
   --chart-1: oklch(0.6 0.12 240);
   --chart-2: oklch(0.65 0.1 160);
   --chart-3: oklch(0.7 0.12 55);
@@ -228,6 +230,30 @@
   .phos-patient-card-motion:hover {
     transform: none;
     box-shadow: none;
+  }
+}
+
+@media (hover: none) and (pointer: coarse), (max-width: 767px) {
+  body
+    :is(
+      a[href],
+      button,
+      input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']),
+      select,
+      textarea,
+      [role='button']
+    ):not([aria-hidden='true']):not([tabindex='-1']) {
+    min-block-size: 44px !important;
+    min-inline-size: 44px !important;
+    touch-action: manipulation;
+  }
+
+  body
+    a[href]:not(.block):not(.flex):not(.inline-flex):not(.grid):not([class*='block']):not(
+      [class*='flex']
+    ):not([class*='grid']) {
+    display: inline-flex;
+    align-items: center;
   }
 }
 

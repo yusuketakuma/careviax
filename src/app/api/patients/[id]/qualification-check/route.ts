@@ -11,6 +11,7 @@ import { format } from 'date-fns';
 import { notifyWebhookEventForOrg } from '@/server/services/outbound-webhook';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { resolvePatientInsurance } from '@/server/services/patient-insurance';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
@@ -23,6 +24,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id: rawId } = await params;
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('患者IDが不正です');
+
+  const writable = await requireWritablePatient(prisma, ctx, id);
+  if ('response' in writable) return writable.response;
 
   const patient = await prisma.patient.findFirst({
     where: applyPatientAssignmentWhere(

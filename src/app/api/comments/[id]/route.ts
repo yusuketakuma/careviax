@@ -2,6 +2,7 @@ import { withAuthContext } from '@/lib/auth/context';
 import { success, notFound } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
+import { broadcastOrgRealtimeEvent } from '@/server/services/org-realtime';
 
 export const DELETE = withAuthContext<{ id: string }>(
   async (_req, ctx, routeContext) => {
@@ -13,14 +14,17 @@ export const DELETE = withAuthContext<{ id: string }>(
     });
     if (!existing) return notFound('コメントが見つからないか、削除権限がありません');
 
-    await withOrgContext(ctx.orgId, (tx) =>
-      tx.taskComment.delete({ where: { id } })
-    );
+    await withOrgContext(ctx.orgId, (tx) => tx.taskComment.delete({ where: { id } }));
+
+    await broadcastOrgRealtimeEvent({
+      orgId: ctx.orgId,
+      type: 'comment_refresh',
+    });
 
     return success({ deleted: true });
   },
   {
     permission: 'canDispense',
     message: 'コメントの削除権限がありません',
-  }
+  },
 );

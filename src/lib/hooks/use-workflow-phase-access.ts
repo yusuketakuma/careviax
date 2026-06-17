@@ -195,11 +195,12 @@ export function buildWorkflowPhaseAccess(
   const workbench = normalizeWorkflowWorkbench(payload.unified_workbench) ?? [];
   const proposals = workbench.filter((item) => item.item_type === 'proposal');
   const dispensing = workbench.filter((item) => item.action_href.startsWith('/dispense'));
-  const auditing = workbench.filter((item) => item.action_href.startsWith('/auditing'));
-  const medicationSets = workbench.filter((item) =>
-    item.action_href.startsWith('/medication-sets'),
+  const auditing = workbench.filter((item) => item.action_href.startsWith('/audit'));
+  const medicationSets = workbench.filter(
+    (item) =>
+      item.action_href.startsWith('/set') && !item.action_href.startsWith('/set-audit'),
   );
-  const setAudits: WorkflowWorkbenchItem[] = [];
+  const setAudits = workbench.filter((item) => item.action_href.startsWith('/set-audit'));
   const schedules = workbench.filter((item) => item.action_href.startsWith('/schedules'));
   const visits = workbench.filter(
     (item) => item.item_type === 'visit' || item.action_href.startsWith('/visits'),
@@ -272,7 +273,7 @@ export function buildWorkflowPhaseAccess(
     auditing: {
       preview_items: auditingNext ? [previewFromWorkbenchItem(auditingNext)] : [],
       label: '調剤監査',
-      href: '/auditing',
+      href: '/audit',
       pending_count: auditing.length,
       summary: auditing.length > 0 ? `監査待ち ${auditing.length}件` : '監査待ちはありません',
       tone: auditing.length > 0 ? 'warning' : 'default',
@@ -283,7 +284,7 @@ export function buildWorkflowPhaseAccess(
     medication_sets: {
       preview_items: medicationSetsNext ? [previewFromWorkbenchItem(medicationSetsNext)] : [],
       label: 'セット',
-      href: '/medication-sets',
+      href: '/set',
       pending_count: medicationSetPendingCount,
       summary:
         medicationSetPendingCount > 0
@@ -294,7 +295,7 @@ export function buildWorkflowPhaseAccess(
         ? { href: medicationSetsNext.action_href, label: medicationSetsNext.action_label }
         : medicationSetPendingCount > 0
           ? {
-              href: '/medication-sets',
+              href: '/set',
               label: 'セット管理を開く',
             }
           : null,
@@ -302,7 +303,7 @@ export function buildWorkflowPhaseAccess(
     set_audit: {
       preview_items: setAuditsNext ? [previewFromWorkbenchItem(setAuditsNext)] : [],
       label: 'セット監査',
-      href: '/medication-sets',
+      href: '/set-audit',
       pending_count: setAuditPendingCount,
       summary:
         setAuditPendingCount > 0
@@ -312,7 +313,7 @@ export function buildWorkflowPhaseAccess(
       next_action: setAuditsNext
         ? { href: setAuditsNext.action_href, label: setAuditsNext.action_label }
         : setAuditPendingCount > 0
-          ? { href: '/medication-sets', label: 'セット監査を確認' }
+          ? { href: '/set-audit', label: 'セット監査を確認' }
           : null,
     },
     schedules: {

@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -297,26 +298,22 @@ export const PATCH = withAuthContext<{ id: string }>(
               : Prisma.JsonNull,
         },
       });
-      await tx.auditLog.create({
-        data: {
-          org_id: ctx.orgId,
-          actor_id: ctx.userId,
-          action: 'conference_note.updated',
-          target_type: 'conference_note',
-          target_id: saved.id,
-          changes: {
-            conference_note: {
-              note_type: resolvedNoteType,
-              report_type: normalizedMetadata?.conference_operation?.report_type ?? null,
-              follow_up_date: mergedValidation.data.follow_up_date ?? null,
-              follow_up_completed: mergedValidation.data.follow_up_completed ?? false,
-              action_item_count: mergedValidation.data.action_items?.length ?? 0,
-              billing_eligible: resolvedBillingEligible,
-              billing_code: resolvedBillingCode,
-              changed_fields: Object.keys(parsed.data).filter(
-                (field) => field !== 'content' && field !== 'participants',
-              ),
-            },
+      await createAuditLogEntry(tx, ctx, {
+        action: 'conference_note.updated',
+        targetType: 'conference_note',
+        targetId: saved.id,
+        changes: {
+          conference_note: {
+            note_type: resolvedNoteType,
+            report_type: normalizedMetadata?.conference_operation?.report_type ?? null,
+            follow_up_date: mergedValidation.data.follow_up_date ?? null,
+            follow_up_completed: mergedValidation.data.follow_up_completed ?? false,
+            action_item_count: mergedValidation.data.action_items?.length ?? 0,
+            billing_eligible: resolvedBillingEligible,
+            billing_code: resolvedBillingCode,
+            changed_fields: Object.keys(parsed.data).filter(
+              (field) => field !== 'content' && field !== 'participants',
+            ),
           },
         },
       });

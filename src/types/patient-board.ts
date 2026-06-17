@@ -55,6 +55,14 @@ export type PatientBoardCard = {
   status_tone: PatientStatusTone;
   /** 一覧でクリック前に確認したい訪問条件(連絡先有無/駐車/介護度など、電話番号は含めない) */
   operation_summary?: string[];
+  /** 患者カード/詳細の情報基盤として、次に確認すべき正本項目。PHI の生値は含めない */
+  foundation_summary?: {
+    status: 'ready' | 'needs_confirmation' | 'missing';
+    label: string;
+    items: string[];
+  };
+  /** 未確認の正本項目へ直接移動する導線。通常は患者詳細の正本確認アンカー */
+  foundation_href?: string;
   /** 工程ショートカット(「→ 監査へ」等) */
   link_label: string;
   link_href: string;

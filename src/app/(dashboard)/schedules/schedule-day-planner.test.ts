@@ -501,10 +501,11 @@ describe('schedule day planner helpers', () => {
       data: [{ id: 'proposal_1' } as Proposal],
       alerts: [alert('算定確認', 'warning')],
     };
-    const fetchImpl = vi.fn(async () => ({
+    const fetchMock = vi.fn(async () => ({
       ok: true,
       json: async () => payload,
-    })) as unknown as typeof fetch;
+    }));
+    const fetchImpl = fetchMock as unknown as typeof fetch;
 
     await expect(
       generateScheduleDayProposals({
@@ -523,17 +524,18 @@ describe('schedule day planner helpers', () => {
         'Content-Type': 'application/json',
         'x-org-id': 'org_1',
       },
-      body: JSON.stringify({
-        case_id: 'case_1',
-        visit_type: 'regular',
-        priority: 'urgent',
-        travel_mode: 'DRIVE',
-        start_date: '2026-06-11',
-        preferred_time_from: '09:00',
-        preferred_time_to: undefined,
-        vehicle_resource_id: undefined,
-        candidate_count: 3,
-      }),
+      body: expect.any(String),
+    });
+    const [, requestInit] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(requestInit?.body))).toMatchObject({
+      case_id: 'case_1',
+      visit_type: 'regular',
+      priority: 'urgent',
+      travel_mode: 'DRIVE',
+      start_date: '2026-06-11',
+      preferred_time_from: '09:00',
+      candidate_count: 3,
+      idempotency_key: expect.stringMatching(/^schedule-day:/),
     });
   });
 

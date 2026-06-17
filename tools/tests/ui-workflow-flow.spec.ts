@@ -111,12 +111,14 @@ test.describe('dispensing queue', () => {
     await openStableRoute(page, '/dispense');
 
     const main = page.locator('main');
-    await expect(main.getByTestId('dispense-workbench')).toBeVisible();
-    await expect(page.getByRole('heading', { name: '調剤キュー', exact: true })).toBeVisible();
-
-    // Shortcut links (scoped to main to avoid sidebar duplicates)
-    await expect(main.getByRole('link', { name: '監査', exact: true })).toBeVisible();
-    await expect(main.getByRole('link', { name: 'ワークフロー' })).toBeVisible();
+    // 新 DispensingWorkbench はレセコン風シェル。安定アンカーはメニューバー nav[aria-label="メインメニュー"]。
+    // 旧 dispense-workbench testid は撤去済み。
+    await expect(main.getByRole('navigation', { name: 'メインメニュー' })).toBeVisible();
+    // 工程タブ（調剤 / 調剤監査 / セット / セット監査）への <Link> が描画される。
+    await expect(main.getByRole('link', { name: '調剤監査', exact: true })).toBeVisible();
+    await expect(main.getByRole('link', { name: 'セット', exact: true })).toBeVisible();
+    // 要確認: 旧 dispense ページの「調剤キュー」見出し・「監査」「ワークフロー」ショートカットリンクは
+    // 新ワークベンチには存在しない（工程タブ + F-key バーに置換）。旧アサーションは撤去。
 
     expect(errors).toEqual([]);
   });
@@ -134,16 +136,18 @@ test.describe('dispensing queue', () => {
     expect(errors).toEqual([]);
   });
 
-  test('shortcut link from dispensing to auditing works', async ({ context }) => {
+  test('phase tab from dispensing to audit works', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/dispense');
 
     const main = page.locator('main');
-    await clickAndWaitForStableRoute(page, /\/auditing/, () =>
-      main.getByRole('link', { name: '監査', exact: true }).first().click(),
+    // 新ワークベンチは工程タブ（調剤監査 → /audit）の <Link> で遷移する。
+    await clickAndWaitForStableRoute(page, /\/audit/, () =>
+      main.getByRole('link', { name: '調剤監査', exact: true }).first().click(),
     );
 
-    await expect(page.getByRole('heading', { name: '監査', exact: true })).toBeVisible();
+    // 遷移後は調剤監査工程タブが active（aria-current="page"）になる。
+    await expect(main.locator('a[aria-current="page"]')).toBeVisible();
     expect(errors).toEqual([]);
   });
 });
@@ -153,26 +157,26 @@ test.describe('auditing queue', () => {
     await attachLocalSession(context);
   });
 
-  test('auditing queue page loads with header and shortcut links', async ({ context }) => {
+  test('audit queue page loads with workbench shell and phase tabs', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await openStableRoute(page, '/auditing');
+    await openStableRoute(page, '/audit');
 
     const main = page.locator('main');
-    await expect(page.getByRole('heading', { name: '監査', exact: true })).toBeVisible();
-    await expect(main.getByTestId('audit-workbench')).toBeVisible();
-    await expect(main.getByTestId('main-workflow-compact-nav')).toBeVisible();
-
-    // Shortcut links (scoped to main to avoid sidebar duplicates)
+    // 新 DispensingWorkbench（phase="audit"）。安定アンカーはメニューバー。
+    // 旧 audit-workbench / main-workflow-compact-nav testid は撤去済み。
+    await expect(main.getByRole('navigation', { name: 'メインメニュー' })).toBeVisible();
+    // 工程タブ（調剤 / セット）への <Link> が描画される。
     await expect(main.getByRole('link', { name: '調剤', exact: true }).first()).toBeVisible();
     await expect(main.getByRole('link', { name: 'セット', exact: true }).first()).toBeVisible();
-    await expect(main.getByRole('link', { name: 'ワークフロー' })).toBeVisible();
+    // 要確認: 旧 audit ページの「監査」見出し・「ワークフロー」ショートカットリンクは
+    // 新ワークベンチには存在しない（工程タブ + F-key バーに置換）。旧アサーションは撤去。
 
     expect(errors).toEqual([]);
   });
 
-  test('auditing queue shows task list or empty state', async ({ context }) => {
+  test('audit queue shows workbench content', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    await openStableRoute(page, '/auditing');
+    await openStableRoute(page, '/audit');
 
     const hasContent = await page.locator('main').textContent();
     expect(hasContent?.trim().length).toBeGreaterThan(0);
@@ -186,7 +190,7 @@ test.describe('workflow cross-navigation', () => {
     await attachLocalSession(context);
   });
 
-  test('full workflow navigation: prescriptions -> dispensing -> auditing -> back', async ({
+  test('full workflow navigation: prescriptions -> dispense -> audit -> back', async ({
     context,
   }) => {
     const { page, errors } = await createInstrumentedPage(context);
@@ -195,24 +199,25 @@ test.describe('workflow cross-navigation', () => {
     await openStableRoute(page, '/prescriptions');
     await expect(page.getByRole('heading', { name: '処方受付' })).toBeVisible();
 
-    // Navigate to dispensing via shortcut
+    // Navigate to dispense via shortcut（/prescriptions 側の「調剤キュー」ショートカットは維持）
     await clickAndWaitForStableRoute(page, /\/dispense/, () =>
       page.locator('main').getByRole('link', { name: '調剤キュー' }).first().click(),
     );
-    await expect(page.getByRole('heading', { name: '調剤キュー', exact: true })).toBeVisible();
-
-    // Navigate to auditing via shortcut (scope to main to avoid sidebar duplicate)
+    // 新ワークベンチのメニューバーが安定アンカー（旧「調剤キュー」見出しは撤去済み）。
     const main = page.locator('main');
-    await clickAndWaitForStableRoute(page, /\/auditing/, () =>
-      main.getByRole('link', { name: '監査', exact: true }).first().click(),
-    );
-    await expect(page.getByRole('heading', { name: '監査', exact: true })).toBeVisible();
+    await expect(main.getByRole('navigation', { name: 'メインメニュー' })).toBeVisible();
 
-    // Navigate back to dispensing via shortcut (scope to main)
+    // Navigate to audit via 工程タブ（調剤監査 → /audit）
+    await clickAndWaitForStableRoute(page, /\/audit/, () =>
+      main.getByRole('link', { name: '調剤監査', exact: true }).first().click(),
+    );
+    await expect(main.locator('a[aria-current="page"]')).toBeVisible();
+
+    // Navigate back to dispense via 工程タブ（調剤 → /dispense）
     await clickAndWaitForStableRoute(page, /\/dispense/, () =>
       main.getByRole('link', { name: '調剤', exact: true }).first().click(),
     );
-    await expect(page.getByRole('heading', { name: '調剤キュー', exact: true })).toBeVisible();
+    await expect(main.getByRole('navigation', { name: 'メインメニュー' })).toBeVisible();
 
     // Full round trip should have no errors
     expect(errors).toEqual([]);

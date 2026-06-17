@@ -45,6 +45,12 @@ type ContactRow = {
   notes: string;
 };
 
+type ReliabilityWarning = {
+  code: string;
+  severity: 'warning';
+  message: string;
+};
+
 const relationLabel: Record<ContactRow['relation'], string> = {
   self: '本人',
   spouse: '配偶者',
@@ -144,10 +150,13 @@ export function PatientContactsPanel({
       if (!res.ok) {
         throw new Error((payload as { message?: string }).message ?? '連絡先の保存に失敗しました');
       }
-      return payload;
+      return payload as { warnings?: ReliabilityWarning[] };
     },
-    onSuccess: async () => {
+    onSuccess: async (payload) => {
       toast.success('連絡先を更新しました');
+      for (const warning of payload.warnings ?? []) {
+        toast.warning(warning.message);
+      }
       await invalidateQueryKeys(queryClient, getPatientCareQueryKeys({ orgId, patientId }));
     },
     onError: (error) => {

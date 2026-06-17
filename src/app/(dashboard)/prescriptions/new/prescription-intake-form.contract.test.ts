@@ -18,6 +18,12 @@ describe('PrescriptionIntakeForm previous prescription safety contract', () => {
     expect(SOURCE).toContain('onConfirm={applyLatestPreviousPrescription}');
   });
 
+  it('does not carry stale previous prescription date windows into the next prescription', () => {
+    expect(SOURCE).toContain('服用開始日と終了日は今回処方で確認します。');
+    expect(SOURCE).not.toContain('start_date: line.start_date || previous.start_date || undefined');
+    expect(SOURCE).not.toContain('end_date: line.end_date || previous.end_date || undefined');
+  });
+
   it('warns when previous prescription replacement may overwrite QR-derived data', () => {
     expect(SOURCE).toContain('QR下書きから取り込んだ明細を前回処方の内容で置き換えます。');
     expect(SOURCE).toContain('QR由来の用量、日数、包装指示、注射剤判定に関わる情報');
@@ -33,5 +39,34 @@ describe('PrescriptionIntakeForm previous prescription safety contract', () => {
     expect(SOURCE).toMatch(
       /if \(qrDraftSubmissionId\) \{[\s\S]*setQrDraftSubmissionId\(''\);[\s\S]*setAppliedQrDraftId\(''\);/,
     );
+  });
+
+  it('carries previous prescription source revision metadata into replacement lines', () => {
+    expect(SOURCE).toContain('source_intake_id?: string');
+    expect(SOURCE).toContain('source_line_id?: string');
+    expect(SOURCE).toContain('source_intake_updated_at_snapshot?: string');
+    expect(SOURCE).toContain('source_line_updated_at_snapshot?: string');
+    expect(SOURCE).toContain('function previousSourceFields');
+    expect(SOURCE).toContain('source_intake_id: intake.id');
+    expect(SOURCE).toContain('source_line_id: line.id');
+    expect(SOURCE).toContain('source_intake_updated_at_snapshot: intake.updated_at');
+    expect(SOURCE).toContain('source_line_updated_at_snapshot: line.updated_at');
+    expect(SOURCE).toContain('source_intake_id: latestPreviousIntake.id');
+    expect(SOURCE).toContain('source_intake_updated_at_snapshot: latestPreviousIntake.updated_at');
+  });
+
+  it('replaces QR-derived lines with previous prescription provenance when confirmed', () => {
+    expect(SOURCE).toContain('qr_draft_id: qrDraftSubmissionId || undefined');
+    expect(SOURCE).toContain("setQrDraftSubmissionId('')");
+    expect(SOURCE).toContain('source_line_id: line.id');
+    expect(SOURCE).toContain('...previousSourceFields(previous, previousIntake)');
+  });
+
+  it('scopes previous prescription reuse to the selected case', () => {
+    expect(SOURCE).toContain(
+      "queryKey: ['patient-prescriptions', orgId, selectedPatientId, selectedCaseId]",
+    );
+    expect(SOURCE).toContain("new URLSearchParams({ limit: '5', case_id: selectedCaseId })");
+    expect(SOURCE).toContain('enabled: !!orgId && !!selectedPatientId && !!selectedCaseId');
   });
 });

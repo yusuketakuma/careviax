@@ -7,12 +7,14 @@ const {
   withOrgContextMock,
   dispatchNotificationEventMock,
   canAccessCollaborationEntityMock,
+  broadcastOrgRealtimeEventMock,
 } = vi.hoisted(() => ({
   taskCommentFindManyMock: vi.fn(),
   userFindManyMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
   canAccessCollaborationEntityMock: vi.fn(),
+  broadcastOrgRealtimeEventMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -43,6 +45,10 @@ vi.mock('@/lib/db/rls', () => ({
 
 vi.mock('@/server/services/notifications', () => ({
   dispatchNotificationEvent: dispatchNotificationEventMock,
+}));
+
+vi.mock('@/server/services/org-realtime', () => ({
+  broadcastOrgRealtimeEvent: broadcastOrgRealtimeEventMock,
 }));
 
 // per-entity 認可だけ stub し、entity_type の zod schema は実物を保持する。
@@ -100,6 +106,7 @@ describe('/api/comments', () => {
     );
     dispatchNotificationEventMock.mockResolvedValue(undefined);
     canAccessCollaborationEntityMock.mockResolvedValue(true);
+    broadcastOrgRealtimeEventMock.mockResolvedValue(undefined);
   });
 
   describe('per-entity authorization', () => {
@@ -140,6 +147,12 @@ describe('/api/comments', () => {
       const body = await response.json();
       expect(body.data).toHaveLength(1);
       expect(body.data[0].author_name).toBe('テスト薬剤師');
+      expect(taskCommentFindManyMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: { created_at: 'desc' },
+          take: 100,
+        }),
+      );
     });
 
     it('returns 400 when entity_type or entity_id is missing', async () => {
@@ -162,6 +175,10 @@ describe('/api/comments', () => {
       ))!;
 
       expect(response.status).toBe(201);
+      expect(broadcastOrgRealtimeEventMock).toHaveBeenCalledWith({
+        orgId: 'org_1',
+        type: 'comment_refresh',
+      });
     });
 
     it('rejects malformed JSON before opening an org transaction', async () => {
@@ -172,6 +189,7 @@ describe('/api/comments', () => {
       expect(body.code).toBe('VALIDATION_ERROR');
       expect(withOrgContextMock).not.toHaveBeenCalled();
       expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+      expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
     });
 
     it('rejects non-object create payloads before opening an org transaction', async () => {
@@ -180,6 +198,7 @@ describe('/api/comments', () => {
       expect(response.status).toBe(400);
       expect(withOrgContextMock).not.toHaveBeenCalled();
       expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+      expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
     });
   });
 });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -59,6 +59,25 @@ export function CollaborationContent({ patientId }: { patientId: string }) {
   });
 
   const presenceQueryKey = ['presence', PATIENT_PRESENCE_ENTITY_TYPE, patientId, orgId];
+  const presenceTargets = useMemo(
+    () => [{ entityType: PATIENT_PRESENCE_ENTITY_TYPE, entityId: patientId }],
+    [patientId],
+  );
+  const realtimePresence = useRealtimeEvents({
+    onEvent: (event) => {
+      const e = event as { type?: string; entity_type?: string; entity_id?: string };
+      if (
+        e.type === 'presence_update' &&
+        e.entity_type === PATIENT_PRESENCE_ENTITY_TYPE &&
+        e.entity_id === patientId
+      ) {
+        queryClient.invalidateQueries({ queryKey: presenceQueryKey });
+      }
+    },
+    enabled: Boolean(orgId) && Boolean(patientId),
+    presenceTargets,
+  });
+
   const presenceQuery = useQuery<PresenceUser[]>({
     queryKey: presenceQueryKey,
     queryFn: async () => {
@@ -70,22 +89,8 @@ export function CollaborationContent({ patientId }: { patientId: string }) {
       const json = (await res.json()) as { data?: PresenceUser[] };
       return json.data ?? [];
     },
-    refetchInterval: 5000,
+    refetchInterval: realtimePresence.connected ? false : 30_000,
     enabled: Boolean(orgId) && Boolean(patientId),
-  });
-
-  // SSE の presence_update で即時更新(stream 無効環境ではポーリングのみ)
-  useRealtimeEvents({
-    onEvent: (event) => {
-      const e = event as { type?: string; entity_type?: string; entity_id?: string };
-      if (
-        e.type === 'presence_update' &&
-        e.entity_type === PATIENT_PRESENCE_ENTITY_TYPE &&
-        e.entity_id === patientId
-      ) {
-        queryClient.invalidateQueries({ queryKey: presenceQueryKey });
-      }
-    },
   });
 
   // 患者名・ローディング/エラー表示と「最新を読み込む」の refetch 対象(card-workspace とキャッシュ共有)

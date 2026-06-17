@@ -301,6 +301,12 @@ function createIntakeErrorResponse(result: IntakeInTxErrorResult, cycleId: strin
   if (result.error === 'future_prescribed_date') {
     return validationError('未来日の処方箋は登録できません');
   }
+  if (result.error === 'invalid_source_prescription_line') {
+    return validationError('流用元の前回処方が見つからないか、この患者・ケースでは利用できません');
+  }
+  if (result.error === 'source_revision_conflict') {
+    return conflict('前回処方が更新されています。再読み込みしてください');
+  }
   if (result.error === 'invalid_transition') {
     return validationError('サイクルの状態遷移が無効です');
   }
@@ -788,6 +794,14 @@ export const POST = withAuthContext(
       }
       if (result.error === 'future_prescribed_date') {
         return validationError('未来日の処方箋は登録できません');
+      }
+      if (result.error === 'invalid_source_prescription_line') {
+        return validationError(
+          '流用元の前回処方が見つからないか、この患者・ケースでは利用できません',
+        );
+      }
+      if (result.error === 'source_revision_conflict') {
+        return conflict('前回処方が更新されています。再読み込みしてください');
       }
       if (result.error === 'prescriber_institution_not_found') {
         return validationError(result.message);

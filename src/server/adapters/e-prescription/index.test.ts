@@ -190,6 +190,45 @@ describe('EPrescriptionAdapter', () => {
     } satisfies Partial<EPrescriptionAdapterError>);
   });
 
+  it('wraps malformed upstream JSON as a typed retriable fetch failure', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('not-json', {
+        status: 502,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const adapter = createEPrescriptionAdapter({
+      provider: 'mhlw',
+      baseUrl: 'https://example.jp/e-prescription',
+      accessToken: 'ep-token',
+    });
+
+    await expect(adapter.fetchPrescription('ep-1')).rejects.toMatchObject({
+      name: 'EPrescriptionAdapterError',
+      code: 'UPSTREAM_FAILURE',
+      retriable: true,
+      status: 502,
+    } satisfies Partial<EPrescriptionAdapterError>);
+  });
+
+  it('wraps network-level fetch failures as typed retriable failures', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('fetch failed'));
+
+    const adapter = createEPrescriptionAdapter({
+      provider: 'mhlw',
+      baseUrl: 'https://example.jp/e-prescription',
+      accessToken: 'ep-token',
+    });
+
+    await expect(adapter.fetchPrescription('ep-1')).rejects.toMatchObject({
+      name: 'EPrescriptionAdapterError',
+      code: 'UPSTREAM_FAILURE',
+      retriable: true,
+      status: undefined,
+    } satisfies Partial<EPrescriptionAdapterError>);
+  });
+
   it('fails closed for malformed successful search responses', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ data: [{ ...validRecord, patientExternalId: 123 }] }), {

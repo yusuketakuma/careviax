@@ -273,6 +273,22 @@ const HOME_OPS_TONE_CLASSES: Record<HomeOpsItem['tone'], string> = {
   neutral: 'border-border/70 bg-muted/20 text-foreground',
 };
 
+const FOUNDATION_STATUS_CLASSES: Record<
+  PatientOverview['foundation']['summary']['status'],
+  string
+> = {
+  ready: 'border-emerald-200 bg-emerald-50 text-emerald-950',
+  needs_confirmation: 'border-amber-200 bg-amber-50 text-amber-950',
+  missing: 'border-red-200 bg-red-50 text-red-950',
+};
+
+const FOUNDATION_STATUS_LABELS: Record<PatientOverview['foundation']['summary']['status'], string> =
+  {
+    ready: '確認済',
+    needs_confirmation: '要確認',
+    missing: '停止中',
+  };
+
 const HOME_OPS_ICONS: Record<PatientHomeOperationKey, typeof FileText> = {
   documents: FileText,
   mcs: Link2,
@@ -2808,6 +2824,253 @@ function PatientProfilePanel({ patient }: { patient: PatientOverview }) {
   );
 }
 
+function PatientFoundationPanel({ patient }: { patient: PatientOverview }) {
+  const foundation = patient.foundation;
+  const changedItems = foundation.changes_since_last_visit;
+  const labItems = foundation.latest_labs.slice(0, 4);
+  const insuranceItems = foundation.insurances.slice(0, 3);
+  const queryClient = useQueryClient();
+  const [creatingTaskKey, setCreatingTaskKey] = useState<string | null>(null);
+  const actionableItems = foundation.items.filter((item) => item.status !== 'ready');
+
+  async function createFoundationTask(item: (typeof foundation.items)[number]) {
+    setCreatingTaskKey(item.key);
+    try {
+      const res = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          task_type: 'patient_foundation_review',
+          title: `正本確認: ${item.label}`,
+          description: item.detail,
+          priority: item.status === 'missing' ? 'high' : 'normal',
+          dedupe_key: `patient-foundation-review:${patient.id}:${item.key}`,
+          related_entity_type: 'patient',
+          related_entity_id: patient.id,
+          metadata: {
+            source: 'patient_foundation',
+            patient_id: patient.id,
+            item_key: item.key,
+            item_label: item.label,
+            foundation_status: item.status,
+            action_href: item.action_href,
+            action_label: item.action_label,
+          },
+        }),
+      });
+      const payload = (await res.json().catch(() => null)) as { message?: string } | null;
+      if (!res.ok) {
+        throw new Error(payload?.message ?? '正本確認タスクの作成に失敗しました');
+      }
+      toast.success('正本確認タスクを作成しました');
+      await queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '正本確認タスクの作成に失敗しました');
+    } finally {
+      setCreatingTaskKey(null);
+    }
+  }
+
+  return (
+    <SectionCard
+      id="patient-foundation"
+      aria-label="正本確認"
+      data-testid="patient-foundation-panel"
+      className={cn(
+        'border-l-4',
+        foundation.summary.status === 'ready' && 'border-l-emerald-400',
+        foundation.summary.status === 'needs_confirmation' && 'border-l-amber-400',
+        foundation.summary.status === 'missing' && 'border-l-red-500',
+      )}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-base font-semibold text-foreground">正本確認</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            患者カードで見つけた未確認を、現在値・根拠・履歴に分けて確認します。
+          </p>
+        </div>
+        <span
+          className={cn(
+            'inline-flex min-h-8 items-center rounded-full border px-3 text-xs font-semibold',
+            FOUNDATION_STATUS_CLASSES[foundation.summary.status],
+          )}
+        >
+          {foundation.summary.label}
+        </span>
+      </div>
+
+      {!foundation.archive.archived && actionableItems.length > 0 ? (
+        <div className="mt-4 rounded-md border border-border/70 bg-muted/10 p-3 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="font-semibold text-foreground">未確認を作業化</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                正本の未整備項目を既存の運用タスクに起票します。
+              </p>
+            </div>
+            <Link
+              href="/tasks?task_type=patient_foundation_review&status=pending"
+              className="text-xs font-semibold underline-offset-4 hover:underline"
+            >
+              正本確認タスクへ
+            </Link>
+          </div>
+        </div>
+      ) : null}
+
+      {foundation.archive.archived ? (
+        <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-950">
+          <p className="font-semibold">アーカイブ中の患者です</p>
+          <p className="mt-1 text-xs">
+            {foundation.archive.archived_at ?? '日時未記録'}
+            {foundation.archive.archived_by_name ? ` / ${foundation.archive.archived_by_name}` : ''}
+            。閲覧用の正本として扱い、復元するまで新規作業に使わないでください。
+          </p>
+        </div>
+      ) : null}
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {foundation.items.map((item) => (
+          <div
+            key={item.key}
+            className={cn('rounded-md border p-3 text-sm', FOUNDATION_STATUS_CLASSES[item.status])}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <p className="font-semibold">{item.label}</p>
+              <span className="text-[11px] font-medium">
+                {FOUNDATION_STATUS_LABELS[item.status]}
+              </span>
+            </div>
+            <p className="mt-1 text-xs leading-5 opacity-85">{item.detail}</p>
+            {item.meta ? (
+              <div className="mt-2 space-y-1 border-t border-current/15 pt-2 text-[11px] leading-4 opacity-85">
+                <p>
+                  最終更新 {item.meta.updated_at} / {item.meta.updated_by_name ?? '更新者不明'} /{' '}
+                  {item.meta.source}
+                </p>
+                <p>
+                  {item.meta.confirmed_at
+                    ? `確認 ${item.meta.confirmed_at} / ${item.meta.confirmed_by_name ?? '確認者不明'}`
+                    : '確認者未設定'}
+                  {item.meta.confirmation_status !== 'confirmed'
+                    ? ` / ${item.meta.confirmation_detail}`
+                    : ''}
+                </p>
+              </div>
+            ) : null}
+            <Link
+              href={item.action_href}
+              className="mt-2 inline-flex min-h-8 items-center text-xs font-semibold underline-offset-4 hover:underline"
+            >
+              {item.action_label}
+            </Link>
+            {!foundation.archive.archived && item.status !== 'ready' ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-2 min-h-8 text-xs"
+                disabled={creatingTaskKey === item.key}
+                onClick={() => void createFoundationTask(item)}
+              >
+                {creatingTaskKey === item.key ? '起票中...' : 'タスク化'}
+              </Button>
+            ) : null}
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-3">
+        <div className="rounded-md border border-border/70 bg-muted/10 p-3">
+          <h4 className="text-sm font-semibold text-foreground">前回訪問後の変更</h4>
+          {changedItems.length > 0 ? (
+            <ul className="mt-2 space-y-2 text-xs text-muted-foreground">
+              {changedItems.map((item) => (
+                <li key={item.id} className="rounded border border-border/60 bg-card p-2">
+                  <p className="font-semibold text-foreground">
+                    {item.field_label ?? item.field_key}
+                  </p>
+                  <p>
+                    {formatActivityTime(item.created_at)} / {item.updated_by_name ?? '更新者不明'} /{' '}
+                    {item.source}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-xs text-muted-foreground">
+              前回訪問以降に表示対象の正本変更はありません。
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-md border border-border/70 bg-muted/10 p-3">
+          <h4 className="text-sm font-semibold text-foreground">最新検査値</h4>
+          {labItems.length > 0 ? (
+            <ul className="mt-2 space-y-2 text-xs">
+              {labItems.map((lab) => (
+                <li key={lab.analyte_code} className="flex items-start justify-between gap-2">
+                  <span>
+                    <span className="font-semibold text-foreground">{lab.analyte_code}</span>{' '}
+                    {lab.value_label}
+                    <span className="block text-muted-foreground">{lab.measured_at}</span>
+                  </span>
+                  {lab.abnormal || lab.stale ? (
+                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
+                      {[lab.abnormal ? '異常' : null, lab.stale ? '古い' : null]
+                        .filter(Boolean)
+                        .join('・')}
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-xs text-muted-foreground">主要検査値は未登録です。</p>
+          )}
+        </div>
+
+        <div className="rounded-md border border-border/70 bg-muted/10 p-3">
+          <h4 className="text-sm font-semibold text-foreground">保険・公費</h4>
+          {insuranceItems.length > 0 ? (
+            <ul className="mt-2 space-y-2 text-xs">
+              {insuranceItems.map((insurance) => (
+                <li
+                  key={`${insurance.insurance_type}-${insurance.period_label}`}
+                  className="rounded border border-border/60 bg-card p-2"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="font-semibold text-foreground">
+                      {insurance.insurance_type}
+                    </span>
+                    <span
+                      className={cn(
+                        'rounded-full border px-2 py-0.5 text-[11px] font-semibold',
+                        insurance.expires_soon
+                          ? 'border-amber-200 bg-amber-50 text-amber-900'
+                          : 'border-emerald-200 bg-emerald-50 text-emerald-900',
+                      )}
+                    >
+                      {insurance.status_label}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-muted-foreground">
+                    {insurance.period_label}
+                    {insurance.copay_label ? ` / ${insurance.copay_label}` : ''}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-xs text-muted-foreground">有効な保険・公費は未登録です。</p>
+          )}
+        </div>
+      </div>
+    </SectionCard>
+  );
+}
+
 function PatientVisitPreparationPanel({ patient }: { patient: PatientOverview }) {
   const intake = getPrimaryHomeVisitIntake(patient);
   if (!intake) return null;
@@ -3413,6 +3676,7 @@ export function CardWorkspace({
     return (
       <div className="space-y-6" data-testid="card-workspace">
         {headerRow}
+        <PatientFoundationPanel patient={patient} />
         <PatientProfilePanel patient={patient} />
         <PatientHomeOperationsPanel
           patient={patient}
@@ -3568,10 +3832,10 @@ export function CardWorkspace({
     <div className="space-y-4" data-testid="card-workspace">
       {headerRow}
 
-      {/* デザイン 06: 2xl〜は [本文 | このカードに紐づく今日 | 3点セット] の 3 カラム。
-          xl 帯で 3 カラムにすると中央が潰れるため、xl は右カラム縦積みの 2 カラムに留める */}
-      <div className="space-y-4 xl:grid xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start xl:gap-6 xl:space-y-0 2xl:grid-cols-[minmax(0,1fr)_300px_320px]">
+      {/* 本文を圧迫しないため、補助3点セットは上部バーから開く右ドロワーへ移す。 */}
+      <div className="space-y-4">
         <div className="min-w-0 space-y-4">
+          <PatientFoundationPanel patient={patient} />
           <PatientProfilePanel patient={patient} />
           <PatientHomeOperationsPanel
             patient={patient}
@@ -3752,23 +4016,15 @@ export function CardWorkspace({
           <PatientStructuredCarePanel patientId={patientId} />
         </div>
 
-        {/* 右側(xl: 縦積みの 1 カラム / 2xl: contents 化して「紐づく今日」が中央・3点セットが右の独立カラム) */}
-        <aside
-          className="space-y-4 xl:sticky xl:top-6 2xl:contents"
-          aria-label="このカードに紐づく今日・次にやること・止まっている理由・根拠"
-        >
-          <div className="2xl:sticky 2xl:top-6">
-            <CardTodayPanel tasks={workspace.today_tasks} />
-          </div>
-          <div className="space-y-4 2xl:sticky 2xl:top-6">
-            <WorkspaceActionRail
-              nextAction={nextAction}
-              blockedReasons={blockedReasons}
-              blockedReasonsEmptyLabel="止まっている作業はありません"
-              evidence={evidence}
-              evidenceOpenLabel="開く"
-            />
-          </div>
+        <aside className="space-y-4" aria-label="このカードに紐づく今日">
+          <CardTodayPanel tasks={workspace.today_tasks} />
+          <WorkspaceActionRail
+            nextAction={nextAction}
+            blockedReasons={blockedReasons}
+            blockedReasonsEmptyLabel="止まっている作業はありません"
+            evidence={evidence}
+            evidenceOpenLabel="開く"
+          />
         </aside>
       </div>
     </div>

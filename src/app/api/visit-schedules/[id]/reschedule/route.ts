@@ -1,13 +1,15 @@
+import { createHash } from 'node:crypto';
 import { addDays, format, parseISO } from 'date-fns';
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 import type { ScheduleStatus, VisitAssignmentMode, VisitPriority, VisitType } from '@prisma/client';
-import { requireAuthContext } from '@/lib/auth/context';
+import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { timeDateToString } from '@/lib/visits/time-of-day';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { buildVisitScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { z } from 'zod';
@@ -63,6 +65,53 @@ const RESCHEDULE_REASON_LABELS: Record<z.infer<typeof rescheduleSchema>['reason_
   other: 'その他',
 };
 
+function isSourceScheduleOverrideUniqueError(error: unknown) {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
+    return false;
+  }
+  const target = error.meta?.target;
+  if (typeof target === 'string') return target.includes('source_schedule_id');
+  if (Array.isArray(target)) return target.includes('source_schedule_id');
+  return false;
+}
+
+const RESCHEDULE_CREATE_SERIALIZABLE_RETRY_LIMIT = 3;
+
+class VisitRescheduleCreateRetryLimitError extends Error {
+  constructor() {
+    super('visit reschedule creation transaction retry limit exceeded');
+    this.name = 'VisitRescheduleCreateRetryLimitError';
+  }
+}
+
+function isSerializableTransactionConflict(cause: unknown) {
+  return cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2034';
+}
+
+async function withSerializableRescheduleCreateTransaction<T>(
+  orgId: string,
+  requestContext: AuthContext,
+  work: (tx: Prisma.TransactionClient) => Promise<T>,
+) {
+  for (let attempt = 0; attempt < RESCHEDULE_CREATE_SERIALIZABLE_RETRY_LIMIT; attempt += 1) {
+    try {
+      return await withOrgContext(orgId, work, {
+        requestContext,
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (cause) {
+      if (!isSerializableTransactionConflict(cause)) {
+        throw cause;
+      }
+      if (attempt === RESCHEDULE_CREATE_SERIALIZABLE_RETRY_LIMIT - 1) {
+        throw new VisitRescheduleCreateRetryLimitError();
+      }
+    }
+  }
+
+  throw new VisitRescheduleCreateRetryLimitError();
+}
+
 type RescheduleSourceSchedule = {
   id: string;
   case_id: string;
@@ -80,6 +129,7 @@ type RescheduleSourceSchedule = {
   schedule_status: ScheduleStatus;
   confirmed_at: Date | null;
   confirmed_by: string | null;
+  version: number;
   case_: {
     patient_id: string;
     patient: {
@@ -141,6 +191,123 @@ function isPotentiallyImpactedByEmergencyInsert(
   return true;
 }
 
+function extractProposalIdsFromOverrideSnapshot(snapshot: Prisma.JsonValue) {
+  if (!Array.isArray(snapshot)) return [];
+
+  return snapshot
+    .map((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+      const proposalId = (item as { proposal_id?: unknown }).proposal_id;
+      return typeof proposalId === 'string' && proposalId.trim().length > 0 ? proposalId : null;
+    })
+    .filter((proposalId): proposalId is string => proposalId != null);
+}
+
+function buildRescheduleRequestIntentKey(args: {
+  scheduleId: string;
+  reason: string;
+  reasonCode: z.infer<typeof rescheduleSchema>['reason_code'];
+  communicationChannel: z.infer<typeof rescheduleSchema>['communication_channel'];
+  communicationResult: z.infer<typeof rescheduleSchema>['communication_result'];
+  startDate: string | null;
+  priority: string | null;
+  preferredPharmacistId: string | null;
+  requestedVehicleResourceId: string | null;
+}) {
+  const material = [
+    'visit-reschedule',
+    args.scheduleId,
+    args.reason.trim().replace(/\s+/g, ' '),
+    args.reasonCode,
+    args.communicationChannel,
+    args.communicationResult,
+    args.startDate ?? '',
+    args.priority ?? '',
+    args.preferredPharmacistId ?? '',
+    args.requestedVehicleResourceId ?? '',
+  ].join(':');
+  return `visit-reschedule:v1:${createHash('sha256').update(material).digest('hex')}`;
+}
+
+function impactSummaryHasRequestIntent(impactSummary: Prisma.JsonValue, requestIntentKey: string) {
+  return (
+    impactSummary != null &&
+    typeof impactSummary === 'object' &&
+    !Array.isArray(impactSummary) &&
+    (impactSummary as { request_intent_key?: unknown }).request_intent_key === requestIntentKey
+  );
+}
+
+async function loadExistingPendingReschedule(args: {
+  tx: Prisma.TransactionClient;
+  ctx: AuthContext;
+  schedule: RescheduleSourceSchedule;
+  requestIntentKey: string;
+}) {
+  const existingOverride = await args.tx.visitScheduleOverride.findFirst({
+    where: {
+      org_id: args.ctx.orgId,
+      source_schedule_id: args.schedule.id,
+      status: 'pending',
+    },
+    select: {
+      id: true,
+      after_snapshot: true,
+      impact_summary: true,
+    },
+  });
+  if (!existingOverride) return null;
+  if (!impactSummaryHasRequestIntent(existingOverride.impact_summary, args.requestIntentKey)) {
+    return { error: 'different_existing_override' as const };
+  }
+
+  const proposalIds = extractProposalIdsFromOverrideSnapshot(existingOverride.after_snapshot);
+  const existingProposals =
+    proposalIds.length > 0
+      ? await args.tx.visitScheduleProposal.findMany({
+          where: {
+            org_id: args.ctx.orgId,
+            id: { in: proposalIds },
+            reschedule_source_schedule_id: args.schedule.id,
+          },
+        })
+      : [];
+  const proposalById = new Map(existingProposals.map((proposal) => [proposal.id, proposal]));
+
+  const emergencyContacts = await fetchEmergencyContacts(
+    args.tx,
+    args.ctx.orgId,
+    args.schedule.case_.patient_id,
+  );
+  const schedulingPreferenceRecord =
+    typeof args.tx.patientSchedulePreference?.findFirst === 'function'
+      ? await args.tx.patientSchedulePreference.findFirst({
+          where: {
+            org_id: args.ctx.orgId,
+            patient_id: args.schedule.case_.patient_id,
+          },
+          select: {
+            preferred_contact_name: true,
+            preferred_contact_phone: true,
+            primary_contact_preference: true,
+            visit_before_contact_required: true,
+            mcs_linked: true,
+            phone_contact_from: true,
+            phone_contact_to: true,
+          },
+        })
+      : null;
+
+  return {
+    proposals: proposalIds
+      .map((proposalId) => proposalById.get(proposalId))
+      .filter((proposal): proposal is NonNullable<typeof proposal> => proposal != null),
+    emergencyContacts,
+    schedulingPreferenceRecord,
+    reusedExisting: true,
+  };
+}
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
     permission: 'canVisit',
@@ -186,6 +353,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       schedule_status: true,
       confirmed_at: true,
       confirmed_by: true,
+      version: true,
       case_: {
         select: {
           patient_id: true,
@@ -261,6 +429,58 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     schedule.pharmacist_id,
     parsed.data.reason_code,
   );
+  const requestIntentKey = buildRescheduleRequestIntentKey({
+    scheduleId: schedule.id,
+    reason: parsed.data.reason,
+    reasonCode: parsed.data.reason_code,
+    communicationChannel: parsed.data.communication_channel,
+    communicationResult: parsed.data.communication_result,
+    startDate: parsed.data.start_date ?? null,
+    priority: parsed.data.priority ?? null,
+    preferredPharmacistId: parsed.data.preferred_pharmacist_id ?? null,
+    requestedVehicleResourceId: parsed.data.vehicle_resource_id ?? null,
+  });
+
+  const existingPendingReschedule = await withOrgContext(ctx.orgId, async (tx) =>
+    loadExistingPendingReschedule({ tx, ctx, schedule, requestIntentKey }),
+  );
+  if (existingPendingReschedule) {
+    if ('error' in existingPendingReschedule) {
+      return conflict('この訪問予定には既にリスケ要求があります。再読み込みしてください');
+    }
+    return success({
+      data: {
+        proposals: existingPendingReschedule.proposals,
+        suggested_contacts: existingPendingReschedule.emergencyContacts,
+        scheduling_preference: existingPendingReschedule.schedulingPreferenceRecord
+          ? {
+              preferred_contact_name:
+                existingPendingReschedule.schedulingPreferenceRecord.preferred_contact_name,
+              preferred_contact_phone:
+                existingPendingReschedule.schedulingPreferenceRecord.preferred_contact_phone,
+              primary_contact_preference:
+                existingPendingReschedule.schedulingPreferenceRecord.primary_contact_preference,
+              visit_before_contact_required:
+                existingPendingReschedule.schedulingPreferenceRecord
+                  .visit_before_contact_required ?? false,
+              mcs_linked: existingPendingReschedule.schedulingPreferenceRecord.mcs_linked ?? false,
+              phone_contact_from:
+                existingPendingReschedule.schedulingPreferenceRecord.phone_contact_from,
+              phone_contact_to:
+                existingPendingReschedule.schedulingPreferenceRecord.phone_contact_to,
+            }
+          : null,
+        intake_scheduling: {
+          preferred_contact_method: schedulingPreference.preferredContactMethod,
+          visit_before_contact_required: schedulingPreference.visitBeforeContactRequired,
+          mcs_linked: schedulingPreference.mcsLinked,
+          pharmacy_decision_due_date:
+            schedulingPreference.pharmacyDecisionDueDate?.toISOString() ?? null,
+        },
+        reused_existing: true,
+      },
+    });
+  }
 
   let drafts;
   try {
@@ -296,10 +516,41 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return validationError('リスケ候補を生成できませんでした');
   }
 
-  const proposals = await withOrgContext(
+  const proposals = await withSerializableRescheduleCreateTransaction(
     ctx.orgId,
+    ctx,
     async (tx) => {
       const requestedAt = new Date();
+      const existingOverride = await tx.visitScheduleOverride.findFirst({
+        where: {
+          org_id: ctx.orgId,
+          source_schedule_id: schedule.id,
+        },
+        select: {
+          id: true,
+          status: true,
+        },
+      });
+      if (existingOverride) {
+        return { error: 'existing_override' as const };
+      }
+
+      const sourceClaim = await tx.visitSchedule.updateMany({
+        where: {
+          id: schedule.id,
+          org_id: ctx.orgId,
+          version: schedule.version,
+          schedule_status: schedule.schedule_status,
+          ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+        },
+        data: {
+          version: { increment: 1 },
+        },
+      });
+      if (sourceClaim.count !== 1) {
+        return { error: 'source_schedule_state_changed' as const };
+      }
+
       let impactedScheduleCount = await tx.visitSchedule.count({
         where: {
           org_id: ctx.orgId,
@@ -396,7 +647,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         impactedScheduleCount = impactedCandidates.length;
 
         for (const impactedSchedule of impactedCandidates) {
-          if (impactedSchedule.override_request?.status === 'pending') {
+          if (impactedSchedule.override_request) {
             autoRescheduleSummary.push({
               schedule_id: impactedSchedule.id,
               patient_name: impactedSchedule.case_.patient.name,
@@ -604,6 +855,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             communication_result: parsed.data.communication_result,
             impacted_patient_names: autoRescheduleSummary.map((item) => item.patient_name),
             auto_reschedule_summary: autoRescheduleSummary,
+            request_intent_key: requestIntentKey,
           },
           after_snapshot: createdProposals.map((proposal) => ({
             proposal_id: proposal.id,
@@ -814,15 +1066,33 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             })
           : null;
 
-      return { proposals: createdProposals, emergencyContacts, schedulingPreferenceRecord };
+      return {
+        proposals: createdProposals,
+        emergencyContacts,
+        schedulingPreferenceRecord,
+        reusedExisting: false,
+      };
     },
-    { requestContext: ctx },
-  );
-
-  await notifyWorkflowMutation({
-    orgId: ctx.orgId,
-    payload: { source: 'visit_schedules_reschedule_request', schedule_id: id },
+  ).catch((error: unknown) => {
+    if (isSourceScheduleOverrideUniqueError(error)) {
+      return { error: 'existing_override' as const };
+    }
+    throw error;
   });
+
+  if ('error' in proposals) {
+    if (proposals.error === 'source_schedule_state_changed') {
+      return conflict('訪問予定が同時に更新されました。再読み込みしてください');
+    }
+    return conflict('この訪問予定には既にリスケ要求があります。再読み込みしてください');
+  }
+
+  if (!proposals.reusedExisting) {
+    await notifyWorkflowMutation({
+      orgId: ctx.orgId,
+      payload: { source: 'visit_schedules_reschedule_request', schedule_id: id },
+    });
+  }
 
   return success(
     {
@@ -852,8 +1122,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           pharmacy_decision_due_date:
             schedulingPreference.pharmacyDecisionDueDate?.toISOString() ?? null,
         },
+        reused_existing: proposals.reusedExisting,
       },
     },
-    201,
+    proposals.reusedExisting ? 200 : 201,
   );
 }

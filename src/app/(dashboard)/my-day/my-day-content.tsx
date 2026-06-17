@@ -115,7 +115,7 @@ function buildCockpitActions(data: DashboardCockpitResponse): ActionItem[] {
       : '調剤監査を完了して次工程に進めます',
     priority: toQueuePriority(item.priority),
     due_at: item.due_at,
-    action_href: '/auditing',
+    action_href: '/audit',
     action_label: '監査を開く',
     owner_name: null,
     patient_name: item.patient_name,
@@ -330,10 +330,7 @@ export function MyDayContent({
       : null;
 
   return (
-    <div
-      className="mx-auto w-full max-w-7xl space-y-4 p-3 sm:p-4 lg:p-6"
-      data-testid="my-day-content"
-    >
+    <div className="w-full space-y-4 p-3 sm:p-4 lg:p-6" data-testid="my-day-content">
       {contextSummary ? (
         <Alert
           className="border-sky-200 bg-sky-50 text-sky-900"

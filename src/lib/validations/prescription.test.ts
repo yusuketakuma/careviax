@@ -42,6 +42,54 @@ describe('createPrescriptionIntakeSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  it('accepts complete previous prescription source provenance on create lines', () => {
+    const result = createPrescriptionIntakeSchema.safeParse({
+      ...validIntake,
+      lines: [
+        {
+          ...validIntake.lines[0],
+          source_intake_id: 'intake_prev',
+          source_line_id: 'line_prev',
+          source_intake_updated_at_snapshot: '2026-04-01T10:00:00.000Z',
+          source_line_updated_at_snapshot: '2026-04-01T09:30:00.000Z',
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects partial previous prescription source provenance on create lines', () => {
+    const result = createPrescriptionIntakeSchema.safeParse({
+      ...validIntake,
+      lines: [
+        {
+          ...validIntake.lines[0],
+          source_line_id: 'line_prev',
+        },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects invalid previous prescription source revision timestamps', () => {
+    const result = createPrescriptionIntakeSchema.safeParse({
+      ...validIntake,
+      lines: [
+        {
+          ...validIntake.lines[0],
+          source_intake_id: 'intake_prev',
+          source_line_id: 'line_prev',
+          source_intake_updated_at_snapshot: '2026-04-01',
+          source_line_updated_at_snapshot: '2026-04-01T09:30:00.000Z',
+        },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it('accepts relative, HTTPS, and local development original document URLs', () => {
     for (const original_document_url of [
       '/uploads/prescriptions/original.pdf',

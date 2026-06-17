@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { randomUUID } from 'crypto';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
@@ -9,6 +10,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { updateFirstVisitDocumentSchema } from '@/lib/validations/first-visit-document';
 import { canAccessCareCase } from '@/server/services/patient-access';
 import { getPatientDocumentsData } from '@/server/services/patient-detail-documents';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
 import type { FirstVisitDocument } from '@prisma/client';
 
 type FirstVisitDocumentPatchResult =
@@ -97,6 +99,11 @@ export const PATCH = withAuthContext<{ id: string }>(
     });
     if (!canAccessScope) return notFound('初回文書が見つかりません');
 
+    const writable = await requireWritablePatient(prisma, ctx, existing.patient_id);
+    if ('response' in writable) {
+      return writable.response ?? conflict('アーカイブ中の患者は復元するまで更新できません');
+    }
+
     const updateData = {
       ...(parsed.data.delivered_at !== undefined
         ? { delivered_at: parsed.data.delivered_at ? new Date(parsed.data.delivered_at) : null }
@@ -184,30 +191,24 @@ export const PATCH = withAuthContext<{ id: string }>(
                   print_batch_id: buildServerPrintBatchId(),
                 }
               : parsed.data.document_action;
-          await tx.auditLog.create({
-            data: {
-              org_id: ctx.orgId,
-              actor_id: ctx.userId,
-              action: `first_visit_document.${documentAction.action}`,
-              target_type: 'first_visit_document',
-              target_id: id,
-              changes: {
-                document_action: documentAction,
-                patient_id: existing.patient_id,
-                case_id: existing.case_id,
-                previous: {
-                  document_url: existing.document_url,
-                  delivered_at: existing.delivered_at?.toISOString() ?? null,
-                  delivered_to: existing.delivered_to,
-                },
-                next: {
-                  document_url: document.document_url,
-                  delivered_at: document.delivered_at?.toISOString() ?? null,
-                  delivered_to: document.delivered_to,
-                },
+          await createAuditLogEntry(tx, ctx, {
+            action: `first_visit_document.${documentAction.action}`,
+            targetType: 'first_visit_document',
+            targetId: id,
+            changes: {
+              document_action: documentAction,
+              patient_id: existing.patient_id,
+              case_id: existing.case_id,
+              previous: {
+                document_url: existing.document_url,
+                delivered_at: existing.delivered_at?.toISOString() ?? null,
+                delivered_to: existing.delivered_to,
               },
-              ip_address: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
-              user_agent: req.headers.get('user-agent'),
+              next: {
+                document_url: document.document_url,
+                delivered_at: document.delivered_at?.toISOString() ?? null,
+                delivered_to: document.delivered_to,
+              },
             },
           });
         }

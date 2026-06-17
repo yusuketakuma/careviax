@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { careTeamContactBadges, type CareTeamContactBadge } from '@/lib/patient/care-team-contact';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import { cn } from '@/lib/utils';
 
@@ -69,6 +70,12 @@ type ExternalProfessionalDraft = {
   notes: string;
 };
 
+type ReliabilityWarning = {
+  code: string;
+  severity: 'warning';
+  message: string;
+};
+
 const roleLabel: Record<CareTeamRow['role'], string> = {
   physician: '訪問診療医',
   nurse: '訪問看護師',
@@ -76,50 +83,6 @@ const roleLabel: Record<CareTeamRow['role'], string> = {
   pharmacist: '担当薬剤師',
   other: 'その他他職種',
 };
-
-export type CareTeamContactBadge = {
-  label: string;
-  tone: 'alert' | 'ok' | 'muted';
-};
-
-/** 文書送付の主対象(報告書・トレーシングレポートの宛先になりやすい役割) */
-const DOCUMENT_CHANNEL_ROLES = new Set<CareTeamRow['role']>(['physician', 'nurse', 'care_manager']);
-
-/**
- * デザイン p0_26「送付先・連絡先を整える」: 送付前に連絡チャネルの抜けを
- * 一覧で気づけるようにする。文書送付対象の役割は FAX 未登録を赤で警告する。
- */
-export function careTeamContactBadges(row: {
-  role: CareTeamRow['role'];
-  fax: string;
-  email: string;
-  phone: string;
-}): CareTeamContactBadge[] {
-  const hasFax = row.fax.trim().length > 0;
-  const hasEmail = row.email.trim().length > 0;
-  const hasPhone = row.phone.trim().length > 0;
-
-  // どのチャネルも無いときは個別警告を束ねて1つに集約する
-  if (!hasFax && !hasEmail && !hasPhone) {
-    return [{ label: '連絡先未登録', tone: 'alert' }];
-  }
-
-  const badges: CareTeamContactBadge[] = [];
-  if (DOCUMENT_CHANNEL_ROLES.has(row.role)) {
-    badges.push(
-      hasFax ? { label: 'FAX登録済', tone: 'ok' } : { label: 'FAX未登録', tone: 'alert' },
-    );
-  } else if (hasFax) {
-    badges.push({ label: 'FAX登録済', tone: 'ok' });
-  }
-  if (hasEmail) {
-    badges.push({ label: 'メールOK', tone: 'ok' });
-  }
-  if (!hasFax && !hasEmail) {
-    badges.push({ label: '電話のみ', tone: 'muted' });
-  }
-  return badges;
-}
 
 const CONTACT_BADGE_TONE_CLASSES: Record<CareTeamContactBadge['tone'], string> = {
   alert: 'border-red-200 bg-red-50 text-red-700',
@@ -271,10 +234,13 @@ export function PatientCareTeamPanel({
           (payload as { message?: string }).message ?? '多職種連携先の保存に失敗しました',
         );
       }
-      return payload;
+      return payload as { warnings?: ReliabilityWarning[] };
     },
-    onSuccess: async () => {
+    onSuccess: async (payload) => {
       toast.success('多職種連携先を更新しました');
+      for (const warning of payload.warnings ?? []) {
+        toast.warning(warning.message);
+      }
       await invalidateQueryKeys(queryClient, getPatientCareQueryKeys({ orgId, patientId }));
     },
     onError: (error) => {

@@ -102,6 +102,45 @@ export const prescriptionLineSchema = corePrescriptionLineBaseSchema
   .merge(dispensingLineMetadataSchema)
   .superRefine(validatePrescriptionLineDateRange);
 
+const previousPrescriptionLineSourceFields = {
+  source_intake_id: z.preprocess(
+    blankStringToUndefined,
+    z.string().trim().min(1, '流用元処方IDが不正です').optional(),
+  ),
+  source_line_id: z.preprocess(
+    blankStringToUndefined,
+    z.string().trim().min(1, '流用元処方行IDが不正です').optional(),
+  ),
+  source_intake_updated_at_snapshot: z.preprocess(
+    blankStringToUndefined,
+    z.string().datetime('流用元処方の版情報が不正です').optional(),
+  ),
+  source_line_updated_at_snapshot: z.preprocess(
+    blankStringToUndefined,
+    z.string().datetime('流用元処方行の版情報が不正です').optional(),
+  ),
+};
+
+const createPrescriptionLineSchema = prescriptionLineSchema
+  .safeExtend(previousPrescriptionLineSourceFields)
+  .superRefine((value, ctx) => {
+    const sourceValues = [
+      value.source_intake_id,
+      value.source_line_id,
+      value.source_intake_updated_at_snapshot,
+      value.source_line_updated_at_snapshot,
+    ];
+    const hasAnySourceValue = sourceValues.some((sourceValue) => sourceValue !== undefined);
+    const hasAllSourceValues = sourceValues.every((sourceValue) => sourceValue !== undefined);
+    if (hasAnySourceValue && !hasAllSourceValues) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['source_line_id'],
+        message: '前回処方を流用する場合は流用元の処方・行・版情報がすべて必要です',
+      });
+    }
+  });
+
 export type CorePrescriptionLineInput = z.infer<typeof corePrescriptionLineSchema>;
 
 export const prescriptionInquiryDraftSchema = z.object({
@@ -147,7 +186,7 @@ export const createPrescriptionIntakeSchema = z
     emergency_category: z
       .enum(['planned_disease_exacerbation', 'other_exacerbation', 'online'])
       .optional(),
-    lines: z.array(prescriptionLineSchema).min(1, '処方明細は1行以上必要です'),
+    lines: z.array(createPrescriptionLineSchema).min(1, '処方明細は1行以上必要です'),
     inquiry: prescriptionInquiryDraftSchema.optional(),
   })
   .superRefine((value, ctx) => {

@@ -10,6 +10,7 @@ import {
   buildCareCaseAssignmentWhere,
   buildVisitRecordScheduleAssignmentWhere,
 } from '@/lib/auth/visit-schedule-access';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
 
 const patchLabSchema = z.object({
   abnormal_flag: z.string().optional(),
@@ -68,6 +69,9 @@ export async function PATCH(
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
+
+  const writable = await requireWritablePatient(prisma, ctx, id);
+  if ('response' in writable) return writable.response;
 
   // Fold the patient-assignment access check into the resource query so we
   // issue one DB round-trip instead of two. `buildCareCaseAssignmentWhere`

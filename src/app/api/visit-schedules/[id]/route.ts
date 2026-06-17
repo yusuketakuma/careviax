@@ -43,6 +43,13 @@ import {
 } from '@/server/services/visit-preparation-readiness';
 
 const VISIT_SCHEDULE_PATCH_SERIALIZABLE_RETRY_LIMIT = 3;
+const ROUTE_REORDERABLE_STATUSES = new Set<ScheduleStatus>([
+  'planned',
+  'in_preparation',
+  'ready',
+  'departed',
+  'in_progress',
+]);
 
 class VisitSchedulePatchRetryLimitError extends Error {
   constructor() {
@@ -349,6 +356,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }
       : null;
   if (routeOrderTarget) {
+    if (!ROUTE_REORDERABLE_STATUSES.has(existing.schedule_status)) {
+      return validationError('完了済みまたは中止済みの訪問予定は順路を変更できません');
+    }
     const [scheduleRouteOrderConflict, proposalRouteOrderConflict] = await Promise.all([
       prisma.visitSchedule.findFirst({
         where: {
@@ -357,6 +367,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           pharmacist_id: routeOrderTarget.pharmacistId,
           scheduled_date: routeOrderTarget.date,
           route_order: rest.route_order,
+          schedule_status: { notIn: ['cancelled', 'rescheduled'] },
         },
         select: { id: true },
       }),
@@ -410,6 +421,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             pharmacist_id: routeOrderTarget.pharmacistId,
             scheduled_date: routeOrderTarget.date,
             route_order: rest.route_order,
+            schedule_status: { notIn: ['cancelled', 'rescheduled'] },
           },
           select: { id: true },
         }),

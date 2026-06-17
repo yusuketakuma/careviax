@@ -179,7 +179,7 @@ describe('/api/medication-cycles/[id]/transition', () => {
 
     expect(response.status).toBe(200);
     expect(medicationCycleUpdateManyMock).toHaveBeenCalledWith({
-      where: { id: 'cycle_1', version: 2 },
+      where: { id: 'cycle_1', org_id: 'org_1', version: 2 },
       data: expect.objectContaining({
         overall_status: 'dispensing',
         version: { increment: 1 },
@@ -354,7 +354,7 @@ describe('/api/medication-cycles/[id]/transition', () => {
 
     expect(response.status).toBe(200);
     expect(medicationCycleUpdateManyMock).toHaveBeenCalledWith({
-      where: { id: 'cycle_1', version: 2 },
+      where: { id: 'cycle_1', org_id: 'org_1', version: 2 },
       data: expect.objectContaining({
         overall_status: 'reported',
         version: { increment: 1 },

@@ -35,6 +35,7 @@ import {
   type VisitRoutePlan,
   type VisitRouteTravelMode,
 } from '@/server/services/visit-route-engine';
+import { matchMedicationDiffLines } from '@/lib/prescription/medication-diff';
 
 type IntakeLineSummary = {
   drug_name: string;
@@ -48,6 +49,8 @@ type IntakeLineSummary = {
 
 type PreviousStructuredVisitReuse = {
   source_visit_record_id: string;
+  source_visit_record_version: number | null;
+  source_visit_record_updated_at: string | null;
   subjective: string[];
   objective: string[];
   assessment: string[];
@@ -280,28 +283,29 @@ function isVisitPreparationConferenceNoteType(
   return VISIT_PREPARATION_CONFERENCE_NOTE_TYPES.has(value);
 }
 
-function lineIdentity(line: IntakeLineSummary) {
-  return line.drug_code?.trim() || line.drug_name.trim();
-}
-
 function summarizePrescriptionChanges(
   currentLines: IntakeLineSummary[],
   previousLines: IntakeLineSummary[],
 ) {
-  const previousByKey = new Map(previousLines.map((line) => [lineIdentity(line), line]));
-  const currentKeys = new Set<string>();
-
   const added: string[] = [];
   const changed: Array<{ drug_name: string; reasons: string[] }> = [];
+  const removed: string[] = [];
 
-  for (const line of currentLines) {
-    const key = lineIdentity(line);
-    currentKeys.add(key);
-    const previous = previousByKey.get(key);
-    if (!previous) {
+  for (const match of matchMedicationDiffLines(currentLines, previousLines)) {
+    const line = match.current;
+    const previous = match.previous;
+
+    if (line && !previous) {
       added.push(line.drug_name);
       continue;
     }
+
+    if (!line && previous) {
+      removed.push(previous.drug_name);
+      continue;
+    }
+
+    if (!line || !previous) continue;
 
     const reasons: string[] = [];
     if (previous.dose !== line.dose) reasons.push(`用量 ${previous.dose} → ${line.dose}`);
@@ -317,10 +321,6 @@ function summarizePrescriptionChanges(
       });
     }
   }
-
-  const removed = previousLines
-    .filter((line) => !currentKeys.has(lineIdentity(line)))
-    .map((line) => line.drug_name);
 
   return {
     added,
@@ -377,6 +377,8 @@ function readTrimmedString(value: unknown) {
 function buildPreviousStructuredVisitReuse(
   previousVisit: {
     id: string;
+    version: number | null;
+    updated_at: Date | null;
     structured_soap: Prisma.JsonValue | null;
   } | null,
 ): PreviousStructuredVisitReuse | null {
@@ -495,6 +497,8 @@ function buildPreviousStructuredVisitReuse(
 
   return {
     source_visit_record_id: previousVisit.id,
+    source_visit_record_version: previousVisit.version,
+    source_visit_record_updated_at: previousVisit.updated_at?.toISOString() ?? null,
     subjective: subjectiveLines.slice(0, 5),
     objective: objectiveLines.slice(0, 6),
     assessment: assessmentLines.slice(0, 5),
@@ -980,6 +984,8 @@ export async function GET(
         soap_plan: true,
         structured_soap: true,
         next_visit_suggestion_date: true,
+        version: true,
+        updated_at: true,
       },
     }),
     prisma.task.findMany({
@@ -1164,6 +1170,8 @@ export async function GET(
     orgId: ctx.orgId,
     patientId: schedule.case_.patient.id,
     caseIds: [schedule.case_id],
+    currentScheduleId: schedule.id,
+    scheduledDate: schedule.scheduled_date,
   });
   const latestIntake = recentPrescriptionIntakes[0] ?? null;
   const previousIntake = recentPrescriptionIntakes[1] ?? null;
@@ -1438,6 +1446,10 @@ export async function GET(
               soap_plan: previousVisit.soap_plan,
               next_visit_suggestion_date:
                 previousVisit.next_visit_suggestion_date?.toISOString() ?? null,
+              source_revision: {
+                version: previousVisit.version,
+                updated_at: previousVisit.updated_at.toISOString(),
+              },
               summary: buildPreviousVisitSummary(previousVisit),
               structured_reuse: buildPreviousStructuredVisitReuse(previousVisit),
             }

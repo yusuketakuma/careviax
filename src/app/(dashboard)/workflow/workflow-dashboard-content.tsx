@@ -71,7 +71,7 @@ export function WorkflowDashboardContent({
       return res.json() as Promise<{ data: WorkflowData }>;
     },
     enabled: !!orgId,
-    refetchInterval: 60_000,
+    fallbackRefetchInterval: 60_000,
     invalidateOn: ['cycle_transition', 'workflow_refresh'],
   });
 

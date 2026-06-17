@@ -98,7 +98,7 @@ function buildWorkspace(overrides: Partial<PatientWorkspace> = {}): PatientWorks
         label: '調剤 完了',
         actor: '佐藤',
         at: '2026-06-01T09:30:00.000Z',
-        href: '/auditing',
+        href: '/audit',
       },
       {
         id: 'inquiry-1',
@@ -123,7 +123,7 @@ function buildWorkspace(overrides: Partial<PatientWorkspace> = {}): PatientWorks
         tone: 'deadline',
         time_label: '期限 12:00',
         label: '麻薬監査',
-        href: '/auditing',
+        href: '/audit',
         action_label: '監査へ',
         due_time: '12:00',
       },
@@ -132,7 +132,7 @@ function buildWorkspace(overrides: Partial<PatientWorkspace> = {}): PatientWorks
         tone: 'waiting',
         time_label: '監査後',
         label: 'セット作成',
-        href: '/medication-sets',
+        href: '/set',
         action_label: 'セットへ',
         due_time: null,
       },
@@ -190,42 +190,49 @@ function mockPatientQuery(
   useOrgIdMock.mockReturnValue('org_1');
   useRouterMock.mockReturnValue({ push: vi.fn(), replace: vi.fn() });
   useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
-  useMutationMock
-    .mockReturnValueOnce({
+  const mutationResults = [
+    {
       mutate: faxMutate,
       isPending: Boolean(pending.fax),
       variables: pending.fax ? 'intake_0500' : null,
-    })
-    .mockReturnValueOnce({
+    },
+    {
       mutate: prescriptionDocumentMutate,
       isPending: Boolean(pending.prescriptionDocument),
       variables: pending.prescriptionDocument ? { intakeId: 'intake_0500' } : null,
-    })
-    .mockReturnValueOnce({
+    },
+    {
       mutate: prescriptionOriginalManagementMutate,
       isPending: Boolean(pending.prescriptionOriginalManagement),
       variables: pending.prescriptionOriginalManagement ? { intakeId: 'intake_0500' } : null,
-    })
-    .mockReturnValueOnce({
+    },
+    {
       mutate: billingMutate,
       isPending: Boolean(pending.billing),
       variables: pending.billing ? { candidateId: 'billing_1' } : null,
-    })
-    .mockReturnValueOnce({
+    },
+    {
       mutate: billingProfileMutate,
       isPending: Boolean(pending.billingProfile),
       variables: pending.billingProfile ? { patientId: 'patient_1' } : null,
-    })
-    .mockReturnValueOnce({
+    },
+    {
       mutate: conferenceMutate,
       isPending: Boolean(pending.conference),
       variables: pending.conference ? { patientId: 'patient_1', caseId: null } : null,
-    })
-    .mockReturnValueOnce({
+    },
+    {
       mutate: mcsCheckLogMutate,
       isPending: Boolean(pending.mcsCheckLog),
       variables: pending.mcsCheckLog ? { patientId: 'patient_1' } : null,
-    });
+    },
+  ];
+  let mutationCallIndex = 0;
+  useMutationMock.mockImplementation(() => {
+    const result = mutationResults[mutationCallIndex % mutationResults.length];
+    mutationCallIndex += 1;
+    return result;
+  });
   const patientData = {
     id: 'patient_1',
     name: '田中 一郎',
@@ -245,6 +252,96 @@ function mockPatientQuery(
         abnormal_flag: 'L',
       },
     ],
+    foundation: {
+      summary: {
+        status: 'needs_confirmation',
+        label: '未確認2件',
+        items: ['保険確認1件', '検査値古い1件'],
+      },
+      items: [
+        {
+          key: 'contact',
+          label: '主連絡先',
+          status: 'ready',
+          detail: '連絡先あり',
+          action_href: '/patients/patient_1/edit?section=visit#intake.contact_phone',
+          action_label: '連絡先を編集',
+          meta: {
+            updated_at: '2026-06-15',
+            updated_by_name: '佐藤 薬剤師',
+            source: '患者詳細',
+            confirmed_at: '2026-06-15',
+            confirmed_by_name: '鈴木 管理者',
+            confirmation_status: 'confirmed',
+            confirmation_detail: '確認済み',
+            stale: false,
+          },
+        },
+        {
+          key: 'insurance',
+          label: '保険・公費',
+          status: 'needs_confirmation',
+          detail: '1件 / 1件確認',
+          action_href: '/patients/patient_1/edit?section=contact#medical_insurance_number',
+          action_label: '保険を確認',
+        },
+        {
+          key: 'medication_risk',
+          label: '薬学リスク',
+          status: 'needs_confirmation',
+          detail: '薬学的課題2件 / 訪問同意未整備',
+          action_href: '/patients/patient_1/safety-check',
+          action_label: '薬学課題を確認',
+        },
+        {
+          key: 'labs',
+          label: '最新検査値',
+          status: 'needs_confirmation',
+          detail: '1項目 / 要確認1件',
+          action_href: '/patients/patient_1/safety-check',
+          action_label: '検査値を確認',
+        },
+      ],
+      changes_since_last_visit: [
+        {
+          id: 'revision_1',
+          category: 'clinical',
+          field_label: '介護度',
+          field_key: 'care_level',
+          source: 'visit_record',
+          updated_by_name: '佐藤 薬剤師',
+          created_at: '2026-06-01T10:00:00.000Z',
+        },
+      ],
+      latest_labs: [
+        {
+          analyte_code: 'egfr',
+          value_label: '38 mL/min/1.73m2',
+          measured_at: '2026-06-01',
+          stale: true,
+          abnormal: true,
+        },
+      ],
+      insurances: [
+        {
+          insurance_type: '公費 54',
+          status_label: '申請中',
+          period_label: '2026-04-01 - 2026-06-30',
+          copay_label: '30%',
+          expires_soon: true,
+          insurer_number: '21540000',
+          number: '54001234',
+          symbol: 'A-1',
+          branch_number: '01',
+          notes: 'raw insurance note',
+        },
+      ],
+      archive: {
+        archived: false,
+        archived_at: null,
+        archived_by_name: null,
+      },
+    },
     cases: [],
     conditions: [],
     phone: '090-0000-0000',
@@ -546,7 +643,7 @@ describe('CardWorkspace', () => {
       ],
     });
 
-    render(<CardWorkspace patientId="patient_1" />);
+    const { container } = render(<CardWorkspace patientId="patient_1" />);
 
     // ヘッダー行: カード見出し + RX 番号 + サブ + 右上 2 ボタン
     expect(screen.getByRole('heading', { name: 'カード — 田中 一郎 様' })).toBeTruthy();
@@ -556,6 +653,18 @@ describe('CardWorkspace', () => {
     const compareLink = screen.getByRole('link', { name: 'カードを分割表示' });
     expect(compareLink.getAttribute('href')).toBe('/patients/compare?patients=patient_1');
     expect(screen.getByTestId('patient-profile-summary')).toBeTruthy();
+    const foundationPanel = screen.getByTestId('patient-foundation-panel');
+    expect(within(foundationPanel).getByRole('heading', { name: '正本確認' })).toBeTruthy();
+    expect(
+      within(foundationPanel).getByText('最終更新 2026-06-15 / 佐藤 薬剤師 / 患者詳細'),
+    ).toBeTruthy();
+    expect(within(foundationPanel).getByText('確認 2026-06-15 / 鈴木 管理者')).toBeTruthy();
+    expect(within(foundationPanel).getByText('異常・古い')).toBeTruthy();
+    expect(within(foundationPanel).getByText('公費 54')).toBeTruthy();
+    expect(within(foundationPanel).getByText('薬学リスク')).toBeTruthy();
+    expect(within(foundationPanel).getByText('薬学的課題2件 / 訪問同意未整備')).toBeTruthy();
+    expect(within(foundationPanel).getAllByRole('button', { name: 'タスク化' })).toHaveLength(3);
+    expect(container.textContent).not.toMatch(/21540000|54001234|A-1|raw insurance note/);
     expect(screen.getByRole('heading', { name: '患者プロフィール' })).toBeTruthy();
     const homeOps = screen.getByTestId('patient-home-operations-panel');
     expect(within(homeOps).getByRole('heading', { name: '在宅運用管理' })).toBeTruthy();
@@ -708,25 +817,10 @@ describe('CardWorkspace', () => {
     expect(within(todayPanel).getByRole('link', { name: '→ セットへ' })).toBeTruthy();
     expect(within(todayPanel).getByRole('link', { name: '→ 訪問へ' })).toBeTruthy();
 
-    // 次にやること: 主操作 1 つ、期限を内包したラベル
-    const nextActionPanel = screen.getByTestId('next-action-panel');
-    expect(
-      within(nextActionPanel).getByRole('link', { name: '調剤鑑査を始める — 12:00期限' }),
-    ).toBeTruthy();
-
-    // 止まっている理由: カテゴリチップ + アクションリンク(リッチ形式)
-    const blockedPanel = screen.getByTestId('blocked-reasons-panel');
-    expect(within(blockedPanel).getByText('医療機関')).toBeTruthy();
-    expect(within(blockedPanel).getByText('ご家族の同意待ち(新規契約)')).toBeTruthy();
-    expect(within(blockedPanel).getByRole('link', { name: '状況を見る →' })).toBeTruthy();
-
-    // 根拠・記録: 「開く」文言 + meta
-    const evidencePanel = screen.getByTestId('evidence-panel');
-    expect(within(evidencePanel).getByText('お薬手帳(最新)')).toBeTruthy();
-    expect(within(evidencePanel).getByText('照会回答')).toBeTruthy();
-    expect(within(evidencePanel).getByText('検査値の推移')).toBeTruthy();
-    expect(within(evidencePanel).getByText('eGFR')).toBeTruthy();
-    expect(within(evidencePanel).getAllByRole('link', { name: '開く' }).length).toBeGreaterThan(0);
+    // 補助3点セットは本文を圧迫しないため初期表示しない。上部バーの補助パネルで開く。
+    expect(screen.queryByTestId('next-action-panel')).toBeNull();
+    expect(screen.queryByTestId('blocked-reasons-panel')).toBeNull();
+    expect(screen.queryByTestId('evidence-panel')).toBeNull();
   });
 
   it('falls back to an empty state when no cycle workspace exists', () => {
@@ -739,6 +833,47 @@ describe('CardWorkspace', () => {
     expect(screen.getByTestId('patient-profile-summary')).toBeTruthy();
     expect(screen.getByTestId('patient-home-operations-panel')).toBeTruthy();
     expect(screen.queryByTestId('card-prescription-section')).toBeNull();
+  });
+
+  it('creates a deduplicated foundation review task from a non-ready foundation item', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { id: 'task_1' } }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    mockPatientQuery(buildWorkspace());
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    const foundationPanel = screen.getByTestId('patient-foundation-panel');
+    fireEvent.click(within(foundationPanel).getAllByRole('button', { name: 'タスク化' })[0]);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/tasks', expect.any(Object)));
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(init.body));
+
+    expect(init.method).toBe('POST');
+    expect(init.headers).toEqual({ 'content-type': 'application/json' });
+    expect(body).toMatchObject({
+      task_type: 'patient_foundation_review',
+      title: '正本確認: 保険・公費',
+      description: '1件 / 1件確認',
+      priority: 'normal',
+      dedupe_key: 'patient-foundation-review:patient_1:insurance',
+      related_entity_type: 'patient',
+      related_entity_id: 'patient_1',
+      metadata: {
+        source: 'patient_foundation',
+        patient_id: 'patient_1',
+        item_key: 'insurance',
+        item_label: '保険・公費',
+        foundation_status: 'needs_confirmation',
+        action_href: '/patients/patient_1/edit?section=contact#medical_insurance_number',
+        action_label: '保険を確認',
+      },
+    });
+
+    vi.unstubAllGlobals();
   });
 
   it('starts the fax original collection mutation from the home operations panel', () => {

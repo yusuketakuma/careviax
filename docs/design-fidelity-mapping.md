@@ -1,6 +1,6 @@
 # Design Fidelity Mapping — design/ 画像セット v1.9 実装対応表
 
-> 最終更新: 2026-06-11
+> 最終更新: 2026-06-17
 > 目的: `design/images/{P0,P1}` の 62 画面を既存実装と対応付け、忠実実装の進捗と検証ループを管理する SSOT。
 > 検証ループ: **実装 → Playwright 撮影 → ターゲット PNG と比較 → 差分指摘 → 修正** を画面単位で回す。
 
@@ -22,11 +22,12 @@
 
 ## 共通パターン(全画面共通で実装するもの)
 
-1. **右パネル 3 点セット**(P0-08 が基準):
+1. **右補助パネル 3 点セット**(P0-08 が基準):
    - 「次にやること」— 主操作ボタン 1 つ(青、強調)
    - 「止まっている理由」— 赤/橙の警告リスト
-   - 「根拠・資料」— 処方せん画像・前回訪問メモ・お薬手帳画像・検査値メモ等への「見る」リンク
-2. **シェル**: ダークネイビーのサイドバー(PH-OS ロゴ + 「在宅薬局オペレーション」、下部にユーザー)+ 上部バー(モードバッジ・通知・ヘルプ・ユーザー名)
+   - 「根拠・記録」— 処方せん画像・前回訪問メモ・お薬手帳画像・検査値メモ等への「見る」/「開く」リンク
+   - 2026-06-17 以降、この 3 点セットは初期表示で右幅を占有せず、上部バーの「補助パネル」ボタンから開く右ドロワーで表示する。デザイン PNG に右レールが写る場合は展開状態として扱う。
+2. **シェル**: 上部バー(ナビを開く・補助パネル・モードバッジ・通知・ヘルプ・ユーザー名)+ 必要時に開く左ナビドロワー(PH-OS ロゴ + 「在宅薬局オペレーション」、下部にユーザー)
 3. **デザイントークン**: 白背景 + ブルー primary、バッジは 緑/橙/青/赤/灰 の状態色(既存ガイドライン準拠)
 
 ## 横断完了事項(2026-06-11)
@@ -60,56 +61,56 @@ pnpm test:e2e:local -- ui-design-fidelity
 
 状態: `未着手` / `WIP` / `撮影比較中` / `完了` 。種別: `改修`(既存ページをデザインへ寄せる)/ `新規`(ページ自体が無い)/ `部品`(モーダル・共通部品)
 
-| #   | screen_id                           | 対応ルート / 部品                    | 種別 | 状態   | メモ                                                              |
-| --- | ----------------------------------- | ------------------------------------ | ---- | ------ | ----------------------------------------------------------------- |
-| 01  | p0_01_login_mfa                     | `/(auth)/login` + `/mfa`             | 改修 | 未着手 | 中央カード+確認コード案内                                         |
-| 02  | p0_02_tenant_pharmacy_select        | なし(新規 `/select-site` 相当)       | 新規 | 未着手 | ログイン後の薬局選択。API: `/api/me` 拡張 or sites 一覧           |
-| 03  | p0_03_mode_role_select              | なし(新規。在宅/外来モード+ロール)   | 新規 | 未着手 | UI ストアにモード保持。シェルのモードバッジと連動                 |
-| 04  | p0_04_notification_center           | `/notifications`                     | 改修 | 完了   | 2026-06-11。お知らせ化+5分類チップ+ListOpenCard                   |
-| 05  | p0_05_global_search                 | `/search`(新設)                      | 改修 | WIP    | ページ化決定。workflow d23 で実装中                               |
-| 06  | p0_06_advanced_search_modal         | `/search` 上のモーダル               | 部品 | WIP    | workflow d23 で実装中                                             |
-| 07  | p0_07_dashboard_cardgrid            | `/dashboard`                         | 改修 | 完了   | 2026-06-11(D-2-1)                                                 |
-| 08  | p0_08_card_detail_workspace         | `/patients/[id]`                     | 改修 | 完了   | 2026-06-11。タブ再編+左ミニカード+workspace 集約+右レール工程駆動 |
-| 09  | p0_09_prescription_import           | `/prescriptions/new`                 | 改修 | 未着手 |                                                                   |
-| 10  | p0_10_prescription_entry_period     | `/prescriptions/new`(期間入力)       | 改修 | 未着手 |                                                                   |
-| 11  | p0_11_prescription_diff_review      | `/patients/[id]/prescriptions`(差分) | 改修 | 未着手 |                                                                   |
-| 12  | p0_12_dispensing_workbench          | `/dispensing`                        | 改修 | 未着手 |                                                                   |
-| 13  | p0_13_dispensing_audit              | `/auditing`                          | 改修 | 未着手 |                                                                   |
-| 14  | p0_14_set_preparation               | `/medication-sets`                   | 改修 | 未着手 |                                                                   |
-| 15  | p0_15_set_audit                     | `/medication-sets`(鑑査)             | 改修 | 未着手 |                                                                   |
-| 16  | p0_16_schedule_gantt_all_staff      | `/schedules`                         | 改修 | 未着手 | 全スタッフ横断ガント                                              |
-| 17  | p0_17_schedule_confirmation_flow    | `/schedules/proposals`               | 改修 | 未着手 |                                                                   |
-| 18  | p0_18_schedule_create_edit_drawer   | `/schedules`(作成/編集ドロワー)      | 部品 | 未着手 |                                                                   |
-| 19  | p0_19_schedule_conflict_resolution  | `/schedules`(重複解消)               | 改修 | 未着手 |                                                                   |
-| 20  | p0_20_emergency_route_recalculation | `/schedules`(緊急差込→再計算)        | 改修 | 未着手 | visit-routes API 連携                                             |
-| 21  | p0_21_route_optimization_detail     | `/schedules`(ルート詳細)             | 改修 | 未着手 |                                                                   |
-| 22  | p0_22_visit_mode_tablet             | `/visits/[id]/record`                | 改修 | 未着手 | タブレット幅                                                      |
-| 23  | p0_23_visit_mode_smartphone         | 同上(スマホ幅)                       | 改修 | 未着手 | viewport 390 で別撮影                                             |
-| 24  | p0_24_facility_visit_packet         | facility-visit-batches 系画面        | 改修 | 未着手 |                                                                   |
-| 25  | p0_25_clerk_support_dashboard       | `/my-day` or `/today`(事務向け)      | 改修 | 未着手 | 要精査                                                            |
-| 26  | p0_26_contact_delivery_target_edit  | `/admin/contact-profiles`            | 改修 | 未着手 |                                                                   |
-| 27  | p0_27_handoff_bidirectional         | `/handoff`                           | 改修 | 未着手 | 「薬剤師に相談 / 事務へ戻す」                                     |
-| 28  | p0_28_report_composer_share         | `/reports`                           | 改修 | 未着手 |                                                                   |
-| 29  | p0_29_reply_followup_management     | `/communications/requests`           | 改修 | 未着手 |                                                                   |
-| 30  | p0_30_claim_billing_review          | `/billing`(算定チェック)             | 改修 | 未着手 |                                                                   |
-| 31  | p0_31_residual_adjustment_flow      | residual-medications 系              | 改修 | 未着手 |                                                                   |
-| 32  | p0_32_adverse_event_prevention_flow | `/issues` + CDS                      | 新規 | 未着手 | /issues は空ディレクトリ(404)。ルート新設要                       |
-| 33  | p0_33_evidence_photo_management     | files / 訪問記録の写真管理           | 改修 | 未着手 | 要精査                                                            |
-| 34  | p0_34_offline_sync_center           | なし(新規 `/sync` 相当)              | 新規 | 未着手 | dexie キュー可視化+手動同期。API 拡張要                           |
-| 35  | p0_35_data_conflict_resolution      | なし(同期競合の解消 UI)              | 新規 | 未着手 | サーバ版との突合 UI                                               |
-| 36  | p0_36_reject_reason_modal           | 差戻し理由モーダル(workflow 共通)    | 部品 | 未着手 |                                                                   |
-| 37  | p0_37_cancel_reopen_reason_modal    | 取消/再開理由モーダル(共通)          | 部品 | 未着手 |                                                                   |
-| 38  | p0_38_patient_profile               | `/patients/[id]`                     | 改修 | 未着手 |                                                                   |
-| 39  | p0_39_medication_master             | `/admin/drug-masters`                | 改修 | 未着手 |                                                                   |
-| 40  | p0_40_medical_professional_master   | `/admin/external-professionals`      | 改修 | 未着手 |                                                                   |
-| 41  | p0_41_facility_master               | `/admin/facilities`                  | 改修 | 未着手 |                                                                   |
-| 42  | p0_42_staff_role_management         | `/admin/staff` + `/admin/users`      | 改修 | 未着手 |                                                                   |
-| 43  | p0_43_vehicle_master                | 車両マスタ(visit-vehicle-resources)  | 改修 | 未着手 | 管理画面の有無要精査                                              |
-| 44  | p0_44_settings                      | `/settings`                          | 改修 | 未着手 |                                                                   |
-| 45  | p0_45_capacity_bottleneck_dashboard | `/admin/capacity`                    | 改修 | 実装済 | 現行 dashboard BFF で撮影                                         |
-| 46  | p0_46_ui_state_reference            | (UI 状態リファレンス)                | 参照 | —      | 実装対象外。状態色の正として参照                                  |
-| 47  | p0_47_print_preview                 | 印刷プレビュー画面                   | 改修 | 未着手 |                                                                   |
-| 48  | p0_48_mobile_evidence_capture       | モバイル証跡撮影                     | 改修 | 未着手 | p0_33 と連動                                                      |
+| #   | screen_id                           | 対応ルート / 部品                    | 種別 | 状態   | メモ                                                                             |
+| --- | ----------------------------------- | ------------------------------------ | ---- | ------ | -------------------------------------------------------------------------------- |
+| 01  | p0_01_login_mfa                     | `/(auth)/login` + `/mfa`             | 改修 | 未着手 | 中央カード+確認コード案内                                                        |
+| 02  | p0_02_tenant_pharmacy_select        | なし(新規 `/select-site` 相当)       | 新規 | 未着手 | ログイン後の薬局選択。API: `/api/me` 拡張 or sites 一覧                          |
+| 03  | p0_03_mode_role_select              | なし(新規。在宅/外来モード+ロール)   | 新規 | 未着手 | UI ストアにモード保持。シェルのモードバッジと連動                                |
+| 04  | p0_04_notification_center           | `/notifications`                     | 改修 | 完了   | 2026-06-11。お知らせ化+5分類チップ+ListOpenCard                                  |
+| 05  | p0_05_global_search                 | `/search`(新設)                      | 改修 | WIP    | ページ化決定。workflow d23 で実装中                                              |
+| 06  | p0_06_advanced_search_modal         | `/search` 上のモーダル               | 部品 | WIP    | workflow d23 で実装中                                                            |
+| 07  | p0_07_dashboard_cardgrid            | `/dashboard`                         | 改修 | 完了   | 2026-06-11(D-2-1)                                                                |
+| 08  | p0_08_card_detail_workspace         | `/patients/[id]`                     | 改修 | 完了   | 2026-06-11。タブ再編+左ミニカード+workspace 集約+右レール工程駆動                |
+| 09  | p0_09_prescription_import           | `/prescriptions/new`                 | 改修 | 未着手 |                                                                                  |
+| 10  | p0_10_prescription_entry_period     | `/prescriptions/new`(期間入力)       | 改修 | 未着手 |                                                                                  |
+| 11  | p0_11_prescription_diff_review      | `/patients/[id]/prescriptions`(差分) | 改修 | 未着手 |                                                                                  |
+| 12  | p0_12_dispensing_workbench          | `/dispense`                          | 完了 | 撮影済 | レセコン風 DispensingWorkbench(phase=dispense)へ完全置換・design-fidelity 撮影済 |
+| 13  | p0_13_dispensing_audit              | `/audit`                             | 完了 | 撮影済 | phase=audit。撮影済                                                              |
+| 14  | p0_14_set_preparation               | `/set`                               | 完了 | 撮影済 | phase=setp(お薬カレンダー)。撮影済                                               |
+| 15  | p0_15_set_audit                     | `/set-audit`                         | 完了 | 撮影済 | phase=seta(独立ルート新設)。撮影済                                               |
+| 16  | p0_16_schedule_gantt_all_staff      | `/schedules`                         | 改修 | 未着手 | 全スタッフ横断ガント                                                             |
+| 17  | p0_17_schedule_confirmation_flow    | `/schedules/proposals`               | 改修 | 未着手 |                                                                                  |
+| 18  | p0_18_schedule_create_edit_drawer   | `/schedules`(作成/編集ドロワー)      | 部品 | 未着手 |                                                                                  |
+| 19  | p0_19_schedule_conflict_resolution  | `/schedules`(重複解消)               | 改修 | 未着手 |                                                                                  |
+| 20  | p0_20_emergency_route_recalculation | `/schedules`(緊急差込→再計算)        | 改修 | 未着手 | visit-routes API 連携                                                            |
+| 21  | p0_21_route_optimization_detail     | `/schedules`(ルート詳細)             | 改修 | 未着手 |                                                                                  |
+| 22  | p0_22_visit_mode_tablet             | `/visits/[id]/record`                | 改修 | 未着手 | タブレット幅                                                                     |
+| 23  | p0_23_visit_mode_smartphone         | 同上(スマホ幅)                       | 改修 | 未着手 | viewport 390 で別撮影                                                            |
+| 24  | p0_24_facility_visit_packet         | facility-visit-batches 系画面        | 改修 | 未着手 |                                                                                  |
+| 25  | p0_25_clerk_support_dashboard       | `/my-day` or `/today`(事務向け)      | 改修 | 未着手 | 要精査                                                                           |
+| 26  | p0_26_contact_delivery_target_edit  | `/admin/contact-profiles`            | 改修 | 未着手 |                                                                                  |
+| 27  | p0_27_handoff_bidirectional         | `/handoff`                           | 改修 | 未着手 | 「薬剤師に相談 / 事務へ戻す」                                                    |
+| 28  | p0_28_report_composer_share         | `/reports`                           | 改修 | 未着手 |                                                                                  |
+| 29  | p0_29_reply_followup_management     | `/communications/requests`           | 改修 | 未着手 |                                                                                  |
+| 30  | p0_30_claim_billing_review          | `/billing`(算定チェック)             | 改修 | 未着手 |                                                                                  |
+| 31  | p0_31_residual_adjustment_flow      | residual-medications 系              | 改修 | 未着手 |                                                                                  |
+| 32  | p0_32_adverse_event_prevention_flow | `/issues` + CDS                      | 新規 | 未着手 | /issues は空ディレクトリ(404)。ルート新設要                                      |
+| 33  | p0_33_evidence_photo_management     | files / 訪問記録の写真管理           | 改修 | 未着手 | 要精査                                                                           |
+| 34  | p0_34_offline_sync_center           | なし(新規 `/sync` 相当)              | 新規 | 未着手 | dexie キュー可視化+手動同期。API 拡張要                                          |
+| 35  | p0_35_data_conflict_resolution      | なし(同期競合の解消 UI)              | 新規 | 未着手 | サーバ版との突合 UI                                                              |
+| 36  | p0_36_reject_reason_modal           | 差戻し理由モーダル(workflow 共通)    | 部品 | 未着手 |                                                                                  |
+| 37  | p0_37_cancel_reopen_reason_modal    | 取消/再開理由モーダル(共通)          | 部品 | 未着手 |                                                                                  |
+| 38  | p0_38_patient_profile               | `/patients/[id]`                     | 改修 | 未着手 |                                                                                  |
+| 39  | p0_39_medication_master             | `/admin/drug-masters`                | 改修 | 未着手 |                                                                                  |
+| 40  | p0_40_medical_professional_master   | `/admin/external-professionals`      | 改修 | 未着手 |                                                                                  |
+| 41  | p0_41_facility_master               | `/admin/facilities`                  | 改修 | 未着手 |                                                                                  |
+| 42  | p0_42_staff_role_management         | `/admin/staff` + `/admin/users`      | 改修 | 未着手 |                                                                                  |
+| 43  | p0_43_vehicle_master                | 車両マスタ(visit-vehicle-resources)  | 改修 | 未着手 | 管理画面の有無要精査                                                             |
+| 44  | p0_44_settings                      | `/settings`                          | 改修 | 未着手 |                                                                                  |
+| 45  | p0_45_capacity_bottleneck_dashboard | `/admin/capacity`                    | 改修 | 実装済 | 現行 dashboard BFF で撮影                                                        |
+| 46  | p0_46_ui_state_reference            | (UI 状態リファレンス)                | 参照 | —      | 実装対象外。状態色の正として参照                                                 |
+| 47  | p0_47_print_preview                 | 印刷プレビュー画面                   | 改修 | 未着手 |                                                                                  |
+| 48  | p0_48_mobile_evidence_capture       | モバイル証跡撮影                     | 改修 | 未着手 | p0_33 と連動                                                                     |
 
 ## P1 マッピング表(14 画面)
 

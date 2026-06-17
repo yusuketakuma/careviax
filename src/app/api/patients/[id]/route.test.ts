@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 const {
   requireAuthContextMock,
   patientFindFirstMock,
+  patientFindManyMock,
   patientUpdateMock,
   residenceFindFirstMock,
   residenceUpdateMock,
@@ -53,9 +54,13 @@ const {
   patientNarcoticUseFindManyMock,
   patientNarcoticUseCreateMock,
   patientNarcoticUseUpdateManyMock,
+  contactPartyFindManyMock,
+  contactPartyDeleteManyMock,
+  contactPartyCreateManyMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
+  patientFindManyMock: vi.fn(),
   patientUpdateMock: vi.fn(),
   residenceFindFirstMock: vi.fn(),
   residenceUpdateMock: vi.fn(),
@@ -105,6 +110,9 @@ const {
   patientNarcoticUseFindManyMock: vi.fn(),
   patientNarcoticUseCreateMock: vi.fn(),
   patientNarcoticUseUpdateManyMock: vi.fn(),
+  contactPartyFindManyMock: vi.fn(),
+  contactPartyDeleteManyMock: vi.fn(),
+  contactPartyCreateManyMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -115,6 +123,7 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     patient: {
       findFirst: patientFindFirstMock,
+      findMany: patientFindManyMock,
     },
     medicationProfile: {
       findMany: medicationProfileFindManyMock,
@@ -250,8 +259,11 @@ describe('/api/patients/[id]', () => {
     patientFindFirstMock.mockResolvedValue({
       id: 'patient_1',
       name: '患者A',
+      birth_date: new Date('1950-01-01T00:00:00.000Z'),
+      gender: 'male',
       cases: [],
     });
+    patientFindManyMock.mockResolvedValue([]);
     patientUpdateMock.mockResolvedValue({ id: 'patient_1', name: '更新後 患者A' });
     residenceFindFirstMock.mockResolvedValue({ id: 'residence_1' });
     residenceUpdateMock.mockResolvedValue({ id: 'residence_1' });
@@ -265,6 +277,9 @@ describe('/api/patients/[id]', () => {
     patientInsuranceUpdateMock.mockResolvedValue({ id: 'insurance_1' });
     patientInsuranceCreateMock.mockResolvedValue({ id: 'insurance_1' });
     patientInsuranceUpdateManyMock.mockResolvedValue({ count: 1 });
+    contactPartyFindManyMock.mockResolvedValue([]);
+    contactPartyDeleteManyMock.mockResolvedValue({ count: 0 });
+    contactPartyCreateManyMock.mockResolvedValue({ count: 0 });
     careCaseFindFirstMock.mockResolvedValue({
       id: 'case_1',
       required_visit_support: {
@@ -380,9 +395,9 @@ describe('/api/patients/[id]', () => {
           create: vi.fn(),
         },
         contactParty: {
-          findMany: vi.fn().mockResolvedValue([]),
-          deleteMany: vi.fn(),
-          createMany: vi.fn(),
+          findMany: contactPartyFindManyMock,
+          deleteMany: contactPartyDeleteManyMock,
+          createMany: contactPartyCreateManyMock,
         },
         patientCondition: {
           findMany: vi.fn().mockResolvedValue([]),
@@ -931,6 +946,8 @@ describe('/api/patients/[id]', () => {
     patientFindFirstMock.mockResolvedValue({
       id: 'patient_1',
       name: '山田 太郎',
+      birth_date: new Date('1950-01-01T00:00:00.000Z'),
+      gender: 'male',
       phone: '090-0000-0000',
       cases: [],
     });
@@ -974,6 +991,30 @@ describe('/api/patients/[id]', () => {
       (call) => call[0]?.data?.field_key === 'name',
     );
     expect(nameCreate).toBeUndefined();
+  });
+
+  it('returns 409 for an archived patient before updating patient master data', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '山田 太郎',
+      phone: '090-0000-0000',
+      archived_at: new Date('2026-04-01T00:00:00.000Z'),
+      cases: [],
+    });
+
+    const response = await PATCH(
+      createRequest({ phone: '080-1111-2222' }, { 'x-org-id': 'corg1234567890123456789012' }),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'アーカイブ中の患者は復元するまで更新できません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientUpdateMock).not.toHaveBeenCalled();
+    expect(patientFieldRevisionCreateMock).not.toHaveBeenCalled();
   });
 
   it('records revisions with visit_record provenance when source_visit_record_id is supplied', async () => {
@@ -1043,6 +1084,7 @@ describe('/api/patients/[id]', () => {
         {
           contacts: [
             { name: '山田 花子', relation: 'child', is_primary: true, is_emergency_contact: true },
+            { name: '山田 次郎', relation: 'child', is_primary: true, is_emergency_contact: false },
           ],
         },
         { 'x-org-id': 'corg1234567890123456789012' },
@@ -1060,7 +1102,95 @@ describe('/api/patients/[id]', () => {
       category: 'contacts',
       field_key: 'contacts',
     });
-    expect((contactsCreate?.[0]?.data?.new_value as unknown[]).length).toBe(1);
+    expect(contactPartyCreateManyMock).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({ name: '山田 花子', is_primary: true }),
+        expect.objectContaining({ name: '山田 次郎', is_primary: false }),
+      ],
+    });
+    expect((contactsCreate?.[0]?.data?.new_value as unknown[]).length).toBe(2);
+  });
+
+  it('returns 409 before updating when PATCH changes identity into a visible duplicate', async () => {
+    patientFindManyMock.mockResolvedValue([
+      {
+        id: 'patient_other',
+        name: '重複 患者',
+        name_kana: 'チョウフク カンジャ',
+        birth_date: new Date('1950-01-01T00:00:00.000Z'),
+        gender: 'male',
+      },
+    ]);
+
+    const response = await PATCH(
+      createRequest(
+        {
+          name: '重複 患者',
+          birth_date: '1950-01-01',
+          gender: 'male',
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        duplicate_type: 'patient_identity',
+        duplicates: [expect.objectContaining({ id: 'patient_other' })],
+      },
+    });
+    expect(patientFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: { not: 'patient_1' },
+        }),
+      }),
+    );
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('updates with a warning when PATCH duplicate identity is acknowledged', async () => {
+    patientFindManyMock.mockResolvedValue([
+      {
+        id: 'patient_other',
+        name: '重複 患者',
+        name_kana: 'チョウフク カンジャ',
+        birth_date: new Date('1950-01-01T00:00:00.000Z'),
+        gender: 'male',
+      },
+    ]);
+
+    const response = await PATCH(
+      createRequest(
+        {
+          name: '重複 患者',
+          birth_date: '1950-01-01',
+          gender: 'male',
+          duplicate_acknowledged: true,
+        },
+        { 'x-org-id': 'corg1234567890123456789012' },
+      ),
+      { params: Promise.resolve({ id: 'patient_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      warnings: [
+        {
+          code: 'PATIENT_DUPLICATE_ACKNOWLEDGED',
+          severity: 'warning',
+        },
+      ],
+      metadata: {
+        duplicate_candidates: [expect.objectContaining({ id: 'patient_other' })],
+      },
+    });
+    expect(patientUpdateMock).toHaveBeenCalled();
   });
 
   it('records a clinical field revision when care_level changes via intake', async () => {
@@ -1103,7 +1233,7 @@ describe('/api/patients/[id]', () => {
           },
         },
         create: expect.objectContaining({ task_type: 'patient_change_review' }),
-      })
+      }),
     );
   });
 

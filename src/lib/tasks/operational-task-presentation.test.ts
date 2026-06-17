@@ -19,6 +19,6 @@ describe('describeOperationalTask', () => {
         related_entity_type: 'dispense_task',
         related_entity_id: 'task-tanaka',
       }).actionHref,
-    ).toBe('/auditing?taskId=task-tanaka');
+    ).toBe('/audit?taskId=task-tanaka');
   });
 });

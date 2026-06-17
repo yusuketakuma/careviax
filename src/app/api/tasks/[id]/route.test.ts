@@ -4,12 +4,16 @@ import { NextRequest } from 'next/server';
 const {
   requireAuthContextMock,
   careCaseFindManyMock,
+  careCaseFindFirstMock,
+  patientFindFirstMock,
   taskFindFirstMock,
   taskUpdateMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
+  careCaseFindFirstMock: vi.fn(),
+  patientFindFirstMock: vi.fn(),
   taskFindFirstMock: vi.fn(),
   taskUpdateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -23,6 +27,10 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     careCase: {
       findMany: careCaseFindManyMock,
+      findFirst: careCaseFindFirstMock,
+    },
+    patient: {
+      findFirst: patientFindFirstMock,
     },
     task: {
       findFirst: taskFindFirstMock,
@@ -63,10 +71,14 @@ describe('/api/tasks/[id]', () => {
       },
     });
     careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
+    careCaseFindFirstMock.mockResolvedValue({ patient_id: 'patient_1' });
+    patientFindFirstMock.mockResolvedValue({ id: 'patient_1', archived_at: null });
     taskFindFirstMock.mockResolvedValue({
       id: 'task_1',
       assigned_to: 'user_1',
       completed_at: null,
+      related_entity_type: 'patient',
+      related_entity_id: 'patient_1',
     });
     taskUpdateMock.mockResolvedValue({
       id: 'task_1',
@@ -129,6 +141,60 @@ describe('/api/tasks/[id]', () => {
         completed_at: expect.any(Date),
       }),
     });
+  });
+
+  it('rejects archived related patients before updating operational tasks', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    const response = (await PATCH(
+      createPatchRequest('task_1', {
+        status: 'completed',
+      }),
+      {
+        params: Promise.resolve({ id: 'task_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(409);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(taskUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects archived patients resolved from related cases before updating operational tasks', async () => {
+    taskFindFirstMock.mockResolvedValue({
+      id: 'task_1',
+      assigned_to: 'user_1',
+      completed_at: null,
+      related_entity_type: 'case',
+      related_entity_id: 'case_1',
+    });
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    const response = (await PATCH(
+      createPatchRequest('task_1', {
+        status: 'completed',
+      }),
+      {
+        params: Promise.resolve({ id: 'task_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(409);
+    expect(careCaseFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'case_1',
+        org_id: 'org_1',
+      },
+      select: { patient_id: true },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(taskUpdateMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object update payloads before resolving assignment scope', async () => {

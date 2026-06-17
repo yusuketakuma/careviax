@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   detectMedicationChanges,
   formatDoseFrequency,
+  matchMedicationDiffLines,
   prescriptionLineKey,
 } from '@/lib/prescription/medication-diff';
 
@@ -25,15 +26,30 @@ function makeLine(overrides: {
 
 describe('prescriptionLineKey', () => {
   it('returns drug_code when present', () => {
-    expect(prescriptionLineKey({ drug_name: 'アムロジピン錠5mg', drug_code: 'YJ001' })).toBe('YJ001');
+    expect(
+      prescriptionLineKey({
+        drug_name: 'アムロジピン錠5mg',
+        drug_code: 'YJ001',
+        dose: '1錠',
+        frequency: '朝食後',
+        days: 28,
+      }),
+    ).toBe('YJ001|1錠|朝食後|28');
   });
 
   it('falls back to drug_name when drug_code is null', () => {
-    expect(prescriptionLineKey({ drug_name: 'アムロジピン錠5mg', drug_code: null })).toBe('アムロジピン錠5mg');
+    expect(
+      prescriptionLineKey({
+        drug_name: 'アムロジピン錠5mg',
+        drug_code: null,
+        dose: '1錠',
+        frequency: '朝食後',
+      }),
+    ).toBe('アムロジピン錠5mg|1錠|朝食後|');
   });
 
   it('falls back to drug_name when drug_code is undefined', () => {
-    expect(prescriptionLineKey({ drug_name: 'アムロジピン錠5mg' })).toBe('アムロジピン錠5mg');
+    expect(prescriptionLineKey({ drug_name: 'アムロジピン錠5mg' })).toBe('アムロジピン錠5mg|||');
   });
 });
 
@@ -41,7 +57,9 @@ describe('prescriptionLineKey', () => {
 
 describe('formatDoseFrequency', () => {
   it('formats dose and frequency separated by " / "', () => {
-    expect(formatDoseFrequency({ dose: '2錠', frequency: '1日2回朝夕食後' })).toBe('2錠 / 1日2回朝夕食後');
+    expect(formatDoseFrequency({ dose: '2錠', frequency: '1日2回朝夕食後' })).toBe(
+      '2錠 / 1日2回朝夕食後',
+    );
   });
 });
 
@@ -80,7 +98,9 @@ describe('detectMedicationChanges', () => {
   });
 
   it('detects dose_changed when dose differs but frequency is the same', () => {
-    const previous = [makeLine({ drug_name: 'アムロジピン錠5mg', drug_code: 'YJ001', dose: '1錠' })];
+    const previous = [
+      makeLine({ drug_name: 'アムロジピン錠5mg', drug_code: 'YJ001', dose: '1錠' }),
+    ];
     const current = [makeLine({ drug_name: 'アムロジピン錠5mg', drug_code: 'YJ001', dose: '2錠' })];
     const changes = detectMedicationChanges(current, previous);
 
@@ -94,8 +114,12 @@ describe('detectMedicationChanges', () => {
   });
 
   it('detects frequency_changed when frequency differs but dose is the same', () => {
-    const previous = [makeLine({ drug_name: 'アムロジピン錠5mg', drug_code: 'YJ001', frequency: '1日1回朝食後' })];
-    const current = [makeLine({ drug_name: 'アムロジピン錠5mg', drug_code: 'YJ001', frequency: '1日2回朝夕食後' })];
+    const previous = [
+      makeLine({ drug_name: 'アムロジピン錠5mg', drug_code: 'YJ001', frequency: '1日1回朝食後' }),
+    ];
+    const current = [
+      makeLine({ drug_name: 'アムロジピン錠5mg', drug_code: 'YJ001', frequency: '1日2回朝夕食後' }),
+    ];
     const changes = detectMedicationChanges(current, previous);
 
     expect(changes).toHaveLength(1);
@@ -117,6 +141,37 @@ describe('detectMedicationChanges', () => {
     expect(changes.map((c) => c.change_type).sort()).toEqual(['added', 'removed']);
   });
 
+  it('does not collapse same drug code rows with different frequency', () => {
+    const previous = [
+      makeLine({
+        drug_name: 'メトホルミン錠500mg',
+        drug_code: 'YJ002',
+        frequency: '朝食後',
+      }),
+      makeLine({
+        drug_name: 'メトホルミン錠500mg',
+        drug_code: 'YJ002',
+        frequency: '夕食後',
+      }),
+    ];
+    const current = [
+      makeLine({
+        drug_name: 'メトホルミン錠500mg',
+        drug_code: 'YJ002',
+        frequency: '朝食後',
+      }),
+    ];
+
+    const changes = detectMedicationChanges(current, previous);
+
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toMatchObject({
+      drug_name: 'メトホルミン錠500mg',
+      change_type: 'removed',
+      previous: '1錠 / 夕食後',
+    });
+  });
+
   it('reports all changes when multiple drugs are added, removed, and modified simultaneously', () => {
     const previous = [
       makeLine({ drug_name: 'アムロジピン錠5mg', drug_code: 'YJ001', dose: '1錠' }),
@@ -124,7 +179,7 @@ describe('detectMedicationChanges', () => {
     ];
     const current = [
       makeLine({ drug_name: 'アムロジピン錠5mg', drug_code: 'YJ001', dose: '2錠' }), // dose change
-      makeLine({ drug_name: 'ロスバスタチン錠2.5mg', drug_code: 'YJ003' }),           // new drug
+      makeLine({ drug_name: 'ロスバスタチン錠2.5mg', drug_code: 'YJ003' }), // new drug
       // YJ002 removed
     ];
     const changes = detectMedicationChanges(current, previous);
@@ -139,11 +194,71 @@ describe('detectMedicationChanges', () => {
   it('dose_changed takes priority over frequency_changed when both dose and frequency differ', () => {
     // The implementation checks dose first; if dose differs it records dose_changed
     // without also checking frequency — this test locks that behavior in.
-    const previous = [makeLine({ drug_name: 'アムロジピン錠5mg', drug_code: 'YJ001', dose: '1錠', frequency: '1日1回朝食後' })];
-    const current = [makeLine({ drug_name: 'アムロジピン錠5mg', drug_code: 'YJ001', dose: '2錠', frequency: '1日2回朝夕食後' })];
+    const previous = [
+      makeLine({
+        drug_name: 'アムロジピン錠5mg',
+        drug_code: 'YJ001',
+        dose: '1錠',
+        frequency: '1日1回朝食後',
+      }),
+    ];
+    const current = [
+      makeLine({
+        drug_name: 'アムロジピン錠5mg',
+        drug_code: 'YJ001',
+        dose: '2錠',
+        frequency: '1日2回朝夕食後',
+      }),
+    ];
     const changes = detectMedicationChanges(current, previous);
 
     expect(changes).toHaveLength(1);
     expect(changes[0].change_type).toBe('dose_changed');
+  });
+});
+
+describe('matchMedicationDiffLines', () => {
+  it('matches duplicate drug rows by exact line first without collapsing by drug name', () => {
+    const previous = [
+      makeLine({
+        drug_name: 'メトホルミン錠500mg',
+        drug_code: 'YJ002',
+        dose: '1錠',
+        frequency: '朝食後',
+      }),
+      makeLine({
+        drug_name: 'メトホルミン錠500mg',
+        drug_code: 'YJ002',
+        dose: '1錠',
+        frequency: '夕食後',
+      }),
+    ];
+    const current = [
+      makeLine({
+        drug_name: 'メトホルミン錠500mg',
+        drug_code: 'YJ002',
+        dose: '1錠',
+        frequency: '朝食後',
+      }),
+      makeLine({
+        drug_name: 'メトホルミン錠500mg',
+        drug_code: 'YJ002',
+        dose: '2錠',
+        frequency: '夕食後',
+      }),
+    ];
+
+    const matches = matchMedicationDiffLines(current, previous);
+
+    expect(matches).toHaveLength(2);
+    expect(matches[0]).toMatchObject({
+      current_index: 0,
+      previous_index: 0,
+    });
+    expect(matches[1]).toMatchObject({
+      current_index: 1,
+      previous_index: 1,
+    });
+    expect(matches[1].previous?.frequency).toBe('夕食後');
   });
 });

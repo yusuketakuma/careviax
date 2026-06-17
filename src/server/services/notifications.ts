@@ -3,6 +3,7 @@ import webpush from 'web-push';
 import { isMemberRole } from '@/lib/auth/member-roles';
 import { readJsonObject } from '@/lib/db/json';
 import { logger } from '@/lib/utils/logger';
+import { getRealtimeAdapter } from '@/server/adapters/realtime';
 import { LineNotificationAdapter } from '@/server/adapters/line';
 import { SmsNotificationAdapter } from '@/server/adapters/sms';
 
@@ -27,6 +28,16 @@ type Tx = {
 };
 type NotificationChannel = 'in_app' | 'sms' | 'line' | 'email' | 'fax' | 'mcs';
 type NotificationDeliveryTask = () => Promise<unknown>;
+type PersistedNotification = {
+  id: string;
+  user_id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  link: string | null;
+  is_read?: boolean;
+  created_at?: Date | string;
+};
 
 type DispatchNotificationEventInput = {
   orgId: string;
@@ -78,6 +89,46 @@ function scheduleNotificationDeliveries(tasks: NotificationDeliveryTask[]) {
       }
     });
   }, 0);
+}
+
+function buildNotificationUserChannel(userId: string) {
+  return `user:${userId}`;
+}
+
+function toNotificationStreamItem(notification: PersistedNotification) {
+  const createdAt =
+    notification.created_at instanceof Date
+      ? notification.created_at.toISOString()
+      : typeof notification.created_at === 'string'
+        ? notification.created_at
+        : new Date().toISOString();
+
+  return {
+    id: notification.id,
+    type: notification.type,
+    title: notification.title,
+    message: notification.message,
+    link: notification.link,
+    is_read: notification.is_read ?? false,
+    created_at: createdAt,
+  };
+}
+
+async function broadcastPersistedNotifications(notifications: PersistedNotification[]) {
+  if (notifications.length === 0) return;
+
+  try {
+    const adapter = getRealtimeAdapter();
+    await Promise.all(
+      notifications.map((notification) =>
+        adapter.broadcastStatusUpdate(buildNotificationUserChannel(notification.user_id), [
+          toNotificationStreamItem(notification),
+        ] as unknown as Record<string, unknown>),
+      ),
+    );
+  } catch {
+    // Realtime notification delivery is best-effort; persisted rows remain the source of truth.
+  }
 }
 
 function getEnabledRulesForChannel(
@@ -265,6 +316,8 @@ export async function dispatchNotificationEvent(tx: Tx, input: DispatchNotificat
       });
     }),
   );
+
+  await broadcastPersistedNotifications(notifications);
 
   const [smsUserIds, lineUserIds, faxUserIds, mcsUserIds] = await Promise.all([
     resolveTargetUserIds(input, rules, 'sms', resolveMembershipRecipients),

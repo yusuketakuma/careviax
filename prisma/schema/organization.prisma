@@ -60,21 +60,22 @@ model Organization {
   created_at       DateTime @default(now())
   updated_at       DateTime @updatedAt
 
-  sites                       PharmacySite[]
-  memberships                 Membership[]
-  facilities                  Facility[]
-  external_professionals      ExternalProfessional[]
-  prescriber_institutions     PrescriberInstitution[]
-  pca_pumps                   PcaPump[]
-  pca_pump_rentals            PcaPumpRental[]
-  pca_pump_rental_accessories PcaPumpRentalAccessory[]
-  pca_pump_maintenance_events PcaPumpMaintenanceEvent[]
-  service_areas               ServiceArea[]
-  visit_vehicle_resources     VisitVehicleResource[]
-  webhook_registrations       WebhookRegistration[]
-  webhook_deliveries          WebhookDelivery[]
-  drug_alert_rules            DrugAlertRule[]
-  file_assets                 FileAsset[]
+  sites                        PharmacySite[]
+  memberships                  Membership[]
+  facilities                   Facility[]
+  external_professionals       ExternalProfessional[]
+  prescriber_institutions      PrescriberInstitution[]
+  pca_pumps                    PcaPump[]
+  pca_pump_rentals             PcaPumpRental[]
+  pca_pump_rental_accessories  PcaPumpRentalAccessory[]
+  pca_pump_maintenance_events  PcaPumpMaintenanceEvent[]
+  service_areas                ServiceArea[]
+  visit_vehicle_resources      VisitVehicleResource[]
+  webhook_registrations        WebhookRegistration[]
+  webhook_deliveries           WebhookDelivery[]
+  drug_alert_rules             DrugAlertRule[]
+  file_assets                  FileAsset[]
+  visitScheduleProposalBatches VisitScheduleProposalBatch[]
 
   @@index([name])
 }
@@ -98,17 +99,18 @@ model PharmacySite {
   created_at                 DateTime     @default(now())
   updated_at                 DateTime     @updatedAt
 
-  memberships                Membership[]
-  pharmacist_shifts          PharmacistShift[]
-  pharmacist_shift_templates PharmacistShiftTemplate[]
-  facility_standards         FacilityStandardRegistration[]
-  drug_stocks                PharmacyDrugStock[]
-  visit_schedules            VisitSchedule[]
-  visit_schedule_proposals   VisitScheduleProposal[]
-  business_holidays          BusinessHoliday[]
-  insurance_configs          PharmacySiteInsuranceConfig[]
-  service_areas              ServiceArea[]
-  visit_vehicle_resources    VisitVehicleResource[]
+  memberships                  Membership[]
+  pharmacist_shifts            PharmacistShift[]
+  pharmacist_shift_templates   PharmacistShiftTemplate[]
+  facility_standards           FacilityStandardRegistration[]
+  drug_stocks                  PharmacyDrugStock[]
+  visit_schedules              VisitSchedule[]
+  visit_schedule_proposals     VisitScheduleProposal[]
+  business_holidays            BusinessHoliday[]
+  insurance_configs            PharmacySiteInsuranceConfig[]
+  service_areas                ServiceArea[]
+  visit_vehicle_resources      VisitVehicleResource[]
+  visitScheduleProposalBatches VisitScheduleProposalBatch[]
 
   @@unique([id, org_id])
   @@index([org_id])

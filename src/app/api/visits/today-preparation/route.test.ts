@@ -42,6 +42,80 @@ function createRequest() {
   return new NextRequest('http://localhost/api/visits/today-preparation');
 }
 
+function buildSchedule(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'schedule_1',
+    time_window_start: new Date('2026-06-12T10:00:00+09:00'),
+    time_window_end: new Date('2026-06-12T10:45:00+09:00'),
+    route_order: 1,
+    pre_visit_checklist_completed: true,
+    facility_batch_id: null,
+    facility_batch: null,
+    vehicle_resource: { label: '訪問車1' },
+    preparation: {
+      medication_changes_reviewed: true,
+      carry_items_confirmed: true,
+      previous_issues_reviewed: true,
+      route_confirmed: true,
+      prepared_at: new Date('2026-06-12T08:30:00+09:00'),
+      updated_at: new Date('2026-06-12T08:30:00+09:00'),
+    },
+    case_: {
+      care_team_links: [
+        {
+          role: 'physician',
+          is_primary: true,
+          phone: '03-0000-0001',
+          email: null,
+          fax: '03-0000-0002',
+        },
+        {
+          role: 'nurse',
+          is_primary: true,
+          phone: '03-0000-0003',
+          email: null,
+          fax: '03-0000-0004',
+        },
+        {
+          role: 'care_manager',
+          is_primary: true,
+          phone: '03-0000-0005',
+          email: null,
+          fax: '03-0000-0006',
+        },
+      ],
+      patient: {
+        id: 'patient_1',
+        name: '患者A',
+        allergy_info: null,
+        contacts: [
+          {
+            is_primary: true,
+            is_emergency_contact: true,
+            phone: '090-0000-0001',
+            email: null,
+            fax: null,
+          },
+        ],
+        scheduling_preference: {
+          swallowing_route: null,
+          preferred_contact_name: null,
+          preferred_contact_phone: null,
+          visit_before_contact_required: true,
+          parking_available: true,
+          care_level: '要介護2',
+        },
+      },
+    },
+    cycle: {
+      overall_status: 'set_audited',
+      prescription_intakes: [{ lines: [] }],
+      dispense_tasks: [],
+    },
+    ...overrides,
+  };
+}
+
 describe('/api/visits/today-preparation', () => {
   beforeAll(() => {
     process.env.TZ = 'Asia/Tokyo';
@@ -89,5 +163,103 @@ describe('/api/visits/today-preparation', () => {
     const where = visitScheduleFindManyMock.mock.calls[0][0].where;
     expect(where.scheduled_date.gte.toISOString()).toBe('2026-06-12T00:00:00.000Z');
     expect(where.scheduled_date.lt.toISOString()).toBe('2026-06-13T00:00:00.000Z');
+  });
+
+  it('adds a departure warning when a home visit has patient foundation gaps', async () => {
+    visitScheduleFindManyMock.mockResolvedValue([
+      buildSchedule({
+        case_: {
+          care_team_links: [],
+          patient: {
+            id: 'patient_1',
+            name: '患者A',
+            allergy_info: null,
+            contacts: [],
+            scheduling_preference: {
+              swallowing_route: null,
+              preferred_contact_name: null,
+              preferred_contact_phone: null,
+              visit_before_contact_required: true,
+              parking_available: null,
+              care_level: null,
+            },
+          },
+        },
+      }),
+    ]);
+
+    const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+    const json = await response.json();
+
+    expect(json.data.cards).toHaveLength(1);
+    expect(json.data.cards[0]).toEqual(
+      expect.objectContaining({
+        accent: 'caution',
+        note: '出発前に正本確認: 訪問前連絡先・駐車可否・介護度 ほか1件',
+        note_tone: 'warning',
+      }),
+    );
+    expect(json.data.cards[0].actions).toEqual(
+      expect.arrayContaining([{ label: 'カードへ', href: '/patients/patient_1' }]),
+    );
+  });
+
+  it('adds a facility packet warning when one batched patient has foundation gaps', async () => {
+    visitScheduleFindManyMock.mockResolvedValue([
+      buildSchedule({
+        id: 'schedule_1',
+        facility_batch_id: 'batch_1',
+        facility_batch: {
+          id: 'batch_1',
+          facility_id: 'facility_1',
+          patient_ids: ['patient_1', 'patient_2'],
+          estimated_duration: 90,
+        },
+        case_: {
+          care_team_links: [],
+          patient: {
+            id: 'patient_1',
+            name: '患者A',
+            allergy_info: null,
+            contacts: [],
+            scheduling_preference: {
+              swallowing_route: null,
+              preferred_contact_name: null,
+              preferred_contact_phone: null,
+              visit_before_contact_required: true,
+              parking_available: null,
+              care_level: null,
+            },
+          },
+        },
+      }),
+      buildSchedule({
+        id: 'schedule_2',
+        facility_batch_id: 'batch_1',
+        facility_batch: {
+          id: 'batch_1',
+          facility_id: 'facility_1',
+          patient_ids: ['patient_1', 'patient_2'],
+          estimated_duration: 90,
+        },
+      }),
+    ]);
+    facilityFindManyMock.mockResolvedValue([{ id: 'facility_1', name: 'グリーンヒル' }]);
+
+    const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+    const json = await response.json();
+
+    expect(json.data.cards).toHaveLength(1);
+    expect(json.data.cards[0]).toEqual(
+      expect.objectContaining({
+        title: '施設グリーンヒル',
+        patient_count: 2,
+        prep_done: 4,
+        prep_total: 4,
+        accent: 'caution',
+        note: '正本未確認の患者が1名います — 出発前に患者カードで確認してください',
+        note_tone: 'warning',
+      }),
+    );
   });
 });

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { Lock, TriangleAlert } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { FilterChipBar } from '@/components/features/workspace/filter-chip-bar';
@@ -207,21 +207,21 @@ function UrgentNowCard({
           期限 {formatTimeOfDay(item.due_at as string)} — {countdown.label}
         </p>
       ) : waitingMinutes != null ? (
-        <p className="text-sm font-semibold text-amber-600">
+        <p className="text-sm font-semibold text-amber-700">
           {formatAgeLabel(waitingMinutes)}前から監査待ちです
         </p>
       ) : null}
       <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
         {isPrimary ? (
           <Button asChild className="min-h-[40px]">
-            <Link href="/auditing">監査を開始する</Link>
+            <Link href="/audit">監査を開始する</Link>
           </Button>
         ) : (
           <Button asChild variant="outline" className="min-h-[40px]">
-            <Link href="/auditing">監査を開く</Link>
+            <Link href="/audit">監査を開く</Link>
           </Button>
         )}
-        <Link href="/auditing" className="text-sm font-medium text-primary hover:underline">
+        <Link href="/audit" className="text-sm font-medium text-primary hover:underline">
           → 監査へ
         </Link>
       </div>
@@ -280,7 +280,7 @@ function UrgentNowSection({
 // ---------------------------------------------------------------------------
 
 const TIMELINE_BLOCK_CLASSES = {
-  visit: 'bg-emerald-600 text-white',
+  visit: 'bg-emerald-700 text-white',
   desk: 'bg-primary text-primary-foreground',
   break: 'border border-border/70 bg-muted text-muted-foreground',
 } as const;
@@ -385,7 +385,7 @@ function TodayFlowSection({
 
 const PROCESS_TILE_TONE_CLASSES: Record<ProcessNowTile['tone'], { tile: string; count: string }> = {
   over: { tile: 'border-red-300 bg-red-50', count: 'text-red-600' },
-  near: { tile: 'border-amber-300 bg-amber-50', count: 'text-amber-600' },
+  near: { tile: 'border-amber-300 bg-amber-50', count: 'text-amber-700' },
   normal: { tile: 'border-border/70 bg-background', count: 'text-foreground' },
 };
 
@@ -564,7 +564,7 @@ function buildNextAction(
         ? `${auditLabel}を開始 — ${formatTimeOfDay(topAudit.due_at)}期限`
         : `${auditLabel}を開始する`,
       description: `${topAudit.patient_name} 様の調剤監査が待ちです。完了で次の工程が動き出します。`,
-      actionHref: '/auditing',
+      actionHref: '/audit',
     };
   }
   if (visitCount > 0) {
@@ -587,11 +587,7 @@ function buildNextAction(
 
 function CockpitSkeleton() {
   return (
-    <div
-      className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]"
-      role="status"
-      aria-label="ダッシュボード読み込み中"
-    >
+    <div className="space-y-4" role="status" aria-label="ダッシュボード読み込み中">
       <div className="space-y-4">
         <Skeleton className="h-14 w-full rounded-lg" />
         <div className="grid gap-3 lg:grid-cols-3">
@@ -669,25 +665,37 @@ export function DashboardCockpit() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-xl font-bold text-foreground">ダッシュボード</h1>
+          <p className="text-sm font-medium text-muted-foreground">PH-OS ダッシュボード</p>
           {/* HH:mm を含むため、SSR とハイドレーションが分を跨ぐと text mismatch になる */}
           <p className="text-sm text-muted-foreground" suppressHydrationWarning>
             {dateLabel}
           </p>
         </div>
-        <FilterChipBar
-          options={VIEW_SCOPE_OPTIONS.map((option) =>
-            option.value === 'team' && !canViewTeam
-              ? {
-                  ...option,
-                  disabled: true,
-                  disabledReason: 'チーム全体は管理者だけが表示できます',
-                }
-              : option,
-          )}
-          value={appliedScope}
-          onChange={setViewScope}
-          ariaLabel="表示範囲の切替"
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/prescriptions/new"
+            className={cn(
+              buttonVariants({ variant: 'default', size: 'sm' }),
+              'min-h-[44px] px-3 sm:min-h-0',
+            )}
+          >
+            処方受付
+          </Link>
+          <FilterChipBar
+            options={VIEW_SCOPE_OPTIONS.map((option) =>
+              option.value === 'team' && !canViewTeam
+                ? {
+                    ...option,
+                    disabled: true,
+                    disabledReason: 'チーム全体は管理者だけが表示できます',
+                  }
+                : option,
+            )}
+            value={appliedScope}
+            onChange={setViewScope}
+            ariaLabel="表示範囲の切替"
+          />
+        </div>
       </div>
       {data?.scope?.applied === 'mine' && !data.scope.can_view_team ? (
         <p className="mt-2 text-xs text-muted-foreground">
@@ -709,7 +717,7 @@ export function DashboardCockpit() {
             />
           </div>
         ) : (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]">
+          <div className="space-y-4">
             <div className="min-w-0 space-y-4">
               <ConditionBanner data={data} />
               <UrgentNowSection
@@ -735,20 +743,18 @@ export function DashboardCockpit() {
                 />
               </div>
             </div>
-            <div className="space-y-4">
-              {/*
-               * 右レールはデザイン 01 の 3 点セット(次にやること / 止まっている理由 / 根拠・記録)のみ。
-               * 「チームの会話」: 直近コメントを横断取得するフィード API が無いため
-               * (/api/comments は entity 単位の取得のみ)、第一版ではセクション自体を省略。
-               */}
-              <WorkspaceActionRail
-                nextAction={buildNextAction(topAudit, todayVisits.length)}
-                blockedReasons={blockedReasons}
-                blockedReasonsEmptyLabel="止まっている作業はありません"
-                evidence={evidence}
-                evidenceOpenLabel="開く"
-              />
-            </div>
+            {/*
+             * 右レールはデザイン 01 の 3 点セット(次にやること / 止まっている理由 / 根拠・記録)のみ。
+             * 「チームの会話」: 直近コメントを横断取得するフィード API が無いため
+             * (/api/comments は entity 単位の取得のみ)、第一版ではセクション自体を省略。
+             */}
+            <WorkspaceActionRail
+              nextAction={buildNextAction(topAudit, todayVisits.length)}
+              blockedReasons={blockedReasons}
+              blockedReasonsEmptyLabel="止まっている作業はありません"
+              evidence={evidence}
+              evidenceOpenLabel="開く"
+            />
           </div>
         )}
       </div>

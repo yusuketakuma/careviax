@@ -209,6 +209,7 @@ export const PATCH = withAuthContext(
                 pharmacist_id: first.proposed_pharmacist_id,
                 scheduled_date: new Date(firstDateKey),
                 route_order: { in: routeOrders },
+                schedule_status: { notIn: ['cancelled', 'rescheduled'] },
               },
               select: { id: true },
             }),

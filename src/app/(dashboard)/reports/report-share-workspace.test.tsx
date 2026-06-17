@@ -2,8 +2,9 @@
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { useUIStore } from '@/lib/stores/ui-store';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type { ReportsTodayWorkspaceResponse } from '@/types/reports-today-workspace';
 import { ReportShareWorkspace } from './report-share-workspace';
@@ -15,6 +16,10 @@ import {
 } from './report-share-workspace.helpers';
 
 setupDomTestEnv();
+
+beforeEach(() => {
+  useUIStore.setState({ workspaceRailOpen: true });
+});
 
 const { routerPushMock } = vi.hoisted(() => ({
   routerPushMock: vi.fn(),

@@ -26,12 +26,103 @@ export interface MedicationChange {
   current_days: number | null;
 }
 
-export function prescriptionLineKey(line: { drug_name: string; drug_code?: string | null }): string {
-  return line.drug_code || line.drug_name;
+export interface MedicationDiffLineMatch<
+  TCurrent extends MedicationDiffLine,
+  TPrevious extends MedicationDiffLine,
+> {
+  current: TCurrent | null;
+  previous: TPrevious | null;
+  current_index: number | null;
+  previous_index: number | null;
+}
+
+export function prescriptionLineKey(line: {
+  drug_name: string;
+  drug_code?: string | null;
+  dose?: string | null;
+  frequency?: string | null;
+  days?: number | null;
+}): string {
+  return [
+    line.drug_code?.trim() || line.drug_name.trim(),
+    line.dose?.trim() ?? '',
+    line.frequency?.trim() ?? '',
+    line.days ?? '',
+  ].join('|');
+}
+
+function medicationIdentityKey(line: { drug_name: string; drug_code?: string | null }): string {
+  return line.drug_code?.trim() || line.drug_name.trim();
 }
 
 export function formatDoseFrequency(line: { dose: string; frequency: string }): string {
   return `${line.dose} / ${line.frequency}`;
+}
+
+export function matchMedicationDiffLines<
+  TCurrent extends MedicationDiffLine,
+  TPrevious extends MedicationDiffLine,
+>(
+  currentLines: TCurrent[],
+  previousLines: TPrevious[],
+): Array<MedicationDiffLineMatch<TCurrent, TPrevious>> {
+  const matches: Array<MedicationDiffLineMatch<TCurrent, TPrevious>> = [];
+  const matchedPrevious = new Set<number>();
+
+  const findPreviousIndex = (line: TCurrent) => {
+    const exactIndex = previousLines.findIndex(
+      (previous, index) =>
+        !matchedPrevious.has(index) && prescriptionLineKey(previous) === prescriptionLineKey(line),
+    );
+    if (exactIndex >= 0) return exactIndex;
+
+    const identity = medicationIdentityKey(line);
+    const sameFrequencyIndex = previousLines.findIndex(
+      (previous, index) =>
+        !matchedPrevious.has(index) &&
+        medicationIdentityKey(previous) === identity &&
+        previous.frequency === line.frequency,
+    );
+    if (sameFrequencyIndex >= 0) return sameFrequencyIndex;
+
+    return previousLines.findIndex(
+      (previous, index) =>
+        !matchedPrevious.has(index) && medicationIdentityKey(previous) === identity,
+    );
+  };
+
+  currentLines.forEach((line, currentIndex) => {
+    const previousIndex = findPreviousIndex(line);
+    if (previousIndex < 0) {
+      matches.push({
+        current: line,
+        previous: null,
+        current_index: currentIndex,
+        previous_index: null,
+      });
+      return;
+    }
+
+    matchedPrevious.add(previousIndex);
+    matches.push({
+      current: line,
+      previous: previousLines[previousIndex]!,
+      current_index: currentIndex,
+      previous_index: previousIndex,
+    });
+  });
+
+  previousLines.forEach((line, previousIndex) => {
+    if (matchedPrevious.has(previousIndex)) return;
+    matches.push({
+      current: null,
+      previous: line,
+      current_index: null,
+      previous_index: previousIndex,
+    });
+  });
+
+  return matches;
 }
 
 function freqOf(line: MedicationDiffLine): string {
@@ -46,13 +137,13 @@ export function detectMedicationChanges(
   currentLines: MedicationDiffLine[],
   previousLines: MedicationDiffLine[],
 ): MedicationChange[] {
-  const prevMap = new Map(previousLines.map((l) => [prescriptionLineKey(l), l]));
-  const currMap = new Map(currentLines.map((l) => [prescriptionLineKey(l), l]));
   const changes: MedicationChange[] = [];
 
-  for (const line of currentLines) {
-    const prev = prevMap.get(prescriptionLineKey(line));
-    if (!prev) {
+  for (const match of matchMedicationDiffLines(currentLines, previousLines)) {
+    const line = match.current;
+    const prev = match.previous;
+
+    if (line && !prev) {
       changes.push({
         drug_name: line.drug_name,
         change_type: 'added',
@@ -63,7 +154,30 @@ export function detectMedicationChanges(
         previous_days: null,
         current_days: daysOf(line),
       });
-    } else if (prev.dose !== line.dose) {
+      continue;
+    }
+
+    if (!line && prev) {
+      changes.push({
+        drug_name: prev.drug_name,
+        change_type: 'removed',
+        previous: formatDoseFrequency(prev),
+        current: null,
+        previous_frequency: freqOf(prev),
+        current_frequency: null,
+        previous_days: daysOf(prev),
+        current_days: null,
+      });
+      continue;
+    }
+
+    if (!line || !prev) continue;
+
+    if (prescriptionLineKey(prev) === prescriptionLineKey(line)) {
+      continue;
+    }
+
+    if (prev.dose !== line.dose) {
       changes.push({
         drug_name: line.drug_name,
         change_type: 'dose_changed',
@@ -96,21 +210,6 @@ export function detectMedicationChanges(
         current_frequency: freqOf(line),
         previous_days: daysOf(prev),
         current_days: daysOf(line),
-      });
-    }
-  }
-
-  for (const line of previousLines) {
-    if (!currMap.has(prescriptionLineKey(line))) {
-      changes.push({
-        drug_name: line.drug_name,
-        change_type: 'removed',
-        previous: formatDoseFrequency(line),
-        current: null,
-        previous_frequency: freqOf(line),
-        current_frequency: null,
-        previous_days: daysOf(line),
-        current_days: null,
       });
     }
   }

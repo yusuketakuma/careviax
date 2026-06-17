@@ -36,6 +36,11 @@ type ContactProfile = {
   last_contacted_at: string | null;
   last_success_channel: string | null;
   recommended_channels: string[];
+  contact_reliability?: {
+    ready: boolean;
+    warnings: string[];
+    missing_channel_labels: string[];
+  };
   active_patient_count: number;
   pending_response_count: number;
 };
@@ -268,6 +273,11 @@ export function ContactProfilesContent() {
             ) : (
               rows.map((row) => {
                 const isSelected = row.id === selected?.id;
+                const contactReliability = row.contact_reliability ?? {
+                  ready: true,
+                  warnings: [],
+                  missing_channel_labels: [],
+                };
                 const recommended =
                   row.recommended_channels.length > 0
                     ? row.recommended_channels
@@ -306,7 +316,11 @@ export function ContactProfilesContent() {
                     <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
                       <span>既定: {labelOf(row.preferred_contact_method)}</span>
                       <span>推奨: {recommended}</span>
-                      <span>関連: {row.active_patient_count}名</span>
+                      <span>
+                        {contactReliability.ready
+                          ? `関連: ${row.active_patient_count}名`
+                          : `要整備: ${contactReliability.missing_channel_labels.join('・')}`}
+                      </span>
                     </div>
                     <div className="mt-2 text-xs text-muted-foreground">
                       {row.pending_response_count > 0

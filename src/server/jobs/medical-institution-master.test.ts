@@ -51,7 +51,7 @@ describe('refreshMedicalInstitutionMaster', () => {
       'medical_institution_master_auto_refresh',
       expect.any(Function),
       undefined,
-      'org:org_1,org_2',
+      'target-orgs:org_1,org_2',
     );
     expect(importMedicalInstitutionOpenDataMock).toHaveBeenCalledWith(
       { marker: 'prisma' },

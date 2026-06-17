@@ -18,6 +18,7 @@ import {
   buildSetBatchAssignmentWhere,
   buildSetPlanAssignmentWhere,
 } from '@/server/services/prescription-access';
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 
 const createSetBatchSchema = z.object({
@@ -32,6 +33,10 @@ const createSetBatchSchema = z.object({
     error: '持参区分を選択してください',
   }),
 });
+
+function isUniqueConstraintError(error: unknown) {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}
 
 export const GET = withAuthContext<Record<string, string>>(
   async (req: NextRequest, ctx: AuthContext) => {
@@ -162,7 +167,6 @@ export const POST = withAuthContext<Record<string, string>>(
           line_id,
           slot,
           day_number,
-          carry_type,
         },
         select: { id: true },
       });
@@ -187,37 +191,46 @@ export const POST = withAuthContext<Record<string, string>>(
               packagingMethod: resolvedPackaging.packaging_method,
             });
 
-      const batch = await tx.setBatch.create({
-        data: {
-          org_id: ctx.orgId,
-          plan_id,
-          line_id,
-          slot,
-          day_number,
-          quantity,
-          carry_type,
-          packaging_method_snapshot: resolvedPackaging.packaging_method,
-          packaging_instructions_snapshot: resolvedPackaging.packaging_instructions,
-          packaging_instruction_tags_snapshot: packagingTags,
-        },
-        include: {
-          line: {
-            select: {
-              id: true,
-              drug_name: true,
-              drug_code: true,
-              dosage_form: true,
-              dose: true,
-              frequency: true,
-              unit: true,
-              packaging_method: true,
-              packaging_instructions: true,
-              packaging_instruction_tags: true,
-              notes: true,
+      let batch;
+      try {
+        batch = await tx.setBatch.create({
+          data: {
+            org_id: ctx.orgId,
+            plan_id,
+            line_id,
+            slot,
+            day_number,
+            quantity,
+            carry_type,
+            packaging_method_snapshot: resolvedPackaging.packaging_method,
+            packaging_instructions_snapshot: resolvedPackaging.packaging_instructions,
+            packaging_instruction_tags_snapshot: packagingTags,
+          },
+          include: {
+            line: {
+              select: {
+                id: true,
+                drug_name: true,
+                drug_code: true,
+                dosage_form: true,
+                dose: true,
+                frequency: true,
+                unit: true,
+                packaging_method: true,
+                packaging_instructions: true,
+                packaging_instruction_tags: true,
+                notes: true,
+              },
             },
           },
-        },
-      });
+        });
+      } catch (err) {
+        if (!isUniqueConstraintError(err)) throw err;
+        return {
+          kind: 'error' as const,
+          response: conflict('同じ処方ライン・スロット・日付のセットバッチがすでに存在します'),
+        };
+      }
 
       await createSetBatchChangeLog(tx, {
         orgId: ctx.orgId,

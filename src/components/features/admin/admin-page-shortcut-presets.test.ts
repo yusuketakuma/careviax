@@ -107,7 +107,7 @@ describe('admin page shortcut presets', () => {
     expect(getAdminPackagingMethodsShortcutLinks()).toEqual([
       { href: '/admin/drug-masters', label: '医薬品マスター' },
       { href: '/admin/formulary', label: '採用薬' },
-      { href: '/medication-sets', label: 'セット管理' },
+      { href: '/set', label: 'セット管理' },
     ]);
 
     expect(getAdminAlertRulesShortcutLinks()).toEqual([

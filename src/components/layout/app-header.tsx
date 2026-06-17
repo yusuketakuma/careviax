@@ -3,7 +3,15 @@
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronDown, CircleHelp, CloudOff, Menu, MessageSquareText, Search } from 'lucide-react';
+import {
+  ChevronDown,
+  CircleHelp,
+  CloudOff,
+  MessageSquareText,
+  PanelLeftOpen,
+  PanelRightOpen,
+  Search,
+} from 'lucide-react';
 import { NotificationBell } from '@/components/features/notifications/notification-bell';
 import { OfflineDraftIndicator } from '@/components/features/offline/offline-draft-indicator';
 import {
@@ -106,7 +114,15 @@ function HeaderOfflineDrafts() {
 export function AppHeader() {
   const router = useRouter();
   const orgId = useOrgId();
-  const { setSidebarOpen, careMode, setCareMode } = useUIStore();
+  const {
+    sidebarOpen,
+    setSidebarOpen,
+    workspaceRailOpen,
+    workspaceRailAvailable,
+    setWorkspaceRailOpen,
+    careMode,
+    setCareMode,
+  } = useUIStore();
   const currentUserName = useAuthStore((state) => state.currentUser.name);
   const currentUserRole = useAuthStore((state) => state.currentUser.role);
   const modeLabel = CARE_MODE_LABELS[careMode] ?? CARE_MODE_LABELS.home_visit;
@@ -154,11 +170,17 @@ export function AppHeader() {
           type="button"
           variant="ghost"
           size="icon"
-          className="min-h-[44px] min-w-[44px] shrink-0 xl:hidden"
-          onClick={() => setSidebarOpen(true)}
-          aria-label="メニューを開く"
+          className="min-h-[44px] min-w-[44px] shrink-0"
+          onClick={() => {
+            setWorkspaceRailOpen(false);
+            setSidebarOpen(true);
+          }}
+          aria-label="ナビを開く"
+          aria-controls="app-sidebar-drawer"
+          aria-expanded={sidebarOpen}
+          data-testid="app-header-nav-toggle"
         >
-          <Menu className="size-4" aria-hidden="true" />
+          <PanelLeftOpen className="size-4" aria-hidden="true" />
         </Button>
 
         {/* モード切替ドロップダウン */}
@@ -266,6 +288,20 @@ export function AppHeader() {
               ) : null}
             </span>
           ) : null}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="min-h-[44px] min-w-[44px] shrink-0"
+            onClick={() => setWorkspaceRailOpen(true)}
+            disabled={!workspaceRailAvailable}
+            aria-label="補助パネルを開く"
+            aria-controls="workspace-action-rail-drawer"
+            aria-expanded={workspaceRailOpen && workspaceRailAvailable}
+            data-testid="app-header-workspace-rail-toggle"
+          >
+            <PanelRightOpen className="size-4" aria-hidden="true" />
+          </Button>
         </div>
       </div>
     </header>

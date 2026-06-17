@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 
 const {
   withAuthContextMock,
   withOrgContextMock,
   careReportCreateMock,
+  careReportFindFirstMock,
   careReportFindManyMock,
   careCaseFindFirstMock,
   careCaseFindManyMock,
@@ -15,6 +17,7 @@ const {
   withAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   careReportCreateMock: vi.fn(),
+  careReportFindFirstMock: vi.fn(),
   careReportFindManyMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
@@ -57,6 +60,7 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     careReport: {
       create: careReportCreateMock,
+      findFirst: careReportFindFirstMock,
       findMany: careReportFindManyMock,
     },
     careCase: {
@@ -106,6 +110,7 @@ function createCareReport(req: AuthenticatedTestRequest) {
 describe('/api/care-reports GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    careReportFindFirstMock.mockResolvedValue(null);
     careReportFindManyMock.mockResolvedValue([
       {
         id: 'report_1',
@@ -120,6 +125,9 @@ describe('/api/care-reports GET', () => {
           billing_context: {
             effective_revision_code: '2026',
             site_config_status: 'resolved',
+          },
+          source_provenance: {
+            visit_record_id: 'hidden_visit_record_1',
           },
         },
         template_id: null,
@@ -161,6 +169,8 @@ describe('/api/care-reports GET', () => {
     careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
     visitRecordFindFirstMock.mockResolvedValue({
       id: 'visit_1',
+      version: 2,
+      updated_at: new Date('2026-03-28T08:45:00.000Z'),
       schedule: {
         case_id: 'case_1',
         pharmacist_id: 'user_1',
@@ -242,10 +252,47 @@ describe('/api/care-reports GET', () => {
       effective_revision_code: '2026',
       site_config_status: 'resolved',
     });
+    expect(payload.data[0]).not.toHaveProperty('content');
     expect(payload.deliverySummary).toMatchObject({
       pending_delivery_count: 1,
       failed_delivery_count: 1,
       by_status: { response_waiting: 1 },
+    });
+  });
+
+  it('does not match keywords against hidden report metadata', async () => {
+    const response = await getCareReports(
+      createAuthenticatedRequest(
+        'http://localhost/api/care-reports?keyword=hidden_visit_record_1',
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [],
+      hasMore: false,
+      deliverySummary: {
+        pending_delivery_count: 0,
+        failed_delivery_count: 0,
+        by_status: {},
+      },
+    });
+  });
+
+  it('returns report content only when explicitly requested for print workflows', async () => {
+    const response = await getCareReports(
+      createAuthenticatedRequest('http://localhost/api/care-reports?include_content=1'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.data[0].content).toMatchObject({
+      summary: '服薬状況は安定。夜間の眠気について経過観察。',
+      source_provenance: {
+        visit_record_id: 'hidden_visit_record_1',
+      },
     });
   });
 
@@ -364,6 +411,7 @@ describe('/api/care-reports GET', () => {
 describe('/api/care-reports POST', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    careReportFindFirstMock.mockResolvedValue(null);
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
     careCaseFindManyMock.mockResolvedValue([{ id: 'case_1', patient_id: 'patient_1' }]);
     careCaseFindFirstMock.mockResolvedValue({
@@ -375,6 +423,8 @@ describe('/api/care-reports POST', () => {
     });
     visitRecordFindFirstMock.mockResolvedValue({
       id: 'visit_1',
+      version: 2,
+      updated_at: new Date('2026-03-28T08:45:00.000Z'),
       schedule: {
         case_id: 'case_1',
         pharmacist_id: 'user_1',
@@ -455,7 +505,16 @@ describe('/api/care-reports POST', () => {
           patient_id: 'patient_1',
           case_id: 'case_1',
           visit_record_id: 'visit_1',
-          content: { summary: '訪問後報告' },
+          content: {
+            summary: '訪問後報告',
+            source_provenance: expect.objectContaining({
+              schema_version: 1,
+              visit_record_id: 'visit_1',
+              visit_record_version: 2,
+              visit_record_updated_at: '2026-03-28T08:45:00.000Z',
+              source: 'manual_care_report_create',
+            }),
+          },
         }),
       }),
     );
@@ -522,6 +581,88 @@ describe('/api/care-reports POST', () => {
         }),
       }),
     );
+  });
+
+  it('returns 409 when a report already exists for the visit record and type', async () => {
+    careReportFindFirstMock.mockResolvedValueOnce({
+      id: 'report_existing',
+      status: 'draft',
+      report_type: 'physician_report',
+    });
+
+    const response = await createCareReport(
+      createPostRequest({
+        patient_id: 'patient_1',
+        visit_record_id: 'visit_1',
+        report_type: 'physician_report',
+        content: { summary: '訪問後報告' },
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'この訪問記録の同一種別の報告書は既に存在します',
+      details: {
+        report_id: 'report_existing',
+        report_type: 'physician_report',
+        status: 'draft',
+      },
+    });
+    expect(careReportFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        visit_record_id: 'visit_1',
+        report_type: 'physician_report',
+      },
+      select: { id: true, status: true, report_type: true },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(careReportCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('maps concurrent duplicate report creation to 409', async () => {
+    const duplicateError = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+      code: 'P2002',
+      clientVersion: 'test',
+      meta: { target: ['org_id', 'visit_record_id', 'report_type'] },
+    });
+    careReportFindFirstMock.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      id: 'report_race_winner',
+      status: 'draft',
+      report_type: 'physician_report',
+    });
+    withOrgContextMock.mockRejectedValueOnce(duplicateError);
+
+    const response = await createCareReport(
+      createPostRequest({
+        patient_id: 'patient_1',
+        visit_record_id: 'visit_1',
+        report_type: 'physician_report',
+        content: { summary: '訪問後報告' },
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'この訪問記録の同一種別の報告書は既に存在します',
+      details: {
+        report_id: 'report_race_winner',
+        report_type: 'physician_report',
+        status: 'draft',
+      },
+    });
+    expect(careReportFindFirstMock).toHaveBeenLastCalledWith({
+      where: {
+        org_id: 'org_1',
+        visit_record_id: 'visit_1',
+        report_type: 'physician_report',
+      },
+      select: { id: true, status: true, report_type: true },
+    });
   });
 
   it('allows org-wide roles to create reports from any in-org visit record', async () => {

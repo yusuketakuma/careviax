@@ -42,7 +42,7 @@ export function PageScaffold({
   return (
     <div
       className={cn(
-        'min-h-full bg-muted/20 p-2 sm:p-3 lg:p-4 xl:p-5 print:bg-background print:p-0',
+        'min-h-full w-full bg-muted/20 p-2 sm:p-3 lg:p-4 xl:p-5 print:bg-background print:p-0',
         className,
       )}
       data-testid={testId}
@@ -51,7 +51,7 @@ export function PageScaffold({
       <div
         data-testid={`${testId}-stack`}
         className={cn(
-          'space-y-3 sm:space-y-4 xl:space-y-5',
+          'min-h-full w-full space-y-3 sm:space-y-4 xl:space-y-5',
           stackVariants[variant],
           stackClassName,
         )}

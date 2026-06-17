@@ -28,6 +28,7 @@ import {
 // CareReport.report_type は Prisma enum ReportType に対応する。
 // 訪問看護向け = nurse_share / 施設向け = facility_handoff（schema 既存値を再利用）。
 type ReportType = 'physician_report' | 'care_manager_report' | 'nurse_share' | 'facility_handoff';
+type ExistingCareReport = { id: string; report_type: ReportType; status: string };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -95,6 +96,8 @@ export async function generateReportsFromVisit(
       visit_date: true,
       structured_soap: true,
       schedule_id: true,
+      version: true,
+      updated_at: true,
     },
   });
 
@@ -340,11 +343,15 @@ export async function generateReportsFromVisit(
       visit_record_id: visitRecordId,
       report_type: { in: typesToGenerate },
     },
-    select: { id: true, report_type: true },
+    select: { id: true, report_type: true, status: true },
   });
-  const existingByType = new Map(
-    existingReports.map((report) => [report.report_type as ReportType, report]),
-  );
+  const existingByType = new Map<ReportType, ExistingCareReport>();
+  for (const report of existingReports) {
+    existingByType.set(report.report_type as ReportType, {
+      ...report,
+      report_type: report.report_type as ReportType,
+    });
+  }
   const missingTypes = typesToGenerate.filter((type) => !existingByType.has(type));
 
   // ─── 9. structured_soap を型アサート ──────────────────────────────────────
@@ -387,6 +394,8 @@ export async function generateReportsFromVisit(
   const sourceProvenance = {
     schema_version: 1,
     visit_record_id: visitRecord.id,
+    visit_record_version: visitRecord.version ?? null,
+    visit_record_updated_at: toIsoStringOrNull(visitRecord.updated_at),
     schedule_id: visitRecord.schedule_id,
     patient_id: visitRecord.patient_id,
     case_id: caseId,
@@ -490,23 +499,41 @@ export async function generateReportsFromVisit(
     }
   }
 
+  const draftReportsToRefresh = typesToGenerate
+    .map((type) => existingByType.get(type))
+    .filter(
+      (report): report is ExistingCareReport =>
+        report?.status === 'draft' && contentByType.has(report.report_type),
+    );
+
   const persistedReports =
-    missingTypes.length === 0
+    missingTypes.length === 0 && draftReportsToRefresh.length === 0
       ? existingReports
       : await withOrgContext(orgId, async (tx) => {
-          await tx.careReport.createMany({
-            data: missingTypes.map((type) => ({
-              org_id: orgId,
-              patient_id: visitRecord.patient_id,
-              case_id: caseId,
-              visit_record_id: visitRecordId,
-              report_type: type,
-              status: 'draft',
-              content: toPrismaJsonInput(contentByType.get(type)),
-              created_by: userId,
-            })),
-            skipDuplicates: true,
-          });
+          await Promise.all(
+            draftReportsToRefresh.map((report) =>
+              tx.careReport.updateMany({
+                where: { id: report.id, org_id: orgId, status: 'draft' },
+                data: { content: toPrismaJsonInput(contentByType.get(report.report_type)) },
+              }),
+            ),
+          );
+
+          if (missingTypes.length > 0) {
+            await tx.careReport.createMany({
+              data: missingTypes.map((type) => ({
+                org_id: orgId,
+                patient_id: visitRecord.patient_id,
+                case_id: caseId,
+                visit_record_id: visitRecordId,
+                report_type: type,
+                status: 'draft',
+                content: toPrismaJsonInput(contentByType.get(type)),
+                created_by: userId,
+              })),
+              skipDuplicates: true,
+            });
+          }
 
           return tx.careReport.findMany({
             where: {
@@ -514,16 +541,20 @@ export async function generateReportsFromVisit(
               visit_record_id: visitRecordId,
               report_type: { in: typesToGenerate },
             },
-            select: { id: true, report_type: true },
+            select: { id: true, report_type: true, status: true },
           });
         });
 
-  const persistedByType = new Map(
-    persistedReports.map((report) => [report.report_type as ReportType, report]),
-  );
+  const persistedByType = new Map<ReportType, ExistingCareReport>();
+  for (const report of persistedReports) {
+    persistedByType.set(report.report_type as ReportType, {
+      ...report,
+      report_type: report.report_type as ReportType,
+    });
+  }
   const reports = typesToGenerate
     .map((type) => existingByType.get(type) ?? persistedByType.get(type))
-    .filter((report): report is { id: string; report_type: ReportType } => report != null);
+    .filter((report): report is ExistingCareReport => report != null);
 
   return { reports: reports.map((report) => ({ id: report.id, report_type: report.report_type })) };
 }

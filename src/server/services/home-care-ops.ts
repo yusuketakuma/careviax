@@ -142,7 +142,7 @@ export const HOME_CARE_FEATURE_DEFINITIONS: HomeCareFeatureDefinition[] = [
     title: '剤形・服用形態支援',
     description: '飲みにくさや剤形調整候補をまとめます。',
     group: 'safety',
-    action_href: '/medication-sets',
+    action_href: '/set',
     action_label: '剤形支援を確認',
   },
   {

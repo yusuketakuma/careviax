@@ -13,7 +13,7 @@ describe('DASHBOARD_WORKFLOW_LINKS', () => {
   it('includes a direct medication-set entry point', () => {
     expect(DASHBOARD_WORKFLOW_LINKS.find((item) => item.key === 'medication_sets')).toEqual(
       expect.objectContaining({
-        href: '/medication-sets',
+        href: '/set',
         title: 'セット管理',
       }),
     );
@@ -25,7 +25,7 @@ describe('DASHBOARD_WORKFLOW_LINKS', () => {
     );
     expect(DASHBOARD_WORKFLOW_LINKS.find((item) => item.key === 'set_audit')).toEqual(
       expect.objectContaining({
-        href: '/medication-sets',
+        href: '/set-audit',
         title: 'セット監査',
       }),
     );
@@ -83,11 +83,11 @@ describe('dashboard home config', () => {
 
   it('provides fallback actions for medication-set tabs', () => {
     expect(DASHBOARD_TAB_FALLBACK_ACTIONS.medication_set).toEqual({
-      href: '/medication-sets',
+      href: '/set',
       label: 'セット管理を開く',
     });
     expect(DASHBOARD_TAB_FALLBACK_ACTIONS.set_audit).toEqual({
-      href: '/medication-sets',
+      href: '/set-audit',
       label: 'セット監査を開く',
     });
   });

@@ -1,7 +1,7 @@
 import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { success, validationError } from '@/lib/api/response';
+import { conflict, success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject, readJsonObjectString, toPrismaJsonInput } from '@/lib/db/json';
@@ -78,6 +78,7 @@ const optionalDateParamSchema = dateKeySchema('日付形式が不正です（YYY
 const careReportQuerySchema = z.object({
   patient_id: z.string().trim().min(1).optional(),
   visit_record_id: z.string().trim().min(1).optional(),
+  include_content: z.enum(['1', 'true']).optional(),
   status: reportStatusSchema.optional(),
   report_type: reportTypeSchema.optional(),
   delivery_status: reportStatusSchema.optional(),
@@ -92,6 +93,61 @@ const careReportQuerySchema = z.object({
 
 function optionalTrimmedSearchParam(value: string | null) {
   return value?.trim() || undefined;
+}
+
+function readSearchableReportText(contentValue: Prisma.JsonValue) {
+  const content = readJsonObject(contentValue);
+  const safeTextValues = [
+    readJsonObjectString(content, 'title'),
+    readJsonObjectString(content, 'summary'),
+    readJsonObjectString(content, 'body'),
+    readJsonObjectString(content, 'assessment'),
+    readJsonObjectString(content, 'plan'),
+  ];
+  return safeTextValues.filter(Boolean).join('\n').toLowerCase();
+}
+
+function isCareReportVisitTypeUniqueConflict(error: unknown) {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === 'P2002' &&
+    Array.isArray(error.meta?.target) &&
+    error.meta.target.includes('org_id') &&
+    error.meta.target.includes('visit_record_id') &&
+    error.meta.target.includes('report_type')
+  );
+}
+
+function duplicateCareReportResponse(report: {
+  id?: string;
+  report_type: ReportType;
+  status?: ReportStatus;
+}) {
+  return conflict('この訪問記録の同一種別の報告書は既に存在します', {
+    ...(report.id ? { report_id: report.id } : {}),
+    report_type: report.report_type,
+    ...(report.status ? { status: report.status } : {}),
+  });
+}
+
+async function buildVisitReportSourceProvenance(args: { orgId: string; visitRecordId?: string }) {
+  if (!args.visitRecordId) return null;
+  const visitRecord = await prisma.visitRecord.findFirst({
+    where: { id: args.visitRecordId, org_id: args.orgId },
+    select: { id: true, version: true, updated_at: true },
+  });
+  if (!visitRecord) return null;
+  if (typeof visitRecord.version !== 'number' || !(visitRecord.updated_at instanceof Date)) {
+    return null;
+  }
+  return {
+    schema_version: 1,
+    visit_record_id: visitRecord.id,
+    visit_record_version: visitRecord.version,
+    visit_record_updated_at: visitRecord.updated_at.toISOString(),
+    generated_at: new Date().toISOString(),
+    source: 'manual_care_report_create',
+  };
 }
 
 async function validateCareReportSource(args: {
@@ -169,6 +225,7 @@ export const GET = withAuthContext(
     const parsedQuery = careReportQuerySchema.safeParse({
       patient_id: optionalTrimmedSearchParam(searchParams.get('patient_id')),
       visit_record_id: optionalTrimmedSearchParam(searchParams.get('visit_record_id')),
+      include_content: optionalTrimmedSearchParam(searchParams.get('include_content')),
       status: searchParams.get('status') ?? undefined,
       report_type: searchParams.get('report_type') ?? undefined,
       delivery_status: searchParams.get('delivery_status') ?? undefined,
@@ -187,6 +244,7 @@ export const GET = withAuthContext(
     const {
       patient_id: patientId,
       visit_record_id: visitRecordId,
+      include_content: includeContent,
       status,
       report_type: reportType,
       delivery_status: deliveryStatus,
@@ -304,7 +362,21 @@ export const GET = withAuthContext(
       ).length;
 
       return {
-        ...report,
+        id: report.id,
+        org_id: report.org_id,
+        patient_id: report.patient_id,
+        case_id: report.case_id,
+        visit_record_id: report.visit_record_id,
+        report_type: report.report_type,
+        status: report.status,
+        template_id: report.template_id,
+        pdf_url: report.pdf_url,
+        created_by: report.created_by,
+        created_at: report.created_at,
+        updated_at: report.updated_at,
+        ...(includeContent ? { content: report.content } : {}),
+        delivery_records: report.delivery_records,
+        _searchable_report_text: readSearchableReportText(report.content),
         patient_name: patientNameById.get(report.patient_id) ?? null,
         latest_delivery_status: latestDelivery?.status ?? null,
         latest_delivery_sent_at: latestDelivery?.sent_at ?? null,
@@ -323,8 +395,7 @@ export const GET = withAuthContext(
         return false;
       }
       if (keyword) {
-        const contentText = JSON.stringify(report.content).toLowerCase();
-        if (!contentText.includes(keyword.toLowerCase())) {
+        if (!report._searchable_report_text.includes(keyword.toLowerCase())) {
           return false;
         }
       }
@@ -345,7 +416,11 @@ export const GET = withAuthContext(
     const cursorIndex = cursor ? filteredData.findIndex((report) => report.id === cursor) : -1;
     const paginated = cursorIndex >= 0 ? filteredData.slice(cursorIndex + 1) : filteredData;
     const hasMore = paginated.length > limit;
-    const data = hasMore ? paginated.slice(0, limit) : paginated;
+    const data = (hasMore ? paginated.slice(0, limit) : paginated).map((report) => {
+      const { _searchable_report_text: searchableReportText, ...reportForResponse } = report;
+      void searchableReportText;
+      return reportForResponse;
+    });
     const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
     const deliverySummary = filteredData.reduce(
       (summary, report) => {
@@ -396,9 +471,31 @@ export const POST = withAuthContext(
       return validationError(sourceValidation.error);
     }
     const resolvedCaseId = sourceValidation.caseId;
+    if (parsed.data.visit_record_id) {
+      const existingReport = await prisma.careReport.findFirst({
+        where: {
+          org_id: ctx.orgId,
+          visit_record_id: parsed.data.visit_record_id,
+          report_type: parsed.data.report_type,
+        },
+        select: { id: true, status: true, report_type: true },
+      });
+      if (existingReport) {
+        return duplicateCareReportResponse(existingReport);
+      }
+    }
 
     const { content, ...reportInput } = parsed.data;
-    let enrichedContent = content;
+    const sourceProvenance = await buildVisitReportSourceProvenance({
+      orgId: ctx.orgId,
+      visitRecordId: parsed.data.visit_record_id,
+    });
+    let enrichedContent = sourceProvenance
+      ? {
+          ...content,
+          source_provenance: sourceProvenance,
+        }
+      : content;
     let recipientPrefill: { recipient_name?: string; recipient_organization?: string } | undefined;
 
     if (resolvedCaseId) {
@@ -454,17 +551,39 @@ export const POST = withAuthContext(
       }
     }
 
-    const report = await withOrgContext(ctx.orgId, async (tx) => {
-      return tx.careReport.create({
-        data: {
-          org_id: ctx.orgId,
-          created_by: ctx.userId,
-          ...reportInput,
-          case_id: resolvedCaseId ?? null,
-          content: toPrismaJsonInput(enrichedContent),
-        },
+    let report;
+    try {
+      report = await withOrgContext(ctx.orgId, async (tx) => {
+        return tx.careReport.create({
+          data: {
+            org_id: ctx.orgId,
+            created_by: ctx.userId,
+            ...reportInput,
+            case_id: resolvedCaseId ?? null,
+            content: toPrismaJsonInput(enrichedContent),
+          },
+        });
       });
-    });
+    } catch (errorValue) {
+      if (isCareReportVisitTypeUniqueConflict(errorValue)) {
+        const existingReport = parsed.data.visit_record_id
+          ? await prisma.careReport.findFirst({
+              where: {
+                org_id: ctx.orgId,
+                visit_record_id: parsed.data.visit_record_id,
+                report_type: parsed.data.report_type,
+              },
+              select: { id: true, status: true, report_type: true },
+            })
+          : null;
+        if (existingReport) return duplicateCareReportResponse(existingReport);
+
+        return conflict('この訪問記録の同一種別の報告書は既に存在します', {
+          report_type: parsed.data.report_type,
+        });
+      }
+      throw errorValue;
+    }
 
     return success({ data: report }, 201);
   },

@@ -341,8 +341,25 @@ function VisitRecordWorkflowSection({
 
 const { maxAttachments: MAX_VISIT_ATTACHMENTS } = getVisitAttachmentConstraints();
 
-function buildStructuredSoap(values: FormValues): StructuredSoap {
+function buildPreviousVisitReuseSource(
+  reuse: VisitPreviousStructuredReuse | null | undefined,
+): StructuredSoap['previous_visit_reuse'] | undefined {
+  if (!reuse) return undefined;
+  return {
+    source_visit_record_id: reuse.source_visit_record_id,
+    source_visit_record_version: reuse.source_visit_record_version,
+    source_visit_record_updated_at: reuse.source_visit_record_updated_at,
+    carry_forward_items: reuse.carry_forward_items,
+  };
+}
+
+function buildStructuredSoap(
+  values: FormValues,
+  previousVisitStructuredReuse?: VisitPreviousStructuredReuse | null,
+): StructuredSoap {
   const wizard = values.structured_soap as Partial<StructuredSoap> | undefined;
+  const previousVisitReuseSource =
+    buildPreviousVisitReuseSource(previousVisitStructuredReuse) ?? wizard?.previous_visit_reuse;
   return {
     subjective: {
       symptom_checks: wizard?.subjective?.symptom_checks ?? [],
@@ -396,6 +413,7 @@ function buildStructuredSoap(values: FormValues): StructuredSoap {
     },
     ...(wizard?.residual_medications ? { residual_medications: wizard.residual_medications } : {}),
     ...(wizard?.home_visit_2026 ? { home_visit_2026: wizard.home_visit_2026 } : {}),
+    ...(previousVisitReuseSource ? { previous_visit_reuse: previousVisitReuseSource } : {}),
   };
 }
 
@@ -907,7 +925,6 @@ export function VisitRecordForm({
     } satisfies UploadedVisitAttachment;
   }
 
-  const structuredSoapDraft = buildStructuredSoap(watchedValues);
   const visitPreparationPack = visitPreparationSnapshot?.data.pack;
   const patientCareTeamContacts = visitPreparationSnapshot?.data.pack.care_team ?? [];
   const billingBlockers = visitPreparationPack?.billing_blockers ?? [];
@@ -917,6 +934,7 @@ export function VisitRecordForm({
   const previousVisitSummary = visitPreparationPack?.previous_visit?.summary ?? null;
   const previousVisitStructuredReuse =
     visitPreparationPack?.previous_visit?.structured_reuse ?? null;
+  const structuredSoapDraft = buildStructuredSoap(watchedValues, previousVisitStructuredReuse);
   const facilityParallelContext = visitPreparationPack?.facility_parallel_context ?? null;
   const billingCollectionContext = visitPreparationPack?.billing_collection_context ?? null;
   const effectiveFacilityVisitContext: FacilityVisitContext | null =
@@ -953,7 +971,7 @@ export function VisitRecordForm({
       const payload = normalizeVisitReceiptPayload({
         ...values,
         patient_id: schedule?.patient_id ?? values.patient_id,
-        structured_soap: buildStructuredSoap(values),
+        structured_soap: buildStructuredSoap(values, previousVisitStructuredReuse),
       });
 
       const res = await fetch('/api/visit-records', {
@@ -1130,7 +1148,7 @@ export function VisitRecordForm({
       return;
     }
 
-    const completionStructuredSoap = buildStructuredSoap(values);
+    const completionStructuredSoap = buildStructuredSoap(values, previousVisitStructuredReuse);
     const completionMissingItems = getMissingHomeVisit2026CompletionItems({
       outcomeStatus: values.outcome_status,
       structuredSoap: completionStructuredSoap,
@@ -1170,7 +1188,7 @@ export function VisitRecordForm({
     const payload = normalizeVisitReceiptPayload({
       ...values,
       patient_id: schedule?.patient_id ?? values.patient_id,
-      structured_soap: buildStructuredSoap(values),
+      structured_soap: buildStructuredSoap(values, previousVisitStructuredReuse),
       carry_item_warning_acknowledged: requiresCarryItemWarningAcknowledgement
         ? values.carry_item_warning_acknowledged
         : undefined,
@@ -1185,7 +1203,7 @@ export function VisitRecordForm({
 
       try {
         await saveDraft(
-          buildStructuredSoap(values),
+          buildStructuredSoap(values, previousVisitStructuredReuse),
           0,
           buildDraftMetadata(values, nextVisitGeoLog),
         );
@@ -1225,9 +1243,19 @@ export function VisitRecordForm({
     });
   }, [errorSummaryId]);
 
-  const shortcutStateRef = useRef({ watchedValues, visitGeoLog, onSubmit });
+  const shortcutStateRef = useRef({
+    watchedValues,
+    visitGeoLog,
+    onSubmit,
+    previousVisitStructuredReuse,
+  });
   useEffect(() => {
-    shortcutStateRef.current = { watchedValues, visitGeoLog, onSubmit };
+    shortcutStateRef.current = {
+      watchedValues,
+      visitGeoLog,
+      onSubmit,
+      previousVisitStructuredReuse,
+    };
   });
 
   // p0_22 訪問ステップ: スクロール現在地(左レール+下部固定バーで共有)
@@ -1265,8 +1293,12 @@ export function VisitRecordForm({
   );
   // 下部固定バーの「一時保存」(Cmd/Ctrl+S と同じ下書き保存)
   const handleManualDraftSave = useCallback(() => {
-    const { watchedValues: vals, visitGeoLog: geoLog } = shortcutStateRef.current;
-    void saveDraft(buildStructuredSoap(vals), 0, buildDraftMetadata(vals, geoLog))
+    const {
+      watchedValues: vals,
+      visitGeoLog: geoLog,
+      previousVisitStructuredReuse: previousReuse,
+    } = shortcutStateRef.current;
+    void saveDraft(buildStructuredSoap(vals, previousReuse), 0, buildDraftMetadata(vals, geoLog))
       .then(() => {
         draftSaveFailureNotifiedRef.current = false;
         toast.info('下書きを保存しました');
@@ -1281,10 +1313,15 @@ export function VisitRecordForm({
         watchedValues: vals,
         visitGeoLog: geoLog,
         onSubmit: submit,
+        previousVisitStructuredReuse: previousReuse,
       } = shortcutStateRef.current;
       if (e.key === 's') {
         e.preventDefault();
-        void saveDraft(buildStructuredSoap(vals), 0, buildDraftMetadata(vals, geoLog))
+        void saveDraft(
+          buildStructuredSoap(vals, previousReuse),
+          0,
+          buildDraftMetadata(vals, geoLog),
+        )
           .then(() => {
             draftSaveFailureNotifiedRef.current = false;
             toast.info('下書きを保存しました');

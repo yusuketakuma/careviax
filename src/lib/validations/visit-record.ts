@@ -1,4 +1,26 @@
 import { z } from 'zod';
+import { dateKeySchema, isValidDateKey } from '@/lib/validations/date-key';
+
+const localDateTimeMinutePattern = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/;
+
+function isValidLocalDateTimeMinute(value: string) {
+  const match = localDateTimeMinutePattern.exec(value);
+  if (!match) return false;
+  const [, dateKey, hour, minute] = match;
+  const hourNumber = Number.parseInt(hour, 10);
+  const minuteNumber = Number.parseInt(minute, 10);
+  return (
+    isValidDateKey(dateKey) &&
+    hourNumber >= 0 &&
+    hourNumber <= 23 &&
+    minuteNumber >= 0 &&
+    minuteNumber <= 59
+  );
+}
+
+const localDateTimeMinuteSchema = z
+  .string()
+  .refine(isValidLocalDateTimeMinute, '日時形式が不正です（YYYY-MM-DDTHH:mm）');
 
 export const visitRecordAttachmentRefSchema = z.object({
   file_id: z.string().uuid('file_id の形式が不正です'),
@@ -21,7 +43,7 @@ export const visitGeoLogSchema = z.object({
 export const visitRecordBaseSchema = z.object({
   schedule_id: z.string().min(1, 'スケジュールIDは必須です'),
   patient_id: z.string().min(1, '患者IDは必須です'),
-  visit_date: z.string().regex(/^\d{4}-\d{2}-\d{2}/, '日付形式が不正です（YYYY-MM-DD）'),
+  visit_date: dateKeySchema('日付形式が不正です（YYYY-MM-DD）'),
   outcome_status: z.enum([
     'completed',
     'revisit_needed',
@@ -38,15 +60,11 @@ export const visitRecordBaseSchema = z.object({
   receipt_person_name: z.string().optional(),
   receipt_person_relation: z.string().optional(),
   receipt_at: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, '日時形式が不正です（YYYY-MM-DDTHH:mm）')
-    .optional()
-    .or(z.literal('')),
+    .union([localDateTimeMinuteSchema, z.literal('')])
+    .optional(),
   next_visit_suggestion_date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
-    .optional()
-    .or(z.literal('')),
+    .union([dateKeySchema('日付形式が不正です（YYYY-MM-DD）'), z.literal('')])
+    .optional(),
   cancellation_reason: z.string().optional(),
   postpone_reason: z.string().optional(),
   revisit_reason: z.string().optional(),

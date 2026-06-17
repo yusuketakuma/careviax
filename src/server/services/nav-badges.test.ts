@@ -1,0 +1,144 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { dispenseTaskCountMock, withOrgContextMock, buildMedicationCycleAssignmentWhereMock } =
+  vi.hoisted(() => ({
+    dispenseTaskCountMock: vi.fn(),
+    withOrgContextMock: vi.fn(),
+    buildMedicationCycleAssignmentWhereMock: vi.fn(),
+  }));
+
+vi.mock('@/lib/db/client', () => ({
+  prisma: {
+    dispenseTask: {
+      count: dispenseTaskCountMock,
+    },
+  },
+}));
+
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/server/services/prescription-access', () => ({
+  buildMedicationCycleAssignmentWhere: buildMedicationCycleAssignmentWhereMock,
+}));
+
+import {
+  buildNavBadgePayload,
+  countDispenseAuditBadge,
+  countHandoffBadge,
+  countMyHandoffBadgeItems,
+} from './nav-badges';
+
+const pharmacistCtx = {
+  orgId: 'org_1',
+  userId: 'user_1',
+  role: 'pharmacist' as const,
+};
+
+describe('nav badge service', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    buildMedicationCycleAssignmentWhereMock.mockReturnValue(null);
+    dispenseTaskCountMock.mockResolvedValue(4);
+    withOrgContextMock.mockImplementation(async (_orgId: string, fn: (tx: unknown) => unknown) =>
+      fn({
+        handoffItem: {
+          count: vi.fn().mockResolvedValue(2),
+        },
+      }),
+    );
+  });
+
+  it('counts only current handoff items that involve the viewer or remain unread', () => {
+    expect(
+      countMyHandoffBadgeItems(
+        [
+          { created_by: 'user_1', read_by: ['user_2'], lifecycle_status: 'proposed' },
+          { created_by: 'user_2', read_by: [], consult_status: 'open' },
+          { created_by: 'user_2', read_by: ['user_1'], lifecycle_status: 'proposed' },
+          { created_by: 'user_2', read_by: [], lifecycle_status: null, consult_status: null },
+        ],
+        'user_1',
+      ),
+    ).toBe(2);
+  });
+
+  it('counts dispense audit badges with the existing assignment scope', async () => {
+    const cycleWhere = { assigned_pharmacist_id: 'user_1' };
+    buildMedicationCycleAssignmentWhereMock.mockReturnValue(cycleWhere);
+
+    await expect(countDispenseAuditBadge(pharmacistCtx)).resolves.toBe(4);
+
+    expect(dispenseTaskCountMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        status: 'completed',
+        cycle: cycleWhere,
+        audits: {
+          none: {
+            result: { notIn: ['hold'] },
+          },
+        },
+      },
+    });
+  });
+
+  it('skips unavailable badge reads for roles without workflow permissions', async () => {
+    const clerkCtx = {
+      orgId: 'org_1',
+      userId: 'user_1',
+      role: 'clerk' as const,
+    };
+
+    await expect(buildNavBadgePayload(clerkCtx)).resolves.toEqual({});
+    expect(dispenseTaskCountMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('aggregates audit and handoff counts with one service call', async () => {
+    await expect(buildNavBadgePayload(pharmacistCtx)).resolves.toEqual({
+      audit: 4,
+      handoff: 2,
+    });
+
+    expect(dispenseTaskCountMock).toHaveBeenCalledOnce();
+    expect(withOrgContextMock).toHaveBeenCalledOnce();
+  });
+
+  it('counts handoff badges in the database instead of loading all items', async () => {
+    const count = vi.fn().mockResolvedValue(2);
+    withOrgContextMock.mockImplementationOnce(
+      async (_orgId: string, fn: (tx: unknown) => unknown) =>
+        fn({
+          handoffItem: {
+            count,
+          },
+        }),
+    );
+
+    await expect(countHandoffBadge(pharmacistCtx)).resolves.toBe(2);
+
+    expect(count).toHaveBeenCalledWith({
+      where: {
+        board: {
+          org_id: 'org_1',
+          shift_date: expect.any(Date),
+        },
+        OR: [{ lifecycle_status: { not: null } }, { consult_status: { not: null } }],
+        AND: [
+          {
+            OR: [{ created_by: 'user_1' }, { NOT: { read_by: { has: 'user_1' } } }],
+          },
+        ],
+      },
+    });
+  });
+
+  it('returns undefined handoff badge count when the role cannot view handoffs', async () => {
+    await expect(
+      countHandoffBadge({ orgId: 'org_1', userId: 'driver_1', role: 'driver' }),
+    ).resolves.toBeUndefined();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+});

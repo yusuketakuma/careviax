@@ -50,9 +50,11 @@ const MOBILE_ROUTES = [
   },
 ] as const;
 
+// 要確認: 旧 /dispense は workflow-compact-nav レイアウトだったが、新 DispensingWorkbench
+// （レセコン風・デスクトップ専用 1540px）に全面置換され main-workflow-compact-nav を描画しない。
+// よって /dispense はこのモバイル workflow-nav 検証から除外。狭幅/モバイル挙動は別フェーズ（計画 §9 Q5）。
 const MOBILE_WORKFLOW_ROUTES = [
   { name: 'prescriptions-workflow-mobile-layout', path: '/prescriptions' },
-  { name: 'dispensing-workflow-mobile-layout', path: '/dispense' },
   { name: 'reports-workflow-mobile-layout', path: '/reports' },
 ] as const;
 
@@ -105,8 +107,9 @@ const MOBILE_CROSS_SCREEN_ROUTES = [
   { name: 'prescriptions-new-cross-screen', path: '/prescriptions/new' },
   { name: 'qr-scan-cross-screen', path: '/qr-scan' },
   { name: 'dispensing-cross-screen', path: '/dispense' },
-  { name: 'auditing-cross-screen', path: '/auditing' },
-  { name: 'medication-sets-cross-screen', path: '/medication-sets' },
+  { name: 'audit-cross-screen', path: '/audit' },
+  { name: 'medication-sets-cross-screen', path: '/set' },
+  { name: 'set-audit-cross-screen', path: '/set-audit' },
   { name: 'schedules-cross-screen', path: '/schedules' },
   { name: 'schedule-proposals-cross-screen', path: '/schedules/proposals' },
   { name: 'visits-cross-screen', path: '/visits' },

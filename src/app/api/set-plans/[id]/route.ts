@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
 import type { AuthContext, AuthRouteContext } from '@/lib/auth/context';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -10,10 +10,12 @@ import { dateKeySchema } from '@/lib/validations/date-key';
 import { buildSetPlanPackagingSummary } from '@/lib/prescription/set-plan-packaging';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { buildSetPlanAssignmentWhere } from '@/server/services/prescription-access';
+import { MAX_SET_PLAN_DAY_COUNT, isSetPlanPeriodWithinLimit } from '@/lib/set-plan-period';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 
 const updateSetPlanSchema = z.object({
+  expected_updated_at: z.string().datetime('セットプランの版情報が不正です'),
   target_period_start: dateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional(),
   target_period_end: dateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional(),
   set_method: z
@@ -196,7 +198,7 @@ export const PATCH = withAuthContext<{ id: string }>(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const updates = parsed.data;
+    const { expected_updated_at, ...updates } = parsed.data;
     if (Object.keys(updates).length === 0) {
       return validationError('更新項目がありません');
     }
@@ -216,6 +218,7 @@ export const PATCH = withAuthContext<{ id: string }>(
           set_method: true,
           notes: true,
           packaging_method_id: true,
+          updated_at: true,
           cycle: {
             select: {
               case_: {
@@ -243,6 +246,17 @@ export const PATCH = withAuthContext<{ id: string }>(
 
       if (!existing) {
         return null;
+      }
+
+      if (existing.updated_at.toISOString() !== expected_updated_at) {
+        return {
+          kind: 'conflict' as const,
+          message: 'セットプランが他のユーザーによって更新されています。再読み込みしてください',
+          details: {
+            current: { updated_at: existing.updated_at.toISOString() },
+            expected_updated_at,
+          },
+        };
       }
 
       const packagingMethod =
@@ -292,6 +306,12 @@ export const PATCH = withAuthContext<{ id: string }>(
           message: '終了日は開始日以降を指定してください',
         };
       }
+      if (!isSetPlanPeriodWithinLimit(resolvedPeriodStart, resolvedPeriodEnd)) {
+        return {
+          kind: 'error' as const,
+          message: `セット対象期間は${MAX_SET_PLAN_DAY_COUNT}日以内で指定してください`,
+        };
+      }
 
       const resolvedSetMethod = updates.set_method ?? existing.set_method;
       const resolvedNotes = updates.notes !== undefined ? updates.notes || null : existing.notes;
@@ -301,24 +321,55 @@ export const PATCH = withAuthContext<{ id: string }>(
         patientPackagingProfile: existing.cycle.case_?.patient.packaging_profile ?? null,
       });
 
-      const updated = await tx.setPlan.update({
-        where: { id },
-        data: {
-          ...(updates.target_period_start
-            ? { target_period_start: new Date(updates.target_period_start) }
-            : {}),
-          ...(updates.target_period_end
-            ? { target_period_end: new Date(updates.target_period_end) }
-            : {}),
-          ...(updates.set_method ? { set_method: updates.set_method } : {}),
-          ...(updates.packaging_method_id !== undefined
-            ? { packaging_method_id: updates.packaging_method_id || null }
-            : {}),
-          packaging_summary_snapshot: packagingSummary,
-          notes: resolvedNotes,
+      const writeData = {
+        ...(updates.target_period_start
+          ? { target_period_start: new Date(updates.target_period_start) }
+          : {}),
+        ...(updates.target_period_end
+          ? { target_period_end: new Date(updates.target_period_end) }
+          : {}),
+        ...(updates.set_method ? { set_method: updates.set_method } : {}),
+        ...(updates.packaging_method_id !== undefined
+          ? { packaging_method_id: updates.packaging_method_id || null }
+          : {}),
+        packaging_summary_snapshot: packagingSummary,
+        notes: resolvedNotes,
+      };
+
+      const writeClaim = await tx.setPlan.updateMany({
+        where: {
+          id,
+          org_id: ctx.orgId,
+          updated_at: new Date(expected_updated_at),
         },
+        data: writeData,
+      });
+      if (writeClaim.count === 0) {
+        const current = await tx.setPlan.findFirst({
+          where: {
+            id,
+            org_id: ctx.orgId,
+            ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+          },
+          select: { updated_at: true },
+        });
+        return {
+          kind: 'conflict' as const,
+          message: 'セットプランが他のユーザーによって更新されています。再読み込みしてください',
+          details: {
+            current: current ? { updated_at: current.updated_at.toISOString() } : null,
+            expected_updated_at,
+          },
+        };
+      }
+
+      const updated = await tx.setPlan.findFirst({
+        where: { id, org_id: ctx.orgId },
         select: setPlanSelect,
       });
+      if (!updated) {
+        return null;
+      }
 
       return {
         kind: 'success' as const,
@@ -332,6 +383,9 @@ export const PATCH = withAuthContext<{ id: string }>(
 
     if (result.kind === 'error') {
       return validationError(result.message);
+    }
+    if (result.kind === 'conflict') {
+      return conflict(result.message, result.details);
     }
 
     await notifyWorkflowMutation({

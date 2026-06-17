@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { toast } from 'sonner';
@@ -29,6 +29,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { WorkspaceActionRail } from '@/components/features/workspace/action-rail';
 import { HandoffConfirmPanel } from '@/components/features/visits/handoff-confirm-panel';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { useRealtimeEvents } from '@/lib/hooks/use-realtime-events';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { cn } from '@/lib/utils';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
@@ -806,20 +807,11 @@ function VisitHandoffConfirmationWorkspace({
 
 function WorkspaceSkeleton() {
   return (
-    <div
-      className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]"
-      role="status"
-      aria-label="ハンドオフボード読み込み中"
-    >
+    <div className="space-y-4" role="status" aria-label="ハンドオフボード読み込み中">
       <div className="space-y-4">
         <Skeleton className="h-64 w-full rounded-lg" />
         <Skeleton className="h-36 w-full rounded-lg" />
         <Skeleton className="h-12 w-full rounded-lg" />
-      </div>
-      <div className="space-y-4">
-        {Array.from({ length: 3 }).map((_, index) => (
-          <Skeleton key={index} className="h-32 w-full rounded-lg" />
-        ))}
       </div>
     </div>
   );
@@ -832,11 +824,35 @@ export function HandoffWorkspace() {
   const [transferDialogOpen, setTransferDialogOpen] = useState(false);
   const isBootstrappingOrg = !orgId;
 
+  const invalidateBoard = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['handoff-board'] });
+    void queryClient.invalidateQueries({ queryKey: ['nav-badges'] });
+    void queryClient.invalidateQueries({ queryKey: ['tasks'] });
+  }, [queryClient]);
+
+  const handleRealtimeEvent = useCallback(
+    (event: unknown) => {
+      const eventType =
+        typeof event === 'object' && event !== null && 'type' in event
+          ? (event as { type: string }).type
+          : undefined;
+      if (eventType === 'workflow_refresh' || eventType === 'cycle_transition') {
+        invalidateBoard();
+      }
+    },
+    [invalidateBoard],
+  );
+
+  const realtime = useRealtimeEvents({
+    onEvent: handleRealtimeEvent,
+    enabled: !isBootstrappingOrg,
+  });
+
   const boardQuery = useQuery({
     queryKey: ['handoff-board', 'workspace', orgId],
     queryFn: () => fetchHandoffBoard(orgId),
     enabled: !isBootstrappingOrg,
-    refetchInterval: 30_000,
+    refetchInterval: realtime.connected ? false : 30_000,
   });
   const cockpitQuery = useQuery({
     queryKey: ['dashboard', 'cockpit', orgId],
@@ -883,12 +899,6 @@ export function HandoffWorkspace() {
     };
   }, [board?.items]);
 
-  const invalidateBoard = () => {
-    void queryClient.invalidateQueries({ queryKey: ['handoff-board'] });
-    void queryClient.invalidateQueries({ queryKey: ['nav-badges', 'handoff'] });
-    void queryClient.invalidateQueries({ queryKey: ['tasks'] });
-  };
-
   return (
     <section aria-label="ハンドオフボード" data-testid="handoff-workspace">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -924,7 +934,7 @@ export function HandoffWorkspace() {
             />
           </div>
         ) : (
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]">
+          <div className="space-y-4">
             <div className="min-w-0 space-y-4">
               <VisitHandoffConfirmationWorkspace
                 orgId={orgId}
@@ -1007,15 +1017,13 @@ export function HandoffWorkspace() {
                 3つ揃わないと送信できません。「言った/聞いてない」をシステムで起こさない設計です。
               </p>
             </div>
-            <div className="space-y-4">
-              <WorkspaceActionRail
-                nextAction={buildWorkspaceNextAction(cockpit)}
-                blockedReasons={buildWorkspaceBlockedReasons(cockpit)}
-                blockedReasonsEmptyLabel="止まっている作業はありません"
-                evidence={buildHandoffEvidence(board)}
-                evidenceOpenLabel="開く"
-              />
-            </div>
+            <WorkspaceActionRail
+              nextAction={buildWorkspaceNextAction(cockpit)}
+              blockedReasons={buildWorkspaceBlockedReasons(cockpit)}
+              blockedReasonsEmptyLabel="止まっている作業はありません"
+              evidence={buildHandoffEvidence(board)}
+              evidenceOpenLabel="開く"
+            />
           </div>
         )}
       </div>

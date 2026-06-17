@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
+import { createHash } from 'node:crypto';
 
 const {
   requireAuthContextMock,
@@ -7,10 +9,12 @@ const {
   visitScheduleFindFirstMock,
   visitScheduleFindManyMock,
   visitScheduleUpdateMock,
+  visitScheduleUpdateManyMock,
   visitScheduleCountMock,
   visitScheduleProposalCreateMock,
   visitScheduleProposalFindManyMock,
   visitScheduleProposalUpdateManyMock,
+  visitScheduleOverrideFindFirstMock,
   visitScheduleOverrideCreateMock,
   contactPartyFindManyMock,
   careTeamLinkFindManyMock,
@@ -29,10 +33,12 @@ const {
   visitScheduleFindFirstMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
   visitScheduleUpdateMock: vi.fn(),
+  visitScheduleUpdateManyMock: vi.fn(),
   visitScheduleCountMock: vi.fn(),
   visitScheduleProposalCreateMock: vi.fn(),
   visitScheduleProposalFindManyMock: vi.fn(),
   visitScheduleProposalUpdateManyMock: vi.fn(),
+  visitScheduleOverrideFindFirstMock: vi.fn(),
   visitScheduleOverrideCreateMock: vi.fn(),
   contactPartyFindManyMock: vi.fn(),
   careTeamLinkFindManyMock: vi.fn(),
@@ -103,6 +109,31 @@ function createMalformedJsonRequest(headers?: Record<string, string>) {
   });
 }
 
+function buildExpectedRescheduleRequestIntentKey(args?: {
+  reason?: string;
+  reasonCode?: string;
+  communicationChannel?: string;
+  communicationResult?: string;
+  startDate?: string | null;
+  priority?: string | null;
+  preferredPharmacistId?: string | null;
+  requestedVehicleResourceId?: string | null;
+}) {
+  const material = [
+    'visit-reschedule',
+    'schedule_1',
+    (args?.reason ?? '患者都合で変更').trim().replace(/\s+/g, ' '),
+    args?.reasonCode ?? 'patient_request',
+    args?.communicationChannel ?? 'phone',
+    args?.communicationResult ?? 'pending',
+    args?.startDate ?? '',
+    args?.priority ?? '',
+    args?.preferredPharmacistId ?? '',
+    args?.requestedVehicleResourceId ?? '',
+  ].join(':');
+  return `visit-reschedule:v1:${createHash('sha256').update(material).digest('hex')}`;
+}
+
 function buildSchedule(overrides?: Record<string, unknown>) {
   return {
     id: 'schedule_1',
@@ -121,6 +152,7 @@ function buildSchedule(overrides?: Record<string, unknown>) {
     schedule_status: 'planned',
     confirmed_at: new Date('2026-03-25T10:00:00.000Z'),
     confirmed_by: 'user_1',
+    version: 4,
     case_: {
       patient_id: 'patient_1',
       patient: {
@@ -158,6 +190,13 @@ function buildImpactedSchedule(overrides?: Record<string, unknown>) {
     },
     ...overrides,
   };
+}
+
+function buildSerializableConflictError() {
+  return new Prisma.PrismaClientKnownRequestError('Serializable transaction conflict', {
+    code: 'P2034',
+    clientVersion: 'test',
+  });
 }
 
 describe('/api/visit-schedules/[id]/reschedule POST', () => {
@@ -309,12 +348,15 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
     membershipFindManyMock.mockResolvedValue([{ user_id: 'admin_1' }]);
     taskUpdateManyMock.mockResolvedValue({ count: 1 });
     auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
+    visitScheduleOverrideFindFirstMock.mockResolvedValue(null);
+    visitScheduleUpdateManyMock.mockResolvedValue({ count: 1 });
 
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         visitSchedule: {
           findMany: visitScheduleFindManyMock,
           update: visitScheduleUpdateMock,
+          updateMany: visitScheduleUpdateManyMock,
           count: visitScheduleCountMock,
         },
         visitScheduleProposal: {
@@ -323,6 +365,7 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
           updateMany: visitScheduleProposalUpdateManyMock,
         },
         visitScheduleOverride: {
+          findFirst: visitScheduleOverrideFindFirstMock,
           create: visitScheduleOverrideCreateMock,
         },
         contactParty: {
@@ -476,6 +519,14 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      requestContext: {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      },
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
     expect(generateVisitScheduleProposalDraftsMock).toHaveBeenCalledWith({
       orgId: 'org_1',
       caseId: 'case_1',
@@ -520,6 +571,17 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
         }),
       }),
     );
+    expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'schedule_1',
+        org_id: 'org_1',
+        version: 4,
+        schedule_status: 'planned',
+      },
+      data: {
+        version: { increment: 1 },
+      },
+    });
     expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
     expect(visitScheduleProposalCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -577,6 +639,7 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
             requested_vehicle_resource_id: 'vehicle_1',
             current_vehicle_resource_id: 'vehicle_1',
             vehicle_reassignment_mode: 'preserve_current',
+            request_intent_key: expect.stringMatching(/^visit-reschedule:v1:[a-f0-9]{64}$/),
           }),
         }),
       }),
@@ -648,6 +711,220 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
       orgId: 'org_1',
       payload: { source: 'visit_schedules_reschedule_request', schedule_id: 'schedule_1' },
     });
+  });
+
+  it('returns existing pending reschedule proposals on success retry without side effects', async () => {
+    visitScheduleOverrideFindFirstMock.mockResolvedValueOnce({
+      id: 'override_existing',
+      status: 'pending',
+      impact_summary: {
+        request_intent_key: buildExpectedRescheduleRequestIntentKey(),
+      },
+      after_snapshot: [
+        {
+          proposal_id: 'proposal_existing',
+          proposed_date: '2026-03-28T00:00:00.000Z',
+        },
+      ],
+    });
+    visitScheduleProposalFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'proposal_existing',
+        org_id: 'org_1',
+        case_id: 'case_1',
+        proposed_date: new Date('2026-03-28T00:00:00.000Z'),
+        proposed_pharmacist_id: 'pharmacist_2',
+        reschedule_source_schedule_id: 'schedule_1',
+      },
+    ]);
+
+    const response = await POST(
+      createRequest(
+        {
+          reason: '患者都合で変更',
+          reason_code: 'patient_request',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'schedule_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: {
+        proposals: [
+          {
+            id: 'proposal_existing',
+            reschedule_source_schedule_id: 'schedule_1',
+          },
+        ],
+        reused_existing: true,
+      },
+    });
+    expect(visitScheduleOverrideFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        source_schedule_id: 'schedule_1',
+        status: 'pending',
+      },
+      select: {
+        id: true,
+        after_snapshot: true,
+        impact_summary: true,
+      },
+    });
+    expect(visitScheduleProposalFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        id: { in: ['proposal_existing'] },
+        reschedule_source_schedule_id: 'schedule_1',
+      },
+    });
+    expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
+    expect(visitScheduleCountMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleOverrideCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps different pending reschedule intents as conflicts', async () => {
+    visitScheduleOverrideFindFirstMock.mockResolvedValueOnce({
+      id: 'override_existing',
+      status: 'pending',
+      impact_summary: {
+        request_intent_key: 'visit-reschedule:v1:different-intent',
+      },
+      after_snapshot: [
+        {
+          proposal_id: 'proposal_existing',
+          proposed_date: '2026-03-28T00:00:00.000Z',
+        },
+      ],
+    });
+
+    const response = await POST(
+      createRequest(
+        {
+          reason: '患者都合で変更',
+          reason_code: 'patient_request',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'schedule_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'この訪問予定には既にリスケ要求があります。再読み込みしてください',
+    });
+    expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleOverrideCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns conflict without durable side effects when the source schedule changes during reschedule request', async () => {
+    visitScheduleUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await POST(
+      createRequest(
+        {
+          reason: '患者都合で変更',
+          reason_code: 'patient_request',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'schedule_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '訪問予定が同時に更新されました。再読み込みしてください',
+    });
+    expect(visitScheduleUpdateManyMock).toHaveBeenCalledTimes(1);
+    expect(visitScheduleCountMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleOverrideCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('retries the reschedule creation transaction after a Serializable route-order conflict', async () => {
+    const defaultWithOrgContext = withOrgContextMock.getMockImplementation();
+    if (!defaultWithOrgContext) throw new Error('withOrgContext mock implementation is required');
+    withOrgContextMock
+      .mockImplementationOnce(defaultWithOrgContext)
+      .mockRejectedValueOnce(buildSerializableConflictError());
+    visitScheduleProposalFindManyMock.mockResolvedValueOnce([
+      {
+        proposed_date: new Date('2026-03-28T00:00:00.000Z'),
+        proposed_pharmacist_id: 'pharmacist_2',
+        route_order: 2,
+        reschedule_source_schedule_id: 'schedule_other',
+      },
+    ]);
+
+    const response = await POST(
+      createRequest(
+        {
+          reason: '患者都合で変更',
+          reason_code: 'patient_request',
+          start_date: '2026-03-28',
+          priority: 'urgent',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'schedule_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(withOrgContextMock).toHaveBeenCalledTimes(3);
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(2, 'org_1', expect.any(Function), {
+      requestContext: {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      },
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(3, 'org_1', expect.any(Function), {
+      requestContext: {
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      },
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+    expect(visitScheduleProposalFindManyMock).toHaveBeenCalledTimes(1);
+    expect(visitScheduleProposalCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        case_id: 'case_1',
+        proposed_pharmacist_id: 'pharmacist_2',
+        proposed_date: new Date('2026-03-28T00:00:00.000Z'),
+        route_order: 3,
+        reschedule_source_schedule_id: 'schedule_1',
+      }),
+    });
+    expect(visitScheduleOverrideCreateMock).toHaveBeenCalledTimes(1);
   });
 
   it('allows reschedule requests to prefer a substitute pharmacist and release the current vehicle for auto reassignment', async () => {

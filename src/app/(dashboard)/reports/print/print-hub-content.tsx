@@ -146,7 +146,7 @@ function usePrintHubData(
   const careReportsQuery = useQuery({
     queryKey: ['print-hub-care-reports', orgId],
     queryFn: async () => {
-      const res = await fetch('/api/care-reports?limit=50', {
+      const res = await fetch('/api/care-reports?limit=50&include_content=1', {
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('報告書の取得に失敗しました');

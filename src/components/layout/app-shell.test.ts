@@ -29,11 +29,11 @@ describe('resolveQuickCreateTarget', () => {
 });
 
 describe('resolveSidebarSheetOpen', () => {
-  it('keeps the sidebar sheet closed on desktop even when sidebarOpen is persisted', () => {
-    expect(resolveSidebarSheetOpen(false, true)).toBe(false);
+  it('allows the sidebar drawer to open from the top bar on desktop', () => {
+    expect(resolveSidebarSheetOpen(false, true)).toBe(true);
   });
 
-  it('allows the sidebar sheet to open on compact viewports only when requested', () => {
+  it('opens the sidebar drawer only when requested', () => {
     expect(resolveSidebarSheetOpen(true, true)).toBe(true);
     expect(resolveSidebarSheetOpen(true, false)).toBe(false);
   });
@@ -117,13 +117,24 @@ describe('shouldRenderCompactSidebarSheet', () => {
     ).toBe(false);
   });
 
-  it('renders the compact sheet only after a compact viewport is confirmed', () => {
+  it('renders the drawer mount point after viewport hydration on compact viewports', () => {
     expect(
       shouldRenderCompactSidebarSheet({
         isReady: true,
         isDesktopLayout: false,
         isTabletLayout: true,
         isCompactLayout: true,
+      }),
+    ).toBe(true);
+  });
+
+  it('also renders the drawer mount point after viewport hydration on desktop', () => {
+    expect(
+      shouldRenderCompactSidebarSheet({
+        isReady: true,
+        isDesktopLayout: true,
+        isTabletLayout: false,
+        isCompactLayout: false,
       }),
     ).toBe(true);
   });

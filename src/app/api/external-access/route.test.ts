@@ -711,6 +711,33 @@ describe('/api/external-access POST', () => {
     expect(body.data).not.toHaveProperty('otp');
   });
 
+  it('rejects archived patients before token, OTP, grant, or SMS side effects', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        granted_to_name: '田中ケアマネ',
+        granted_to_contact: '090-1234-5678',
+        scope: { medication_list: true },
+        expires_hours: 24,
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(createMock).not.toHaveBeenCalled();
+    expect(updateMock).not.toHaveBeenCalled();
+    expect(issueExternalAccessTokenMock).not.toHaveBeenCalled();
+    expect(sendSmsMock).not.toHaveBeenCalled();
+  });
+
   it('stores a hidden case boundary for case-backed external sharing scopes', async () => {
     validateExternalAccessScopeForRoleMock.mockReturnValue({
       ok: true,

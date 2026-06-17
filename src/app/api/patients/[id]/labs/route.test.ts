@@ -239,6 +239,21 @@ describe('/api/patients/[id]/labs POST', () => {
     expect(patientLabObservationCreateMock).not.toHaveBeenCalled();
   });
 
+  it('rejects archived patients before creating labs', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      archived_at: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    const response = (await POST(createPostRequest(baseLabBody), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    }))!;
+
+    expect(response.status).toBe(409);
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(patientLabObservationCreateMock).not.toHaveBeenCalled();
+  });
+
   it('validates same-org same-patient assigned visit-record provenance before creating', async () => {
     const response = (await POST(
       createPostRequest({

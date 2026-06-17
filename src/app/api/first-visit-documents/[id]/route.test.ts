@@ -9,6 +9,7 @@ const {
   firstVisitDocumentFindUniqueMock,
   firstVisitDocumentUpdateManyMock,
   auditLogCreateMock,
+  requireWritablePatientMock,
   getPatientDocumentsDataMock,
   withOrgContextMock,
 } = vi.hoisted(() => ({
@@ -19,6 +20,7 @@ const {
   firstVisitDocumentFindUniqueMock: vi.fn(),
   firstVisitDocumentUpdateManyMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
+  requireWritablePatientMock: vi.fn(),
   getPatientDocumentsDataMock: vi.fn(),
   withOrgContextMock: vi.fn(),
 }));
@@ -49,6 +51,10 @@ vi.mock('@/server/services/patient-detail-documents', () => ({
   getPatientDocumentsData: getPatientDocumentsDataMock,
 }));
 
+vi.mock('@/server/services/patient-write-guard', () => ({
+  requireWritablePatient: requireWritablePatientMock,
+}));
+
 import { PATCH as rawPATCH } from './route';
 
 const PATCH = (req: NextRequest, id = 'doc_1') =>
@@ -72,6 +78,9 @@ describe('/api/first-visit-documents/[id]', () => {
     vi.clearAllMocks();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+    requireWritablePatientMock.mockResolvedValue({
+      patient: { id: 'patient_1', archived_at: null },
+    });
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
     firstVisitDocumentFindFirstMock.mockResolvedValue({
       id: 'doc_1',
@@ -303,6 +312,27 @@ describe('/api/first-visit-documents/[id]', () => {
         delivered_to: '山田太郎',
       },
     });
+  });
+
+  it('rejects archived patients before document update or audit history writes', async () => {
+    requireWritablePatientMock.mockResolvedValue({
+      response: Response.json(
+        { message: 'アーカイブ中の患者は復元するまで更新できません' },
+        { status: 409 },
+      ),
+    });
+
+    const response = (await PATCH(
+      createPatchRequest({
+        delivered_at: '2026-06-16T00:00:00.000Z',
+        delivered_to: '山田太郎',
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(firstVisitDocumentUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('records document history actions in audit log', async () => {

@@ -1,11 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
+import { createHash } from 'node:crypto';
 
 const {
   authMock,
   membershipFindFirstMock,
+  visitScheduleProposalFindFirstMock,
+  visitScheduleProposalTxFindFirstMock,
   visitScheduleProposalFindManyMock,
   visitScheduleProposalRouteFindManyMock,
+  visitScheduleProposalBatchFindUniqueMock,
+  visitScheduleProposalBatchCreateMock,
   userFindManyMock,
   userFindFirstMock,
   careCaseFindFirstMock,
@@ -27,8 +33,12 @@ const {
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
+  visitScheduleProposalFindFirstMock: vi.fn(),
+  visitScheduleProposalTxFindFirstMock: vi.fn(),
   visitScheduleProposalFindManyMock: vi.fn(),
   visitScheduleProposalRouteFindManyMock: vi.fn(),
+  visitScheduleProposalBatchFindUniqueMock: vi.fn(),
+  visitScheduleProposalBatchCreateMock: vi.fn(),
   userFindManyMock: vi.fn(),
   userFindFirstMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
@@ -59,6 +69,7 @@ vi.mock('@/lib/db/client', () => ({
       findFirst: membershipFindFirstMock,
     },
     visitScheduleProposal: {
+      findFirst: visitScheduleProposalFindFirstMock,
       findMany: visitScheduleProposalFindManyMock,
     },
     user: {
@@ -122,9 +133,13 @@ function createRequest(url: string, body?: unknown) {
       headers: { 'x-org-id': 'org_1' },
     });
   }
+  const requestBody =
+    body && typeof body === 'object' && !Array.isArray(body) && !('idempotency_key' in body)
+      ? { idempotency_key: 'proposal-test-key', ...body }
+      : body;
   return new NextRequest(url, {
     method: 'POST',
-    body: JSON.stringify(body),
+    body: JSON.stringify(requestBody),
     headers: {
       'content-type': 'application/json',
       'x-org-id': 'org_1',
@@ -141,6 +156,33 @@ function createMalformedJsonPostRequest() {
       'x-org-id': 'org_1',
     },
   });
+}
+
+function buildSerializableConflictError() {
+  return new Prisma.PrismaClientKnownRequestError('Serializable transaction conflict', {
+    code: 'P2034',
+    clientVersion: 'test',
+  });
+}
+
+function buildExpectedProposalRequestFingerprint(overrides?: Record<string, unknown>) {
+  const material = JSON.stringify({
+    case_id: 'case_1',
+    visit_type: 'regular',
+    priority: 'normal',
+    start_date: null,
+    locked_date: null,
+    candidate_count: 1,
+    travel_mode: 'DRIVE',
+    preferred_time_from: null,
+    preferred_time_to: null,
+    preferred_pharmacist_id: null,
+    vehicle_resource_id: null,
+    reschedule_source_schedule_id: null,
+    special_cap_eligible: null,
+    ...overrides,
+  });
+  return `visit-proposal:v1:${createHash('sha256').update(material).digest('hex')}`;
 }
 
 function createPutRequest(body: unknown) {
@@ -231,13 +273,26 @@ describe('/api/visit-schedule-proposals', () => {
       },
     });
     visitScheduleProposalCreateMock.mockResolvedValue({ id: 'proposal_2' });
+    visitScheduleProposalBatchFindUniqueMock.mockResolvedValue(null);
+    visitScheduleProposalBatchCreateMock.mockResolvedValue({ id: 'proposal_batch_1' });
+    visitScheduleProposalFindFirstMock.mockResolvedValue(null);
+    visitScheduleProposalTxFindFirstMock.mockResolvedValue({
+      id: 'proposal_1',
+      proposal_status: 'patient_contact_pending',
+      patient_contact_status: 'pending',
+    });
     auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         visitScheduleProposal: {
+          findFirst: visitScheduleProposalTxFindFirstMock,
           findMany: visitScheduleProposalRouteFindManyMock,
           updateMany: visitScheduleProposalUpdateManyMock,
           create: visitScheduleProposalCreateMock,
+        },
+        visitScheduleProposalBatch: {
+          findUnique: visitScheduleProposalBatchFindUniqueMock,
+          create: visitScheduleProposalBatchCreateMock,
         },
         visitSchedule: {
           findMany: visitScheduleFindManyMock,
@@ -363,6 +418,153 @@ describe('/api/visit-schedule-proposals', () => {
     expect(generateVisitScheduleProposalDraftsMock).toHaveBeenCalled();
     expect(visitScheduleProposalUpdateManyMock).toHaveBeenCalled();
     expect(visitScheduleProposalCreateMock).toHaveBeenCalled();
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+  });
+
+  it('rejects proposal generation without idempotency_key before planner or write side effects', async () => {
+    const response = (await POST(
+      new NextRequest('http://localhost/api/visit-schedule-proposals', {
+        method: 'POST',
+        body: JSON.stringify({
+          case_id: 'case_1',
+          visit_type: 'regular',
+          candidate_count: 1,
+        }),
+        headers: {
+          'content-type': 'application/json',
+          'x-org-id': 'org_1',
+        },
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        idempotency_key: ['Invalid input: expected string, received undefined'],
+      },
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('creates an idempotency batch and links generated proposals when idempotency_key is provided', async () => {
+    visitScheduleProposalCreateMock.mockImplementationOnce(({ data }) =>
+      Promise.resolve({ id: 'proposal_2', ...data }),
+    );
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 1,
+        idempotency_key: 'proposal-key-1',
+      }),
+    ))!;
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({ replayed: false });
+    expect(visitScheduleProposalBatchFindUniqueMock).toHaveBeenCalledWith({
+      where: {
+        org_id_idempotency_key: {
+          org_id: 'org_1',
+          idempotency_key: 'proposal-key-1',
+        },
+      },
+      include: {
+        proposals: {
+          orderBy: { created_at: 'asc' },
+        },
+      },
+    });
+    expect(visitScheduleProposalBatchCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        case_id: 'case_1',
+        idempotency_key: 'proposal-key-1',
+        request_fingerprint: expect.stringMatching(/^visit-proposal:v1:[a-f0-9]{64}$/),
+        created_by: 'user_1',
+      }),
+    });
+    expect(visitScheduleProposalCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        proposal_batch_id: 'proposal_batch_1',
+      }),
+    });
+    expect(notifyWorkflowMutationMock).toHaveBeenCalled();
+  });
+
+  it('replays an existing idempotent proposal batch without superseding or creating proposals', async () => {
+    visitScheduleProposalBatchFindUniqueMock.mockResolvedValueOnce({
+      id: 'proposal_batch_1',
+      org_id: 'org_1',
+      case_id: 'case_1',
+      idempotency_key: 'proposal-key-1',
+      request_fingerprint: buildExpectedProposalRequestFingerprint(),
+      proposals: [
+        {
+          id: 'proposal_existing',
+          org_id: 'org_1',
+          case_id: 'case_1',
+          created_at: new Date('2026-04-01T00:00:00.000Z'),
+        },
+      ],
+    });
+    const replay = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 1,
+        idempotency_key: 'proposal-key-1',
+      }),
+    ))!;
+
+    expect(replay.status).toBe(200);
+    await expect(replay.json()).resolves.toMatchObject({
+      replayed: true,
+      data: [expect.objectContaining({ id: 'proposal_existing' })],
+    });
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an idempotency key reused with a different proposal request', async () => {
+    visitScheduleProposalBatchFindUniqueMock.mockResolvedValueOnce({
+      id: 'proposal_batch_1',
+      org_id: 'org_1',
+      case_id: 'case_1',
+      idempotency_key: 'proposal-key-1',
+      request_fingerprint: 'visit-proposal:v1:different',
+      proposals: [],
+    });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 1,
+        idempotency_key: 'proposal-key-1',
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'idempotency_key が別の訪問候補生成リクエストで使用されています',
+    });
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('reallocates created proposal route orders after active schedules and remaining open proposals', async () => {
@@ -474,6 +676,99 @@ describe('/api/visit-schedule-proposals', () => {
         vehicle_resource_id: 'vehicle_1',
       }),
     });
+  });
+
+  it('retries serializable proposal creation conflicts and reallocates on retry-time state', async () => {
+    withOrgContextMock
+      .mockRejectedValueOnce(buildSerializableConflictError())
+      .mockImplementationOnce(async (_orgId, callback) =>
+        callback({
+          visitScheduleProposal: {
+            findMany: visitScheduleProposalRouteFindManyMock,
+            updateMany: visitScheduleProposalUpdateManyMock,
+            create: visitScheduleProposalCreateMock,
+          },
+          visitScheduleProposalBatch: {
+            findUnique: visitScheduleProposalBatchFindUniqueMock,
+            create: visitScheduleProposalBatchCreateMock,
+          },
+          visitSchedule: {
+            findMany: visitScheduleFindManyMock,
+          },
+          auditLog: {
+            create: auditLogCreateMock,
+          },
+        }),
+      );
+    visitScheduleProposalRouteFindManyMock.mockResolvedValueOnce([
+      {
+        proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+        proposed_pharmacist_id: 'user_2',
+        route_order: 7,
+        reschedule_source_schedule_id: null,
+      },
+    ]);
+    visitScheduleProposalCreateMock.mockImplementationOnce(({ data }) =>
+      Promise.resolve({ id: 'proposal_retry', ...data }),
+    );
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 1,
+      }),
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(withOrgContextMock).toHaveBeenCalledTimes(2);
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(1, 'org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(2, 'org_1', expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+    expect(visitScheduleProposalUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        case_id: 'case_1',
+        proposal_status: {
+          in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+        },
+        reschedule_source_schedule_id: null,
+      },
+      data: {
+        proposal_status: 'superseded',
+      },
+    });
+    expect(visitScheduleProposalCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        route_order: 8,
+      }),
+    });
+    expect(notifyWorkflowMutationMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns conflict when serializable proposal creation conflicts exceed the retry limit', async () => {
+    withOrgContextMock.mockRejectedValue(buildSerializableConflictError());
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 1,
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '訪問候補の生成が同時に更新されました。再読み込みしてください',
+    });
+    expect(withOrgContextMock).toHaveBeenCalledTimes(3);
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('rejects proposal generation when the selected vehicle belongs to another draft site', async () => {
@@ -704,6 +999,90 @@ describe('/api/visit-schedule-proposals', () => {
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(validateOrgReferencesMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects editing a proposal that has already been confirmed by patient contact', async () => {
+    visitScheduleProposalFindFirstMock.mockResolvedValueOnce({
+      id: 'proposal_1',
+      proposal_status: 'patient_contact_pending',
+      patient_contact_status: 'confirmed',
+      finalized_schedule_id: null,
+      proposed_pharmacist_id: 'user_2',
+      proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+    });
+
+    const response = (await PUT(
+      createPutRequest({
+        id: 'proposal_1',
+        case_id: 'case_1',
+        visit_type: 'regular',
+        priority: 'normal',
+        proposed_date: '2026-04-03',
+        time_window_start: '09:00',
+        proposed_pharmacist_id: 'user_2',
+        travel_mode: 'DRIVE',
+        submit_for_contact: true,
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'この候補はすでに確定または患者確認済みです。再読み込みしてください',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns conflict when an editable proposal is finalized before the draft update claim', async () => {
+    visitScheduleProposalFindFirstMock.mockResolvedValueOnce({
+      id: 'proposal_1',
+      proposal_status: 'patient_contact_pending',
+      patient_contact_status: 'pending',
+      finalized_schedule_id: null,
+      proposed_pharmacist_id: 'user_2',
+      proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+    });
+    visitScheduleProposalUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = (await PUT(
+      createPutRequest({
+        id: 'proposal_1',
+        case_id: 'case_1',
+        visit_type: 'regular',
+        priority: 'normal',
+        proposed_date: '2026-04-03',
+        time_window_start: '09:00',
+        proposed_pharmacist_id: 'user_2',
+        travel_mode: 'DRIVE',
+        submit_for_contact: true,
+      }),
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'この候補はすでに確定または変更されています。再読み込みしてください',
+    });
+    expect(visitScheduleProposalUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'proposal_1',
+        org_id: 'org_1',
+        proposal_status: { in: ['proposed', 'patient_contact_pending'] },
+        patient_contact_status: { not: 'confirmed' },
+        finalized_schedule_id: null,
+      },
+      data: expect.objectContaining({
+        proposal_status: 'patient_contact_pending',
+        proposed_pharmacist_id: 'user_2',
+      }),
+    });
     expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();

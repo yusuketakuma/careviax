@@ -3,15 +3,14 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { success, validationError, notFound } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
+import { PATIENT_FIELD_REVISION_CATEGORIES } from '@/lib/patient/field-revision-categories';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { listPatientFieldRevisions } from '@/server/services/patient-field-revision-list';
 import { z } from 'zod';
 
 const fieldRevisionQuerySchema = z.object({
-  category: z
-    .enum(['basic', 'residence', 'contacts', 'conditions', 'clinical', 'insurance'])
-    .optional(),
+  category: z.enum(PATIENT_FIELD_REVISION_CATEGORIES).optional(),
   limit: boundedIntegerSearchParam('limit', 1, 200, 50),
 });
 

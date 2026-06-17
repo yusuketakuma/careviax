@@ -64,11 +64,13 @@ const SOURCE_FILTER_OPTIONS = [
   { value: 'next-day', label: '翌営業日 (next-day)' },
 ];
 
+const JOBS_REFETCH_INTERVAL_MS = 60_000;
+
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
-  pending:   { label: '待機中', className: 'bg-blue-100 text-blue-800 border-blue-200' },
-  running:   { label: '実行中', className: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
-  completed: { label: '完了',   className: 'bg-green-100 text-green-800 border-green-200' },
-  failed:    { label: '失敗',   className: 'bg-red-100 text-red-800 border-red-200' },
+  pending: { label: '待機中', className: 'bg-blue-100 text-blue-800 border-blue-200' },
+  running: { label: '実行中', className: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
+  completed: { label: '完了', className: 'bg-green-100 text-green-800 border-green-200' },
+  failed: { label: '失敗', className: 'bg-red-100 text-red-800 border-red-200' },
 };
 
 type BulkExportRunSummary = {
@@ -81,7 +83,9 @@ function readNumber(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-export function getBulkExportRunSummary(run: IntegrationJobRun | null): BulkExportRunSummary | null {
+export function getBulkExportRunSummary(
+  run: IntegrationJobRun | null,
+): BulkExportRunSummary | null {
   if (!run || !run.job_type.startsWith('medication-history-bulk-export')) return null;
   if (!run.output || typeof run.output !== 'object' || Array.isArray(run.output)) return null;
 
@@ -101,7 +105,8 @@ function getJobBulkExportRunSummary(entry: JobDefinitionEntry) {
 }
 
 function formatBulkExportSummary(summary: BulkExportRunSummary) {
-  const successfulText = summary.successfulCount == null ? null : `成功 ${summary.successfulCount}件`;
+  const successfulText =
+    summary.successfulCount == null ? null : `成功 ${summary.successfulCount}件`;
   const totalText = summary.requestedCount == null ? null : `対象 ${summary.requestedCount}件`;
   return [totalText, successfulText, `失敗 ${summary.failedCount}件`].filter(Boolean).join(' / ');
 }
@@ -137,7 +142,7 @@ export function JobsDashboardContent() {
       return res.json() as Promise<{ data: JobDefinitionEntry[] }>;
     },
     enabled: !!orgId,
-    refetchInterval: 15_000,
+    refetchInterval: JOBS_REFETCH_INTERVAL_MS,
   });
 
   const rerunMutation = useMutation({
@@ -150,7 +155,7 @@ export function JobsDashboardContent() {
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}));
         throw new Error(
-          (payload as { message?: string }).message ?? `ジョブ "${jobType}" の再実行に失敗しました`
+          (payload as { message?: string }).message ?? `ジョブ "${jobType}" の再実行に失敗しました`,
         );
       }
       return jobType;
@@ -209,7 +214,9 @@ export function JobsDashboardContent() {
         header: '開始',
         cell: ({ row }) => (
           <span className="text-xs tabular-nums text-muted-foreground">
-            {formatDateTimeLabel(row.original.latest_run?.started_at ?? null, { pattern: 'MM/dd HH:mm' })}
+            {formatDateTimeLabel(row.original.latest_run?.started_at ?? null, {
+              pattern: 'MM/dd HH:mm',
+            })}
           </span>
         ),
         size: 110,
@@ -219,7 +226,9 @@ export function JobsDashboardContent() {
         header: '完了',
         cell: ({ row }) => (
           <span className="text-xs tabular-nums text-muted-foreground">
-            {formatDateTimeLabel(row.original.latest_run?.completed_at ?? null, { pattern: 'MM/dd HH:mm' })}
+            {formatDateTimeLabel(row.original.latest_run?.completed_at ?? null, {
+              pattern: 'MM/dd HH:mm',
+            })}
           </span>
         ),
         size: 110,
@@ -286,7 +295,7 @@ export function JobsDashboardContent() {
         size: 90,
       },
     ],
-    [rerunMutation]
+    [rerunMutation],
   );
 
   function renderExpandedRow(row: Row<JobDefinitionEntry>) {
@@ -299,7 +308,9 @@ export function JobsDashboardContent() {
           <div className="space-y-1">
             <p className="text-xs font-semibold text-amber-800">一括出力の部分失敗</p>
             <p className="text-xs text-amber-800">{formatBulkExportSummary(bulkExportSummary)}</p>
-            <p className="text-xs text-amber-900">詳細は監査ログと保管元ジョブを確認してください。</p>
+            <p className="text-xs text-amber-900">
+              詳細は監査ログと保管元ジョブを確認してください。
+            </p>
           </div>
         )}
         {run?.error_log && (
@@ -317,7 +328,7 @@ export function JobsDashboardContent() {
   const failedCount = (data?.data ?? []).filter((e) => e.latest_run?.status === 'failed').length;
   const runningCount = (data?.data ?? []).filter((e) => e.latest_run?.status === 'running').length;
   const partialWarningCount = (data?.data ?? []).filter((e) =>
-    Boolean(getJobBulkExportRunSummary(e))
+    Boolean(getJobBulkExportRunSummary(e)),
   ).length;
 
   return (
@@ -326,7 +337,9 @@ export function JobsDashboardContent() {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">登録ジョブ数</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              登録ジョブ数
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-2xl font-semibold">{data?.data.length ?? '—'}</p>
@@ -337,7 +350,9 @@ export function JobsDashboardContent() {
             <CardTitle className="text-sm font-medium text-muted-foreground">実行中</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-semibold text-yellow-600">{isLoading ? '—' : runningCount}</p>
+            <p className="text-2xl font-semibold text-yellow-600">
+              {isLoading ? '—' : runningCount}
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -355,7 +370,9 @@ export function JobsDashboardContent() {
             <CardTitle className="text-sm font-medium text-muted-foreground">一部失敗</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className={`text-2xl font-semibold ${partialWarningCount > 0 ? 'text-amber-700' : ''}`}>
+            <p
+              className={`text-2xl font-semibold ${partialWarningCount > 0 ? 'text-amber-700' : ''}`}
+            >
               {isLoading ? '—' : partialWarningCount}
             </p>
           </CardContent>

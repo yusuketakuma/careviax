@@ -51,7 +51,7 @@ describe('refreshCareServiceOfficeMaster', () => {
       'care_service_office_master_auto_refresh',
       expect.any(Function),
       undefined,
-      'org:org_1,org_2',
+      'target-orgs:org_1,org_2',
     );
     expect(importCareServiceOfficeOpenDataMock).toHaveBeenCalledWith(
       { marker: 'prisma' },

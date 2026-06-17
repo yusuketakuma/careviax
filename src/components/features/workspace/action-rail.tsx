@@ -3,7 +3,19 @@
 import * as React from 'react';
 import { AlertTriangle, Eye, OctagonAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { useUIStore } from '@/lib/stores/ui-store';
 import { cn } from '@/lib/utils';
+
+const WORKSPACE_ACTION_RAIL_DRAWER_ID = 'workspace-action-rail-drawer';
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
 
 /**
  * design/ v1.9 の右パネル共通パターン(P0-08 基準)+ design/images/new 拡張。
@@ -245,7 +257,7 @@ export function EvidencePanel({ items, openLabel = '見る', className }: Eviden
             className="flex items-center justify-between gap-2 py-2 first:pt-0 last:pb-0"
           >
             <span className="flex min-w-0 flex-1 items-baseline gap-2">
-              <span className="min-w-0 truncate text-sm text-foreground">{item.label}</span>
+              <span className="min-w-0 text-sm leading-5 text-foreground">{item.label}</span>
               {item.meta ? (
                 <span className="shrink-0 text-xs text-muted-foreground">{item.meta}</span>
               ) : null}
@@ -288,7 +300,8 @@ export type WorkspaceActionRailProps = {
 };
 
 /**
- * 右レールの標準構成。上から「次にやること」→「止まっている理由」→「根拠・記録」。
+ * 補助パネルの標準構成。上から「次にやること」→「止まっている理由」→「根拠・記録」。
+ * 画面本体を圧迫しないよう、上部バーから開く右ドロワーとして表示する。
  * children は追加カード(画面固有の補助情報)用。
  */
 export function WorkspaceActionRail({
@@ -300,12 +313,106 @@ export function WorkspaceActionRail({
   className,
   children,
 }: WorkspaceActionRailProps) {
-  return (
+  const {
+    workspaceRailOpen,
+    setWorkspaceRailOpen,
+    registerWorkspaceRail,
+    unregisterWorkspaceRail,
+  } = useUIStore();
+  const returnFocusRef = React.useRef<HTMLElement | null>(null);
+
+  React.useEffect(() => {
+    registerWorkspaceRail();
+    return unregisterWorkspaceRail;
+  }, [registerWorkspaceRail, unregisterWorkspaceRail]);
+
+  React.useEffect(() => {
+    if (!workspaceRailOpen) return undefined;
+
+    returnFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const drawer = document.getElementById(WORKSPACE_ACTION_RAIL_DRAWER_ID);
+      if (!drawer) return;
+
+      if (event.key === 'Escape') {
+        setWorkspaceRailOpen(false);
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+
+      const focusable = Array.from(drawer.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+        (element) =>
+          !element.hasAttribute('disabled') && element.getAttribute('aria-hidden') !== 'true',
+      );
+
+      if (focusable.length === 0) {
+        event.preventDefault();
+        drawer.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable.at(-1) ?? first;
+      const active = document.activeElement;
+
+      if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    const focusPanel = window.requestAnimationFrame(() => {
+      const drawer = document.getElementById(WORKSPACE_ACTION_RAIL_DRAWER_ID);
+      const closeButton = drawer?.querySelector<HTMLElement>('[data-slot="sheet-close"]');
+      (closeButton ?? drawer)?.focus();
+    });
+
+    document.addEventListener('keydown', handleKeyDown, { capture: true });
+    return () => {
+      window.cancelAnimationFrame(focusPanel);
+      document.removeEventListener('keydown', handleKeyDown, { capture: true });
+      const returnTarget = returnFocusRef.current;
+      if (returnTarget && document.contains(returnTarget)) {
+        returnTarget.focus();
+      }
+      returnFocusRef.current = null;
+    };
+  }, [setWorkspaceRailOpen, workspaceRailOpen]);
+
+  const railContent = (
     <div className={cn('space-y-4', className)} data-testid="workspace-action-rail">
       {nextAction ? <NextActionPanel {...nextAction} /> : null}
       <BlockedReasonsPanel reasons={blockedReasons} emptyLabel={blockedReasonsEmptyLabel} />
       <EvidencePanel items={evidence} openLabel={evidenceOpenLabel} />
       {children}
     </div>
+  );
+
+  return (
+    <Sheet modal={false} open={workspaceRailOpen} onOpenChange={setWorkspaceRailOpen}>
+      <SheetContent
+        side="right"
+        id={WORKSPACE_ACTION_RAIL_DRAWER_ID}
+        className="w-[min(420px,92vw)] overflow-y-auto p-0"
+        data-testid="workspace-action-rail-drawer"
+        closeLabel="補助パネルを閉じる"
+        onKeyDownCapture={(event) => {
+          if (event.key === 'Escape') {
+            setWorkspaceRailOpen(false);
+          }
+        }}
+      >
+        <SheetHeader className="border-b border-border/70 px-4 py-3">
+          <SheetTitle>補助パネル</SheetTitle>
+        </SheetHeader>
+        <div className="p-4">{railContent}</div>
+      </SheetContent>
+    </Sheet>
   );
 }

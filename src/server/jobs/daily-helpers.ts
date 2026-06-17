@@ -106,6 +106,10 @@ export function buildEmergencyContactReviewTaskKey(caseId: string) {
   return `emergency-contact-review:${caseId}`;
 }
 
+export function buildPatientFoundationReviewTaskKey(patientId: string) {
+  return `patient-foundation-review:${patientId}`;
+}
+
 export function buildDosageSupportTaskKey(reportId: string) {
   return `dosage-support:${reportId}`;
 }

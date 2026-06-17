@@ -11,6 +11,7 @@ import {
 } from '@/lib/auth/visit-schedule-access';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { requireWritablePatient } from '@/server/services/patient-write-guard';
 import {
   assertFileUploadConstraints,
   createPresignedUpload,
@@ -201,6 +202,35 @@ async function canAccessReportFile(args: {
   });
 }
 
+async function resolveReportPatientIdForUpload(args: {
+  orgId: string;
+  report: {
+    patient_id: string | null;
+    case_id: string | null;
+    visit_record_id: string | null;
+  };
+}) {
+  if (args.report.patient_id) return args.report.patient_id;
+
+  if (args.report.visit_record_id) {
+    const visitRecord = await prisma.visitRecord.findFirst({
+      where: { id: args.report.visit_record_id, org_id: args.orgId },
+      select: { patient_id: true },
+    });
+    return visitRecord?.patient_id ?? null;
+  }
+
+  if (args.report.case_id) {
+    const careCase = await prisma.careCase.findFirst({
+      where: { id: args.report.case_id, org_id: args.orgId },
+      select: { patient_id: true },
+    });
+    return careCase?.patient_id ?? null;
+  }
+
+  return null;
+}
+
 export async function POST(req: NextRequest) {
   const disabledResponse = legacyFileApiDisabledResponse();
   if (disabledResponse) return disabledResponse;
@@ -264,6 +294,16 @@ export async function POST(req: NextRequest) {
     ) {
       return forbiddenResponse('この報告書へのアップロード権限がありません');
     }
+
+    const reportPatientId = await resolveReportPatientIdForUpload({
+      orgId: ctx.orgId,
+      report,
+    });
+    if (!reportPatientId) {
+      return validationError('指定された報告書に患者が紐づいていません');
+    }
+    const writable = await requireWritablePatient(prisma, ctx, reportPatientId);
+    if ('response' in writable) return writable.response;
   }
 
   if (parsed.data.purpose === 'prescription') {
@@ -276,17 +316,8 @@ export async function POST(req: NextRequest) {
       return validationError('処方箋アップロードには patient_id が必要です');
     }
 
-    const patient = await prisma.patient.findFirst({
-      where: {
-        id: patientId,
-        org_id: ctx.orgId,
-      },
-      select: { id: true },
-    });
-
-    if (!patient) {
-      return validationError('指定された患者が見つかりません');
-    }
+    const writable = await requireWritablePatient(prisma, ctx, patientId);
+    if ('response' in writable) return writable.response;
 
     if (
       !canBypassVisitScheduleAssignmentAccess(ctx) &&
@@ -313,6 +344,7 @@ export async function POST(req: NextRequest) {
       },
       select: {
         id: true,
+        patient_id: true,
         schedule: {
           select: {
             pharmacist_id: true,
@@ -334,6 +366,9 @@ export async function POST(req: NextRequest) {
     if (!canAccessVisitScheduleAssignment(ctx, visitRecord.schedule)) {
       return forbiddenResponse('この訪問記録へのアップロード権限がありません');
     }
+
+    const writable = await requireWritablePatient(prisma, ctx, visitRecord.patient_id);
+    if ('response' in writable) return writable.response;
   }
 
   if (parsed.data.purpose === 'set-photo') {

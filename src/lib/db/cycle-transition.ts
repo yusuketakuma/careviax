@@ -122,7 +122,7 @@ export async function transitionCycleStatus(
 
   // 3. Update with version increment (optimistic lock)
   const updated = await tx.medicationCycle.updateMany({
-    where: { id: cycleId, version: cycle.version },
+    where: { id: cycleId, org_id: orgId, version: cycle.version },
     data: {
       overall_status: newStatus as CycleStatus,
       version: { increment: 1 },

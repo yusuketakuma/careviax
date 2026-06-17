@@ -2,6 +2,10 @@ import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { patientGenderSchema } from '@/lib/validations/patient';
+import {
+  findPatientDuplicateCandidates,
+  parsePatientDuplicateBirthDate,
+} from '@/lib/patient/duplicate-detection';
 
 export const GET = withAuthContext(
   async (req, ctx) => {
@@ -21,28 +25,20 @@ export const GET = withAuthContext(
       });
     }
 
-    // Validate date format
-    const birthDate = new Date(dateOfBirth);
-    if (isNaN(birthDate.getTime())) {
+    const birthDate = parsePatientDuplicateBirthDate(dateOfBirth);
+    if (!birthDate) {
       return validationError('date_of_birth の形式が不正です');
     }
 
-    // Search for duplicates: name partial match (case-insensitive), birth_date exact, gender exact
-    const duplicates = await prisma.patient.findMany({
-      where: {
-        org_id: ctx.orgId,
-        name: { contains: name, mode: 'insensitive' },
-        birth_date: birthDate,
-        gender: parsedGender.data,
+    const duplicates = await findPatientDuplicateCandidates(prisma, {
+      orgId: ctx.orgId,
+      name,
+      birthDate,
+      gender: parsedGender.data,
+      access: {
+        userId: ctx.userId,
+        role: ctx.role,
       },
-      select: {
-        id: true,
-        name: true,
-        name_kana: true,
-        birth_date: true,
-        gender: true,
-      },
-      take: 10,
     });
 
     return success({ duplicates });

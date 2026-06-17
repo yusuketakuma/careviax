@@ -5,10 +5,12 @@ const {
   withAuthContextMock,
   withOrgContextMock,
   conferenceNoteFindManyMock,
+  conferenceNoteFindFirstMock,
   conferenceNoteCreateMock,
   conferenceNoteUpdateMock,
   careCaseFindManyMock,
   patientFindFirstMock,
+  requireWritablePatientMock,
   // sync-related mocks
   taskFindManyMock,
   taskCreateManyMock,
@@ -37,10 +39,12 @@ const {
   withAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   conferenceNoteFindManyMock: vi.fn(),
+  conferenceNoteFindFirstMock: vi.fn(),
   conferenceNoteCreateMock: vi.fn(),
   conferenceNoteUpdateMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
+  requireWritablePatientMock: vi.fn(),
   taskFindManyMock: vi.fn(),
   taskCreateManyMock: vi.fn(),
   billingCandidateUpsertMock: vi.fn(),
@@ -91,6 +95,10 @@ vi.mock('@/server/services/operational-tasks', () => ({
   resolveOperationalTasks: resolveOperationalTasksMock,
 }));
 
+vi.mock('@/server/services/patient-write-guard', () => ({
+  requireWritablePatient: requireWritablePatientMock,
+}));
+
 import { GET as rawGET, POST as rawPOST } from './route';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
@@ -124,6 +132,7 @@ function buildTxMock() {
   return {
     conferenceNote: {
       findMany: conferenceNoteFindManyMock,
+      findFirst: conferenceNoteFindFirstMock,
       create: conferenceNoteCreateMock,
       update: conferenceNoteUpdateMock,
     },
@@ -189,6 +198,7 @@ describe('/api/conference-notes', () => {
     );
 
     // default happy-path mocks
+    conferenceNoteFindFirstMock.mockResolvedValue(null);
     visitScheduleFindManyMock.mockResolvedValue([]);
     visitScheduleProposalFindManyMock.mockResolvedValue([]);
     careCaseFindFirstMock.mockResolvedValue({
@@ -198,6 +208,9 @@ describe('/api/conference-notes', () => {
       required_visit_support: null,
     });
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
+    requireWritablePatientMock.mockResolvedValue({
+      patient: { id: 'patient_1', archived_at: null },
+    });
     careCaseUpdateMock.mockResolvedValue({
       id: 'case_1',
       required_visit_support: {
@@ -411,6 +424,23 @@ describe('/api/conference-notes', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(conferenceNoteFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 51,
+        orderBy: [{ conference_date: 'desc' }, { id: 'desc' }],
+        select: expect.objectContaining({
+          id: true,
+          title: true,
+          metadata: true,
+          conference_date: true,
+        }),
+      }),
+    );
+    expect(conferenceNoteFindManyMock.mock.calls[0]?.[0].select).not.toHaveProperty('content');
+    expect(conferenceNoteFindManyMock.mock.calls[0]?.[0].select).not.toHaveProperty(
+      'structured_content',
+    );
+    expect(conferenceNoteFindManyMock.mock.calls[0]?.[0].select).not.toHaveProperty('action_items');
     const payload = await response.json();
     expect(payload.data[0]).toMatchObject({
       id: 'note_1',
@@ -424,6 +454,75 @@ describe('/api/conference-notes', () => {
     });
     expect(payload.data[0]).not.toHaveProperty('structured_content');
     expect(payload.data[0]).not.toHaveProperty('metadata');
+  });
+
+  it('uses stable DB keyset pagination for cursor requests', async () => {
+    const cursorDate = new Date('2026-03-28T01:00:00.000Z');
+    conferenceNoteFindFirstMock.mockResolvedValue({
+      id: 'note_cursor',
+      conference_date: cursorDate,
+    });
+    conferenceNoteFindManyMock.mockResolvedValue([
+      {
+        id: 'note_older',
+        org_id: 'org_1',
+        case_id: null,
+        patient_id: 'patient_1',
+        facility_id: null,
+        note_type: 'pre_discharge',
+        title: '退院前カンファ',
+        metadata: null,
+        participants: [],
+        billing_eligible: false,
+        billing_code: null,
+        follow_up_date: null,
+        follow_up_completed: false,
+        generated_report_id: null,
+        conference_date: new Date('2026-03-27T01:00:00.000Z'),
+        created_at: new Date('2026-03-27T02:00:00.000Z'),
+        updated_at: new Date('2026-03-27T02:00:00.000Z'),
+      },
+    ]);
+    careCaseFindManyMock.mockResolvedValue([]);
+
+    const response = await GET(
+      createRequest({
+        url: 'http://localhost/api/conference-notes?detail_level=summary&limit=20&cursor=note_cursor',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(conferenceNoteFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        AND: [expect.objectContaining({ org_id: 'org_1' }), { id: 'note_cursor' }],
+      },
+      select: { id: true, conference_date: true },
+    });
+    expect(conferenceNoteFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 21,
+        orderBy: [{ conference_date: 'desc' }, { id: 'desc' }],
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            expect.objectContaining({ org_id: 'org_1' }),
+            {
+              OR: [
+                { conference_date: { lt: cursorDate } },
+                {
+                  conference_date: cursorDate,
+                  id: { lt: 'note_cursor' },
+                },
+              ],
+            },
+          ]),
+        }),
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      data: [expect.objectContaining({ id: 'note_older' })],
+      hasMore: false,
+    });
   });
 
   it('supports conference filters including conference_type and billing_eligible', async () => {
@@ -619,6 +718,48 @@ describe('/api/conference-notes', () => {
         },
       },
     });
+  });
+
+  it('rejects archived patients before creating notes or sync side effects', async () => {
+    requireWritablePatientMock.mockResolvedValue({
+      response: Response.json(
+        { message: 'アーカイブ中の患者は復元するまで更新できません' },
+        { status: 409 },
+      ),
+    });
+
+    const response = await POST(
+      createRequest({
+        method: 'POST',
+        body: {
+          note_type: 'pre_discharge',
+          patient_id: 'patient_1',
+          title: '退院前カンファ',
+          structured_content: {
+            sections: [
+              {
+                key: 'discharge_background',
+                label: '退院背景',
+                body: '来週火曜に退院予定',
+              },
+            ],
+          },
+          participants: [{ name: '鈴木薬剤師', role: '薬剤師' }],
+          conference_date: '2026-03-28T01:00:00.000Z',
+        },
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(conferenceNoteCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(conferenceNoteUpdateMock).not.toHaveBeenCalled();
+    expect(taskCreateManyMock).not.toHaveBeenCalled();
+    expect(billingCandidateUpsertMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(careReportCreateManyMock).not.toHaveBeenCalled();
+    expect(medicationIssueCreateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object request bodies before transaction or sync side effects', async () => {

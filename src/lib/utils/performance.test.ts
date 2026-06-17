@@ -64,4 +64,47 @@ describe('performance metrics', () => {
     const snapshot = getPerformanceSnapshot();
     expect(snapshot.summary.total_requests).toBe(0);
   });
+
+  it('normalizes dynamic route ids into a single metrics bucket', () => {
+    for (let index = 0; index < 1_000; index += 1) {
+      recordRoutePerformance({
+        route: `/api/patients/cmnhpatient${index.toString().padStart(4, '0')}amq9ph-os/overview`,
+        method: 'GET',
+        status: 200,
+        durationMs: 40 + (index % 5),
+      });
+    }
+
+    const snapshot = getPerformanceSnapshot({ topRoutes: 5 });
+
+    expect(snapshot.summary.route_count).toBe(1);
+    expect(snapshot.summary.total_requests).toBe(200);
+    expect(snapshot.routes[0]).toMatchObject({
+      route: '/api/patients/:id/overview',
+      method: 'GET',
+      request_count: 200,
+    });
+  });
+
+  it('caps total route buckets for unknown high-cardinality paths', () => {
+    for (let index = 0; index < 600; index += 1) {
+      const suffix = [
+        String.fromCharCode(97 + (index % 26)),
+        String.fromCharCode(97 + (Math.floor(index / 26) % 26)),
+        String.fromCharCode(97 + (Math.floor(index / (26 * 26)) % 26)),
+      ].join('');
+
+      recordRoutePerformance({
+        route: `/api/custom/static-path-${suffix}`,
+        method: 'GET',
+        status: 200,
+        durationMs: 20,
+      });
+    }
+
+    const snapshot = getPerformanceSnapshot({ topRoutes: 600 });
+
+    expect(snapshot.summary.route_count).toBeLessThanOrEqual(500);
+    expect(snapshot.summary.total_requests).toBeLessThanOrEqual(500);
+  });
 });

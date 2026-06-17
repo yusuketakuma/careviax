@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { useUIStore } from '@/lib/stores/ui-store';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type { OperationalPolicyResponse } from './operational-policy-content';
 
@@ -135,6 +136,7 @@ function mockQueries({
 }
 
 beforeEach(() => {
+  useUIStore.setState({ workspaceRailOpen: true });
   mutateMock.mockReset();
 });
 
@@ -177,7 +179,7 @@ describe('OperationalPolicyContent', () => {
 
     // 右レール: 次にやること(青主操作1つ)/止まっている理由/根拠・記録
     const nextActionLink = screen.getByRole('link', { name: '麻薬監査を開始 — 12:00期限' });
-    expect(nextActionLink.getAttribute('href')).toBe('/auditing');
+    expect(nextActionLink.getAttribute('href')).toBe('/audit');
     expect(screen.getByText(/14:00訪問\(田中 一郎様\)の持参薬です/)).toBeTruthy();
     expect(screen.getByRole('heading', { name: '止まっている理由' })).toBeTruthy();
     expect(screen.getByText('ご家族の同意待ち(新規契約)')).toBeTruthy();

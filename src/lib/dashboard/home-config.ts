@@ -125,15 +125,15 @@ export const DASHBOARD_TAB_FALLBACK_ACTIONS: Record<
     label: '調剤キューを開く',
   },
   dispense_audit: {
-    href: '/auditing',
+    href: '/audit',
     label: '調剤監査を開く',
   },
   medication_set: {
-    href: '/medication-sets',
+    href: '/set',
     label: 'セット管理を開く',
   },
   set_audit: {
-    href: '/medication-sets',
+    href: '/set-audit',
     label: 'セット監査を開く',
   },
   visit_planning: {
@@ -192,19 +192,19 @@ export const DASHBOARD_WORKFLOW_LINKS: readonly DashboardNavigationLink[] = [
     key: 'auditing',
     title: '調剤監査',
     description: '調剤結果の鑑査と差し戻し対応を確認します。',
-    href: '/auditing',
+    href: '/audit',
   },
   {
     key: 'medication_sets',
     title: 'セット管理',
     description: 'セット計画、グリッド鑑査、持参パック作成へ進みます。',
-    href: '/medication-sets',
+    href: '/set',
   },
   {
     key: 'set_audit',
     title: 'セット監査',
     description: 'セット結果の承認・差戻しを確認し、持参内容を確定します。',
-    href: '/medication-sets',
+    href: '/set-audit',
   },
   {
     key: 'schedules',

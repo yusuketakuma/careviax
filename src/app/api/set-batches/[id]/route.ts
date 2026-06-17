@@ -24,6 +24,10 @@ const updateSetBatchSchema = z.object({
   version: z.number().int().min(1, 'バージョンは1以上の整数です'),
 });
 
+type DeleteSetBatchResult =
+  | { success: true }
+  | { error: string; conflict: true };
+
 export const GET = withAuthContext<{ id: string }>(
   async (req: NextRequest, ctx: AuthContext, routeContext: AuthRouteContext<{ id: string }>) => {
     const { id } = await routeContext.params;
@@ -104,12 +108,22 @@ export const PATCH = withAuthContext<{ id: string }>(
 
       const beforeSnapshot = buildSetBatchHistorySnapshot(existing);
 
-      const updated = await tx.setBatch.update({
-        where: { id },
+      const updateResult = await tx.setBatch.updateMany({
+        where: { id, org_id: ctx.orgId, version },
         data: {
           ...updates,
           version: { increment: 1 },
         },
+      });
+      if (updateResult.count === 0) {
+        return {
+          error: '他のユーザーによって更新されています。再読み込みしてください',
+          conflict: true,
+        } as const;
+      }
+
+      const updated = await tx.setBatch.findFirst({
+        where: { id, org_id: ctx.orgId },
         include: {
           line: {
             select: {
@@ -128,6 +142,7 @@ export const PATCH = withAuthContext<{ id: string }>(
           },
         },
       });
+      if (!updated) return null;
 
       await createSetBatchChangeLog(tx, {
         orgId: ctx.orgId,
@@ -164,6 +179,11 @@ export const PATCH = withAuthContext<{ id: string }>(
 export const DELETE = withAuthContext<{ id: string }>(
   async (req: NextRequest, ctx: AuthContext, routeContext: AuthRouteContext<{ id: string }>) => {
     const { id } = await routeContext.params;
+    const versionParam = new URL(req.url).searchParams.get('version');
+    const version = versionParam == null ? NaN : Number(versionParam);
+    if (!Number.isInteger(version) || version < 1) {
+      return validationError('削除には現在のバージョン(version)が必要です');
+    }
     const assignmentWhere = buildSetBatchAssignmentWhere(ctx);
 
     const existing = await prisma.setBatch.findFirst({
@@ -184,7 +204,16 @@ export const DELETE = withAuthContext<{ id: string }>(
 
     if (!existing) return notFound('セットバッチが見つかりません');
 
-    await withOrgContext(ctx.orgId, async (tx) => {
+    const deleteResult: DeleteSetBatchResult = await withOrgContext(ctx.orgId, async (tx) => {
+      const deleteResult = await tx.setBatch.deleteMany({
+        where: { id, org_id: ctx.orgId, version },
+      });
+      if (deleteResult.count === 0) {
+        return {
+          error: '他のユーザーによって更新されています。再読み込みしてください',
+          conflict: true,
+        } as const;
+      }
       await createSetBatchChangeLog(tx, {
         orgId: ctx.orgId,
         planId: existing.plan_id,
@@ -197,8 +226,14 @@ export const DELETE = withAuthContext<{ id: string }>(
         afterSnapshot: [],
         changedBy: ctx.userId,
       });
-      await tx.setBatch.delete({ where: { id } });
+
+      return { success: true as const };
     });
+
+    if (!('success' in deleteResult)) {
+      if ('conflict' in deleteResult && deleteResult.conflict) return conflict(deleteResult.error);
+      return validationError(deleteResult.error);
+    }
 
     await notifyWorkflowMutation({
       orgId: ctx.orgId,

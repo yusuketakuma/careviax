@@ -12,6 +12,14 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  APPLICATION_EDITABLE_STATUS_LABELS,
+  APPLICATION_STATUS_LABELS,
+  CARE_LEVEL_LABELS,
+  INSURANCE_TYPE_LABELS,
+  formatCareLevel,
+  formatCopayRatio,
+} from '@/lib/patient/insurance-summary';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import { formatDateLabel } from '@/lib/ui/date-format';
 
@@ -65,32 +73,6 @@ type InsuranceFormState = {
   notes: string;
 };
 
-const INSURANCE_TYPE_LABELS: Record<InsuranceRecord['insurance_type'], string> = {
-  medical: '医療保険',
-  care: '介護保険',
-  public_subsidy: '公費',
-};
-
-const APPLICATION_STATUS_LABELS: Record<InsuranceRecord['application_status'], string> = {
-  confirmed: '確定済み',
-  applying: '申請中',
-  change_pending: '区分変更中',
-  not_applicable: '対象外',
-};
-
-const CARE_LEVEL_LABELS: Record<string, string> = {
-  support_1: '要支援1',
-  support_2: '要支援2',
-  care_1: '要介護1',
-  care_2: '要介護2',
-  care_3: '要介護3',
-  care_4: '要介護4',
-  care_5: '要介護5',
-  applying: '申請中',
-  not_applied: '未申請',
-  not_eligible: '非該当',
-};
-
 const EMPTY_FORM: InsuranceFormState = {
   insurance_type: 'medical',
   application_status: 'confirmed',
@@ -110,15 +92,6 @@ const EMPTY_FORM: InsuranceFormState = {
   is_active: true,
   notes: '',
 };
-
-function formatCopayRatio(value: number | null) {
-  return value == null ? '—' : `${value}%`;
-}
-
-function formatCareLevel(value: string | null) {
-  if (!value) return '—';
-  return CARE_LEVEL_LABELS[value] ?? value;
-}
 
 function toDateInputValue(value: string | null) {
   return value ? value.slice(0, 10) : '';
@@ -248,7 +221,7 @@ function InsuranceEditor({
             }
             className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
           >
-            {Object.entries(APPLICATION_STATUS_LABELS).map(([value, label]) => (
+            {Object.entries(APPLICATION_EDITABLE_STATUS_LABELS).map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
               </option>

@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { useUIStore } from '@/lib/stores/ui-store';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import {
   buildStatusLabel,
@@ -197,6 +198,7 @@ function mockQueries({
 
 describe('IntakeTriageContent', () => {
   beforeEach(() => {
+    useUIStore.setState({ workspaceRailOpen: true });
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 11, 9, 42));
     useRealtimeQueryMock.mockReset();

@@ -1,9 +1,12 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
-import { success, notFound, error, validationError } from '@/lib/api/response';
+import { success, notFound, error, validationError, conflict } from '@/lib/api/response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
-import { processHandoffExtraction } from '@/server/services/visit-handoff';
+import {
+  processHandoffExtraction,
+  VisitHandoffStaleRecordError,
+} from '@/server/services/visit-handoff';
 import type { StructuredSoap } from '@/types/structured-soap';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -26,6 +29,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       soap_assessment: true,
       soap_plan: true,
       structured_soap: true,
+      version: true,
     },
   });
   if (!record) return notFound('訪問記録が見つかりません');
@@ -53,10 +57,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       structuredSoap: record.structured_soap as StructuredSoap,
       soapAssessment: record.soap_assessment ?? null,
       soapPlan: record.soap_plan ?? null,
+      expectedVersion: record.version,
       requestContext: ctx,
     });
     return success(handoff, 201);
   } catch (cause) {
+    if (cause instanceof VisitHandoffStaleRecordError) {
+      return conflict(
+        '訪問記録が更新されています。再読み込みしてから申し送り抽出をやり直してください',
+      );
+    }
     const message = cause instanceof Error ? cause.message : 'AI抽出に失敗しました';
     return error('extraction_failed', message, 500);
   }

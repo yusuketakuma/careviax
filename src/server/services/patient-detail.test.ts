@@ -55,7 +55,11 @@ function buildDb<T extends Record<string, unknown> = Record<string, never>>(over
     template: {
       findMany: vi.fn().mockResolvedValue([]),
     },
-    visitSchedule: { count: vi.fn().mockResolvedValue(0), findMany: vi.fn().mockResolvedValue([]) },
+    visitSchedule: {
+      count: vi.fn().mockResolvedValue(0),
+      findMany: vi.fn().mockResolvedValue([]),
+      findFirst: vi.fn().mockResolvedValue(null),
+    },
     visitRecord: { findMany: vi.fn().mockResolvedValue([]) },
     careReport: { findMany: vi.fn().mockResolvedValue([]) },
     auditLog: { findMany: vi.fn().mockResolvedValue([]) },
@@ -72,6 +76,8 @@ function buildDb<T extends Record<string, unknown> = Record<string, never>>(over
       findFirst: vi.fn().mockResolvedValue(null),
     },
     patientLabObservation: { findMany: vi.fn().mockResolvedValue([]) },
+    patientInsurance: { findMany: vi.fn().mockResolvedValue([]) },
+    patientFieldRevision: { findMany: vi.fn().mockResolvedValue([]) },
     jahisSupplementalRecord: { findMany: vi.fn().mockResolvedValue([]) },
     user: { findMany: vi.fn().mockResolvedValue([]) },
     ...overrides,
@@ -118,9 +124,73 @@ describe('getPatientOverview', () => {
   }
 
   it('masks PHI fields for external viewers while keeping privacy flags explicit', async () => {
+    const patientInsuranceFindManyMock = vi.fn().mockResolvedValue([
+      {
+        insurance_type: 'public_subsidy',
+        application_status: 'confirmed',
+        public_program_code: '54',
+        copay_ratio: 10,
+        valid_from: new Date('2026-04-01T00:00:00.000Z'),
+        valid_until: null,
+        is_active: true,
+        confirmed_care_level: null,
+        insurer_number: '21540000',
+        number: '54001234',
+        symbol: 'A-1',
+        branch_number: '01',
+        notes: 'raw insurance note',
+      },
+    ]);
+    const patientFieldRevisionFindManyMock = vi.fn().mockResolvedValue([
+      {
+        id: 'rev_phone',
+        category: 'basic',
+        field_key: 'phone',
+        field_label: '電話番号',
+        value_label: '090-0000-0000 → 080-1111-2222',
+        old_value: '090-0000-0000',
+        new_value: '080-1111-2222',
+        source: 'free text 080-1111-2222',
+        source_visit_record_id: null,
+        change_reason: null,
+        importance: 'normal',
+        confirmed_by: 'checker_1',
+        confirmed_at: new Date('2026-06-15T00:00:00.000Z'),
+        valid_from: new Date('2026-06-15T00:00:00.000Z'),
+        valid_to: null,
+        is_current: true,
+        updated_by: 'pharmacist_1',
+        created_at: new Date('2026-06-15T09:00:00.000Z'),
+      },
+    ]);
     const db = buildDb({
       patient: {
         findFirst: vi.fn().mockResolvedValue(buildOverviewPatient()),
+      },
+      patientInsurance: {
+        findMany: patientInsuranceFindManyMock,
+      },
+      patientFieldRevision: {
+        findMany: patientFieldRevisionFindManyMock,
+      },
+      user: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: 'pharmacist_1', name: '佐藤 薬剤師' },
+          { id: 'checker_1', name: '鈴木 管理者' },
+        ]),
+      },
+      jahisSupplementalRecord: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'jahis_1',
+            record_type: 'insurance',
+            record_label: '保険',
+            line_number: 12,
+            summary: '保険情報',
+            payload: { insurer_number: '21540000', recipient_number: '54001234' },
+            raw_line: 'JAHIS,21540000,54001234,A-1',
+          },
+        ]),
       },
     });
 
@@ -145,12 +215,92 @@ describe('getPatientOverview', () => {
         can_view_detail: false,
       },
     });
+    const serializedFoundation = JSON.stringify(result?.foundation);
+    expect(serializedFoundation).toContain('公費 54');
+    expect(serializedFoundation).not.toMatch(/21540000|54001234|A-1|raw insurance note/);
+    expect(serializedFoundation).not.toMatch(/090-0000-0000|080-1111-2222/);
+    expect(serializedFoundation).not.toMatch(/insurer_number|"number"|symbol|branch_number|notes/);
+    expect(result?.foundation.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'contact',
+          meta: expect.objectContaining({
+            updated_at: '2026-06-15',
+            updated_by_name: null,
+            source: '更新元不明',
+            confirmed_at: '2026-06-15',
+            confirmed_by_name: null,
+            confirmation_status: 'confirmed',
+            confirmation_detail: '確認済み',
+            stale: false,
+          }),
+        }),
+      ]),
+    );
+    expect(serializedFoundation).not.toMatch(/佐藤 薬剤師|鈴木 管理者/);
+    expect(result?.foundation.changes_since_last_visit).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          updated_by_name: null,
+        }),
+      ]),
+    );
+    const foundationInsuranceQuery = patientInsuranceFindManyMock.mock.calls[0]?.[0] as {
+      select?: Record<string, unknown>;
+    };
+    expect(foundationInsuranceQuery.select).toBeDefined();
+    expect(foundationInsuranceQuery.select).not.toHaveProperty('insurer_number');
+    expect(foundationInsuranceQuery.select).not.toHaveProperty('number');
+    expect(foundationInsuranceQuery.select).not.toHaveProperty('symbol');
+    expect(foundationInsuranceQuery.select).not.toHaveProperty('branch_number');
+    expect(foundationInsuranceQuery.select).not.toHaveProperty('notes');
+    const foundationRevisionQuery = patientFieldRevisionFindManyMock.mock.calls[0]?.[0] as {
+      select?: Record<string, unknown>;
+    };
+    expect(foundationRevisionQuery.select).toBeDefined();
+    expect(foundationRevisionQuery.select).not.toHaveProperty('old_value');
+    expect(foundationRevisionQuery.select).not.toHaveProperty('new_value');
+    expect(foundationRevisionQuery.select).not.toHaveProperty('value_label');
+    expect(foundationRevisionQuery.select).not.toHaveProperty('change_reason');
+    expect(result?.jahis_supplemental_records).toEqual([
+      {
+        id: 'jahis_1',
+        record_type: 'insurance',
+        record_label: '保険',
+        line_number: 12,
+        summary: '保険情報',
+      },
+    ]);
+    expect(JSON.stringify(result?.jahis_supplemental_records)).not.toMatch(
+      /21540000|54001234|JAHIS/,
+    );
   });
 
   it('preserves raw PHI fields for pharmacist roles', async () => {
     const db = buildDb({
       patient: {
-        findFirst: vi.fn().mockResolvedValue(buildOverviewPatient()),
+        findFirst: vi.fn().mockResolvedValue({
+          ...buildOverviewPatient(),
+          scheduling_preference: {
+            preferred_contact_name: '長女',
+            preferred_contact_phone: '090-0000-0000',
+            parking_available: true,
+            care_level: '要介護2',
+          },
+        }),
+      },
+      jahisSupplementalRecord: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'jahis_1',
+            record_type: 'insurance',
+            record_label: '保険',
+            line_number: 12,
+            summary: '保険情報',
+            payload: { insurer_number: '21540000', recipient_number: '54001234' },
+            raw_line: 'JAHIS,21540000,54001234,A-1',
+          },
+        ]),
       },
     });
 
@@ -175,6 +325,570 @@ describe('getPatientOverview', () => {
         can_view_detail: true,
       },
     });
+    expect(result?.jahis_supplemental_records).toEqual([
+      expect.objectContaining({
+        id: 'jahis_1',
+        payload: { insurer_number: '21540000', recipient_number: '54001234' },
+        raw_line: 'JAHIS,21540000,54001234,A-1',
+      }),
+    ]);
+  });
+
+  it('downgrades ready foundation items when current metadata is unconfirmed', async () => {
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          ...buildOverviewPatient(),
+          scheduling_preference: {
+            preferred_contact_name: '長女',
+            preferred_contact_phone: '090-0000-0000',
+            visit_before_contact_required: true,
+            parking_available: true,
+            care_level: '要介護2',
+          },
+        }),
+      },
+      patientFieldRevision: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'rev_phone',
+            category: 'basic',
+            field_key: 'phone',
+            field_label: '電話番号',
+            source: 'patient_detail_edit',
+            confirmed_by: null,
+            confirmed_at: null,
+            is_current: true,
+            updated_by: 'pharmacist_1',
+            created_at: new Date('2026-06-15T09:00:00.000Z'),
+          },
+        ]),
+      },
+      user: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'pharmacist_1', name: '佐藤 薬剤師' }]),
+      },
+    });
+
+    const result = await getPatientOverview(
+      db as unknown as Parameters<typeof getPatientOverview>[0],
+      {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        role: 'pharmacist',
+        userId: 'pharmacist_1',
+      },
+    );
+
+    expect(result?.foundation.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'contact',
+          status: 'needs_confirmation',
+          detail: '電話可能な主連絡先または緊急連絡先があります。 / 確認者未設定',
+          meta: expect.objectContaining({
+            confirmation_status: 'unconfirmed',
+            confirmation_detail: '確認者未設定',
+            stale: false,
+          }),
+        }),
+      ]),
+    );
+    expect(result?.foundation.summary.status).toBe('needs_confirmation');
+  });
+
+  it('uses confirmed_at instead of updated_at for foundation confirmation freshness', async () => {
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          ...buildOverviewPatient(),
+          scheduling_preference: {
+            preferred_contact_name: '長女',
+            preferred_contact_phone: '090-0000-0000',
+            visit_before_contact_required: true,
+            parking_available: true,
+            care_level: '要介護2',
+          },
+        }),
+      },
+      patientFieldRevision: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'rev_phone',
+            category: 'basic',
+            field_key: 'phone',
+            field_label: '電話番号',
+            source: 'patient_detail_edit',
+            confirmed_by: 'checker_1',
+            confirmed_at: new Date('2026-06-15T00:00:00.000Z'),
+            is_current: true,
+            updated_by: 'pharmacist_1',
+            created_at: new Date('2025-01-01T09:00:00.000Z'),
+          },
+        ]),
+      },
+      user: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: 'pharmacist_1', name: '佐藤 薬剤師' },
+          { id: 'checker_1', name: '鈴木 管理者' },
+        ]),
+      },
+    });
+
+    const result = await getPatientOverview(
+      db as unknown as Parameters<typeof getPatientOverview>[0],
+      {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        role: 'pharmacist',
+        userId: 'pharmacist_1',
+      },
+    );
+
+    expect(result?.foundation.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'contact',
+          status: 'ready',
+          meta: expect.objectContaining({
+            confirmed_at: '2026-06-15',
+            confirmation_status: 'confirmed',
+            stale: false,
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it('marks foundation metadata stale when confirmation is older than the freshness window', async () => {
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          ...buildOverviewPatient(),
+          scheduling_preference: {
+            preferred_contact_name: '長女',
+            preferred_contact_phone: '090-0000-0000',
+            visit_before_contact_required: true,
+            parking_available: true,
+            care_level: '要介護2',
+          },
+        }),
+      },
+      patientFieldRevision: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'rev_phone',
+            category: 'basic',
+            field_key: 'phone',
+            field_label: '電話番号',
+            source: 'patient_detail_edit',
+            confirmed_by: 'checker_1',
+            confirmed_at: new Date('2025-01-01T00:00:00.000Z'),
+            is_current: true,
+            updated_by: 'pharmacist_1',
+            created_at: new Date('2026-06-15T09:00:00.000Z'),
+          },
+        ]),
+      },
+      user: {
+        findMany: vi.fn().mockResolvedValue([
+          { id: 'pharmacist_1', name: '佐藤 薬剤師' },
+          { id: 'checker_1', name: '鈴木 管理者' },
+        ]),
+      },
+    });
+
+    const result = await getPatientOverview(
+      db as unknown as Parameters<typeof getPatientOverview>[0],
+      {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        role: 'pharmacist',
+        userId: 'pharmacist_1',
+      },
+    );
+
+    expect(result?.foundation.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'contact',
+          status: 'needs_confirmation',
+          detail: '電話可能な主連絡先または緊急連絡先があります。 / 180日超',
+          meta: expect.objectContaining({
+            confirmation_status: 'stale',
+            confirmation_detail: '180日超',
+            stale: true,
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it('surfaces medication risk signals in the patient foundation without extra detail UI logic', async () => {
+    getPatientRiskSummaryMock.mockResolvedValueOnce({
+      patient_id: 'patient_1',
+      patient_name: '患者 太郎',
+      score: 5,
+      level: 'watch',
+      reasons: ['薬学的課題が 2 件あります', '訪問同意が未整備です'],
+      unresolved_self_reports: 0,
+      open_issues: 2,
+      disrupted_visits_30d: 0,
+      pending_reports: 0,
+      open_tasks: 0,
+      missing_visit_consent: true,
+      missing_management_plan: true,
+    });
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          ...buildOverviewPatient(),
+          scheduling_preference: {
+            preferred_contact_name: '長女',
+            preferred_contact_phone: '090-0000-0000',
+            parking_available: true,
+            care_level: '要介護2',
+          },
+        }),
+      },
+    });
+
+    const result = await getPatientOverview(
+      db as unknown as Parameters<typeof getPatientOverview>[0],
+      {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        role: 'pharmacist',
+        userId: 'pharmacist_1',
+      },
+    );
+
+    expect(result?.foundation.summary.status).toBe('needs_confirmation');
+    expect(result?.foundation.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'medication_risk',
+          label: '薬学リスク',
+          status: 'needs_confirmation',
+          detail: '薬学的課題2件 / 訪問同意未整備 / 管理計画未整備',
+          action_href: '/patients/patient_1/safety-check',
+        }),
+      ]),
+    );
+  });
+
+  it('surfaces persisted next-visit preparation progress in the patient foundation', async () => {
+    const visitScheduleFindFirstMock = vi.fn().mockResolvedValue({
+      id: 'schedule_20260620',
+      scheduled_date: new Date('2026-06-20T00:00:00.000Z'),
+      preparation: {
+        medication_changes_reviewed: true,
+        carry_items_confirmed: false,
+        previous_issues_reviewed: true,
+        route_confirmed: false,
+        offline_synced: false,
+        prepared_at: null,
+      },
+    });
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          ...buildOverviewPatient(),
+          scheduling_preference: {
+            preferred_contact_name: '長女',
+            preferred_contact_phone: '090-0000-0000',
+            parking_available: true,
+            care_level: '要介護2',
+          },
+        }),
+      },
+      visitSchedule: {
+        count: vi.fn().mockResolvedValue(0),
+        findMany: vi.fn().mockResolvedValue([]),
+        findFirst: visitScheduleFindFirstMock,
+      },
+    });
+
+    const result = await getPatientOverview(
+      db as unknown as Parameters<typeof getPatientOverview>[0],
+      {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        role: 'pharmacist',
+        userId: 'pharmacist_1',
+      },
+    );
+
+    expect(visitScheduleFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          scheduled_date: expect.objectContaining({ gte: expect.any(Date) }),
+          schedule_status: { in: ['planned', 'in_preparation', 'ready'] },
+          case_: { patient_id: 'patient_1' },
+        }),
+      }),
+    );
+    expect(result?.foundation.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'visit_preparation',
+          label: '訪問前準備',
+          status: 'needs_confirmation',
+          detail: '2026-06-20 / 2/5完了 / 未完: 持参物、ルート、オフライン同期',
+          action_href: '/schedules?date=2026-06-20',
+          action_label: '訪問前準備へ',
+        }),
+      ]),
+    );
+  });
+
+  it('keeps the main contact foundation item unready when only a contact name is registered', async () => {
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          ...buildOverviewPatient(),
+          scheduling_preference: {
+            preferred_contact_name: '長女',
+            preferred_contact_phone: null,
+            parking_available: true,
+            care_level: '要介護2',
+          },
+          contacts: [],
+        }),
+      },
+    });
+
+    const result = await getPatientOverview(
+      db as unknown as Parameters<typeof getPatientOverview>[0],
+      {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        role: 'pharmacist',
+        userId: 'pharmacist_1',
+      },
+    );
+
+    expect(result?.foundation.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'contact',
+          status: 'needs_confirmation',
+          detail: '連絡先名はありますが連絡手段が未確認です。',
+        }),
+      ]),
+    );
+    expect(result?.foundation.summary.items).toEqual(expect.arrayContaining(['連絡先未設定']));
+  });
+
+  it('uses a phone-capable emergency contact as the main contact foundation signal', async () => {
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          ...buildOverviewPatient(),
+          scheduling_preference: {
+            preferred_contact_name: null,
+            preferred_contact_phone: null,
+            parking_available: true,
+            care_level: '要介護2',
+          },
+          contacts: [
+            {
+              is_primary: false,
+              is_emergency_contact: true,
+              phone: '090-9999-0000',
+              email: null,
+              fax: null,
+            },
+          ],
+        }),
+      },
+    });
+
+    const result = await getPatientOverview(
+      db as unknown as Parameters<typeof getPatientOverview>[0],
+      {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        role: 'pharmacist',
+        userId: 'pharmacist_1',
+      },
+    );
+
+    expect(result?.foundation.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'contact',
+          status: 'ready',
+          detail: '電話可能な主連絡先または緊急連絡先があります。',
+        }),
+      ]),
+    );
+    expect(JSON.stringify(result?.foundation)).not.toContain('090-9999-0000');
+  });
+
+  it('surfaces care-team contact reliability without rendering contact PHI', async () => {
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          ...buildOverviewPatient(),
+          scheduling_preference: {
+            preferred_contact_name: '長女',
+            preferred_contact_phone: '090-0000-0000',
+            parking_available: true,
+            care_level: '要介護2',
+          },
+          contacts: [
+            {
+              id: 'contact_1',
+              name: '山田 花子',
+              phone: null,
+              email: null,
+              fax: null,
+              is_primary: false,
+              is_emergency_contact: true,
+            },
+          ],
+          cases: [
+            {
+              id: 'case_1',
+              care_team_links: [
+                {
+                  role: 'physician',
+                  name: '田中 医師',
+                  phone: '03-1111-2222',
+                  email: null,
+                  fax: null,
+                },
+                {
+                  role: 'visiting_nurse',
+                  name: '訪問看護 A',
+                  phone: null,
+                  email: null,
+                  fax: null,
+                },
+              ],
+            },
+          ],
+        }),
+      },
+    });
+
+    const result = await getPatientOverview(
+      db as unknown as Parameters<typeof getPatientOverview>[0],
+      {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        role: 'pharmacist',
+        userId: 'pharmacist_1',
+      },
+    );
+
+    expect(result?.foundation.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'care_team_reliability',
+          label: '連絡先・連携先',
+          status: 'needs_confirmation',
+          detail:
+            '緊急連絡先の電話未確認 / 不足: ケアマネ / 電話未確認: 訪看 / 報告FAX未登録: 医師、訪看',
+          action_href: '/patients/patient_1/edit?section=team#intake.care_manager.name',
+        }),
+      ]),
+    );
+    expect(result?.foundation.summary.items).toEqual(expect.arrayContaining(['連携先1件']));
+    const serializedFoundation = JSON.stringify(result?.foundation);
+    expect(serializedFoundation).not.toMatch(
+      /090-0000-0000|03-1111-2222|山田 花子|田中 医師|訪問看護 A/,
+    );
+  });
+
+  it('uses the active case for care-team reliability even when a newer inactive case is first', async () => {
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          ...buildOverviewPatient(),
+          scheduling_preference: {
+            preferred_contact_name: '長女',
+            preferred_contact_phone: '090-0000-0000',
+            parking_available: true,
+            care_level: '要介護2',
+          },
+          contacts: [
+            {
+              id: 'contact_1',
+              name: '山田 花子',
+              phone: '090-1111-2222',
+              email: null,
+              fax: null,
+              is_primary: false,
+              is_emergency_contact: true,
+            },
+          ],
+          cases: [
+            {
+              id: 'case_newer_on_hold',
+              status: 'on_hold',
+              care_team_links: [
+                {
+                  role: 'physician',
+                  name: '休止医師',
+                  phone: '03-0000-0001',
+                  email: null,
+                  fax: '03-0000-0002',
+                },
+                {
+                  role: 'visiting_nurse',
+                  name: '休止訪看',
+                  phone: '03-0000-0003',
+                  email: null,
+                  fax: '03-0000-0004',
+                },
+                {
+                  role: 'care_manager',
+                  name: '休止CM',
+                  phone: '03-0000-0005',
+                  email: null,
+                  fax: '03-0000-0006',
+                },
+              ],
+            },
+            {
+              id: 'case_active',
+              status: 'active',
+              care_team_links: [
+                {
+                  role: 'doctor',
+                  name: '現主治医',
+                  phone: '03-1111-2222',
+                  email: null,
+                  fax: null,
+                },
+              ],
+            },
+          ],
+        }),
+      },
+    });
+
+    const result = await getPatientOverview(
+      db as unknown as Parameters<typeof getPatientOverview>[0],
+      {
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        role: 'pharmacist',
+        userId: 'pharmacist_1',
+      },
+    );
+
+    expect(result?.foundation.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'care_team_reliability',
+          status: 'needs_confirmation',
+          detail: '緊急連絡先あり / 不足: 訪看、ケアマネ / 報告FAX未登録: 医師',
+        }),
+      ]),
+    );
   });
 });
 
@@ -362,7 +1076,7 @@ describe('getPatientWorkflowPreviewData', () => {
               care_team_links: [
                 {
                   id: 'link_physician',
-                  role: 'physician',
+                  role: 'doctor',
                   name: '主治医',
                   organization_name: '主治医クリニック',
                   phone: '03-9999-0000',

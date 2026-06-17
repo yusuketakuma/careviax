@@ -104,7 +104,7 @@ describe('useCollaborativeForm', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useOrgIdMock.mockReturnValue('org_1');
-    useRealtimeEventsMock.mockReturnValue(undefined);
+    useRealtimeEventsMock.mockReturnValue({ connected: false });
     isYjsProviderConfiguredMock.mockReturnValue(true);
     createYjsProviderMock.mockReturnValue(createMockProvider());
   });
@@ -137,6 +137,13 @@ describe('useCollaborativeForm', () => {
     renderHook(() => useTestCollaborativeForm(), {
       wrapper: createWrapper(),
     });
+
+    expect(useRealtimeEventsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enabled: true,
+        presenceTargets: [{ entityType: 'dispense_task', entityId: 'dt_1' }],
+      }),
+    );
 
     await waitFor(() => {
       expect(createYjsProviderMock).toHaveBeenCalledWith(

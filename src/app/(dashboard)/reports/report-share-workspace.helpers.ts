@@ -70,7 +70,7 @@ export function buildWorkspaceNextAction(
       description: visit?.time_start
         ? `${formatTimeOfDay(visit.time_start)}訪問(${familyNameOf(topAudit.patient_name)}様)の持参薬です。完了で午後の予定がすべて確定します。`
         : `${topAudit.patient_name} 様の監査待ちです。完了で次の工程が動き出します。`,
-      actionHref: '/auditing',
+      actionHref: '/audit',
     };
   }
   if ((cockpit?.today_visits.length ?? 0) > 0) {

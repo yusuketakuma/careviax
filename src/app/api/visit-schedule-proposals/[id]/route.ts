@@ -726,10 +726,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!existing) return notFound('訪問候補が見つかりません');
 
   const scheduleAssignmentWhere = buildVisitScheduleAssignmentWhere(ctx);
-  const buildFinalizedScheduleWhere = (scheduleId: string) => ({
+  const buildFinalizedScheduleWhere = (scheduleId: string, caseId = existing.case_id) => ({
     id: scheduleId,
     org_id: ctx.orgId,
-    case_id: existing.case_id,
+    case_id: caseId,
     ...(scheduleAssignmentWhere ? { AND: [scheduleAssignmentWhere] } : {}),
   });
 
@@ -753,15 +753,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
     }
 
-    const proposal = await withOrgContext(ctx.orgId, async (tx) => {
-      const updated = await tx.visitScheduleProposal.update({
-        where: { id },
+    const approvalResult = await withOrgContext(ctx.orgId, async (tx) => {
+      const approvedAt = new Date();
+      const claim = await tx.visitScheduleProposal.updateMany({
+        where: {
+          id,
+          org_id: ctx.orgId,
+          proposal_status: { in: ['proposed', 'reschedule_pending'] },
+          finalized_schedule_id: null,
+        },
         data: {
           proposal_status: 'patient_contact_pending',
-          approved_at: new Date(),
+          approved_at: approvedAt,
           approved_by: ctx.userId,
         },
       });
+      if (claim.count !== 1) return { kind: 'conflict' as const };
 
       await createAuditLogEntry(tx, ctx, {
         action: 'visit_schedule_proposal_approved',
@@ -769,15 +776,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         targetId: id,
       });
 
-      return updated;
+      return {
+        kind: 'success' as const,
+        proposal: {
+          ...existing,
+          proposal_status: 'patient_contact_pending' as const,
+          approved_at: approvedAt,
+          approved_by: ctx.userId,
+        },
+      };
     });
+
+    if (approvalResult.kind === 'conflict') {
+      return conflict('この候補はすでに確定または変更されています。再読み込みしてください');
+    }
 
     await notifyWorkflowMutation({
       orgId: ctx.orgId,
       payload: { source: 'visit_schedule_proposals_approve', proposal_id: id },
     });
 
-    return success({ data: omitProposalRejectReason(proposal) });
+    return success({ data: omitProposalRejectReason(approvalResult.proposal) });
   }
 
   if (parsed.data.action === 'reject') {
@@ -794,10 +813,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ? 'declined'
       : existing.patient_contact_status;
 
-    const proposal = await withOrgContext(ctx.orgId, async (tx) => {
+    const rejectionResult = await withOrgContext(ctx.orgId, async (tx) => {
       const rejectedAt = new Date();
-      const updated = await tx.visitScheduleProposal.update({
-        where: { id },
+      const claim = await tx.visitScheduleProposal.updateMany({
+        where: {
+          id,
+          org_id: ctx.orgId,
+          proposal_status: {
+            in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+          },
+          finalized_schedule_id: null,
+        },
         data: {
           proposal_status: 'rejected',
           reject_reason: rejectReason ?? null,
@@ -809,6 +835,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             : {}),
         },
       });
+      if (claim.count !== 1) return { kind: 'conflict' as const };
 
       await createAuditLogEntry(tx, ctx, {
         action: 'visit_schedule_proposal_rejected',
@@ -822,15 +849,32 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }),
       });
 
-      return updated;
+      return {
+        kind: 'success' as const,
+        proposal: {
+          ...existing,
+          proposal_status: 'rejected' as const,
+          reject_reason: rejectReason ?? null,
+          ...(shouldMarkContactDeclined
+            ? {
+                patient_contact_status: patientContactStatusTo,
+                patient_contacted_at: rejectedAt,
+              }
+            : {}),
+        },
+      };
     });
+
+    if (rejectionResult.kind === 'conflict') {
+      return conflict('この候補はすでに確定または変更されています。再読み込みしてください');
+    }
 
     await notifyWorkflowMutation({
       orgId: ctx.orgId,
       payload: { source: 'visit_schedule_proposals_reject', proposal_id: id },
     });
 
-    return success({ data: omitProposalRejectReason(proposal) });
+    return success({ data: omitProposalRejectReason(rejectionResult.proposal) });
   }
 
   if (parsed.data.action === 'contact_attempt') {
@@ -841,7 +885,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return validationError('この候補には電話結果を記録できません');
     }
 
-    const proposal = await withOrgContext(ctx.orgId, async (tx) => {
+    const contactResult = await withOrgContext(ctx.orgId, async (tx) => {
+      const contactedAt = new Date();
+      const nextProposalStatus =
+        outcome === 'declined' || outcome === 'change_requested'
+          ? 'rejected'
+          : 'patient_contact_pending';
+      const claim = await tx.visitScheduleProposal.updateMany({
+        where: {
+          id,
+          org_id: ctx.orgId,
+          proposal_status: 'patient_contact_pending',
+          finalized_schedule_id: null,
+        },
+        data: {
+          proposal_status: nextProposalStatus,
+          patient_contact_status: outcome,
+          patient_contacted_at: contactedAt,
+        },
+      });
+      if (claim.count !== 1) return { kind: 'conflict' as const };
+
       await createVisitScheduleContactLog(tx, {
         orgId: ctx.orgId,
         proposalId: id,
@@ -855,18 +919,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         note: data.note,
         callbackDueAt: data.callback_due_at ? new Date(data.callback_due_at) : null,
         calledBy: ctx.userId,
-      });
-
-      const updated = await tx.visitScheduleProposal.update({
-        where: { id },
-        data: {
-          proposal_status:
-            outcome === 'declined' || outcome === 'change_requested'
-              ? 'rejected'
-              : 'patient_contact_pending',
-          patient_contact_status: outcome,
-          patient_contacted_at: new Date(),
-        },
       });
 
       const requiresFollowup = outcome === 'attempted' || outcome === 'unreachable';
@@ -903,15 +955,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         },
       });
 
-      return updated;
+      return {
+        kind: 'success' as const,
+        proposal: {
+          ...existing,
+          proposal_status: nextProposalStatus,
+          patient_contact_status: outcome,
+          patient_contacted_at: contactedAt,
+        },
+      };
     });
+
+    if (contactResult.kind === 'conflict') {
+      return conflict('この候補はすでに確定または変更されています。再読み込みしてください');
+    }
 
     await notifyWorkflowMutation({
       orgId: ctx.orgId,
       payload: { source: 'visit_schedule_proposals_contact_attempt', proposal_id: id },
     });
 
-    return success({ data: omitProposalRejectReason(proposal) });
+    return success({ data: omitProposalRejectReason(contactResult.proposal) });
   }
 
   const finalizedScheduleId = existing.finalized_schedule_id;
@@ -948,10 +1012,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         id,
         org_id: ctx.orgId,
       },
-      select: {
-        proposal_status: true,
-        patient_contact_status: true,
-        finalized_schedule_id: true,
+      include: {
+        case_: {
+          select: {
+            patient_id: true,
+            patient: {
+              select: {
+                residences: {
+                  where: { is_primary: true },
+                  take: 1,
+                  select: { facility_unit_id: true },
+                },
+              },
+            },
+          },
+        },
       },
     });
     if (!currentProposal) {
@@ -961,7 +1036,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     if (currentProposal.finalized_schedule_id) {
       const schedule = await tx.visitSchedule.findFirst({
-        where: buildFinalizedScheduleWhere(currentProposal.finalized_schedule_id),
+        where: buildFinalizedScheduleWhere(
+          currentProposal.finalized_schedule_id,
+          currentProposal.case_id,
+        ),
       });
       if (!schedule) {
         return {
@@ -988,9 +1066,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const gate = await evaluateVisitWorkflowGate(tx, {
       orgId: ctx.orgId,
-      patientId: existing.case_.patient_id,
-      caseId: existing.case_id,
-      asOf: existing.proposed_date,
+      patientId: currentProposal.case_.patient_id,
+      caseId: currentProposal.case_id,
+      asOf: currentProposal.proposed_date,
     });
     if (!gate.ok) {
       return {
@@ -999,10 +1077,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       };
     }
 
-    if (existing.reschedule_source_schedule_id) {
+    if (currentProposal.reschedule_source_schedule_id) {
       const override = await tx.visitScheduleOverride.findFirst({
         where: {
-          source_schedule_id: existing.reschedule_source_schedule_id,
+          source_schedule_id: currentProposal.reschedule_source_schedule_id,
           org_id: ctx.orgId,
         },
         select: {
@@ -1019,8 +1097,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const shift = await tx.pharmacistShift.findFirst({
       where: {
         org_id: ctx.orgId,
-        user_id: existing.proposed_pharmacist_id,
-        date: existing.proposed_date,
+        user_id: currentProposal.proposed_pharmacist_id,
+        date: currentProposal.proposed_date,
       },
       select: {
         site_id: true,
@@ -1037,8 +1115,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     const shiftValidationError = validateScheduleTimeDatesFitShift(
       shift,
-      existing.time_window_start,
-      existing.time_window_end,
+      currentProposal.time_window_start,
+      currentProposal.time_window_end,
     );
     if (shiftValidationError) {
       return {
@@ -1047,11 +1125,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       };
     }
 
-    if (existing.vehicle_resource_id) {
+    if (currentProposal.vehicle_resource_id) {
       const vehicleResource = await tx.visitVehicleResource.findFirst({
         where: {
           org_id: ctx.orgId,
-          id: existing.vehicle_resource_id,
+          id: currentProposal.vehicle_resource_id,
           available: true,
         },
         select: {
@@ -1066,7 +1144,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           message: '選択した車両リソースが見つからないか利用できません',
         };
       }
-      const targetSiteId = existing.site_id ?? shift.site_id;
+      const targetSiteId = currentProposal.site_id ?? shift.site_id;
       if (targetSiteId && vehicleResource.site_id !== targetSiteId) {
         return {
           error: 'vehicle_resource_unavailable' as const,
@@ -1077,8 +1155,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         const vehicleScheduleCount = await tx.visitSchedule.count({
           where: {
             org_id: ctx.orgId,
-            vehicle_resource_id: existing.vehicle_resource_id,
-            scheduled_date: existing.proposed_date,
+            vehicle_resource_id: currentProposal.vehicle_resource_id,
+            scheduled_date: currentProposal.proposed_date,
             schedule_status: {
               notIn: ['cancelled', 'rescheduled'],
             },
@@ -1141,11 +1219,44 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       };
     }
 
+    const confirmedProposal = await tx.visitScheduleProposal.findFirst({
+      where: {
+        id,
+        org_id: ctx.orgId,
+      },
+      include: {
+        case_: {
+          select: {
+            patient_id: true,
+            patient: {
+              select: {
+                residences: {
+                  where: { is_primary: true },
+                  take: 1,
+                  select: { facility_unit_id: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (
+      !confirmedProposal ||
+      confirmedProposal.proposal_status !== 'patient_contact_pending' ||
+      confirmedProposal.patient_contact_status !== 'confirmed' ||
+      confirmedProposal.finalized_schedule_id
+    ) {
+      return {
+        error: 'state_changed' as const,
+      };
+    }
+
     const lockedRouteSchedules = await tx.visitSchedule.findMany({
       where: {
         org_id: ctx.orgId,
-        pharmacist_id: existing.proposed_pharmacist_id,
-        scheduled_date: existing.proposed_date,
+        pharmacist_id: confirmedProposal.proposed_pharmacist_id,
+        scheduled_date: confirmedProposal.proposed_date,
         route_order: {
           not: null,
         },
@@ -1166,8 +1277,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       0,
     );
 
-    const supersededSiblingWhere = existing.reschedule_source_schedule_id
-      ? { reschedule_source_schedule_id: existing.reschedule_source_schedule_id }
+    const supersededSiblingWhere = confirmedProposal.reschedule_source_schedule_id
+      ? { reschedule_source_schedule_id: confirmedProposal.reschedule_source_schedule_id }
       : { reschedule_source_schedule_id: null };
     const remainingOpenProposals = await tx.visitScheduleProposal.findMany({
       where: {
@@ -1175,8 +1286,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           not: id,
         },
         org_id: ctx.orgId,
-        proposed_pharmacist_id: existing.proposed_pharmacist_id,
-        proposed_date: existing.proposed_date,
+        proposed_pharmacist_id: confirmedProposal.proposed_pharmacist_id,
+        proposed_date: confirmedProposal.proposed_date,
         finalized_schedule_id: null,
         proposal_status: {
           in: OPEN_PROPOSAL_STATUSES,
@@ -1185,7 +1296,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           not: null,
         },
         NOT: {
-          case_id: existing.case_id,
+          case_id: confirmedProposal.case_id,
           ...supersededSiblingWhere,
         },
       },
@@ -1198,7 +1309,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       0,
     );
     const finalizedRouteOrder = Math.max(
-      existing.route_order ?? 1,
+      confirmedProposal.route_order ?? 1,
       routeOrderFloor + 1,
       proposalRouteOrderFloor + 1,
     );
@@ -1206,8 +1317,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     await tx.visitSchedule.updateMany({
       where: {
         org_id: ctx.orgId,
-        pharmacist_id: existing.proposed_pharmacist_id,
-        scheduled_date: existing.proposed_date,
+        pharmacist_id: confirmedProposal.proposed_pharmacist_id,
+        scheduled_date: confirmedProposal.proposed_date,
         route_order: {
           gte: finalizedRouteOrder,
         },
@@ -1225,24 +1336,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const schedule = await tx.visitSchedule.create({
       data: {
         org_id: ctx.orgId,
-        case_id: existing.case_id,
-        cycle_id: existing.cycle_id ?? null,
-        site_id: existing.site_id ?? null,
-        facility_unit_id: existing.case_.patient?.residences[0]?.facility_unit_id ?? null,
-        visit_type: existing.visit_type,
-        priority: existing.priority,
+        case_id: confirmedProposal.case_id,
+        cycle_id: confirmedProposal.cycle_id ?? null,
+        site_id: confirmedProposal.site_id ?? null,
+        facility_unit_id: confirmedProposal.case_.patient?.residences[0]?.facility_unit_id ?? null,
+        visit_type: confirmedProposal.visit_type,
+        priority: confirmedProposal.priority,
         schedule_status: 'planned',
-        scheduled_date: existing.proposed_date,
-        time_window_start: existing.time_window_start,
-        time_window_end: existing.time_window_end,
-        pharmacist_id: existing.proposed_pharmacist_id,
-        assignment_mode: existing.assignment_mode,
-        escalation_reason: existing.escalation_reason,
+        scheduled_date: confirmedProposal.proposed_date,
+        time_window_start: confirmedProposal.time_window_start,
+        time_window_end: confirmedProposal.time_window_end,
+        pharmacist_id: confirmedProposal.proposed_pharmacist_id,
+        assignment_mode: confirmedProposal.assignment_mode,
+        escalation_reason: confirmedProposal.escalation_reason,
         route_order: finalizedRouteOrder,
-        vehicle_resource_id: existing.vehicle_resource_id ?? null,
-        recurrence_rule: existing.suggested_recurrence_rule ?? null,
-        medication_end_date: existing.medication_end_date,
-        visit_deadline_date: existing.visit_deadline_date,
+        vehicle_resource_id: confirmedProposal.vehicle_resource_id ?? null,
+        recurrence_rule: confirmedProposal.suggested_recurrence_rule ?? null,
+        medication_end_date: confirmedProposal.medication_end_date,
+        visit_deadline_date: confirmedProposal.visit_deadline_date,
         confirmed_at: finalizedAt,
         confirmed_by: ctx.userId,
       },
@@ -1262,13 +1373,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     await tx.visitScheduleProposal.updateMany({
       where: {
         org_id: ctx.orgId,
-        case_id: existing.case_id,
+        case_id: confirmedProposal.case_id,
         id: { not: id },
         proposal_status: {
           in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
         },
-        ...(existing.reschedule_source_schedule_id
-          ? { reschedule_source_schedule_id: existing.reschedule_source_schedule_id }
+        ...(confirmedProposal.reschedule_source_schedule_id
+          ? { reschedule_source_schedule_id: confirmedProposal.reschedule_source_schedule_id }
           : { reschedule_source_schedule_id: null }),
       },
       data: {
@@ -1289,10 +1400,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       },
     });
 
-    if (existing.reschedule_source_schedule_id) {
+    if (confirmedProposal.reschedule_source_schedule_id) {
       await tx.visitScheduleOverride.update({
         where: {
-          source_schedule_id: existing.reschedule_source_schedule_id,
+          source_schedule_id: confirmedProposal.reschedule_source_schedule_id,
         },
         data: {
           status: 'completed',

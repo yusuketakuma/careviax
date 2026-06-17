@@ -311,7 +311,12 @@ async function apiFetch(
         body: text ? JSON.parse(text) : null,
       };
     } catch (error) {
-      if (attempt === maxAttempts || !/Failed to fetch/i.test(String(error))) {
+      if (
+        attempt === maxAttempts ||
+        !/Failed to fetch|ECONNRESET|ECONNREFUSED|ERR_CONNECTION_RESET|ERR_CONNECTION_REFUSED/i.test(
+          String(error),
+        )
+      ) {
         throw error;
       }
       await page.waitForTimeout(750);

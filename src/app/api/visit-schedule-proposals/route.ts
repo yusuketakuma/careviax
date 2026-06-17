@@ -1,10 +1,12 @@
+import { createHash } from 'node:crypto';
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { formatDateKey } from '@/lib/date-key';
 import { validateOrgReferences } from '@/lib/api/org-reference';
@@ -41,10 +43,88 @@ import {
 import type { ProposalCandidateDiagnostic } from '@/server/services/visit-schedule-planner';
 
 const proposalDateQuerySchema = visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）');
+const PROPOSAL_CREATE_SERIALIZABLE_RETRY_LIMIT = 3;
+
+class VisitProposalCreateRetryLimitError extends Error {
+  constructor() {
+    super('visit proposal creation transaction retry limit exceeded');
+    this.name = 'VisitProposalCreateRetryLimitError';
+  }
+}
+
+function isSerializableTransactionConflict(cause: unknown) {
+  return cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2034';
+}
+
+function isProposalBatchIdempotencyRace(cause: unknown) {
+  if (!(cause instanceof Prisma.PrismaClientKnownRequestError) || cause.code !== 'P2002') {
+    return false;
+  }
+  const target = cause.meta?.target;
+  if (typeof target === 'string') return target.includes('idempotency_key');
+  return Array.isArray(target) && target.includes('idempotency_key');
+}
+
+async function withSerializableProposalCreateTransaction<T>(
+  orgId: string,
+  work: (tx: Prisma.TransactionClient) => Promise<T>,
+) {
+  for (let attempt = 0; attempt < PROPOSAL_CREATE_SERIALIZABLE_RETRY_LIMIT; attempt += 1) {
+    try {
+      return await withOrgContext(orgId, work, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (cause) {
+      if (!isSerializableTransactionConflict(cause)) {
+        throw cause;
+      }
+      if (attempt === PROPOSAL_CREATE_SERIALIZABLE_RETRY_LIMIT - 1) {
+        throw new VisitProposalCreateRetryLimitError();
+      }
+    }
+  }
+
+  throw new VisitProposalCreateRetryLimitError();
+}
 
 function startOfMonth(value: Date) {
   return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), 1));
 }
+
+function buildProposalRequestFingerprint(input: GenerateProposalFingerprintInput) {
+  const material = JSON.stringify({
+    case_id: input.caseId,
+    visit_type: input.visitType,
+    priority: input.priority,
+    start_date: input.startDate ?? null,
+    locked_date: input.lockedDate ?? null,
+    candidate_count: input.candidateCount,
+    travel_mode: input.travelMode,
+    preferred_time_from: input.preferredTimeFrom ?? null,
+    preferred_time_to: input.preferredTimeTo ?? null,
+    preferred_pharmacist_id: input.preferredPharmacistId ?? null,
+    vehicle_resource_id: input.vehicleResourceId ?? null,
+    reschedule_source_schedule_id: input.rescheduleSourceScheduleId ?? null,
+    special_cap_eligible: input.specialCapEligible ?? null,
+  });
+  return `visit-proposal:v1:${createHash('sha256').update(material).digest('hex')}`;
+}
+
+type GenerateProposalFingerprintInput = {
+  caseId: string;
+  visitType: string;
+  priority: string;
+  startDate?: string;
+  lockedDate?: string;
+  candidateCount: number;
+  travelMode: string;
+  preferredTimeFrom?: string;
+  preferredTimeTo?: string;
+  preferredPharmacistId?: string;
+  vehicleResourceId?: string;
+  rescheduleSourceScheduleId?: string;
+  specialCapEligible?: boolean;
+};
 
 function parseProposalDateQuery(value: string | null, fieldName: 'date_from' | 'date_to') {
   if (value == null) {
@@ -583,9 +663,83 @@ export const POST = withAuthContext(
             formatDateKey(draft.proposed_date) === item.proposed_date,
         ),
       ) ?? [];
+    const requestFingerprint = parsed.data.idempotency_key
+      ? buildProposalRequestFingerprint({
+          caseId: parsed.data.case_id,
+          visitType: resolvedVisitType,
+          priority: resolvedPriority,
+          startDate: parsed.data.start_date,
+          lockedDate: parsed.data.locked_date,
+          candidateCount: parsed.data.candidate_count,
+          travelMode: effectiveTravelMode,
+          preferredTimeFrom: parsed.data.preferred_time_from,
+          preferredTimeTo: parsed.data.preferred_time_to,
+          preferredPharmacistId: parsed.data.preferred_pharmacist_id,
+          vehicleResourceId: parsed.data.vehicle_resource_id,
+          rescheduleSourceScheduleId: parsed.data.reschedule_source_schedule_id,
+          specialCapEligible: parsed.data.special_cap_eligible,
+        })
+      : null;
 
-    const proposals = await withOrgContext(ctx.orgId, async (tx) => {
-      if (!parsed.data.reschedule_source_schedule_id) {
+    const proposalResult = await withSerializableProposalCreateTransaction(
+      ctx.orgId,
+      async (tx) => {
+        let proposalBatchId: string | null = null;
+        if (parsed.data.idempotency_key && requestFingerprint) {
+          const existingBatch = await tx.visitScheduleProposalBatch.findUnique({
+            where: {
+              org_id_idempotency_key: {
+                org_id: ctx.orgId,
+                idempotency_key: parsed.data.idempotency_key,
+              },
+            },
+            include: {
+              proposals: {
+                orderBy: { created_at: 'asc' },
+              },
+            },
+          });
+          if (existingBatch) {
+            if (existingBatch.request_fingerprint !== requestFingerprint) {
+              return { error: 'idempotency_conflict' as const };
+            }
+            return { proposals: existingBatch.proposals, replayed: true };
+          }
+
+          try {
+            const batch = await tx.visitScheduleProposalBatch.create({
+              data: {
+                org_id: ctx.orgId,
+                case_id: parsed.data.case_id,
+                idempotency_key: parsed.data.idempotency_key,
+                request_fingerprint: requestFingerprint,
+                created_by: ctx.userId,
+              },
+            });
+            proposalBatchId = batch.id;
+          } catch (cause) {
+            if (!isProposalBatchIdempotencyRace(cause)) throw cause;
+            const racedBatch = await tx.visitScheduleProposalBatch.findUnique({
+              where: {
+                org_id_idempotency_key: {
+                  org_id: ctx.orgId,
+                  idempotency_key: parsed.data.idempotency_key,
+                },
+              },
+              include: {
+                proposals: {
+                  orderBy: { created_at: 'asc' },
+                },
+              },
+            });
+            if (!racedBatch) throw cause;
+            if (racedBatch.request_fingerprint !== requestFingerprint) {
+              return { error: 'idempotency_conflict' as const };
+            }
+            return { proposals: racedBatch.proposals, replayed: true };
+          }
+        }
+
         await tx.visitScheduleProposal.updateMany({
           where: {
             org_id: ctx.orgId,
@@ -593,67 +747,88 @@ export const POST = withAuthContext(
             proposal_status: {
               in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
             },
+            ...(parsed.data.reschedule_source_schedule_id
+              ? { reschedule_source_schedule_id: parsed.data.reschedule_source_schedule_id }
+              : { reschedule_source_schedule_id: null }),
           },
           data: {
             proposal_status: 'superseded',
           },
         });
-      }
 
-      const allocatedDrafts = await allocateProposalRouteOrders(tx, {
-        orgId: ctx.orgId,
-        drafts: validDrafts,
-      });
+        const allocatedDrafts = await allocateProposalRouteOrders(tx, {
+          orgId: ctx.orgId,
+          drafts: validDrafts,
+        });
 
-      const created = await Promise.all(
-        allocatedDrafts.map((draft) =>
-          tx.visitScheduleProposal.create({
-            data: draft,
-          }),
-        ),
-      );
-
-      await Promise.all(
-        created.map((proposal) => {
-          const acceptedDiagnostic =
-            acceptedDiagnostics.find(
-              (item) =>
-                item.pharmacist_id === proposal.proposed_pharmacist_id &&
-                item.proposed_date === formatDateKey(proposal.proposed_date),
-            ) ?? null;
-
-          return createAuditLogEntry(tx, ctx, {
-            action: 'visit_schedule_proposals_created',
-            targetType: 'VisitScheduleProposal',
-            targetId: proposal.id,
-            changes: {
-              diagnostics: {
-                accepted: acceptedDiagnostic ? [acceptedDiagnostic] : [],
-                rejected: [...(plannerDiagnostics?.rejected ?? []), ...rejectedByBilling],
+        const created = await Promise.all(
+          allocatedDrafts.map((draft) =>
+            tx.visitScheduleProposal.create({
+              data: {
+                ...draft,
+                proposal_batch_id: proposalBatchId,
               },
-            },
-          });
-        }),
-      );
+            }),
+          ),
+        );
 
-      return created;
+        await Promise.all(
+          created.map((proposal) => {
+            const acceptedDiagnostic =
+              acceptedDiagnostics.find(
+                (item) =>
+                  item.pharmacist_id === proposal.proposed_pharmacist_id &&
+                  item.proposed_date === formatDateKey(proposal.proposed_date),
+              ) ?? null;
+
+            return createAuditLogEntry(tx, ctx, {
+              action: 'visit_schedule_proposals_created',
+              targetType: 'VisitScheduleProposal',
+              targetId: proposal.id,
+              changes: {
+                diagnostics: {
+                  accepted: acceptedDiagnostic ? [acceptedDiagnostic] : [],
+                  rejected: [...(plannerDiagnostics?.rejected ?? []), ...rejectedByBilling],
+                },
+              },
+            });
+          }),
+        );
+
+        return { proposals: created, replayed: false };
+      },
+    ).catch((cause: unknown) => {
+      if (cause instanceof VisitProposalCreateRetryLimitError) {
+        return null;
+      }
+      throw cause;
     });
 
-    await notifyWorkflowMutation({
-      orgId: ctx.orgId,
-      payload: { source: 'visit_schedule_proposals_create', case_id: parsed.data.case_id },
-    });
+    if (!proposalResult) {
+      return conflict('訪問候補の生成が同時に更新されました。再読み込みしてください');
+    }
+    if ('error' in proposalResult) {
+      return conflict('idempotency_key が別の訪問候補生成リクエストで使用されています');
+    }
+
+    if (!proposalResult.replayed) {
+      await notifyWorkflowMutation({
+        orgId: ctx.orgId,
+        payload: { source: 'visit_schedule_proposals_create', case_id: parsed.data.case_id },
+      });
+    }
 
     return success(
       {
-        data: omitProposalRejectReasons(proposals),
+        data: omitProposalRejectReasons(proposalResult.proposals),
         alerts: allAlerts,
         diagnostics: {
           accepted: acceptedDiagnostics,
           rejected: [...(plannerDiagnostics?.rejected ?? []), ...rejectedByBilling],
         },
+        replayed: proposalResult.replayed,
       },
-      201,
+      proposalResult.replayed ? 200 : 201,
     );
   },
   {
@@ -787,6 +962,7 @@ export const PUT = withAuthContext(
             id: true,
             proposal_status: true,
             patient_contact_status: true,
+            finalized_schedule_id: true,
             proposed_pharmacist_id: true,
             proposed_date: true,
           },
@@ -798,11 +974,20 @@ export const PUT = withAuthContext(
     if (existing && !['proposed', 'patient_contact_pending'].includes(existing.proposal_status)) {
       return validationError('下書き / 確認待ちの予定のみ編集できます');
     }
+    if (existing?.finalized_schedule_id || existing?.patient_contact_status === 'confirmed') {
+      return conflict('この候補はすでに確定または患者確認済みです。再読み込みしてください');
+    }
 
     const proposal = await withOrgContext(ctx.orgId, async (tx) => {
       if (existing) {
-        const updated = await tx.visitScheduleProposal.update({
-          where: { id: existing.id },
+        const claim = await tx.visitScheduleProposal.updateMany({
+          where: {
+            id: existing.id,
+            org_id: ctx.orgId,
+            proposal_status: { in: ['proposed', 'patient_contact_pending'] },
+            patient_contact_status: { not: 'confirmed' },
+            finalized_schedule_id: null,
+          },
           data: {
             case_id: input.case_id,
             site_id: resolvedSiteId,
@@ -822,6 +1007,16 @@ export const PUT = withAuthContext(
               : {}),
           },
         });
+        if (claim.count !== 1) {
+          return { error: 'state_changed' as const };
+        }
+
+        const updated = await tx.visitScheduleProposal.findFirst({
+          where: { id: existing.id, org_id: ctx.orgId },
+        });
+        if (!updated) {
+          return { error: 'state_changed' as const };
+        }
 
         await createAuditLogEntry(tx, ctx, {
           action: 'visit_schedule_proposal_draft_updated',
@@ -869,6 +1064,10 @@ export const PUT = withAuthContext(
 
       return created;
     });
+
+    if ('error' in proposal) {
+      return conflict('この候補はすでに確定または変更されています。再読み込みしてください');
+    }
 
     await notifyWorkflowMutation({
       orgId: ctx.orgId,

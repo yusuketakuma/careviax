@@ -285,6 +285,8 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
       visit_date: new Date('2026-03-20T00:00:00Z'),
       outcome_status: 'completed',
       soap_plan: '残薬確認を強化する',
+      version: 4,
+      updated_at: new Date('2026-03-20T08:30:00.000Z'),
       structured_soap: {
         subjective: {
           symptom_checks: ['便秘が続く'],
@@ -716,8 +718,15 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
             }),
           ],
           previous_visit: expect.objectContaining({
+            source_revision: {
+              version: 4,
+              updated_at: '2026-03-20T08:30:00.000Z',
+            },
             summary: expect.stringContaining('残薬確認を強化する'),
             structured_reuse: expect.objectContaining({
+              source_visit_record_id: 'record_1',
+              source_visit_record_version: 4,
+              source_visit_record_updated_at: '2026-03-20T08:30:00.000Z',
               carry_forward_items: expect.arrayContaining([
                 '眠気とふらつきの継続確認',
                 expect.stringContaining('前回残薬'),
@@ -801,6 +810,8 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
       orgId: 'org_1',
       patientId: 'patient_1',
       caseIds: ['case_1'],
+      currentScheduleId: 'schedule_1',
+      scheduledDate: new Date('2026-03-27T00:00:00Z'),
     });
     expect(billingEvidenceBlockersMock).toHaveBeenCalledWith(expect.anything(), {
       orgId: 'org_1',
@@ -925,6 +936,8 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
       visit_date: new Date('2026-03-19T15:30:00.000Z'),
       outcome_status: 'completed',
       soap_plan: '残薬確認を強化する',
+      version: 2,
+      updated_at: new Date('2026-03-19T16:00:00.000Z'),
       structured_soap: null,
       next_visit_suggestion_date: new Date('2026-04-02T15:30:00.000Z'),
     });
@@ -941,6 +954,74 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
           previous_visit: expect.objectContaining({
             summary: expect.stringMatching(/前回 2026-03-20.*次回提案: 2026-04-03/),
           }),
+        },
+      },
+    });
+  });
+
+  it('keeps duplicate same-drug prescription lines distinct in preparation change summaries', async () => {
+    prescriptionIntakeFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'intake_current_duplicate',
+        source_type: 'paper',
+        prescribed_date: new Date('2026-03-26T00:00:00Z'),
+        lines: [
+          {
+            drug_name: 'ロキソプロフェン錠60mg',
+            drug_code: '222',
+            dose: '1回2錠',
+            frequency: '夕食後',
+            days: 7,
+            start_date: new Date('2026-03-27T00:00:00Z'),
+            end_date: new Date('2026-04-02T00:00:00Z'),
+          },
+        ],
+      },
+      {
+        id: 'intake_previous_duplicate',
+        source_type: 'paper',
+        prescribed_date: new Date('2026-03-10T00:00:00Z'),
+        lines: [
+          {
+            drug_name: 'ロキソプロフェン錠60mg',
+            drug_code: '222',
+            dose: '1回1錠',
+            frequency: '朝食後',
+            days: 7,
+            start_date: new Date('2026-03-10T00:00:00Z'),
+            end_date: new Date('2026-03-16T00:00:00Z'),
+          },
+          {
+            drug_name: 'ロキソプロフェン錠60mg',
+            drug_code: '222',
+            dose: '1回1錠',
+            frequency: '夕食後',
+            days: 7,
+            start_date: new Date('2026-03-10T00:00:00Z'),
+            end_date: new Date('2026-03-16T00:00:00Z'),
+          },
+        ],
+      },
+    ]);
+
+    const response = await GET(createRequest({ 'x-org-id': 'org_1' }), {
+      params: Promise.resolve({ scheduleId: 'schedule_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        pack: {
+          prescription_changes: {
+            changed: [
+              expect.objectContaining({
+                drug_name: 'ロキソプロフェン錠60mg',
+                reasons: ['用量 1回1錠 → 1回2錠'],
+              }),
+            ],
+            removed: ['ロキソプロフェン錠60mg'],
+          },
         },
       },
     });

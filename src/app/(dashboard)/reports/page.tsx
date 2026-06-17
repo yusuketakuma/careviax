@@ -11,7 +11,8 @@ export const metadata: Metadata = { title: '報告・共有 — PH-OS' };
 export default function ReportsPage() {
   return (
     <PageScaffold variant="bare">
-      <div className="xl:min-h-[calc(100vh-4rem)]">
+      <h1 className="sr-only">共有ワークスペース</h1>
+      <div className="xl:min-h-[calc(100dvh-4rem)]">
         <ReportShareWorkspace />
       </div>
     </PageScaffold>

@@ -5,6 +5,7 @@ const {
   requireAuthContextMock,
   withOrgContextMock,
   prescriptionIntakeFindFirstMock,
+  requireWritablePatientMock,
   createAuditLogEntryMock,
   resolveOperationalTasksMock,
   upsertOperationalTaskMock,
@@ -12,6 +13,7 @@ const {
   requireAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   prescriptionIntakeFindFirstMock: vi.fn(),
+  requireWritablePatientMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
   resolveOperationalTasksMock: vi.fn(),
   upsertOperationalTaskMock: vi.fn(),
@@ -40,6 +42,10 @@ vi.mock('@/lib/audit/audit-entry', () => ({
 vi.mock('@/server/services/operational-tasks', () => ({
   resolveOperationalTasks: resolveOperationalTasksMock,
   upsertOperationalTask: upsertOperationalTaskMock,
+}));
+
+vi.mock('@/server/services/patient-write-guard', () => ({
+  requireWritablePatient: requireWritablePatientMock,
 }));
 
 import { GET, PATCH } from './route';
@@ -73,7 +79,11 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
       ctx: {
         orgId: 'org_1',
         userId: 'user_1',
+        role: 'pharmacist',
       },
+    });
+    requireWritablePatientMock.mockResolvedValue({
+      patient: { id: 'patient_1', archived_at: null },
     });
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
   });
@@ -205,6 +215,37 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
     expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects archived patients before updating the intake', async () => {
+    prescriptionIntakeFindFirstMock.mockResolvedValue({
+      id: 'intake_archived',
+      org_id: 'org_1',
+      source_type: 'fax',
+      cycle: {
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+      },
+    });
+    requireWritablePatientMock.mockResolvedValue({
+      response: Response.json(
+        { message: 'アーカイブ中の患者は復元するまで更新できません' },
+        { status: 409 },
+      ),
+    });
+
+    const response = await PATCH(
+      createRequest({
+        original_collected_at: '2026-03-28T09:00:00.000Z',
+      }),
+      { params: Promise.resolve({ id: 'intake_archived' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
   it('records prescription original document retention evidence for uploaded files', async () => {
@@ -603,6 +644,7 @@ describe('/api/prescription-intakes/[id] PATCH', () => {
       { params: Promise.resolve({ id: 'intake_8' }) },
     );
 
+    if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
       expect.anything(),
