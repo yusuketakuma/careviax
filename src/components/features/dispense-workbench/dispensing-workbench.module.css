@@ -52,6 +52,17 @@
   font-family: inherit;
 }
 
+@media (max-width: 767px) {
+  .root button,
+  .root a,
+  .root select,
+  .root input,
+  .root textarea {
+    min-height: 44px;
+    box-sizing: border-box;
+  }
+}
+
 /* ===== タイトルバー（30px・青グラデ）===== */
 .titleBar {
   height: 30px;

@@ -12,6 +12,7 @@ export const metadata: Metadata = {
 export default function SetPage() {
   return (
     <PageScaffold variant="bare" className="min-h-0 bg-transparent p-0 sm:p-0 lg:p-0 xl:p-0">
+      <h1 className="sr-only">セット</h1>
       <DispensingWorkbench phase="setp" />
     </PageScaffold>
   );
