@@ -15,7 +15,7 @@ const { authMock, prismaMock, withOrgContextMock, txMock, notifyWorkflowMutation
       },
       setPlan: {
         findFirst: vi.fn(),
-        update: vi.fn(),
+        updateMany: vi.fn(),
       },
     },
     notifyWorkflowMutationMock: vi.fn(),
@@ -64,6 +64,7 @@ function createMalformedPatchRequest() {
 
 describe('/api/set-plans/[id]', () => {
   const originalTimezone = process.env.TZ;
+  const currentUpdatedAt = '2026-04-01T09:00:00.000Z';
 
   beforeAll(() => {
     process.env.TZ = 'Asia/Tokyo';
@@ -100,6 +101,7 @@ describe('/api/set-plans/[id]', () => {
       set_method: 'custom',
       notes: null,
       packaging_method_id: null,
+      updated_at: new Date(currentUpdatedAt),
       cycle: {
         case_: {
           patient: {
@@ -108,12 +110,7 @@ describe('/api/set-plans/[id]', () => {
         },
       },
     });
-    txMock.setPlan.update.mockResolvedValue({
-      id: 'plan_1',
-      set_method: 'bedtime_only',
-      packaging_method_id: null,
-      notes: '眠前のみへ変更',
-    });
+    txMock.setPlan.updateMany.mockResolvedValue({ count: 1 });
   });
 
   it('returns the detailed set plan payload', async () => {
@@ -159,6 +156,7 @@ describe('/api/set-plans/[id]', () => {
   it('updates set plan metadata', async () => {
     const response = await PATCH(
       createRequest({
+        expected_updated_at: currentUpdatedAt,
         set_method: 'bedtime_only',
         notes: '眠前のみへ変更',
       }),
@@ -169,18 +167,85 @@ describe('/api/set-plans/[id]', () => {
     if (!response) throw new Error('response is required');
 
     expect(response.status).toBe(200);
-    expect(txMock.setPlan.update).toHaveBeenCalledWith({
-      where: { id: 'plan_1' },
+    expect(txMock.setPlan.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'plan_1',
+        org_id: 'org_1',
+        updated_at: new Date(currentUpdatedAt),
+      },
       data: expect.objectContaining({
         set_method: 'bedtime_only',
         notes: '眠前のみへ変更',
       }),
-      select: expect.any(Object),
     });
     expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
       orgId: 'org_1',
       payload: { source: 'set_plans_update', plan_id: 'plan_1' },
     });
+  });
+
+  it('requires a set plan freshness token before transaction side effects', async () => {
+    const response = await PATCH(
+      createRequest({
+        set_method: 'bedtime_only',
+      }),
+      {
+        params: Promise.resolve({ id: 'plan_1' }),
+      },
+    );
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(txMock.setPlan.findFirst).not.toHaveBeenCalled();
+    expect(txMock.packagingMethodMaster.findFirst).not.toHaveBeenCalled();
+    expect(txMock.setPlan.updateMany).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when the set plan was updated after the client loaded it', async () => {
+    txMock.setPlan.findFirst.mockResolvedValueOnce({
+      id: 'plan_1',
+      target_period_start: new Date('2026-04-01T00:00:00.000Z'),
+      target_period_end: new Date('2026-04-07T00:00:00.000Z'),
+      set_method: 'custom',
+      notes: null,
+      packaging_method_id: null,
+      updated_at: new Date('2026-04-01T09:05:00.000Z'),
+      cycle: {
+        case_: {
+          patient: {
+            packaging_profile: null,
+          },
+        },
+      },
+    });
+
+    const response = await PATCH(
+      createRequest({
+        expected_updated_at: currentUpdatedAt,
+        set_method: 'bedtime_only',
+      }),
+      {
+        params: Promise.resolve({ id: 'plan_1' }),
+      },
+    );
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'セットプランが他のユーザーによって更新されています。再読み込みしてください',
+      details: {
+        current: { updated_at: '2026-04-01T09:05:00.000Z' },
+        expected_updated_at: currentUpdatedAt,
+      },
+    });
+    expect(txMock.setPlan.updateMany).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object patch payloads before transaction side effects', async () => {
@@ -193,7 +258,7 @@ describe('/api/set-plans/[id]', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(txMock.setPlan.findFirst).not.toHaveBeenCalled();
     expect(txMock.packagingMethodMaster.findFirst).not.toHaveBeenCalled();
-    expect(txMock.setPlan.update).not.toHaveBeenCalled();
+    expect(txMock.setPlan.updateMany).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
@@ -210,7 +275,7 @@ describe('/api/set-plans/[id]', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(txMock.setPlan.findFirst).not.toHaveBeenCalled();
     expect(txMock.packagingMethodMaster.findFirst).not.toHaveBeenCalled();
-    expect(txMock.setPlan.update).not.toHaveBeenCalled();
+    expect(txMock.setPlan.updateMany).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
@@ -220,6 +285,7 @@ describe('/api/set-plans/[id]', () => {
 
     const response = await PATCH(
       createRequest({
+        expected_updated_at: currentUpdatedAt,
         set_method: 'bedtime_only',
       }),
       {
@@ -236,13 +302,14 @@ describe('/api/set-plans/[id]', () => {
       },
       select: expect.any(Object),
     });
-    expect(txMock.setPlan.update).not.toHaveBeenCalled();
+    expect(txMock.setPlan.updateMany).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('rejects an invalid target period update', async () => {
     const response = await PATCH(
       createRequest({
+        expected_updated_at: currentUpdatedAt,
         target_period_start: '2026-04-10',
         target_period_end: '2026-04-01',
       }),
@@ -256,12 +323,13 @@ describe('/api/set-plans/[id]', () => {
     await expect(response.json()).resolves.toMatchObject({
       message: '終了日は開始日以降を指定してください',
     });
-    expect(txMock.setPlan.update).not.toHaveBeenCalled();
+    expect(txMock.setPlan.updateMany).not.toHaveBeenCalled();
   });
 
   it('rejects a target period update longer than the set calendar safety limit', async () => {
     const response = await PATCH(
       createRequest({
+        expected_updated_at: currentUpdatedAt,
         target_period_start: '2026-04-01',
         target_period_end: '2026-05-10',
       }),
@@ -275,7 +343,7 @@ describe('/api/set-plans/[id]', () => {
     await expect(response.json()).resolves.toMatchObject({
       message: 'セット対象期間は35日以内で指定してください',
     });
-    expect(txMock.setPlan.update).not.toHaveBeenCalled();
+    expect(txMock.setPlan.updateMany).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
@@ -295,7 +363,7 @@ describe('/api/set-plans/[id]', () => {
       message: '入力値が不正です',
     });
     expect(withOrgContextMock).not.toHaveBeenCalled();
-    expect(txMock.setPlan.update).not.toHaveBeenCalled();
+    expect(txMock.setPlan.updateMany).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
@@ -307,6 +375,7 @@ describe('/api/set-plans/[id]', () => {
       set_method: 'custom',
       notes: null,
       packaging_method_id: null,
+      updated_at: new Date(currentUpdatedAt),
       cycle: {
         case_: {
           patient: {
@@ -318,6 +387,7 @@ describe('/api/set-plans/[id]', () => {
 
     const response = await PATCH(
       createRequest({
+        expected_updated_at: currentUpdatedAt,
         target_period_end: '2026-04-01',
       }),
       {
@@ -330,7 +400,7 @@ describe('/api/set-plans/[id]', () => {
     await expect(response.json()).resolves.toMatchObject({
       message: '終了日は開始日以降を指定してください',
     });
-    expect(txMock.setPlan.update).not.toHaveBeenCalled();
+    expect(txMock.setPlan.updateMany).not.toHaveBeenCalled();
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 });
