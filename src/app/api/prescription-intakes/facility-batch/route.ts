@@ -18,6 +18,12 @@ type FacilityBatchErrorResult =
   | { error: 'missing_case' }
   | { error: 'case_patient_mismatch'; caseId: string }
   | {
+      error: 'patient_identity_mismatch';
+      caseId: string;
+      patientId: string;
+      mismatchFields: string[];
+    }
+  | {
       error: 'duplicate_prescription_lines';
       caseId: string;
       patientName: string;
@@ -60,6 +66,35 @@ class FacilityBatchIntakeRollback extends Error {
   constructor(readonly result: FacilityBatchErrorResult) {
     super('Facility batch prescription intake rolled back');
   }
+}
+
+function normalizeIdentityText(value: string) {
+  return value.trim().replace(/\s+/g, ' ');
+}
+
+function dateKeyFromDb(value: Date | string | null | undefined) {
+  if (!value) return '';
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value).slice(0, 10);
+}
+
+function collectIdentityMismatchFields(args: {
+  snapshot: { name: string; name_kana: string; birth_date: string };
+  patient: { name: string; name_kana: string; birth_date: Date | string | null };
+}) {
+  const fields: string[] = [];
+  if (normalizeIdentityText(args.snapshot.name) !== normalizeIdentityText(args.patient.name)) {
+    fields.push('name');
+  }
+  if (
+    normalizeIdentityText(args.snapshot.name_kana) !== normalizeIdentityText(args.patient.name_kana)
+  ) {
+    fields.push('name_kana');
+  }
+  if (args.snapshot.birth_date !== dateKeyFromDb(args.patient.birth_date)) {
+    fields.push('birth_date');
+  }
+  return fields;
 }
 
 export const POST = withAuthContext(
@@ -120,6 +155,8 @@ export const POST = withAuthContext(
               select: {
                 id: true,
                 name: true,
+                name_kana: true,
+                birth_date: true,
                 residences: {
                   where: { is_primary: true },
                   take: 1,
@@ -144,6 +181,19 @@ export const POST = withAuthContext(
           const careCase = caseById.get(entry.case_id);
           if (!careCase || careCase.patient_id !== entry.patient_id) {
             return { error: 'case_patient_mismatch' as const, caseId: entry.case_id };
+          }
+
+          const mismatchFields = collectIdentityMismatchFields({
+            snapshot: entry.patient_identity_snapshot,
+            patient: careCase.patient,
+          });
+          if (mismatchFields.length > 0) {
+            return {
+              error: 'patient_identity_mismatch' as const,
+              caseId: entry.case_id,
+              patientId: entry.patient_id,
+              mismatchFields,
+            };
           }
 
           const duplicateCandidates = collectDuplicatePrescriptionLines(entry.lines);
@@ -301,6 +351,17 @@ export const POST = withAuthContext(
         return validationError('ケースと患者の組み合わせが不正です', {
           case_id: result.caseId,
         });
+      }
+      if (result.error === 'patient_identity_mismatch') {
+        return validationError(
+          '施設まとめ処方の患者同定情報が現在の患者情報と一致しません。患者を再選択してください',
+          {
+            error: 'patient_identity_mismatch',
+            case_id: result.caseId,
+            patient_id: result.patientId,
+            mismatches: result.mismatchFields,
+          },
+        );
       }
       if (result.error === 'duplicate_prescription_lines') {
         return validationError('施設まとめ処方に重複候補の処方明細があります', {

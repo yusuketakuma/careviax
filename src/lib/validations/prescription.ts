@@ -34,6 +34,12 @@ const optionalDateStringSchema = z.preprocess(
   dateStringSchema('日付形式が不正です').optional(),
 );
 
+const patientIdentitySnapshotSchema = z.object({
+  name: requiredTrimmedStringSchema('患者氏名スナップショットは必須です'),
+  name_kana: requiredTrimmedStringSchema('患者フリガナスナップショットは必須です'),
+  birth_date: dateStringSchema('患者生年月日スナップショットの日付形式が不正です（YYYY-MM-DD）'),
+});
+
 const prescriptionDocumentUrlSchema = z
   .string()
   .trim()
@@ -231,6 +237,7 @@ export const createFacilityBatchPrescriptionIntakeSchema = z
         z.object({
           case_id: requiredTrimmedStringSchema('ケースIDは必須です'),
           patient_id: requiredTrimmedStringSchema('患者IDは必須です'),
+          patient_identity_snapshot: patientIdentitySnapshotSchema,
           lines: z.array(prescriptionLineSchema).min(1, '処方明細は1行以上必要です'),
         }),
       )

@@ -69,4 +69,19 @@ describe('PrescriptionIntakeForm previous prescription safety contract', () => {
     expect(SOURCE).toContain("new URLSearchParams({ limit: '5', case_id: selectedCaseId })");
     expect(SOURCE).toContain('enabled: !!orgId && !!selectedPatientId && !!selectedCaseId');
   });
+
+  it('submits facility batch patient identity snapshots without exposing residence addresses', () => {
+    expect(SOURCE).toContain('type PatientIdentitySnapshot');
+    expect(SOURCE).toContain('patient_identity_snapshot: PatientIdentitySnapshot');
+    expect(SOURCE).toContain('patient_identity_snapshot: entry.patient_identity_snapshot');
+    expect(SOURCE).toContain('selectedPatientNameKana');
+    expect(SOURCE).toContain('selectedPatientBirthDate');
+    expect(SOURCE).toContain('患者情報を読み込み直してから施設まとめ処方に追加してください');
+    expect(SOURCE).toContain('facility_label: selectedCase?.patient?.residences?.[0]?.address');
+    expect(SOURCE).toContain("? '施設確認済み'");
+    expect(SOURCE).not.toContain('residence_label');
+    expect(SOURCE).not.toContain(
+      'facility_label: selectedCase?.patient?.residences?.[0]?.address ?? null',
+    );
+  });
 });

@@ -12,6 +12,8 @@ export type PrescriptionDraftSnapshot = {
     patientSearch: string;
     selectedPatientId: string;
     selectedPatientName: string;
+    selectedPatientNameKana: string;
+    selectedPatientBirthDate: string;
     selectedCaseId: string;
   };
   prescriptionMeta: {
@@ -86,6 +88,8 @@ function readPatientSelection(
     patientSearch: readString(object.patientSearch),
     selectedPatientId: readString(object.selectedPatientId),
     selectedPatientName: readString(object.selectedPatientName),
+    selectedPatientNameKana: readString(object.selectedPatientNameKana),
+    selectedPatientBirthDate: readString(object.selectedPatientBirthDate),
     selectedCaseId: readString(object.selectedCaseId),
   };
 }

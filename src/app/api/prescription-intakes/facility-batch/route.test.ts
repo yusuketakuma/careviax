@@ -81,6 +81,18 @@ function createMalformedJsonRequest() {
   });
 }
 
+const PATIENT_1_IDENTITY_SNAPSHOT = {
+  name: '山田 花子',
+  name_kana: 'ヤマダ ハナコ',
+  birth_date: '1940-01-01',
+};
+
+const PATIENT_2_IDENTITY_SNAPSHOT = {
+  name: '佐藤 次郎',
+  name_kana: 'サトウ ジロウ',
+  birth_date: '1942-02-02',
+};
+
 function createValidFacilityBatchBody(overrides: Record<string, unknown> = {}) {
   return {
     source_type: 'facility_batch',
@@ -89,6 +101,7 @@ function createValidFacilityBatchBody(overrides: Record<string, unknown> = {}) {
       {
         case_id: 'case_1',
         patient_id: 'patient_1',
+        patient_identity_snapshot: { ...PATIENT_1_IDENTITY_SNAPSHOT },
         lines: [
           {
             line_number: 1,
@@ -103,6 +116,7 @@ function createValidFacilityBatchBody(overrides: Record<string, unknown> = {}) {
       {
         case_id: 'case_2',
         patient_id: 'patient_2',
+        patient_identity_snapshot: { ...PATIENT_2_IDENTITY_SNAPSHOT },
         lines: [
           {
             line_number: 1,
@@ -135,6 +149,8 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
               patient: {
                 id: 'patient_1',
                 name: '山田 花子',
+                name_kana: 'ヤマダ ハナコ',
+                birth_date: new Date('1940-01-01T00:00:00.000Z'),
                 residences: [{ building_id: 'facility_a', address: '東京都A区1-1-1' }],
               },
             },
@@ -144,6 +160,8 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
               patient: {
                 id: 'patient_2',
                 name: '佐藤 次郎',
+                name_kana: 'サトウ ジロウ',
+                birth_date: new Date('1942-02-02T00:00:00.000Z'),
                 residences: [{ building_id: 'facility_b', address: '東京都B区2-2-2' }],
               },
             },
@@ -166,6 +184,7 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
           {
             case_id: 'case_1',
             patient_id: 'patient_1',
+            patient_identity_snapshot: { ...PATIENT_1_IDENTITY_SNAPSHOT },
             lines: [
               {
                 line_number: 1,
@@ -180,6 +199,7 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
           {
             case_id: 'case_2',
             patient_id: 'patient_2',
+            patient_identity_snapshot: { ...PATIENT_2_IDENTITY_SNAPSHOT },
             lines: [
               {
                 line_number: 1,
@@ -203,6 +223,66 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
         facilities: ['facility_a', 'facility_b'],
       },
     });
+  });
+
+  it('rejects stale patient identity snapshots before creating facility batch intakes', async () => {
+    const medicationCycleCreateMock = vi.fn();
+    const prescriptionIntakeCreateMock = vi.fn();
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        careCase: {
+          findMany: vi.fn().mockResolvedValue([
+            {
+              id: 'case_1',
+              patient_id: 'patient_1',
+              patient: {
+                id: 'patient_1',
+                name: '山田 花子',
+                name_kana: 'ヤマダ ハナコ',
+                birth_date: new Date('1940-01-01T00:00:00.000Z'),
+                residences: [{ building_id: 'facility_a', address: '東京都A区1-1-1' }],
+              },
+            },
+            {
+              id: 'case_2',
+              patient_id: 'patient_2',
+              patient: {
+                id: 'patient_2',
+                name: '佐藤 次郎',
+                name_kana: 'サトウ ジロウ',
+                birth_date: new Date('1942-02-02T00:00:00.000Z'),
+                residences: [{ building_id: 'facility_a', address: '東京都A区1-1-1' }],
+              },
+            },
+          ]),
+        },
+        medicationCycle: {
+          create: medicationCycleCreateMock,
+        },
+        prescriptionIntake: {
+          create: prescriptionIntakeCreateMock,
+        },
+      }),
+    );
+    const body = createValidFacilityBatchBody();
+    body.entries[1].patient_identity_snapshot.birth_date = '1941-02-02';
+
+    const response = await POST(createRequest(body));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message:
+        '施設まとめ処方の患者同定情報が現在の患者情報と一致しません。患者を再選択してください',
+      details: {
+        error: 'patient_identity_mismatch',
+        case_id: 'case_2',
+        patient_id: 'patient_2',
+        mismatches: ['birth_date'],
+      },
+    });
+    expect(medicationCycleCreateMock).not.toHaveBeenCalled();
+    expect(prescriptionIntakeCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object request bodies before facility batch transaction work', async () => {
@@ -252,6 +332,25 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
     expect(medicationProfileUpdateManyMock).not.toHaveBeenCalled();
   });
 
+  it('rejects facility batch entries without patient identity snapshots before transaction work', async () => {
+    const body = createValidFacilityBatchBody();
+    delete (body.entries[0] as Record<string, unknown>).patient_identity_snapshot;
+
+    const response = await POST(createRequest(body));
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
+    expect(medicationProfileFindManyMock).not.toHaveBeenCalled();
+    expect(medicationProfileCreateMock).not.toHaveBeenCalled();
+    expect(medicationProfileUpdateMock).not.toHaveBeenCalled();
+    expect(medicationProfileUpdateManyMock).not.toHaveBeenCalled();
+  });
+
   it('rejects expired prescription dates before facility batch transaction work', async () => {
     const response = await POST(
       createRequest(createValidFacilityBatchBody({ prescribed_date: EXPIRED_DATE })),
@@ -282,6 +381,8 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
               patient: {
                 id: 'patient_1',
                 name: '山田 花子',
+                name_kana: 'ヤマダ ハナコ',
+                birth_date: new Date('1940-01-01T00:00:00.000Z'),
                 residences: [{ building_id: 'facility_a', address: '東京都A区1-1-1' }],
               },
             },
@@ -291,6 +392,8 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
               patient: {
                 id: 'patient_2',
                 name: '佐藤 次郎',
+                name_kana: 'サトウ ジロウ',
+                birth_date: new Date('1942-02-02T00:00:00.000Z'),
                 residences: [{ building_id: 'facility_a', address: '東京都A区1-1-1' }],
               },
             },
@@ -364,6 +467,7 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
             {
               case_id: 'case_1',
               patient_id: 'patient_1',
+              patient_identity_snapshot: { ...PATIENT_1_IDENTITY_SNAPSHOT },
               lines: [
                 {
                   line_number: 1,
@@ -380,6 +484,7 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
             {
               case_id: 'case_2',
               patient_id: 'patient_2',
+              patient_identity_snapshot: { ...PATIENT_2_IDENTITY_SNAPSHOT },
               lines: [
                 {
                   line_number: 1,
@@ -476,6 +581,8 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
                 patient: {
                   id: 'patient_1',
                   name: '山田 花子',
+                  name_kana: 'ヤマダ ハナコ',
+                  birth_date: new Date('1940-01-01T00:00:00.000Z'),
                   residences: [{ building_id: 'facility_a', address: '東京都A区1-1-1' }],
                 },
               },
@@ -485,6 +592,8 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
                 patient: {
                   id: 'patient_2',
                   name: '佐藤 次郎',
+                  name_kana: 'サトウ ジロウ',
+                  birth_date: new Date('1942-02-02T00:00:00.000Z'),
                   residences: [{ building_id: 'facility_a', address: '東京都A区1-1-1' }],
                 },
               },
@@ -556,6 +665,7 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
             {
               case_id: 'case_1',
               patient_id: 'patient_1',
+              patient_identity_snapshot: { ...PATIENT_1_IDENTITY_SNAPSHOT },
               lines: [
                 {
                   line_number: 1,
@@ -570,6 +680,7 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
             {
               case_id: 'case_2',
               patient_id: 'patient_2',
+              patient_identity_snapshot: { ...PATIENT_2_IDENTITY_SNAPSHOT },
               lines: [
                 {
                   line_number: 1,
@@ -685,6 +796,8 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
               patient: {
                 id: 'patient_1',
                 name: '山田 花子',
+                name_kana: 'ヤマダ ハナコ',
+                birth_date: new Date('1940-01-01T00:00:00.000Z'),
                 residences: [{ building_id: 'facility_a', address: '東京都A区1-1-1' }],
               },
             },
@@ -694,6 +807,8 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
               patient: {
                 id: 'patient_2',
                 name: '佐藤 次郎',
+                name_kana: 'サトウ ジロウ',
+                birth_date: new Date('1942-02-02T00:00:00.000Z'),
                 residences: [{ building_id: 'facility_a', address: '東京都A区1-1-1' }],
               },
             },
@@ -740,6 +855,7 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
           {
             case_id: 'case_1',
             patient_id: 'patient_1',
+            patient_identity_snapshot: { ...PATIENT_1_IDENTITY_SNAPSHOT },
             lines: [
               {
                 line_number: 1,
@@ -762,6 +878,7 @@ describe('/api/prescription-intakes/facility-batch POST', () => {
           {
             case_id: 'case_2',
             patient_id: 'patient_2',
+            patient_identity_snapshot: { ...PATIENT_2_IDENTITY_SNAPSHOT },
             lines: [
               {
                 line_number: 1,

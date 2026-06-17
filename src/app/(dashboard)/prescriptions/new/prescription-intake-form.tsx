@@ -83,12 +83,14 @@ type PatientOption = {
   id: string;
   name: string;
   name_kana: string;
+  birth_date?: string | null;
 };
 
 type SelectedPatientDetail = {
   id: string;
   name: string;
   name_kana: string;
+  birth_date: string | null;
 };
 
 type CaseOption = {
@@ -104,10 +106,19 @@ type CaseOption = {
 type FacilityBatchEntryDraft = {
   patient_id: string;
   patient_name: string;
+  patient_name_kana: string;
+  patient_birth_date: string;
+  patient_identity_snapshot: PatientIdentitySnapshot;
   case_id: string;
   case_status: string;
-  residence_label: string | null;
+  facility_label: string | null;
   lines: PrescriptionLineInput[];
+};
+
+type PatientIdentitySnapshot = {
+  name: string;
+  name_kana: string;
+  birth_date: string;
 };
 
 type PreviousPrescriptionLine = {
@@ -274,6 +285,12 @@ function GenericCandidatePanel({
   );
 }
 
+function dateKeyFromApi(value: string | Date | null | undefined): string {
+  if (!value) return '';
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value).slice(0, 10);
+}
+
 export function PrescriptionIntakeForm() {
   const orgId = useOrgId();
   const router = useRouter();
@@ -287,12 +304,16 @@ export function PrescriptionIntakeForm() {
     patientSearch: '',
     selectedPatientId: initialPatientId,
     selectedPatientName: '',
+    selectedPatientNameKana: '',
+    selectedPatientBirthDate: '',
     selectedCaseId: initialCaseId,
   });
   const {
     patientSearch: patientSearchDraft,
     selectedPatientId,
     selectedPatientName: selectedPatientNameDraft,
+    selectedPatientNameKana,
+    selectedPatientBirthDate,
     selectedCaseId: selectedCaseIdDraft,
   } = patientSelection;
   const patientSearch = patientSearchDraft;
@@ -503,6 +524,8 @@ export function PrescriptionIntakeForm() {
           patientSearch: draft.patientSelection.patientSearch,
           selectedPatientId: draft.patientSelection.selectedPatientId,
           selectedPatientName: draft.patientSelection.selectedPatientName,
+          selectedPatientNameKana: draft.patientSelection.selectedPatientNameKana,
+          selectedPatientBirthDate: draft.patientSelection.selectedPatientBirthDate,
           selectedCaseId: draft.patientSelection.selectedCaseId,
         });
         setPrescriptionMeta(draft.prescriptionMeta);
@@ -524,7 +547,14 @@ export function PrescriptionIntakeForm() {
     if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     autosaveTimerRef.current = setTimeout(() => {
       void saveDraft({
-        patientSelection: { patientSearch, selectedPatientId, selectedPatientName, selectedCaseId },
+        patientSelection: {
+          patientSearch,
+          selectedPatientId,
+          selectedPatientName,
+          selectedPatientNameKana,
+          selectedPatientBirthDate,
+          selectedCaseId,
+        },
         prescriptionMeta,
         lines,
         inquiry: {
@@ -552,6 +582,8 @@ export function PrescriptionIntakeForm() {
     patientSearch,
     selectedPatientId,
     selectedPatientName,
+    selectedPatientNameKana,
+    selectedPatientBirthDate,
     selectedCaseId,
     prescriptionMeta,
     lines,
@@ -590,9 +622,13 @@ export function PrescriptionIntakeForm() {
         id: patient.id,
         name: patient.name,
         name_kana: patient.name_kana,
+        birth_date: dateKeyFromApi(patient.birth_date),
       } satisfies SelectedPatientDetail;
     },
-    enabled: !!orgId && !!selectedPatientId && !selectedPatientName,
+    enabled:
+      !!orgId &&
+      !!selectedPatientId &&
+      (!selectedPatientName || !selectedPatientNameKana || !selectedPatientBirthDate),
     staleTime: 30_000,
   });
 
@@ -655,6 +691,8 @@ export function PrescriptionIntakeForm() {
     const timer = window.setTimeout(() => {
       updatePatientSelection({
         selectedPatientName: selectedPatientData.name,
+        selectedPatientNameKana: selectedPatientData.name_kana,
+        selectedPatientBirthDate: dateKeyFromApi(selectedPatientData.birth_date),
         ...(!patientSearch.trim()
           ? { patientSearch: `${selectedPatientData.name} (${selectedPatientData.name_kana})` }
           : {}),
@@ -672,6 +710,8 @@ export function PrescriptionIntakeForm() {
       updatePatientSelection({
         selectedPatientId: qrDraftData.patient_id ?? '',
         selectedPatientName: qrDraftData.parsed_data.patientName ?? '',
+        selectedPatientNameKana: qrDraftData.parsed_data.patientNameKana ?? '',
+        selectedPatientBirthDate: '',
         patientSearch:
           qrDraftData.parsed_data.patientName && qrDraftData.parsed_data.patientNameKana
             ? `${qrDraftData.parsed_data.patientName} (${qrDraftData.parsed_data.patientNameKana})`
@@ -787,6 +827,7 @@ export function PrescriptionIntakeForm() {
           entries: facilityBatchEntries.map((entry) => ({
             case_id: entry.case_id,
             patient_id: entry.patient_id,
+            patient_identity_snapshot: entry.patient_identity_snapshot,
             lines: entry.lines.map((line, index) => ({
               ...line,
               line_number: index + 1,
@@ -1127,6 +1168,8 @@ export function PrescriptionIntakeForm() {
       patientSearch: '',
       selectedPatientId: '',
       selectedPatientName: '',
+      selectedPatientNameKana: '',
+      selectedPatientBirthDate: '',
       selectedCaseId: '',
     });
     setLines([emptyLine()]);
@@ -1153,6 +1196,11 @@ export function PrescriptionIntakeForm() {
       return;
     }
 
+    if (!selectedPatientNameKana || !selectedPatientBirthDate) {
+      setError('患者情報を読み込み直してから施設まとめ処方に追加してください');
+      return;
+    }
+
     const emptyLines = lines.filter((line) => !line.drug_name || !line.dose || !line.frequency);
     if (emptyLines.length > 0) {
       setError('施設まとめ処方に追加する前に、現在の患者の処方明細をすべて入力してください');
@@ -1171,14 +1219,22 @@ export function PrescriptionIntakeForm() {
 
     const selectedCase =
       casesData?.data.find((candidate) => candidate.id === selectedCaseId) ?? null;
+    const identitySnapshot: PatientIdentitySnapshot = {
+      name: selectedPatientName,
+      name_kana: selectedPatientNameKana,
+      birth_date: selectedPatientBirthDate,
+    };
     setFacilityBatchEntries((prev) => [
       ...prev,
       {
         patient_id: selectedPatientId,
         patient_name: selectedPatientName,
+        patient_name_kana: selectedPatientNameKana,
+        patient_birth_date: selectedPatientBirthDate,
+        patient_identity_snapshot: identitySnapshot,
         case_id: selectedCaseId,
         case_status: selectedCase?.status ?? 'active',
-        residence_label: selectedCase?.patient?.residences?.[0]?.address ?? null,
+        facility_label: selectedCase?.patient?.residences?.[0]?.address ? '施設確認済み' : null,
         lines: lines.map((line, index) => ({
           ...line,
           line_number: index + 1,
@@ -1728,6 +1784,8 @@ export function PrescriptionIntakeForm() {
                 patientSearch: e.target.value,
                 selectedPatientId: '',
                 selectedPatientName: '',
+                selectedPatientNameKana: '',
+                selectedPatientBirthDate: '',
                 selectedCaseId: '',
               });
               setLines([emptyLine()]);
@@ -1775,6 +1833,8 @@ export function PrescriptionIntakeForm() {
                       updatePatientSelection({
                         selectedPatientId: p.id,
                         selectedPatientName: p.name,
+                        selectedPatientNameKana: p.name_kana,
+                        selectedPatientBirthDate: dateKeyFromApi(p.birth_date),
                         patientSearch: `${p.name} (${p.name_kana})`,
                         selectedCaseId: '',
                       });
@@ -2420,6 +2480,9 @@ export function PrescriptionIntakeForm() {
               <div className="space-y-1 text-sm">
                 <p className="font-medium text-foreground">
                   現在の患者: {selectedPatientName || '未選択'}
+                  {selectedPatientNameKana ? (
+                    <span className="ml-1 text-muted-foreground">({selectedPatientNameKana})</span>
+                  ) : null}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   ケース {selectedCaseId ? `${selectedCaseId.slice(-8)}` : '未選択'} / 明細{' '}
@@ -2454,13 +2517,16 @@ export function PrescriptionIntakeForm() {
                       <div className="space-y-1 text-sm">
                         <p className="font-medium text-foreground">
                           {index + 1}. {entry.patient_name}
+                          <span className="ml-1 text-xs font-normal text-muted-foreground">
+                            ({entry.patient_name_kana})
+                          </span>
                         </p>
                         <p className="text-xs text-muted-foreground">
                           ケース {entry.case_id.slice(-8)} / {entry.case_status} /{' '}
                           {entry.lines.length} 行
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {entry.residence_label ?? '住所未設定'}
+                          {entry.facility_label ?? '施設未設定'}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {entry.lines
