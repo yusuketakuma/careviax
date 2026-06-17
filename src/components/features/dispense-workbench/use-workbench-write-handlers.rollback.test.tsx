@@ -5,11 +5,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { WorkbenchMutations } from './use-workbench-mutations';
 
-function mutationStub(
-  onMutate?: (input: unknown, options?: { onError?: (error: unknown) => void }) => void,
-) {
+type MutationOptions = {
+  onError?: (error: unknown) => void;
+  onSuccess?: (data: unknown) => void;
+};
+
+function mutationStub(onMutate?: (input: unknown, options?: MutationOptions) => void) {
   return {
-    mutate: vi.fn((input: unknown, options?: { onError?: (error: unknown) => void }) => {
+    mutate: vi.fn((input: unknown, options?: MutationOptions) => {
       onMutate?.(input, options);
     }),
   };
@@ -20,6 +23,7 @@ function fakeMutations(
 ): WorkbenchMutations {
   return {
     completeDispense: mutationStub(),
+    completeAudit: mutationStub(),
     cellMutation: mutationStub(),
     bulkSet: mutationStub(),
     setAudit: mutationStub(),
@@ -273,5 +277,72 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
     expect(createHold.mutate).not.toHaveBeenCalled();
     expect(useWorkbenchStore.getState().setCells[key]).toBe('set');
     expect(useWorkbenchStore.getState().holdInfo[key]).toBeUndefined();
+  });
+
+  it('submits dispense audit approval before advancing from audit to set in real-data mode', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const completeAudit = mutationStub((_input, options) => options?.onSuccess?.({}));
+    const onAdvance = vi.fn();
+
+    act(() => {
+      useWorkbenchStore.setState({
+        selId: 'patient_1',
+        model: {
+          patient_1: [
+            {
+              gid: 'group_1',
+              label: '朝食後',
+              method: '一包化',
+              start: '2026-06-17',
+              days: 1,
+              drugs: [
+                {
+                  did: 'line_1',
+                  name: 'アムロジピン錠5mg',
+                  yoho: '朝食後',
+                  a: '1',
+                  h: '',
+                  y: '',
+                  n: '',
+                  tag: '',
+                  funsai: false,
+                  note: '',
+                },
+              ],
+            },
+          ],
+        },
+        audit: { line_1: true },
+        writeContext: {
+          taskId: 'task_1',
+          cycleId: 'cycle_1',
+          cycleVersion: 4,
+          planId: null,
+          lineGroupByDid: {},
+          groupIdByGid: {},
+          cellMeta: {},
+        },
+      });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'audit',
+        mutations: fakeMutations({ completeAudit }),
+        onAdvance,
+      }),
+    );
+
+    let nextPhase: unknown;
+    act(() => {
+      nextPhase = result.current.onPrimary();
+    });
+
+    expect(nextPhase).toBeNull();
+    expect(completeAudit.mutate).toHaveBeenCalledWith(
+      { task_id: 'task_1', result: 'approved' },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
+    expect(onAdvance).toHaveBeenCalledWith('setp');
   });
 });

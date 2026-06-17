@@ -27,6 +27,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
   isRealDataEnabled,
   submitDispenseResults,
+  submitDispenseAudit,
   mutateCell,
   bulkSetCells,
   submitSetAudit,
@@ -40,6 +41,7 @@ import {
   WorkbenchConflictError,
   WorkbenchWriteError,
   type SubmitDispenseResultsInput,
+  type SubmitDispenseAuditInput,
   type CellMutationInput,
   type SubmitSetAuditInput,
   type CreateCycleHoldInput,
@@ -101,6 +103,21 @@ export function useWorkbenchMutations(args: { patientId: string; planId: string 
     },
     onError: (error) => {
       reportWorkbenchError(error, '調剤完了の登録に失敗しました');
+      if (error instanceof WorkbenchConflictError) invalidateWorkbench();
+    },
+    onSettled: () => {
+      if (isRealDataEnabled()) invalidateWorkbench();
+    },
+  });
+
+  // ── 調剤監査完了（POST /api/dispense-audits）──
+  const completeAudit = useMutation({
+    mutationFn: async (input: SubmitDispenseAuditInput) => {
+      if (!isRealDataEnabled()) return null;
+      return submitDispenseAudit(input);
+    },
+    onError: (error) => {
+      reportWorkbenchError(error, '調剤監査の登録に失敗しました');
       if (error instanceof WorkbenchConflictError) invalidateWorkbench();
     },
     onSettled: () => {
@@ -255,6 +272,7 @@ export function useWorkbenchMutations(args: { patientId: string; planId: string 
 
   return {
     completeDispense,
+    completeAudit,
     cellMutation,
     bulkSet,
     setAudit,
@@ -266,6 +284,7 @@ export function useWorkbenchMutations(args: { patientId: string; planId: string 
     /** いずれかの書込が進行中（シェルがグローバルな二重送信ガードに使える）。 */
     isAnyPending:
       completeDispense.isPending ||
+      completeAudit.isPending ||
       cellMutation.isPending ||
       bulkSet.isPending ||
       setAudit.isPending ||

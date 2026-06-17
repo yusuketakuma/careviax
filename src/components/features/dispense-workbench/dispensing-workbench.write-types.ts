@@ -210,6 +210,15 @@ export interface SubmitDispenseResultsInput {
   expected_version?: number;
 }
 
+export interface SubmitDispenseAuditInput {
+  task_id: string;
+  result: 'approved' | 'rejected' | 'hold' | 'emergency_approved';
+  reject_reason?: string;
+  reject_reason_code?: string;
+  reject_detail?: string;
+  same_operator_reason?: string;
+}
+
 export interface CellMutationInput {
   batch_id: string;
   action: 'set' | 'hold' | 'clear';

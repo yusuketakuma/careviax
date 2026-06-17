@@ -42,6 +42,7 @@ import {
   type CalendarMatrixResponse,
   type SetBatchDto,
   type SubmitDispenseResultsInput,
+  type SubmitDispenseAuditInput,
   type CellMutationInput,
   type SubmitSetAuditInput,
   type CreateCycleHoldInput,
@@ -373,6 +374,14 @@ export async function submitDispenseResults(
     ...input,
     safety_checklist: DISPENSE_SAFETY_CHECKLIST_ACK,
   });
+}
+
+/** 調剤監査完了（POST /api/dispense-audits）。 */
+export async function submitDispenseAudit(
+  input: SubmitDispenseAuditInput,
+): Promise<{ data: unknown } | MockWriteNoop> {
+  if (USE_MOCK) return MOCK_WRITE_NOOP;
+  return mutateJson('/api/dispense-audits', 'POST', input);
 }
 
 /** セル set/hold/clear（PATCH /api/set-plans/[planId]/batches/cell）。 */

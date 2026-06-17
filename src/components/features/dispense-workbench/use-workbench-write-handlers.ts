@@ -244,6 +244,16 @@ export function useWorkbenchWriteHandlers(args: {
                   onSuccess: () => onAdvance?.(next),
                 },
               );
+            } else if (phase === 'audit' && s.writeContext.taskId) {
+              mutations.completeAudit.mutate(
+                {
+                  task_id: s.writeContext.taskId,
+                  result: 'approved',
+                },
+                {
+                  onSuccess: () => onAdvance?.(next),
+                },
+              );
             } else if (phase === 'seta' && s.writeContext.planId) {
               const cellAudits = collectSetAuditCellAudits(s, 'ok');
               mutations.setAudit.mutate(
