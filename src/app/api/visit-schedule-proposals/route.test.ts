@@ -26,6 +26,7 @@ const {
   visitScheduleProposalUpdateManyMock,
   visitScheduleProposalCreateMock,
   auditLogCreateMock,
+  taskUpdateManyMock,
   withOrgContextMock,
   findActiveVisitConsentMock,
   findCurrentManagementPlanMock,
@@ -53,6 +54,7 @@ const {
   visitScheduleProposalUpdateManyMock: vi.fn(),
   visitScheduleProposalCreateMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
+  taskUpdateManyMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   findActiveVisitConsentMock: vi.fn(),
   findCurrentManagementPlanMock: vi.fn(),
@@ -179,6 +181,7 @@ function buildExpectedProposalRequestFingerprint(overrides?: Record<string, unkn
     preferred_pharmacist_id: null,
     vehicle_resource_id: null,
     reschedule_source_schedule_id: null,
+    reproposal_source_proposal_id: null,
     special_cap_eligible: null,
     ...overrides,
   });
@@ -329,6 +332,9 @@ describe('/api/visit-schedule-proposals', () => {
         },
         auditLog: {
           create: auditLogCreateMock,
+        },
+        task: {
+          updateMany: taskUpdateManyMock,
         },
       }),
     );
@@ -497,6 +503,72 @@ describe('/api/visit-schedule-proposals', () => {
     expect(visitScheduleProposalCreateMock).toHaveBeenCalled();
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+  });
+
+  it('carries source schedule lineage and resolves reproposal tasks for change-requested reproposals', async () => {
+    visitScheduleProposalFindFirstMock.mockResolvedValueOnce({
+      id: 'proposal_source',
+      case_id: 'case_1',
+      proposal_status: 'reschedule_pending',
+      patient_contact_status: 'change_requested',
+      reschedule_source_schedule_id: 'schedule_source',
+    });
+    visitScheduleProposalCreateMock.mockImplementationOnce(({ data }) =>
+      Promise.resolve({ id: 'proposal_reproposal', ...data }),
+    );
+
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        visit_type: 'regular',
+        candidate_count: 1,
+        reproposal_source_proposal_id: 'proposal_source',
+        idempotency_key: 'proposal-reproposal-key-1',
+      }),
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
+      case_id: 'case_1',
+      schedule_id: 'schedule_source',
+    });
+    expect(generateVisitScheduleProposalDraftsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rescheduleSourceScheduleId: 'schedule_source',
+      }),
+    );
+    expect(visitScheduleProposalBatchCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        request_fingerprint: buildExpectedProposalRequestFingerprint({
+          reschedule_source_schedule_id: 'schedule_source',
+          reproposal_source_proposal_id: 'proposal_source',
+        }),
+      }),
+    });
+    expect(visitScheduleProposalUpdateManyMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        org_id: 'org_1',
+        case_id: 'case_1',
+        proposal_status: {
+          in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
+        },
+        reschedule_source_schedule_id: 'schedule_source',
+      }),
+      data: {
+        proposal_status: 'superseded',
+      },
+    });
+    expect(taskUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        status: { in: ['pending', 'in_progress'] },
+        dedupe_key: 'visit-reproposal-needed:proposal_source',
+      },
+      data: {
+        status: 'completed',
+        completed_at: expect.any(Date),
+      },
     });
   });
 

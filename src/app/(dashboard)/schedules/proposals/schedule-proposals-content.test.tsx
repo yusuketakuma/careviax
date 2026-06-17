@@ -223,10 +223,11 @@ function expectProposalQueryInvalidations() {
       ['visit-schedule-proposals', 'org_1'],
       ['visit-schedules', 'week-board', 'org_1'],
       ['schedule-day-board', 'org_1'],
+      ['tasks', 'schedule-board', 'org_1'],
       ['tasks', 'visit-contact-followup', 'org_1'],
     ]),
   );
-  expect(invalidateQueriesMock).toHaveBeenCalledTimes(6);
+  expect(invalidateQueriesMock).toHaveBeenCalledTimes(7);
 }
 
 function expectToastMessagesExcludeSensitiveDetails() {
@@ -2123,6 +2124,15 @@ describe('ScheduleProposalsContent', () => {
         }),
       );
     });
+    expect(
+      String(
+        fetchMock.mock.calls.find(
+          ([url, init]) =>
+            url === '/api/visit-schedule-proposals' &&
+            (init as RequestInit | undefined)?.method === 'POST',
+        )?.[1]?.body,
+      ),
+    ).toContain('"reproposal_source_proposal_id":"proposal_1"');
     expect(
       fetchMock.mock.calls.some(
         ([url, init]) =>

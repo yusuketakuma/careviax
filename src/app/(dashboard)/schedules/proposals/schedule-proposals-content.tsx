@@ -1121,6 +1121,7 @@ export function ScheduleProposalsContent({
       queryClient.invalidateQueries({ queryKey: ['visit-schedule-proposals', orgId] }),
       queryClient.invalidateQueries({ queryKey: ['visit-schedules', 'week-board', orgId] }),
       queryClient.invalidateQueries({ queryKey: ['schedule-day-board', orgId] }),
+      queryClient.invalidateQueries({ queryKey: ['tasks', 'schedule-board', orgId] }),
       queryClient.invalidateQueries({ queryKey: ['tasks', 'visit-contact-followup', orgId] }),
     ]);
   };
@@ -1384,6 +1385,7 @@ export function ScheduleProposalsContent({
               proposalPreviewMap?.get(detail.id)?.suggested_schedule_slot_count ||
               '3',
           ),
+          reproposal_source_proposal_id: detail.id,
           idempotency_key: createProposalGenerationIdempotencyKey(detail.id),
         }),
       });

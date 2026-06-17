@@ -33,6 +33,8 @@ import { resolveBillingPayerBasis } from '@/server/services/billing-payer-basis'
 import { resolvePatientInsurance } from '@/server/services/patient-insurance';
 import { findLatestPrescriptionIntakeClassification } from '@/server/services/prescription-intake-classification';
 import { generateVisitScheduleProposalDrafts } from '@/server/services/visit-schedule-planner';
+import { resolveOperationalTasks } from '@/server/services/operational-tasks';
+import { buildVisitScheduleReproposalTaskKey } from '@/server/services/visit-schedule-communication';
 import {
   formatVisitWorkflowGateIssues,
   type VisitWorkflowGateIssue,
@@ -107,6 +109,7 @@ function buildProposalRequestFingerprint(input: GenerateProposalFingerprintInput
     preferred_pharmacist_id: input.preferredPharmacistId ?? null,
     vehicle_resource_id: input.vehicleResourceId ?? null,
     reschedule_source_schedule_id: input.rescheduleSourceScheduleId ?? null,
+    reproposal_source_proposal_id: input.reproposalSourceProposalId ?? null,
     special_cap_eligible: input.specialCapEligible ?? null,
   });
   return `visit-proposal:v1:${createHash('sha256').update(material).digest('hex')}`;
@@ -125,6 +128,7 @@ type GenerateProposalFingerprintInput = {
   preferredPharmacistId?: string;
   vehicleResourceId?: string;
   rescheduleSourceScheduleId?: string;
+  reproposalSourceProposalId?: string;
   specialCapEligible?: boolean;
 };
 
@@ -458,13 +462,54 @@ export const POST = withAuthContext(
     });
     if (!accessibleCase) return notFound('ケースが見つかりません');
 
+    const reproposalSourceProposal = parsed.data.reproposal_source_proposal_id
+      ? await prisma.visitScheduleProposal.findFirst({
+          where: {
+            id: parsed.data.reproposal_source_proposal_id,
+            org_id: ctx.orgId,
+          },
+          select: {
+            id: true,
+            case_id: true,
+            proposal_status: true,
+            patient_contact_status: true,
+            reschedule_source_schedule_id: true,
+          },
+        })
+      : null;
+    if (parsed.data.reproposal_source_proposal_id && !reproposalSourceProposal) {
+      return notFound('再提案元の訪問候補が見つかりません');
+    }
+    if (reproposalSourceProposal?.case_id !== undefined) {
+      if (reproposalSourceProposal.case_id !== parsed.data.case_id) {
+        return validationError('再提案元の訪問候補とケースが一致しません');
+      }
+      if (
+        reproposalSourceProposal.proposal_status !== 'reschedule_pending' ||
+        reproposalSourceProposal.patient_contact_status !== 'change_requested'
+      ) {
+        return validationError('変更希望として記録された訪問候補から再提案してください');
+      }
+      const sourceScheduleId = reproposalSourceProposal.reschedule_source_schedule_id ?? undefined;
+      if (
+        parsed.data.reschedule_source_schedule_id !== undefined &&
+        parsed.data.reschedule_source_schedule_id !== sourceScheduleId
+      ) {
+        return validationError('再提案元の予定情報が一致しません');
+      }
+    }
+    const resolvedRescheduleSourceScheduleId =
+      parsed.data.reschedule_source_schedule_id ??
+      reproposalSourceProposal?.reschedule_source_schedule_id ??
+      undefined;
+
     const refResult = await validateOrgReferences(ctx.orgId, {
       case_id: parsed.data.case_id,
       ...(parsed.data.preferred_pharmacist_id
         ? { pharmacist_id: parsed.data.preferred_pharmacist_id }
         : {}),
-      ...(parsed.data.reschedule_source_schedule_id
-        ? { schedule_id: parsed.data.reschedule_source_schedule_id }
+      ...(resolvedRescheduleSourceScheduleId
+        ? { schedule_id: resolvedRescheduleSourceScheduleId }
         : {}),
     });
     if (!refResult.ok) return refResult.response;
@@ -560,7 +605,7 @@ export const POST = withAuthContext(
         preferredTimeTo: parsed.data.preferred_time_to,
         preferredPharmacistId: parsed.data.preferred_pharmacist_id,
         vehicleResourceId: parsed.data.vehicle_resource_id,
-        rescheduleSourceScheduleId: parsed.data.reschedule_source_schedule_id,
+        rescheduleSourceScheduleId: resolvedRescheduleSourceScheduleId,
       });
       drafts = plannerResult.drafts;
       plannerDiagnostics = plannerResult.diagnostics;
@@ -697,7 +742,8 @@ export const POST = withAuthContext(
           preferredTimeTo: parsed.data.preferred_time_to,
           preferredPharmacistId: parsed.data.preferred_pharmacist_id,
           vehicleResourceId: parsed.data.vehicle_resource_id,
-          rescheduleSourceScheduleId: parsed.data.reschedule_source_schedule_id,
+          rescheduleSourceScheduleId: resolvedRescheduleSourceScheduleId,
+          reproposalSourceProposalId: parsed.data.reproposal_source_proposal_id,
           specialCapEligible: parsed.data.special_cap_eligible,
         })
       : null;
@@ -768,8 +814,8 @@ export const POST = withAuthContext(
             proposal_status: {
               in: ['proposed', 'patient_contact_pending', 'reschedule_pending'],
             },
-            ...(parsed.data.reschedule_source_schedule_id
-              ? { reschedule_source_schedule_id: parsed.data.reschedule_source_schedule_id }
+            ...(resolvedRescheduleSourceScheduleId
+              ? { reschedule_source_schedule_id: resolvedRescheduleSourceScheduleId }
               : { reschedule_source_schedule_id: null }),
           },
           data: {
@@ -815,6 +861,16 @@ export const POST = withAuthContext(
             });
           }),
         );
+
+        if (parsed.data.reproposal_source_proposal_id) {
+          await resolveOperationalTasks(tx, {
+            orgId: ctx.orgId,
+            dedupeKey: buildVisitScheduleReproposalTaskKey(
+              parsed.data.reproposal_source_proposal_id,
+            ),
+            status: 'completed',
+          });
+        }
 
         return { proposals: created, replayed: false };
       },
