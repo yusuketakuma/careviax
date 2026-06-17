@@ -1007,7 +1007,16 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
             {dateLabel} — 訪問は固定点・仕事はその間を流れる
           </p>
         </div>
-        <ScheduleViewModeToggle activeView={activeView} date={dateKey} />
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/schedules/proposals?workspace=optimizer"
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+          >
+            <Plus className="size-3.5" aria-hidden="true" />
+            予定を作る
+          </Link>
+          <ScheduleViewModeToggle activeView={activeView} date={dateKey} />
+        </div>
       </div>
 
       {activeView !== 'list' ? null : (

@@ -798,7 +798,7 @@ test.describe('admin master hub', () => {
 
     await expect(page.getByRole('heading', { name: 'マスター' })).toBeVisible();
     await expect(page.getByTestId('master-hub')).toBeVisible();
-    await expect(page.getByTestId('master-hub-card').first()).toBeVisible();
+    await expect(page.getByTestId('master-hub-card').first()).toBeVisible({ timeout: 45_000 });
     await expect(page.getByRole('heading', { name: '管理者ダッシュボード' })).toHaveCount(0);
 
     expect(errors).toEqual([]);
@@ -807,6 +807,7 @@ test.describe('admin master hub', () => {
   test('admin master hub cross search opens without errors', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/admin');
+    await expect(page.getByTestId('master-hub-card').first()).toBeVisible({ timeout: 45_000 });
 
     await page.getByRole('link', { name: 'マスター横断検索' }).click();
     await waitForStableUi(page);

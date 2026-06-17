@@ -1,9 +1,11 @@
 import { Skeleton, SkeletonRows } from '@/components/ui/loading';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { WorkbenchLoadingNav } from '@/components/features/dispense-workbench/workbench-loading-nav';
 
 export default function DispenseLoading() {
   return (
     <PageScaffold aria-label="調剤キューを読み込み中">
+      <WorkbenchLoadingNav phase="dispense" />
       <div className="space-y-3">
         <Skeleton className="h-3 w-28" />
         <Skeleton className="h-8 w-48" />
