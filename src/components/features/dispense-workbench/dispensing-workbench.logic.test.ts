@@ -23,6 +23,7 @@ import {
   sumU,
   totals,
 } from './dispensing-workbench.logic';
+import { SET_AUDIT_CHECK_ITEMS } from './dispensing-workbench.write-types';
 import type { Drug, Group } from './dispensing-workbench.types';
 
 const PATIENTS = buildPatients();
@@ -267,7 +268,7 @@ describe('calcGate（4区分ゲート）', () => {
     expect(g.text).toMatch(/NG/);
   });
 
-  it('seta は全セル ok で承認可', () => {
+  it('seta は全セル ok でも6項目チェック未完了なら不可', () => {
     const id = '0003';
     const cal = calc(MODEL, id);
     const auditCells: Record<string, string> = {};
@@ -281,6 +282,29 @@ describe('calcGate（4区分ゲート）', () => {
       auditCells,
       outChk: {},
       packet: {},
+    });
+    expect(g.ok).toBe(false);
+    expect(g.text).toMatch(/確認 6/);
+  });
+
+  it('seta は全セル ok + 6項目チェック完了で承認可', () => {
+    const id = '0003';
+    const cal = calc(MODEL, id);
+    const auditCells: Record<string, string> = {};
+    for (let di = 0; di < 7; di++)
+      cal.active.forEach((tk) => (auditCells[cellKey(id, di, tk)] = 'ok'));
+    const checks = Object.fromEntries(
+      SET_AUDIT_CHECK_ITEMS.map((_, index) => [`${cellKey(id, 0, cal.active[0])}:${index}`, true]),
+    );
+    const g = calcGate({
+      phase: 'seta',
+      model: MODEL,
+      id,
+      setCells: {},
+      auditCells,
+      outChk: {},
+      packet: {},
+      checks,
     });
     expect(g.ok).toBe(true);
     expect(g.text).toMatch(/承認可/);
@@ -331,7 +355,18 @@ describe('calcGate（4区分ゲート）', () => {
       }),
     ).toMatchObject({ ok: true });
     expect(
-      calcGate({ phase: 'seta', model, id, setCells: {}, auditCells, outChk: {}, packet: {} }),
+      calcGate({
+        phase: 'seta',
+        model,
+        id,
+        setCells: {},
+        auditCells,
+        outChk: {},
+        packet: {},
+        checks: Object.fromEntries(
+          SET_AUDIT_CHECK_ITEMS.map((_, index) => [`${cellKey(id, 0, '朝')}:${index}`, true]),
+        ),
+      }),
     ).toMatchObject({ ok: true });
   });
 });

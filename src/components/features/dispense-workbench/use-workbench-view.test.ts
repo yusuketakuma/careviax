@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import { buildView } from './use-workbench-view';
 import type { SeedPatient, WorkbenchModel } from './dispensing-workbench.types';
+import { cellKey } from './dispensing-workbench.logic';
+import { SET_AUDIT_CHECK_ITEMS } from './dispensing-workbench.write-types';
 
 const patient: SeedPatient = {
   id: 'patient_api',
@@ -140,4 +142,44 @@ describe('buildView calendar period', () => {
       expect(view.primary.cursor).toBe('not-allowed');
     },
   );
+
+  it('blocks set-audit approval until all six checklist items are complete', () => {
+    const auditCells = { [cellKey(patient.id, 0, '朝')]: 'ok' };
+    const base = {
+      phase: 'seta' as const,
+      selId: patient.id,
+      sortMode: 'start' as const,
+      done: {},
+      audit: {},
+      setCells: {},
+      auditCells,
+      outChk: {},
+      checks: {},
+      ng: {},
+      target: { di: 0, tk: '朝' },
+      holdModal: null,
+      holdInfo: {},
+      packet: {},
+      compareOpen: false,
+      model,
+      patients: [patient],
+    };
+
+    const blocked = buildView(base);
+    expect(blocked.gate).toMatchObject({
+      ok: false,
+      text: '完了条件：未監査 0・NG 0・確認 6',
+    });
+    expect(blocked.primary.cursor).toBe('not-allowed');
+
+    const completeChecks = Object.fromEntries(
+      SET_AUDIT_CHECK_ITEMS.map((_, index) => [`${cellKey(patient.id, 0, '朝')}:${index}`, true]),
+    );
+    const allowed = buildView({ ...base, checks: completeChecks });
+    expect(allowed.gate).toMatchObject({
+      ok: true,
+      text: '✓ 全セル監査OK（承認可）',
+    });
+    expect(allowed.primary.cursor).toBe('pointer');
+  });
 });

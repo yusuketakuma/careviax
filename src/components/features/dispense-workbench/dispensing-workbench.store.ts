@@ -418,6 +418,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           auditCells: s.auditCells,
           outChk: s.outChk,
           packet: s.packet,
+          checks: s.checks,
         });
         if (!gate.ok) return null;
         set({ target: null });

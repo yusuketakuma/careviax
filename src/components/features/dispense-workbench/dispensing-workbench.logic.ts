@@ -21,6 +21,7 @@ import type {
   TimingKey,
   WorkbenchModel,
 } from './dispensing-workbench.types';
+import { SET_AUDIT_CHECK_ITEMS } from './dispensing-workbench.write-types';
 
 // ============================================================================
 // 数値・セル整形
@@ -401,7 +402,7 @@ export function cellKey(id: string, di: number, tk: string): string {
  * 完了ゲート判定。
  * - グリッド工程（dispense/audit）: 常に ok
  * - setp: 未セット・外薬未確認・持出未完が全て0で ok
- * - seta: 未監査0 かつ NG0 で ok
+ * - seta: 未監査0・NG0・セット監査チェック6項目完了で ok
  */
 export function calcGate(args: {
   phase: Phase;
@@ -411,8 +412,9 @@ export function calcGate(args: {
   auditCells: Record<string, string>;
   outChk: Record<string, boolean>;
   packet: Record<string, boolean>;
+  checks?: Record<string, boolean>;
 }): GateResult {
-  const { phase, model, id, setCells, auditCells, outChk, packet } = args;
+  const { phase, model, id, setCells, auditCells, outChk, packet, checks = {} } = args;
   if (phase !== 'setp' && phase !== 'seta') return { ok: true, text: '' };
   const cal = calc(model, id);
   const dayCount = calendarDayCountOf(model[id] ?? []);
@@ -443,10 +445,22 @@ export function calcGate(args: {
     };
   }
   const remain = total - dnC;
-  const ok = remain === 0 && ng === 0;
+  const completedCheckIndexes = new Set<number>();
+  const checkPrefix = `${id}:`;
+  for (const [key, checked] of Object.entries(checks)) {
+    if (!checked || !key.startsWith(checkPrefix)) continue;
+    const index = Number(key.slice(key.lastIndexOf(':') + 1));
+    if (Number.isInteger(index) && index >= 0 && index < SET_AUDIT_CHECK_ITEMS.length) {
+      completedCheckIndexes.add(index);
+    }
+  }
+  const checkRemain = SET_AUDIT_CHECK_ITEMS.length - completedCheckIndexes.size;
+  const ok = remain === 0 && ng === 0 && checkRemain === 0;
   return {
     ok,
-    text: ok ? '✓ 全セル監査OK（承認可）' : '完了条件：未監査 ' + remain + '・NG ' + ng,
+    text: ok
+      ? '✓ 全セル監査OK（承認可）'
+      : '完了条件：未監査 ' + remain + '・NG ' + ng + '・確認 ' + checkRemain,
   };
 }
 

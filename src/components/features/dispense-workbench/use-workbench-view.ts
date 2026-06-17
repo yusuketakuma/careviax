@@ -732,7 +732,16 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
   if (!riskList.length) RK('通常の定時薬', '#5a8f4a');
 
   // ---- progress + gate + primary ----
-  const gateResult = calcGate({ phase: ph, model, id, setCells, auditCells, outChk, packet });
+  const gateResult = calcGate({
+    phase: ph,
+    model,
+    id,
+    setCells,
+    auditCells,
+    outChk,
+    packet,
+    checks,
+  });
   let progress: WorkbenchView['progress'];
   let bulkLabel: string;
   let primaryLabel: string;
