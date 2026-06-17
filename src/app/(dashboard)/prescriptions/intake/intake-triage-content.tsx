@@ -206,11 +206,7 @@ function ProcessStrip() {
 
 function TriageSkeleton() {
   return (
-    <div
-      className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]"
-      role="status"
-      aria-label="取込キュー読み込み中"
-    >
+    <div className="space-y-4" role="status" aria-label="取込キュー読み込み中">
       <div className="space-y-4">
         <Skeleton className="h-80 w-full rounded-lg" />
         <Skeleton className="h-12 w-full rounded-lg" />
@@ -317,7 +313,7 @@ export function IntakeTriageContent() {
             />
           </div>
         ) : (
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]">
+          <div className="space-y-4">
             <div className="min-w-0 space-y-4">
               {/* 取込キュー */}
               <section
@@ -396,19 +392,17 @@ export function IntakeTriageContent() {
             </div>
 
             {/* 右レール: 次にやること / 止まっている理由 / 根拠・記録 */}
-            <div className="space-y-4">
-              <WorkspaceActionRail
-                nextAction={buildDailyOpsNextAction(cockpit, {
-                  actionLabel: '取込キューを確認する',
-                  actionHref: '/prescriptions',
-                  description: 'いま期限で止まっている作業はありません。',
-                })}
-                blockedReasons={buildDailyOpsBlockedReasons(cockpit)}
-                blockedReasonsEmptyLabel="止まっている作業はありません"
-                evidence={evidence}
-                evidenceOpenLabel="開く"
-              />
-            </div>
+            <WorkspaceActionRail
+              nextAction={buildDailyOpsNextAction(cockpit, {
+                actionLabel: '取込キューを確認する',
+                actionHref: '/prescriptions',
+                description: 'いま期限で止まっている作業はありません。',
+              })}
+              blockedReasons={buildDailyOpsBlockedReasons(cockpit)}
+              blockedReasonsEmptyLabel="止まっている作業はありません"
+              evidence={evidence}
+              evidenceOpenLabel="開く"
+            />
           </div>
         )}
       </div>

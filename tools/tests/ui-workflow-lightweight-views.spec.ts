@@ -287,12 +287,17 @@ async function installPerformanceRouteMocks(page: Page) {
   );
 }
 
-function expectWorkflowView(requests: URL[], view: WorkflowView) {
-  expect(
-    requests.some(
-      (url) => url.pathname === '/api/dashboard/workflow' && url.searchParams.get('view') === view,
-    ),
-  ).toBe(true);
+async function expectWorkflowView(requests: URL[], view: WorkflowView) {
+  await expect
+    .poll(
+      () =>
+        requests.some(
+          (url) =>
+            url.pathname === '/api/dashboard/workflow' && url.searchParams.get('view') === view,
+        ),
+      { timeout: 15_000 },
+    )
+    .toBe(true);
 }
 
 test.describe('workflow lightweight dashboard views', () => {
@@ -320,7 +325,7 @@ test.describe('workflow lightweight dashboard views', () => {
       timeout: 30_000,
     });
     await expect(page.getByTestId('workflow-phase-panel')).toBeVisible({ timeout: 15_000 });
-    expectWorkflowView(workflowRequests, 'phase');
+    await expectWorkflowView(workflowRequests, 'phase');
     expect(errors).toEqual([]);
   });
 
@@ -341,7 +346,7 @@ test.describe('workflow lightweight dashboard views', () => {
       timeout: 30_000,
     });
     await expect(page.getByText('ライブワークベンチ')).toBeVisible();
-    expectWorkflowView(workflowRequests, 'realtime');
+    await expectWorkflowView(workflowRequests, 'realtime');
     expect(errors).toEqual([]);
   });
 
@@ -363,7 +368,7 @@ test.describe('workflow lightweight dashboard views', () => {
       timeout: 30_000,
     });
     await expect(page.getByText('API P95')).toBeVisible();
-    expectWorkflowView(workflowRequests, 'performance');
+    await expectWorkflowView(workflowRequests, 'performance');
     expect(errors).toEqual([]);
   });
 });

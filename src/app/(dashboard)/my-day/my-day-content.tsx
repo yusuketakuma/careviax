@@ -330,10 +330,7 @@ export function MyDayContent({
       : null;
 
   return (
-    <div
-      className="mx-auto w-full max-w-7xl space-y-4 p-3 sm:p-4 lg:p-6"
-      data-testid="my-day-content"
-    >
+    <div className="w-full space-y-4 p-3 sm:p-4 lg:p-6" data-testid="my-day-content">
       {contextSummary ? (
         <Alert
           className="border-sky-200 bg-sky-50 text-sky-900"

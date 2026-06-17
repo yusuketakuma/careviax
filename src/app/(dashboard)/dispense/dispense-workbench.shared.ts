@@ -231,6 +231,10 @@ export type DispenseWorkbenchPatientRow = {
   start_date: string | null;
   /** 登録日 'yyyy-MM-dd' (Patient.created_at)。 */
   registered_date: string;
+  /** 患者に紐づく最新 SetPlan。未作成なら null。 */
+  latest_set_plan_id: string | null;
+  /** 最新 SetPlan が属する cycle_id。未作成なら null。 */
+  latest_set_plan_cycle_id: string | null;
 };
 
 export type DispenseWorkbenchPatientsResponse = {

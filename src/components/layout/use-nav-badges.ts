@@ -1,13 +1,19 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { useAuthStore } from '@/lib/stores/auth-store';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 const NAV_BADGE_REFETCH_INTERVAL_MS = 60_000;
 
 /** href → 件数。undefined はバッジ非表示(0 件 or 取得失敗)。 */
 export type NavBadgeCounts = Record<string, number | undefined>;
+
+type NavBadgeApiPayload = {
+  data?: {
+    audit?: number;
+    handoff?: number;
+  };
+};
 
 type HandoffBoardItemSummary = {
   created_by?: string | null;
@@ -38,40 +44,25 @@ export function toBadgeCount(value: number | undefined): number | undefined {
  */
 export function useNavBadges(): NavBadgeCounts {
   const orgId = useOrgId();
-  const userId = useAuthStore((state) => state.currentUser.id);
 
-  const auditingQuery = useQuery({
-    queryKey: ['nav-badges', 'auditing', orgId],
+  const badgeQuery = useQuery({
+    queryKey: ['nav-badges', orgId],
     queryFn: async () => {
-      const res = await fetch('/api/dispense-audits?badge=1', {
+      const res = await fetch('/api/nav-badges', {
         headers: { 'x-org-id': orgId },
       });
-      if (!res.ok) throw new Error('監査キュー件数の取得に失敗しました');
-      const payload = (await res.json()) as { data?: { count?: number } };
-      return payload.data?.count ?? 0;
+      if (!res.ok) throw new Error('ナビゲーションバッジ件数の取得に失敗しました');
+      const payload = (await res.json()) as NavBadgeApiPayload;
+      return payload.data ?? {};
     },
     enabled: Boolean(orgId),
-    refetchInterval: NAV_BADGE_REFETCH_INTERVAL_MS,
-    retry: false,
-  });
-
-  const handoffQuery = useQuery({
-    queryKey: ['nav-badges', 'handoff', orgId, userId],
-    queryFn: async () => {
-      const res = await fetch('/api/handoff-board?badge=1', {
-        headers: { 'x-org-id': orgId },
-      });
-      if (!res.ok) throw new Error('ハンドオフ件数の取得に失敗しました');
-      const payload = (await res.json()) as { data?: { count?: number } };
-      return payload.data?.count ?? 0;
-    },
-    enabled: Boolean(orgId) && Boolean(userId),
+    staleTime: NAV_BADGE_REFETCH_INTERVAL_MS,
     refetchInterval: NAV_BADGE_REFETCH_INTERVAL_MS,
     retry: false,
   });
 
   return {
-    '/audit': toBadgeCount(auditingQuery.data),
-    '/handoff': toBadgeCount(handoffQuery.data),
+    '/audit': toBadgeCount(badgeQuery.data?.audit),
+    '/handoff': toBadgeCount(badgeQuery.data?.handoff),
   };
 }

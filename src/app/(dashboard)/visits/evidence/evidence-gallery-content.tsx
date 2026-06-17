@@ -31,29 +31,23 @@ import { buildEvidenceDemoItems } from './evidence-gallery.demo';
 const MAX_RECORDS_FOR_ATTACHMENTS = 12;
 
 type VisitRecordListResponse = {
-  data?: Array<{ id: string }>;
+  data?: VisitRecordDetailForEvidence[];
 };
 
-/** 一覧 → 詳細の順に既存 API を呼び、添付付きの訪問記録詳細を集める。 */
-async function fetchVisitRecordsWithAttachments(
+/** 証跡ギャラリー用に、添付 summary を含む訪問記録一覧を 1 回で取得する。 */
+export async function fetchVisitRecordsWithAttachments(
   orgId: string,
 ): Promise<VisitRecordDetailForEvidence[]> {
   const headers = { 'x-org-id': orgId };
-  const listRes = await fetch(`/api/visit-records?limit=${MAX_RECORDS_FOR_ATTACHMENTS}`, {
-    headers,
-  });
+  const listRes = await fetch(
+    `/api/visit-records?limit=${MAX_RECORDS_FOR_ATTACHMENTS}&include_attachments=true&view=evidence_gallery`,
+    {
+      headers,
+    },
+  );
   if (!listRes.ok) throw new Error('訪問記録の取得に失敗しました');
   const list = (await listRes.json()) as VisitRecordListResponse;
-
-  const details = await Promise.all(
-    (list.data ?? []).slice(0, MAX_RECORDS_FOR_ATTACHMENTS).map(async (record) => {
-      const res = await fetch(`/api/visit-records/${record.id}`, { headers });
-      if (!res.ok) return null;
-      return (await res.json()) as VisitRecordDetailForEvidence;
-    }),
-  );
-
-  return details.filter((detail): detail is VisitRecordDetailForEvidence => detail !== null);
+  return (list.data ?? []).slice(0, MAX_RECORDS_FOR_ATTACHMENTS);
 }
 
 const SYNC_BADGE_CLASSES: Record<EvidenceGalleryItem['syncState'], string> = {

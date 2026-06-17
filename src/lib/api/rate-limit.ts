@@ -629,6 +629,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/medication-profiles',
   '/api/medication-sets/workspace',
   '/api/meta/route-catalog',
+  '/api/nav-badges',
   '/api/notification-rules',
   '/api/notification-rules/:id',
   '/api/notifications',

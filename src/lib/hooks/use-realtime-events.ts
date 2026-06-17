@@ -1,17 +1,26 @@
 'use client';
 
 import { useEffect, useEffectEvent, useState } from 'react';
-import { subscribeSharedRealtimeStream } from '@/lib/realtime/shared-event-stream';
+import {
+  subscribeSharedRealtimeStream,
+  type RealtimePresenceTarget,
+} from '@/lib/realtime/shared-event-stream';
 import { useOrgId } from './use-org-id';
 
 interface UseRealtimeEventsOptions {
   onEvent: (event: unknown) => void;
   enabled?: boolean;
+  presenceTargets?: RealtimePresenceTarget[];
 }
 
 const NOTIFICATION_STREAM_DISABLED = process.env.NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM === '1';
+const EMPTY_PRESENCE_TARGETS: RealtimePresenceTarget[] = [];
 
-export function useRealtimeEvents({ onEvent, enabled = true }: UseRealtimeEventsOptions) {
+export function useRealtimeEvents({
+  onEvent,
+  enabled = true,
+  presenceTargets = EMPTY_PRESENCE_TARGETS,
+}: UseRealtimeEventsOptions) {
   const orgId = useOrgId();
   const [connectionState, setConnectionState] = useState<{
     orgId: string | null;
@@ -28,8 +37,9 @@ export function useRealtimeEvents({ onEvent, enabled = true }: UseRealtimeEvents
       orgId,
       onEvent: (event) => handleEvent(event),
       onStatus: (connected) => setConnectionState({ orgId, connected }),
+      presenceTargets,
     });
-  }, [enabled, orgId]);
+  }, [enabled, orgId, presenceTargets]);
 
   return {
     connected:

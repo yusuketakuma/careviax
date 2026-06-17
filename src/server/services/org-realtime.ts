@@ -5,6 +5,7 @@ export const ORG_REALTIME_EVENT_TYPES = [
   'workflow_refresh',
   'qr_draft_created',
   'qr_draft_confirmed',
+  'comment_refresh',
 ] as const;
 
 export const WORKFLOW_REALTIME_SOURCES = [

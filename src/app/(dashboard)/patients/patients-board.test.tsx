@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { useUIStore } from '@/lib/stores/ui-store';
 import type { PatientBoardCard, PatientBoardResponse } from '@/types/patient-board';
 
 setupDomTestEnv();
@@ -172,6 +173,7 @@ function buildFixture(): PatientBoardResponse {
 
 describe('PatientsBoard', () => {
   beforeEach(() => {
+    useUIStore.setState({ workspaceRailOpen: true });
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 12, 9, 42));
     refetchMock.mockClear();

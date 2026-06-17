@@ -1,0 +1,82 @@
+{
+  "executionRoleArn": "<TASK_EXECUTION_ROLE_ARN>",
+  "infrastructureRoleArn": "<INFRASTRUCTURE_ROLE_ARN>",
+  "taskRoleArn": "<APP_TASK_ROLE_ARN>",
+  "serviceName": "ph-os-ecs-express",
+  "cluster": "default",
+  "healthCheckPath": "/api/health",
+  "primaryContainer": {
+    "image": "<ECR_REPOSITORY_URI>:pilot",
+    "containerPort": 3000,
+    "awsLogsConfiguration": {
+      "logGroup": "/aws/ecs/ph-os-ecs-express",
+      "logStreamPrefix": "ph-os"
+    },
+    "environment": [
+      {
+        "name": "NODE_ENV",
+        "value": "production"
+      },
+      {
+        "name": "PORT",
+        "value": "3000"
+      },
+      {
+        "name": "PHOS_DISABLE_LEGACY_FILE_API",
+        "value": "1"
+      },
+      {
+        "name": "RATE_LIMIT_STORE",
+        "value": "dynamodb"
+      },
+      {
+        "name": "AWS_REGION",
+        "value": "ap-northeast-1"
+      }
+    ],
+    "secrets": [
+      {
+        "name": "DATABASE_URL",
+        "valueFrom": "<SECRETS_MANAGER_DATABASE_URL_ARN>"
+      },
+      {
+        "name": "NEXTAUTH_SECRET",
+        "valueFrom": "<SECRETS_MANAGER_NEXTAUTH_SECRET_ARN>"
+      },
+      {
+        "name": "ENCRYPTION_KEY",
+        "valueFrom": "<SECRETS_MANAGER_ENCRYPTION_KEY_ARN>"
+      },
+      {
+        "name": "JWT_SIGNING_SECRET",
+        "valueFrom": "<SECRETS_MANAGER_JWT_SIGNING_SECRET_ARN>"
+      },
+      {
+        "name": "JOB_API_KEY",
+        "valueFrom": "<SECRETS_MANAGER_JOB_API_KEY_ARN>"
+      }
+    ]
+  },
+  "cpu": "256",
+  "memory": "512",
+  "scalingTarget": {
+    "minTaskCount": 1,
+    "maxTaskCount": 1,
+    "autoScalingMetric": "AVERAGE_CPU",
+    "autoScalingTargetValue": 60
+  },
+  "tags": [
+    {
+      "key": "Project",
+      "value": "ph-os"
+    },
+    {
+      "key": "Environment",
+      "value": "pilot"
+    },
+    {
+      "key": "ManagedBy",
+      "value": "ecs-express"
+    }
+  ]
+}

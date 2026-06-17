@@ -587,11 +587,7 @@ function buildNextAction(
 
 function CockpitSkeleton() {
   return (
-    <div
-      className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]"
-      role="status"
-      aria-label="ダッシュボード読み込み中"
-    >
+    <div className="space-y-4" role="status" aria-label="ダッシュボード読み込み中">
       <div className="space-y-4">
         <Skeleton className="h-14 w-full rounded-lg" />
         <div className="grid gap-3 lg:grid-cols-3">
@@ -721,7 +717,7 @@ export function DashboardCockpit() {
             />
           </div>
         ) : (
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]">
+          <div className="space-y-4">
             <div className="min-w-0 space-y-4">
               <ConditionBanner data={data} />
               <UrgentNowSection
@@ -747,20 +743,18 @@ export function DashboardCockpit() {
                 />
               </div>
             </div>
-            <div className="space-y-4">
-              {/*
-               * 右レールはデザイン 01 の 3 点セット(次にやること / 止まっている理由 / 根拠・記録)のみ。
-               * 「チームの会話」: 直近コメントを横断取得するフィード API が無いため
-               * (/api/comments は entity 単位の取得のみ)、第一版ではセクション自体を省略。
-               */}
-              <WorkspaceActionRail
-                nextAction={buildNextAction(topAudit, todayVisits.length)}
-                blockedReasons={blockedReasons}
-                blockedReasonsEmptyLabel="止まっている作業はありません"
-                evidence={evidence}
-                evidenceOpenLabel="開く"
-              />
-            </div>
+            {/*
+             * 右レールはデザイン 01 の 3 点セット(次にやること / 止まっている理由 / 根拠・記録)のみ。
+             * 「チームの会話」: 直近コメントを横断取得するフィード API が無いため
+             * (/api/comments は entity 単位の取得のみ)、第一版ではセクション自体を省略。
+             */}
+            <WorkspaceActionRail
+              nextAction={buildNextAction(topAudit, todayVisits.length)}
+              blockedReasons={blockedReasons}
+              blockedReasonsEmptyLabel="止まっている作業はありません"
+              evidence={evidence}
+              evidenceOpenLabel="開く"
+            />
           </div>
         )}
       </div>

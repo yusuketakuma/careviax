@@ -35,24 +35,104 @@ export function SessionTimeoutModal() {
   const [error, setError] = useState<string | null>(null);
   const [initialExpiry] = useState(() => Date.now() + SESSION_DURATION_MS);
   const expiryRef = useRef<number>(initialExpiry);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const openRef = useRef(false);
+  const warningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const expiryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    openRef.current = open;
+  }, [open]);
+
+  const clearCountdownTimer = useCallback(() => {
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+  }, []);
+
+  const clearScheduledTimers = useCallback(() => {
+    if (warningTimerRef.current) {
+      clearTimeout(warningTimerRef.current);
+      warningTimerRef.current = null;
+    }
+    if (expiryTimerRef.current) {
+      clearTimeout(expiryTimerRef.current);
+      expiryTimerRef.current = null;
+    }
+  }, []);
+
+  const clearAllTimers = useCallback(() => {
+    clearScheduledTimers();
+    clearCountdownTimer();
+  }, [clearCountdownTimer, clearScheduledTimers]);
+
+  const handleSessionExpired = useCallback(() => {
+    clearAllTimers();
+    void clearOfflineEncryptionKey();
+    void signOut({ callbackUrl: '/login?error=SessionExpired' });
+  }, [clearAllTimers]);
+
+  const startCountdownTimer = useCallback(() => {
+    clearCountdownTimer();
+
+    const tick = () => {
+      const remaining = expiryRef.current - Date.now();
+
+      if (remaining <= 0) {
+        setRemainingSeconds(0);
+        handleSessionExpired();
+        return;
+      }
+
+      setRemainingSeconds(Math.ceil(remaining / 1000));
+    };
+
+    tick();
+    countdownTimerRef.current = setInterval(tick, 1000);
+  }, [clearCountdownTimer, handleSessionExpired]);
+
+  const showWarning = useCallback(() => {
+    setOpen(true);
+    startCountdownTimer();
+  }, [startCountdownTimer]);
+
+  const scheduleTimers = useCallback(() => {
+    clearAllTimers();
+
+    const remaining = expiryRef.current - Date.now();
+    if (remaining <= 0) {
+      handleSessionExpired();
+      return;
+    }
+
+    const msToWarning = remaining - WARNING_THRESHOLD_MS;
+    if (msToWarning <= 0) {
+      showWarning();
+    } else {
+      warningTimerRef.current = setTimeout(showWarning, msToWarning);
+    }
+    expiryTimerRef.current = setTimeout(handleSessionExpired, remaining);
+  }, [clearAllTimers, handleSessionExpired, showWarning]);
 
   const resetTimer = useCallback(() => {
     expiryRef.current = Date.now() + SESSION_DURATION_MS;
     setOpen(false);
     setPassword('');
     setError(null);
-  }, []);
+    scheduleTimers();
+  }, [scheduleTimers]);
 
-  // Activity listeners to reset the expiry on user interaction
+  // Activity listeners reset the expiry on user interaction before the warning is visible.
   useEffect(() => {
+    scheduleTimers();
+
     const events = ['mousedown', 'keydown', 'touchstart', 'scroll'] as const;
 
     function handleActivity() {
-      // Only reset if the modal is not yet showing
-      if (!open) {
-        expiryRef.current = Date.now() + SESSION_DURATION_MS;
-      }
+      if (openRef.current) return;
+      expiryRef.current = Date.now() + SESSION_DURATION_MS;
+      scheduleTimers();
     }
 
     for (const event of events) {
@@ -60,34 +140,12 @@ export function SessionTimeoutModal() {
     }
 
     return () => {
+      clearAllTimers();
       for (const event of events) {
         window.removeEventListener(event, handleActivity);
       }
     };
-  }, [open]);
-
-  // Countdown tick
-  useEffect(() => {
-    timerRef.current = setInterval(() => {
-      const remaining = expiryRef.current - Date.now();
-
-      if (remaining <= 0) {
-        // Session expired, force logout
-        void clearOfflineEncryptionKey();
-        signOut({ callbackUrl: '/login?error=SessionExpired' });
-        return;
-      }
-
-      if (remaining <= WARNING_THRESHOLD_MS) {
-        setRemainingSeconds(Math.ceil(remaining / 1000));
-        setOpen(true);
-      }
-    }, 1000);
-
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, []);
+  }, [clearAllTimers, scheduleTimers]);
 
   function formatTime(totalSeconds: number): string {
     const minutes = Math.floor(totalSeconds / 60);

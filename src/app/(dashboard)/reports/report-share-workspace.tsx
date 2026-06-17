@@ -469,11 +469,7 @@ function CreatedReportsSection({ reports }: { reports: ReportCreatedRow[] }) {
 
 function WorkspaceSkeleton() {
   return (
-    <div
-      className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]"
-      role="status"
-      aria-label="報告・共有ワークスペース読み込み中"
-    >
+    <div className="space-y-4" role="status" aria-label="報告・共有ワークスペース読み込み中">
       <div className="space-y-4">
         <Skeleton className="h-52 w-full rounded-lg" />
         <div className="grid gap-4 lg:grid-cols-2">
@@ -482,14 +478,11 @@ function WorkspaceSkeleton() {
         </div>
         <Skeleton className="h-12 w-full rounded-lg" />
       </div>
-      <div className="space-y-4">
-        {Array.from({ length: 3 }).map((_, index) => (
-          <Skeleton key={index} className="h-32 w-full rounded-lg" />
-        ))}
-      </div>
     </div>
   );
 }
+
+const REPORT_WORKSPACE_REFETCH_INTERVAL_MS = 60_000;
 
 export function ReportShareWorkspace() {
   const orgId = useOrgId();
@@ -501,7 +494,7 @@ export function ReportShareWorkspace() {
     queryKey: ['care-reports', 'today-workspace', orgId],
     queryFn: () => fetchReportsTodayWorkspace(orgId),
     enabled: !isBootstrappingOrg,
-    refetchInterval: 30_000,
+    refetchInterval: REPORT_WORKSPACE_REFETCH_INTERVAL_MS,
   });
   const cockpitQuery = useQuery({
     queryKey: ['dashboard', 'cockpit', orgId],
@@ -603,7 +596,7 @@ export function ReportShareWorkspace() {
             />
           </div>
         ) : (
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]">
+          <div className="space-y-4">
             <div className="min-w-0 space-y-4">
               <TodayDraftsCard
                 data={data}
@@ -624,7 +617,7 @@ export function ReportShareWorkspace() {
                 実施したこと → 観察したこと → 提案。
               </p>
             </div>
-            <div className="space-y-4">{actionRail}</div>
+            <div>{actionRail}</div>
           </div>
         )}
       </div>

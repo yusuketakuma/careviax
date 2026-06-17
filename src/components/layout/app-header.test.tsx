@@ -8,6 +8,8 @@ import { AppHeader, formatSyncTime } from './app-header';
 setupDomTestEnv();
 
 const mockRouterPush = vi.fn();
+const mockSetSidebarOpen = vi.fn();
+const mockSetWorkspaceRailOpen = vi.fn();
 let mockOnline = true;
 let mockLastSyncedAt: string | null = '2026-06-11T09:42:00';
 
@@ -83,7 +85,11 @@ const mockFetch = vi.fn();
 
 function uiStoreState(overrides?: Partial<Record<string, unknown>>) {
   return {
-    setSidebarOpen: vi.fn(),
+    sidebarOpen: false,
+    setSidebarOpen: mockSetSidebarOpen,
+    workspaceRailOpen: false,
+    workspaceRailAvailable: true,
+    setWorkspaceRailOpen: mockSetWorkspaceRailOpen,
     careMode: 'home_visit',
     setCareMode: vi.fn(),
     ...overrides,
@@ -95,6 +101,8 @@ describe('AppHeader', () => {
     mockOnline = true;
     mockLastSyncedAt = '2026-06-11T09:42:00';
     mockRouterPush.mockClear();
+    mockSetSidebarOpen.mockClear();
+    mockSetWorkspaceRailOpen.mockClear();
     mockFetch.mockReset();
     mockFetch.mockResolvedValue({ ok: true });
     vi.stubGlobal('fetch', mockFetch);
@@ -128,6 +136,51 @@ describe('AppHeader', () => {
     expect(screen.getByRole('button', { name: '通知 6' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'ヘルプ' })).toBeTruthy();
     expect(screen.getByTestId('app-header-user-name').textContent).toBe('山田 太郎');
+  });
+
+  it('opens the on-demand side panels from the header buttons', () => {
+    render(<AppHeader />);
+
+    fireEvent.click(screen.getByTestId('app-header-nav-toggle'));
+    expect(mockSetSidebarOpen).toHaveBeenCalledWith(true);
+    expect(mockSetWorkspaceRailOpen).toHaveBeenCalledWith(false);
+
+    fireEvent.click(screen.getByTestId('app-header-workspace-rail-toggle'));
+    expect(mockSetWorkspaceRailOpen).toHaveBeenCalledWith(true);
+  });
+
+  it('disables the auxiliary panel button when the current screen has no rail', () => {
+    mockUseUIStore.mockReturnValue(uiStoreState({ workspaceRailAvailable: false }));
+    render(<AppHeader />);
+
+    const button = screen.getByTestId('app-header-workspace-rail-toggle');
+    expect(button.hasAttribute('disabled')).toBe(true);
+
+    fireEvent.click(button);
+    expect(mockSetWorkspaceRailOpen).not.toHaveBeenCalledWith(true);
+  });
+
+  it('reflects the expanded state for the on-demand drawer buttons', () => {
+    mockUseUIStore.mockReturnValue(
+      uiStoreState({ sidebarOpen: true, workspaceRailOpen: true, workspaceRailAvailable: true }),
+    );
+    render(<AppHeader />);
+
+    expect(screen.getByTestId('app-header-nav-toggle').getAttribute('aria-expanded')).toBe('true');
+    expect(
+      screen.getByTestId('app-header-workspace-rail-toggle').getAttribute('aria-expanded'),
+    ).toBe('true');
+  });
+
+  it('places the auxiliary panel button immediately after the current user in the right cluster', () => {
+    render(<AppHeader />);
+
+    const userName = screen.getByTestId('app-header-user-name');
+    const button = screen.getByTestId('app-header-workspace-rail-toggle');
+
+    expect(
+      userName.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it('keeps the mobile header row compact instead of pushing right-side controls off screen', () => {

@@ -2,6 +2,7 @@ import type { NextRequest, NextResponse } from 'next/server';
 
 const DEFAULT_TARGET_MS = 500;
 const DEFAULT_MAX_SAMPLES_PER_ROUTE = 200;
+const DEFAULT_MAX_ROUTES = 500;
 const DEFAULT_TOP_ROUTES = 8;
 const EXCLUDED_PATHS = new Set(['/api/admin/performance-metrics']);
 
@@ -20,6 +21,7 @@ type RoutePerformanceBucket = {
 type RoutePerformanceStore = {
   started_at: number;
   max_samples_per_route: number;
+  max_routes: number;
   routes: Map<string, RoutePerformanceBucket>;
 };
 
@@ -65,6 +67,7 @@ function getStore(): RoutePerformanceStore {
     globalThis.__phOsRoutePerformanceStore = {
       started_at: Date.now(),
       max_samples_per_route: DEFAULT_MAX_SAMPLES_PER_ROUTE,
+      max_routes: DEFAULT_MAX_ROUTES,
       routes: new Map(),
     };
   }
@@ -94,6 +97,30 @@ function shouldTrackRoute(route: string): boolean {
   return !EXCLUDED_PATHS.has(route);
 }
 
+function isDynamicRouteSegment(segment: string): boolean {
+  if (/^\d+$/.test(segment)) return true;
+  if (/^[0-9a-f]{24}$/i.test(segment)) return true;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(segment)) {
+    return true;
+  }
+  if (/^[a-z]{1,16}_[a-z0-9][a-z0-9_-]*$/i.test(segment)) return true;
+  if (/^c[a-z0-9]{8,}$/i.test(segment)) return true;
+  return segment.length >= 8 && /\d/.test(segment) && /^[a-z0-9_-]+$/i.test(segment);
+}
+
+function normalizeRoutePath(route: string): string {
+  const [pathname = '/', suffix = ''] = route.split(/([?#].*)/, 2);
+  const normalizedPathname = pathname
+    .split('/')
+    .map((segment) => {
+      if (!segment) return segment;
+      return isDynamicRouteSegment(segment) ? ':id' : segment;
+    })
+    .join('/');
+
+  return `${normalizedPathname || '/'}${suffix}`;
+}
+
 export function recordRoutePerformance(args: {
   route: string;
   method: string;
@@ -104,9 +131,10 @@ export function recordRoutePerformance(args: {
   if (!shouldTrackRoute(args.route)) return;
 
   const store = getStore();
-  const key = `${args.method.toUpperCase()} ${args.route}`;
+  const route = normalizeRoutePath(args.route);
+  const key = `${args.method.toUpperCase()} ${route}`;
   const bucket = store.routes.get(key) ?? {
-    route: args.route,
+    route,
     method: args.method.toUpperCase(),
     samples: [],
   };
@@ -121,7 +149,14 @@ export function recordRoutePerformance(args: {
     bucket.samples.splice(0, bucket.samples.length - store.max_samples_per_route);
   }
 
+  store.routes.delete(key);
   store.routes.set(key, bucket);
+
+  while (store.routes.size > store.max_routes) {
+    const oldestKey = store.routes.keys().next().value;
+    if (!oldestKey) break;
+    store.routes.delete(oldestKey);
+  }
 }
 
 export function getPerformanceSnapshot(options?: {
@@ -190,7 +225,7 @@ export function getPerformanceSnapshot(options?: {
 
 export async function withRoutePerformance<T extends NextResponse | Response>(
   req: NextRequest,
-  handler: () => Promise<T>
+  handler: () => Promise<T>,
 ): Promise<T> {
   const startedAt = Date.now();
   const route =
@@ -230,6 +265,7 @@ export function resetPerformanceMetrics(): void {
   globalThis.__phOsRoutePerformanceStore = {
     started_at: Date.now(),
     max_samples_per_route: DEFAULT_MAX_SAMPLES_PER_ROUTE,
+    max_routes: DEFAULT_MAX_ROUTES,
     routes: new Map(),
   };
 }
@@ -308,7 +344,7 @@ export async function flushPerformanceMetricsToCloudWatch(options?: {
       Unit: StandardUnit.Percent,
       Timestamp: timestamp,
       Dimensions: [],
-    }
+    },
   );
 
   await putMetrics(datums);

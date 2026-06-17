@@ -114,6 +114,12 @@ describe('JobsDashboardContent', () => {
 
     render(<JobsDashboardContent />);
 
+    expect(useQueryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryKey: ['integration-jobs', 'org_1'],
+        refetchInterval: 60_000,
+      }),
+    );
     expect(screen.getByText('一部失敗')).toBeTruthy();
     expect(screen.getByText('対象 2件 / 成功 1件 / 失敗 1件')).toBeTruthy();
     expect(screen.getByText('詳細は監査ログと保管元ジョブを確認してください。')).toBeTruthy();

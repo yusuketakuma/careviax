@@ -5,6 +5,7 @@ const {
   withAuthContextMock,
   withOrgContextMock,
   conferenceNoteFindManyMock,
+  conferenceNoteFindFirstMock,
   conferenceNoteCreateMock,
   conferenceNoteUpdateMock,
   careCaseFindManyMock,
@@ -38,6 +39,7 @@ const {
   withAuthContextMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   conferenceNoteFindManyMock: vi.fn(),
+  conferenceNoteFindFirstMock: vi.fn(),
   conferenceNoteCreateMock: vi.fn(),
   conferenceNoteUpdateMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
@@ -130,6 +132,7 @@ function buildTxMock() {
   return {
     conferenceNote: {
       findMany: conferenceNoteFindManyMock,
+      findFirst: conferenceNoteFindFirstMock,
       create: conferenceNoteCreateMock,
       update: conferenceNoteUpdateMock,
     },
@@ -195,6 +198,7 @@ describe('/api/conference-notes', () => {
     );
 
     // default happy-path mocks
+    conferenceNoteFindFirstMock.mockResolvedValue(null);
     visitScheduleFindManyMock.mockResolvedValue([]);
     visitScheduleProposalFindManyMock.mockResolvedValue([]);
     careCaseFindFirstMock.mockResolvedValue({
@@ -420,6 +424,23 @@ describe('/api/conference-notes', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(conferenceNoteFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 51,
+        orderBy: [{ conference_date: 'desc' }, { id: 'desc' }],
+        select: expect.objectContaining({
+          id: true,
+          title: true,
+          metadata: true,
+          conference_date: true,
+        }),
+      }),
+    );
+    expect(conferenceNoteFindManyMock.mock.calls[0]?.[0].select).not.toHaveProperty('content');
+    expect(conferenceNoteFindManyMock.mock.calls[0]?.[0].select).not.toHaveProperty(
+      'structured_content',
+    );
+    expect(conferenceNoteFindManyMock.mock.calls[0]?.[0].select).not.toHaveProperty('action_items');
     const payload = await response.json();
     expect(payload.data[0]).toMatchObject({
       id: 'note_1',
@@ -433,6 +454,75 @@ describe('/api/conference-notes', () => {
     });
     expect(payload.data[0]).not.toHaveProperty('structured_content');
     expect(payload.data[0]).not.toHaveProperty('metadata');
+  });
+
+  it('uses stable DB keyset pagination for cursor requests', async () => {
+    const cursorDate = new Date('2026-03-28T01:00:00.000Z');
+    conferenceNoteFindFirstMock.mockResolvedValue({
+      id: 'note_cursor',
+      conference_date: cursorDate,
+    });
+    conferenceNoteFindManyMock.mockResolvedValue([
+      {
+        id: 'note_older',
+        org_id: 'org_1',
+        case_id: null,
+        patient_id: 'patient_1',
+        facility_id: null,
+        note_type: 'pre_discharge',
+        title: '退院前カンファ',
+        metadata: null,
+        participants: [],
+        billing_eligible: false,
+        billing_code: null,
+        follow_up_date: null,
+        follow_up_completed: false,
+        generated_report_id: null,
+        conference_date: new Date('2026-03-27T01:00:00.000Z'),
+        created_at: new Date('2026-03-27T02:00:00.000Z'),
+        updated_at: new Date('2026-03-27T02:00:00.000Z'),
+      },
+    ]);
+    careCaseFindManyMock.mockResolvedValue([]);
+
+    const response = await GET(
+      createRequest({
+        url: 'http://localhost/api/conference-notes?detail_level=summary&limit=20&cursor=note_cursor',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(conferenceNoteFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        AND: [expect.objectContaining({ org_id: 'org_1' }), { id: 'note_cursor' }],
+      },
+      select: { id: true, conference_date: true },
+    });
+    expect(conferenceNoteFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 21,
+        orderBy: [{ conference_date: 'desc' }, { id: 'desc' }],
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            expect.objectContaining({ org_id: 'org_1' }),
+            {
+              OR: [
+                { conference_date: { lt: cursorDate } },
+                {
+                  conference_date: cursorDate,
+                  id: { lt: 'note_cursor' },
+                },
+              ],
+            },
+          ]),
+        }),
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      data: [expect.objectContaining({ id: 'note_older' })],
+      hasMore: false,
+    });
   });
 
   it('supports conference filters including conference_type and billing_eligible', async () => {

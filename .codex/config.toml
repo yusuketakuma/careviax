@@ -1,21 +1,9 @@
 ################################################################################
 # Project-local Codex configuration
-# Codex CLI 0.138.0 loads trusted project-scoped config on top of
-# ~/.codex/config.toml. Keep runtime-like keys here aligned with the user-level
-# goal profile, and keep PH-OS-specific behavior in AGENTS.md.
+# Keep runtime-like keys in ~/.codex/*.config.toml so --profile fast/goal/max
+# can select the intended model, reasoning, service tier, and search behavior.
+# Keep PH-OS-specific behavior in AGENTS.md.
 ################################################################################
-model = "gpt-5.5"
-review_model = "gpt-5.5"
-approval_policy = "never"
-sandbox_mode = "danger-full-access"
-model_reasoning_effort = "medium"
-plan_mode_reasoning_effort = "high"
-model_reasoning_summary = "auto"
-model_supports_reasoning_summaries = true
-model_verbosity = "medium"
-personality = "pragmatic"
-service_tier = "flex"
-web_search = "live"
 project_doc_max_bytes = 131072
 project_doc_fallback_filenames = [
   "CLAUDE.md",
@@ -58,7 +46,7 @@ description = "Read-only strict reviewer for correctness, maintainability, regre
 config_file = "agents/reviewer-strict.toml"
 nickname_candidates = ["reviewer-strict"]
 [features]
-fast_mode = false
+fast_mode = true
 goals = true
 multi_agent = true
 personality = true

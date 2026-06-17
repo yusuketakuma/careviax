@@ -1,18 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const {
-  taskCommentFindFirstMock,
-  withOrgContextMock,
-} = vi.hoisted(() => ({
-  taskCommentFindFirstMock: vi.fn(),
-  withOrgContextMock: vi.fn(),
-}));
+const { taskCommentFindFirstMock, withOrgContextMock, broadcastOrgRealtimeEventMock } = vi.hoisted(
+  () => ({
+    taskCommentFindFirstMock: vi.fn(),
+    withOrgContextMock: vi.fn(),
+    broadcastOrgRealtimeEventMock: vi.fn(),
+  }),
+);
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: (handler: (...args: unknown[]) => unknown) => {
     return (req: NextRequest, routeContext: { params: Promise<{ id: string }> }) =>
-      handler(req, { orgId: 'org_1', userId: 'user_1', ipAddress: '127.0.0.1', userAgent: 'vitest' }, routeContext);
+      handler(
+        req,
+        { orgId: 'org_1', userId: 'user_1', ipAddress: '127.0.0.1', userAgent: 'vitest' },
+        routeContext,
+      );
   },
 }));
 
@@ -26,6 +30,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/server/services/org-realtime', () => ({
+  broadcastOrgRealtimeEvent: broadcastOrgRealtimeEventMock,
 }));
 
 import { DELETE } from './route';
@@ -47,29 +55,33 @@ describe('/api/comments/[id]', () => {
         },
       }),
     );
+    broadcastOrgRealtimeEventMock.mockResolvedValue(undefined);
   });
 
   describe('DELETE', () => {
     it('returns 200 when deleting own comment', async () => {
-      const response = (await DELETE(
-        createRequest(),
-        { params: Promise.resolve({ id: 'comment_1' }) },
-      ))!;
+      const response = (await DELETE(createRequest(), {
+        params: Promise.resolve({ id: 'comment_1' }),
+      }))!;
 
       expect(response.status).toBe(200);
       const body = await response.json();
       expect(body.deleted).toBe(true);
+      expect(broadcastOrgRealtimeEventMock).toHaveBeenCalledWith({
+        orgId: 'org_1',
+        type: 'comment_refresh',
+      });
     });
 
     it('returns 404 when comment not found or not owned', async () => {
       taskCommentFindFirstMock.mockResolvedValue(null);
 
-      const response = (await DELETE(
-        createRequest(),
-        { params: Promise.resolve({ id: 'nonexistent' }) },
-      ))!;
+      const response = (await DELETE(createRequest(), {
+        params: Promise.resolve({ id: 'nonexistent' }),
+      }))!;
 
       expect(response.status).toBe(404);
+      expect(broadcastOrgRealtimeEventMock).not.toHaveBeenCalled();
     });
   });
 });

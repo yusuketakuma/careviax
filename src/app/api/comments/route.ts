@@ -4,6 +4,7 @@ import { notFound, success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
+import { broadcastOrgRealtimeEvent } from '@/server/services/org-realtime';
 import {
   canAccessCollaborationEntity,
   collaborationEntityRefSchema,
@@ -28,6 +29,8 @@ const ENTITY_TYPE_LINK_PREFIX: Record<string, string> = {
   care_report: '/reports',
 };
 
+const COMMENT_THREAD_LIMIT = 100;
+
 export const GET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
@@ -50,10 +53,12 @@ export const GET = withAuthContext(
         entity_type: entityType,
         entity_id: entityId,
       },
-      orderBy: { created_at: 'asc' },
+      orderBy: { created_at: 'desc' },
+      take: COMMENT_THREAD_LIMIT,
     });
+    const commentsAscending = [...comments].reverse();
 
-    const authorIds = [...new Set(comments.map((c) => c.author_id))];
+    const authorIds = [...new Set(commentsAscending.map((c) => c.author_id))];
     const authors =
       authorIds.length === 0
         ? []
@@ -63,7 +68,7 @@ export const GET = withAuthContext(
           });
     const authorMap = new Map(authors.map((a) => [a.id, a.name]));
 
-    const data = comments.map((c) => ({
+    const data = commentsAscending.map((c) => ({
       ...c,
       author_name: authorMap.get(c.author_id) ?? '不明',
     }));
@@ -129,6 +134,11 @@ export const POST = withAuthContext(
       }
 
       return comment;
+    });
+
+    await broadcastOrgRealtimeEvent({
+      orgId: ctx.orgId,
+      type: 'comment_refresh',
     });
 
     return success({ data: created }, 201);

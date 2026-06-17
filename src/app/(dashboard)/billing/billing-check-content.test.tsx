@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { useUIStore } from '@/lib/stores/ui-store';
 import type { BillingCheckResponse } from '@/types/billing-check';
 
 setupDomTestEnv();
@@ -101,6 +102,7 @@ function buildFixture(): BillingCheckResponse {
 
 describe('BillingCheckContent', () => {
   beforeEach(() => {
+    useUIStore.setState({ workspaceRailOpen: true });
     refetchMock.mockClear();
     useQueryMock.mockReturnValue({
       data: buildFixture(),

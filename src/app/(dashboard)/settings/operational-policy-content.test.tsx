@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { useUIStore } from '@/lib/stores/ui-store';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type { OperationalPolicyResponse } from './operational-policy-content';
 
@@ -135,6 +136,7 @@ function mockQueries({
 }
 
 beforeEach(() => {
+  useUIStore.setState({ workspaceRailOpen: true });
   mutateMock.mockReset();
 });
 

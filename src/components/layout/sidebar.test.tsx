@@ -77,6 +77,13 @@ describe('Sidebar', () => {
     expect(mockSetSidebarOpen).toHaveBeenCalledWith(false);
   });
 
+  it('can hide the collapse toggle when rendered inside the navigation drawer', () => {
+    render(<Sidebar showToggle={false} />);
+
+    expect(screen.queryByRole('button', { name: 'サイドバーを折りたたむ' })).toBeNull();
+    expect(screen.getByRole('navigation', { name: 'ワークフローナビ' })).toBeTruthy();
+  });
+
   it('shows the design/images/new grouped menu with headings in fixed order', () => {
     render(<Sidebar />);
 

@@ -31,7 +31,7 @@ export default async function SchedulesPage({ searchParams }: SchedulesPageProps
   return (
     <PageScaffold variant="bare">
       <h1 className="sr-only">訪問予定</h1>
-      <div className={activeView === 'list' ? 'xl:min-h-[920px]' : undefined}>
+      <div className={activeView === 'list' ? 'xl:min-h-[calc(100dvh-4rem)]' : undefined}>
         <ScheduleTeamBoard initialDate={initialSelectedDate} activeView={activeView} />
         {activeView === 'calendar' ? (
           <div className="mt-4">

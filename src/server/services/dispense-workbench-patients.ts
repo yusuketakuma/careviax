@@ -6,6 +6,7 @@ import {
 } from '@/app/(dashboard)/dispense/dispense-workbench.shared';
 import {
   buildMedicationCycleAssignmentWhere,
+  buildSetPlanAssignmentWhere,
   type PrescriptionAccessContext,
 } from '@/server/services/prescription-access';
 
@@ -25,6 +26,7 @@ export type DispenseWorkbenchPatientsSort = 'start_date' | 'registered_date' | '
 export type DispenseWorkbenchPatientsFilters = {
   sort?: DispenseWorkbenchPatientsSort;
   order?: 'asc' | 'desc';
+  includeSetPlan?: boolean;
 };
 
 const MAX_CYCLES = 500;
@@ -106,10 +108,66 @@ export async function listDispenseWorkbenchPatients(
       badge: deriveListBadge(cycle.overall_status),
       start_date: formatDate(startDate),
       registered_date: format(patient.created_at, 'yyyy-MM-dd'),
+      latest_set_plan_id: null,
+      latest_set_plan_cycle_id: null,
     });
   }
 
+  if (filters.includeSetPlan) {
+    await hydrateLatestSetPlans(prisma, orgId, ctx, rows);
+  }
+
   return sortDispenseWorkbenchPatients(rows, filters);
+}
+
+async function hydrateLatestSetPlans(
+  prisma: PrismaClient,
+  orgId: string,
+  ctx: PrescriptionAccessContext,
+  rows: DispenseWorkbenchPatientRow[],
+) {
+  if (rows.length === 0) return;
+
+  const assignmentWhere = buildSetPlanAssignmentWhere(ctx);
+  const patientIds = rows.map((row) => row.patient_id);
+  if (patientIds.length === 0) return;
+  const latestPlans = await prisma.setPlan.findMany({
+    where: {
+      org_id: orgId,
+      AND: [
+        {
+          cycle: {
+            patient_id: { in: patientIds },
+          },
+        },
+        ...(assignmentWhere ? [assignmentWhere] : []),
+      ],
+    },
+    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+    select: {
+      id: true,
+      cycle_id: true,
+      cycle: {
+        select: {
+          patient_id: true,
+        },
+      },
+    } satisfies Prisma.SetPlanSelect,
+  });
+
+  const latestPlanByPatient = new Map<string, { id: string; cycle_id: string }>();
+  for (const plan of latestPlans) {
+    const patientId = plan.cycle.patient_id;
+    if (!latestPlanByPatient.has(patientId)) {
+      latestPlanByPatient.set(patientId, { id: plan.id, cycle_id: plan.cycle_id });
+    }
+  }
+
+  for (const row of rows) {
+    const plan = latestPlanByPatient.get(row.patient_id);
+    row.latest_set_plan_id = plan?.id ?? null;
+    row.latest_set_plan_cycle_id = plan?.cycle_id ?? null;
+  }
 }
 
 function sortDispenseWorkbenchPatients(
@@ -134,7 +192,9 @@ function sortDispenseWorkbenchPatients(
   return [...rows].sort((left, right) => {
     if (sort === 'name_kana') {
       const result = compareKana(left, right);
-      return (result !== 0 ? result : left.patient_id.localeCompare(right.patient_id)) * directionFactor;
+      return (
+        (result !== 0 ? result : left.patient_id.localeCompare(right.patient_id)) * directionFactor
+      );
     }
 
     const key = sort === 'start_date' ? 'start_date' : 'registered_date';

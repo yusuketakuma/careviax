@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { usePathname, useRouter } from 'next/navigation';
 import { BellOff } from 'lucide-react';
@@ -16,7 +16,9 @@ import {
   type NotificationCategory,
 } from '@/lib/notifications/notification-category';
 import { useOfflineStore } from '@/lib/stores/offline-store';
+import { useRealtimeEvents } from '@/lib/hooks/use-realtime-events';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { normalizeNotificationStreamPayload } from '@/lib/notifications/stream-payload';
 import type { NotificationCategoryFilter } from './notifications-query-state';
 
 /**
@@ -50,6 +52,16 @@ type NotificationsContentProps = {
   initialCategory?: NotificationCategoryFilter;
 };
 
+function mergeNotificationItems(current: NotificationItem[], incoming: NotificationItem[]) {
+  return [...incoming, ...current]
+    .filter(
+      (notification, index, all) =>
+        all.findIndex((candidate) => candidate.id === notification.id) === index,
+    )
+    .sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at))
+    .slice(0, 50);
+}
+
 export function NotificationsContent({ initialCategory = 'all' }: NotificationsContentProps) {
   const orgId = useOrgId();
   const router = useRouter();
@@ -57,6 +69,26 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
   const queryClient = useQueryClient();
   const [category, setCategory] = useState<NotificationCategoryFilter>(initialCategory);
   const pendingSyncCount = useOfflineStore((state) => state.pendingSyncCount);
+
+  const handleRealtimeEvent = useCallback(
+    (event: unknown) => {
+      const nextNotifications = normalizeNotificationStreamPayload(event);
+      if (nextNotifications.length === 0) return;
+
+      queryClient.setQueryData<{ data: NotificationItem[] }>(
+        ['notifications', 'inbox', orgId],
+        (current) => ({
+          data: mergeNotificationItems(current?.data ?? [], nextNotifications),
+        }),
+      );
+    },
+    [orgId, queryClient],
+  );
+
+  const realtime = useRealtimeEvents({
+    onEvent: handleRealtimeEvent,
+    enabled: Boolean(orgId),
+  });
 
   const { data, isLoading } = useQuery<{ data: NotificationItem[] }>({
     queryKey: ['notifications', 'inbox', orgId],
@@ -68,7 +100,7 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
       return res.json();
     },
     enabled: Boolean(orgId),
-    refetchInterval: 30_000,
+    refetchInterval: realtime.connected ? false : 30_000,
   });
 
   const markReadMutation = useMutation({
@@ -159,7 +191,7 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
   if (!orgId || isLoading) return <Loading />;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-5" data-testid="notifications-inbox">
+    <div className="w-full space-y-5" data-testid="notifications-inbox">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-foreground">お知らせ</h2>

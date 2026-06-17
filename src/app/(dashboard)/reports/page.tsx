@@ -12,7 +12,7 @@ export default function ReportsPage() {
   return (
     <PageScaffold variant="bare">
       <h1 className="sr-only">共有ワークスペース</h1>
-      <div className="xl:min-h-[calc(100vh-4rem)]">
+      <div className="xl:min-h-[calc(100dvh-4rem)]">
         <ReportShareWorkspace />
       </div>
     </PageScaffold>

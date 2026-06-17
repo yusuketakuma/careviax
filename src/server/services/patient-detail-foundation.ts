@@ -141,7 +141,7 @@ function toDate(value: Date | string | null | undefined): Date | null {
 function formatDateKey(value: Date | string | null | undefined): string | null {
   const date = toDate(value);
   if (!date) return null;
-  return date.toISOString().slice(0, 10);
+  return formatUtcDateKey(date);
 }
 
 function isOlderThanDays(value: Date | string | null | undefined, now: Date, days: number) {
@@ -613,3 +613,4 @@ export async function buildPatientFoundationData(
     },
   };
 }
+import { formatUtcDateKey } from '@/lib/date-key';

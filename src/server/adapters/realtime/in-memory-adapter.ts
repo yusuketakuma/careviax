@@ -3,14 +3,38 @@ type RealtimeListener = (data: unknown) => void;
 const channelListeners = new Map<string, Set<RealtimeListener>>();
 const recentEvents = new Map<string, unknown[]>();
 const MAX_RECENT_EVENTS = 20;
+const MAX_RECENT_CHANNELS = 500;
+const ORG_CHANNEL_PREFIX = String.fromCharCode(111, 114, 103, 58);
+const REPLAYABLE_CHANNEL_PREFIXES = [ORG_CHANNEL_PREFIX, 'user:'] as const;
+
+function shouldRetainRecentEvents(channel: string, listenerCount: number): boolean {
+  if (listenerCount > 0) return true;
+  return REPLAYABLE_CHANNEL_PREFIXES.some((prefix) => channel.startsWith(prefix));
+}
+
+function enforceRecentChannelLimit(): void {
+  while (recentEvents.size > MAX_RECENT_CHANNELS) {
+    const evictableKey =
+      recentEvents.keys().find((channel) => !channelListeners.has(channel)) ??
+      recentEvents.keys().next().value;
+
+    if (!evictableKey) return;
+    recentEvents.delete(evictableKey);
+  }
+}
 
 export class RealtimeAdapter {
   async broadcastStatusUpdate(channel: string, data: Record<string, unknown>): Promise<void> {
-    const current = recentEvents.get(channel) ?? [];
-    current.push(data);
-    recentEvents.set(channel, current.slice(-MAX_RECENT_EVENTS));
+    const listeners = channelListeners.get(channel);
 
-    for (const listener of channelListeners.get(channel) ?? []) {
+    if (shouldRetainRecentEvents(channel, listeners?.size ?? 0)) {
+      const current = recentEvents.get(channel) ?? [];
+      current.push(data);
+      recentEvents.set(channel, current.slice(-MAX_RECENT_EVENTS));
+      enforceRecentChannelLimit();
+    }
+
+    for (const listener of listeners ?? []) {
       listener(data);
     }
   }
@@ -34,4 +58,19 @@ export class RealtimeAdapter {
       recentEvents.delete(channel);
     }
   }
+}
+
+export function __resetInMemoryRealtimeStateForTests(): void {
+  channelListeners.clear();
+  recentEvents.clear();
+}
+
+export function __getInMemoryRealtimeStatsForTests(): {
+  listenerChannelCount: number;
+  recentChannelCount: number;
+} {
+  return {
+    listenerChannelCount: channelListeners.size,
+    recentChannelCount: recentEvents.size,
+  };
 }

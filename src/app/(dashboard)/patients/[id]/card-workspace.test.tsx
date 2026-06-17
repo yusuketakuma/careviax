@@ -817,25 +817,10 @@ describe('CardWorkspace', () => {
     expect(within(todayPanel).getByRole('link', { name: '→ セットへ' })).toBeTruthy();
     expect(within(todayPanel).getByRole('link', { name: '→ 訪問へ' })).toBeTruthy();
 
-    // 次にやること: 主操作 1 つ、期限を内包したラベル
-    const nextActionPanel = screen.getByTestId('next-action-panel');
-    expect(
-      within(nextActionPanel).getByRole('link', { name: '調剤鑑査を始める — 12:00期限' }),
-    ).toBeTruthy();
-
-    // 止まっている理由: カテゴリチップ + アクションリンク(リッチ形式)
-    const blockedPanel = screen.getByTestId('blocked-reasons-panel');
-    expect(within(blockedPanel).getByText('医療機関')).toBeTruthy();
-    expect(within(blockedPanel).getByText('ご家族の同意待ち(新規契約)')).toBeTruthy();
-    expect(within(blockedPanel).getByRole('link', { name: '状況を見る →' })).toBeTruthy();
-
-    // 根拠・記録: 「開く」文言 + meta
-    const evidencePanel = screen.getByTestId('evidence-panel');
-    expect(within(evidencePanel).getByText('お薬手帳(最新)')).toBeTruthy();
-    expect(within(evidencePanel).getByText('照会回答')).toBeTruthy();
-    expect(within(evidencePanel).getByText('検査値の推移')).toBeTruthy();
-    expect(within(evidencePanel).getByText('eGFR')).toBeTruthy();
-    expect(within(evidencePanel).getAllByRole('link', { name: '開く' }).length).toBeGreaterThan(0);
+    // 補助3点セットは本文を圧迫しないため初期表示しない。上部バーの補助パネルで開く。
+    expect(screen.queryByTestId('next-action-panel')).toBeNull();
+    expect(screen.queryByTestId('blocked-reasons-panel')).toBeNull();
+    expect(screen.queryByTestId('evidence-panel')).toBeNull();
   });
 
   it('falls back to an empty state when no cycle workspace exists', () => {

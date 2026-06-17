@@ -1,3 +1,5 @@
+import { formatUtcDateKey } from '@/lib/date-key';
+
 export const INSURANCE_TYPE_LABELS = {
   medical: '医療保険',
   care: '介護保険',
@@ -78,7 +80,7 @@ function toDate(value: Date | string | null | undefined): Date | null {
 export function formatInsuranceDateKey(value: Date | string | null | undefined): string | null {
   const date = toDate(value);
   if (!date) return null;
-  return date.toISOString().slice(0, 10);
+  return formatUtcDateKey(date);
 }
 
 export function formatCopayRatio(value: number | null | undefined) {

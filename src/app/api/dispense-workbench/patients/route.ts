@@ -17,6 +17,7 @@ import type { DispenseWorkbenchPatientsResponse } from '@/app/(dashboard)/dispen
 const querySchema = z.object({
   sort: z.enum(['start_date', 'registered_date', 'name_kana']).optional(),
   order: z.enum(['asc', 'desc']).optional(),
+  include_set_plan: z.enum(['1', 'true']).optional(),
 });
 
 export const GET = withAuthContext(
@@ -31,7 +32,11 @@ export const GET = withAuthContext(
       prisma,
       ctx.orgId,
       { userId: ctx.userId, role: ctx.role },
-      parsed.data,
+      {
+        sort: parsed.data.sort,
+        order: parsed.data.order,
+        includeSetPlan: parsed.data.include_set_plan != null,
+      },
     );
 
     return success<DispenseWorkbenchPatientsResponse>({ data });

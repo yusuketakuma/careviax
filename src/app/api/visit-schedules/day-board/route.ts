@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
 import { parseSearchParams } from '@/lib/api/validation';
+import { formatUtcDateKey } from '@/lib/date-key';
 import { prisma } from '@/lib/db/client';
 import { visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
 import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
@@ -329,8 +330,8 @@ export const GET = withAuthContext(
 
     const pendingProposals: DayBoardPendingProposal[] = proposals.map((proposal) => {
       const proposedDateTime = proposal.proposed_date.getTime();
-      // @db.Date は UTC midnight 保存なので表示キーも UTC 日付部分を使う
-      const proposedDateKey = proposal.proposed_date.toISOString().slice(0, 10);
+      // @db.Date is stored at UTC midnight, so use the canonical UTC date key.
+      const proposedDateKey = formatUtcDateKey(proposal.proposed_date);
       const sameDayVisits = impactSchedules.filter(
         (schedule) =>
           schedule.pharmacist_id === proposal.proposed_pharmacist_id &&

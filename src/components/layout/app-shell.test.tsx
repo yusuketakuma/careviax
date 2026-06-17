@@ -33,11 +33,11 @@ describe('resolveQuickCreateTarget', () => {
 });
 
 describe('resolveSidebarSheetOpen', () => {
-  it('keeps the mobile sidebar sheet closed on desktop even when sidebar state is open', () => {
-    expect(resolveSidebarSheetOpen(false, true)).toBe(false);
+  it('allows the sidebar drawer to open from the top bar on desktop', () => {
+    expect(resolveSidebarSheetOpen(false, true)).toBe(true);
   });
 
-  it('allows the sheet only for compact viewports when the sidebar is open', () => {
+  it('opens the sidebar drawer only when requested', () => {
     expect(resolveSidebarSheetOpen(true, true)).toBe(true);
     expect(resolveSidebarSheetOpen(true, false)).toBe(false);
   });
@@ -78,7 +78,7 @@ describe('deriveShellViewport', () => {
 });
 
 describe('shouldRenderCompactSidebarSheet', () => {
-  it('keeps the compact sheet unmounted until viewport hydration completes', () => {
+  it('keeps the drawer mount point unmounted until viewport hydration completes', () => {
     expect(
       shouldRenderCompactSidebarSheet({
         isReady: false,
@@ -87,5 +87,16 @@ describe('shouldRenderCompactSidebarSheet', () => {
         isCompactLayout: false,
       }),
     ).toBe(false);
+  });
+
+  it('renders the drawer mount point after viewport hydration on desktop too', () => {
+    expect(
+      shouldRenderCompactSidebarSheet({
+        isReady: true,
+        isDesktopLayout: true,
+        isTabletLayout: false,
+        isCompactLayout: false,
+      }),
+    ).toBe(true);
   });
 });

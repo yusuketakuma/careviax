@@ -100,11 +100,12 @@ export function deriveShellViewport(target: Pick<Window, 'matchMedia'>): ShellVi
 }
 
 export function resolveSidebarSheetOpen(isCompactViewport: boolean, sidebarOpen: boolean) {
-  return isCompactViewport && sidebarOpen;
+  void isCompactViewport;
+  return sidebarOpen;
 }
 
 export function shouldRenderCompactSidebarSheet(viewport: ShellViewportState) {
-  return viewport.isReady && viewport.isCompactLayout;
+  return viewport.isReady;
 }
 
 export function AppShell({ children }: AppShellProps) {
@@ -121,14 +122,16 @@ export function AppShell({ children }: AppShellProps) {
   });
   const {
     sidebarOpen,
-    sidebarPinned,
     setSidebarOpen,
+    workspaceRailOpen,
+    setWorkspaceRailOpen,
     shortcutHelpOpen,
     setShortcutHelpOpen,
     toggleShortcutHelp,
   } = useUIStore();
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
-  const mobileSidebarOpen = resolveSidebarSheetOpen(viewport.isCompactLayout, sidebarOpen);
+  const sidebarWasOpenRef = useRef(false);
+  const sidebarSheetOpen = resolveSidebarSheetOpen(viewport.isCompactLayout, sidebarOpen);
   const chromeHidden = useMinimalShell;
 
   useEffect(() => {
@@ -150,13 +153,18 @@ export function AppShell({ children }: AppShellProps) {
 
   useEffect(() => {
     if (!viewport.isReady) return;
-    setSidebarOpen(viewport.isDesktopLayout && sidebarPinned);
-  }, [viewport.isDesktopLayout, viewport.isReady, sidebarPinned, setSidebarOpen]);
+    setSidebarOpen(false);
+    setWorkspaceRailOpen(false);
+  }, [pathname, setSidebarOpen, setWorkspaceRailOpen, viewport.isReady]);
 
   useEffect(() => {
-    if (!viewport.isReady || !viewport.isCompactLayout) return;
-    setSidebarOpen(false);
-  }, [pathname, setSidebarOpen, viewport.isCompactLayout, viewport.isReady]);
+    if (!sidebarSheetOpen && sidebarWasOpenRef.current) {
+      window.requestAnimationFrame(() => {
+        document.querySelector<HTMLElement>('[data-testid="app-header-nav-toggle"]')?.focus();
+      });
+    }
+    sidebarWasOpenRef.current = sidebarSheetOpen;
+  }, [sidebarSheetOpen]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -222,10 +230,21 @@ export function AppShell({ children }: AppShellProps) {
   const handleEscape = useCallback(() => {
     if (shortcutHelpOpen) {
       setShortcutHelpOpen(false);
+    } else if (workspaceRailOpen) {
+      setWorkspaceRailOpen(false);
+    } else if (sidebarOpen) {
+      setSidebarOpen(false);
     } else {
       (document.activeElement as HTMLElement)?.blur?.();
     }
-  }, [shortcutHelpOpen, setShortcutHelpOpen]);
+  }, [
+    setShortcutHelpOpen,
+    setSidebarOpen,
+    setWorkspaceRailOpen,
+    shortcutHelpOpen,
+    sidebarOpen,
+    workspaceRailOpen,
+  ]);
 
   const globalShortcuts: ShortcutDefinition[] = useMemo(
     () => [
@@ -273,7 +292,7 @@ export function AppShell({ children }: AppShellProps) {
 
   return (
     <div
-      className="flex h-screen overflow-hidden bg-background print:block print:h-auto print:overflow-visible"
+      className="flex h-dvh overflow-hidden bg-background print:block print:h-auto print:overflow-visible"
       data-print-container="true"
     >
       {chromeHidden ? null : (
@@ -281,23 +300,18 @@ export function AppShell({ children }: AppShellProps) {
           <RouteProgress />
         </Suspense>
       )}
-      {/* Desktop sidebar — always visible on xl+ */}
-      {chromeHidden ? null : (
-        <div
-          className="hidden xl:flex xl:shrink-0"
-          data-print-skip="true"
-          data-testid="app-sidebar"
-        >
-          <Sidebar />
-        </div>
-      )}
-
-      {/* Tablet/mobile sidebar — Sheet overlay */}
+      {/* Navigation drawer. It never reserves layout width; open it from the top bar. */}
       {!chromeHidden && shouldRenderCompactSidebarSheet(viewport) ? (
-        <div className="xl:hidden" data-print-skip="true">
-          <Sheet open={mobileSidebarOpen} onOpenChange={setSidebarOpen}>
-            <SheetContent side="left" className="w-48 p-0">
-              <Sidebar className="border-r-0" closeOnNavigate />
+        <div data-print-skip="true" data-testid="app-sidebar">
+          <Sheet open={sidebarSheetOpen} onOpenChange={setSidebarOpen}>
+            <SheetContent
+              id="app-sidebar-drawer"
+              side="left"
+              className="w-64 max-w-[86vw] p-0"
+              aria-label="ナビゲーション"
+              closeLabel="ナビを閉じる"
+            >
+              <Sidebar className="border-r-0" closeOnNavigate showToggle={false} />
             </SheetContent>
           </Sheet>
         </div>
@@ -305,7 +319,7 @@ export function AppShell({ children }: AppShellProps) {
 
       {/* Main content */}
       <main
-        className="flex flex-1 flex-col overflow-y-auto print:block print:overflow-visible"
+        className="flex min-w-0 flex-1 flex-col overflow-y-auto print:block print:overflow-visible"
         id="main-content"
         tabIndex={-1}
         data-print-main="true"
@@ -346,7 +360,10 @@ export function AppShell({ children }: AppShellProps) {
           className={
             chromeHidden
               ? 'flex-1 pb-0'
-              : cn('flex-1 pb-16 md:pb-0 print:pb-0', mobileImmersiveShell && 'max-md:pb-0')
+              : cn(
+                  'min-h-0 w-full flex-1 pb-16 md:pb-0 print:pb-0',
+                  mobileImmersiveShell && 'max-md:pb-0',
+                )
           }
         >
           {children}

@@ -3219,7 +3219,10 @@ export function ScheduleProposalsContent({
                           }));
                         }}
                       >
-                        <SelectTrigger id="reproposal-vehicle-resource">
+                        <SelectTrigger
+                          id="reproposal-vehicle-resource"
+                          className="min-h-[44px] sm:h-11 sm:min-h-[44px]"
+                        >
                           <SelectValue placeholder="自動割当" />
                         </SelectTrigger>
                         <SelectContent>

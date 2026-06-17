@@ -1,3 +1,4 @@
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withAuthContext } from '@/lib/auth/context';
 import { readOptionalJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -174,20 +175,16 @@ export const POST = withAuthContext<{ id: string }>(
             generated_report_id: reportDraftIds[0],
           },
         });
-        await tx.auditLog.create({
-          data: {
-            org_id: ctx.orgId,
-            actor_id: ctx.userId,
-            action: 'conference_note.report_generated',
-            target_type: 'conference_note',
-            target_id: note.id,
-            changes: {
-              conference_note: {
-                note_type: note.note_type,
-                report_type: parsed.data.report_type ?? null,
-                report_draft_ids: reportDraftIds,
-                queued_recipient_count: queuedRecipients.length,
-              },
+        await createAuditLogEntry(tx, ctx, {
+          action: 'conference_note.report_generated',
+          targetType: 'conference_note',
+          targetId: note.id,
+          changes: {
+            conference_note: {
+              note_type: note.note_type,
+              report_type: parsed.data.report_type ?? null,
+              report_draft_ids: reportDraftIds,
+              queued_recipient_count: queuedRecipients.length,
             },
           },
         });

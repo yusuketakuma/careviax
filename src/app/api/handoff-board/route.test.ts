@@ -1,14 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { authMock, membershipFindFirstMock, userFindManyMock, withOrgContextMock } = vi.hoisted(
-  () => ({
-    authMock: vi.fn(),
-    membershipFindFirstMock: vi.fn(),
-    userFindManyMock: vi.fn(),
-    withOrgContextMock: vi.fn(),
-  }),
-);
+const {
+  authMock,
+  membershipFindFirstMock,
+  userFindManyMock,
+  withOrgContextMock,
+  countHandoffBadgeMock,
+} = vi.hoisted(() => ({
+  authMock: vi.fn(),
+  membershipFindFirstMock: vi.fn(),
+  userFindManyMock: vi.fn(),
+  withOrgContextMock: vi.fn(),
+  countHandoffBadgeMock: vi.fn(),
+}));
 
 vi.mock('@/lib/auth/config', () => ({ auth: authMock }));
 
@@ -21,6 +26,10 @@ vi.mock('@/lib/db/client', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/server/services/nav-badges', () => ({
+  countHandoffBadge: countHandoffBadgeMock,
 }));
 
 import { GET } from './route';
@@ -52,10 +61,11 @@ describe('/api/handoff-board', () => {
     vi.clearAllMocks();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
+    countHandoffBadgeMock.mockResolvedValue(2);
   });
 
   it('returns 200 with existing board', async () => {
-    const board = {
+    const findUniqueMock = vi.fn().mockResolvedValue({
       id: 'board_1',
       org_id: 'org_1',
       shift_date: '2026-04-01',
@@ -69,8 +79,18 @@ describe('/api/handoff-board', () => {
           consult_status: null,
         },
       ],
-    };
-    mockBoardTx(board, 5);
+    });
+    withOrgContextMock.mockImplementation(async (_orgId: string, fn: (tx: unknown) => unknown) =>
+      fn({
+        handoffBoard: {
+          findUnique: findUniqueMock,
+          create: vi.fn(),
+        },
+        handoffItem: {
+          count: vi.fn().mockResolvedValue(5),
+        },
+      }),
+    );
     userFindManyMock.mockResolvedValue([
       { id: 'user_1', name: 'Taro' },
       { id: 'user_2', name: 'Hanako' },
@@ -83,6 +103,18 @@ describe('/api/handoff-board', () => {
     expect(json.data.id).toBe('board_1');
     expect(json.data.items[0].created_by_name).toBe('Taro');
     expect(json.data.month_item_count).toBe(5);
+    expect(findUniqueMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: {
+          items: {
+            where: {
+              OR: [{ lifecycle_status: { not: null } }, { consult_status: { not: null } }],
+            },
+            orderBy: { created_at: 'asc' },
+          },
+        },
+      }),
+    );
   });
 
   it('returns 200 creating a new board when none exists', async () => {
@@ -114,44 +146,19 @@ describe('/api/handoff-board', () => {
   });
 
   it('returns a lightweight badge count without creating a missing board', async () => {
-    const findUnique = vi.fn().mockResolvedValue({
-      items: [
-        { created_by: 'user_1', read_by: ['user_2'], lifecycle_status: 'proposed' },
-        { created_by: 'user_2', read_by: [], lifecycle_status: 'proposed' },
-        { created_by: 'user_2', read_by: ['user_1'], lifecycle_status: 'proposed' },
-        { created_by: 'user_2', read_by: [], lifecycle_status: null, consult_status: null },
-      ],
-    });
-    const create = vi.fn();
-    withOrgContextMock.mockImplementation(async (_orgId: string, fn: (tx: unknown) => unknown) =>
-      fn({
-        handoffBoard: {
-          findUnique,
-          create,
-        },
-      }),
-    );
-
     const req = createRequest('http://localhost/api/handoff-board?date=2026-04-01&badge=1');
     const res = await GET(req, { params: Promise.resolve({}) });
 
     expect(res!.status).toBe(200);
     await expect(res!.json()).resolves.toEqual({ data: { count: 2 } });
-    expect(findUnique).toHaveBeenCalledWith(
+    expect(countHandoffBadgeMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        select: {
-          items: {
-            select: {
-              created_by: true,
-              read_by: true,
-              lifecycle_status: true,
-              consult_status: true,
-            },
-          },
-        },
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
       }),
     );
-    expect(create).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(userFindManyMock).not.toHaveBeenCalled();
   });
 

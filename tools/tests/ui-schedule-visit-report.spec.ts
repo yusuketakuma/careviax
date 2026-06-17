@@ -268,7 +268,7 @@ test.describe('schedule page', () => {
     await openScheduleBoard(page);
 
     await expect(page.getByTestId('schedule-team-board')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'スケジュール' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'スケジュール', exact: true })).toBeVisible();
     await expect(
       page.locator('main a[href="/schedules/proposals?workspace=optimizer"]').first(),
     ).toBeVisible();
@@ -411,8 +411,8 @@ test.describe('schedule page', () => {
     await expect(main.getByText('提案対象ケース')).toBeVisible();
     await expect(main.getByLabel('訪問種別')).toBeVisible();
     await expect(main.getByLabel('優先度')).toBeVisible();
-    await expect(main.getByLabel('移動手段')).toBeVisible();
-    await expect(main.getByLabel('社用車')).toBeVisible();
+    await expect(main.locator('#weekly-travel-mode')).toBeVisible();
+    await expect(main.locator('#weekly-vehicle-resource')).toBeVisible();
     await expect
       .poll(
         async () => {
@@ -507,7 +507,7 @@ test.describe('schedule page', () => {
     const sheet = page.getByRole('dialog');
     await expect(sheet.locator('#schedule-proposal-reproposal')).toBeVisible({ timeout: 45_000 });
 
-    const vehicleSelect = sheet.getByLabel('社用車');
+    const vehicleSelect = sheet.locator('#reproposal-vehicle-resource');
     await expect(vehicleSelect).toBeVisible();
     await expectMinTouchTargetHeight(vehicleSelect);
     await vehicleSelect.click();
@@ -532,7 +532,7 @@ test.describe('visits page', () => {
 
     const main = page.locator('main');
     await expect(page.getByTestId('visits-today')).toBeVisible();
-    await expect(main.getByRole('heading', { name: /訪問/ })).toBeVisible();
+    await expect(main.getByRole('heading', { name: '訪問', exact: true })).toBeVisible();
     await expect(main.getByRole('link', { name: '訪問モードを開始' })).toBeVisible({
       timeout: 45_000,
     });
@@ -796,7 +796,7 @@ test.describe('admin master hub', () => {
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/admin');
 
-    await expect(page.getByRole('heading', { name: 'マスター' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'マスター', exact: true })).toBeVisible();
     await expect(page.getByTestId('master-hub')).toBeVisible();
     await expect(page.getByTestId('master-hub-card').first()).toBeVisible({ timeout: 45_000 });
     await expect(page.getByRole('heading', { name: '管理者ダッシュボード' })).toHaveCount(0);

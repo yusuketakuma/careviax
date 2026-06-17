@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { randomUUID } from 'crypto';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withAuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
@@ -190,30 +191,24 @@ export const PATCH = withAuthContext<{ id: string }>(
                   print_batch_id: buildServerPrintBatchId(),
                 }
               : parsed.data.document_action;
-          await tx.auditLog.create({
-            data: {
-              org_id: ctx.orgId,
-              actor_id: ctx.userId,
-              action: `first_visit_document.${documentAction.action}`,
-              target_type: 'first_visit_document',
-              target_id: id,
-              changes: {
-                document_action: documentAction,
-                patient_id: existing.patient_id,
-                case_id: existing.case_id,
-                previous: {
-                  document_url: existing.document_url,
-                  delivered_at: existing.delivered_at?.toISOString() ?? null,
-                  delivered_to: existing.delivered_to,
-                },
-                next: {
-                  document_url: document.document_url,
-                  delivered_at: document.delivered_at?.toISOString() ?? null,
-                  delivered_to: document.delivered_to,
-                },
+          await createAuditLogEntry(tx, ctx, {
+            action: `first_visit_document.${documentAction.action}`,
+            targetType: 'first_visit_document',
+            targetId: id,
+            changes: {
+              document_action: documentAction,
+              patient_id: existing.patient_id,
+              case_id: existing.case_id,
+              previous: {
+                document_url: existing.document_url,
+                delivered_at: existing.delivered_at?.toISOString() ?? null,
+                delivered_to: existing.delivered_to,
               },
-              ip_address: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
-              user_agent: req.headers.get('user-agent'),
+              next: {
+                document_url: document.document_url,
+                delivered_at: document.delivered_at?.toISOString() ?? null,
+                delivered_to: document.delivered_to,
+              },
             },
           });
         }

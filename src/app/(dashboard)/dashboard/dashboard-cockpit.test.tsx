@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { useUIStore } from '@/lib/stores/ui-store';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 
 setupDomTestEnv();
@@ -149,6 +150,7 @@ function buildFixture(): DashboardCockpitResponse {
 
 describe('DashboardCockpit', () => {
   beforeEach(() => {
+    useUIStore.setState({ workspaceRailOpen: true });
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 12, 9, 42));
     refetchMock.mockClear();
@@ -239,6 +241,22 @@ describe('DashboardCockpit', () => {
     expect(within(cards[1]).getByText('佐々木 ハル 様')).toBeTruthy();
     expect(within(cards[1]).getByText('安全タグなし')).toBeTruthy();
     expect(within(cards[1]).getByRole('link', { name: '監査を開く' })).toBeTruthy();
+  });
+
+  it('keeps urgent safety cues in the main body when the auxiliary panel is closed', () => {
+    useUIStore.setState({ workspaceRailOpen: false });
+
+    render(<DashboardCockpit />);
+
+    expect(screen.queryByTestId('next-action-panel')).toBeNull();
+
+    const section = screen.getByTestId('dashboard-urgent-now');
+    expect(within(section).getByText('田中 一郎 様')).toBeTruthy();
+    expect(within(section).getByText('麻薬監査')).toBeTruthy();
+    expect(within(section).getByText('麻薬')).toBeTruthy();
+    expect(within(section).getByText('冷所')).toBeTruthy();
+    expect(within(section).getByText('期限 12:00 — あと 2時間18分')).toBeTruthy();
+    expect(within(section).getByRole('link', { name: '監査を開始する' })).toBeTruthy();
   });
 
   it('renders the today flow timeline with locked visits, desk work, and the now marker', () => {

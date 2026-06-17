@@ -1,0 +1,134 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: PH-OS ECS Express least-privilege runtime policies for execution and app task roles.
+
+Parameters:
+  Prefix:
+    Type: String
+    Default: ph-os-ecs-express
+    AllowedPattern: '^[a-zA-Z][a-zA-Z0-9-]{1,38}$'
+    Description: Prefix for IAM policy naming and tags.
+  TaskExecutionRoleName:
+    Type: String
+    Default: ph-os-ecs-express-task-execution
+    AllowedPattern: '^[A-Za-z0-9_+=,.@-]{1,64}$'
+    Description: ECS task execution role name from ecs-express-roles-template output.
+  AppTaskRoleName:
+    Type: String
+    Default: ph-os-ecs-express-app-task
+    AllowedPattern: '^[A-Za-z0-9_+=,.@-]{1,64}$'
+    Description: ECS app task role name from ecs-express-roles-template output.
+  SecretResourceArns:
+    Type: CommaDelimitedList
+    Description: Exact Secrets Manager secret ARNs injected by ECS and optionally fetched by the app.
+  SecretsKmsKeyArn:
+    Type: String
+    AllowedPattern: '^arn:aws:kms:[A-Za-z0-9-]+:[0-9]{12}:key/[A-Za-z0-9-]+$'
+    Description: Customer-managed KMS key ARN used by PH-OS Secrets Manager secrets.
+  DynamoRateLimitTableArn:
+    Type: String
+    AllowedPattern: '^arn:aws:dynamodb:[A-Za-z0-9-]+:[0-9]{12}:table/[A-Za-z0-9_.-]+$'
+    Description: Exact DynamoDB table ARN for RATE_LIMIT_STORE=dynamodb.
+  EvidenceBucketName:
+    Type: String
+    AllowedPattern: '^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$'
+    Description: S3 bucket used for PH-OS files, evidence, reports, and exports.
+  EvidenceKmsKeyArn:
+    Type: String
+    AllowedPattern: '^arn:aws:kms:[A-Za-z0-9-]+:[0-9]{12}:key/[A-Za-z0-9-]+$'
+    Description: Customer-managed KMS key ARN required for PH-OS S3 object encryption.
+  SesIdentityArn:
+    Type: String
+    AllowedPattern: '^arn:aws:ses:[A-Za-z0-9-]+:[0-9]{12}:identity/.+$'
+    Description: Exact SES identity ARN allowed to send PH-OS mail.
+
+Resources:
+  EcsTaskExecutionSecretsPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub '${Prefix}-execution-secrets'
+      Roles:
+        - !Ref TaskExecutionRoleName
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ReadContainerSecrets
+            Effect: Allow
+            Action:
+              - secretsmanager:GetSecretValue
+            Resource: !Ref SecretResourceArns
+          - Sid: DecryptContainerSecrets
+            Effect: Allow
+            Action:
+              - kms:Decrypt
+            Resource: !Ref SecretsKmsKeyArn
+            Condition:
+              StringEquals:
+                kms:ViaService: !Sub 'secretsmanager.${AWS::Region}.amazonaws.com'
+
+  EcsAppRuntimePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub '${Prefix}-app-runtime'
+      Roles:
+        - !Ref AppTaskRoleName
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ReadRuntimeSecrets
+            Effect: Allow
+            Action:
+              - secretsmanager:GetSecretValue
+            Resource: !Ref SecretResourceArns
+          - Sid: DecryptRuntimeSecrets
+            Effect: Allow
+            Action:
+              - kms:Decrypt
+            Resource: !Ref SecretsKmsKeyArn
+            Condition:
+              StringEquals:
+                kms:ViaService: !Sub 'secretsmanager.${AWS::Region}.amazonaws.com'
+          - Sid: UpdateRateLimitCounters
+            Effect: Allow
+            Action:
+              - dynamodb:UpdateItem
+            Resource: !Ref DynamoRateLimitTableArn
+          - Sid: WriteAndReadPhosObjects
+            Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+              - s3:DeleteObject
+              - s3:DeleteObjectVersion
+              - s3:PutObjectTagging
+              - s3:GetObjectTagging
+            Resource:
+              - !Sub 'arn:${AWS::Partition}:s3:::${EvidenceBucketName}/prescriptions/*'
+              - !Sub 'arn:${AWS::Partition}:s3:::${EvidenceBucketName}/visit-photos/*'
+              - !Sub 'arn:${AWS::Partition}:s3:::${EvidenceBucketName}/reports/*'
+              - !Sub 'arn:${AWS::Partition}:s3:::${EvidenceBucketName}/bulk-exports/*'
+          - Sid: UseEvidenceKmsForS3Only
+            Effect: Allow
+            Action:
+              - kms:GenerateDataKey
+              - kms:Decrypt
+              - kms:DescribeKey
+            Resource: !Ref EvidenceKmsKeyArn
+            Condition:
+              StringEquals:
+                kms:ViaService: !Sub 's3.${AWS::Region}.amazonaws.com'
+              StringLike:
+                kms:EncryptionContext:aws:s3:arn: !Sub 'arn:${AWS::Partition}:s3:::${EvidenceBucketName}/*'
+          - Sid: SendMailFromApprovedIdentity
+            Effect: Allow
+            Action:
+              - ses:SendEmail
+              - ses:SendRawEmail
+            Resource: !Ref SesIdentityArn
+
+Outputs:
+  ExecutionPolicyName:
+    Description: Inline policy attached to the ECS task execution role for secret injection.
+    Value: !Ref EcsTaskExecutionSecretsPolicy
+  AppRuntimePolicyName:
+    Description: Inline policy attached to the PH-OS app task role for runtime AWS API calls.
+    Value: !Ref EcsAppRuntimePolicy

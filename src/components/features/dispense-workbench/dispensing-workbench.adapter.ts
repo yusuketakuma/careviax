@@ -108,14 +108,25 @@ async function fetchJson<T>(url: string): Promise<T | null> {
  * 実データ画面では seed/mock 患者を表示・操作可能にしない。
  */
 export async function loadPatientsAsync(): Promise<SeedPatient[]> {
-  if (USE_MOCK) return buildPatients();
-  const body = await fetchJson<DispenseWorkbenchPatientsResponse>(
-    '/api/dispense-workbench/patients',
-  );
+  const { patients } = await loadWorkbenchPatientRowsAsync();
+  return patients;
+}
+
+export async function loadWorkbenchPatientRowsAsync(
+  options: { includeSetPlan?: boolean } = {},
+): Promise<{
+  patients: SeedPatient[];
+  rows: DispenseWorkbenchPatientRow[];
+}> {
+  if (USE_MOCK) return { patients: buildPatients(), rows: [] };
+  const path = options.includeSetPlan
+    ? '/api/dispense-workbench/patients?include_set_plan=1'
+    : '/api/dispense-workbench/patients';
+  const body = await fetchJson<DispenseWorkbenchPatientsResponse>(path);
   if (!body || !Array.isArray(body.data) || body.data.length === 0) {
-    return [];
+    return { patients: [], rows: [] };
   }
-  return patientsFromApi(body.data);
+  return { patients: patientsFromApi(body.data), rows: body.data };
 }
 
 /** dispense-tasks リスト API の最小レスポンス（id/status/cycle_id のみ参照）。 */
@@ -123,9 +134,7 @@ type DispenseTaskListResponse = {
   data: { id: string; status: string; cycle_id: string }[];
 };
 
-type SetPlanListResponse = {
-  data: Array<{ id: string; cycle_id: string; created_at?: string }>;
-};
+type DispenseWorkbenchPatientRow = DispenseWorkbenchPatientsResponse['data'][number];
 
 /** 監査・完了済を後回しにして「進行中の調剤タスク」を優先選択する順序。 */
 const ACTIVE_TASK_STATUS_PRIORITY = ['in_progress', 'pending', 'open', 'ready'];
@@ -154,18 +163,15 @@ async function resolveTaskId(cycleId: string): Promise<string | null> {
 export async function loadWorkbenchAsync(
   _phase: Phase,
   patientId: string,
+  options: { patientRows?: DispenseWorkbenchPatientRow[] } = {},
 ): Promise<{
   patient: SeedPatient;
   groups: Group[];
   writeContext: WorkbenchWriteContextPatch;
 } | null> {
   if (USE_MOCK) return null;
-  // 患者リスト API 由来の cycle_id は SeedPatient へ載せていないため、
-  // patients API を引いて選択患者の cycle_id を解決する（小規模・読取専用のため許容）。
-  const listBody = await fetchJson<DispenseWorkbenchPatientsResponse>(
-    '/api/dispense-workbench/patients',
-  );
-  const row = listBody?.data.find((r) => r.patient_id === patientId);
+  const listRows = options.patientRows ?? (await loadWorkbenchPatientRowsAsync()).rows;
+  const row = listRows.find((r) => r.patient_id === patientId);
   if (!row || !row.cycle_id) return null;
   const taskId = await resolveTaskId(row.cycle_id);
   if (!taskId) return null;
@@ -228,7 +234,7 @@ export async function loadCalendarWriteContextAsync(
  * with a SetPlan as the initial queue target. Never fall forward from a real
  * selected patient with no SetPlan to another patient.
  * The dispensing queue's latest cycle is often not the set-plan cycle, so the
- * direct set routes resolve by patient_id instead of cycle_id.
+ * patients BFF exposes the patient-level latest SetPlan id.
  */
 export async function loadSetCalendarForPatientAsync(patientId: string): Promise<{
   patients: SeedPatient[];
@@ -239,7 +245,7 @@ export async function loadSetCalendarForPatientAsync(patientId: string): Promise
 } | null> {
   if (USE_MOCK) return null;
   const listBody = await fetchJson<DispenseWorkbenchPatientsResponse>(
-    '/api/dispense-workbench/patients',
+    '/api/dispense-workbench/patients?include_set_plan=1',
   );
   const listRows = listBody?.data;
   if (!listRows || listRows.length === 0) return null;
@@ -248,10 +254,7 @@ export async function loadSetCalendarForPatientAsync(patientId: string): Promise
   const candidates = selectedRow ? [selectedRow] : listRows;
 
   for (const row of candidates) {
-    const plansBody = await fetchJson<SetPlanListResponse>(
-      `/api/set-plans?patient_id=${encodeURIComponent(row.patient_id)}`,
-    );
-    const planId = plansBody?.data?.[0]?.id;
+    const planId = row.latest_set_plan_id;
     if (!planId) {
       if (selectedRow) return null;
       continue;

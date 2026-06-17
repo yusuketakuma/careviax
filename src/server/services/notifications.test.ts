@@ -1,10 +1,19 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { dispatchNotificationEvent } from './notifications';
 
-const { loggerWarnMock, sendSmsMock, sendLineMessageMock } = vi.hoisted(() => ({
-  loggerWarnMock: vi.fn(),
-  sendSmsMock: vi.fn(),
-  sendLineMessageMock: vi.fn(),
+const { broadcastStatusUpdateMock, loggerWarnMock, sendSmsMock, sendLineMessageMock } = vi.hoisted(
+  () => ({
+    broadcastStatusUpdateMock: vi.fn(),
+    loggerWarnMock: vi.fn(),
+    sendSmsMock: vi.fn(),
+    sendLineMessageMock: vi.fn(),
+  }),
+);
+
+vi.mock('@/server/adapters/realtime', () => ({
+  getRealtimeAdapter: () => ({
+    broadcastStatusUpdate: broadcastStatusUpdateMock,
+  }),
 }));
 
 vi.mock('@/lib/utils/logger', () => ({
@@ -68,6 +77,10 @@ function createTx() {
 }
 
 describe('dispatchNotificationEvent', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   afterEach(() => {
     vi.useRealTimers();
   });
@@ -83,6 +96,8 @@ describe('dispatchNotificationEvent', () => {
     userFindMany.mockResolvedValue([]);
     notificationCreate.mockImplementation(async ({ data }) => ({
       id: 'notification_1',
+      created_at: new Date('2026-06-17T00:00:00.000Z'),
+      is_read: false,
       ...data,
     }));
 
@@ -106,6 +121,20 @@ describe('dispatchNotificationEvent', () => {
     );
     expect(sendSmsMock).not.toHaveBeenCalled();
     expect(sendLineMessageMock).not.toHaveBeenCalled();
+    expect(broadcastStatusUpdateMock).toHaveBeenCalledWith('user:user_1', [
+      {
+        id: 'notification_1',
+        type: 'business',
+        title: '承認待ち',
+        message: '通知を確認してください',
+        link: null,
+        is_read: false,
+        created_at: '2026-06-17T00:00:00.000Z',
+      },
+    ]);
+    expect(JSON.stringify(broadcastStatusUpdateMock.mock.calls[0]?.[1])).not.toContain(
+      'dedupe_key',
+    );
   });
 
   it('suppresses explicit notifications when in-app rules exist but are all disabled', async () => {

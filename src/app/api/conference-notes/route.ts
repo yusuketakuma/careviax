@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { conflict, success, validationError } from '@/lib/api/response';
@@ -30,6 +31,11 @@ export const GET = withAuthContext(
     }
 
     const requestedType = parsedFilters.data.conference_type ?? parsedFilters.data.note_type;
+    const billingEligibilityFilter = parsedFilters.data.billing_eligible;
+    const summaryList = parsedFilters.data.detail_level === 'summary';
+    const orderBy = [{ conference_date: 'desc' as const }, { id: 'desc' as const }];
+    const scanLimit =
+      billingEligibilityFilter === undefined ? limit + 1 : Math.min(limit * 5 + 1, 501);
 
     const notes = await withOrgContext(ctx.orgId, async (tx) => {
       const [patientScopedCases, facilityScopedCases] = await Promise.all([
@@ -65,61 +71,107 @@ export const GET = withAuthContext(
       const patientScopedCaseIds = patientScopedCases.map((item) => item.id);
       const facilityScopedCaseIds = facilityScopedCases.map((item) => item.id);
 
-      const records = await tx.conferenceNote.findMany({
-        where: {
-          org_id: ctx.orgId,
-          ...(caseId ? { case_id: caseId } : {}),
-          ...(requestedType ? { note_type: requestedType } : {}),
-          ...(parsedFilters.data.patient_id
-            ? {
-                OR: [
-                  { patient_id: parsedFilters.data.patient_id },
-                  ...(patientScopedCaseIds.length > 0
-                    ? [
-                        {
-                          case_id: {
-                            in: patientScopedCaseIds,
-                          },
+      const baseWhere: Prisma.ConferenceNoteWhereInput = {
+        org_id: ctx.orgId,
+        ...(caseId ? { case_id: caseId } : {}),
+        ...(requestedType ? { note_type: requestedType } : {}),
+        ...(parsedFilters.data.patient_id
+          ? {
+              OR: [
+                { patient_id: parsedFilters.data.patient_id },
+                ...(patientScopedCaseIds.length > 0
+                  ? [
+                      {
+                        case_id: {
+                          in: patientScopedCaseIds,
                         },
-                      ]
-                    : []),
-                ],
-              }
-            : {}),
-          ...(parsedFilters.data.facility_id
-            ? {
-                AND: [
-                  {
-                    OR: [
-                      { facility_id: parsedFilters.data.facility_id },
-                      ...(facilityScopedCaseIds.length > 0
-                        ? [
-                            {
-                              case_id: {
-                                in: facilityScopedCaseIds,
-                              },
+                      },
+                    ]
+                  : []),
+              ],
+            }
+          : {}),
+        ...(parsedFilters.data.facility_id
+          ? {
+              AND: [
+                {
+                  OR: [
+                    { facility_id: parsedFilters.data.facility_id },
+                    ...(facilityScopedCaseIds.length > 0
+                      ? [
+                          {
+                            case_id: {
+                              in: facilityScopedCaseIds,
                             },
-                          ]
-                        : []),
-                    ],
-                  },
-                ],
-              }
-            : {}),
-          ...(parsedFilters.data.date_from || parsedFilters.data.date_to
-            ? {
-                conference_date: {
-                  ...(parsedFilters.data.date_from
-                    ? { gte: new Date(`${parsedFilters.data.date_from}T00:00:00.000Z`) }
-                    : {}),
-                  ...(parsedFilters.data.date_to
-                    ? { lte: new Date(`${parsedFilters.data.date_to}T23:59:59.999Z`) }
-                    : {}),
+                          },
+                        ]
+                      : []),
+                  ],
                 },
-              }
-            : {}),
-        },
-        orderBy: { conference_date: 'desc' },
+              ],
+            }
+          : {}),
+        ...(parsedFilters.data.date_from || parsedFilters.data.date_to
+          ? {
+              conference_date: {
+                ...(parsedFilters.data.date_from
+                  ? { gte: new Date(`${parsedFilters.data.date_from}T00:00:00.000Z`) }
+                  : {}),
+                ...(parsedFilters.data.date_to
+                  ? { lte: new Date(`${parsedFilters.data.date_to}T23:59:59.999Z`) }
+                  : {}),
+              },
+            }
+          : {}),
+      };
+      const cursorNote = cursor
+        ? await tx.conferenceNote.findFirst({
+            where: { AND: [baseWhere, { id: cursor }] },
+            select: { id: true, conference_date: true },
+          })
+        : null;
+      const cursorWhere: Prisma.ConferenceNoteWhereInput | null = cursorNote
+        ? {
+            OR: [
+              { conference_date: { lt: cursorNote.conference_date } },
+              {
+                conference_date: cursorNote.conference_date,
+                id: { lt: cursorNote.id },
+              },
+            ],
+          }
+        : null;
+      const where: Prisma.ConferenceNoteWhereInput = cursorWhere
+        ? { AND: [baseWhere, cursorWhere] }
+        : baseWhere;
+
+      const records = await tx.conferenceNote.findMany({
+        where,
+        orderBy,
+        take: scanLimit,
+        ...(summaryList
+          ? {
+              select: {
+                id: true,
+                org_id: true,
+                case_id: true,
+                patient_id: true,
+                facility_id: true,
+                note_type: true,
+                title: true,
+                metadata: true,
+                participants: true,
+                billing_eligible: true,
+                billing_code: true,
+                follow_up_date: true,
+                follow_up_completed: true,
+                generated_report_id: true,
+                conference_date: true,
+                created_at: true,
+                updated_at: true,
+              },
+            }
+          : {}),
       });
 
       const caseIds = Array.from(
@@ -154,7 +206,7 @@ export const GET = withAuthContext(
             });
       const caseById = new Map(cases.map((item) => [item.id, item]));
 
-      return records.map((note) => {
+      const mappedRecords = records.map((note) => {
         const relatedCase = note.case_id ? caseById.get(note.case_id) : null;
         const billing =
           note.metadata && typeof note.metadata === 'object' && !Array.isArray(note.metadata)
@@ -198,7 +250,7 @@ export const GET = withAuthContext(
           generated_report_id: note.generated_report_id ?? billing?.generated_report_id ?? null,
         };
 
-        if (parsedFilters.data.detail_level === 'summary') {
+        if (summaryList) {
           return {
             id: baseNote.id,
             org_id: baseNote.org_id,
@@ -227,20 +279,28 @@ export const GET = withAuthContext(
 
         return baseNote;
       });
+
+      const filteredRecords =
+        billingEligibilityFilter === undefined
+          ? mappedRecords
+          : mappedRecords.filter((note) => note.billing_eligible === billingEligibilityFilter);
+      const hasFilteredOverflow = filteredRecords.length > limit;
+      const hasScanOverflow = records.length >= scanLimit;
+      const data = hasFilteredOverflow ? filteredRecords.slice(0, limit) : filteredRecords;
+      const nextCursor = hasFilteredOverflow
+        ? data[data.length - 1]?.id
+        : hasScanOverflow
+          ? records[records.length - 1]?.id
+          : undefined;
+
+      return {
+        data,
+        hasMore: Boolean(nextCursor) && (hasFilteredOverflow || hasScanOverflow),
+        nextCursor,
+      };
     });
 
-    const filteredNotes =
-      parsedFilters.data.billing_eligible === undefined
-        ? notes
-        : notes.filter((note) => note.billing_eligible === parsedFilters.data.billing_eligible);
-
-    const cursorIndex = cursor ? filteredNotes.findIndex((note) => note.id === cursor) : -1;
-    const paginated = cursorIndex >= 0 ? filteredNotes.slice(cursorIndex + 1) : filteredNotes;
-    const hasMore = paginated.length > limit;
-    const data = hasMore ? paginated.slice(0, limit) : paginated;
-    const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
-
-    return success({ data, hasMore, nextCursor });
+    return success(notes);
   },
   {
     permission: 'canReport',
@@ -382,23 +442,19 @@ export const POST = withAuthContext(
           action_items: action_items !== undefined ? action_items : Prisma.JsonNull,
         },
       });
-      await tx.auditLog.create({
-        data: {
-          org_id: ctx.orgId,
-          actor_id: ctx.userId,
-          action: 'conference_note.created',
-          target_type: 'conference_note',
-          target_id: created.id,
-          changes: {
-            conference_note: {
-              note_type,
-              report_type: normalizedMetadata?.conference_operation?.report_type ?? null,
-              follow_up_date: parsed.data.follow_up_date ?? null,
-              follow_up_completed: parsed.data.follow_up_completed ?? false,
-              action_item_count: action_items?.length ?? 0,
-              billing_eligible: resolvedBillingEligible,
-              billing_code: resolvedBillingCode,
-            },
+      await createAuditLogEntry(tx, ctx, {
+        action: 'conference_note.created',
+        targetType: 'conference_note',
+        targetId: created.id,
+        changes: {
+          conference_note: {
+            note_type,
+            report_type: normalizedMetadata?.conference_operation?.report_type ?? null,
+            follow_up_date: parsed.data.follow_up_date ?? null,
+            follow_up_completed: parsed.data.follow_up_completed ?? false,
+            action_item_count: action_items?.length ?? 0,
+            billing_eligible: resolvedBillingEligible,
+            billing_code: resolvedBillingCode,
           },
         },
       });

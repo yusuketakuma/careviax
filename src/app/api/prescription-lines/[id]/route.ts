@@ -6,6 +6,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { formatNullableUtcDateKey } from '@/lib/date-key';
 import { buildPrescriptionIntakeAssignmentWhere } from '@/server/services/prescription-access';
 import { dateKeySchema } from '@/lib/validations/date-key';
 import { z } from 'zod';
@@ -41,7 +42,7 @@ function toDateColumnValue(value: string | null | undefined) {
 }
 
 function toDateKey(value: Date | null) {
-  return value ? value.toISOString().slice(0, 10) : null;
+  return formatNullableUtcDateKey(value);
 }
 
 export const PATCH = withAuthContext<{ id: string }>(

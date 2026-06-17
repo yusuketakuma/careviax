@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   type UseFormReturn,
   type FieldValues,
@@ -134,6 +134,7 @@ export function useCollaborativeForm<TFieldValues extends FieldValues>({
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const queryKey = ['presence', entityType, entityId, orgId];
+  const presenceTargets = useMemo(() => [{ entityType, entityId }], [entityType, entityId]);
   const collaborationAccessKey = `${orgId}\u0000${entityType}\u0000${entityId}`;
   const [collaborationAccessDeniedState, setCollaborationAccessDeniedState] = useState<{
     key: string;
@@ -143,7 +144,21 @@ export function useCollaborativeForm<TFieldValues extends FieldValues>({
     collaborationAccessDeniedState.denied &&
     collaborationAccessDeniedState.key === collaborationAccessKey;
 
-  // Presence uses SSE invalidation first; polling is a low-frequency fallback.
+  const realtime = useRealtimeEvents({
+    onEvent: (event) => {
+      const e = event as { type?: string; entity_type?: string; entity_id?: string };
+      if (
+        e.type === 'presence_update' &&
+        e.entity_type === entityType &&
+        e.entity_id === entityId
+      ) {
+        queryClient.invalidateQueries({ queryKey });
+      }
+    },
+    enabled: !!orgId && !!entityId && !collaborationAccessDenied,
+    presenceTargets,
+  });
+
   const { data: presenceData = [] } = useQuery<PresenceUser[]>({
     queryKey,
     queryFn: async () => {
@@ -155,21 +170,8 @@ export function useCollaborativeForm<TFieldValues extends FieldValues>({
       const payload = await readJsonResponseBody(res);
       return readPresenceUsersResponse(payload);
     },
-    refetchInterval: 30_000,
+    refetchInterval: realtime.connected ? false : 30_000,
     enabled: !!orgId && !!entityId && !collaborationAccessDenied,
-  });
-
-  useRealtimeEvents({
-    onEvent: (event) => {
-      const e = event as { type?: string; entity_type?: string; entity_id?: string };
-      if (
-        e.type === 'presence_update' &&
-        e.entity_type === entityType &&
-        e.entity_id === entityId
-      ) {
-        queryClient.invalidateQueries({ queryKey });
-      }
-    },
   });
 
   const postActiveField = useCallback(

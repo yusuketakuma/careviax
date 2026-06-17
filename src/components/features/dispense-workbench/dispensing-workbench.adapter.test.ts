@@ -68,6 +68,38 @@ function calendarBody() {
   };
 }
 
+function workbenchBody() {
+  return {
+    task: { id: 'task_1', status: 'in_progress', priority: 'normal', due_date: null },
+    cycle: { id: 'cycle_1', overall_status: 'dispensing', version: 2 },
+    patient: { id: 'patient_1', name: '佐藤 花子' },
+    intake: {
+      id: 'intake_1',
+      prescribed_date: '2026-06-17',
+      prescriber_institution: 'さくら内科',
+      prescriber_name: '田中 一郎',
+    },
+    previous_intake: null,
+    safety: {
+      allergy: null,
+      renal: null,
+      handling_tags: [],
+      swallowing: null,
+      cautions: [],
+    },
+    comparison: [],
+    count_rows: [],
+    dispenser: null,
+    auditor: null,
+    is_self_audit: false,
+    has_narcotic: false,
+    visit_time_label: null,
+    resolved_inquiry: null,
+    team_audit_total: 0,
+    stock_check_date_label: null,
+  };
+}
+
 function emptyCell() {
   return {
     batch_id: null,
@@ -112,11 +144,60 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
     expect(result).toEqual([]);
   });
 
+  it('reuses already loaded patient rows when resolving the dispense workbench', async () => {
+    process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/dispense-tasks?cycle_id=cycle_1') {
+        return jsonResponse({
+          data: [{ id: 'task_1', cycle_id: 'cycle_1', status: 'in_progress' }],
+        });
+      }
+      if (url === '/api/dispense-tasks/task_1/workbench') {
+        return jsonResponse(workbenchBody());
+      }
+      return new Response('unexpected patient refetch', { status: 500 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { loadWorkbenchAsync } = await import('./dispensing-workbench.adapter');
+    const result = await loadWorkbenchAsync('dispense', 'patient_1', {
+      patientRows: [
+        {
+          patient_id: 'patient_1',
+          cycle_id: 'cycle_1',
+          name: '佐藤 花子',
+          name_kana: 'サトウ ハナコ',
+          overall_status: 'dispensing',
+          badge: 'in_progress',
+          start_date: '2026-06-17',
+          registered_date: '2026-06-01',
+          latest_set_plan_id: null,
+          latest_set_plan_cycle_id: null,
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      patient: { id: 'patient_1', name: '佐藤 花子' },
+      writeContext: {
+        taskId: 'task_1',
+        cycleId: 'cycle_1',
+        cycleVersion: 2,
+      },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      '/api/dispense-workbench/patients',
+      expect.any(Object),
+    );
+  });
+
   it('resolves direct /set entry from patient cycle to latest SetPlan calendar', async () => {
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === '/api/dispense-workbench/patients') {
+      if (url === '/api/dispense-workbench/patients?include_set_plan=1') {
         return jsonResponse({
           data: [
             {
@@ -128,12 +209,11 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
               badge: 'in_progress',
               start_date: '2026-06-17',
               registered_date: '2026-06-01',
+              latest_set_plan_id: 'plan_1',
+              latest_set_plan_cycle_id: 'cycle_1',
             },
           ],
         });
-      }
-      if (url === '/api/set-plans?patient_id=patient_1') {
-        return jsonResponse({ data: [{ id: 'plan_1', cycle_id: 'cycle_1' }] });
       }
       if (url === '/api/set-plans/plan_1/calendar') {
         return jsonResponse(calendarBody());
@@ -166,26 +246,22 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
     });
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      '/api/dispense-workbench/patients',
+      '/api/dispense-workbench/patients?include_set_plan=1',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      '/api/set-plans?patient_id=patient_1',
-      expect.any(Object),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      3,
       '/api/set-plans/plan_1/calendar',
       expect.any(Object),
     );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('fails closed instead of switching patients when the selected patient has no SetPlan', async () => {
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === '/api/dispense-workbench/patients') {
+      if (url === '/api/dispense-workbench/patients?include_set_plan=1') {
         return jsonResponse({
           data: [
             {
@@ -197,6 +273,8 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
               badge: 'in_progress',
               start_date: '2026-06-17',
               registered_date: '2026-06-01',
+              latest_set_plan_id: null,
+              latest_set_plan_cycle_id: null,
             },
             {
               patient_id: 'patient_with_plan',
@@ -207,15 +285,11 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
               badge: 'in_progress',
               start_date: '2026-06-17',
               registered_date: '2026-06-01',
+              latest_set_plan_id: 'plan_1',
+              latest_set_plan_cycle_id: 'cycle_1',
             },
           ],
         });
-      }
-      if (url === '/api/set-plans?patient_id=patient_without_plan') {
-        return jsonResponse({ data: [] });
-      }
-      if (url === '/api/set-plans?patient_id=patient_with_plan') {
-        return jsonResponse({ data: [{ id: 'plan_1', cycle_id: 'cycle_1' }] });
       }
       if (url === '/api/set-plans/plan_1/calendar') {
         return jsonResponse(calendarBody());
@@ -228,8 +302,8 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
     const result = await loadSetCalendarForPatientAsync('patient_without_plan');
 
     expect(result).toBeNull();
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalledWith(
       '/api/set-plans?patient_id=patient_without_plan',
       expect.any(Object),
     );
@@ -247,7 +321,7 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
     process.env.NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA = '1';
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url === '/api/dispense-workbench/patients') {
+      if (url === '/api/dispense-workbench/patients?include_set_plan=1') {
         return jsonResponse({
           data: [
             {
@@ -259,6 +333,8 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
               badge: 'in_progress',
               start_date: '2026-06-17',
               registered_date: '2026-06-01',
+              latest_set_plan_id: null,
+              latest_set_plan_cycle_id: null,
             },
             {
               patient_id: 'patient_with_plan',
@@ -269,15 +345,11 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
               badge: 'in_progress',
               start_date: '2026-06-17',
               registered_date: '2026-06-01',
+              latest_set_plan_id: 'plan_1',
+              latest_set_plan_cycle_id: 'cycle_1',
             },
           ],
         });
-      }
-      if (url === '/api/set-plans?patient_id=patient_without_plan') {
-        return jsonResponse({ data: [] });
-      }
-      if (url === '/api/set-plans?patient_id=patient_with_plan') {
-        return jsonResponse({ data: [{ id: 'plan_1', cycle_id: 'cycle_1' }] });
       }
       if (url === '/api/set-plans/plan_1/calendar') {
         return jsonResponse(calendarBody());
@@ -291,14 +363,15 @@ describe('dispensing-workbench.adapter set calendar real-data resolution', () =>
 
     expect(result?.selId).toBe('patient_with_plan');
     expect(result?.writeContext.planId).toBe('plan_1');
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(fetchMock).not.toHaveBeenCalledWith(
       '/api/set-plans?patient_id=patient_without_plan',
       expect.any(Object),
     );
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(fetchMock).not.toHaveBeenCalledWith(
       '/api/set-plans?patient_id=patient_with_plan',
       expect.any(Object),
     );
     expect(fetchMock).toHaveBeenCalledWith('/api/set-plans/plan_1/calendar', expect.any(Object));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

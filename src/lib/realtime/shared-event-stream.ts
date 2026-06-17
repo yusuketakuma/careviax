@@ -5,10 +5,16 @@ import { normalizeRealtimeEventPayload } from '@/lib/realtime/events';
 type RealtimeListener = (event: unknown) => void;
 type StatusListener = (connected: boolean) => void;
 
+export type RealtimePresenceTarget = {
+  entityType: string;
+  entityId: string;
+};
+
 type SharedRealtimeStream = {
   orgId: string;
   listeners: Set<RealtimeListener>;
   statusListeners: Set<StatusListener>;
+  presenceTargets: Map<string, { target: RealtimePresenceTarget; count: number }>;
   abortController: AbortController | null;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
   reconnectAttempt: number;
@@ -17,6 +23,27 @@ type SharedRealtimeStream = {
 };
 
 const streams = new Map<string, SharedRealtimeStream>();
+
+function presenceTargetKey(target: RealtimePresenceTarget) {
+  return `${target.entityType}\u0000${target.entityId}`;
+}
+
+function serializePresenceTarget(target: RealtimePresenceTarget) {
+  return JSON.stringify([target.entityType, target.entityId]);
+}
+
+function buildStreamUrl(stream: SharedRealtimeStream) {
+  if (stream.presenceTargets.size === 0) return '/api/notifications/stream';
+
+  const params = new URLSearchParams();
+  const targets = [...stream.presenceTargets.values()]
+    .map(({ target }) => target)
+    .sort((a, b) => presenceTargetKey(a).localeCompare(presenceTargetKey(b)));
+  for (const target of targets) {
+    params.append('presence', serializePresenceTarget(target));
+  }
+  return `/api/notifications/stream?${params.toString()}`;
+}
 
 function clearReconnectTimer(stream: SharedRealtimeStream) {
   if (!stream.reconnectTimer) return;
@@ -65,7 +92,7 @@ async function connectSharedStream(stream: SharedRealtimeStream) {
   stream.abortController = controller;
 
   try {
-    const response = await fetch('/api/notifications/stream', {
+    const response = await fetch(buildStreamUrl(stream), {
       headers: { 'x-org-id': stream.orgId },
       signal: controller.signal,
     });
@@ -131,6 +158,7 @@ function getOrCreateSharedStream(orgId: string) {
     orgId,
     listeners: new Set(),
     statusListeners: new Set(),
+    presenceTargets: new Map(),
     abortController: null,
     reconnectTimer: null,
     reconnectAttempt: 0,
@@ -145,12 +173,32 @@ export function subscribeSharedRealtimeStream(args: {
   orgId: string;
   onEvent: RealtimeListener;
   onStatus?: StatusListener;
+  presenceTargets?: RealtimePresenceTarget[];
 }) {
   const stream = getOrCreateSharedStream(args.orgId);
   stream.listeners.add(args.onEvent);
+  const targetKeys: string[] = [];
+  let presenceTargetsChanged = false;
+
+  for (const target of args.presenceTargets ?? []) {
+    const key = presenceTargetKey(target);
+    targetKeys.push(key);
+    const existing = stream.presenceTargets.get(key);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      stream.presenceTargets.set(key, { target, count: 1 });
+      presenceTargetsChanged = true;
+    }
+  }
+
   if (args.onStatus) {
     stream.statusListeners.add(args.onStatus);
     args.onStatus(stream.connected);
+  }
+
+  if (presenceTargetsChanged && stream.abortController) {
+    stream.abortController.abort();
   }
 
   if (!stream.abortController && !stream.reconnectTimer) {
@@ -159,8 +207,21 @@ export function subscribeSharedRealtimeStream(args: {
 
   return () => {
     stream.listeners.delete(args.onEvent);
+    let removedPresenceTarget = false;
+    for (const key of targetKeys) {
+      const existing = stream.presenceTargets.get(key);
+      if (!existing) continue;
+      existing.count -= 1;
+      if (existing.count <= 0) {
+        stream.presenceTargets.delete(key);
+        removedPresenceTarget = true;
+      }
+    }
     if (args.onStatus) {
       stream.statusListeners.delete(args.onStatus);
+    }
+    if (removedPresenceTarget && stream.listeners.size > 0 && stream.abortController) {
+      stream.abortController.abort();
     }
     if (stream.listeners.size === 0) {
       stopSharedStream(stream);

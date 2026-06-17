@@ -5,11 +5,15 @@ import type { MemberRole } from '@prisma/client';
 const {
   authCtx,
   medicationCycleFindManyMock,
+  setPlanFindManyMock,
   buildMedicationCycleAssignmentWhereMock,
+  buildSetPlanAssignmentWhereMock,
 } = vi.hoisted(() => ({
   authCtx: { orgId: 'org_1', userId: 'user_1', role: 'pharmacist' as MemberRole },
   medicationCycleFindManyMock: vi.fn(),
+  setPlanFindManyMock: vi.fn(),
   buildMedicationCycleAssignmentWhereMock: vi.fn(),
+  buildSetPlanAssignmentWhereMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -40,11 +44,15 @@ vi.mock('@/lib/db/client', () => ({
     medicationCycle: {
       findMany: medicationCycleFindManyMock,
     },
+    setPlan: {
+      findMany: setPlanFindManyMock,
+    },
   },
 }));
 
 vi.mock('@/server/services/prescription-access', () => ({
   buildMedicationCycleAssignmentWhere: buildMedicationCycleAssignmentWhereMock,
+  buildSetPlanAssignmentWhere: buildSetPlanAssignmentWhereMock,
 }));
 
 import { GET } from './route';
@@ -90,9 +98,11 @@ describe('GET /api/dispense-workbench/patients', () => {
     authCtx.userId = 'user_1';
     authCtx.role = 'pharmacist';
     buildMedicationCycleAssignmentWhereMock.mockReturnValue(null);
+    buildSetPlanAssignmentWhereMock.mockReturnValue(null);
+    setPlanFindManyMock.mockResolvedValue([]);
   });
 
-  it('returns patient rows with derived badge, start_date and registered_date', async () => {
+  it('returns patient rows without SetPlan hydration by default', async () => {
     medicationCycleFindManyMock.mockResolvedValue([
       cycle({
         id: 'cycle_1',
@@ -119,9 +129,63 @@ describe('GET /api/dispense-workbench/patients', () => {
           badge: 'in_progress',
           start_date: '2026-04-01',
           registered_date: '2026-03-20',
+          latest_set_plan_id: null,
+          latest_set_plan_cycle_id: null,
         },
       ],
     });
+    expect(setPlanFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('hydrates the patient-level latest SetPlan only when requested', async () => {
+    medicationCycleFindManyMock.mockResolvedValue([
+      cycle({
+        id: 'cycle_new_without_plan',
+        patient_id: 'patient_1',
+        overall_status: 'audit_pending',
+        caseStart: new Date('2026-04-01T00:00:00.000Z'),
+        patientCreatedAt: new Date('2026-03-20T09:00:00.000Z'),
+        name: '山田 太郎',
+        nameKana: 'ヤマダ タロウ',
+      }),
+    ]);
+    setPlanFindManyMock.mockResolvedValue([
+      {
+        id: 'plan_old',
+        cycle_id: 'cycle_old_with_plan',
+        cycle: { patient_id: 'patient_1' },
+      },
+    ]);
+
+    const response = await GET(createRequest('?include_set_plan=1'), {
+      params: Promise.resolve({}),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        {
+          patient_id: 'patient_1',
+          cycle_id: 'cycle_new_without_plan',
+          latest_set_plan_id: 'plan_old',
+          latest_set_plan_cycle_id: 'cycle_old_with_plan',
+        },
+      ],
+    });
+    expect(setPlanFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          AND: [
+            {
+              cycle: {
+                patient_id: { in: ['patient_1'] },
+              },
+            },
+          ],
+        }),
+      }),
+    );
   });
 
   it('keeps only the latest cycle per patient (findMany ordered desc)', async () => {
@@ -145,6 +209,7 @@ describe('GET /api/dispense-workbench/patients', () => {
     expect(body.data).toHaveLength(1);
     expect(body.data[0].cycle_id).toBe('cycle_new');
     expect(body.data[0].badge).toBe('in_progress');
+    expect(body.data[0].latest_set_plan_id).toBeNull();
   });
 
   it('falls back to earliest prescription line start_date when case start_date is null', async () => {

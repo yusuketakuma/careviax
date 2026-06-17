@@ -11,6 +11,7 @@ const useQueryClientMock = vi.hoisted(() => vi.fn());
 const useRouterMock = vi.hoisted(() => vi.fn());
 const usePathnameMock = vi.hoisted(() => vi.fn());
 const useOfflineStoreMock = vi.hoisted(() => vi.fn());
+const useRealtimeEventsMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -29,6 +30,10 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/lib/stores/offline-store', () => ({
   useOfflineStore: useOfflineStoreMock,
+}));
+
+vi.mock('@/lib/hooks/use-realtime-events', () => ({
+  useRealtimeEvents: useRealtimeEventsMock,
 }));
 
 import { NotificationsContent } from './notifications-content';
@@ -74,8 +79,9 @@ describe('NotificationsContent', () => {
     useOrgIdMock.mockReturnValue('org_1');
     useRouterMock.mockReturnValue({ replace: vi.fn(), push: vi.fn() });
     usePathnameMock.mockReturnValue('/notifications');
-    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn(), setQueryData: vi.fn() });
     useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useRealtimeEventsMock.mockReturnValue({ connected: false });
     useOfflineStoreMock.mockImplementation(
       (selector: (state: { pendingSyncCount: number }) => unknown) =>
         selector({ pendingSyncCount: 2 }),
@@ -133,5 +139,52 @@ describe('NotificationsContent', () => {
 
     expect(push).toHaveBeenCalled();
     expect(mutate).toHaveBeenCalledWith(['notification_1']);
+  });
+
+  it('pauses inbox polling while the shared realtime stream is connected', () => {
+    useRealtimeEventsMock.mockReturnValue({ connected: true });
+
+    render(<NotificationsContent />);
+
+    expect(useQueryMock).toHaveBeenCalledWith(expect.objectContaining({ refetchInterval: false }));
+  });
+
+  it('merges notification stream items into the inbox cache', () => {
+    const setQueryData = vi.fn();
+    let realtimeOptions: { onEvent: (event: unknown) => void } | null = null;
+    const getRealtimeOptions = () => {
+      if (!realtimeOptions) throw new Error('realtime options were not captured');
+      return realtimeOptions;
+    };
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn(), setQueryData });
+    useRealtimeEventsMock.mockImplementation((options: { onEvent: (event: unknown) => void }) => {
+      realtimeOptions = options;
+      return { connected: true };
+    });
+
+    render(<NotificationsContent />);
+    getRealtimeOptions().onEvent([
+      {
+        id: 'notification_4',
+        type: 'business',
+        title: '新しい通知',
+        message: '新着です',
+        link: '/notifications',
+        is_read: false,
+        created_at: '2026-06-10T09:00:00.000Z',
+      },
+    ]);
+
+    expect(setQueryData).toHaveBeenCalledWith(
+      ['notifications', 'inbox', 'org_1'],
+      expect.any(Function),
+    );
+    const updater = setQueryData.mock.calls[0]?.[1] as
+      | ((current: { data: typeof NOTIFICATIONS }) => { data: typeof NOTIFICATIONS })
+      | undefined;
+    expect(updater?.({ data: [NOTIFICATIONS[0]] }).data.map((item) => item.id)).toEqual([
+      'notification_4',
+      'notification_1',
+    ]);
   });
 });

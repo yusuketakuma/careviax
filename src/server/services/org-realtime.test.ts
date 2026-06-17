@@ -24,6 +24,26 @@ describe('org realtime helpers', () => {
   });
 
   it('sanitizes org-wide events to safe event types and allowlisted source only', () => {
+    const commentEvent = sanitizeOrgRealtimeEvent({
+      type: 'comment_refresh',
+      payload: {
+        patientId: 'patient_1',
+        entityId: 'patient_1',
+        commentId: 'comment_1',
+        authorId: 'user_1',
+        mentions: ['user_2'],
+        content: 'private comment',
+      },
+    });
+
+    expect(commentEvent).toEqual({ type: 'comment_refresh' });
+    const serializedCommentEvent = JSON.stringify(commentEvent);
+    expect(serializedCommentEvent).not.toContain('patient_1');
+    expect(serializedCommentEvent).not.toContain('comment_1');
+    expect(serializedCommentEvent).not.toContain('user_1');
+    expect(serializedCommentEvent).not.toContain('user_2');
+    expect(serializedCommentEvent).not.toContain('private comment');
+
     expect(
       sanitizeOrgRealtimeEvent({
         type: 'cycle_transition',

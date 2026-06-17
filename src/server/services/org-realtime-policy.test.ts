@@ -9,6 +9,7 @@ const ALLOWED_REALTIME_ADAPTER_USERS = new Map([
   ['src/server/adapters/realtime/in-memory-adapter.ts', 'adapter implementation'],
   ['src/server/adapters/realtime/index.ts', 'adapter factory'],
   ['src/server/adapters/realtime/redis-adapter.ts', 'adapter implementation'],
+  ['src/server/services/notifications.ts', 'persisted notification user-channel publisher'],
   ['src/server/services/org-realtime.ts', 'central sanitized org publisher'],
 ]);
 
@@ -104,6 +105,7 @@ describe('org realtime publisher policy', () => {
 
   it('keeps allowed direct realtime adapter users constrained to reviewed channel families', () => {
     const presenceSource = readFileSync('src/app/api/presence/route.ts', 'utf8');
+    const notificationSource = readFileSync('src/server/services/notifications.ts', 'utf8');
     const presenceViolations = [
       presenceSource.includes('broadcastOrgRealtimeEvent')
         ? 'presence route must not publish org-wide events through broadcastOrgRealtimeEvent'
@@ -120,6 +122,23 @@ describe('org realtime publisher policy', () => {
     ].filter(Boolean);
 
     expect(presenceViolations).toEqual([]);
+
+    const notificationViolations = [
+      notificationSource.includes('broadcastOrgRealtimeEvent')
+        ? 'notifications service must not publish org-wide events through broadcastOrgRealtimeEvent'
+        : null,
+      notificationSource.includes('buildOrgRealtimeChannel')
+        ? 'notifications service must not build org-wide realtime channels'
+        : null,
+      ORG_CHANNEL_PATTERN.test(notificationSource)
+        ? 'notifications service must not contain raw org:* channels'
+        : null,
+      !notificationSource.includes('return `user:${userId}`;')
+        ? 'notifications service must publish only the reviewed user:${userId} channel'
+        : null,
+    ].filter(Boolean);
+
+    expect(notificationViolations).toEqual([]);
   });
 
   it(

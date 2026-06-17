@@ -8,8 +8,8 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans:
-    Meiryo, "Hiragino Kaku Gothic ProN", "Yu Gothic", "Yu Gothic Medium",
-    var(--font-noto-jp), system-ui, sans-serif;
+    Meiryo, 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Yu Gothic Medium', var(--font-noto-jp),
+    system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -230,6 +230,30 @@
   .phos-patient-card-motion:hover {
     transform: none;
     box-shadow: none;
+  }
+}
+
+@media (hover: none) and (pointer: coarse), (max-width: 767px) {
+  body
+    :is(
+      a[href],
+      button,
+      input:not([type='checkbox']):not([type='radio']):not([type='file']):not([type='hidden']),
+      select,
+      textarea,
+      [role='button']
+    ):not([aria-hidden='true']):not([tabindex='-1']) {
+    min-block-size: 44px !important;
+    min-inline-size: 44px !important;
+    touch-action: manipulation;
+  }
+
+  body
+    a[href]:not(.block):not(.flex):not(.inline-flex):not(.grid):not([class*='block']):not(
+      [class*='flex']
+    ):not([class*='grid']) {
+    display: inline-flex;
+    align-items: center;
   }
 }
 

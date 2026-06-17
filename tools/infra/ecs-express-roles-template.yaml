@@ -1,0 +1,95 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: PH-OS ECS Express Mode IAM roles for a role-capable container runtime.
+
+Parameters:
+  Prefix:
+    Type: String
+    Default: ph-os-ecs-express
+    AllowedPattern: '^[a-zA-Z][a-zA-Z0-9-]{1,38}$'
+    Description: Prefix for IAM role naming and tags.
+
+Resources:
+  EcsTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${Prefix}-task-execution'
+      Description: ECS task execution role for pulling PH-OS images and writing logs.
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Tags:
+        - Key: Project
+          Value: ph-os
+        - Key: Environment
+          Value: pilot
+        - Key: ManagedBy
+          Value: cloudformation
+
+  EcsInfrastructureRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${Prefix}-infrastructure'
+      Description: ECS Express Mode infrastructure role.
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowAccessInfrastructureForECSExpressServices
+            Effect: Allow
+            Principal:
+              Service: ecs.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonECSInfrastructureRoleforExpressGatewayServices
+      Tags:
+        - Key: Project
+          Value: ph-os
+        - Key: Environment
+          Value: pilot
+        - Key: ManagedBy
+          Value: cloudformation
+
+  EcsAppTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${Prefix}-app-task'
+      Description: PH-OS application task role. Attach least-privilege app policies before enabling AWS API-backed runtime features.
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Tags:
+        - Key: Project
+          Value: ph-os
+        - Key: Environment
+          Value: pilot
+        - Key: ManagedBy
+          Value: cloudformation
+
+Outputs:
+  TaskExecutionRoleName:
+    Description: Role name used by follow-up runtime policy stacks.
+    Value: !Ref EcsTaskExecutionRole
+  TaskExecutionRoleArn:
+    Description: Pass this ARN to aws ecs create-express-gateway-service --execution-role-arn.
+    Value: !GetAtt EcsTaskExecutionRole.Arn
+  InfrastructureRoleArn:
+    Description: Pass this ARN to aws ecs create-express-gateway-service --infrastructure-role-arn.
+    Value: !GetAtt EcsInfrastructureRole.Arn
+  AppTaskRoleName:
+    Description: Role name used by follow-up runtime policy stacks.
+    Value: !Ref EcsAppTaskRole
+  AppTaskRoleArn:
+    Description: Pass this ARN to --task-role-arn after attaching least-privilege runtime permissions.
+    Value: !GetAtt EcsAppTaskRole.Arn

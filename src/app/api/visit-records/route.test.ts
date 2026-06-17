@@ -486,6 +486,139 @@ describe('/api/visit-records GET', () => {
       }),
     );
   });
+
+  it('returns normalized attachment summaries only when explicitly requested', async () => {
+    visitRecordFindManyMock.mockResolvedValue([
+      {
+        id: 'visit_1',
+        schedule_id: 'schedule_1',
+        patient_id: 'patient_1',
+        pharmacist_id: 'pharmacist_1',
+        visit_date: new Date('2026-04-20T10:00:00.000Z'),
+        outcome_status: 'completed',
+        soap_subjective: '眠気なし',
+        soap_objective: null,
+        soap_assessment: null,
+        soap_plan: null,
+        receipt_person_name: null,
+        receipt_person_relation: null,
+        receipt_at: null,
+        next_visit_suggestion_date: null,
+        version: 1,
+        created_at: new Date('2026-04-20T09:00:00.000Z'),
+        updated_at: new Date('2026-04-20T10:00:00.000Z'),
+        attachments: [
+          {
+            file_id: 'file_1',
+            file_name: '残薬写真_01.jpg',
+            mime_type: 'image/jpeg',
+            size_bytes: 1024,
+            uploaded_at: '2026-04-20T09:05:00.000Z',
+            kind: 'photo',
+          },
+          {
+            file_id: 'file_2',
+            file_name: '説明書.pdf',
+            mime_type: 'application/pdf',
+            size_bytes: 2048,
+            uploaded_at: null,
+            kind: 'attachment',
+          },
+          { file_id: 'broken' },
+        ],
+        schedule: null,
+      },
+    ]);
+
+    const response = await GET(
+      createGetRequest('http://localhost/api/visit-records?include_attachments=true&limit=12'),
+    );
+
+    expect(response.status).toBe(200);
+    expect(visitRecordFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          attachments: true,
+        }),
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        {
+          id: 'visit_1',
+          attachments: [
+            {
+              file_id: 'file_1',
+              file_name: '残薬写真_01.jpg',
+              uploaded_at: '2026-04-20T09:05:00.000Z',
+              kind: 'photo',
+            },
+            {
+              file_id: 'file_2',
+              file_name: '説明書.pdf',
+              uploaded_at: null,
+              kind: 'attachment',
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it('uses a narrow projection for the evidence gallery attachment view', async () => {
+    visitRecordFindManyMock.mockResolvedValue([
+      {
+        id: 'visit_1',
+        visit_date: new Date('2026-04-20T10:00:00.000Z'),
+        created_at: new Date('2026-04-20T09:00:00.000Z'),
+        attachments: [
+          {
+            file_id: 'file_1',
+            file_name: '残薬写真_01.jpg',
+            mime_type: 'image/jpeg',
+            size_bytes: 1024,
+            uploaded_at: '2026-04-20T09:05:00.000Z',
+            kind: 'photo',
+          },
+        ],
+      },
+    ]);
+
+    const response = await GET(
+      createGetRequest(
+        'http://localhost/api/visit-records?include_attachments=true&view=evidence_gallery&limit=12',
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(visitRecordFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: {
+          id: true,
+          visit_date: true,
+          created_at: true,
+          attachments: true,
+        },
+      }),
+    );
+    const body = await response.json();
+    expect(body.data[0]).toEqual({
+      id: 'visit_1',
+      visit_date: '2026-04-20T10:00:00.000Z',
+      created_at: '2026-04-20T09:00:00.000Z',
+      attachments: [
+        {
+          file_id: 'file_1',
+          file_name: '残薬写真_01.jpg',
+          uploaded_at: '2026-04-20T09:05:00.000Z',
+          kind: 'photo',
+        },
+      ],
+    });
+    expect(body.data[0]).not.toHaveProperty('soap_subjective');
+    expect(body.data[0]).not.toHaveProperty('schedule');
+    expect(body.data[0]).not.toHaveProperty('patient_history_summary');
+  });
 });
 
 describe('/api/visit-records POST', () => {

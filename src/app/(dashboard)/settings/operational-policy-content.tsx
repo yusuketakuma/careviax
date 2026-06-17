@@ -35,8 +35,8 @@ import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 
 /**
  * new_14_settings(docs/design-gap-analysis-new.md 14_settings)の薬局運用ポリシー。
- * メイン2列(安全/働き方 + 通知/影響範囲バナー)+ 右レール
- * (次にやること/止まっている理由/根拠・記録)。
+ * メイン2列(安全/働き方 + 通知/影響範囲バナー)。
+ * 補助3点セット(次にやること/止まっている理由/根拠・記録)は右ドロワーで開く。
  * 安全に関わるロック項目は「🔒 変更できません」で隠さず明示する。
  * 変更可能な項目は保存前に影響範囲(誰の・どの画面が変わるか)を確認してから反映する。
  */
@@ -392,11 +392,11 @@ function SettingsCandidateInventory() {
 function PolicySkeleton() {
   return (
     <div
-      className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(260px,300px)]"
+      className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
       role="status"
       aria-label="設定読み込み中"
     >
-      {Array.from({ length: 3 }).map((_, columnIndex) => (
+      {Array.from({ length: 2 }).map((_, columnIndex) => (
         <div key={columnIndex} className="space-y-4">
           <Skeleton className="h-56 w-full rounded-lg" />
           <Skeleton className="h-40 w-full rounded-lg" />
@@ -519,7 +519,7 @@ export function OperationalPolicyContent() {
             />
           </div>
         ) : (
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(260px,300px)]">
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             {/* 左列: 安全 / 働き方 */}
             <div className="min-w-0 space-y-4">
               <PolicyCard
@@ -687,16 +687,13 @@ export function OperationalPolicyContent() {
               </p>
             </div>
 
-            {/* 右レール */}
-            <div className="space-y-4">
-              <WorkspaceActionRail
-                nextAction={nextAction}
-                blockedReasons={blockedReasons}
-                blockedReasonsEmptyLabel="止まっている作業はありません"
-                evidence={evidence}
-                evidenceOpenLabel="開く"
-              />
-            </div>
+            <WorkspaceActionRail
+              nextAction={nextAction}
+              blockedReasons={blockedReasons}
+              blockedReasonsEmptyLabel="止まっている作業はありません"
+              evidence={evidence}
+              evidenceOpenLabel="開く"
+            />
           </div>
         )}
       </div>

@@ -8,6 +8,7 @@ import { withSentryConfig } from '@sentry/nextjs';
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ['127.0.0.1'],
+  output: 'standalone',
   experimental: {
     authInterrupts: true,
     preloadEntriesOnStart: false,

@@ -140,7 +140,7 @@ function QrDraftList() {
       return res.json() as Promise<QrDraftListResponse>;
     },
     enabled: !!orgId,
-    refetchInterval: 30_000,
+    fallbackRefetchInterval: 30_000,
     invalidateOn: ['qr_draft_created', 'qr_draft_confirmed'],
   });
 
@@ -154,7 +154,7 @@ function QrDraftList() {
       return res.json() as Promise<QrDraftListResponse>;
     },
     enabled: !!orgId && filterMode === 'unmatched',
-    refetchInterval: 30_000,
+    fallbackRefetchInterval: 30_000,
     invalidateOn: ['qr_draft_created', 'qr_draft_confirmed'],
   });
 

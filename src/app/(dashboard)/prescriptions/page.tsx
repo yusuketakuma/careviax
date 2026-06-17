@@ -40,7 +40,7 @@ export default function PrescriptionsPage() {
           ]}
         />
       </WorkflowPageHeader>
-      <PrescriptionsWorkspace className="h-[calc(100vh-28rem)] min-h-[34rem]" />
+      <PrescriptionsWorkspace className="h-[calc(100dvh-12rem)] min-h-[34rem]" />
     </PageScaffold>
   );
 }

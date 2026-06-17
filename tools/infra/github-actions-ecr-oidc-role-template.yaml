@@ -1,0 +1,111 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: PH-OS GitHub Actions OIDC role scoped to pushing images to one ECR repository.
+
+Parameters:
+  Prefix:
+    Type: String
+    Default: ph-os-pilot
+    AllowedPattern: '^[a-zA-Z][a-zA-Z0-9-]{1,38}$'
+    Description: Prefix for IAM role naming and tags.
+  GitHubRepository:
+    Type: String
+    Default: yusuketakuma/careviax
+    AllowedPattern: '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+    Description: GitHub owner/repository that may assume this role.
+  GitHubSubject:
+    Type: String
+    Default: repo:yusuketakuma/careviax:environment:production
+    AllowedPattern: '^repo:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+:.+$'
+    Description: Exact token.actions.githubusercontent.com:sub claim allowed to assume this role.
+  RepositoryName:
+    Type: String
+    Default: ph-os/app
+    AllowedPattern: '^[a-z0-9]+(?:[._/-][a-z0-9]+)*$'
+    Description: Private ECR repository name that GitHub Actions can push to.
+  ExistingGitHubOidcProviderArn:
+    Type: String
+    Default: ''
+    Description: Existing IAM OIDC provider ARN for token.actions.githubusercontent.com. Leave empty to create one.
+
+Conditions:
+  CreateGitHubOidcProvider: !Equals [!Ref ExistingGitHubOidcProviderArn, '']
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: CreateGitHubOidcProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      Tags:
+        - Key: Project
+          Value: ph-os
+        - Key: Environment
+          Value: pilot
+        - Key: ManagedBy
+          Value: cloudformation
+
+  GitHubEcrPushRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${Prefix}-github-ecr-push'
+      Description: !Sub 'GitHub Actions OIDC role for ${GitHubRepository} to push PH-OS images to ECR.'
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - CreateGitHubOidcProvider
+                - !Ref GitHubOidcProvider
+                - !Ref ExistingGitHubOidcProviderArn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Ref GitHubSubject
+      Policies:
+        - PolicyName: ecr-push-one-repository
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: EcrAuthorizationToken
+                Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                Resource: '*'
+              - Sid: EcrPushRepository
+                Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:PutImage
+                Resource: !Sub 'arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/${RepositoryName}'
+      Tags:
+        - Key: Project
+          Value: ph-os
+        - Key: Environment
+          Value: pilot
+        - Key: ManagedBy
+          Value: cloudformation
+
+Outputs:
+  RoleArn:
+    Description: Store this ARN in the GitHub environment secret AWS_ROLE_TO_ASSUME.
+    Value: !GetAtt GitHubEcrPushRole.Arn
+  GitHubSubject:
+    Description: Exact GitHub OIDC subject allowed by the trust policy.
+    Value: !Ref GitHubSubject
+  RepositoryArn:
+    Description: ECR repository ARN scoped by the push policy.
+    Value: !Sub 'arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/${RepositoryName}'
+  OidcProviderArn:
+    Description: GitHub OIDC provider ARN used by this role.
+    Value: !If
+      - CreateGitHubOidcProvider
+      - !Ref GitHubOidcProvider
+      - !Ref ExistingGitHubOidcProviderArn

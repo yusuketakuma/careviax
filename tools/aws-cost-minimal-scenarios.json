@@ -1,0 +1,99 @@
+{
+  "metadata": {
+    "currency": "USD",
+    "region": "ap-northeast-1",
+    "hoursPerMonth": 730,
+    "updatedAt": "2026-06-17",
+    "sources": [
+      "https://aws.amazon.com/lightsail/pricing/",
+      "https://docs.aws.amazon.com/apprunner/latest/dg/apprunner-availability-change.html",
+      "https://docs.aws.amazon.com/AmazonECS/latest/developerguide/express-service-overview.html",
+      "https://aws.amazon.com/fargate/pricing/",
+      "https://aws.amazon.com/elasticloadbalancing/pricing/",
+      "https://aws.amazon.com/rds/postgresql/pricing/",
+      "https://aws.amazon.com/cognito/pricing/",
+      "https://aws.amazon.com/ses/pricing/",
+      "https://aws.amazon.com/s3/pricing/",
+      "https://aws.amazon.com/ecr/pricing/"
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "lightsail-pilot-encrypted-db",
+      "name": "Lightsail pilot, encrypted managed PostgreSQL",
+      "description": "Lowest fixed-cost AWS pilot: one Linux container/VM tier plus encrypted Lightsail PostgreSQL, using in-process realtime/rate-limit fallbacks until scaling requires managed Redis/DynamoDB.",
+      "items": [
+        { "name": "Lightsail Linux/Unix 2 GB bundle", "monthlyUsd": 12 },
+        { "name": "Lightsail managed database 2 GB standard, encrypted", "monthlyUsd": 30 },
+        { "name": "S3 evidence/audit storage starter allowance", "monthlyUsd": 1.5 },
+        { "name": "ECR private repository image storage starter allowance", "monthlyUsd": 0.1 },
+        { "name": "CloudWatch logs and alarms starter allowance", "monthlyUsd": 3 },
+        { "name": "SES pilot mail volume allowance", "monthlyUsd": 0 },
+        { "name": "Cognito Lite/Essentials under direct-user free tier", "monthlyUsd": 0 }
+      ],
+      "notes": [
+        "Not high availability. Do not use for an HA production SLA without adding a second app node/load balancer and a high availability database plan.",
+        "The 1 GB Lightsail database plan is cheaper but has no data encryption on the current pricing page; PH-OS should start at the encrypted 2 GB plan."
+      ]
+    },
+    {
+      "id": "ecs-express-role-capable-minimum",
+      "name": "ECS Express/Fargate role-capable minimum",
+      "description": "Managed container runtime direction for new AWS customers that need task-role credentials for DynamoDB, Secrets Manager, S3, or SES without long-lived keys. Uses one 0.25 vCPU/0.5 GB Linux/x86 Fargate task, one Application Load Balancer, and the same encrypted PostgreSQL placeholder.",
+      "items": [
+        {
+          "name": "Fargate Linux/x86 vCPU 0.25 x 730h Tokyo",
+          "monthlyUsd": 9.2272
+        },
+        {
+          "name": "Fargate Linux/x86 memory 0.5 GB x 730h Tokyo",
+          "monthlyUsd": 2.01845
+        },
+        {
+          "name": "Application Load Balancer hourly charge x 730h Tokyo",
+          "monthlyUsd": 17.739
+        },
+        {
+          "name": "Application Load Balancer starter 1 LCU x 730h Tokyo",
+          "monthlyUsd": 5.84
+        },
+        { "name": "Encrypted PostgreSQL monthly placeholder", "monthlyUsd": 30 },
+        { "name": "S3 evidence/audit storage starter allowance", "monthlyUsd": 1.5 },
+        { "name": "ECR private repository image storage starter allowance", "monthlyUsd": 0.1 },
+        { "name": "CloudWatch logs and alarms starter allowance", "monthlyUsd": 5 },
+        { "name": "DynamoDB rate-limit/Yjs starter allowance", "monthlyUsd": 5 },
+        { "name": "SES pilot mail volume allowance", "monthlyUsd": 0 },
+        { "name": "Cognito Lite/Essentials under direct-user free tier", "monthlyUsd": 0 }
+      ],
+      "notes": [
+        "AWS says App Runner is no longer open to new customers as of April 30, 2026 and recommends Amazon ECS Express Mode for containerized applications.",
+        "ECS Express Mode has no additional charge; the estimate counts the underlying Fargate, Application Load Balancer, CloudWatch, data-transfer-adjacent, and data-store resources.",
+        "RDS PostgreSQL pricing depends on the selected DB instance class, storage, backups, and Multi-AZ choice; keep this as a placeholder until a concrete RDS size is selected in AWS Pricing Calculator.",
+        "The Fargate and ALB line items use AWS Price List API Tokyo rates observed on 2026-06-17; refresh them before procurement or production approval."
+      ]
+    },
+    {
+      "id": "ha-production-floor",
+      "name": "Production HA floor",
+      "description": "Minimum direction for production HA: two app instances behind a load balancer and a high-availability encrypted database. Redis/WebSocket/DynamoDB can be enabled when multi-instance realtime needs it.",
+      "items": [
+        { "name": "Two Lightsail Linux/Unix 2 GB bundles", "monthlyUsd": 24 },
+        { "name": "Lightsail load balancer", "monthlyUsd": 18 },
+        {
+          "name": "Lightsail managed database 2 GB high availability, encrypted",
+          "monthlyUsd": 60
+        },
+        { "name": "S3 evidence/audit storage starter allowance", "monthlyUsd": 3 },
+        { "name": "ECR private repository image storage starter allowance", "monthlyUsd": 0.2 },
+        { "name": "CloudWatch logs and alarms starter allowance", "monthlyUsd": 10 },
+        { "name": "DynamoDB rate-limit/Yjs starter allowance", "monthlyUsd": 5 },
+        { "name": "SES pilot mail volume allowance", "monthlyUsd": 0 },
+        { "name": "Cognito Lite/Essentials under direct-user free tier", "monthlyUsd": 0 }
+      ],
+      "notes": [
+        "This is a floor estimate, not a compliance sign-off. Add WAF, CloudTrail data events, KMS request volume, backups, and support plan before production approval.",
+        "If strict RDS parameter controls/pgaudit are required, replace Lightsail DB with RDS PostgreSQL in private subnets and recalculate."
+      ]
+    }
+  ]
+}

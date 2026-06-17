@@ -2,9 +2,10 @@
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { useAuthStore } from '@/lib/stores/auth-store';
+import { useUIStore } from '@/lib/stores/ui-store';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import { HandoffWorkspace } from './handoff-workspace';
 import {
@@ -20,8 +21,14 @@ import {
 
 setupDomTestEnv();
 
+const useRealtimeEventsMock = vi.hoisted(() => vi.fn());
+
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
+}));
+
+vi.mock('@/lib/hooks/use-realtime-events', () => ({
+  useRealtimeEvents: useRealtimeEventsMock,
 }));
 
 function buildItem(overrides: Partial<HandoffBoardItem>): HandoffBoardItem {
@@ -196,6 +203,12 @@ function renderWorkspace() {
   );
 }
 
+beforeEach(() => {
+  useUIStore.setState({ workspaceRailOpen: true });
+  vi.clearAllMocks();
+  useRealtimeEventsMock.mockReturnValue({ connected: false });
+});
+
 afterEach(() => {
   vi.unstubAllGlobals();
   useAuthStore.getState().resetAuth();
@@ -330,6 +343,41 @@ describe('HandoffWorkspace', () => {
     });
     expect(screen.getByRole('button', { name: '受領確認' })).toBeTruthy();
     expect(screen.queryByTestId('handoff-incoming-empty')).toBeNull();
+  });
+
+  it('refreshes board queries from workflow realtime events', async () => {
+    useAuthStore.getState().setCurrentUser({ id: 'user_1' });
+    let realtimeOptions: { onEvent: (event: unknown) => void } | null = null;
+    const invalidateSpy = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+    const getRealtimeOptions = () => {
+      if (!realtimeOptions) throw new Error('realtime options were not captured');
+      return realtimeOptions;
+    };
+    useRealtimeEventsMock.mockImplementation((options: { onEvent: (event: unknown) => void }) => {
+      realtimeOptions = options;
+      return { connected: true };
+    });
+    const fetchMock = stubFetch();
+    const handoffBoardFetchCount = () =>
+      fetchMock.mock.calls.filter(([input]) => String(input) === '/api/handoff-board').length;
+
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('handoff-outgoing-section')).toBeTruthy();
+    });
+    await waitFor(() => {
+      expect(handoffBoardFetchCount()).toBe(1);
+    });
+
+    getRealtimeOptions().onEvent({ type: 'workflow_refresh' });
+
+    await waitFor(() => {
+      expect(handoffBoardFetchCount()).toBeGreaterThan(1);
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['nav-badges'] });
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ['nav-badges', 'handoff'] });
+    invalidateSpy.mockRestore();
   });
 
   it('renders the pharmacist consultation workspace inside the canonical handoff board', async () => {

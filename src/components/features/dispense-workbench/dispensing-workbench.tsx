@@ -29,7 +29,7 @@ import { useWorkbenchMutations } from './use-workbench-mutations';
 import { useWorkbenchWriteHandlers } from './use-workbench-write-handlers';
 import {
   isRealDataEnabled,
-  loadPatientsAsync,
+  loadWorkbenchPatientRowsAsync,
   loadWorkbenchAsync,
   loadCalendarWriteContextAsync,
   loadSetCalendarForPatientAsync,
@@ -77,6 +77,18 @@ function formatClock(now: Date): string {
   return `${now.getFullYear()}/${pad(now.getMonth() + 1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 }
 
+function StatusClock() {
+  const [clock, setClock] = useState('');
+  useEffect(() => {
+    const tick = () => setClock(formatClock(new Date()));
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return <>{clock}</>;
+}
+
 export interface DispensingWorkbenchProps {
   /** ルートから注入される工程。 */
   phase: Phase;
@@ -119,14 +131,14 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
     if (phase !== 'dispense' && phase !== 'audit') return; // set/seta は別 effect
     let cancelled = false;
     void (async () => {
-      const patients = await loadPatientsAsync();
+      const { patients, rows } = await loadWorkbenchPatientRowsAsync();
       if (cancelled) return;
       if (patients.length === 0) {
         hydrate({ patients: [] });
         return;
       }
       const targetId = patients.some((p) => p.id === selId) ? selId : patients[0].id;
-      const wb = await loadWorkbenchAsync(phase, targetId);
+      const wb = await loadWorkbenchAsync(phase, targetId, { patientRows: rows });
       if (cancelled) return;
       if (!wb) {
         hydrate({ patients: [] });
@@ -181,15 +193,6 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
       cancelled = true;
     };
   }, [phase, selId, planId, hydrate, setCalendarState, setWriteContext]);
-
-  // ---- ステータスバー時計（1 秒更新）。SSR/CSR の hydration mismatch を避けるためマウント後に開始 ----
-  const [clock, setClock] = useState('');
-  useEffect(() => {
-    const tick = () => setClock(formatClock(new Date()));
-    tick();
-    const timer = window.setInterval(tick, 1000);
-    return () => window.clearInterval(timer);
-  }, []);
 
   // ---- F-key / キーボードアクションの写像 ----
   const runAction = useCallback(
@@ -424,7 +427,7 @@ export function DispensingWorkbench({ phase, inShell = true }: DispensingWorkben
             接続：<span style={{ color: '#8fe39a' }}>オンライン</span>
           </span>
           <span className={styles.mono} style={{ letterSpacing: '.5px' }} suppressHydrationWarning>
-            {clock}
+            <StatusClock />
           </span>
         </div>
       </div>

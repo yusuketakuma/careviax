@@ -122,4 +122,41 @@ describe('/api/admin/performance-metrics GET', () => {
       });
     },
   );
+
+  it('returns normalized dynamic route labels for high-cardinality API paths', async () => {
+    authMock.mockResolvedValue({ user: { id: 'admin_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    recordRoutePerformance({
+      route: '/api/patients/cmnhpatient0001amq9ph-os/overview',
+      method: 'GET',
+      status: 200,
+      durationMs: 120,
+    });
+    recordRoutePerformance({
+      route: '/api/patients/cmnhpatient0002amq9ph-os/overview',
+      method: 'GET',
+      status: 200,
+      durationMs: 160,
+    });
+
+    const response = await GET(createRequest('?top=1', { 'x-org-id': 'org_1' }), emptyRouteContext);
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        summary: {
+          route_count: 1,
+          total_requests: 2,
+        },
+        routes: [
+          {
+            route: '/api/patients/:id/overview',
+            request_count: 2,
+          },
+        ],
+      },
+    });
+  });
 });

@@ -742,7 +742,7 @@ export function PatientsBoard() {
             />
           </div>
         ) : (
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]">
+          <div className="space-y-4">
             <div className="min-w-0">
               {visibleCards.length === 0 ? (
                 <div className="phos-patient-empty-state rounded-lg border border-border/70 bg-card px-4 py-6">
@@ -764,15 +764,13 @@ export function PatientsBoard() {
                 </div>
               )}
             </div>
-            <div className="space-y-4">
-              <WorkspaceActionRail
-                nextAction={buildNextAction(data)}
-                blockedReasons={blockedReasons}
-                blockedReasonsEmptyLabel="止まっている作業はありません"
-                evidence={evidence}
-                evidenceOpenLabel="開く"
-              />
-            </div>
+            <WorkspaceActionRail
+              nextAction={buildNextAction(data)}
+              blockedReasons={blockedReasons}
+              blockedReasonsEmptyLabel="止まっている作業はありません"
+              evidence={evidence}
+              evidenceOpenLabel="開く"
+            />
           </div>
         )}
       </div>

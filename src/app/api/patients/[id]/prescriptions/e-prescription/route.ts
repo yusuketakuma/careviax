@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db/client';
 import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
+import { formatUtcDateKey } from '@/lib/date-key';
 import { withOrgContext } from '@/lib/db/rls';
 import { z } from 'zod';
 import {
@@ -39,7 +40,7 @@ function dateKeyFromOptionalIso(value: string | null | undefined, fallback?: Dat
   const date = value ? new Date(value) : fallback;
   if (!date) return null;
   if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString().slice(0, 10);
+  return formatUtcDateKey(date);
 }
 
 function toOptionalValue<T>(value: T | null | undefined) {
@@ -55,7 +56,7 @@ function buildEPrescriptionResponseData(input: {
 }) {
   const prescribedDate =
     input.prescribed_date instanceof Date
-      ? input.prescribed_date.toISOString().slice(0, 10)
+      ? formatUtcDateKey(input.prescribed_date)
       : input.prescribed_date.slice(0, 10);
 
   return {

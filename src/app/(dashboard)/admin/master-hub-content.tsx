@@ -123,11 +123,7 @@ function buildMasterHubSummary(data: MasterHubResponse) {
 
 function MasterHubSkeleton() {
   return (
-    <div
-      className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)]"
-      role="status"
-      aria-label="マスター読み込み中"
-    >
+    <div className="space-y-4" role="status" aria-label="マスター読み込み中">
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           {Array.from({ length: 10 }).map((_, index) => (
@@ -135,11 +131,6 @@ function MasterHubSkeleton() {
           ))}
         </div>
         <Skeleton className="h-12 w-full rounded-lg" />
-      </div>
-      <div className="space-y-4">
-        {Array.from({ length: 3 }).map((_, index) => (
-          <Skeleton key={index} className="h-32 w-full rounded-lg" />
-        ))}
       </div>
     </div>
   );
@@ -199,7 +190,7 @@ export function MasterHubContent() {
         </Button>
       </div>
 
-      <div className="mt-4 xl:min-h-[920px]">
+      <div className="mt-4 xl:min-h-[calc(100dvh-10rem)]">
         {hubQuery.isLoading ? (
           <MasterHubSkeleton />
         ) : hubQuery.isError || !data ? (
@@ -213,7 +204,7 @@ export function MasterHubContent() {
             />
           </div>
         ) : (
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,340px)]">
+          <div className="space-y-4">
             <div className="min-w-0 space-y-4">
               {summary ? (
                 <div
@@ -265,19 +256,17 @@ export function MasterHubContent() {
                 古い住所・古い送付先・期限切れの車両は現場の事故になります。鮮度警告は放置するとダッシュボードの「止まっている理由」に昇格します。
               </p>
             </div>
-            <div className="space-y-4">
-              <WorkspaceActionRail
-                nextAction={{
-                  actionLabel: data.rail.next_action.label,
-                  description: data.rail.next_action.description,
-                  actionHref: data.rail.next_action.href,
-                }}
-                blockedReasons={blockedReasons}
-                blockedReasonsEmptyLabel="止まっている作業はありません"
-                evidence={evidence}
-                evidenceOpenLabel="開く"
-              />
-            </div>
+            <WorkspaceActionRail
+              nextAction={{
+                actionLabel: data.rail.next_action.label,
+                description: data.rail.next_action.description,
+                actionHref: data.rail.next_action.href,
+              }}
+              blockedReasons={blockedReasons}
+              blockedReasonsEmptyLabel="止まっている作業はありません"
+              evidence={evidence}
+              evidenceOpenLabel="開く"
+            />
           </div>
         )}
       </div>

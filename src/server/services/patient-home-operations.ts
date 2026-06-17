@@ -1,4 +1,5 @@
 import type { MemberRole, Prisma } from '@prisma/client';
+import { formatUtcDateKey } from '@/lib/date-key';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
 import { formatOptionalDate } from '@/lib/patient/home-visit-intake';
@@ -41,7 +42,7 @@ const TOKYO_DATE_FORMATTER = new Intl.DateTimeFormat('en-US', {
 });
 
 function formatDate(value: Date | null | undefined) {
-  return value ? formatOptionalDate(value.toISOString().slice(0, 10)) : '未設定';
+  return value ? formatOptionalDate(formatUtcDateKey(value)) : '未設定';
 }
 
 function formatTokyoDateKey(value: Date) {
@@ -1131,9 +1132,7 @@ function buildBillingItem(args: {
         : '支払者、支払方法、請求候補、未収・集金予定、領収証の確認導線です。',
     href: `/billing/candidates?${new URLSearchParams({
       patient_id: args.patientId,
-      ...(focusCandidate
-        ? { billing_month: focusCandidate.billing_month.toISOString().slice(0, 10) }
-        : {}),
+      ...(focusCandidate ? { billing_month: formatUtcDateKey(focusCandidate.billing_month) } : {}),
     }).toString()}`,
     action_label: '請求候補を確認',
     tone: alerts.length > 0 ? 'attention' : args.billingSupportFlag ? 'ok' : 'neutral',

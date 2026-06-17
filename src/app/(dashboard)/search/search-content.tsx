@@ -240,7 +240,7 @@ export function SearchContent({
   };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-5" data-testid="search-page">
+    <div className="w-full space-y-5" data-testid="search-page">
       <h1 className="text-2xl font-bold tracking-tight text-foreground">全体検索</h1>
 
       {/* 検索ボックス */}

@@ -664,13 +664,6 @@ function TeamGanttCard({
         <span className="inline-flex items-center rounded-full border border-border bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground">
           {dateLabel}
         </span>
-        <Link
-          href="/schedules/proposals?workspace=optimizer"
-          className={buttonVariants({ variant: 'outline', size: 'sm', className: 'ml-auto' })}
-        >
-          <Plus className="size-3.5" aria-hidden="true" />
-          予定を作る
-        </Link>
       </div>
 
       {lanes.length === 0 ? (
@@ -891,11 +884,7 @@ function buildNextAction(
 
 function BoardSkeleton() {
   return (
-    <div
-      className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]"
-      role="status"
-      aria-label="スケジュール読み込み中"
-    >
+    <div className="space-y-4" role="status" aria-label="スケジュール読み込み中">
       <div className="space-y-4">
         <Skeleton className="h-72 w-full rounded-lg" />
         <Skeleton className="h-32 w-full rounded-lg" />
@@ -1034,7 +1023,7 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
               />
             </div>
           ) : (
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]">
+            <div className="space-y-4">
               <div className="min-w-0 space-y-4">
                 <TeamGanttCard
                   board={board}
@@ -1052,15 +1041,13 @@ export function ScheduleTeamBoard({ initialDate, activeView }: ScheduleTeamBoard
                 />
                 <PendingProposalsCard proposals={board.pending_proposals} todayKey={todayKey} />
               </div>
-              <div className="space-y-4">
-                <WorkspaceActionRail
-                  nextAction={buildNextAction(cockpit, board)}
-                  blockedReasons={blockedReasons}
-                  blockedReasonsEmptyLabel="止まっている作業はありません"
-                  evidence={evidence}
-                  evidenceOpenLabel="開く"
-                />
-              </div>
+              <WorkspaceActionRail
+                nextAction={buildNextAction(cockpit, board)}
+                blockedReasons={blockedReasons}
+                blockedReasonsEmptyLabel="止まっている作業はありません"
+                evidence={evidence}
+                evidenceOpenLabel="開く"
+              />
             </div>
           )}
         </div>

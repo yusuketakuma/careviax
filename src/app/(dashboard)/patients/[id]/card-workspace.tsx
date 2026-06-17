@@ -3832,9 +3832,8 @@ export function CardWorkspace({
     <div className="space-y-4" data-testid="card-workspace">
       {headerRow}
 
-      {/* デザイン 06: 2xl〜は [本文 | このカードに紐づく今日 | 3点セット] の 3 カラム。
-          xl 帯で 3 カラムにすると中央が潰れるため、xl は右カラム縦積みの 2 カラムに留める */}
-      <div className="space-y-4 xl:grid xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start xl:gap-6 xl:space-y-0 2xl:grid-cols-[minmax(0,1fr)_300px_320px]">
+      {/* 本文を圧迫しないため、補助3点セットは上部バーから開く右ドロワーへ移す。 */}
+      <div className="space-y-4">
         <div className="min-w-0 space-y-4">
           <PatientFoundationPanel patient={patient} />
           <PatientProfilePanel patient={patient} />
@@ -4017,23 +4016,15 @@ export function CardWorkspace({
           <PatientStructuredCarePanel patientId={patientId} />
         </div>
 
-        {/* 右側(xl: 縦積みの 1 カラム / 2xl: contents 化して「紐づく今日」が中央・3点セットが右の独立カラム) */}
-        <aside
-          className="space-y-4 xl:sticky xl:top-6 2xl:contents"
-          aria-label="このカードに紐づく今日・次にやること・止まっている理由・根拠"
-        >
-          <div className="2xl:sticky 2xl:top-6">
-            <CardTodayPanel tasks={workspace.today_tasks} />
-          </div>
-          <div className="space-y-4 2xl:sticky 2xl:top-6">
-            <WorkspaceActionRail
-              nextAction={nextAction}
-              blockedReasons={blockedReasons}
-              blockedReasonsEmptyLabel="止まっている作業はありません"
-              evidence={evidence}
-              evidenceOpenLabel="開く"
-            />
-          </div>
+        <aside className="space-y-4" aria-label="このカードに紐づく今日">
+          <CardTodayPanel tasks={workspace.today_tasks} />
+          <WorkspaceActionRail
+            nextAction={nextAction}
+            blockedReasons={blockedReasons}
+            blockedReasonsEmptyLabel="止まっている作業はありません"
+            evidence={evidence}
+            evidenceOpenLabel="開く"
+          />
         </aside>
       </div>
     </div>

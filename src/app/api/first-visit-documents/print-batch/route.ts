@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { NextRequest } from 'next/server';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
@@ -166,52 +167,46 @@ export const POST = withAuthContext(
           }
 
           const latestAction = latestActionByDocumentId.get(document.id);
-          await tx.auditLog.create({
-            data: {
-              org_id: ctx.orgId,
-              actor_id: ctx.userId,
-              action: 'first_visit_document.printed',
-              target_type: 'first_visit_document',
-              target_id: document.id,
-              changes: {
-                document_action: {
-                  action: 'printed',
-                  document_type:
-                    typeof latestAction?.document_type === 'string'
-                      ? latestAction.document_type
-                      : 'first_visit_document',
-                  template_name:
-                    typeof latestAction?.template_name === 'string'
-                      ? latestAction.template_name
-                      : '契約・同意控え',
-                  template_version:
-                    typeof latestAction?.template_version === 'string'
-                      ? latestAction.template_version
-                      : 'print-preview',
-                  print_batch_id: printBatchId,
-                  storage_location:
-                    typeof latestAction?.storage_location === 'string'
-                      ? latestAction.storage_location
-                      : null,
-                  note: parsed.data.save_copy
-                    ? '印刷ハブから一括印刷し、控えリンクを保存'
-                    : '印刷ハブから一括印刷',
-                },
-                patient_id: document.patient_id,
-                case_id: document.case_id,
-                previous: {
-                  document_url: document.document_url,
-                  delivered_at: document.delivered_at?.toISOString() ?? null,
-                  delivered_to: document.delivered_to,
-                },
-                next: {
-                  document_url: documentUrl,
-                  delivered_at: document.delivered_at?.toISOString() ?? null,
-                  delivered_to: document.delivered_to,
-                },
+          await createAuditLogEntry(tx, ctx, {
+            action: 'first_visit_document.printed',
+            targetType: 'first_visit_document',
+            targetId: document.id,
+            changes: {
+              document_action: {
+                action: 'printed',
+                document_type:
+                  typeof latestAction?.document_type === 'string'
+                    ? latestAction.document_type
+                    : 'first_visit_document',
+                template_name:
+                  typeof latestAction?.template_name === 'string'
+                    ? latestAction.template_name
+                    : '契約・同意控え',
+                template_version:
+                  typeof latestAction?.template_version === 'string'
+                    ? latestAction.template_version
+                    : 'print-preview',
+                print_batch_id: printBatchId,
+                storage_location:
+                  typeof latestAction?.storage_location === 'string'
+                    ? latestAction.storage_location
+                    : null,
+                note: parsed.data.save_copy
+                  ? '印刷ハブから一括印刷し、控えリンクを保存'
+                  : '印刷ハブから一括印刷',
               },
-              ip_address: req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null,
-              user_agent: req.headers.get('user-agent'),
+              patient_id: document.patient_id,
+              case_id: document.case_id,
+              previous: {
+                document_url: document.document_url,
+                delivered_at: document.delivered_at?.toISOString() ?? null,
+                delivered_to: document.delivered_to,
+              },
+              next: {
+                document_url: documentUrl,
+                delivered_at: document.delivered_at?.toISOString() ?? null,
+                delivered_to: document.delivered_to,
+              },
             },
           });
         }

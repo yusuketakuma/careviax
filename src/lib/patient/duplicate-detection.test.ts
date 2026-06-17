@@ -4,14 +4,13 @@ import {
   findPatientDuplicateCandidates,
   parsePatientDuplicateBirthDate,
 } from './duplicate-detection';
+import { formatUtcDateKey } from '@/lib/date-key';
 
 describe('patient duplicate detection', () => {
   it('rejects impossible calendar dates before duplicate lookup', () => {
     expect(parsePatientDuplicateBirthDate('2026-02-31')).toBeNull();
     expect(parsePatientDuplicateBirthDate('1950-13-01')).toBeNull();
-    expect(parsePatientDuplicateBirthDate('1950-01-01')?.toISOString().slice(0, 10)).toBe(
-      '1950-01-01',
-    );
+    expect(formatUtcDateKey(parsePatientDuplicateBirthDate('1950-01-01')!)).toBe('1950-01-01');
   });
 
   it('applies assignment scope and excludes the current patient when finding duplicates', async () => {

@@ -223,11 +223,7 @@ function buildNextAction(data: VisitPreparationBoardResponse): NextActionPanelPr
 
 function BoardSkeleton() {
   return (
-    <div
-      className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]"
-      role="status"
-      aria-label="本日の訪問読み込み中"
-    >
+    <div className="space-y-4" role="status" aria-label="本日の訪問読み込み中">
       <div className="space-y-3">
         {Array.from({ length: 3 }).map((_, index) => (
           <Skeleton key={index} className="h-36 w-full rounded-lg" />
@@ -333,7 +329,7 @@ export function VisitsToday() {
             />
           </div>
         ) : (
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,300px)]">
+          <div className="space-y-4">
             <div className="min-w-0 space-y-4">
               <section
                 aria-labelledby="visits-today-list-heading"
@@ -376,15 +372,13 @@ export function VisitsToday() {
                 訪問モードはオフラインでも全機能が動きます。記録は端末に保存され、電波が戻ると自動同期されます。
               </p>
             </div>
-            <div className="space-y-4">
-              <WorkspaceActionRail
-                nextAction={buildNextAction(data)}
-                blockedReasons={blockedReasons}
-                blockedReasonsEmptyLabel="止まっている作業はありません"
-                evidence={evidence}
-                evidenceOpenLabel="開く"
-              />
-            </div>
+            <WorkspaceActionRail
+              nextAction={buildNextAction(data)}
+              blockedReasons={blockedReasons}
+              blockedReasonsEmptyLabel="止まっている作業はありません"
+              evidence={evidence}
+              evidenceOpenLabel="開く"
+            />
           </div>
         )}
       </div>

@@ -237,9 +237,39 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     patient: {
       findFirst: patientFindFirstMock,
+      findMany: vi.fn().mockResolvedValue([]),
+    },
+    patientInsurance: {
+      findMany: vi.fn().mockResolvedValue([]),
     },
     careCase: {
       findFirst: careCaseFindFirstMock,
+      findMany: vi.fn().mockResolvedValue([
+        {
+          care_team_links: [
+            {
+              role: 'physician',
+              name: '在宅主治医',
+              organization_name: 'ケア病院',
+              phone: null,
+              email: 'doctor@example.com',
+              fax: null,
+              address: null,
+              external_professional: null,
+            },
+            {
+              role: 'care_manager',
+              name: '担当ケアマネ',
+              organization_name: '居宅支援事業所',
+              phone: null,
+              email: 'caremanager@example.com',
+              fax: null,
+              address: null,
+              external_professional: null,
+            },
+          ],
+        },
+      ]),
     },
     pharmacistShift: {
       findFirst: pharmacistShiftFindFirstMock,
@@ -249,11 +279,39 @@ vi.mock('@/lib/db/client', () => ({
       findFirst: prismaVisitScheduleFindFirstMock,
       findMany: prismaVisitScheduleFindManyMock,
     },
+    medicationCycle: {
+      findFirst: vi.fn().mockResolvedValue({
+        id: 'cycle_1',
+        overall_status: 'visit_ready',
+      }),
+    },
+    visitRecord: {
+      findFirst: vi.fn().mockResolvedValue({
+        version: 1,
+        updated_at: new Date('2026-03-29T09:00:00.000Z'),
+      }),
+    },
     consentRecord: {
       findFirst: consentRecordFindFirstMock,
+      findMany: vi.fn().mockResolvedValue([
+        {
+          id: 'consent_1',
+          expiry_date: null,
+          obtained_date: new Date('2026-03-01T00:00:00.000Z'),
+        },
+      ]),
     },
     managementPlan: {
       findFirst: managementPlanFindFirstMock,
+      findMany: vi.fn().mockResolvedValue([
+        {
+          id: 'plan_1',
+          next_review_date: null,
+          effective_from: new Date('2026-03-01T00:00:00.000Z'),
+          version: 1,
+          approved_at: new Date('2026-03-01T00:00:00.000Z'),
+        },
+      ]),
     },
     webhookRegistration: {
       findMany: webhookRegistrationFindManyMock,
@@ -266,6 +324,17 @@ vi.mock('@/lib/db/client', () => ({
     },
     careReport: {
       findFirst: careReportFindFirstMock,
+    },
+    prescriptionIntake: {
+      findFirst: vi.fn().mockResolvedValue({
+        prescriber_name: '在宅主治医',
+        prescriber_institution_ref: {
+          name: 'ケア病院',
+          phone: null,
+          fax: null,
+          address: null,
+        },
+      }),
     },
   },
 }));
@@ -326,8 +395,30 @@ function buildTx(state: TestState) {
     patient: {
       findFirst: vi.fn(async ({ where }: { where: { id: string } }) => {
         if (where.id !== state.patient.id) return null;
-        return state.patient;
+        return {
+          ...state.patient,
+          residences: [
+            {
+              id: 'residence_1',
+              facility_id: state.patient.building_id,
+              facility_unit_id: null,
+              address: state.patient.address,
+              is_primary: true,
+            },
+          ],
+          scheduling_preference: null,
+          contacts: [],
+          conditions: [],
+          consents: [],
+          cases: [
+            {
+              id: state.careCase.id,
+              care_team_links: [],
+            },
+          ],
+        };
       }),
+      findMany: vi.fn(async () => []),
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
         state.patient = {
           id: 'patient_1',
@@ -465,6 +556,9 @@ function buildTx(state: TestState) {
           return { count: 0 };
         },
       ),
+    },
+    patientInsurance: {
+      findMany: vi.fn(async () => []),
     },
     cycleTransitionLog: {
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => ({
@@ -745,6 +839,7 @@ function buildTx(state: TestState) {
           schedule_status: state.visitSchedule.schedule_status,
         };
       }),
+      count: vi.fn(async () => 0),
       findFirst: vi.fn(async ({ where }: { where: { id: string } }) => {
         if (where.id !== state.visitSchedule.id) return null;
         return {
@@ -878,11 +973,33 @@ function buildTx(state: TestState) {
       deleteMany: vi.fn(async () => ({ count: 0 })),
       create: vi.fn(async () => ({ id: 'residual_1' })),
     },
+    patientLabObservation: {
+      deleteMany: vi.fn(async () => ({ count: 0 })),
+      createMany: vi.fn(async () => ({ count: 0 })),
+    },
     contactParty: {
       findMany: vi.fn(async () => []),
     },
     consentRecord: {
       findFirst: vi.fn(async () => ({ id: 'consent_1' })),
+      findMany: vi.fn(async () => [
+        {
+          id: 'consent_1',
+          expiry_date: null,
+          obtained_date: new Date('2026-03-01T00:00:00.000Z'),
+        },
+      ]),
+    },
+    managementPlan: {
+      findMany: vi.fn(async () => [
+        {
+          id: 'plan_1',
+          next_review_date: null,
+          effective_from: new Date('2026-03-01T00:00:00.000Z'),
+          version: 1,
+          approved_at: new Date('2026-03-01T00:00:00.000Z'),
+        },
+      ]),
     },
     firstVisitDocument: {
       findFirst: vi.fn(async () => null),
@@ -890,6 +1007,7 @@ function buildTx(state: TestState) {
       update: vi.fn(async () => ({ id: 'first_visit_1' })),
     },
     deliveryRecord: {
+      findFirst: vi.fn(async () => null),
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
         const record = {
           id: `delivery_${state.deliveryRecords.length + 1}`,
@@ -912,6 +1030,19 @@ function buildTx(state: TestState) {
       ),
     },
     careReport: {
+      findFirst: vi.fn(async ({ where }: { where: { id: string } }) => {
+        const report = state.careReports.find((item) => item.id === where.id);
+        return report
+          ? {
+              content: {
+                source_provenance: {
+                  visit_record_version: state.visitRecord?.version ?? 1,
+                  visit_record_updated_at: '2026-03-29T09:00:00.000Z',
+                },
+              },
+            }
+          : null;
+      }),
       update: vi.fn(
         async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
           state.careReports = state.careReports.map((report) =>
@@ -1094,10 +1225,18 @@ describe('workflow full-cycle integration', () => {
       if (!report) return null;
       return {
         id: report.id,
+        patient_id: state.patient.id,
+        case_id: state.careCase.id,
         status: report.status,
         visit_record_id: report.visit_record_id,
         report_type: report.report_type,
         pdf_url: report.pdf_url,
+        content: {
+          source_provenance: {
+            visit_record_version: state.visitRecord?.version ?? 1,
+            visit_record_updated_at: '2026-03-29T09:00:00.000Z',
+          },
+        },
       };
     });
 
@@ -1172,6 +1311,7 @@ describe('workflow full-cycle integration', () => {
             unit: '錠',
           },
         ],
+        expected_version: state.cycle.version,
       }),
       emptyRouteContext,
     );
@@ -1201,6 +1341,7 @@ describe('workflow full-cycle integration', () => {
     const dispenseResponse = await createDispenseResults(
       createRequest({
         task_id: 'task_1',
+        expected_version: state.cycle.version,
         safety_checklist: dispenseSafetyChecklist,
         lines: [
           {
@@ -1264,6 +1405,10 @@ describe('workflow full-cycle integration', () => {
     expect(generateResponse?.status).toBe(201);
     expect(state.careReports).toHaveLength(1);
     expect(state.careReports[0]?.status).toBe('draft');
+    state.careReports[0] = {
+      ...state.careReports[0]!,
+      status: 'confirmed',
+    };
 
     const sendResponse = await sendCareReport(
       createRequest(
@@ -1271,6 +1416,7 @@ describe('workflow full-cycle integration', () => {
           channel: 'email',
           recipient_name: '在宅主治医',
           recipient_contact: 'doctor@example.com',
+          recipient_role: 'physician',
           safety_ack: true,
         },
         { 'x-org-id': 'org_1' },
@@ -1456,6 +1602,10 @@ describe('workflow full-cycle integration', () => {
       report_type: 'care_manager_report',
       status: 'draft',
     });
+    state.careReports[0] = {
+      ...state.careReports[0]!,
+      status: 'confirmed',
+    };
 
     const sendResponse = await sendCareReport(
       createRequest(
@@ -1463,6 +1613,7 @@ describe('workflow full-cycle integration', () => {
           channel: 'email',
           recipient_name: '担当ケアマネ',
           recipient_contact: 'caremanager@example.com',
+          recipient_role: 'care_manager',
           safety_ack: true,
         },
         { 'x-org-id': 'org_1' },

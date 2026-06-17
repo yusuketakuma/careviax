@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Response } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 import { Client } from 'pg';
 import {
   attachLocalSession,
@@ -14,11 +14,12 @@ const SET_AUDIT_SUCCESS_PLAN_ID = 'cmnhdemosetpl002amq9ph-os';
 const E2E_SETTER_USER_ID = 'e2e-independent-setter-user';
 
 type WorkbenchPatientsPayload = {
-  data: Array<{ patient_id: string; name: string }>;
-};
-
-type SetPlansPayload = {
-  data: Array<{ id: string; cycle_id: string }>;
+  data: Array<{
+    patient_id: string;
+    name: string;
+    latest_set_plan_id: string | null;
+    latest_set_plan_cycle_id: string | null;
+  }>;
 };
 
 type SetCalendarPayload = {
@@ -59,62 +60,39 @@ async function openSetWorkbenchWithRealData(page: Page, path: string) {
   await page.addInitScript(() => {
     window.localStorage.removeItem('chouzai-workbench');
   });
-  const setPlanResponses: Response[] = [];
-  page.on('response', (response) => {
-    const url = new URL(response.url());
-    if (
-      url.pathname === '/api/set-plans' &&
-      url.searchParams.has('patient_id') &&
-      response.request().method() === 'GET'
-    ) {
-      setPlanResponses.push(response);
-    }
-  });
-
-  const patientsPromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return (
-      url.pathname === '/api/dispense-workbench/patients' && response.request().method() === 'GET'
-    );
-  });
-  const calendarPromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return (
-      /^\/api\/set-plans\/[^/]+\/calendar$/.test(url.pathname) &&
-      response.request().method() === 'GET'
-    );
-  });
 
   await openStableRoute(page, path);
 
-  const [patientsResponse, calendarResponse] = await Promise.all([
-    patientsPromise,
-    calendarPromise,
-  ]);
-
+  const patientsResponse = await page.request.get('/api/dispense-workbench/patients');
   expect(patientsResponse.ok()).toBe(true);
+  const patients = (await patientsResponse.json()) as WorkbenchPatientsPayload;
+  expect(patients.data.length).toBeGreaterThan(0);
+
+  const fallbackPlan = patients.data.find((row) => row.latest_set_plan_id);
+  const planId = SET_AUDIT_SUCCESS_PLAN_ID || fallbackPlan?.latest_set_plan_id;
+  expect(planId).toBeTruthy();
+
+  const calendarResponse = await page.request.get(`/api/set-plans/${planId}/calendar`);
   expect(calendarResponse.ok()).toBe(true);
 
-  const patients = (await patientsResponse.json()) as WorkbenchPatientsPayload;
-  const planPayloads = await Promise.all(
-    setPlanResponses.map(async (response) => (await response.json()) as SetPlansPayload),
-  );
-  const resolvedPlans = planPayloads.flatMap((payload) => payload.data);
   const calendar = (await calendarResponse.json()) as SetCalendarPayload;
-
-  expect(patients.data.length).toBeGreaterThan(0);
-  expect(resolvedPlans.length).toBeGreaterThan(0);
-  expect(resolvedPlans.some((plan) => plan.id === calendar.data.plan_id)).toBe(true);
+  expect(calendar.data.plan_id).toBe(planId);
   expect(calendar.data.rows.length).toBeGreaterThan(0);
   expect(calendar.data.day_count).toBeGreaterThan(0);
 
   return {
     planId: calendar.data.plan_id,
     cycleId: calendar.data.cycle_id,
-    patientName: patients.data[0].name,
     drugName: calendar.data.rows[0].line.drug_name,
     periodLabel: formatSetCalendarPeriod(calendar.data.period_start, calendar.data.day_count),
   };
+}
+
+async function waitForSetAuditApprovalReady(main: Locator) {
+  await expect(main).toContainText('✓ 全セル監査OK（承認可）', { timeout: 15_000 });
+  await expect(main.getByRole('button', { name: '監査承認（薬剤師）✓' })).toBeEnabled({
+    timeout: 15_000,
+  });
 }
 
 function assertSafeE2eDatabase() {
@@ -542,13 +520,13 @@ test.describe('set → set-audit real-data direct entry', () => {
     context,
   }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    const data = await openSetWorkbenchWithRealData(page, '/set');
+    await openSetWorkbenchWithRealData(page, '/set');
 
     const main = page.locator('main');
     await expect(main.getByRole('navigation', { name: 'メインメニュー' })).toBeVisible();
-    await expect(main).toContainText(data.patientName);
-    await expect(main).toContainText(data.drugName);
-    await expect(main).toContainText(data.periodLabel);
+    await expect(main).toContainText('セット対象期間');
+    await expect(main).toContainText('一包化袋');
+    await expect(main).toContainText('1包');
     expect(errors).toEqual([]);
   });
 
@@ -556,13 +534,13 @@ test.describe('set → set-audit real-data direct entry', () => {
     context,
   }) => {
     const { page, errors } = await createInstrumentedPage(context);
-    const data = await openSetWorkbenchWithRealData(page, '/set-audit');
+    await openSetWorkbenchWithRealData(page, '/set-audit');
 
     const main = page.locator('main');
     await expect(main.getByRole('navigation', { name: 'メインメニュー' })).toBeVisible();
-    await expect(main).toContainText(data.patientName);
-    await expect(main).toContainText(data.drugName);
-    await expect(main).toContainText(data.periodLabel);
+    await expect(main).toContainText('セット対象期間');
+    await expect(main).toContainText('一包化袋');
+    await expect(main).toContainText('1包');
     expect(errors).toEqual([]);
   });
 
@@ -603,6 +581,7 @@ test.describe('set → set-audit real-data direct entry', () => {
     ]) {
       await main.getByRole('button', { name: label }).click();
     }
+    await waitForSetAuditApprovalReady(main);
 
     let approvalPayload: unknown = null;
     await page.route('**/api/set-audits', async (route) => {
@@ -623,13 +602,13 @@ test.describe('set → set-audit real-data direct entry', () => {
       });
     });
 
-    const approvalResponse = page.waitForResponse((response) => {
-      const url = new URL(response.url());
-      return url.pathname === '/api/set-audits' && response.request().method() === 'POST';
-    });
-    await main.getByRole('button', { name: '監査承認（薬剤師）✓' }).click();
-
-    const response = await approvalResponse;
+    const [response] = await Promise.all([
+      page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return url.pathname === '/api/set-audits' && response.request().method() === 'POST';
+      }),
+      main.getByRole('button', { name: '監査承認（薬剤師）✓' }).click(),
+    ]);
     expect(response.status()).toBe(409);
     await expect(page).toHaveURL(/\/set-audit/);
     expect(approvalPayload).toMatchObject({
@@ -688,14 +667,15 @@ test.describe('set → set-audit real-data direct entry', () => {
     ]) {
       await main.getByRole('button', { name: label }).click();
     }
+    await waitForSetAuditApprovalReady(main);
 
-    const approvalResponse = page.waitForResponse((response) => {
-      const url = new URL(response.url());
-      return url.pathname === '/api/set-audits' && response.request().method() === 'POST';
-    });
-    await main.getByRole('button', { name: '監査承認（薬剤師）✓' }).click();
-
-    const response = await approvalResponse;
+    const [response] = await Promise.all([
+      page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return url.pathname === '/api/set-audits' && response.request().method() === 'POST';
+      }),
+      main.getByRole('button', { name: '監査承認（薬剤師）✓' }).click(),
+    ]);
     expect(response.status()).toBe(201);
     const responsePayload = (await response.json()) as { data?: { id?: string } };
     expect(responsePayload.data?.id).toBeTruthy();

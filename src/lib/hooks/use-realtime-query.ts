@@ -16,12 +16,16 @@ interface UseRealtimeQueryOptions<TData> extends Omit<
   queryKey: QueryKey;
   queryFn: () => Promise<TData>;
   invalidateOn?: string[];
+  fallbackRefetchInterval?: UseQueryOptions<TData>['refetchInterval'];
+  pollWhenConnected?: boolean;
 }
 
 export function useRealtimeQuery<TData>({
   queryKey,
   queryFn,
   invalidateOn = [],
+  fallbackRefetchInterval,
+  pollWhenConnected = false,
   ...options
 }: UseRealtimeQueryOptions<TData>) {
   const queryClient = useQueryClient();
@@ -59,12 +63,23 @@ export function useRealtimeQuery<TData>({
     [queryClient, realtimeQueryKey, realtimeInvalidateOn],
   );
 
-  const { connected } = useRealtimeEvents({ onEvent });
+  const { connected } = useRealtimeEvents({
+    onEvent,
+    enabled: options.enabled !== false,
+  });
+
+  const refetchInterval =
+    fallbackRefetchInterval === undefined
+      ? options.refetchInterval
+      : connected && realtimeInvalidateOn.length > 0 && !pollWhenConnected
+        ? false
+        : fallbackRefetchInterval;
 
   const query = useQuery({
     queryKey,
     queryFn,
     ...options,
+    refetchInterval,
   });
 
   return { ...query, connected };

@@ -1,5 +1,6 @@
 import type { Gender, MemberRole, Prisma, PrismaClient } from '@prisma/client';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
+import { formatUtcDateKey } from '@/lib/date-key';
 
 type DbClient = PrismaClient | Prisma.TransactionClient;
 
@@ -23,7 +24,7 @@ export function parsePatientDuplicateBirthDate(value: string): Date | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  if (date.toISOString().slice(0, 10) !== value) return null;
+  if (formatUtcDateKey(date) !== value) return null;
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
