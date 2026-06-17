@@ -1077,6 +1077,7 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         status: 'completed',
       }),
     );
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
   });
 
   it('replays a concurrent contact attempt winner when the idempotency key insert races', async () => {
@@ -1197,6 +1198,24 @@ describe('/api/visit-schedule-proposals/[id] PATCH', () => {
         orgId: 'org_1',
         dedupeKey: 'visit-contact-followup:proposal_1',
         status: 'completed',
+      }),
+    );
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        taskType: 'visit_schedule_reproposal_needed',
+        dedupeKey: 'visit-reproposal-needed:proposal_1',
+        relatedEntityType: 'visit_schedule_proposal',
+        relatedEntityId: 'proposal_1',
+        title: '変更希望に合わせた再提案が必要です',
+        description: '患者の変更希望に合わせて候補を再生成してください。',
+        priority: 'high',
+        assignedTo: 'pharmacist_1',
+        metadata: {
+          case_id: 'case_1',
+          patient_id: 'patient_1',
+        },
       }),
     );
   });

@@ -36,6 +36,7 @@ import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cac
 import {
   buildVisitScheduleContactFollowupTask,
   buildVisitScheduleContactTaskKey,
+  buildVisitScheduleReproposalNeededTask,
 } from '@/server/services/visit-schedule-communication';
 import { validateScheduleTimeDatesFitShift } from '@/server/services/visit-schedule-shift';
 import { buildProposalRejectAuditChanges } from '@/lib/audit-logs/proposal-rejection';
@@ -1096,6 +1097,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             assignedTo: existing.proposed_pharmacist_id,
             dueAt: new Date(data.callback_due_at),
             description: '再架電が必要です。詳細は確定フローで確認してください。',
+          }),
+        );
+      } else if (outcome === 'change_requested') {
+        await resolveOperationalTasks(tx, {
+          orgId: ctx.orgId,
+          dedupeKey: buildVisitScheduleContactTaskKey(id),
+          status: 'completed',
+        });
+        await upsertOperationalTask(
+          tx,
+          buildVisitScheduleReproposalNeededTask({
+            orgId: ctx.orgId,
+            proposalId: id,
+            caseId: existing.case_id,
+            patientId: existing.case_.patient_id,
+            assignedTo: existing.proposed_pharmacist_id,
+            dueAt: contactedAt,
+            description: '患者の変更希望に合わせて候補を再生成してください。',
           }),
         );
       } else {

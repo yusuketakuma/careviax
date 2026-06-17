@@ -33,6 +33,16 @@ export type VisitScheduleContactFollowupTaskArgs = {
   description: string;
 };
 
+export type VisitScheduleReproposalNeededTaskArgs = {
+  orgId: string;
+  proposalId: string;
+  caseId: string;
+  patientId: string;
+  assignedTo: string | null;
+  dueAt: Date;
+  description: string;
+};
+
 type VisitScheduleContactRecord = {
   name: string;
   relation: string;
@@ -59,9 +69,11 @@ export function buildVisitScheduleContactTaskKey(proposalId: string) {
   return `visit-contact-followup:${proposalId}`;
 }
 
-export function buildVisitScheduleContactFollowupTask(
-  args: VisitScheduleContactFollowupTaskArgs
-) {
+export function buildVisitScheduleReproposalTaskKey(proposalId: string) {
+  return `visit-reproposal-needed:${proposalId}`;
+}
+
+export function buildVisitScheduleContactFollowupTask(args: VisitScheduleContactFollowupTaskArgs) {
   return {
     orgId: args.orgId,
     taskType: 'visit_contact_followup' as const,
@@ -81,6 +93,28 @@ export function buildVisitScheduleContactFollowupTask(
   };
 }
 
+export function buildVisitScheduleReproposalNeededTask(
+  args: VisitScheduleReproposalNeededTaskArgs,
+) {
+  return {
+    orgId: args.orgId,
+    taskType: 'visit_schedule_reproposal_needed' as const,
+    title: '変更希望に合わせた再提案が必要です',
+    description: args.description,
+    priority: 'high' as const,
+    assignedTo: args.assignedTo,
+    dueDate: args.dueAt,
+    slaDueAt: args.dueAt,
+    dedupeKey: buildVisitScheduleReproposalTaskKey(args.proposalId),
+    relatedEntityType: 'visit_schedule_proposal' as const,
+    relatedEntityId: args.proposalId,
+    metadata: {
+      case_id: args.caseId,
+      patient_id: args.patientId,
+    },
+  };
+}
+
 // チャネルは「明示的に要求されたもの」または「患者側が明示的に希望したもの」のみを
 // 採用する。preferredContactMethod が未設定/不明な場合でも fax を黙って既定にはせず、
 // 呼び出し側が明示指定した requestedChannel をそのまま使う（暗黙の fax 既定を作らない）。
@@ -89,7 +123,7 @@ export function buildVisitScheduleContactFollowupTask(
 // 手動送付の記録として communication event に残るだけである。
 export function resolveVisitScheduleCommunicationChannel(
   requestedChannel: VisitScheduleCommunicationChannel,
-  preferredContactMethod: string | null
+  preferredContactMethod: string | null,
 ): VisitScheduleCommunicationChannel {
   if (!preferredContactMethod || preferredContactMethod === 'other') {
     return requestedChannel;
@@ -113,20 +147,20 @@ export function buildVisitScheduleCommunicationTargets(args: {
 }) {
   const effectiveChannel = resolveVisitScheduleCommunicationChannel(
     args.channel,
-    args.schedulingPreference.preferredContactMethod
+    args.schedulingPreference.preferredContactMethod,
   );
 
   const sortedContacts = [...args.contacts].sort(
-    (left, right) => Number(right.is_primary) - Number(left.is_primary)
+    (left, right) => Number(right.is_primary) - Number(left.is_primary),
   );
   const sortedCareTeam = [...args.careTeamLinks].sort(
-    (left, right) => Number(right.is_primary) - Number(left.is_primary)
+    (left, right) => Number(right.is_primary) - Number(left.is_primary),
   );
   const contactField =
     effectiveChannel === 'fax' ? 'fax' : effectiveChannel === 'email' ? 'email' : 'phone';
 
   const familyContact = sortedContacts.find((contact) =>
-    ['self', 'spouse', 'child', 'parent', 'sibling', 'other'].includes(contact.relation)
+    ['self', 'spouse', 'child', 'parent', 'sibling', 'other'].includes(contact.relation),
   );
   const facilityContact = sortedContacts.find((contact) => contact.relation === 'facility_staff');
   const nurseContact =
@@ -184,14 +218,10 @@ export function buildVisitScheduleCommunicationTargets(args: {
     });
   }
 
-  return targets.filter(
-    (target): target is VisitScheduleCommunicationTarget => target != null
-  );
+  return targets.filter((target): target is VisitScheduleCommunicationTarget => target != null);
 }
 
-export function toVisitScheduleCommunicationEventChannel(
-  value: VisitScheduleCommunicationChannel
-) {
+export function toVisitScheduleCommunicationEventChannel(value: VisitScheduleCommunicationChannel) {
   switch (value) {
     case 'fax':
       return 'fax';
