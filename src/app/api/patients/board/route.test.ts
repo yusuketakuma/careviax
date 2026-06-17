@@ -157,7 +157,7 @@ describe('/api/patients/board', () => {
       is_primary: true,
     });
     expect(select.residences.select).toEqual({
-      facility: { select: { name: true } },
+      facility_id: true,
       building_id: true,
     });
     expect(select.cases.select.visit_schedules.select).toMatchObject({
@@ -229,6 +229,37 @@ describe('/api/patients/board', () => {
       residence_label: '在宅',
     });
     expect(JSON.stringify(json.data)).not.toContain('東京都千代田区丸の内1-1-1');
+  });
+
+  it('does not expose facility names in the board residence label or search payload', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-12T08:00:00+09:00'));
+    patientFindManyMock.mockResolvedValue([
+      {
+        ...buildPatientRow(new Date('2026-06-12T00:00:00.000Z')),
+        residences: [
+          {
+            address: '東京都千代田区丸の内1-1-1',
+            facility_id: 'facility_unique',
+            facility: { name: '青空レジデンス丸の内' },
+            building_id: null,
+          },
+        ],
+      },
+    ]);
+    patientCountMock.mockResolvedValue(1);
+
+    const response = (await GET(createRequest(), { params: Promise.resolve({}) }))!;
+    expect(response.status).toBe(200);
+
+    const json = await response.json();
+    expect(json.data.cards[0]).toMatchObject({
+      residence_kind: 'facility',
+      residence_label: '施設',
+    });
+    expect(JSON.stringify(json.data)).not.toContain('青空レジデンス丸の内');
+    expect(JSON.stringify(json.data)).not.toContain('丸の内');
+    expect(JSON.stringify(json.data)).not.toContain('東京都千代田区');
   });
 
   it.each(['partial', 'blocked'] as const)(

@@ -198,7 +198,7 @@ type PatientQueryRow = {
     fax: string | null;
   }>;
   residences: Array<{
-    facility: { name: string } | null;
+    facility_id: string | null;
     building_id: string | null;
   }>;
   lab_observations: Array<{ id: string }>;
@@ -301,16 +301,11 @@ function derivePatientBoardCard(patient: PatientQueryRow, now: Date): DerivedCar
 
   const hospitalized =
     cycle?.exception_status === 'hospitalized' || openException?.exception_type === 'hospitalized';
-  const facilityName = patient.residences[0]?.facility?.name ?? null;
-  const isFacility = facilityName != null || Boolean(patient.residences[0]?.building_id);
+  const isFacility = Boolean(
+    patient.residences[0]?.facility_id || patient.residences[0]?.building_id,
+  );
   const residenceKind = hospitalized ? 'hospital' : isFacility ? 'facility' : 'home';
-  const residenceLabel = hospitalized
-    ? '入院中'
-    : facilityName
-      ? `施設${facilityName.slice(0, 4)}`
-      : isFacility
-        ? '施設'
-        : '在宅';
+  const residenceLabel = hospitalized ? '入院中' : isFacility ? '施設' : '在宅';
 
   const hasNarcotic = tagSet.has('narcotic');
   // @db.Date は UTC 深夜で返るため、日付キー(UTC)とローカル今日キーで突き合わせる
@@ -548,7 +543,7 @@ export const GET = withAuthContext(
             where: { is_primary: true },
             take: 1,
             select: {
-              facility: { select: { name: true } },
+              facility_id: true,
               building_id: true,
             },
           },
