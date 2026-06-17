@@ -185,6 +185,25 @@ function findSetAuditApprovalBlockers(
   return batches.filter((batch) => batch.set_state !== 'set' || batch.audit_state !== 'ok');
 }
 
+function findPartialApprovalScopeBlockers(
+  batches: Array<{
+    id: string;
+    day_number: number;
+    slot: string;
+    set_state: string;
+    audit_state: string;
+    ng_code?: RejectCode | null;
+  }>,
+  approvedScope: Record<string, unknown>,
+) {
+  const selected = batches.filter((batch) => approvedScope[`${batch.day_number}-${batch.slot}`]);
+  const blockers = selected.filter(
+    (batch) => batch.set_state !== 'set' || batch.audit_state !== 'ok',
+  );
+  const ready = selected.filter((batch) => batch.set_state === 'set' && batch.audit_state === 'ok');
+  return { blockers, readyCount: ready.length };
+}
+
 // セル状態の集計 (audit_state 別件数)。監査キュー一覧の進捗表示に使う。
 function summarizeCellStates(batches: Array<{ audit_state: SetAuditCellState }>) {
   const summary = { total: batches.length, unaudited: 0, ok: 0, ng: 0 };
@@ -468,6 +487,24 @@ export const POST = withAuthContext(
 
       if (result === 'partial_approved' && !effectiveApprovedScope) {
         return { error: 'missing_scope' as const };
+      }
+
+      if (result === 'partial_approved' && effectiveApprovedScope) {
+        const partialScope = findPartialApprovalScopeBlockers(
+          effectiveSetBatches,
+          effectiveApprovedScope,
+        );
+        if (partialScope.readyCount === 0 || partialScope.blockers.length > 0) {
+          return {
+            error: 'partial_scope_not_ready' as const,
+            blockers: partialScope.blockers.map((batch) => ({
+              batch_id: batch.id,
+              set_state: batch.set_state,
+              audit_state: batch.audit_state,
+              ng_code: batch.ng_code ?? null,
+            })),
+          };
+        }
       }
 
       if (result === 'approved') {
@@ -816,6 +853,11 @@ export const POST = withAuthContext(
       }
       if (auditResult.error === 'approval_not_ready') {
         return validationError('未セットまたは未監査のセルがあるため監査OKにはできません', {
+          blockers: 'blockers' in auditResult ? auditResult.blockers : [],
+        });
+      }
+      if (auditResult.error === 'partial_scope_not_ready') {
+        return validationError('部分承認範囲に未セットまたは未監査のセルが含まれています', {
           blockers: 'blockers' in auditResult ? auditResult.blockers : [],
         });
       }

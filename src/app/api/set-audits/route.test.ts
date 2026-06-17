@@ -559,6 +559,134 @@ describe('/api/set-audits POST', () => {
     });
   });
 
+  it('rejects partial approval when the approved scope contains an unset or unaudited cell', async () => {
+    setBatchFindManyMock.mockResolvedValue([
+      {
+        id: 'batch_pending',
+        slot: 'morning',
+        day_number: 1,
+        quantity: 1,
+        carry_type: 'carry',
+        set_state: 'pending',
+        audit_state: 'unaudited',
+        ng_code: null,
+        line: {
+          id: 'line_1',
+          drug_name: 'アムロジピン錠5mg',
+          dose: '1回1錠',
+          frequency: '朝食後',
+          unit: '錠',
+        },
+      },
+    ]);
+
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'partial_approved',
+          approved_scope: {
+            '1-morning': true,
+          },
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '部分承認範囲に未セットまたは未監査のセルが含まれています',
+      details: {
+        blockers: [
+          {
+            batch_id: 'batch_pending',
+            set_state: 'pending',
+            audit_state: 'unaudited',
+            ng_code: null,
+          },
+        ],
+      },
+    });
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitPreparationUpdateManyMock).not.toHaveBeenCalled();
+    expect(taskCreateMock).not.toHaveBeenCalled();
+    expect(setAuditCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects partial approval when the scope mixes ready and unsafe cells', async () => {
+    setBatchFindManyMock.mockResolvedValue([
+      {
+        id: 'batch_ready',
+        slot: 'morning',
+        day_number: 1,
+        quantity: 1,
+        carry_type: 'carry',
+        set_state: 'set',
+        audit_state: 'ok',
+        ng_code: null,
+        line: {
+          id: 'line_1',
+          drug_name: 'アムロジピン錠5mg',
+          dose: '1回1錠',
+          frequency: '朝食後',
+          unit: '錠',
+        },
+      },
+      {
+        id: 'batch_ng',
+        slot: 'evening',
+        day_number: 1,
+        quantity: 1,
+        carry_type: 'carry',
+        set_state: 'set',
+        audit_state: 'ng',
+        ng_code: 'quantity_short',
+        line: {
+          id: 'line_2',
+          drug_name: 'カンデサルタン錠4mg',
+          dose: '1回1錠',
+          frequency: '夕食後',
+          unit: '錠',
+        },
+      },
+    ]);
+
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'partial_approved',
+          approved_scope: {
+            '1-morning': true,
+            '1-evening': true,
+          },
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        blockers: [
+          {
+            batch_id: 'batch_ng',
+            set_state: 'set',
+            audit_state: 'ng',
+            ng_code: 'quantity_short',
+          },
+        ],
+      },
+    });
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(taskCreateMock).not.toHaveBeenCalled();
+    expect(setAuditCreateMock).not.toHaveBeenCalled();
+  });
+
   it('merges the latest partial approval scope before recalculating carry items', async () => {
     setBatchFindManyMock.mockResolvedValue([
       {
@@ -1007,7 +1135,8 @@ describe('/api/set-audits POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
-      message: 'ご自身がセットしたセルの監査はできません。自己監査の例外には理由(same_operator_reason)の入力が必要です',
+      message:
+        'ご自身がセットしたセルの監査はできません。自己監査の例外には理由(same_operator_reason)の入力が必要です',
     });
     expect(setBatchUpdateManyMock).not.toHaveBeenCalled();
     expect(setAuditCreateMock).not.toHaveBeenCalled();
