@@ -159,6 +159,10 @@ export interface Group {
   start: string;
   /** 処方日数 */
   days: number;
+  /** Calendar UI period start. API-backed set plans can differ from prescription start. */
+  calendarStart?: string;
+  /** Calendar UI day count. Defaults to the legacy 7-day workbench window. */
+  calendarDayCount?: number;
   drugs: Drug[];
 }
 

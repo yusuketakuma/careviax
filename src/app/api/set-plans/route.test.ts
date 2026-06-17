@@ -347,6 +347,28 @@ describe('/api/set-plans', () => {
     expect(setPlanCreateMock).not.toHaveBeenCalled();
   });
 
+  it('rejects a target period longer than the set calendar safety limit before writes', async () => {
+    const response = (await POST(
+      createRequest('http://localhost/api/set-plans', {
+        cycle_id: 'cycle_1',
+        target_period_start: '2026-04-01',
+        target_period_end: '2026-05-10',
+        set_method: 'custom',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '入力値が不正です',
+      details: {
+        target_period_end: ['セット対象期間は35日以内で指定してください'],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(setPlanCreateMock).not.toHaveBeenCalled();
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+  });
+
   it('rejects impossible calendar dates before they can be normalized by Date parsing', async () => {
     const response = (await POST(
       createRequest('http://localhost/api/set-plans', {

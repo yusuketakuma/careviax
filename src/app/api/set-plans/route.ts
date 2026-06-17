@@ -17,6 +17,7 @@ import {
   buildSetPlanAssignmentWhere,
 } from '@/server/services/prescription-access';
 import { dateKeySchema } from '@/lib/validations/date-key';
+import { MAX_SET_PLAN_DAY_COUNT, isSetPlanPeriodWithinLimit } from '@/lib/set-plan-period';
 import { z } from 'zod';
 
 const createSetPlanSchema = z
@@ -36,6 +37,12 @@ const createSetPlanSchema = z
         code: z.ZodIssueCode.custom,
         path: ['target_period_end'],
         message: '終了日は開始日以降を指定してください',
+      });
+    } else if (!isSetPlanPeriodWithinLimit(value.target_period_start, value.target_period_end)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['target_period_end'],
+        message: `セット対象期間は${MAX_SET_PLAN_DAY_COUNT}日以内で指定してください`,
       });
     }
   });

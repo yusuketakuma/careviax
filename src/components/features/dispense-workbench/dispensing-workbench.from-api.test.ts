@@ -655,6 +655,8 @@ describe('calendarWorkbenchStateFromApi / cellMetaFromCalendar', () => {
       method: 'facility_calendar',
       start: '2026-06-17',
       days: 2,
+      calendarStart: '2026-06-17',
+      calendarDayCount: 2,
     });
     expect(state.model.patient_1[0].drugs).toEqual([
       expect.objectContaining({

@@ -17,9 +17,20 @@ type SetPlansPayload = {
 type SetCalendarPayload = {
   data: {
     plan_id: string;
+    period_start: string;
+    day_count: number;
     rows: Array<{ line: { drug_name: string } }>;
   };
 };
+
+function formatSetCalendarPeriod(start: string, dayCount: number) {
+  const [yearText, monthText, dayText] = start.split('-');
+  const startDate = new Date(Number(yearText), Number(monthText) - 1, Number(dayText));
+  const endDate = new Date(startDate);
+  endDate.setDate(startDate.getDate() + Math.max(1, dayCount) - 1);
+  const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+  return `${startDate.getFullYear()}/${startDate.getMonth() + 1}/${startDate.getDate()}（${weekdays[startDate.getDay()]}）〜${endDate.getMonth() + 1}/${endDate.getDate()}（${weekdays[endDate.getDay()]}）`;
+}
 
 async function openSetWorkbenchWithRealData(page: Page, path: string) {
   await page.addInitScript(() => {
@@ -72,10 +83,12 @@ async function openSetWorkbenchWithRealData(page: Page, path: string) {
   expect(resolvedPlans.length).toBeGreaterThan(0);
   expect(resolvedPlans.some((plan) => plan.id === calendar.data.plan_id)).toBe(true);
   expect(calendar.data.rows.length).toBeGreaterThan(0);
+  expect(calendar.data.day_count).toBeGreaterThan(0);
 
   return {
     patientName: patients.data[0].name,
     drugName: calendar.data.rows[0].line.drug_name,
+    periodLabel: formatSetCalendarPeriod(calendar.data.period_start, calendar.data.day_count),
   };
 }
 
@@ -331,6 +344,7 @@ test.describe('set → set-audit real-data direct entry', () => {
     await expect(main.getByRole('navigation', { name: 'メインメニュー' })).toBeVisible();
     await expect(main).toContainText(data.patientName);
     await expect(main).toContainText(data.drugName);
+    await expect(main).toContainText(data.periodLabel);
     expect(errors).toEqual([]);
   });
 
@@ -344,6 +358,7 @@ test.describe('set → set-audit real-data direct entry', () => {
     await expect(main.getByRole('navigation', { name: 'メインメニュー' })).toBeVisible();
     await expect(main).toContainText(data.patientName);
     await expect(main).toContainText(data.drugName);
+    await expect(main).toContainText(data.periodLabel);
     expect(errors).toEqual([]);
   });
 });

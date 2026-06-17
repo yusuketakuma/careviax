@@ -214,6 +214,21 @@ export function startKeyOf(groups: Group[]): string {
   return k ?? '9999-99-99';
 }
 
+/** Calendar UI period start. Legacy mock data keeps the fixed 2026-06-17 window. */
+export function calendarStartKeyOf(groups: Group[]): string {
+  const explicit = groups.find((g) => g.calendarStart)?.calendarStart;
+  return explicit ?? '2026-06-17';
+}
+
+/** Calendar UI day count. Legacy mock data keeps the fixed 7-day window. */
+export function calendarDayCountOf(groups: Group[]): number {
+  const explicit = groups.find((g) => g.calendarDayCount != null)?.calendarDayCount;
+  if (typeof explicit === 'number' && Number.isFinite(explicit) && explicit > 0) {
+    return Math.floor(explicit);
+  }
+  return 7;
+}
+
 /** patientId 群を sortMode（start | regist）で並べた id 配列 */
 export function sortedIds(
   patients: SeedPatient[],
@@ -400,10 +415,11 @@ export function calcGate(args: {
   const { phase, model, id, setCells, auditCells, outChk, packet } = args;
   if (phase !== 'setp' && phase !== 'seta') return { ok: true, text: '' };
   const cal = calc(model, id);
-  const total = cal.active.length * 7;
+  const dayCount = calendarDayCountOf(model[id] ?? []);
+  const total = cal.active.length * dayCount;
   let dnC = 0;
   let ng = 0;
-  for (let di = 0; di < 7; di++) {
+  for (let di = 0; di < dayCount; di++) {
     cal.active.forEach((tk) => {
       const st = phase === 'seta' ? auditCells[cellKey(id, di, tk)] : setCells[cellKey(id, di, tk)];
       if (phase === 'seta') {
@@ -450,7 +466,8 @@ export function autoTarget(args: {
   if (current) return current;
   const cal = calc(model, id);
   const isSeta = phase === 'seta';
-  for (let di = 0; di < 7; di++) {
+  const dayCount = calendarDayCountOf(model[id] ?? []);
+  for (let di = 0; di < dayCount; di++) {
     for (const tk of cal.active) {
       const st = isSeta ? auditCells[cellKey(id, di, tk)] : setCells[cellKey(id, di, tk)];
       if (!st) return { di, tk };

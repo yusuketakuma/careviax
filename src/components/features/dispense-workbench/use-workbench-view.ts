@@ -16,6 +16,8 @@ import { useWorkbenchStore } from './dispensing-workbench.store';
 import {
   autoTarget,
   calc,
+  calendarDayCountOf,
+  calendarStartKeyOf,
   calcGate,
   cellKey,
   comparison,
@@ -413,11 +415,19 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
 
   // ---- カレンダー ----
   const cal: CalcResult = calc(model, id);
-  const days = [...Array(7)].map((_, i) => {
-    const dt = new Date(2026, 5, 17 + i);
+  const calendarStart = calendarStartKeyOf(groups);
+  const calendarStartDate = parseISO(calendarStart) ?? new Date(2026, 5, 17);
+  const calendarDayCount = calendarDayCountOf(groups);
+  const days = [...Array(calendarDayCount)].map((_, i) => {
+    const dt = new Date(calendarStartDate);
+    dt.setDate(calendarStartDate.getDate() + i);
     const first = dt.getDate() === 1;
     return { idx: i, d: dt.getMonth() + 1 + '/' + dt.getDate(), w: DNW[dt.getDay()], cross: first };
   });
+  const periodLabel =
+    days.length > 0
+      ? `${calendarStartDate.getFullYear()}/${days[0].d}（${days[0].w}）〜${days[days.length - 1].d}（${days[days.length - 1].w}）`
+      : '—';
   const calDays = days.map((dd) => ({
     d: dd.d,
     w: dd.w,
@@ -667,7 +677,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
 
   // ---- 差戻しリスト（監査NG）----
   const rejectList: WorkbenchView['rejectList'] = [];
-  for (let di = 0; di < 7; di++)
+  for (let di = 0; di < calendarDayCount; di++)
     cal.active.forEach((tk) => {
       if (auditCells[cellKey(id, di, tk)] === 'ng') {
         const day = days[di];
@@ -741,9 +751,9 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     primaryBorder = '#218040';
     checkHead = '監査';
   } else {
-    const totC = cal.active.length * 7;
+    const totC = cal.active.length * calendarDayCount;
     let dnC = 0;
-    for (let di = 0; di < 7; di++)
+    for (let di = 0; di < calendarDayCount; di++)
       cal.active.forEach((tk) => {
         const st = isSeta ? auditCells[cellKey(id, di, tk)] : setCells[cellKey(id, di, tk)];
         if (isSeta ? st === 'ok' : st === 'set' || st === 'hold') dnC++;
@@ -811,7 +821,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
   const calBarBg = isSet ? '#f7f3fb' : '#fbf3ec';
   const calBarTitle = isSet ? 'セット注意' : '監査リスク';
   const calBarMeta = isSet
-    ? 'セット者：山田 花子 ／ 期間 6/17〜6/23'
+    ? `セット者：山田 花子 ／ 期間 ${periodLabel}`
     : 'セット完了：6/16 15:10 ／ 監査者：佐々木 健';
   const photoTitle = isSet ? '作業証跡写真（セット前 / セット後）' : '監査証跡写真';
   const photos = isSet ? ['セット前', 'セット後', 'カレンダー全体'] : ['監査完了', '該当セル拡大'];
@@ -859,7 +869,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
       ageSex: p.age + '歳 / ' + p.sex,
       kubun: '在宅（訪問）',
       regist: p.regist,
-      period: '2026/6/17（火）〜6/23（月）',
+      period: periodLabel,
       avatarBg: AV_PAL[idxOf(id) % AV_PAL.length],
       initial: p.short,
       chips,

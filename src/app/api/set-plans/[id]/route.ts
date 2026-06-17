@@ -10,6 +10,7 @@ import { dateKeySchema } from '@/lib/validations/date-key';
 import { buildSetPlanPackagingSummary } from '@/lib/prescription/set-plan-packaging';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { buildSetPlanAssignmentWhere } from '@/server/services/prescription-access';
+import { MAX_SET_PLAN_DAY_COUNT, isSetPlanPeriodWithinLimit } from '@/lib/set-plan-period';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 
@@ -290,6 +291,12 @@ export const PATCH = withAuthContext<{ id: string }>(
         return {
           kind: 'error' as const,
           message: '終了日は開始日以降を指定してください',
+        };
+      }
+      if (!isSetPlanPeriodWithinLimit(resolvedPeriodStart, resolvedPeriodEnd)) {
+        return {
+          kind: 'error' as const,
+          message: `セット対象期間は${MAX_SET_PLAN_DAY_COUNT}日以内で指定してください`,
         };
       }
 

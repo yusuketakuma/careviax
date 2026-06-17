@@ -404,6 +404,8 @@ export function calendarWorkbenchStateFromApi(
     method: matrix.set_method,
     start: matrix.period_start,
     days: matrix.day_count,
+    calendarStart: matrix.period_start,
+    calendarDayCount: matrix.day_count,
     drugs: matrix.rows.map((row) => ({
       did: row.line.id,
       name: row.line.drug_name,

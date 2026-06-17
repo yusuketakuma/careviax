@@ -3,6 +3,7 @@ import type {
   SetSlotKey,
   SetSlotMark,
 } from '@/app/(dashboard)/set/set-workspace.shared';
+import { MAX_SET_PLAN_DAY_COUNT } from '@/lib/set-plan-period';
 
 /**
  * new_09_set: SetPlan / SetBatch からの行状態・スロット充足の導出(純関数)。
@@ -39,13 +40,16 @@ export function deriveSlotMarks(plan: DerivablePlan | null): Record<SetSlotKey, 
     evening: 'none',
   };
   if (!plan) return marks;
-  const dayCount = Math.max(
-    1,
-    Math.round(
-      (startOfDay(plan.target_period_end).getTime() -
-        startOfDay(plan.target_period_start).getTime()) /
-        86_400_000,
-    ) + 1,
+  const dayCount = Math.min(
+    MAX_SET_PLAN_DAY_COUNT,
+    Math.max(
+      1,
+      Math.round(
+        (startOfDay(plan.target_period_end).getTime() -
+          startOfDay(plan.target_period_start).getTime()) /
+          86_400_000,
+      ) + 1,
+    ),
   );
   for (const slot of SET_SLOT_KEYS) {
     const coveredDays = new Set(
@@ -216,7 +220,10 @@ export function buildCalendarMatrix(args: {
   batches: CalendarPivotBatch[];
 }): CalendarMatrix {
   const { periodStart, periodEnd, lines, batches } = args;
-  const dayCount = Math.max(1, diffInclusiveDays(periodStart, periodEnd));
+  const dayCount = Math.min(
+    MAX_SET_PLAN_DAY_COUNT,
+    Math.max(1, diffInclusiveDays(periodStart, periodEnd)),
+  );
 
   // line_id -> day_number -> slot -> batch の索引を構築。
   const batchIndex = new Map<string, Map<number, Map<CalendarSlotKey, CalendarPivotBatch>>>();

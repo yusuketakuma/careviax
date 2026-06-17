@@ -36,7 +36,7 @@ vi.mock('@/lib/db/rls', () => ({
 }));
 
 import { GET } from './route';
-import { deriveRowStatus, deriveSlotMarks } from './set-derivations';
+import { buildCalendarMatrix, deriveRowStatus, deriveSlotMarks } from './set-derivations';
 
 function createRequest(query = '') {
   return new NextRequest(`http://localhost/api/medication-sets/workspace${query}`, {
@@ -307,5 +307,26 @@ describe('deriveSlotMarks / deriveRowStatus', () => {
       ],
     };
     expect(deriveRowStatus(plan)).toBe(status);
+  });
+
+  it('caps calendar matrix day generation defensively for oversized existing plans', () => {
+    const matrix = buildCalendarMatrix({
+      periodStart: new Date(2026, 3, 1),
+      periodEnd: new Date(2026, 5, 30),
+      lines: [
+        {
+          id: 'line_1',
+          drug_name: 'アムロジピン錠5mg',
+          dose: '1錠',
+          frequency: '朝食後',
+          unit: '錠',
+        },
+      ],
+      batches: [],
+    });
+
+    expect(matrix.day_count).toBe(35);
+    expect(matrix.rows[0].days).toHaveLength(35);
+    expect(matrix.period_end).toBe('2026-05-05');
   });
 });

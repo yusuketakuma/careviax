@@ -259,6 +259,26 @@ describe('/api/set-plans/[id]', () => {
     expect(txMock.setPlan.update).not.toHaveBeenCalled();
   });
 
+  it('rejects a target period update longer than the set calendar safety limit', async () => {
+    const response = await PATCH(
+      createRequest({
+        target_period_start: '2026-04-01',
+        target_period_end: '2026-05-10',
+      }),
+      {
+        params: Promise.resolve({ id: 'plan_1' }),
+      },
+    );
+    if (!response) throw new Error('response is required');
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'セット対象期間は35日以内で指定してください',
+    });
+    expect(txMock.setPlan.update).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('rejects impossible target period dates before transaction side effects', async () => {
     const response = await PATCH(
       createRequest({

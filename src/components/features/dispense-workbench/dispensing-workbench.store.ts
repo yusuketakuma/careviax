@@ -18,6 +18,7 @@ import {
   NEXT_PHASE,
   buildModel,
   calc,
+  calendarDayCountOf,
   calcGate,
   cellKey,
   drugsOf,
@@ -302,8 +303,9 @@ export const useWorkbenchStore = create<WorkbenchState>()(
         }
         // calc は logic 経由（calcGate と同じ active 算出）
         const cal = calc(model, selId);
+        const dayCount = calendarDayCountOf(model[selId] ?? []);
         const upd: Record<string, string> = {};
-        for (let di = 0; di < 7; di++)
+        for (let di = 0; di < dayCount; di++)
           cal.active.forEach((tk) => {
             upd[cellKey(selId, di, tk)] = phase === 'setp' ? 'set' : 'ok';
           });

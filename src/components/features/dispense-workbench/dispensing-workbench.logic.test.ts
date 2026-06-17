@@ -4,6 +4,7 @@ import { buildPatients } from './dispensing-workbench.seed';
 import {
   buildModel,
   calc,
+  calendarDayCountOf,
   calcGate,
   cellKey,
   comparison,
@@ -227,12 +228,21 @@ describe('calcGate（4区分ゲート）', () => {
     const id = '0003';
     const cal = calc(MODEL, id);
     const setCells: Record<string, string> = {};
-    for (let di = 0; di < 7; di++) cal.active.forEach((tk) => (setCells[cellKey(id, di, tk)] = 'set'));
+    for (let di = 0; di < 7; di++)
+      cal.active.forEach((tk) => (setCells[cellKey(id, di, tk)] = 'set'));
     const outChk: Record<string, boolean> = {};
     cal.outside.forEach((o) => (outChk[id + ':' + o.name] = true));
     const packet: Record<string, boolean> = {};
     ['cal', 'ton', 'gai', 'liq', 'doc', 'note'].forEach((k) => (packet[id + ':' + k] = true));
-    const g = calcGate({ phase: 'setp', model: MODEL, id, setCells, auditCells: {}, outChk, packet });
+    const g = calcGate({
+      phase: 'setp',
+      model: MODEL,
+      id,
+      setCells,
+      auditCells: {},
+      outChk,
+      packet,
+    });
     expect(g.ok).toBe(true);
     expect(g.text).toMatch(/完成/);
   });
@@ -241,9 +251,18 @@ describe('calcGate（4区分ゲート）', () => {
     const id = '0003';
     const cal = calc(MODEL, id);
     const auditCells: Record<string, string> = {};
-    for (let di = 0; di < 7; di++) cal.active.forEach((tk) => (auditCells[cellKey(id, di, tk)] = 'ok'));
+    for (let di = 0; di < 7; di++)
+      cal.active.forEach((tk) => (auditCells[cellKey(id, di, tk)] = 'ok'));
     auditCells[cellKey(id, 0, cal.active[0])] = 'ng';
-    const g = calcGate({ phase: 'seta', model: MODEL, id, setCells: {}, auditCells, outChk: {}, packet: {} });
+    const g = calcGate({
+      phase: 'seta',
+      model: MODEL,
+      id,
+      setCells: {},
+      auditCells,
+      outChk: {},
+      packet: {},
+    });
     expect(g.ok).toBe(false);
     expect(g.text).toMatch(/NG/);
   });
@@ -252,10 +271,68 @@ describe('calcGate（4区分ゲート）', () => {
     const id = '0003';
     const cal = calc(MODEL, id);
     const auditCells: Record<string, string> = {};
-    for (let di = 0; di < 7; di++) cal.active.forEach((tk) => (auditCells[cellKey(id, di, tk)] = 'ok'));
-    const g = calcGate({ phase: 'seta', model: MODEL, id, setCells: {}, auditCells, outChk: {}, packet: {} });
+    for (let di = 0; di < 7; di++)
+      cal.active.forEach((tk) => (auditCells[cellKey(id, di, tk)] = 'ok'));
+    const g = calcGate({
+      phase: 'seta',
+      model: MODEL,
+      id,
+      setCells: {},
+      auditCells,
+      outChk: {},
+      packet: {},
+    });
     expect(g.ok).toBe(true);
     expect(g.text).toMatch(/承認可/);
+  });
+
+  it('set/set-audit gate uses API-backed calendarDayCount instead of phantom 7-day cells', () => {
+    const id = 'patient_api';
+    const model = {
+      [id]: [
+        {
+          gid: 'g_api',
+          label: 'セット対象',
+          method: 'facility_calendar',
+          start: '2026-04-01',
+          days: 1,
+          calendarStart: '2026-04-01',
+          calendarDayCount: 1,
+          drugs: [
+            {
+              did: 'line_1',
+              name: 'アムロジピン錠5mg',
+              yoho: '朝食後',
+              a: '1',
+              h: '',
+              y: '',
+              n: '',
+              tag: '',
+              funsai: false,
+              note: '',
+            },
+          ],
+        },
+      ],
+    };
+    const setCells = { [cellKey(id, 0, '朝')]: 'set' };
+    const auditCells = { [cellKey(id, 0, '朝')]: 'ok' };
+
+    expect(calendarDayCountOf(model[id])).toBe(1);
+    expect(
+      calcGate({
+        phase: 'setp',
+        model,
+        id,
+        setCells,
+        auditCells: {},
+        outChk: {},
+        packet: { [`${id}:cal`]: true, [`${id}:doc`]: true, [`${id}:note`]: true },
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      calcGate({ phase: 'seta', model, id, setCells: {}, auditCells, outChk: {}, packet: {} }),
+    ).toMatchObject({ ok: true });
   });
 });
 
