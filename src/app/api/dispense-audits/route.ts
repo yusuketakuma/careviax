@@ -248,6 +248,20 @@ type DispenseAuditMutationError =
   | { error: 'already_audited' }
   | { error: string; conflict?: true; details?: unknown };
 
+type ExistingDispenseAuditForReplay = {
+  id: string;
+  result: string;
+  reject_reason: string | null;
+  reject_reason_code: string | null;
+  reject_detail: string | null;
+  audited_by: string;
+  same_operator_reason: string | null;
+};
+
+type IdempotentDispenseAuditReplay = ExistingDispenseAuditForReplay & {
+  idempotent: true;
+};
+
 class DispenseAuditRollback extends Error {
   constructor(public readonly result: DispenseAuditMutationError) {
     super(result.error);
@@ -275,6 +289,34 @@ function isDispenseAuditMutationError(value: unknown): value is DispenseAuditMut
   return typeof value === 'object' && value !== null && 'error' in value;
 }
 
+function isIdempotentDispenseAuditReplay(value: unknown): value is IdempotentDispenseAuditReplay {
+  return typeof value === 'object' && value !== null && 'idempotent' in value;
+}
+
+function nullableText(value: string | null | undefined) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function existingAuditMatchesRequest(args: {
+  existingAudit: ExistingDispenseAuditForReplay;
+  userId: string;
+  result: string;
+  rejectReason?: string;
+  rejectReasonCode?: string;
+  rejectDetail: string | null;
+  sameOperatorReason: string;
+}) {
+  return (
+    args.existingAudit.audited_by === args.userId &&
+    args.existingAudit.result === args.result &&
+    nullableText(args.existingAudit.reject_reason) === nullableText(args.rejectReason) &&
+    nullableText(args.existingAudit.reject_reason_code) === nullableText(args.rejectReasonCode) &&
+    nullableText(args.existingAudit.reject_detail) === nullableText(args.rejectDetail) &&
+    nullableText(args.existingAudit.same_operator_reason) === nullableText(args.sameOperatorReason)
+  );
+}
+
 export const POST = withAuthContext(
   async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
@@ -297,6 +339,10 @@ export const POST = withAuthContext(
       expected_version,
     } = parsed.data;
     const sameOperatorReason = same_operator_reason?.trim() ?? '';
+    const mergedRejectDetail = mergeRejectDetail({
+      rejectDetail: reject_detail,
+      externalAudit: external_audit,
+    });
     const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
 
     if (result === 'rejected' && !reject_reason) {
@@ -353,6 +399,35 @@ export const POST = withAuthContext(
         });
         if (!task) return null;
 
+        const existingAudit = await tx.dispenseAudit.findFirst({
+          where: { task_id, result: { notIn: ['hold'] } },
+          select: {
+            id: true,
+            result: true,
+            reject_reason: true,
+            reject_reason_code: true,
+            reject_detail: true,
+            audited_by: true,
+            same_operator_reason: true,
+          },
+        });
+        if (existingAudit) {
+          if (
+            existingAuditMatchesRequest({
+              existingAudit,
+              userId: ctx.userId,
+              result,
+              rejectReason: reject_reason,
+              rejectReasonCode: reject_reason_code,
+              rejectDetail: mergedRejectDetail,
+              sameOperatorReason,
+            })
+          ) {
+            return { ...existingAudit, idempotent: true } as const;
+          }
+          return { error: 'already_audited' as const };
+        }
+
         if (typeof task.cycle.version === 'number' && task.cycle.version !== expected_version) {
           return {
             error: 'cycle_version_conflict',
@@ -402,15 +477,6 @@ export const POST = withAuthContext(
           sameOperatorApprovedBy = ctx.userId;
         }
 
-        // B2: Concurrent audit prevention — reject if a non-hold audit already exists
-        const existingAudit = await tx.dispenseAudit.findFirst({
-          where: { task_id, result: { notIn: ['hold'] } },
-          select: { id: true },
-        });
-        if (existingAudit) {
-          return { error: 'already_audited' as const };
-        }
-
         if (result === 'emergency_approved') {
           const adminMembership = await tx.membership.findFirst({
             where: {
@@ -453,10 +519,7 @@ export const POST = withAuthContext(
                 result,
                 reject_reason: reject_reason ?? null,
                 reject_reason_code: reject_reason_code ?? null,
-                reject_detail: mergeRejectDetail({
-                  rejectDetail: reject_detail,
-                  externalAudit: external_audit,
-                }),
+                reject_detail: mergedRejectDetail,
                 audited_by: ctx.userId,
                 audited_at: now,
                 // D1=B: 自己監査例外のみ理由・承認 admin を記録 (非自己監査時は NULL)。
@@ -466,12 +529,39 @@ export const POST = withAuthContext(
             });
           } catch (err) {
             if (isPrismaUniqueConstraintError(err)) {
+              const concurrentAudit = await tx.dispenseAudit.findFirst({
+                where: { task_id, result: { notIn: ['hold'] } },
+                select: {
+                  id: true,
+                  result: true,
+                  reject_reason: true,
+                  reject_reason_code: true,
+                  reject_detail: true,
+                  audited_by: true,
+                  same_operator_reason: true,
+                },
+              });
+              if (
+                concurrentAudit &&
+                existingAuditMatchesRequest({
+                  existingAudit: concurrentAudit,
+                  userId: ctx.userId,
+                  result,
+                  rejectReason: reject_reason,
+                  rejectReasonCode: reject_reason_code,
+                  rejectDetail: mergedRejectDetail,
+                  sameOperatorReason,
+                })
+              ) {
+                return { ...concurrentAudit, idempotent: true } as const;
+              }
               return { error: 'already_audited' as const };
             }
             throw err;
           }
         })();
         if ('error' in audit) return audit;
+        if (isIdempotentDispenseAuditReplay(audit)) return audit;
 
         // D1=B: 自己監査例外を append-only の操作証跡として記録 (3省2ガイドライン §12-5)。
         // inputUserId(調剤者=監査者) / approvedBy(承認 admin) / サーバ時刻を残す。
@@ -646,6 +736,9 @@ export const POST = withAuthContext(
         return conflict(auditError.error, auditError.details);
       }
       return validationError(auditError.error);
+    }
+    if (isIdempotentDispenseAuditReplay(auditResult)) {
+      return success(auditResult);
     }
 
     await notifyWorkflowMutation({

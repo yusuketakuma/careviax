@@ -506,6 +506,78 @@ describe('/api/dispense-audits POST', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it('returns an existing matching audit on an exact retry without duplicate side effects', async () => {
+    const dispenseResultFindManyMock = vi.fn();
+    const dispenseAuditCreateMock = vi.fn();
+    const taskUpdateMock = vi.fn();
+    const existingAudit = {
+      id: 'audit_existing',
+      result: 'approved',
+      reject_reason: null,
+      reject_reason_code: null,
+      reject_detail: null,
+      audited_by: 'user_1',
+      same_operator_reason: null,
+    };
+
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        dispenseTask: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'task_retry',
+            cycle_id: 'cycle_retry',
+            assigned_to: 'user_dispense',
+            due_date: null,
+            priority: 'normal',
+            cycle: {
+              patient_id: 'patient_1',
+              overall_status: 'setting',
+              version: 2,
+              set_plans: [{ id: 'plan_1' }],
+              case_: {
+                primary_pharmacist_id: 'pharmacist_1',
+                patient: { name: '山田 太郎' },
+              },
+            },
+          }),
+          update: taskUpdateMock,
+        },
+        dispenseResult: {
+          findMany: dispenseResultFindManyMock,
+        },
+        dispenseAudit: {
+          findFirst: vi.fn().mockResolvedValue(existingAudit),
+          create: dispenseAuditCreateMock,
+        },
+        membership: {
+          findFirst: vi.fn(),
+          findMany: vi.fn(),
+        },
+      }),
+    );
+
+    const response = await POST(
+      createRequest({
+        task_id: 'task_retry',
+        result: 'approved',
+        expected_version: 1,
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      id: 'audit_existing',
+      result: 'approved',
+      idempotent: true,
+    });
+    expect(dispenseResultFindManyMock).not.toHaveBeenCalled();
+    expect(dispenseAuditCreateMock).not.toHaveBeenCalled();
+    expect(taskUpdateMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('rejects invalid cycle transitions before creating a dispense audit record', async () => {
     const dispenseAuditCreateMock = vi.fn();
     const taskUpdateMock = vi.fn();
