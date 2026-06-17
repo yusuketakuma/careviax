@@ -89,11 +89,27 @@ class SetAuditRollback extends Error {
   constructor(
     readonly result:
       | { error: 'cell_version_conflict'; conflict: true }
+      | { error: 'already_audited'; conflict: true }
       | { error: string; conflict?: true },
   ) {
     super('set audit transaction rolled back');
   }
 }
+
+type ExistingSetAuditForReplay = {
+  id: string;
+  result: string;
+  approved_scope: unknown;
+  reject_reason: string | null;
+  checklist: unknown;
+  photo_asset_ids: string[];
+  audited_by: string;
+  same_operator_reason: string | null;
+};
+
+type IdempotentSetAuditReplay = ExistingSetAuditForReplay & {
+  idempotent: true;
+};
 
 function normalizeApprovedScope(scope: unknown) {
   if (!scope || typeof scope !== 'object' || Array.isArray(scope)) {
@@ -112,6 +128,57 @@ function mergeApprovedScope(previousScope: unknown, currentScope?: Record<string
   const current = normalizeApprovedScope(currentScope) ?? {};
   const merged = { ...previous, ...current };
   return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+function nullableText(value: string | null | undefined) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function normalizeJsonForCompare(value: unknown) {
+  return JSON.stringify(value ?? null);
+}
+
+function sortedTextValues(values: readonly string[] | null | undefined) {
+  return [...(values ?? [])].sort();
+}
+
+function isIdempotentSetAuditReplay(value: unknown): value is IdempotentSetAuditReplay {
+  return typeof value === 'object' && value !== null && 'idempotent' in value;
+}
+
+function existingSetAuditMatchesApprovedReplay(args: {
+  existingAudit: ExistingSetAuditForReplay;
+  userId: string;
+  approvedScope: unknown;
+  checklist: unknown;
+  photoAssetIds: readonly string[] | undefined;
+  sameOperatorReason: string | undefined;
+}) {
+  return (
+    args.existingAudit.audited_by === args.userId &&
+    args.existingAudit.result === 'approved' &&
+    normalizeJsonForCompare(args.existingAudit.approved_scope) ===
+      normalizeJsonForCompare(args.approvedScope) &&
+    normalizeJsonForCompare(args.existingAudit.checklist) ===
+      normalizeJsonForCompare(args.checklist) &&
+    normalizeJsonForCompare(sortedTextValues(args.existingAudit.photo_asset_ids)) ===
+      normalizeJsonForCompare(sortedTextValues(args.photoAssetIds)) &&
+    nullableText(args.existingAudit.same_operator_reason) === nullableText(args.sameOperatorReason)
+  );
+}
+
+function cellAuditsAlreadyApplied(
+  setBatches: Array<{ id: string; audit_state: string; ng_code: RejectCode | null }>,
+  cellAudits: Array<{ batch_id: string; audit_state: 'ok' | 'ng'; ng_code?: RejectCode }> = [],
+) {
+  const batchById = new Map(setBatches.map((batch) => [batch.id, batch]));
+  return cellAudits.every((cell) => {
+    const batch = batchById.get(cell.batch_id);
+    if (!batch) return false;
+    const expectedNgCode = cell.audit_state === 'ng' ? (cell.ng_code ?? null) : null;
+    return batch.audit_state === cell.audit_state && batch.ng_code === expectedNgCode;
+  });
 }
 
 function buildSetCarryItems(
@@ -401,6 +468,43 @@ export const POST = withAuthContext(
       // B3: Zero-batch guard
       if (setBatches.length === 0) {
         return { error: 'no_batches' as const };
+      }
+
+      const existingTerminalAudit = await tx.setAudit.findFirst({
+        where: {
+          plan_id,
+          org_id: ctx.orgId,
+          result: { in: ['approved', 'rejected'] },
+          ...(auditAssignmentWhere ? { AND: [auditAssignmentWhere] } : {}),
+        },
+        orderBy: [{ audited_at: 'desc' }, { created_at: 'desc' }],
+        select: {
+          id: true,
+          result: true,
+          approved_scope: true,
+          reject_reason: true,
+          checklist: true,
+          photo_asset_ids: true,
+          audited_by: true,
+          same_operator_reason: true,
+        },
+      });
+      if (existingTerminalAudit) {
+        if (
+          result === 'approved' &&
+          existingSetAuditMatchesApprovedReplay({
+            existingAudit: existingTerminalAudit,
+            userId: ctx.userId,
+            approvedScope: normalizeApprovedScope(approved_scope),
+            checklist: checklist ? toPrismaJsonInput(checklist) : undefined,
+            photoAssetIds: photo_asset_ids,
+            sameOperatorReason: same_operator_reason,
+          }) &&
+          cellAuditsAlreadyApplied(setBatches, cell_audits)
+        ) {
+          return { ...existingTerminalAudit, idempotent: true } as const;
+        }
+        return { error: 'already_audited' as const, conflict: true };
       }
 
       // B3: Validate approved_scope keys match actual batches
@@ -882,8 +986,15 @@ export const POST = withAuthContext(
       if (auditResult.error === 'cell_version_conflict') {
         return conflict('セルが他のユーザーによって更新されています。再読み込みしてください');
       }
+      if (auditResult.error === 'already_audited') {
+        return conflict('このセット監査は既に確定済みです');
+      }
       if ('conflict' in auditResult && auditResult.conflict) return conflict(auditResult.error);
-      return validationError(auditResult.error);
+      return validationError(auditResult.error ?? 'セット監査に失敗しました');
+    }
+
+    if (isIdempotentSetAuditReplay(auditResult)) {
+      return success(auditResult);
     }
 
     await notifyWorkflowMutation({

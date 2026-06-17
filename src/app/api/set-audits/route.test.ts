@@ -724,7 +724,7 @@ describe('/api/set-audits POST', () => {
         },
       },
     ]);
-    setAuditFindFirstMock.mockResolvedValue({
+    setAuditFindFirstMock.mockResolvedValueOnce(null).mockResolvedValueOnce({
       result: 'partial_approved',
       approved_scope: {
         '1-morning': true,
@@ -1320,6 +1320,104 @@ describe('/api/set-audits POST', () => {
     expect(setBatchUpdateManyMock).not.toHaveBeenCalled();
     expect(setAuditCreateMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('replays an already-applied approved audit without duplicate side effects', async () => {
+    const checklist = completeSetAuditChecklist();
+    setBatchFindManyMock.mockResolvedValue([
+      {
+        id: 'batch_1',
+        line_id: 'line_1',
+        slot: 'morning',
+        day_number: 1,
+        quantity: 1,
+        carry_type: 'carry',
+        set_state: 'set',
+        audit_state: 'ok',
+        ng_code: null,
+        set_by: 'setter_1',
+        version: 4,
+        line: {
+          id: 'line_1',
+          drug_name: 'アムロジピン錠5mg',
+          dose: '1回1錠',
+          frequency: '朝食後',
+          unit: '錠',
+        },
+      },
+    ]);
+    setAuditFindFirstMock.mockResolvedValue({
+      id: 'audit_existing',
+      result: 'approved',
+      approved_scope: null,
+      reject_reason: null,
+      checklist,
+      photo_asset_ids: [],
+      audited_by: 'user_1',
+      same_operator_reason: null,
+    });
+
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'approved',
+          checklist,
+          cell_audits: [{ batch_id: 'batch_1', audit_state: 'ok', expected_version: 3 }],
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      id: 'audit_existing',
+      result: 'approved',
+      idempotent: true,
+    });
+    expect(setBatchUpdateManyMock).not.toHaveBeenCalled();
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(setAuditCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when a submitted audit conflicts with an existing terminal audit', async () => {
+    setAuditFindFirstMock.mockResolvedValue({
+      id: 'audit_existing',
+      result: 'approved',
+      approved_scope: null,
+      reject_reason: null,
+      checklist: completeSetAuditChecklist(),
+      photo_asset_ids: [],
+      audited_by: 'user_1',
+      same_operator_reason: null,
+    });
+
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'rejected',
+          reject_reason: '数量誤り',
+          reject_reason_code: 'quantity_short',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: 'このセット監査は既に確定済みです',
+    });
+    expect(setBatchUpdateManyMock).not.toHaveBeenCalled();
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(setAuditCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('returns 400 when a cell audit targets a batch outside the plan', async () => {
