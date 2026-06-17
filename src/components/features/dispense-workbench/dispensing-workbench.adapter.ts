@@ -222,8 +222,11 @@ export async function loadCalendarWriteContextAsync(
  * Direct /set or /set-audit entry point.
  *
  * The calendar write/read context cannot be derived from local persisted state.
- * Resolve it from the real patient list row, preferring the currently selected
- * patient but falling forward to the first patient that actually has a SetPlan.
+ * Resolve it for the currently selected patient when that patient exists in the
+ * real list. If the current store selection is not a real patient at all (for
+ * example the initial seed id after direct entry), choose the first real patient
+ * with a SetPlan as the initial queue target. Never fall forward from a real
+ * selected patient with no SetPlan to another patient.
  * The dispensing queue's latest cycle is often not the set-plan cycle, so the
  * direct set routes resolve by patient_id instead of cycle_id.
  */
@@ -242,20 +245,23 @@ export async function loadSetCalendarForPatientAsync(patientId: string): Promise
   if (!listRows || listRows.length === 0) return null;
 
   const selectedRow = listRows.find((row) => row.patient_id === patientId);
-  const candidates = [
-    ...(selectedRow ? [selectedRow] : []),
-    ...listRows.filter((row) => row.patient_id !== selectedRow?.patient_id),
-  ];
+  const candidates = selectedRow ? [selectedRow] : listRows;
 
   for (const row of candidates) {
     const plansBody = await fetchJson<SetPlanListResponse>(
       `/api/set-plans?patient_id=${encodeURIComponent(row.patient_id)}`,
     );
     const planId = plansBody?.data?.[0]?.id;
-    if (!planId) continue;
+    if (!planId) {
+      if (selectedRow) return null;
+      continue;
+    }
 
     const calendar = await loadCalendarWriteContextAsync(row.patient_id, planId);
-    if (!calendar) continue;
+    if (!calendar) {
+      if (selectedRow) return null;
+      continue;
+    }
 
     return {
       patients: patientsFromApi(listRows),
