@@ -29,6 +29,7 @@ function fakeMutations(
     setAudit: mutationStub(),
     createHold: mutationStub(),
     resolveHold: mutationStub(),
+    createGroup: mutationStub(),
     saveGroups: mutationStub(),
     assignLines: mutationStub(),
     editLine: mutationStub(),
@@ -60,6 +61,31 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
   afterEach(() => {
     vi.doUnmock('./dispensing-workbench.adapter');
     vi.resetModules();
+    window.localStorage.clear();
+  });
+
+  it('starts real-data mode without restoring seed or persisted clinical workbench state', async () => {
+    window.localStorage.setItem(
+      'chouzai-workbench',
+      JSON.stringify({
+        state: {
+          selId: '0001',
+          patients: [{ id: '0001', name: 'Seed Patient' }],
+          model: { '0001': [{ gid: 'seed_group', drugs: [] }] },
+          setCells: { '0001:0:朝': 'set' },
+        },
+        version: 0,
+      }),
+    );
+
+    const { useWorkbenchStore } = await importRealDataHandlers();
+
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      selId: '',
+      patients: [],
+      model: {},
+      setCells: {},
+    });
   });
 
   it('restores the previous set cell state when a cell set mutation fails', async () => {
@@ -344,5 +370,131 @@ describe('useWorkbenchWriteHandlers real-data rollback', () => {
       expect.objectContaining({ onSuccess: expect.any(Function) }),
     );
     expect(onAdvance).toHaveBeenCalledWith('setp');
+  });
+
+  it('creates a real packaging group and maps the local gid to the backend id', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const createGroup = mutationStub((_input, options) =>
+      options?.onSuccess?.({ data: { id: 'packaging_group_1' } }),
+    );
+
+    act(() => {
+      useWorkbenchStore.setState({
+        selId: 'patient_1',
+        patients: [
+          {
+            id: 'patient_1',
+            name: '計画 花子',
+            kana: 'ケイカク ハナコ',
+            dob: '1940/01/01',
+            age: 86,
+            sex: '女',
+            sub: '',
+            short: '計',
+            chips: [],
+            regist: '2026/04/01',
+            seedStart: '2026-04-01',
+            seedDays: 14,
+            yosei: '可',
+            changes: [],
+            biko: [],
+            rows: [],
+          },
+        ],
+        model: { patient_1: [] },
+        writeContext: {
+          taskId: 'task_1',
+          cycleId: 'cycle_1',
+          cycleVersion: 4,
+          planId: null,
+          lineGroupByDid: {},
+          groupIdByGid: {},
+          cellMeta: {},
+        },
+      });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'dispense',
+        mutations: fakeMutations({ createGroup }),
+      }),
+    );
+
+    act(() => {
+      result.current.onAddGroup();
+    });
+
+    const group = useWorkbenchStore.getState().model.patient_1[0];
+    expect(createGroup.mutate).toHaveBeenCalledWith(
+      {
+        taskId: 'task_1',
+        group: {
+          group_key: group.gid,
+          label: '追加グループ1',
+          method: '一包化',
+          sort_order: 0,
+        },
+      },
+      expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }),
+    );
+    expect(useWorkbenchStore.getState().writeContext.groupIdByGid[group.gid]).toBe(
+      'packaging_group_1',
+    );
+  });
+
+  it('rolls back a local group when the real packaging group create fails', async () => {
+    const { useWorkbenchStore, useWorkbenchWriteHandlers } = await importRealDataHandlers();
+    const createGroup = mutationStub((_input, options) => options?.onError?.(new Error('fail')));
+
+    act(() => {
+      useWorkbenchStore.setState({
+        selId: 'patient_1',
+        patients: [
+          {
+            id: 'patient_1',
+            name: '計画 花子',
+            kana: 'ケイカク ハナコ',
+            dob: '1940/01/01',
+            age: 86,
+            sex: '女',
+            sub: '',
+            short: '計',
+            chips: [],
+            regist: '2026/04/01',
+            seedStart: '2026-04-01',
+            seedDays: 14,
+            yosei: '可',
+            changes: [],
+            biko: [],
+            rows: [],
+          },
+        ],
+        model: { patient_1: [] },
+        writeContext: {
+          taskId: 'task_1',
+          cycleId: 'cycle_1',
+          cycleVersion: 4,
+          planId: null,
+          lineGroupByDid: {},
+          groupIdByGid: {},
+          cellMeta: {},
+        },
+      });
+    });
+
+    const { result } = renderHook(() =>
+      useWorkbenchWriteHandlers({
+        phase: 'dispense',
+        mutations: fakeMutations({ createGroup }),
+      }),
+    );
+
+    act(() => {
+      result.current.onAddGroup();
+    });
+
+    expect(createGroup.mutate).toHaveBeenCalled();
+    expect(useWorkbenchStore.getState().model.patient_1).toEqual([]);
   });
 });

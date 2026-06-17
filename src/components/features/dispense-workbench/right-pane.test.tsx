@@ -24,7 +24,7 @@ function setAuditView(ngValue: string): WorkbenchView {
       note: '',
       hasNote: false,
     },
-    checkItems: [],
+    checkItems: [{ index: 0, label: '日付が正しい', checked: false }],
     ngValue,
     ngOptions: ['数量不足'],
     rejectList: [],
@@ -126,6 +126,15 @@ describe('RightPane set audit NG controls', () => {
     expect((screen.getByRole('button', { name: 'NG・差戻し' }) as HTMLButtonElement).disabled).toBe(
       true,
     );
+    expect((screen.getByRole('button', { name: '監査OK' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect(
+      (screen.getByRole('button', { name: '日付が正しい' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect((screen.getByRole('button', { name: '保留…' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
   });
 
   it('enables rejected audit submission after an NG classification is selected', () => {
@@ -135,6 +144,15 @@ describe('RightPane set audit NG controls', () => {
     render(<RightPane view={setAuditView('数量不足')} phase="seta" handlers={handlers} />);
 
     expect((screen.getByRole('button', { name: 'NG・差戻し' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+    expect((screen.getByRole('button', { name: '監査OK' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+    expect(
+      (screen.getByRole('button', { name: '日付が正しい' }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect((screen.getByRole('button', { name: '保留…' }) as HTMLButtonElement).disabled).toBe(
       false,
     );
   });

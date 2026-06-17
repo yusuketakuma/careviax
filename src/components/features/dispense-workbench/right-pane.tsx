@@ -614,7 +614,8 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
   const hasSelectedCell = cellTarget !== null;
   const ngDisabled = isPending || !hasSelectedCell || !ngValue;
   const ngClassificationDisabled = isPending || !hasSelectedCell;
-  const auditButtonCursor = isPending ? 'not-allowed' : 'pointer';
+  const cellActionDisabled = isPending || !hasSelectedCell;
+  const auditButtonCursor = cellActionDisabled ? 'not-allowed' : 'pointer';
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       {/* 期待値（処方・服薬計画）*/}
@@ -694,13 +695,16 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
               key={ci.index}
               onClick={() => onToggleCheck(ci.index)}
               aria-pressed={ci.checked}
+              disabled={cellActionDisabled}
+              aria-disabled={cellActionDisabled}
+              title={hasSelectedCell ? undefined : '対象セルを選択してから確認してください'}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
                 padding: '4px 2px',
                 borderBottom: '1px solid #f0f2f4',
-                cursor: 'pointer',
+                cursor: cellActionDisabled ? 'not-allowed' : 'pointer',
                 width: '100%',
                 background: 'transparent',
                 textAlign: 'left',
@@ -719,7 +723,9 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
           <button
             type="button"
             onClick={onAuditOk}
-            disabled={isPending}
+            disabled={cellActionDisabled}
+            aria-disabled={cellActionDisabled}
+            title={hasSelectedCell ? undefined : '対象セルを選択してから監査OKにしてください'}
             style={{
               flex: 1,
               cursor: auditButtonCursor,
@@ -727,11 +733,11 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
               fontSize: '12.5px',
               fontWeight: 700,
               color: '#fff',
-              background: isPending ? '#a8b3bf' : '#27ae60',
+              background: cellActionDisabled ? '#a8b3bf' : '#27ae60',
               border: '1px solid #1f9150',
               borderRadius: '5px',
               padding: '8px 0',
-              opacity: isPending ? 0.72 : 1,
+              opacity: cellActionDisabled ? 0.72 : 1,
             }}
           >
             監査OK
@@ -767,12 +773,14 @@ function SetAudit({ view, phase, handlers, isPending = false }: SetAuditProps) {
           <button
             type="button"
             onClick={onOpenHold}
-            disabled={isPending}
+            disabled={cellActionDisabled}
+            aria-disabled={cellActionDisabled}
+            title={hasSelectedCell ? undefined : '対象セルを選択してから保留してください'}
             style={{
               ...holdButtonStyle,
               padding: '8px 12px',
               cursor: auditButtonCursor,
-              opacity: isPending ? 0.72 : 1,
+              opacity: cellActionDisabled ? 0.72 : 1,
             }}
           >
             保留…

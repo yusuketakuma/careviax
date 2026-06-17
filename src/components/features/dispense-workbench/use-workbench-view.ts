@@ -745,6 +745,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
   let gateColor = '#1f9150';
   let gateBg = '#eef8f0';
   let gateBorder = '#9ed6ad';
+  let gateOk = gateResult.ok;
 
   if (ph === 'dispense') {
     const pct = prog.total ? Math.round((prog.done / prog.total) * 100) : 0;
@@ -822,6 +823,13 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     }
   }
   if (dataUnavailable) {
+    gateOk = false;
+    gateText = '実データを取得できませんでした';
+    gateColor = '#b3402f';
+    gateBg = '#fdeeec';
+    gateBorder = '#f0c4bd';
+    primaryBg = '#b8bfc8';
+    primaryBorder = '#a3abb5';
     primaryCursor = 'not-allowed';
     primaryOpacity = '.7';
   }
@@ -938,7 +946,7 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     ngOptions: NG_OPTIONS,
 
     progress,
-    gate: { ok: gateResult.ok, text: gateText, color: gateColor, bg: gateBg, border: gateBorder },
+    gate: { ok: gateOk, text: gateText, color: gateColor, bg: gateBg, border: gateBorder },
     primary: {
       label: primaryLabel,
       bg: primaryBg,

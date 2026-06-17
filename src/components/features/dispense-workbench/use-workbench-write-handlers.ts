@@ -9,8 +9,7 @@
  *    （現行 UI 挙動を完全保持）。
  *  - 実データ時: store アクション（楽観更新）を従来どおり呼び、加えて adapter 書込を mutation 経由で
  *    発火する。書込に必要な実データ識別子（task_id / plan_id / batch_id / version 等）は
- *    store.writeContext から解決する。解決不能なものは mutation を発火せず store だけ更新する
- *    （安全側フォールバック・現行表示維持）。
+ *    store.writeContext から解決する。解決不能なものは実データ時にローカルだけで進めない。
  *
  * 二重送信防止: いずれかの書込が進行中（mutations.isAnyPending）の間は、書込を伴う主操作
  * （一括 / 確定）を抑止する。セル単位の細粒度操作は楽観更新を優先しブロックしない。
@@ -197,9 +196,48 @@ export function useWorkbenchWriteHandlers(args: {
         });
       },
       onAddGroup: () => {
-        addGroup();
-        // 新規グループは createGroup API があるが、view 合成 gid と PackagingGroup.id の
-        // 突き合わせ（再 hydrate）が必要なため、現段階は store のみ更新。
+        const before = snap();
+        if (isRealDataEnabled() && !before.writeContext.taskId) return;
+        const gid = addGroup();
+        if (!gid) return;
+        real(() => {
+          const s = snap();
+          const groups = s.model[s.selId] ?? [];
+          const group = groups.find((candidate) => candidate.gid === gid);
+          if (!s.writeContext.taskId || !group) {
+            useWorkbenchStore.setState({ model: before.model });
+            return;
+          }
+          mutations.createGroup.mutate(
+            {
+              taskId: s.writeContext.taskId,
+              group: {
+                group_key: gid,
+                label: group.label,
+                method: group.method,
+                sort_order: groups.findIndex((candidate) => candidate.gid === gid),
+              },
+            },
+            {
+              onSuccess: (data) => {
+                const createdId = (data as { data?: { id?: unknown } } | null)?.data?.id;
+                if (typeof createdId !== 'string' || !createdId) return;
+                useWorkbenchStore.setState((state) => ({
+                  writeContext: {
+                    ...state.writeContext,
+                    groupIdByGid: {
+                      ...state.writeContext.groupIdByGid,
+                      [gid]: createdId,
+                    },
+                  },
+                }));
+              },
+              onError: () => {
+                useWorkbenchStore.setState({ model: before.model });
+              },
+            },
+          );
+        });
       },
       onBulk: () => {
         if (isRealDataEnabled() && isAnyPending) return; // 実データ時のみ二重送信ガード

@@ -108,4 +108,36 @@ describe('buildView calendar period', () => {
     expect(view.progress.fraction).toBe('0 / 0');
     expect(view.primary.cursor).toBe('not-allowed');
   });
+
+  it.each(['setp', 'seta'] as const)(
+    'blocks the calendar completion gate when %s has no authoritative real-data patients',
+    (phase) => {
+      const view = buildView({
+        phase,
+        selId: '',
+        sortMode: 'start',
+        done: {},
+        audit: {},
+        setCells: {},
+        auditCells: {},
+        outChk: {},
+        checks: {},
+        ng: {},
+        target: null,
+        holdModal: null,
+        holdInfo: {},
+        packet: {},
+        compareOpen: false,
+        model: {},
+        patients: [],
+      });
+
+      expect(view.patientCount).toBe('0');
+      expect(view.gate).toMatchObject({
+        ok: false,
+        text: '実データを取得できませんでした',
+      });
+      expect(view.primary.cursor).toBe('not-allowed');
+    },
+  );
 });

@@ -33,6 +33,7 @@ import {
   submitSetAudit,
   createCycleHold,
   resolveCycleHold,
+  createGroup,
   updateGroups,
   assignLinesToGroup,
   updatePrescriptionLine,
@@ -200,6 +201,30 @@ export function useWorkbenchMutations(args: { patientId: string; planId: string 
     },
   });
 
+  // ── グループ作成（POST /api/dispense-tasks/[taskId]/groups）──
+  const createPackagingGroup = useMutation({
+    mutationFn: async (vars: {
+      taskId: string;
+      group: {
+        group_key: string;
+        label: string;
+        method: string;
+        slot?: string;
+        sort_order?: number;
+      };
+    }) => {
+      if (!isRealDataEnabled()) return null;
+      return createGroup(vars.taskId, vars.group);
+    },
+    onError: (error) => {
+      reportWorkbenchError(error, 'グループの作成に失敗しました');
+      if (error instanceof WorkbenchConflictError) invalidateWorkbench();
+    },
+    onSettled: () => {
+      if (isRealDataEnabled()) invalidateWorkbench();
+    },
+  });
+
   // ── グループ属性の一括更新（PATCH /api/dispense-tasks/[taskId]/groups, groups[]）──
   const saveGroups = useMutation({
     mutationFn: async (vars: {
@@ -278,6 +303,7 @@ export function useWorkbenchMutations(args: { patientId: string; planId: string 
     setAudit,
     createHold,
     resolveHold,
+    createGroup: createPackagingGroup,
     saveGroups,
     assignLines,
     editLine,
@@ -290,6 +316,7 @@ export function useWorkbenchMutations(args: { patientId: string; planId: string 
       setAudit.isPending ||
       createHold.isPending ||
       resolveHold.isPending ||
+      createPackagingGroup.isPending ||
       saveGroups.isPending ||
       assignLines.isPending ||
       editLine.isPending,

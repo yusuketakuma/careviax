@@ -438,12 +438,10 @@ export function MedicationCalendarGrid({
         >
           {bulkLabel}
         </button>
-        {/* 設計プロト L293 は native disable せず cursor='not-allowed'/opacity='.7' の視覚表現のみ。
-            ゲート NG 時は store.primary が null を返し副作用が無いため onClick は無害。
-            フォーカス可能性を保つため disabled は付与せず aria-disabled のみ残す。 */}
         <button
           type="button"
           onClick={handlePrimary}
+          disabled={gateBlocked || isPending}
           aria-disabled={gateBlocked}
           style={primaryButtonStyle}
         >

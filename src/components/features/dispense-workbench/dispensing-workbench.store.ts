@@ -13,6 +13,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
+import { isRealDataEnabled } from './dispensing-workbench.adapter';
 import { buildPatients } from './dispensing-workbench.seed';
 import {
   NEXT_PHASE,
@@ -37,6 +38,10 @@ import type {
 import { emptyWriteContext, type WorkbenchWriteContext } from './dispensing-workbench.write-types';
 
 const SEED_PATIENTS = buildPatients();
+const REAL_DATA_ENABLED = isRealDataEnabled();
+const INITIAL_PATIENTS = REAL_DATA_ENABLED ? [] : SEED_PATIENTS;
+const INITIAL_MODEL = REAL_DATA_ENABLED ? {} : buildModel(SEED_PATIENTS);
+const INITIAL_SEL_ID = REAL_DATA_ENABLED ? '' : '0001';
 
 export interface WorkbenchState {
   // ---- state（設計プロト L546-548）----
@@ -131,7 +136,7 @@ export interface WorkbenchState {
   bulk: (phase: Phase) => void;
   openCompare: () => void;
   closeCompare: () => void;
-  addGroup: () => void;
+  addGroup: () => string | null;
   togglePacket: (item: string) => void;
   returnToSet: (di: number, tk: string) => void;
   /** primary（次工程へ）押下。ゲート通過時のみ次 phase を返す（ルート遷移は呼び出し側）*/
@@ -144,7 +149,7 @@ let dragId: string | null = null;
 export const useWorkbenchStore = create<WorkbenchState>()(
   persist(
     (set, get) => ({
-      selId: '0001',
+      selId: INITIAL_SEL_ID,
       sortMode: 'start',
       done: {},
       audit: {},
@@ -158,8 +163,8 @@ export const useWorkbenchStore = create<WorkbenchState>()(
       holdInfo: {},
       packet: {},
       compareOpen: false,
-      model: buildModel(SEED_PATIENTS),
-      patients: SEED_PATIENTS,
+      model: INITIAL_MODEL,
+      patients: INITIAL_PATIENTS,
       hydrated: false,
       writeContext: emptyWriteContext(),
 
@@ -364,12 +369,13 @@ export const useWorkbenchStore = create<WorkbenchState>()(
       addGroup: () => {
         const { selId, model, patients } = get();
         const p = patients.find((x) => x.id === selId);
-        if (!p) return;
+        if (!p) return null;
         const no = nextGroupNo(model[selId] ?? []);
+        const gid = selId + '-gx' + Date.now();
         set((s) =>
           updateGroups(s, (gs) => {
             gs.push({
-              gid: selId + '-gx' + Date.now(),
+              gid,
               label: '追加グループ' + no,
               method: '一包化',
               start: p.seedStart,
@@ -378,6 +384,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
             });
           }),
         );
+        return gid;
       },
 
       togglePacket: (item) => {
@@ -414,20 +421,32 @@ export const useWorkbenchStore = create<WorkbenchState>()(
       name: 'chouzai-workbench',
       storage: createJSONStorage(() => localStorage),
       // phase は保持しない。target/holdModal/compareOpen は揮発 UI 状態のため除外。
+      // 実データ時は clinical state を plaintext localStorage に残さない。
       partialize: (state) => ({
-        selId: state.selId,
-        sortMode: state.sortMode,
-        done: state.done,
-        audit: state.audit,
-        setCells: state.setCells,
-        auditCells: state.auditCells,
-        outChk: state.outChk,
-        checks: state.checks,
-        ng: state.ng,
-        holdInfo: state.holdInfo,
-        packet: state.packet,
-        model: state.model,
+        ...(REAL_DATA_ENABLED
+          ? {}
+          : {
+              selId: state.selId,
+              sortMode: state.sortMode,
+              done: state.done,
+              audit: state.audit,
+              setCells: state.setCells,
+              auditCells: state.auditCells,
+              outChk: state.outChk,
+              checks: state.checks,
+              ng: state.ng,
+              holdInfo: state.holdInfo,
+              packet: state.packet,
+              model: state.model,
+            }),
       }),
+      merge: (persisted, current) => {
+        if (REAL_DATA_ENABLED) return current;
+        return {
+          ...current,
+          ...(persisted && typeof persisted === 'object' ? persisted : {}),
+        };
+      },
     },
   ),
 );
