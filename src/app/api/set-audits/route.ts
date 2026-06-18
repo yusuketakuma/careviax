@@ -214,6 +214,10 @@ function sortedTextValues(values: readonly string[] | null | undefined) {
   return [...(values ?? [])].sort();
 }
 
+function hasDuplicateTextValues(values: readonly string[]) {
+  return new Set(values).size !== values.length;
+}
+
 function uniqueValues<T>(values: readonly T[]): T[] {
   return Array.from(new Set(values));
 }
@@ -379,6 +383,44 @@ function buildPersistedSetAuditChecklist(
     ...(checklist ?? {}),
     ...(carryPacketEvidence ? { carry_packet_evidence: carryPacketEvidence } : {}),
   };
+}
+
+async function findInvalidSetAuditPhotoAssetIds(
+  tx: {
+    fileAsset: {
+      findMany(args: {
+        where: {
+          id: { in: string[] };
+          org_id: string;
+          purpose: string;
+          status: string;
+          storage_key: { startsWith: string };
+        };
+        select: { id: true };
+      }): Promise<Array<{ id: string }>>;
+    };
+  },
+  args: {
+    orgId: string;
+    photoAssetIds: readonly string[] | undefined;
+  },
+) {
+  const photoAssetIds = args.photoAssetIds ?? [];
+  if (photoAssetIds.length === 0) return [];
+  if (hasDuplicateTextValues(photoAssetIds)) return photoAssetIds;
+
+  const assets = await tx.fileAsset.findMany({
+    where: {
+      id: { in: [...photoAssetIds] },
+      org_id: args.orgId,
+      purpose: 'set-photo',
+      status: 'completed',
+      storage_key: { startsWith: `set-audits/${args.orgId}/` },
+    },
+    select: { id: true },
+  });
+  const validIds = new Set(assets.map((asset) => asset.id));
+  return photoAssetIds.filter((id) => !validIds.has(id));
 }
 
 function isIdempotentSetAuditReplay(value: unknown): value is IdempotentSetAuditReplay {
@@ -777,6 +819,17 @@ export const POST = withAuthContext(
           return { ...existingTerminalAudit, idempotent: true } as const;
         }
         return { error: 'already_audited' as const, conflict: true };
+      }
+
+      const invalidPhotoAssetIds = await findInvalidSetAuditPhotoAssetIds(tx, {
+        orgId: ctx.orgId,
+        photoAssetIds: photo_asset_ids,
+      });
+      if (invalidPhotoAssetIds.length > 0) {
+        return {
+          error: 'invalid_photo_assets' as const,
+          photoAssetIds: invalidPhotoAssetIds,
+        };
       }
 
       // B3: Validate approved_scope keys match actual batches
@@ -1251,6 +1304,11 @@ export const POST = withAuthContext(
       if (auditResult.error === 'invalid_carry_packet_evidence') {
         return validationError('外薬同梱と訪問持出パケットの確認証跡が不正です', {
           reason: 'reason' in auditResult ? auditResult.reason : null,
+        });
+      }
+      if (auditResult.error === 'invalid_photo_assets') {
+        return validationError('セット監査写真が見つからないか、監査証跡に利用できません', {
+          photo_asset_ids: 'photoAssetIds' in auditResult ? auditResult.photoAssetIds : [],
         });
       }
       if (auditResult.error === 'self_audit') {

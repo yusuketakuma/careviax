@@ -13,6 +13,7 @@ const {
   setBatchChangeLogCreateMock,
   setAuditFindFirstMock,
   setAuditCreateMock,
+  fileAssetFindManyMock,
   medicationCycleFindFirstMock,
   medicationCycleUpdateManyMock,
   cycleTransitionLogCreateMock,
@@ -34,6 +35,7 @@ const {
   setBatchChangeLogCreateMock: vi.fn(),
   setAuditFindFirstMock: vi.fn(),
   setAuditCreateMock: vi.fn(),
+  fileAssetFindManyMock: vi.fn(),
   medicationCycleFindFirstMock: vi.fn(),
   medicationCycleUpdateManyMock: vi.fn(),
   cycleTransitionLogCreateMock: vi.fn(),
@@ -190,6 +192,7 @@ describe('/api/set-audits POST', () => {
     ]);
     setAuditCreateMock.mockResolvedValue({ id: 'audit_1' });
     setAuditFindFirstMock.mockResolvedValue(null);
+    fileAssetFindManyMock.mockResolvedValue([]);
     setBatchUpdateManyMock.mockResolvedValue({ count: 1 });
     setBatchChangeLogCreateMock.mockResolvedValue(undefined);
     createAuditLogEntryMock.mockResolvedValue(undefined);
@@ -222,6 +225,9 @@ describe('/api/set-audits POST', () => {
         setAudit: {
           findFirst: setAuditFindFirstMock,
           create: setAuditCreateMock,
+        },
+        fileAsset: {
+          findMany: fileAssetFindManyMock,
         },
         medicationCycle: {
           findFirst: medicationCycleFindFirstMock,
@@ -338,6 +344,109 @@ describe('/api/set-audits POST', () => {
       }),
     );
     expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('アムロジピン');
+    expect(fileAssetFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('persists only completed set-photo asset ids on approved audits', async () => {
+    fileAssetFindManyMock.mockResolvedValue([{ id: 'asset_set_photo_1' }]);
+
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'approved',
+          checklist: completeSetAuditChecklist(),
+          carry_packet_evidence: completeCarryPacketEvidence(),
+          photo_asset_ids: ['asset_set_photo_1'],
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(fileAssetFindManyMock).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['asset_set_photo_1'] },
+        org_id: 'org_1',
+        purpose: 'set-photo',
+        status: 'completed',
+        storage_key: { startsWith: 'set-audits/org_1/' },
+      },
+      select: { id: true },
+    });
+    expect(setAuditCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        photo_asset_ids: ['asset_set_photo_1'],
+      }),
+    });
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        action: 'set_audit.create',
+        changes: expect.objectContaining({
+          photo_asset_ids: ['asset_set_photo_1'],
+        }),
+      }),
+    );
+  });
+
+  it('rejects unusable set-audit photo asset ids before audit writes', async () => {
+    fileAssetFindManyMock.mockResolvedValue([{ id: 'asset_set_photo_1' }]);
+
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'approved',
+          checklist: completeSetAuditChecklist(),
+          carry_packet_evidence: completeCarryPacketEvidence(),
+          photo_asset_ids: ['asset_set_photo_1', 'foreign_or_pending_asset'],
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'セット監査写真が見つからないか、監査証跡に利用できません',
+      details: {
+        photo_asset_ids: ['foreign_or_pending_asset'],
+      },
+    });
+    expect(setBatchUpdateManyMock).not.toHaveBeenCalled();
+    expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(setAuditCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate set-audit photo asset ids before asset lookup or audit writes', async () => {
+    const response = await POST(
+      createRequest(
+        {
+          plan_id: 'plan_1',
+          result: 'approved',
+          checklist: completeSetAuditChecklist(),
+          carry_packet_evidence: completeCarryPacketEvidence(),
+          photo_asset_ids: ['asset_set_photo_1', 'asset_set_photo_1'],
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        photo_asset_ids: ['asset_set_photo_1', 'asset_set_photo_1'],
+      },
+    });
+    expect(fileAssetFindManyMock).not.toHaveBeenCalled();
+    expect(setAuditCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object audit payloads before transaction side effects', async () => {
@@ -1574,7 +1683,7 @@ describe('/api/set-audits POST', () => {
       approved_scope: null,
       reject_reason: null,
       checklist: persistedChecklist,
-      photo_asset_ids: [],
+      photo_asset_ids: ['asset_set_photo_1'],
       audited_by: 'user_1',
       same_operator_reason: null,
     });
@@ -1586,6 +1695,7 @@ describe('/api/set-audits POST', () => {
           result: 'approved',
           checklist,
           carry_packet_evidence: carryPacketEvidence,
+          photo_asset_ids: ['asset_set_photo_1'],
           cell_audits: [{ batch_id: 'batch_1', audit_state: 'ok', expected_version: 3 }],
         },
         { 'x-org-id': 'org_1' },
@@ -1600,6 +1710,7 @@ describe('/api/set-audits POST', () => {
       idempotent: true,
     });
     expect(setBatchUpdateManyMock).not.toHaveBeenCalled();
+    expect(fileAssetFindManyMock).not.toHaveBeenCalled();
     expect(medicationCycleUpdateManyMock).not.toHaveBeenCalled();
     expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
     expect(setAuditCreateMock).not.toHaveBeenCalled();
