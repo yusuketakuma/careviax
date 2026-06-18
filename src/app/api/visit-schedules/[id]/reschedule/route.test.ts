@@ -428,6 +428,10 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
       message: 'リクエストボディが不正です',
     });
     expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleCountMock).not.toHaveBeenCalled();
     expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
@@ -454,6 +458,10 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
       message: 'リクエストボディが不正です',
     });
     expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(visitScheduleFindManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleCountMock).not.toHaveBeenCalled();
     expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
@@ -485,6 +493,43 @@ describe('/api/visit-schedules/[id]/reschedule POST', () => {
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: '訪問予定IDが不正です',
+    });
+    expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
+    expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleOverrideCreateMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+    expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+    expect(taskUpdateManyMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid calendar start_date values before loading the source schedule', async () => {
+    const response = await POST(
+      createRequest(
+        {
+          reason: '患者都合で変更',
+          reason_code: 'patient_request',
+          start_date: '2026-02-30',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'schedule_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        start_date: ['日付形式が不正です（YYYY-MM-DD）'],
+      },
     });
     expect(visitScheduleFindFirstMock).not.toHaveBeenCalled();
     expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();

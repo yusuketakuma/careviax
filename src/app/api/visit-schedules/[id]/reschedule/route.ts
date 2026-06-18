@@ -25,6 +25,7 @@ import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cac
 import type { HomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import { allocateProposalRouteOrders } from '@/lib/visit-schedule-proposals/route-order';
 import { fetchEmergencyContacts } from '@/lib/patient/emergency-contacts';
+import { visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
 import {
   buildVisitScheduleCommunicationTargets,
   resolveVisitScheduleCommunicationChannel,
@@ -47,10 +48,7 @@ const rescheduleSchema = z.object({
     .default('other'),
   communication_channel: z.enum(visitScheduleCommunicationChannelValues).default('phone'),
   communication_result: z.enum(['pending', 'sent', 'verbal_notified']).default('pending'),
-  start_date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
-    .optional(),
+  start_date: visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional(),
   priority: z.enum(['normal', 'urgent', 'emergency']).optional(),
   preferred_pharmacist_id: z.string().trim().min(1).optional(),
   vehicle_resource_id: z.union([z.string().trim().min(1), z.null()]).optional(),
