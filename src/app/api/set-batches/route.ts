@@ -28,6 +28,7 @@ import { z } from 'zod';
 const createSetBatchSchema = z.object({
   plan_id: z.string().min(1, 'セットプランIDは必須です'),
   line_id: z.string().min(1, '処方ラインIDは必須です'),
+  expected_updated_at: z.string().datetime('セットプランの版情報が不正です'),
   slot: z.enum(['morning', 'noon', 'evening', 'bedtime', 'prn'], {
     error: 'スロットを選択してください',
   }),
@@ -39,9 +40,53 @@ const createSetBatchSchema = z.object({
 });
 
 const QUANTITY_TOLERANCE = 0.000001;
+const MUTABLE_SET_BATCH_CYCLE_STATUS = 'setting';
+const SET_BATCH_CREATE_SERIALIZABLE_RETRY_LIMIT = 3;
+
+class SetBatchCreateRetryLimitError extends Error {
+  constructor() {
+    super('set batch create transaction retry limit exceeded');
+    this.name = 'SetBatchCreateRetryLimitError';
+  }
+}
+
+class SetBatchCreateRollback extends Error {
+  constructor(readonly result: { kind: 'error'; response: NextResponse }) {
+    super('set batch create rolled back');
+    this.name = 'SetBatchCreateRollback';
+  }
+}
 
 function isUniqueConstraintError(error: unknown) {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}
+
+function isSerializableTransactionConflict(error: unknown) {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034';
+}
+
+async function withSerializableSetBatchCreateTransaction<T>(
+  orgId: string,
+  ctx: AuthContext,
+  work: (tx: Prisma.TransactionClient) => Promise<T>,
+) {
+  for (let attempt = 0; attempt < SET_BATCH_CREATE_SERIALIZABLE_RETRY_LIMIT; attempt += 1) {
+    try {
+      return await withOrgContext(orgId, work, {
+        requestContext: ctx,
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (error) {
+      if (!isSerializableTransactionConflict(error)) {
+        throw error;
+      }
+      if (attempt === SET_BATCH_CREATE_SERIALIZABLE_RETRY_LIMIT - 1) {
+        throw new SetBatchCreateRetryLimitError();
+      }
+    }
+  }
+
+  throw new SetBatchCreateRetryLimitError();
 }
 
 export const GET = withAuthContext<Record<string, string>>(
@@ -95,9 +140,11 @@ export const POST = withAuthContext<Record<string, string>>(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const { plan_id, line_id, slot, day_number, quantity, carry_type } = parsed.data;
+    const { plan_id, line_id, expected_updated_at, slot, day_number, quantity, carry_type } =
+      parsed.data;
+    const expectedUpdatedAt = new Date(expected_updated_at);
 
-    const result = await withOrgContext(ctx.orgId, async (tx) => {
+    const result = await withSerializableSetBatchCreateTransaction(ctx.orgId, ctx, async (tx) => {
       const planAssignmentWhere = buildSetPlanAssignmentWhere(ctx);
       const plan = await tx.setPlan.findFirst({
         where: {
@@ -108,8 +155,10 @@ export const POST = withAuthContext<Record<string, string>>(
         select: {
           id: true,
           cycle_id: true,
+          updated_at: true,
           cycle: {
             select: {
+              overall_status: true,
               case_: {
                 select: {
                   patient: {
@@ -133,6 +182,30 @@ export const POST = withAuthContext<Record<string, string>>(
         return {
           kind: 'error' as const,
           response: notFound('指定されたセットプランが見つかりません'),
+        };
+      }
+      if (plan.cycle.overall_status !== MUTABLE_SET_BATCH_CYCLE_STATUS) {
+        return {
+          kind: 'error' as const,
+          response: conflict(
+            'セット作業中以外のセットバッチは直接追加できません。差戻し後に再作業してください',
+            {
+              current_status: plan.cycle.overall_status,
+              required_status: MUTABLE_SET_BATCH_CYCLE_STATUS,
+            },
+          ),
+        };
+      }
+      if (plan.updated_at.getTime() !== expectedUpdatedAt.getTime()) {
+        return {
+          kind: 'error' as const,
+          response: conflict(
+            'セットプランが他のユーザーによって更新されています。再読み込みしてください',
+            {
+              current_updated_at: plan.updated_at.toISOString(),
+              expected_updated_at,
+            },
+          ),
         };
       }
 
@@ -259,6 +332,47 @@ export const POST = withAuthContext<Record<string, string>>(
         };
       }
 
+      const planClaim = await tx.setPlan.updateMany({
+        where: {
+          id: plan_id,
+          org_id: ctx.orgId,
+          updated_at: expectedUpdatedAt,
+          cycle: { overall_status: MUTABLE_SET_BATCH_CYCLE_STATUS },
+          ...(planAssignmentWhere ? { AND: [planAssignmentWhere] } : {}),
+        },
+        data: { updated_at: new Date() },
+      });
+      if (planClaim.count === 0) {
+        const currentPlan = await tx.setPlan.findFirst({
+          where: {
+            id: plan_id,
+            org_id: ctx.orgId,
+            ...(planAssignmentWhere ? { AND: [planAssignmentWhere] } : {}),
+          },
+          select: {
+            updated_at: true,
+            cycle: { select: { overall_status: true } },
+          },
+        });
+        if (!currentPlan) {
+          return {
+            kind: 'error' as const,
+            response: notFound('指定されたセットプランが見つかりません'),
+          };
+        }
+        return {
+          kind: 'error' as const,
+          response: conflict(
+            'セットプランが他のユーザーによって更新されています。再読み込みしてください',
+            {
+              current_updated_at: currentPlan.updated_at.toISOString(),
+              current_status: currentPlan.cycle.overall_status,
+              expected_updated_at,
+            },
+          ),
+        };
+      }
+
       const decision = line.dispensing_decisions[0] ?? null;
       const packagingMethod = decision?.packaging_method ?? line.packaging_method ?? undefined;
       const packagingInstructions =
@@ -338,10 +452,10 @@ export const POST = withAuthContext<Record<string, string>>(
         });
       } catch (err) {
         if (!isUniqueConstraintError(err)) throw err;
-        return {
+        throw new SetBatchCreateRollback({
           kind: 'error' as const,
           response: conflict('同じ処方ライン・スロット・日付のセットバッチがすでに存在します'),
-        };
+        });
       }
 
       await createSetBatchChangeLog(tx, {
@@ -358,6 +472,17 @@ export const POST = withAuthContext<Record<string, string>>(
       });
 
       return { kind: 'success' as const, batch };
+    }).catch((error: unknown) => {
+      if (error instanceof SetBatchCreateRollback) return error.result;
+      if (error instanceof SetBatchCreateRetryLimitError) {
+        return {
+          kind: 'error' as const,
+          response: conflict(
+            'セットバッチ作成が他の更新と競合しました。最新データを取得して再試行してください',
+          ),
+        };
+      }
+      throw error;
     });
 
     if (result.kind === 'error') return result.response;

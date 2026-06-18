@@ -42,6 +42,25 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 
 import { DELETE, GET, PATCH } from './route';
 
+function buildSetBatch(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'batch_1',
+    plan_id: 'plan_1',
+    line_id: 'line_1',
+    slot: 'morning',
+    day_number: 1,
+    quantity: 1,
+    carry_type: 'carry',
+    packaging_method_snapshot: null,
+    packaging_instructions_snapshot: null,
+    packaging_instruction_tags_snapshot: [],
+    version: 2,
+    plan: { cycle: { overall_status: 'setting' } },
+    line: { id: 'line_1', drug_name: 'Drug A' },
+    ...overrides,
+  };
+}
+
 function createRequest(method: 'DELETE' | 'GET' | 'PATCH' = 'GET', body?: unknown) {
   const url =
     method === 'DELETE'
@@ -65,50 +84,11 @@ function createMalformedPatchRequest() {
 describe('/api/set-batches/[id]', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    setBatchFindFirstMock.mockResolvedValue({
-      id: 'batch_1',
-      plan_id: 'plan_1',
-      line_id: 'line_1',
-      slot: 'morning',
-      day_number: 1,
-      quantity: 1,
-      carry_type: 'carry',
-      packaging_method_snapshot: null,
-      packaging_instructions_snapshot: null,
-      packaging_instruction_tags_snapshot: [],
-      version: 2,
-      line: { id: 'line_1', drug_name: 'Drug A' },
-    });
+    setBatchFindFirstMock.mockResolvedValue(buildSetBatch());
     setBatchUpdateManyMock.mockResolvedValue({ count: 1 });
     setBatchFindFirstMock
-      .mockResolvedValueOnce({
-        id: 'batch_1',
-        plan_id: 'plan_1',
-        line_id: 'line_1',
-        slot: 'morning',
-        day_number: 1,
-        quantity: 1,
-        carry_type: 'carry',
-        packaging_method_snapshot: null,
-        packaging_instructions_snapshot: null,
-        packaging_instruction_tags_snapshot: [],
-        version: 2,
-        line: { id: 'line_1', drug_name: 'Drug A' },
-      })
-      .mockResolvedValue({
-        id: 'batch_1',
-        plan_id: 'plan_1',
-        line_id: 'line_1',
-        slot: 'morning',
-        day_number: 1,
-        quantity: 3,
-        carry_type: 'carry',
-        packaging_method_snapshot: null,
-        packaging_instructions_snapshot: null,
-        packaging_instruction_tags_snapshot: [],
-        version: 3,
-        line: { id: 'line_1', drug_name: 'Drug A' },
-      });
+      .mockResolvedValueOnce(buildSetBatch())
+      .mockResolvedValue(buildSetBatch({ quantity: 3, version: 3 }));
     setBatchDeleteManyMock.mockResolvedValue({ count: 1 });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -163,7 +143,12 @@ describe('/api/set-batches/[id]', () => {
 
     expect(response.status).toBe(200);
     expect(setBatchUpdateManyMock).toHaveBeenCalledWith({
-      where: { id: 'batch_1', org_id: 'org_1', version: 2 },
+      where: {
+        id: 'batch_1',
+        org_id: 'org_1',
+        version: 2,
+        plan: { cycle: { overall_status: 'setting' } },
+      },
       data: expect.objectContaining({
         quantity: 3,
         version: { increment: 1 },
@@ -173,6 +158,34 @@ describe('/api/set-batches/[id]', () => {
       orgId: 'org_1',
       payload: { source: 'set_batches_update', plan_id: 'plan_1', batch_id: 'batch_1' },
     });
+  });
+
+  it('rejects updates after the set cycle has left setting status', async () => {
+    setBatchFindFirstMock.mockReset();
+    setBatchFindFirstMock.mockResolvedValue(
+      buildSetBatch({ plan: { cycle: { overall_status: 'set_audited' } } }),
+    );
+
+    const response = (await PATCH(
+      createRequest('PATCH', {
+        quantity: 3,
+        version: 2,
+      }),
+      {
+        params: Promise.resolve({ id: 'batch_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        current_status: 'set_audited',
+        required_status: 'setting',
+      },
+    });
+    expect(setBatchUpdateManyMock).not.toHaveBeenCalled();
+    expect(setBatchChangeLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object patch payloads before transaction side effects', async () => {
@@ -231,12 +244,39 @@ describe('/api/set-batches/[id]', () => {
 
     expect(response.status).toBe(200);
     expect(setBatchDeleteManyMock).toHaveBeenCalledWith({
-      where: { id: 'batch_1', org_id: 'org_1', version: 2 },
+      where: {
+        id: 'batch_1',
+        org_id: 'org_1',
+        version: 2,
+        plan: { cycle: { overall_status: 'setting' } },
+      },
     });
     expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
       orgId: 'org_1',
       payload: { source: 'set_batches_delete', plan_id: 'plan_1', batch_id: 'batch_1' },
     });
+  });
+
+  it('rejects deletes after the set cycle has left setting status', async () => {
+    setBatchFindFirstMock.mockReset();
+    setBatchFindFirstMock.mockResolvedValue(
+      buildSetBatch({ plan: { cycle: { overall_status: 'visit_ready' } } }),
+    );
+
+    const response = (await DELETE(createRequest('DELETE'), {
+      params: Promise.resolve({ id: 'batch_1' }),
+    }))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        current_status: 'visit_ready',
+        required_status: 'setting',
+      },
+    });
+    expect(setBatchDeleteManyMock).not.toHaveBeenCalled();
+    expect(setBatchChangeLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
   it('returns 404 for unassigned pharmacist set-batch deletes before side effects', async () => {

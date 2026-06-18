@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { Prisma } from '@prisma/client';
 
 const { authMock, prismaMock, withOrgContextMock, txMock, notifyWorkflowMutationMock } = vi.hoisted(
   () => ({
@@ -11,7 +12,7 @@ const { authMock, prismaMock, withOrgContextMock, txMock, notifyWorkflowMutation
     withOrgContextMock: vi.fn(),
     notifyWorkflowMutationMock: vi.fn(),
     txMock: {
-      setPlan: { findFirst: vi.fn() },
+      setPlan: { findFirst: vi.fn(), updateMany: vi.fn() },
       prescriptionIntake: { findFirst: vi.fn() },
       prescriptionLine: { findFirst: vi.fn() },
       drugMaster: { findMany: vi.fn() },
@@ -39,14 +40,33 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 
 import { GET, POST } from './route';
 
+const CURRENT_PLAN_UPDATED_AT = '2026-06-18T00:00:00.000Z';
+const CURRENT_PLAN_UPDATED_AT_DATE = new Date(CURRENT_PLAN_UPDATED_AT);
+
+function buildSerializableConflictError() {
+  return new Prisma.PrismaClientKnownRequestError('Serializable transaction conflict', {
+    code: 'P2034',
+    clientVersion: 'test',
+  });
+}
+
 function createRequest(body: unknown) {
+  const bodyWithDefaults =
+    body &&
+    typeof body === 'object' &&
+    !Array.isArray(body) &&
+    'plan_id' in body &&
+    !Object.prototype.hasOwnProperty.call(body, 'expected_updated_at')
+      ? { ...body, expected_updated_at: CURRENT_PLAN_UPDATED_AT }
+      : body;
+
   return new NextRequest('http://localhost/api/set-batches', {
     method: 'POST',
     headers: {
       'x-org-id': 'org_1',
       'content-type': 'application/json',
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify(bodyWithDefaults),
   });
 }
 
@@ -76,6 +96,7 @@ describe('set-batches POST', () => {
     prismaMock.membership.findFirst.mockResolvedValue({ role: 'admin' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(txMock));
     txMock.prescriptionIntake.findFirst.mockResolvedValue({ id: 'intake_current' });
+    txMock.setPlan.updateMany.mockResolvedValue({ count: 1 });
     txMock.setBatch.aggregate.mockResolvedValue({ _sum: { quantity: 0 } });
     txMock.drugMaster.findMany.mockResolvedValue([]);
   });
@@ -108,7 +129,9 @@ describe('set-batches POST', () => {
     txMock.setPlan.findFirst.mockResolvedValue({
       id: 'plan_1',
       cycle_id: 'cycle_1',
+      updated_at: CURRENT_PLAN_UPDATED_AT_DATE,
       cycle: {
+        overall_status: 'setting',
         case_: {
           patient: {
             packaging_profile: null,
@@ -146,7 +169,9 @@ describe('set-batches POST', () => {
     txMock.setPlan.findFirst.mockResolvedValue({
       id: 'plan_1',
       cycle_id: 'cycle_1',
+      updated_at: CURRENT_PLAN_UPDATED_AT_DATE,
       cycle: {
+        overall_status: 'setting',
         case_: {
           patient: {
             packaging_profile: null,
@@ -249,11 +274,124 @@ describe('set-batches POST', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it('requires expected_updated_at before transaction side effects', async () => {
+    const response = await POST(
+      createRequest({
+        plan_id: 'plan_1',
+        line_id: 'line_1',
+        expected_updated_at: undefined,
+        slot: 'morning',
+        day_number: 1,
+        quantity: 1,
+        carry_type: 'carry',
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        expected_updated_at: expect.any(Array),
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(txMock.setPlan.findFirst).not.toHaveBeenCalled();
+    expect(txMock.setPlan.updateMany).not.toHaveBeenCalled();
+    expect(txMock.prescriptionIntake.findFirst).not.toHaveBeenCalled();
+    expect(txMock.setBatch.create).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects stale set plan versions before intake reads or writes', async () => {
+    txMock.setPlan.findFirst.mockResolvedValue({
+      id: 'plan_1',
+      cycle_id: 'cycle_1',
+      updated_at: new Date('2026-06-18T00:01:00.000Z'),
+      cycle: {
+        overall_status: 'setting',
+        case_: {
+          patient: {
+            packaging_profile: null,
+          },
+        },
+      },
+    });
+
+    const response = await POST(
+      createRequest({
+        plan_id: 'plan_1',
+        line_id: 'line_1',
+        slot: 'morning',
+        day_number: 1,
+        quantity: 1,
+        carry_type: 'carry',
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        current_updated_at: '2026-06-18T00:01:00.000Z',
+        expected_updated_at: CURRENT_PLAN_UPDATED_AT,
+      },
+    });
+    expect(txMock.prescriptionIntake.findFirst).not.toHaveBeenCalled();
+    expect(txMock.setPlan.updateMany).not.toHaveBeenCalled();
+    expect(txMock.setBatch.create).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects manual creation when the cycle is no longer in setting status', async () => {
+    txMock.setPlan.findFirst.mockResolvedValue({
+      id: 'plan_1',
+      cycle_id: 'cycle_1',
+      updated_at: CURRENT_PLAN_UPDATED_AT_DATE,
+      cycle: {
+        overall_status: 'set_audited',
+        case_: {
+          patient: {
+            packaging_profile: null,
+          },
+        },
+      },
+    });
+
+    const response = await POST(
+      createRequest({
+        plan_id: 'plan_1',
+        line_id: 'line_1',
+        slot: 'morning',
+        day_number: 1,
+        quantity: 1,
+        carry_type: 'carry',
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        current_status: 'set_audited',
+        required_status: 'setting',
+      },
+    });
+    expect(txMock.prescriptionIntake.findFirst).not.toHaveBeenCalled();
+    expect(txMock.setPlan.updateMany).not.toHaveBeenCalled();
+    expect(txMock.setBatch.create).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('rejects duplicate plan-line-slot-day combinations', async () => {
     txMock.setPlan.findFirst.mockResolvedValue({
       id: 'plan_1',
       cycle_id: 'cycle_1',
+      updated_at: CURRENT_PLAN_UPDATED_AT_DATE,
       cycle: {
+        overall_status: 'setting',
         case_: {
           patient: {
             packaging_profile: null,
@@ -301,11 +439,14 @@ describe('set-batches POST', () => {
     });
   });
 
-  it('broadcasts a workflow refresh after a batch is created', async () => {
+  it('retries serializable conflicts and broadcasts a workflow refresh after a batch is created', async () => {
+    withOrgContextMock.mockRejectedValueOnce(buildSerializableConflictError());
     txMock.setPlan.findFirst.mockResolvedValue({
       id: 'plan_1',
       cycle_id: 'cycle_1',
+      updated_at: CURRENT_PLAN_UPDATED_AT_DATE,
       cycle: {
+        overall_status: 'setting',
         case_: {
           patient: {
             packaging_profile: null,
@@ -344,6 +485,7 @@ describe('set-batches POST', () => {
       createRequest({
         plan_id: 'plan_1',
         line_id: 'line_1',
+        expected_updated_at: '2026-06-18T00:00:00Z',
         slot: 'morning',
         day_number: 1,
         quantity: 1,
@@ -354,17 +496,105 @@ describe('set-batches POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expect(withOrgContextMock).toHaveBeenCalledTimes(2);
+    expect(withOrgContextMock).toHaveBeenNthCalledWith(
+      1,
+      'org_1',
+      expect.any(Function),
+      expect.objectContaining({
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      }),
+    );
+    expect(txMock.setPlan.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          updated_at: CURRENT_PLAN_UPDATED_AT_DATE,
+        }),
+      }),
+    );
     expect(notifyWorkflowMutationMock).toHaveBeenCalledWith({
       orgId: 'org_1',
       payload: { source: 'set_batches_create', plan_id: 'plan_1' },
     });
   });
 
+  it('returns conflict when the set plan claim loses an update or status race before creation', async () => {
+    txMock.setPlan.findFirst
+      .mockResolvedValueOnce({
+        id: 'plan_1',
+        cycle_id: 'cycle_1',
+        updated_at: CURRENT_PLAN_UPDATED_AT_DATE,
+        cycle: {
+          overall_status: 'setting',
+          case_: {
+            patient: {
+              packaging_profile: null,
+            },
+          },
+        },
+      })
+      .mockResolvedValueOnce({
+        updated_at: new Date('2026-06-18T00:01:00.000Z'),
+        cycle: { overall_status: 'visit_ready' },
+      });
+    txMock.prescriptionLine.findFirst.mockResolvedValue({
+      id: 'line_1',
+      drug_name: 'Drug A',
+      packaging_group_id: null,
+      packaging_method: null,
+      packaging_instructions: null,
+      packaging_instruction_tags: [],
+      notes: null,
+      dispensing_decisions: [],
+      dispense_results: [{ id: 'result_1', actual_quantity: 2 }],
+      intake: { cycle_id: 'cycle_1' },
+    });
+    txMock.setBatch.findFirst.mockResolvedValue(null);
+    txMock.setPlan.updateMany.mockResolvedValue({ count: 0 });
+
+    const response = await POST(
+      createRequest({
+        plan_id: 'plan_1',
+        line_id: 'line_1',
+        slot: 'morning',
+        day_number: 1,
+        quantity: 1,
+        carry_type: 'carry',
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      details: {
+        current_updated_at: '2026-06-18T00:01:00.000Z',
+        current_status: 'visit_ready',
+        expected_updated_at: CURRENT_PLAN_UPDATED_AT,
+      },
+    });
+    expect(txMock.setPlan.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'plan_1',
+          org_id: 'org_1',
+          updated_at: CURRENT_PLAN_UPDATED_AT_DATE,
+          cycle: { overall_status: 'setting' },
+        }),
+      }),
+    );
+    expect(txMock.setBatch.create).not.toHaveBeenCalled();
+    expect(txMock.setBatchChangeLog.create).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('uses the latest dispensing decision when creating a manual batch', async () => {
     txMock.setPlan.findFirst.mockResolvedValue({
       id: 'plan_1',
       cycle_id: 'cycle_1',
+      updated_at: CURRENT_PLAN_UPDATED_AT_DATE,
       cycle: {
+        overall_status: 'setting',
         case_: {
           patient: {
             packaging_profile: {
@@ -443,7 +673,9 @@ describe('set-batches POST', () => {
     txMock.setPlan.findFirst.mockResolvedValue({
       id: 'plan_1',
       cycle_id: 'cycle_1',
+      updated_at: CURRENT_PLAN_UPDATED_AT_DATE,
       cycle: {
+        overall_status: 'setting',
         case_: {
           patient: {
             packaging_profile: null,
@@ -521,7 +753,9 @@ describe('set-batches POST', () => {
     txMock.setPlan.findFirst.mockResolvedValue({
       id: 'plan_1',
       cycle_id: 'cycle_1',
+      updated_at: CURRENT_PLAN_UPDATED_AT_DATE,
       cycle: {
+        overall_status: 'setting',
         case_: {
           patient: {
             packaging_profile: null,
@@ -570,7 +804,9 @@ describe('set-batches POST', () => {
     txMock.setPlan.findFirst.mockResolvedValue({
       id: 'plan_1',
       cycle_id: 'cycle_1',
+      updated_at: CURRENT_PLAN_UPDATED_AT_DATE,
       cycle: {
+        overall_status: 'setting',
         case_: {
           patient: {
             packaging_profile: null,

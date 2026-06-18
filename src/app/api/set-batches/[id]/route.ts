@@ -24,9 +24,19 @@ const updateSetBatchSchema = z.object({
   version: z.number().int().min(1, 'バージョンは1以上の整数です'),
 });
 
-type DeleteSetBatchResult =
-  | { success: true }
-  | { error: string; conflict: true };
+const MUTABLE_SET_BATCH_CYCLE_STATUS = 'setting';
+
+function immutableSetBatchConflict(currentStatus: string) {
+  return conflict(
+    'セット作業中以外のセットバッチは直接編集できません。差戻し後に再作業してください',
+    {
+      current_status: currentStatus,
+      required_status: MUTABLE_SET_BATCH_CYCLE_STATUS,
+    },
+  );
+}
+
+type DeleteSetBatchResult = { success: true } | { error: string; conflict: true };
 
 export const GET = withAuthContext<{ id: string }>(
   async (req: NextRequest, ctx: AuthContext, routeContext: AuthRouteContext<{ id: string }>) => {
@@ -88,6 +98,11 @@ export const PATCH = withAuthContext<{ id: string }>(
           ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
         },
         include: {
+          plan: {
+            select: {
+              cycle: { select: { overall_status: true } },
+            },
+          },
           line: {
             select: {
               id: true,
@@ -98,6 +113,13 @@ export const PATCH = withAuthContext<{ id: string }>(
       });
 
       if (!existing) return null;
+      if (existing.plan.cycle.overall_status !== MUTABLE_SET_BATCH_CYCLE_STATUS) {
+        return {
+          error: 'invalid_status',
+          conflict: true,
+          currentStatus: existing.plan.cycle.overall_status,
+        } as const;
+      }
 
       if (existing.version !== version) {
         return {
@@ -109,7 +131,13 @@ export const PATCH = withAuthContext<{ id: string }>(
       const beforeSnapshot = buildSetBatchHistorySnapshot(existing);
 
       const updateResult = await tx.setBatch.updateMany({
-        where: { id, org_id: ctx.orgId, version },
+        where: {
+          id,
+          org_id: ctx.orgId,
+          version,
+          plan: { cycle: { overall_status: MUTABLE_SET_BATCH_CYCLE_STATUS } },
+          ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+        },
         data: {
           ...updates,
           version: { increment: 1 },
@@ -162,6 +190,7 @@ export const PATCH = withAuthContext<{ id: string }>(
 
     if (!result) return notFound('セットバッチが見つかりません');
     if (typeof result === 'object' && 'error' in result) {
+      if (result.error === 'invalid_status') return immutableSetBatchConflict(result.currentStatus);
       if ('conflict' in result && result.conflict) return conflict(result.error);
       return validationError(result.error);
     }
@@ -193,6 +222,11 @@ export const DELETE = withAuthContext<{ id: string }>(
         ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
       },
       include: {
+        plan: {
+          select: {
+            cycle: { select: { overall_status: true } },
+          },
+        },
         line: {
           select: {
             id: true,
@@ -203,10 +237,19 @@ export const DELETE = withAuthContext<{ id: string }>(
     });
 
     if (!existing) return notFound('セットバッチが見つかりません');
+    if (existing.plan.cycle.overall_status !== MUTABLE_SET_BATCH_CYCLE_STATUS) {
+      return immutableSetBatchConflict(existing.plan.cycle.overall_status);
+    }
 
     const deleteResult: DeleteSetBatchResult = await withOrgContext(ctx.orgId, async (tx) => {
       const deleteResult = await tx.setBatch.deleteMany({
-        where: { id, org_id: ctx.orgId, version },
+        where: {
+          id,
+          org_id: ctx.orgId,
+          version,
+          plan: { cycle: { overall_status: MUTABLE_SET_BATCH_CYCLE_STATUS } },
+          ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+        },
       });
       if (deleteResult.count === 0) {
         return {
