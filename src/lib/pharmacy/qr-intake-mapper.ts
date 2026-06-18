@@ -10,10 +10,7 @@ import { prisma } from '@/lib/db/client';
 import type { DrugMaster, PharmacyDrugStock, Prisma } from '@prisma/client';
 import type { JahisQRData, JahisMedication } from './jahis-qr';
 import { parseDaysOrTimes } from './jahis-qr';
-import {
-  extractPackagingInstructionTags,
-  parsePackagingMethod,
-} from '@/lib/prescription/packaging';
+import { extractPackagingInstructionTags, parsePackagingMethod } from '@/lib/dispensing/packaging';
 
 // ── Types ──
 
@@ -666,11 +663,12 @@ function mapMedicationLine(
     drugCode: med.drugCode ?? null,
     inFormulary,
     warningLevel: !inFormulary && drugMaster ? 'warning' : 'none',
-    warningReason: !inFormulary && drugMaster
-      ? preferredGenericId
-        ? 'stocked_generic_available'
-        : 'not_stocked'
-      : null,
+    warningReason:
+      !inFormulary && drugMaster
+        ? preferredGenericId
+          ? 'stocked_generic_available'
+          : 'not_stocked'
+        : null,
     preferredGenericId,
     preferredGenericName,
     stockQty,

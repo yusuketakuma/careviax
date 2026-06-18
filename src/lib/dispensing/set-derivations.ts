@@ -2,7 +2,7 @@ import type {
   SetRowStatusKey,
   SetSlotKey,
   SetSlotMark,
-} from '@/app/(dashboard)/set/set-workspace.shared';
+} from '@/lib/dispensing/set-workspace-shared';
 import { MAX_SET_PLAN_DAY_COUNT } from '@/lib/set-plan-period';
 
 /**

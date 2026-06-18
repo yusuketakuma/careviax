@@ -782,7 +782,7 @@ describe('PH-OS final review executable E2E coverage', () => {
     const drawer = screen.getByRole('dialog', { name: '参照情報' });
     expect(within(drawer).getByText('参照情報はありません。')).toBeTruthy();
 
-    fireEvent.click(within(drawer).getByRole('button', { name: 'Close' }));
+    fireEvent.click(within(drawer).getByRole('button', { name: '閉じる' }));
     await waitFor(() =>
       expect(document.activeElement).toBe(screen.getByRole('button', { name: '参照情報を開く' })),
     );

@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import {
   boundedIntegerSearchParam,
+  optionalBlankableBoundedIntegerSearchParam,
   optionalBoundedIntegerSearchParam,
   parseSearchParams,
 } from './validation';
@@ -58,6 +59,30 @@ describe('optionalBoundedIntegerSearchParam', () => {
   it('rejects blank, exponent, decimal, partial, and out-of-range values', () => {
     for (const value of ['', '1e2', '10.0', '10abc', '0', '101']) {
       const result = parseSearchParams(schema, new URLSearchParams([['limit', value]]));
+      expect(result.ok).toBe(false);
+    }
+  });
+});
+
+describe('optionalBlankableBoundedIntegerSearchParam', () => {
+  const schema = z.object({
+    offset: optionalBlankableBoundedIntegerSearchParam('offset', 0, 100),
+  });
+
+  it('treats blank values as omitted while preserving integer validation', () => {
+    expect(parseSearchParams(schema, new URLSearchParams('offset='))).toEqual({
+      ok: true,
+      data: {},
+    });
+    expect(parseSearchParams(schema, new URLSearchParams('offset=%2020%20'))).toEqual({
+      ok: true,
+      data: { offset: 20 },
+    });
+  });
+
+  it('rejects malformed and out-of-range values', () => {
+    for (const value of ['1e2', '10.0', '10abc', '-1', '101']) {
+      const result = parseSearchParams(schema, new URLSearchParams([['offset', value]]));
       expect(result.ok).toBe(false);
     }
   });

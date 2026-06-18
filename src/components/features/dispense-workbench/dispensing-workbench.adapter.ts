@@ -33,7 +33,7 @@ import type {
 import type {
   DispenseWorkbenchData,
   DispenseWorkbenchPatientsResponse,
-} from '@/app/(dashboard)/dispense/dispense-workbench.shared';
+} from '@/lib/dispensing/dispense-workbench-shared';
 import {
   WorkbenchConflictError,
   WorkbenchWriteError,

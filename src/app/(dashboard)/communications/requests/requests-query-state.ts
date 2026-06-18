@@ -1,6 +1,6 @@
 type SearchParamRecord = Record<string, string | string[] | undefined> | null | undefined;
 
-export type CommunicationRequestsInitialState = {
+type CommunicationRequestsInitialState = {
   initialStatus?: string | null;
   initialPatientId?: string | null;
   initialRelatedEntityType?: string | null;

@@ -1,24 +1,11 @@
 import { z } from 'zod';
+import { dateKeySchema as createDateKeySchema } from '@/lib/validations/date-key';
 
-const dateKeyPattern = /^\d{4}-\d{2}-\d{2}$/;
 const timePattern = /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
-
-function isValidDateKey(value: string) {
-  if (!dateKeyPattern.test(value)) return false;
-  const [year, month, day] = value.split('-').map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return (
-    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
-  );
-}
 
 const requiredTrimmedStringSchema = (message: string) => z.string().trim().min(1, message);
 
-const dateKeySchema = z
-  .string()
-  .trim()
-  .regex(dateKeyPattern, '日付形式が不正です（YYYY-MM-DD）')
-  .refine(isValidDateKey, '日付形式が不正です（YYYY-MM-DD）');
+const dateKeySchema = createDateKeySchema('日付形式が不正です（YYYY-MM-DD）');
 
 const optionalTimeSchema = z
   .string()

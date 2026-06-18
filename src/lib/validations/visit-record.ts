@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { dateKeySchema, isValidDateKey } from '@/lib/validations/date-key';
+import { structuredSoapInputSchema } from '@/lib/validations/structured-soap';
 
 const localDateTimeMinutePattern = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/;
 
@@ -56,12 +57,10 @@ export const visitRecordBaseSchema = z.object({
   soap_objective: z.string().optional(),
   soap_assessment: z.string().optional(),
   soap_plan: z.string().optional(),
-  structured_soap: z.record(z.string(), z.unknown()).optional(),
+  structured_soap: structuredSoapInputSchema.optional(),
   receipt_person_name: z.string().optional(),
   receipt_person_relation: z.string().optional(),
-  receipt_at: z
-    .union([localDateTimeMinuteSchema, z.literal('')])
-    .optional(),
+  receipt_at: z.union([localDateTimeMinuteSchema, z.literal('')]).optional(),
   next_visit_suggestion_date: z
     .union([dateKeySchema('日付形式が不正です（YYYY-MM-DD）'), z.literal('')])
     .optional(),

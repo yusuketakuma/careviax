@@ -13,10 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import {
-  formatDistanceLabel,
-  formatDurationLabel,
-} from '@/app/(dashboard)/schedules/calendar-view.helpers';
+import { formatDistanceLabel, formatDurationLabel } from '@/lib/visits/route-labels';
 import type { VisitRoutePlan, VisitRouteTravelMode } from '@/types/visit-route';
 import { VisitRouteMap, type VisitRouteMapPoint } from './visit-route-map';
 import {

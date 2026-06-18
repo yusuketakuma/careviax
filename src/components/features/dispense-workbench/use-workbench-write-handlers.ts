@@ -20,11 +20,12 @@ import { useMemo } from 'react';
 import type { HoldScope } from '@prisma/client';
 import { toast } from 'sonner';
 
-import { parsePackagingMethod, type PackagingMethodValue } from '@/lib/prescription/packaging';
+import { parsePackagingMethod, type PackagingMethodValue } from '@/lib/dispensing/packaging';
 import {
   areQuantitiesEquivalentForUnit,
   isQuantityAllowedForUnit,
 } from '@/lib/dispensing/quantity-unit';
+import { formatUtcDateKey } from '@/lib/date-key';
 import { useWorkbenchStore } from './dispensing-workbench.store';
 import { isRealDataEnabled } from './dispensing-workbench.adapter';
 import type { WorkbenchMutations } from './use-workbench-mutations';
@@ -231,7 +232,7 @@ function addDaysToDateKey(startDate: string, days: number): string | null {
   const date = new Date(Date.UTC(year, month - 1, day));
   if (Number.isNaN(date.getTime())) return null;
   date.setUTCDate(date.getUTCDate() + days - 1);
-  return date.toISOString().slice(0, 10);
+  return formatUtcDateKey(date);
 }
 
 function isPositiveFiniteQuantity(value: number | null | undefined): value is number {

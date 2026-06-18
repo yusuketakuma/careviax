@@ -2,27 +2,12 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { requireAuthContext, type AuthRouteContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
+import { optionalBlankableBoundedIntegerSearchParam } from '@/lib/api/validation';
 import { DATA_EXPLORER_MAX_OFFSET, listDataExplorerRows } from '@/server/services/data-explorer';
 
-function optionalBoundedIntegerSearchParam(fieldName: string, min: number, max: number) {
-  return z.preprocess(
-    (value) => {
-      if (typeof value !== 'string') return value;
-      const trimmed = value.trim();
-      return trimmed === '' ? undefined : trimmed;
-    },
-    z
-      .string()
-      .regex(/^\d+$/, `${fieldName} は整数で指定してください`)
-      .transform(Number)
-      .pipe(z.number().int().min(min).max(max))
-      .optional(),
-  );
-}
-
 const searchParamsSchema = z.object({
-  limit: optionalBoundedIntegerSearchParam('limit', 1, 100),
-  offset: optionalBoundedIntegerSearchParam('offset', 0, DATA_EXPLORER_MAX_OFFSET),
+  limit: optionalBlankableBoundedIntegerSearchParam('limit', 1, 100),
+  offset: optionalBlankableBoundedIntegerSearchParam('offset', 0, DATA_EXPLORER_MAX_OFFSET),
   search: z.string().optional(),
 });
 

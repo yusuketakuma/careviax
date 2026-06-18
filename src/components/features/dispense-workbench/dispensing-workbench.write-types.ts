@@ -16,8 +16,9 @@
 import type { HoldReason, RejectCode, HoldScope } from '@prisma/client';
 export type { RejectCode } from '@prisma/client';
 
-import type { CalendarMatrix } from '@/app/api/medication-sets/workspace/set-derivations';
-import type { PackagingMethodValue } from '@/lib/prescription/packaging';
+import type { CalendarMatrix } from '@/lib/dispensing/set-derivations';
+import type { PackagingMethodValue } from '@/lib/dispensing/packaging';
+import type { CarryPacketEvidenceInput } from '@/lib/dispensing/set-audit-constants';
 import type { Phase, TimingKey } from './dispensing-workbench.types';
 
 // ============================================================================
@@ -167,54 +168,18 @@ export const NG_LABEL_TO_CODE: Record<string, RejectCode> = {
   判断不能: 'undeterminable',
 };
 
-export const SET_AUDIT_CHECK_ITEMS = [
-  { key: 'date_match', label: '日付が正しい' },
-  { key: 'timing_match', label: '用法が正しい' },
-  { key: 'quantity_match', label: '数量が正しい' },
-  { key: 'no_discontinued', label: '中止薬が混入していない' },
-  { key: 'residual_usage_ok', label: '残薬使用の指示と一致' },
-  { key: 'cold_storage_separated', label: '冷所薬を分離している' },
-] as const;
-
-export type SetAuditChecklistKey = (typeof SET_AUDIT_CHECK_ITEMS)[number]['key'];
-
-export const CARRY_PACKET_EVIDENCE_SCHEMA_VERSION = 1;
-
-export const OUTSIDE_MED_EVIDENCE_KINDS = [
-  'prn',
-  'topical',
-  'cold',
-  'injection',
-  'liquid',
-  'other',
-] as const;
-export type OutsideMedEvidenceKind = (typeof OUTSIDE_MED_EVIDENCE_KINDS)[number];
-
-export const CARRY_PACKET_ITEM_KEYS = ['cal', 'ton', 'gai', 'liq', 'doc', 'note'] as const;
-export type CarryPacketItemKey = (typeof CARRY_PACKET_ITEM_KEYS)[number];
-
-export interface CarryPacketEvidenceInput {
-  schema_version: typeof CARRY_PACKET_EVIDENCE_SCHEMA_VERSION;
-  plan_id: string;
-  cycle_id: string;
-  patient_id: string;
-  outside_meds: Array<{
-    line_id: string;
-    kind: OutsideMedEvidenceKind;
-    checked: true;
-  }>;
-  packet_items: Array<{
-    key: CarryPacketItemKey;
-    checked: true;
-  }>;
-  summary: {
-    outside_required_count: number;
-    outside_confirmed_count: number;
-    packet_required_count: number;
-    packet_confirmed_count: number;
-    all_checked: true;
-  };
-}
+export {
+  CARRY_PACKET_EVIDENCE_SCHEMA_VERSION,
+  CARRY_PACKET_ITEM_KEYS,
+  OUTSIDE_MED_EVIDENCE_KINDS,
+  SET_AUDIT_CHECK_ITEMS,
+} from '@/lib/dispensing/set-audit-constants';
+export type {
+  CarryPacketEvidenceInput,
+  CarryPacketItemKey,
+  OutsideMedEvidenceKind,
+  SetAuditChecklistKey,
+} from '@/lib/dispensing/set-audit-constants';
 
 // ============================================================================
 // API I/O DTO（W2 レスポンスの最小サブセット）

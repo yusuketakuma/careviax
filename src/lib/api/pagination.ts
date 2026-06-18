@@ -5,6 +5,21 @@ export type PaginatedResponse<T> = {
   totalCount?: number;
 };
 
+export function buildCursorPage<T>(
+  rows: readonly T[],
+  limit: number,
+  cursorOf: (row: T) => string | undefined,
+): PaginatedResponse<T> {
+  const normalizedLimit = Number.isFinite(limit) ? Math.max(1, Math.trunc(limit)) : 1;
+  const data = rows.length > normalizedLimit ? rows.slice(0, normalizedLimit) : [...rows];
+  const hasMore = rows.length > normalizedLimit;
+  return {
+    data,
+    hasMore,
+    nextCursor: hasMore ? cursorOf(data[data.length - 1]!) : undefined,
+  };
+}
+
 export function parseBoundedInteger(
   value: string | null,
   fallback: number,

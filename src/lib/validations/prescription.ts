@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { dispensingLineMetadataSchema } from './dispensing-line';
+import { dateKeySchema } from './date-key';
 
 function blankStringToUndefined(value: unknown) {
   return typeof value === 'string' && value.trim().length === 0 ? undefined : value;
@@ -14,19 +15,8 @@ const optionalTrimmedStringSchema = z.preprocess(
   z.string().trim().optional(),
 );
 
-const dateKeyPattern = /^\d{4}-\d{2}-\d{2}$/;
-
-function isValidDateKey(value: string) {
-  if (!dateKeyPattern.test(value)) return false;
-  const [year, month, day] = value.split('-').map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return (
-    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
-  );
-}
-
 function dateStringSchema(message: string) {
-  return z.string().trim().regex(dateKeyPattern, message).refine(isValidDateKey, message);
+  return dateKeySchema(message);
 }
 
 const optionalDateStringSchema = z.preprocess(

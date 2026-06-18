@@ -96,6 +96,7 @@ const COVERAGE_CATEGORY_ENTRIES = {
     'SourceOfTruthMatrix',
     'CommunicationResponse',
     'DeliveryRecord',
+    'CareReportSendRequest',
     'ExternalAccessGrant',
     'DrugPackageInsert',
     'DrugInteraction',

@@ -15,6 +15,11 @@ function trimStringSearchParam(value: unknown) {
   return value.trim();
 }
 
+function blankStringToUndefinedSearchParam(value: unknown) {
+  const trimmed = trimStringSearchParam(value);
+  return trimmed === '' ? undefined : trimmed;
+}
+
 function boundedIntegerStringSchema(fieldName: string, min: number, max: number) {
   return z
     .string()
@@ -38,6 +43,17 @@ export function optionalBoundedIntegerSearchParam(fieldName: string, min: number
   return z
     .preprocess(trimStringSearchParam, boundedIntegerStringSchema(fieldName, min, max))
     .optional();
+}
+
+export function optionalBlankableBoundedIntegerSearchParam(
+  fieldName: string,
+  min: number,
+  max: number,
+) {
+  return z.preprocess(
+    blankStringToUndefinedSearchParam,
+    boundedIntegerStringSchema(fieldName, min, max).optional(),
+  );
 }
 
 export async function parseBody<T>(

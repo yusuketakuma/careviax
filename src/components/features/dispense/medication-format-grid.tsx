@@ -3,7 +3,7 @@ import type {
   MedicationDoseSlotKey,
   MedicationFormatGroup,
   MedicationFormatLine,
-} from '@/app/(dashboard)/dispense/dispense-workbench.shared';
+} from '@/lib/dispensing/dispense-workbench-shared';
 
 type MedicationFormatGridMode = 'dispense' | 'dispenseAudit' | 'set' | 'setAudit';
 

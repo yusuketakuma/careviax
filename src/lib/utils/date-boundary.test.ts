@@ -1,5 +1,11 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { addUtcDays, localDateKey, todayUtcRange, utcDateFromLocalKey } from './date-boundary';
+import {
+  addUtcDays,
+  localDateKey,
+  optionalUtcDateFromLocalKey,
+  todayUtcRange,
+  utcDateFromLocalKey,
+} from './date-boundary';
 
 const ORIGINAL_TZ = process.env.TZ;
 
@@ -48,6 +54,19 @@ describe('date-boundary (JST 前提)', () => {
       localMidnight.setHours(0, 0, 0, 0);
       expect(localMidnight.toISOString()).toBe('2026-06-11T15:00:00.000Z');
       expect(utcDateFromLocalKey('2026-06-12').getTime()).not.toBe(localMidnight.getTime());
+    });
+  });
+
+  describe('optionalUtcDateFromLocalKey', () => {
+    it('preserves undefined and null for partial @db.Date updates', () => {
+      expect(optionalUtcDateFromLocalKey(undefined)).toBeUndefined();
+      expect(optionalUtcDateFromLocalKey(null)).toBeNull();
+    });
+
+    it('converts a date key to the same UTC midnight value as utcDateFromLocalKey', () => {
+      expect(optionalUtcDateFromLocalKey('2026-06-12')?.toISOString()).toBe(
+        '2026-06-12T00:00:00.000Z',
+      );
     });
   });
 

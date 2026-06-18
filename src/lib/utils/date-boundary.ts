@@ -28,6 +28,13 @@ export function utcDateFromLocalKey(key: string): Date {
   return new Date(`${key}T00:00:00.000Z`);
 }
 
+/** nullable / optional な日付キーを @db.Date 更新値へ変換する。 */
+export function optionalUtcDateFromLocalKey(value: string | null | undefined) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  return utcDateFromLocalKey(value);
+}
+
 /** UTC 深夜 Date に日数を加算する(UTC は DST がないため純粋なミリ秒加算で正確)。 */
 export function addUtcDays(date: Date, days: number): Date {
   return new Date(date.getTime() + days * DAY_MS);

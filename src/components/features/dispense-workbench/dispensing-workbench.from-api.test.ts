@@ -14,7 +14,7 @@ import type {
   DispenseWorkbenchPatientRow,
   WorkbenchComparisonRow,
   WorkbenchCountRow,
-} from '@/app/(dashboard)/dispense/dispense-workbench.shared';
+} from '@/lib/dispensing/dispense-workbench-shared';
 
 /**
  * 実データ → model 写像（dispensing-workbench.from-api.ts）の固定マッピングテスト。

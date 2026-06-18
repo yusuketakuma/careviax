@@ -1,6 +1,65 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { parseOptionalBoundedIntegerParam, parsePaginationParams } from './pagination';
+import {
+  buildCursorPage,
+  parseOptionalBoundedIntegerParam,
+  parsePaginationParams,
+} from './pagination';
+
+describe('buildCursorPage', () => {
+  it('returns a limited page and next cursor from the last visible row', () => {
+    expect(
+      buildCursorPage(
+        [
+          { id: 'a', label: 'A' },
+          { id: 'b', label: 'B' },
+          { id: 'c', label: 'C' },
+        ],
+        2,
+        (row) => row.id,
+      ),
+    ).toEqual({
+      data: [
+        { id: 'a', label: 'A' },
+        { id: 'b', label: 'B' },
+      ],
+      hasMore: true,
+      nextCursor: 'b',
+    });
+  });
+
+  it('omits next cursor when there is no overflow row', () => {
+    expect(buildCursorPage([{ id: 'a' }], 2, (row) => row.id)).toEqual({
+      data: [{ id: 'a' }],
+      hasMore: false,
+      nextCursor: undefined,
+    });
+  });
+
+  it('does not call cursorOf for an empty page or an exact-limit page', () => {
+    const cursorOf = vi.fn((row: { id: string }) => row.id);
+
+    expect(buildCursorPage([], 2, cursorOf)).toEqual({
+      data: [],
+      hasMore: false,
+      nextCursor: undefined,
+    });
+    expect(buildCursorPage([{ id: 'a' }, { id: 'b' }], 2, cursorOf)).toEqual({
+      data: [{ id: 'a' }, { id: 'b' }],
+      hasMore: false,
+      nextCursor: undefined,
+    });
+    expect(cursorOf).not.toHaveBeenCalled();
+  });
+
+  it('normalizes invalid direct limits to one row', () => {
+    expect(buildCursorPage([{ id: 'a' }, { id: 'b' }], 0, (row) => row.id)).toEqual({
+      data: [{ id: 'a' }],
+      hasMore: true,
+      nextCursor: 'a',
+    });
+  });
+});
 
 describe('parsePaginationParams', () => {
   it('defaults malformed and out-of-range limits to safe Prisma values', () => {

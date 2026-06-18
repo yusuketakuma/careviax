@@ -1,7 +1,7 @@
 /**
  * 調剤ワークベンチ 実データ → model 純関数マッピング（計画 §4 アダプタ境界 / §11 / §14）
  *
- * 1a で実装済みの読取 API レスポンス（dispense-workbench.shared.ts の公開型）を、
+ * 1a で実装済みの読取 API レスポンス（dispense-workbench-shared.ts の公開型）を、
  * ワークベンチ基盤の安定契約型（dispensing-workbench.types.ts の SeedPatient / Group / Drug）
  * へ写像する。**副作用なし・fetch なし**（テスト容易性のための純関数集）。
  *
@@ -20,7 +20,7 @@ import type {
   WorkbenchComparisonRow,
   WorkbenchCountRow,
   WorkbenchPackagingGroup,
-} from '@/app/(dashboard)/dispense/dispense-workbench.shared';
+} from '@/lib/dispensing/dispense-workbench-shared';
 
 import type {
   ChangeKind,

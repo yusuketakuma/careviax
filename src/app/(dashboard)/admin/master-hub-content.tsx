@@ -24,7 +24,7 @@ import type { MasterHubCard, MasterHubResponse } from '@/types/master-hub';
  * 文言ルール: ブロッカー→「止まっている理由」/ Next Action→「次にやること」。
  */
 
-export async function fetchMasterHub(): Promise<MasterHubResponse> {
+async function fetchMasterHub(): Promise<MasterHubResponse> {
   const res = await fetch('/api/admin/master-hub');
   if (!res.ok) throw new Error('マスター鮮度集計の取得に失敗しました');
   const json = await res.json();

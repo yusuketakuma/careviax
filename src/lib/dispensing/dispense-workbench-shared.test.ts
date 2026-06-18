@@ -17,7 +17,7 @@ import {
   judgeCountRow,
   type WorkbenchCountRow,
   type DispenseWorkbenchData,
-} from './dispense-workbench.shared';
+} from './dispense-workbench-shared';
 
 function countRow(overrides: Partial<WorkbenchCountRow> = {}): WorkbenchCountRow {
   return {
@@ -102,7 +102,7 @@ function workbench(overrides: Partial<DispenseWorkbenchData> = {}): DispenseWork
   };
 }
 
-describe('dispense-workbench.shared', () => {
+describe('dispense-workbench-shared', () => {
   it('familyName は空白区切りの姓を返す', () => {
     expect(familyName('佐藤 花子')).toBe('佐藤');
     expect(familyName('山田')).toBe('山田');
