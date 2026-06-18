@@ -85,6 +85,7 @@ export async function fetchAllCursorPages<
     aggregated.push(...data);
 
     if (!hasMore || !nextCursor) {
+      cursor = undefined;
       break;
     }
     cursor = nextCursor;
@@ -97,7 +98,7 @@ export async function fetchAllCursorPages<
   return {
     ...firstPageMetadata,
     data: aggregated,
-    hasMore: false,
-    nextCursor: undefined,
+    hasMore: Boolean(cursor),
+    nextCursor: cursor,
   };
 }

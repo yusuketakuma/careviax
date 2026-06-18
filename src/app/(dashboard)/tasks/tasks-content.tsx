@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { describeOperationalTask } from '@/lib/tasks/operational-task-presentation';
 import { badgeToneClass } from '@/lib/ui/badge-semantics';
@@ -48,6 +49,7 @@ type Task = {
   priority: string;
   assigned_to: string | null;
   assigned_to_name?: string | null;
+  can_complete_inline?: boolean;
   due_date: string | null;
   sla_due_at: string | null;
   related_entity_type: string | null;
@@ -195,11 +197,12 @@ export function TasksContent({
   const { data, isLoading } = useQuery({
     queryKey: ['tasks', orgId, queryParams],
     queryFn: async () => {
-      const res = await fetch(`/api/tasks?${queryParams}`, {
-        headers: { 'x-org-id': orgId },
+      return fetchAllCursorPages<Task>({
+        path: '/api/tasks',
+        params: new URLSearchParams(queryParams),
+        init: { headers: { 'x-org-id': orgId } },
+        errorMessage: 'タスクの取得に失敗しました',
       });
-      if (!res.ok) throw new Error('タスクの取得に失敗しました');
-      return res.json() as Promise<{ data: Task[] }>;
     },
     enabled: !!orgId,
   });
@@ -305,8 +308,11 @@ export function TasksContent({
   });
 
   const completableTasks = selectedTasks.filter(
-    (t) => t.status !== 'completed' && t.status !== 'cancelled',
+    (t) => t.status !== 'completed' && t.status !== 'cancelled' && t.can_complete_inline !== false,
   );
+  const dedicatedCompletionCount = selectedTasks.filter(
+    (t) => t.status !== 'completed' && t.status !== 'cancelled' && t.can_complete_inline === false,
+  ).length;
   const contextSummary =
     initialContext === 'dashboard_home'
       ? assignedToMe
@@ -696,6 +702,9 @@ export function TasksContent({
             { label: '表示件数', value: `${tasks.length}件` },
             { label: '選択中', value: `${selectedTasks.length}件` },
             { label: '完了可能', value: `${completableTasks.length}件` },
+            ...(dedicatedCompletionCount > 0
+              ? [{ label: '専用画面', value: `${dedicatedCompletionCount}件` }]
+              : []),
             {
               label: '状態',
               value:

@@ -5,18 +5,13 @@ import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
+import { requiresDedicatedTaskCompletion } from '@/lib/tasks/inline-completion';
 import { updateTaskSchema } from '@/lib/validations/task';
 import {
   buildDashboardTaskAssignmentWhere,
   resolveDashboardAssignmentScope,
 } from '@/server/services/dashboard-assignment-scope';
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
-
-const DEDICATED_COMPLETION_TASK_TYPES = new Set([
-  'visit_preparation',
-  'visit_contact_followup',
-  'visit_schedule_override_approval',
-]);
 
 async function requireWritableTaskPatient(
   ctx: Parameters<typeof requireWritablePatient>[1],
@@ -74,10 +69,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   });
   if (!existing) return notFound('タスクが見つかりません');
 
-  if (
-    parsed.data.status === 'completed' &&
-    DEDICATED_COMPLETION_TASK_TYPES.has(existing.task_type)
-  ) {
+  if (parsed.data.status === 'completed' && requiresDedicatedTaskCompletion(existing)) {
     return validationError('このタスクは専用画面で完了してください', {
       status: ['専用の準備・連絡・承認フローで完了してください'],
     });

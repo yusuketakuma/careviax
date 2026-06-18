@@ -228,8 +228,124 @@ describe('/api/tasks', () => {
           id: 'task_1',
           assigned_to: 'user_2',
           assigned_to_name: '佐藤 薬剤師',
+          can_complete_inline: true,
         },
       ],
+      hasMore: false,
+    });
+  });
+
+  it('paginates task results and returns the next cursor', async () => {
+    taskFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'task_1',
+        task_type: 'patient_self_report_followup',
+        title: '患者A: 服薬の困りごと',
+        assigned_to: null,
+        priority: 'high',
+      },
+      {
+        id: 'task_2',
+        task_type: 'patient_self_report_followup',
+        title: '患者B: 服薬の困りごと',
+        assigned_to: null,
+        priority: 'normal',
+      },
+    ]);
+
+    const response = await GET(createRequest('http://localhost/api/tasks?limit=1&cursor=task_0'));
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(200);
+    expect(taskFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 2,
+        cursor: { id: 'task_0' },
+        skip: 1,
+        orderBy: [
+          { sla_due_at: 'asc' },
+          { due_date: 'asc' },
+          { created_at: 'desc' },
+          { id: 'desc' },
+        ],
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        {
+          id: 'task_1',
+          can_complete_inline: true,
+        },
+      ],
+      hasMore: true,
+      nextCursor: 'task_1',
+    });
+  });
+
+  it('rejects stale task cursors without leaking a server error', async () => {
+    taskFindManyMock.mockRejectedValueOnce({ code: 'P2025' });
+
+    const response = await GET(
+      createRequest('http://localhost/api/tasks?limit=10&cursor=deleted_task'),
+    );
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(400);
+    expect(userFindManyMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'ページカーソルが不正です',
+      details: {
+        cursor: ['指定されたカーソルのタスクが見つかりません'],
+      },
+    });
+  });
+
+  it('marks tasks that require dedicated workflows as not inline-completable', async () => {
+    taskFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'task_1',
+        task_type: 'visit_preparation',
+        title: '訪問準備',
+        assigned_to: null,
+        priority: 'high',
+      },
+      {
+        id: 'task_2',
+        task_type: 'visit_schedule_override_approval',
+        title: '例外変更承認',
+        assigned_to: null,
+        priority: 'high',
+      },
+      {
+        id: 'task_3',
+        task_type: 'care_report_followup',
+        title: '報告フォロー',
+        assigned_to: null,
+        priority: 'normal',
+      },
+    ]);
+
+    const response = await GET(createRequest('http://localhost/api/tasks?status=open'));
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        {
+          id: 'task_1',
+          can_complete_inline: false,
+        },
+        {
+          id: 'task_2',
+          can_complete_inline: false,
+        },
+        {
+          id: 'task_3',
+          can_complete_inline: true,
+        },
+      ],
+      hasMore: false,
     });
   });
 

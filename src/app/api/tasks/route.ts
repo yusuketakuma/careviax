@@ -1,11 +1,14 @@
 import { NextRequest } from 'next/server';
+import { type Prisma, type TaskStatus } from '@prisma/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { requireAuthContext } from '@/lib/auth/context';
 import { prisma } from '@/lib/db/client';
-import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
+import { isPrismaErrorCode, isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
+import { parsePaginationParams } from '@/lib/api/pagination';
 import { success, validationError } from '@/lib/api/response';
+import { canCompleteTaskInline } from '@/lib/tasks/inline-completion';
 import { createTaskSchema, taskPriorityValues, taskStatusValues } from '@/lib/validations/task';
 import {
   type DashboardAssignmentScope,
@@ -18,6 +21,7 @@ import { z } from 'zod';
 const taskStatusSchema = z.enum(taskStatusValues);
 const taskPrioritySchema = z.enum(taskPriorityValues);
 const MAX_TASK_TYPE_FILTERS = 20;
+const OPEN_TASK_STATUSES: TaskStatus[] = ['pending', 'in_progress'];
 
 function parseTaskTypesFilter(value: string | null) {
   if (!value) return { data: undefined as string[] | undefined, error: null as string | null };
@@ -91,6 +95,7 @@ export async function GET(req: NextRequest) {
   const { ctx } = authResult;
 
   const { searchParams } = new URL(req.url);
+  const { cursor, limit } = parsePaginationParams(searchParams);
   const taskType = searchParams.get('task_type') ?? undefined;
   const taskTypesParam = searchParams.get('task_types');
   if (taskType && taskTypesParam) {
@@ -126,27 +131,45 @@ export async function GET(req: NextRequest) {
     accessContext: ctx,
   });
 
-  const tasks = await prisma.task.findMany({
-    where: {
-      org_id: ctx.orgId,
-      ...buildDashboardTaskAssignmentWhere(assignmentScope),
-      ...(taskType ? { task_type: taskType } : {}),
-      ...(taskTypes.data ? { task_type: { in: taskTypes.data } } : {}),
-      ...(statusParam === 'open'
-        ? { status: { in: ['pending', 'in_progress'] } }
-        : status
-          ? { status: status.data }
-          : {}),
-      ...(priority ? { priority: priority.data } : {}),
-      ...(assignedTo ? { assigned_to: assignedTo } : {}),
-      ...(relatedEntityType ? { related_entity_type: relatedEntityType } : {}),
-      ...(relatedEntityId ? { related_entity_id: relatedEntityId } : {}),
-    },
-    orderBy: [{ sla_due_at: 'asc' }, { due_date: 'asc' }, { created_at: 'desc' }],
-  });
+  const taskWhere: Prisma.TaskWhereInput = {
+    org_id: ctx.orgId,
+    ...buildDashboardTaskAssignmentWhere(assignmentScope),
+    ...(taskType ? { task_type: taskType } : {}),
+    ...(taskTypes.data ? { task_type: { in: taskTypes.data } } : {}),
+    ...(statusParam === 'open'
+      ? { status: { in: OPEN_TASK_STATUSES } }
+      : status
+        ? { status: status.data }
+        : {}),
+    ...(priority ? { priority: priority.data } : {}),
+    ...(assignedTo ? { assigned_to: assignedTo } : {}),
+    ...(relatedEntityType ? { related_entity_type: relatedEntityType } : {}),
+    ...(relatedEntityId ? { related_entity_id: relatedEntityId } : {}),
+  };
 
+  const tasks = await prisma.task
+    .findMany({
+      where: taskWhere,
+      orderBy: [{ sla_due_at: 'asc' }, { due_date: 'asc' }, { created_at: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    })
+    .catch((cause) => {
+      if (isPrismaErrorCode(cause, 'P2025')) {
+        return null;
+      }
+      throw cause;
+    });
+  if (!tasks) {
+    return validationError('ページカーソルが不正です', {
+      cursor: ['指定されたカーソルのタスクが見つかりません'],
+    });
+  }
+
+  const hasMore = tasks.length > limit;
+  const data = hasMore ? tasks.slice(0, limit) : tasks;
   const assignedUserIds = Array.from(
-    new Set(tasks.map((task) => task.assigned_to).filter((id): id is string => Boolean(id))),
+    new Set(data.map((task) => task.assigned_to).filter((id): id is string => Boolean(id))),
   );
   const assignedUsers =
     assignedUserIds.length === 0
@@ -158,12 +181,15 @@ export async function GET(req: NextRequest) {
   const assignedUserNameById = new Map(assignedUsers.map((user) => [user.id, user.name]));
 
   return success({
-    data: tasks.map((task) => ({
+    data: data.map((task) => ({
       ...task,
       assigned_to_name: task.assigned_to
         ? (assignedUserNameById.get(task.assigned_to) ?? null)
         : null,
+      can_complete_inline: canCompleteTaskInline(task),
     })),
+    hasMore,
+    nextCursor: hasMore ? data[data.length - 1]?.id : undefined,
   });
 }
 

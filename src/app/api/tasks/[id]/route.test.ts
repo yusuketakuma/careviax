@@ -204,6 +204,7 @@ describe('/api/tasks/[id]', () => {
   it.each([
     ['visit_preparation', 'visit_schedule', 'schedule_1'],
     ['visit_contact_followup', 'visit_schedule_proposal', 'proposal_1'],
+    ['visit_schedule_override_approval', 'visit_schedule', 'schedule_1'],
   ])(
     'rejects generic completion for %s tasks that require dedicated flows',
     async (taskType, relatedEntityType, relatedEntityId) => {

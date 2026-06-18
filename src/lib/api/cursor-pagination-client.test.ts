@@ -140,4 +140,36 @@ describe('cursor-pagination-client', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(payload.data).toEqual([{ id: 'row_1' }]);
   });
+
+  it('keeps hasMore and nextCursor when the max page cap is exhausted', async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [{ id: 'row_1' }],
+          hasMore: true,
+          nextCursor: 'cursor_1',
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          data: [{ id: 'row_2' }],
+          hasMore: true,
+          nextCursor: 'cursor_2',
+        }),
+      );
+
+    const payload = await fetchAllCursorPages<{ id: string }>({
+      path: '/api/example',
+      errorMessage: 'failed',
+      fetchImpl,
+      maxPages: 2,
+      limit: 1,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(payload.data).toEqual([{ id: 'row_1' }, { id: 'row_2' }]);
+    expect(payload.hasMore).toBe(true);
+    expect(payload.nextCursor).toBe('cursor_2');
+  });
 });

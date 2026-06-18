@@ -32,6 +32,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { STATUS_ICON_CONFIG } from '@/lib/patient/status-icon';
 import { fetchDashboardCockpit } from '@/app/(dashboard)/dashboard/dashboard-cockpit';
@@ -178,11 +179,12 @@ export function MyDayContent({
     queryFn: async () => {
       const params = new URLSearchParams();
       if (userId) params.set('assigned_to', userId);
-      const res = await fetch(`/api/tasks?${params.toString()}`, {
-        headers: { 'x-org-id': orgId },
+      return fetchAllCursorPages<Task>({
+        path: '/api/tasks',
+        params,
+        init: { headers: { 'x-org-id': orgId } },
+        errorMessage: 'タスクの取得に失敗しました',
       });
-      if (!res.ok) throw new Error('タスクの取得に失敗しました');
-      return res.json() as Promise<{ data: Task[] }>;
     },
     enabled: !!orgId && !!userId,
   });
