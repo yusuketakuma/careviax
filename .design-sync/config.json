@@ -1,0 +1,61 @@
+{
+  "projectId": "d54f6695-5d44-4774-97f7-05a159e28b53",
+  "shape": "package",
+  "pkg": "ph-os",
+  "globalName": "PhOs",
+  "srcDir": "src/components/ui",
+  "tsconfig": ".design-sync/tsconfig.dssync.json",
+  "cssEntry": ".design-sync/.cache/compiled-tailwind.css",
+  "buildCmd": "npx --yes @tailwindcss/cli@4.2.2 -i src/app/globals.css -o .design-sync/.cache/compiled-tailwind.css",
+  "componentSrcMap": {
+    "ActionRail": "src/components/ui/action-rail.tsx",
+    "AlertDialog": "src/components/ui/alert-dialog.tsx",
+    "Alert": "src/components/ui/alert.tsx",
+    "Badge": "src/components/ui/badge.tsx",
+    "Button": "src/components/ui/button.tsx",
+    "Card": "src/components/ui/card.tsx",
+    "Checkbox": "src/components/ui/checkbox.tsx",
+    "ConfirmDialog": "src/components/ui/confirm-dialog.tsx",
+    "DataTable": "src/components/ui/data-table.tsx",
+    "Dialog": "src/components/ui/dialog.tsx",
+    "DropdownMenu": "src/components/ui/dropdown-menu.tsx",
+    "EmptyState": "src/components/ui/empty-state.tsx",
+    "ErrorBoundary": "src/components/ui/error-boundary.tsx",
+    "ErrorState": "src/components/ui/error-state.tsx",
+    "FilterSummaryBar": "src/components/ui/filter-summary-bar.tsx",
+    "FormErrorSummary": "src/components/ui/form-error-summary.tsx",
+    "HelpPopover": "src/components/ui/help-popover.tsx",
+    "Input": "src/components/ui/input.tsx",
+    "Label": "src/components/ui/label.tsx",
+    "LoadingButton": "src/components/ui/loading-button.tsx",
+    "Loading": "src/components/ui/loading.tsx",
+    "SectionIntro": "src/components/ui/section-intro.tsx",
+    "SegmentedProgressBar": "src/components/ui/segmented-progress-bar.tsx",
+    "Select": "src/components/ui/select.tsx",
+    "Separator": "src/components/ui/separator.tsx",
+    "Sheet": "src/components/ui/sheet.tsx",
+    "StateBadge": "src/components/ui/state-badge.tsx",
+    "StatusDot": "src/components/ui/status-dot.tsx",
+    "Switch": "src/components/ui/switch.tsx",
+    "Table": "src/components/ui/table.tsx",
+    "Tabs": "src/components/ui/tabs.tsx",
+    "Textarea": "src/components/ui/textarea.tsx",
+    "Toaster": "src/components/ui/sonner.tsx"
+  },
+  "runtimeFontPrefixes": [
+    "Meiryo",
+    "Hiragino",
+    "Yu Gothic"
+  ],
+  "guidelinesGlob": [
+    "docs/ui-ux-design-guidelines.md"
+  ],
+  "overrides": {
+    "DropdownMenu": {
+      "cardMode": "single",
+      "viewport": "480x560",
+      "primaryStory": "ActionsMenu"
+    }
+  },
+  "readmeHeader": ".design-sync/conventions.md"
+}

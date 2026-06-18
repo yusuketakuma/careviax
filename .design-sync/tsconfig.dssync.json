@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "baseUrl": "..",
+    "paths": {
+      "next/link": [".design-sync/next-link-stub.tsx"],
+      "@sentry/nextjs": [".design-sync/sentry-stub.tsx"]
+    }
+  }
+}
