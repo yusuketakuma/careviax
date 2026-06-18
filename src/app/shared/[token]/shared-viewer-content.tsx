@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -74,6 +74,20 @@ type ExternalPayload = {
   expires_at: string;
 };
 
+type SelfReportSubmitPayload = {
+  reported_by_name: string;
+  relation?: string;
+  category: string;
+  subject: string;
+  content: string;
+  requested_callback: boolean;
+  preferred_contact_time?: string;
+};
+
+type SelfReportSubmitError = Error & {
+  status?: number;
+};
+
 const SCOPE_DISPLAY_NAMES: Record<string, string> = {
   allergy_info: 'アレルギー情報',
   medication_list: '服薬一覧',
@@ -122,6 +136,14 @@ const GENDER_LABELS: Record<string, string> = {
   unknown: '不明',
 };
 
+function createSelfReportIdempotencyKey() {
+  const randomPart =
+    typeof globalThis.crypto?.randomUUID === 'function'
+      ? globalThis.crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  return `self-report:${randomPart}`;
+}
+
 export function SharedViewerContent({ token }: { token: string }) {
   const [otpInput, setOtpInput] = useState('');
   const [activeOtp, setActiveOtp] = useState('');
@@ -132,6 +154,10 @@ export function SharedViewerContent({ token }: { token: string }) {
   const [content, setContent] = useState('');
   const [preferredContactTime, setPreferredContactTime] = useState('');
   const [requestedCallback, setRequestedCallback] = useState(true);
+  const selfReportSubmissionRef = useRef<{
+    payloadFingerprint: string;
+    idempotencyKey: string;
+  } | null>(null);
 
   const viewerQuery = useQuery({
     queryKey: ['shared-viewer', token, activeOtp],
@@ -152,35 +178,63 @@ export function SharedViewerContent({ token }: { token: string }) {
 
   const selfReportMutation = useMutation({
     mutationFn: async () => {
+      const body: SelfReportSubmitPayload = {
+        reported_by_name: reporterName,
+        relation: relation || undefined,
+        category,
+        subject,
+        content,
+        requested_callback: requestedCallback,
+        preferred_contact_time: preferredContactTime || undefined,
+      };
+      const payloadFingerprint = JSON.stringify(body);
+      if (selfReportSubmissionRef.current?.payloadFingerprint !== payloadFingerprint) {
+        selfReportSubmissionRef.current = {
+          payloadFingerprint,
+          idempotencyKey: createSelfReportIdempotencyKey(),
+        };
+      }
+
       const response = await fetch(`/api/external-access/${token}/self-report`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-otp': activeOtp },
-        body: JSON.stringify({
-          reported_by_name: reporterName,
-          relation: relation || undefined,
-          category,
-          subject,
-          content,
-          requested_callback: requestedCallback,
-          preferred_contact_time: preferredContactTime || undefined,
-        }),
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': selfReportSubmissionRef.current.idempotencyKey,
+          'x-otp': activeOtp,
+        },
+        body: JSON.stringify(body),
       });
 
       const payload = await response.json();
       if (!response.ok) {
-        throw new Error(payload.message ?? '自己申告の送信に失敗しました');
+        const submitError = new Error(
+          payload.message ?? '自己申告の送信に失敗しました',
+        ) as SelfReportSubmitError;
+        submitError.status = response.status;
+        throw submitError;
       }
 
-      return payload as { data: { id: string } };
+      return payload as { data: { accepted: boolean; replayed: boolean } };
     },
     onSuccess: () => {
+      selfReportSubmissionRef.current = null;
       setSubject('');
       setContent('');
       setPreferredContactTime('');
       setRequestedCallback(true);
+      void viewerQuery.refetch();
       toast.success('自己申告を受け付けました');
     },
     onError: (error: Error) => {
+      const submitError = error as SelfReportSubmitError;
+      if (submitError.status === 409) {
+        toast.error('同じ送信内容は受付済みの可能性があります。画面を更新して確認してください');
+        return;
+      }
+      if (submitError.status === 429) {
+        toast.error('送信回数が多すぎます。しばらく待ってから再試行してください');
+        return;
+      }
       toast.error(error.message);
     },
   });
@@ -197,6 +251,7 @@ export function SharedViewerContent({ token }: { token: string }) {
   }
 
   function submitSelfReport() {
+    if (selfReportMutation.isPending) return;
     if (!reporterName.trim() || !subject.trim() || !content.trim()) {
       toast.error('報告者氏名・件名・内容は必須です');
       return;

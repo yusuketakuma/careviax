@@ -269,13 +269,17 @@ model PatientSelfReport {
   content                  String
   requested_callback       Boolean          @default(false)
   preferred_contact_time   String?
+  idempotency_key_hash     String?
+  request_fingerprint      String?
   status                   SelfReportStatus @default(submitted)
   triaged_by               String?
   triaged_at               DateTime?
   created_at               DateTime         @default(now())
   updated_at               DateTime         @updatedAt
 
+  @@unique([org_id, external_access_grant_id, idempotency_key_hash], name: "org_grant_idempotency_key", map: "PatientSelfReport_org_grant_idem_key")
   @@index([org_id])
+  @@index([org_id, external_access_grant_id], map: "PatientSelfReport_org_id_external_access_grant_id_idx")
   @@index([patient_id])
   @@index([status])
 }
