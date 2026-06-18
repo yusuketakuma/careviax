@@ -84,6 +84,7 @@ flowchart LR
 ---
 
 ## 直近トラック: デザイン忠実実装 + バックエンド補完(design/ v1.9 → new) `cc:完了`
+
 <!-- 2026-06-14: 新14画面(Phase1-4)完了 + D-3〜D-9 残ギャップ23件を wave2/design-fidelity-residual で実装完了(unit 6356 green)。残 blocked は D-8-3 音声STT(外部依存)のみ。migration 適用と main マージは人手判断待ち。 -->
 
 > 開始: 2026-06-11
@@ -177,6 +178,7 @@ flowchart LR
 ### D-2. 中核画面(通知 04 / 検索 05・06 / ダッシュボード 07 / カード詳細 08) `cc:完了` (2026-06-12 p0_05 再撮影確認で全サブタスク完了)
 
 > 設計判断(2026-06-11 調査確定):
+>
 > - p0_08 は `/patients/[id]` 改修(3 カラム骨格・PatientWorkspaceRail・visit_brief 配線が既存。/workflow は org 横断管制塔で責務外)。p0_38 着手時に `/patients/[id]/today` 分割を再判断
 > - 通知 5 分類(急ぎ/薬剤師確認/事務で対応/返信待ち/未同期)は enum 拡張せず表示時マッピング(type/event_type/metadata から派生)。「未同期」は offline-store からのクライアント合成行
 > - 全体検索は `/search` ページ新設(デザインはページ風全幅)。既存 global-search-modal のロジックを流用し Cmd+K は /search へ。p0_06「詳しく絞り込む」は /search 上のモーダル
@@ -209,31 +211,38 @@ flowchart LR
 > **未マージ**: main へのマージは人手判断待ち。
 
 ### D-3. 調剤フロー(処方 09-11 / 調剤・監査 12-13 / セット 14-15) `cc:完了`
+
 - [x] p0_11 処方の変化を確認 専用差分レビュー画面(medication-diff に用法/日数追加) `cc:完了`
 - [x] p0_15 セット監査 3ペイン再構築(写真確認 + 6項目チェックリスト + set-photo基盤、サーバ側チェックリスト強制) `cc:完了`
 - (p0_09/10/12/13/14 は new_05/07/08/09 で既カバー)
 
 ### D-4. 訪問フロー(スケジュール 16-21 / 訪問モード 22-24) `cc:完了`
+
 - [x] p0_17 正式決定フロー忠実化 / p0_18 予定作成・編集ドロワー(下書き/確認待ち) / p0_19 重なり解消+車両競合検知 / p0_20 緊急ルート再計算(locked多シナリオ) / p0_21 ルート最適化詳細+守る条件 / p0_24 施設パケット構造化 `cc:完了`
 - (p0_16 全員ガント=new_03、p0_22/23 訪問モード既カバー)
 
 ### D-5. 連携・請求(25-31) `cc:完了`
+
 - [x] p0_26 送付先編集フォーム+書込API / p0_27 薬剤師相談・事務戻し解決フロー / p0_28 報告書コンポーザー(複数共有先+送付前チェック+一括送付) / p0_29 返信待ち2ペイン `cc:完了`
 - (p0_25 事務サポート / p0_31 残薬調整は既存実装で充足)
 
 ### D-6. 安全・オフライン・認証(32-37, 01-03) `cc:完了`
+
 - [x] D-6-1/2/3: 4ルート(select-site/select-mode/safety-check/offline-sync)は実装済→**シェル導線整備**で到達可能化 + 空 /issues 削除。p0_01/34/35/36/37 は既カバー `cc:完了`
 
 ### D-7. マスタ・設定(38-45, 47-48) `cc:完了`
+
 - [x] 車両点検期限の専用カラム化(notes正規表現解消) / capacity ナビ導線追加。マスタCRUD・設定は new_13/14 で既カバー `cc:完了`
 
 ### D-8. P1 画面(p1_01〜p1_14) `cc:完了`(D-8-3 のみ blocked)
+
 - [x] D-8-1: p1_01 保存ビュー(SavedView モデル + CRUD API + 名前付きビュー) `cc:完了`
 - [x] D-8-2: p1_09 ヒヤリハット管理(IncidentReport は既実装) `cc:完了`
 - [ ] D-8-3: p1_11 音声メモ・文字起こし(STT=AWS Transcribe/外部creds必須) `cc:blocked`
 - [x] D-8-4: その他 P1 画面(voice-memo 等は既実装、残りは新14画面で充足) `cc:完了`
 
 ### D-9. バックエンド補完(横断) `cc:完了`
+
 - [x] D-9-1: dispense PATCH 権限ゲート+監査 / 監査ルートテスト / claims-XML送信の監査追加(レビュー修正) `cc:完了`
 - [x] D-9-2: オフライン競合検出は既実装で充足(視点確認済) `cc:完了`
 - [x] D-9-3: 「止まっている理由」projection を共有ライブラリ化(blocked-reason-projection)し4ルートで再利用 `cc:完了`
@@ -241,6 +250,7 @@ flowchart LR
 ---
 
 ## 直近トラック: 訪問支援・処方/調剤・共有要約 `cc:完了`
+
 <details>
 <summary>完了済み詳細 — クリックで展開</summary>
 
@@ -498,9 +508,7 @@ flowchart LR
 4. VB-04 算定ブロッカーの解消導線
 5. VB-05 家族・施設セルフ報告の履歴化
 
-
 </details>
----
 
 ## Phase 0: 基盤構築・データ定義 `cc:blocked` <!-- 0-2i PMDA登録 + 0-5 I-04 バックアップ実地 が外部依存でブロック -->
 
@@ -525,9 +533,9 @@ flowchart LR
 - 請求候補の高度ルールエンジン
 
 ### 0-1. プロジェクト初期化 `cc:完了`
+
 <details>
 <summary>完了済み詳細 — クリックで展開</summary>
-
 
 > DoD: `pnpm dev` 起動、`pnpm build` 成功、CI green、AWS全サービス接続確認
 
@@ -537,12 +545,10 @@ flowchart LR
 - [x] Prisma 7（RDS接続）, NextAuth v5 + Cognito, Serwist 9 PWA
 - [x] `.env.example`, Vitest 4, Playwright, セキュリティヘッダー, CI(GitHub Actions), IaC(AWS CDK)
 
-
 </details>
 ### 0-2. データモデル全体（Prisma Schema） `cc:完了`
 <details>
 <summary>完了済み詳細 — クリックで展開</summary>
-
 
 > depends: 0-1 | DoD: `prisma migrate deploy` 成功、全テーブル作成、シード完了
 > ※ 全テーブル同時マイグレーション。グループ分けは設計整理用。Prisma multi-file schema（prisma/schema/\*.prisma）でファイル分割。
@@ -668,10 +674,8 @@ flowchart LR
   - グローバル参照マスタと共通辞書は `org_id` 例外として責任分界表に明記
   - `pnpm db:generate` / `pnpm exec eslint prisma/seed.ts` を確認
 
-
 </details>
 ### 0-2i. 医薬品マスタ取込パイプライン `cc:blocked` <!-- PMDA メディナビ登録（外部手続き）待ち -->
-
 
 > depends: 0-2e（マスタテーブル作成後） | DoD: 全データソースから取込完了、DrugMaster 1万3千品目+、相互作用データ検索可能
 > 2026-03-27 進捗:
@@ -736,9 +740,9 @@ flowchart LR
 - [x] 手動取込トリガーボタン（管理者権限）
 
 ### 0-3. 認証・権限・RLS基盤 (FR-501) `cc:完了`
+
 <details>
 <summary>完了済み詳細 — クリックで展開</summary>
-
 
 > depends: 0-2 | DoD: RLS正当性テスト通過
 
@@ -763,12 +767,10 @@ flowchart LR
   - 通知設定（種別ごとのON/OFF、ブラウザPush許可）
   - 薬剤師: 自分の訪問実績サマリー、今月の訪問カウンター
 
-
 </details>
 ### 0-4. 共通基盤 `cc:完了`
 <details>
 <summary>完了済み詳細 — クリックで展開</summary>
-
 
 > depends: 0-3 | DoD: App Shell動作、監査ログ書込み、CRUD 1つ動作
 
@@ -898,10 +900,8 @@ flowchart LR
 - [x] フィルタ: Zod スキーマで型安全なクエリパラメータ（`?status=active&from=2026-01-01&pharmacistId=xxx`）
 - [x] ソート: `?sort=scheduled_date&order=asc`（デフォルトソートは各エンドポイントで定義）
 
-
 </details>
 ### 0-5. 監視・バックアップ・ガイドライン準拠 `cc:blocked` <!-- I-04 バックアップ復旧試験（AWS認証情報）待ち -->
-
 
 > depends: 0-1 | DoD: 復旧試験完了、監視稼働、ガイドライン文書5点+本番インフラ完備
 > 2026-03-28 GAP分析: 本番インフラ・コンプライアンス文書・セキュリティ強化の3領域で重大な不足を検出
@@ -982,9 +982,9 @@ flowchart LR
   - METI/MIC v1.1 の統制項目ごとの充足チェックリスト（`docs/compliance/meti-mic-v1.1-mapping.md`）
 
 ### 0-6. バックグラウンドジョブ・定期タスク `cc:完了`
+
 <details>
 <summary>完了済み詳細 — クリックで展開</summary>
-
 
 > depends: 0-4 | DoD: 全ジョブが CloudWatch Events (EventBridge) or cron で稼働
 
@@ -1006,9 +1006,7 @@ flowchart LR
   - 経営指標集計 → 処方箋集中率、後発品割合、在宅訪問実績の月次スナップショット保存
 - [x] ジョブ共通: 実行ログ（IntegrationJob）、失敗時リトライ（最大3回）、管理者通知
 
-
 </details>
----
 
 ## Phase 1a: MVP — 患者・訪問・記録 `cc:blocked` <!-- 1a-6 ISMS認証（外部依存）でブロック -->
 
@@ -1017,9 +1015,9 @@ flowchart LR
 > ※ MVP でも `MedicationCycle` を維持するため、①〜⑤の全量実装は後段でも「薄い upstream slice」は先に入れる
 
 ### 1a-1. 患者・案件管理 `cc:完了`
+
 <details>
 <summary>完了済み詳細 — クリックで展開</summary>
-
 
 > depends: 0-4 | DoD: 患者CRUD→ケース作成→状態遷移→終了処理→計画書作成が動作
 
@@ -1035,12 +1033,10 @@ flowchart LR
   - 未取得同意の警告表示（訪問予定作成時に必須同意チェック）
   - 2026-03-31: 同意、管理計画書、配薬設定、薬剤課題、緊急連絡ドラフト更新後も patient detail だけでなく schedule / My Day / dashboard に反映されるよう invalidate を共通化した
 
-
 </details>
 ### 1a-2. ⑥ 訪問計画・ルート最適化 `cc:完了`
 <details>
 <summary>完了済み詳細 — クリックで展開</summary>
-
 
 > depends: 1a-1 | DoD: 訪問予定作成→定期スケジュール生成→準備チェック→当日表示→予定変更連絡が動作
 
@@ -1121,12 +1117,10 @@ flowchart LR
 - [x] 訪問開始ボタン → 位置情報記録（任意）→ 訪問記録画面へ遷移
   - 2026-03-31: 患者基本情報 / 連絡先 / 病名課題 / ケアチーム / 訪問条件 / ケース更新後に、患者詳細だけでなく schedule / My Day / dashboard まで org-aware に再取得するよう統一した
 
-
 </details>
 ### 1a-3. ⑦ 訪問実施・記録 `cc:完了`
 <details>
 <summary>完了済み詳細 — クリックで展開</summary>
-
 
 > depends: 1a-2 | DoD: SOAP記録→残薬入力→次回提案→当日参照オフラインが動作
 
@@ -1177,12 +1171,10 @@ flowchart LR
   - 2026-03-28: app shell のオフライン banner と schedule board のモバイル訪問モードに read-only / TTL 表記を追加した
 - [x] 下書き同期は Phase 2（FR-106 Ph2）に後ろ倒し
 
-
 </details>
 ### 1a-4. 薬学的課題 + QRコード `cc:完了`
 <details>
 <summary>完了済み詳細 — クリックで展開</summary>
-
 
 > depends: 1a-1 | DoD: 薬剤一覧、課題CRUD、QRスキャン→患者新規登録 or 既存選択→MedicationProfile保存が動作
 
@@ -1195,12 +1187,10 @@ flowchart LR
   - 該当あり → 患者選択 → MedicationProfile へ薬剤情報を保存
 - [x] お薬手帳QRコード生成（発行方向）: 調剤済み薬剤→JAHIS Ver.2.5形式QR生成（`qrcode` npm + Shift-JISエンコード）→印刷/画面表示
 
-
 </details>
 ### 1a-5. ⑧ 報告・連携 `cc:完了`
 <details>
 <summary>完了済み詳細 — クリックで展開</summary>
-
 
 > depends: 1a-1（連携ログ）, 1a-3（報告書） | DoD: 主要報告書の作成/送付/失敗追跡が動作
 
@@ -1219,7 +1209,6 @@ flowchart LR
   - draft / sent / failed / confirmed / response_waiting
   - FAX/メール/SES のチャネル別送達記録
 - [x] 文書テンプレート(FR-302) + タスク管理(FR-304)
-
 
 </details>
 ### 1a-6. ダッシュボード + テスト `cc:blocked` <!-- ISMS認証（外部手続き）待ち -->
@@ -1240,9 +1229,9 @@ flowchart LR
 - [x] RLSテスト + セッション管理UI + シードデータ
 
 ### 1a-7. モバイル/タブレットUI `cc:完了`
+
 <details>
 <summary>完了済み詳細 — クリックで展開</summary>
-
 
 > depends: 1a-1〜1a-6 | DoD: スマートフォン/タブレットで訪問業務の一日が完結する
 
@@ -1275,9 +1264,7 @@ flowchart LR
 - [x] カメラ連携: 処方箋スキャン、残薬写真、QR読取のネイティブカメラAPI統合
 - [x] GPS連携: 訪問開始/終了時の位置情報記録（任意、プライバシー設定で無効化可能）
 
-
 </details>
----
 
 ## Phase 1b: ①処方箋応需→②調剤→③調剤鑑査→処方安全チェック `cc:blocked` <!-- 1b-6 ISMS + 1b-9 パイロットUAT（外部依存）でブロック -->
 
@@ -1285,9 +1272,9 @@ flowchart LR
 > 出口条件: 処方箋応需→疑義照会→調剤→鑑査→訪問→報告の完全サイクルが回る
 
 ### 1b-1. ① 処方箋応需（処方受付〜調剤開始前） `cc:完了`
+
 <details>
 <summary>完了済み詳細 — クリックで展開</summary>
-
 
 > depends: 1a-1 | DoD: 全経路の処方受付→構造化→疑義照会→MedicationCycle生成が動作
 
@@ -1327,12 +1314,10 @@ flowchart LR
   - 処方差分サマリーを VisitPreparation に反映
   - carry_items_ready / partial / blocked を VisitSchedule に反映
 
-
 </details>
 ### 1b-2. ② 調剤 + ③ 調剤鑑査 `cc:完了`
 <details>
 <summary>完了済み詳細 — クリックで展開</summary>
-
 
 > depends: 1b-1 | DoD: 調剤キュー→実績→鑑査→MedicationCycle状態遷移が動作
 
@@ -1360,12 +1345,10 @@ flowchart LR
 - [x] グローバル: `Cmd+K` 検索、`Cmd+N` 新規作成、`Esc` モーダル閉じ、`?` ショートカット一覧
 - [x] ショートカットヘルプモーダル（`?`キーで表示）
 
-
 </details>
 ### 1b-3. 処方安全チェック（臨床意思決定支援） `cc:完了`
 <details>
 <summary>完了済み詳細 — クリックで展開</summary>
-
 
 > depends: 1b-2, 0-2i（医薬品マスタ取込済み） | DoD: 調剤時・訪問記録時にアラート表示
 
@@ -1383,12 +1366,10 @@ flowchart LR
 - [x] 減数調剤WF: 残薬調整→処方医報告→禁止薬剤(麻薬/抗がん剤)ブロック
 - [x] 初回訪問文書の自動生成+交付記録
 
-
 </details>
 ### 1b-4. トレーシングレポート + 依頼/照会ワークフロー `cc:完了`
 <details>
 <summary>完了済み詳細 — クリックで展開</summary>
-
 
 > depends: 1a-5 | DoD: トレーシングレポート送付、依頼→返信→クローズが動作
 
@@ -1396,12 +1377,10 @@ flowchart LR
 - [x] CommunicationRequest/Response: 状態遷移9段階
 - [x] 返信待ち一覧 + エスカレーション
 
-
 </details>
 ### 1b-5. 最小セット運用（Pilot前必須） `cc:完了`
 <details>
 <summary>完了済み詳細 — クリックで展開</summary>
-
 
 > depends: 1b-2 | DoD: セットが必要な患者に対して、最小限のセット→確認→持参反映が動作
 
@@ -1410,7 +1389,6 @@ flowchart LR
 - [x] 最小SetAudit: 承認 / 差戻し / 部分承認
 - [x] 部分承認時は carry_items_partial と再作業タスクを自動起票
 - [x] 持参チェックリストへ確定反映
-
 
 </details>
 ### 1b-6. ワークフローダッシュボード + テスト `cc:blocked` <!-- ISMS認証プロセス（外部依存）待ち -->
@@ -1427,9 +1405,9 @@ flowchart LR
   - 2026-04-01: `pilot:dossier` / `/api/admin/pilot-launch-dossier` から comparison table / decision memo の未着手を継続検出できる状態を確認。残作業は外部見積取得と社内意思決定のみ
 
 ### 1b-7. テストカバレッジ強化 `cc:完了`
+
 <details>
 <summary>完了済み詳細 — クリックで展開</summary>
-
 
 > depends: 1b-1〜1b-6 | DoD: 全 API ルートにユニットテスト、カバレッジ80%以上
 > 2026-03-28 GAP分析: 157ルート中79ルート（50.4%）が未テスト
@@ -1482,12 +1460,10 @@ flowchart LR
 - [x] 管理系: `notification-rules`, `pharmacist-shifts`, `pharmacy-sites`, `consent-records` `cc:完了` (2026-03-30)
 - [x] その他: `business-holidays`, `conference-notes`, `community-activities`, `external-access`, `templates`, `settings` `cc:完了` (2026-03-30)
 
-
 </details>
 ### 1b-8. 機能的ギャップ修正 `cc:完了`
 <details>
 <summary>完了済み詳細 — クリックで展開</summary>
-
 
 > 2026-03-28 GAP分析: ワークフロー横断で検出した機能的な隙間
 
@@ -1509,7 +1485,6 @@ flowchart LR
   - `prisma/migrations/20260328234500_rls_context_failsafe/migration.sql` の `app_enforced_org_id()` で RLS コンテキスト未設定時を明示エラー化
   - `src/lib/db/rls.ts` で `app.rls_context_applied=true` を注入し、request context と orgId の不整合を transaction 開始前に拒否
 
-
 </details>
 ### 1b-9. パイロット薬局 UAT + フィードバック反映 `cc:TODO`
 
@@ -1530,9 +1505,9 @@ flowchart LR
 ---
 
 ## Phase 2: セット・月次運用・連携強化 `cc:完了`
+
 <details>
 <summary>6 subsections completed — click to expand</summary>
-
 
 > depends: Phase 1b 完了 | 出口条件: セット運用安定化 + 締め処理の見える化
 
@@ -1595,14 +1570,12 @@ flowchart LR
 
 - [x] 外部連携者ロール + CSV/NSIPS + FAX + オフライン下書き+同期(FR-106 Ph2)
 
-
 </details>
----
 
 ## Phase 2b: 実務機能強化 `cc:完了`
+
 <details>
 <summary>10 subsections completed — click to expand</summary>
-
 
 > 2026-03-28 立案: 既存コードベースの GAP 分析に基づく6機能の実装計画
 > depends: Phase 1b 主要機能完了 | 出口条件: パイロット薬局で日常業務が完結する
@@ -2138,7 +2111,7 @@ ConferenceNote ─────┼─→ [報告書] CareReport + DeliveryRecord
 - [x] BillingEvidence モデル拡張 `cc:完了` (2026-03-30)
   - `conference_note_ref String?` 追加（ConferenceNote.id を格納）
   - 既存パターン踏襲: `report_delivery_ref` と同様に CSV 形式で複数会議対応
-- [x] SSOT ルール追加（`home-care-billing-ssot.ts`） `cc:完了` (2026-03-30)
+- [x] SSOT ルール追加（現 `billing-rules.ts` に統合済み） `cc:完了` (2026-03-30)
 
   ```
   medical.conference.discharge_joint_guidance    退院時共同指導料          600点  manual  要件: 入院中共同指導+文書提供
@@ -2302,14 +2275,12 @@ ConferenceNote ─────┼─→ [報告書] CareReport + DeliveryRecord
   - 2026-04-03 追記: mobile-chromium を local config に追加し、患者一覧 / 報告書の詳細フィルタを折りたたみ化。PC では主要フィルタ優先、モバイルでは検索優先の配置へ再編
   - 2026-04-03 追記: workflow / billing の上段を判断帯へ整理し、visit detail ページも共通 scaffold と操作クラスタへ統一。患者詳細 / 訪問詳細の Playwright 検証を追加
 
-
 </details>
----
 
 ## Phase 2c: マスター機能整備 + データリンク強化 `cc:完了`
+
 <details>
 <summary>9 subsections completed — click to expand</summary>
-
 
 > 2026-03-30 立案。マスターデータの体系的整備と、マスター↔トランザクションのリンク構築。
 > 出口条件: 薬局が初期設定を完了し、日常運用でマスター参照が途切れない状態。
@@ -2475,14 +2446,12 @@ PrescriptionIntake
       FacilityContact / ExternalProfessional / PrescriberInstitution の
       既定連絡チャネル候補とフォールバック順に反映
 
-
 </details>
----
 
 ## Phase 3: 外部連携・最適化・通知高度化 `cc:完了`
+
 <details>
 <summary>5 subsections completed — click to expand</summary>
-
 
 > 着手条件: Phase 2 安定稼働1ヶ月以上。詳細はPhase 2完了時に策定。
 > 2026-03-28 GAP分析: 各アダプタは interface contract + stub 実装済み。実接続のみ残る。
@@ -2515,12 +2484,10 @@ PrescriptionIntake
   - `src/app/(dashboard)/admin/uat/uat-content.tsx` から `src/app/api/admin/uat-feedback/route.ts` を呼び出し、優先度・進捗・チェック項目を DB 保存
   - 保存済みフィードバック一覧を UAT 画面に表示し、実運用レビューを画面内で追跡可能化
 
-
 </details>
 ## Phase 4: コードリファクタリング `cc:完了` (2026-03-31)
 <details>
 <summary>5 subsections completed — click to expand</summary>
-
 
 > 重い API ルートの構造的リファクタリング。God handler 分解、重複除去、Service 層抽出。
 > 詳細プラン: `.omc/plans/api-route-refactoring.md`
@@ -2547,9 +2514,7 @@ PrescriptionIntake
   - `facility` / `name-resolver` / `workflow-dashboard-sections` の単体テストを追加
   - `workflow` / `patients` / `visit-schedules` のスナップショット回帰を追加
 
-
 </details>
----
 
 ## 設計判断 → [docs/decisions.md](docs/decisions.md)
 

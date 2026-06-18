@@ -125,7 +125,7 @@
   - 「別包」は PackagingInstructionTag.separate_pack で表現可。「セット対象外(持参・別管理)」に対応するフラグが無い → タグ追加 or 新フィールドの設計判断
   - 「中止薬の回収予定」を保持するフィールドが無い(ResidualMedication にも無し)。新規の小状態が必要
   - 「薬剤師へ相談」ハンドオフは既存 /api/handoff-board の流用可否を実装時に確認
-- データ源: `/Users/yusuke/workspace/careviax/src/app/(dashboard)/prescriptions/new/prescription-intake-submit.ts (getPrescriptionSubmitBlockers)` / `/Users/yusuke/workspace/careviax/src/lib/prescription/packaging.ts (PACKAGING_METHOD_LABELS / PACKAGING_INSTRUCTION_TAG_LABELS / parsePackagingMethod)` / `/Users/yusuke/workspace/careviax/src/app/api/prescription-intakes/route.ts (POST)` / `/Users/yusuke/workspace/careviax/prisma/schema/prescription.prisma (PrescriptionLine)、/Users/yusuke/workspace/careviax/prisma/schema/patient.prisma (PackagingMethod enum)`
+- データ源: `/Users/yusuke/workspace/careviax/src/app/(dashboard)/prescriptions/new/prescription-intake-submit.ts (getPrescriptionSubmitBlockers)` / `/Users/yusuke/workspace/careviax/src/lib/dispensing/packaging.ts (PACKAGING_METHOD_LABELS / PACKAGING_INSTRUCTION_TAG_LABELS / parsePackagingMethod)` / `/Users/yusuke/workspace/careviax/src/app/api/prescription-intakes/route.ts (POST)` / `/Users/yusuke/workspace/careviax/prisma/schema/prescription.prisma (PrescriptionLine)、/Users/yusuke/workspace/careviax/prisma/schema/patient.prisma (PackagingMethod enum)`
 - 撮影セットアップ: map は /prescriptions/new + note 登録済み。撮影前操作: デモ患者を選択し5明細(分包なし/一包化2/別包/粉砕)を投入した状態が必要。ステップ分割を実装するなら ?step=period のような URL パラメタを設けて setup を簡略化するのを推奨。seed のデモ患者(佐藤花子/鈴木一郎/田中美智子)を利用
 
 ### p0_11_prescription_diff_review
@@ -780,12 +780,10 @@
 
 - 種別: 改修 / 工数: M / 対応ルート: `/admin/staff`
 - デザイン: p0_39 と同一の 3 カラムマスター管理ハブで、カテゴリ=スタッフを選択した状態。中央「スタッフ 一覧」(名前+「有効」緑バッジ x8)、右「詳細を編集」フォーム + 保存する。画面タイトルは「スタッフ・権限管理」で、権限(ロール)編集を内包する想定。
-- 現状: /Users/yusuke/workspace/careviax/src/app/(dashboard)/admin/staff/page.tsx は AdminPageHeader + StaffKpiPanel(/api/admin/staff-metrics の薬剤師別 KPI)+ StaffBulkActions(一括取込)+ UsersContent(/Users/yusuke/workspace/careviax/src/app/(dashboard)/admin/users/users-content.tsx、/api/pharmacists ベースの DataTable + 招待 Sheet)を縦に積んだ運用管理画面。ロール・サイト割当や Cognito 招待は UsersContent 内で実装済み。
+- 現状: /Users/yusuke/workspace/careviax/src/app/(dashboard)/admin/staff/page.tsx は MasterEditorView ベースのマスター管理画面。ロール・サイト割当や Cognito 招待は関連する users/pharmacists 管理導線で扱う。
 - UI ギャップ:
-  - 3 カラムハブ構成でなく、KPI・一括取込・一覧が縦積みでデザインより情報過多
-  - 一覧がカード+「有効」緑バッジ形式でない(DataTable。有効/無効は Cognito 状態列で表現)
-  - 右カラム常設の「詳細を編集」フォームが無い(編集・招待は Sheet)
-  - デザインの簡易フィールド(名称/コード/分類=ロール/注意ポイント/タグ/メモ)と既存フォーム(ロール/サイト/メール等)のマッピング整理が必要
+  - 3 カラムマスター管理ハブとして統合済みだが、スタッフ・権限固有の編集項目と users/pharmacists 導線の役割分担確認が必要
+  - デザインの簡易フィールド(名称/コード/分類=ロール/注意ポイント/タグ/メモ)と既存データ(ロール/サイト/メール等)のマッピング整理が必要
 - バックエンド:
   - 不足なし(既存 /api/pharmacists CRUD、/api/pharmacy-sites、招待・ロール変更 API を利用)
   - スタッフへの「タグ」「注意ポイント/メモ」を保存する場合は Pharmacist へのフィールド追加が必要
