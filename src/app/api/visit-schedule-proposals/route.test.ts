@@ -500,7 +500,11 @@ describe('/api/visit-schedule-proposals', () => {
     expect(careCaseFindFirstMock.mock.calls[0]?.[0]?.where).not.toHaveProperty('AND');
     expect(generateVisitScheduleProposalDraftsMock).toHaveBeenCalled();
     expect(visitScheduleProposalUpdateManyMock).toHaveBeenCalled();
-    expect(visitScheduleProposalCreateMock).toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        reproposal_source_proposal_id: null,
+      }),
+    });
     expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function), {
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });
@@ -529,6 +533,13 @@ describe('/api/visit-schedule-proposals', () => {
     ))!;
 
     expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        expect.objectContaining({
+          reproposal_source_proposal_id: 'proposal_source',
+        }),
+      ],
+    });
     expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
       case_id: 'case_1',
       schedule_id: 'schedule_source',
@@ -546,6 +557,23 @@ describe('/api/visit-schedule-proposals', () => {
         }),
       }),
     });
+    expect(visitScheduleProposalCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        reschedule_source_schedule_id: 'schedule_source',
+        reproposal_source_proposal_id: 'proposal_source',
+      }),
+    });
+    expect(auditLogCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          changes: expect.objectContaining({
+            proposal_batch_id: 'proposal_batch_1',
+            reschedule_source_schedule_id: 'schedule_source',
+            reproposal_source_proposal_id: 'proposal_source',
+          }),
+        }),
+      }),
+    );
     expect(visitScheduleProposalUpdateManyMock).toHaveBeenCalledWith({
       where: expect.objectContaining({
         org_id: 'org_1',
@@ -1036,6 +1064,35 @@ describe('/api/visit-schedule-proposals', () => {
     expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
   });
 
+  it('rejects blank reproposal source proposal ids before case lookup or planner side effects', async () => {
+    const response = (await POST(
+      createRequest('http://localhost/api/visit-schedule-proposals', {
+        case_id: 'case_1',
+        candidate_count: 1,
+        reproposal_source_proposal_id: '',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        reproposal_source_proposal_id: ['再提案元の訪問候補IDは必須です'],
+      },
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(prescriptionIntakeFindFirstMock).not.toHaveBeenCalled();
+    expect(billingCandidateFindManyMock).not.toHaveBeenCalled();
+    expect(generateVisitScheduleProposalDraftsMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalUpdateManyMock).not.toHaveBeenCalled();
+    expect(visitScheduleProposalCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(notifyWorkflowMutationMock).not.toHaveBeenCalled();
+  });
+
   it('rejects invalid preferred visit times before case lookup or planner side effects', async () => {
     const response = (await POST(
       createRequest('http://localhost/api/visit-schedule-proposals', {
@@ -1321,7 +1378,7 @@ describe('/api/visit-schedule-proposals', () => {
     expect(auditLogCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          changes: {
+          changes: expect.objectContaining({
             diagnostics: {
               accepted: [
                 expect.objectContaining({
@@ -1335,7 +1392,7 @@ describe('/api/visit-schedule-proposals', () => {
                 }),
               ],
             },
-          },
+          }),
         }),
       }),
     );

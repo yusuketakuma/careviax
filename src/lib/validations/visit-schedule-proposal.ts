@@ -47,7 +47,11 @@ export const generateVisitScheduleProposalSchema = z
     preferred_pharmacist_id: z.string().optional(),
     vehicle_resource_id: z.string().trim().min(1).optional(),
     reschedule_source_schedule_id: z.string().optional(),
-    reproposal_source_proposal_id: z.string().optional(),
+    reproposal_source_proposal_id: z
+      .string()
+      .trim()
+      .min(1, '再提案元の訪問候補IDは必須です')
+      .optional(),
     special_cap_eligible: z.boolean().optional(),
     idempotency_key: idempotencyKeySchema,
   })

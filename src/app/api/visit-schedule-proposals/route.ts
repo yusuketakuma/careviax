@@ -834,6 +834,9 @@ export const POST = withAuthContext(
               data: {
                 ...draft,
                 proposal_batch_id: proposalBatchId,
+                reschedule_source_schedule_id:
+                  resolvedRescheduleSourceScheduleId ?? draft.reschedule_source_schedule_id,
+                reproposal_source_proposal_id: parsed.data.reproposal_source_proposal_id ?? null,
               },
             }),
           ),
@@ -853,6 +856,9 @@ export const POST = withAuthContext(
               targetType: 'VisitScheduleProposal',
               targetId: proposal.id,
               changes: {
+                proposal_batch_id: proposalBatchId,
+                reproposal_source_proposal_id: parsed.data.reproposal_source_proposal_id ?? null,
+                reschedule_source_schedule_id: resolvedRescheduleSourceScheduleId ?? null,
                 diagnostics: {
                   accepted: acceptedDiagnostic ? [acceptedDiagnostic] : [],
                   rejected: [...(plannerDiagnostics?.rejected ?? []), ...rejectedByBilling],

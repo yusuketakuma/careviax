@@ -304,15 +304,20 @@ model VisitScheduleProposal {
   finalized_schedule            VisitSchedule?              @relation("ProposalFinalizedSchedule", fields: [finalized_schedule_id], references: [id])
   reschedule_source_schedule_id String?
   reschedule_source_schedule    VisitSchedule?              @relation("ProposalRescheduleSource", fields: [reschedule_source_schedule_id], references: [id])
+  reproposal_source_proposal_id String?
+  reproposal_source_proposal    VisitScheduleProposal?      @relation("ProposalReproposalSource", fields: [reproposal_source_proposal_id, org_id, case_id], references: [id, org_id, case_id], onDelete: Restrict, onUpdate: Cascade)
+  reproposal_children           VisitScheduleProposal[]     @relation("ProposalReproposalSource")
   contact_logs                  VisitScheduleContactLog[]
   created_at                    DateTime                    @default(now())
   updated_at                    DateTime                    @updatedAt
 
+  @@unique([id, org_id, case_id], map: "VisitScheduleProposal_id_org_id_case_id_key")
   @@index([org_id, proposal_status])
   @@index([case_id, proposed_date])
   @@index([site_id, proposed_date])
   @@index([org_id, vehicle_resource_id])
   @@index([proposal_batch_id])
+  @@index([org_id, reproposal_source_proposal_id], map: "VisitScheduleProposal_org_id_reproposal_source_proposal_id_idx")
   @@index([org_id, proposed_pharmacist_id, proposed_date, route_order], map: "VisitScheduleProposal_route_cell_order_idx")
 }
 

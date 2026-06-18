@@ -2110,10 +2110,14 @@ describe('ScheduleProposalsContent', () => {
       within(detailDialog).getByRole('link', { name: '再提案条件を入力' }).getAttribute('href'),
     ).toBe('#schedule-proposal-reproposal');
     expect(within(detailDialog).getByText('変更希望時の再提案')).toBeTruthy();
-    expect(within(detailDialog).getByRole('button', { name: '変更希望で再提案' })).toBeTruthy();
+    expect(
+      within(detailDialog).getByRole('button', { name: '記録済み変更希望から再提案' }),
+    ).toBeTruthy();
     expect(detailDialog.textContent ?? '').not.toContain('この候補は終了しています');
 
-    fireEvent.click(within(detailDialog).getByRole('button', { name: '変更希望で再提案' }));
+    fireEvent.click(
+      within(detailDialog).getByRole('button', { name: '記録済み変更希望から再提案' }),
+    );
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(

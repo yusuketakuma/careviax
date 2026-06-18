@@ -3298,7 +3298,11 @@ export function ScheduleProposalsContent({
                     onClick={() => reProposalMutation.mutate()}
                     disabled={reProposalMutation.isPending}
                   >
-                    {reProposalMutation.isPending ? '再提案を生成中...' : '変更希望で再提案'}
+                    {reProposalMutation.isPending
+                      ? '再提案を生成中...'
+                      : detail?.patient_contact_status === 'change_requested'
+                        ? '記録済み変更希望から再提案'
+                        : '変更希望で再提案'}
                   </Button>
                 </CardContent>
               </Card>
