@@ -211,6 +211,9 @@ describe('/api/care-reports GET', () => {
     expect(response.status).toBe(200);
     expect(careReportFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        select: expect.objectContaining({
+          content: true,
+        }),
         where: expect.objectContaining({
           org_id: 'org_1',
           visit_record_id: 'visit_1',
@@ -338,6 +341,7 @@ describe('/api/care-reports GET', () => {
         ]),
       }),
     });
+    expect(listCall.select).not.toHaveProperty('content');
     const summaryCall = careReportFindManyMock.mock.calls[1]?.[0];
     expect(summaryCall).toMatchObject({
       orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
@@ -347,7 +351,8 @@ describe('/api/care-reports GET', () => {
     });
     expect(summaryCall.where).not.toHaveProperty('AND');
 
-    await expect(response.json()).resolves.toMatchObject({
+    const payload = await response.json();
+    expect(payload).toMatchObject({
       data: [{ id: 'report_page_1' }],
       hasMore: true,
       nextCursor: 'report_page_1',
@@ -355,6 +360,7 @@ describe('/api/care-reports GET', () => {
         pending_delivery_count: 1,
       },
     });
+    expect(payload.data[0]).not.toHaveProperty('content');
   });
 
   it('does not match keywords against hidden report metadata', async () => {
@@ -382,6 +388,9 @@ describe('/api/care-reports GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(careReportFindManyMock.mock.calls[0]?.[0].select).toMatchObject({
+      content: true,
+    });
     const payload = await response.json();
     expect(payload.data[0].content).toMatchObject({
       summary: '服薬状況は安定。夜間の眠気について経過観察。',
@@ -433,7 +442,9 @@ describe('/api/care-reports GET', () => {
       },
     ]);
 
-    const response = await getCareReports(createAuthenticatedRequest());
+    const response = await getCareReports(
+      createAuthenticatedRequest('http://localhost/api/care-reports?include_content=1'),
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);

@@ -45,7 +45,7 @@ const createCareReportSchema = z.object({
   template_id: optionalTrimmedStringSchema,
 });
 
-const careReportSelect = {
+const careReportBaseSelect = {
   id: true,
   org_id: true,
   patient_id: true,
@@ -53,7 +53,6 @@ const careReportSelect = {
   visit_record_id: true,
   report_type: true,
   status: true,
-  content: true,
   template_id: true,
   pdf_url: true,
   created_by: true,
@@ -72,10 +71,21 @@ const careReportSelect = {
   },
 } satisfies Prisma.CareReportSelect;
 
+const careReportContentSelect = {
+  ...careReportBaseSelect,
+  content: true,
+} satisfies Prisma.CareReportSelect;
+
 const careReportDeliverySummarySelect = {
   id: true,
-  delivery_records: careReportSelect.delivery_records,
+  delivery_records: careReportBaseSelect.delivery_records,
 } satisfies Prisma.CareReportSelect;
+
+type CareReportListRow = Prisma.CareReportGetPayload<{
+  select: typeof careReportBaseSelect;
+}> & {
+  content?: Prisma.JsonValue;
+};
 
 const careReportListOrderBy = [
   { created_at: 'desc' },
@@ -115,6 +125,11 @@ function readSearchableReportText(contentValue: Prisma.JsonValue) {
     readJsonObjectString(content, 'plan'),
   ];
   return safeTextValues.filter(Boolean).join('\n').toLowerCase();
+}
+
+function readSelectedReportContent(report: CareReportListRow, shouldReadContent: boolean) {
+  if (!shouldReadContent || !('content' in report)) return null;
+  return report.content;
 }
 
 function appendCareReportWhereAnd(
@@ -398,6 +413,7 @@ export const GET = withAuthContext(
       ...(accessWhere ? { AND: [accessWhere] } : {}),
     };
     const canUseDbPagination = !keyword;
+    const shouldReadContent = Boolean(includeContent || keyword);
     const cursorReport =
       canUseDbPagination && cursor
         ? await prisma.careReport.findFirst({
@@ -409,12 +425,12 @@ export const GET = withAuthContext(
       ? appendCareReportWhereAnd(where, buildCareReportCursorWhere(cursorReport))
       : where;
 
-    const reports = await prisma.careReport.findMany({
+    const reports = (await prisma.careReport.findMany({
       where: listWhere,
       orderBy: careReportListOrderBy,
-      select: careReportSelect,
+      select: shouldReadContent ? careReportContentSelect : careReportBaseSelect,
       ...(canUseDbPagination ? { take: limit + 1 } : {}),
-    });
+    })) as CareReportListRow[];
     const deliverySummaryReports = canUseDbPagination
       ? await prisma.careReport.findMany({
           where,
@@ -443,7 +459,10 @@ export const GET = withAuthContext(
     const patientNameById = new Map(patientRows.map((patient) => [patient.id, patient.name]));
 
     const enrichedData = reports.map((report) => {
-      const billingContext = readJsonObject(readJsonObject(report.content)?.billing_context);
+      const reportContent = readSelectedReportContent(report, shouldReadContent);
+      const billingContext = reportContent
+        ? readJsonObject(readJsonObject(reportContent)?.billing_context)
+        : null;
       const latestDelivery = report.delivery_records[0] ?? null;
       const pendingDeliveryCount = report.delivery_records.filter(
         (record) => record.status === 'response_waiting',
@@ -465,9 +484,9 @@ export const GET = withAuthContext(
         created_by: report.created_by,
         created_at: report.created_at,
         updated_at: report.updated_at,
-        ...(includeContent ? { content: report.content } : {}),
+        ...(includeContent && reportContent !== null ? { content: reportContent } : {}),
         delivery_records: report.delivery_records,
-        _searchable_report_text: readSearchableReportText(report.content),
+        _searchable_report_text: reportContent ? readSearchableReportText(reportContent) : '',
         patient_name: patientNameById.get(report.patient_id) ?? null,
         latest_delivery_status: latestDelivery?.status ?? null,
         latest_delivery_sent_at: latestDelivery?.sent_at ?? null,
