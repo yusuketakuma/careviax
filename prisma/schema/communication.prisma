@@ -64,6 +64,7 @@ model CommunicationEvent {
   counterpart_contact String?
   subject             String?
   content             String?
+  attachments         Json?
   occurred_at         DateTime             @default(now())
   created_at          DateTime             @default(now())
   updated_at          DateTime             @updatedAt
