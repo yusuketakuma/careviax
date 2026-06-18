@@ -114,6 +114,19 @@ export function getVisitReadyTransitionErrorMessage(details: VisitReadyTransitio
   return VISIT_READY_CONTEXT_BLOCKED_MESSAGE;
 }
 
+export function sanitizeVisitReadyTransitionDetails(details: VisitReadyTransitionBlockers) {
+  return {
+    readiness_blockers: details.readiness_blockers,
+    onboarding_blockers: details.onboarding_blockers,
+    billing_blockers: details.billing_blockers.map(({ key, reason, action_label, severity }) => ({
+      key,
+      reason,
+      action_label,
+      severity,
+    })),
+  };
+}
+
 export async function evaluateVisitScheduleReadyTransition(
   db: ReadyTransitionDb,
   args: { orgId: string; scheduleId: string },

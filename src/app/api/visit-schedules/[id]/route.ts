@@ -39,7 +39,7 @@ import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cac
 import {
   evaluateVisitScheduleReadyTransition,
   getVisitReadyTransitionErrorMessage,
-  type VisitReadyTransitionBlockers,
+  sanitizeVisitReadyTransitionDetails,
 } from '@/server/services/visit-preparation-readiness';
 
 const VISIT_SCHEDULE_PATCH_SERIALIZABLE_RETRY_LIMIT = 3;
@@ -563,19 +563,6 @@ function shouldRequireReadyTransitionGate(
     isReadyGatedScheduleStatus(targetStatus) &&
     !READY_SATISFIED_SCHEDULE_STATUSES.has(currentStatus)
   );
-}
-
-function sanitizeVisitReadyTransitionDetails(details: VisitReadyTransitionBlockers) {
-  return {
-    readiness_blockers: details.readiness_blockers,
-    onboarding_blockers: details.onboarding_blockers,
-    billing_blockers: details.billing_blockers.map(({ key, reason, action_label, severity }) => ({
-      key,
-      reason,
-      action_label,
-      severity,
-    })),
-  };
 }
 
 /**

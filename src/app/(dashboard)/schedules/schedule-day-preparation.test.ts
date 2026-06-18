@@ -492,15 +492,13 @@ describe('schedule day preparation helpers', () => {
       body: JSON.stringify({
         checklist: completeForm,
         ...completeForm,
+        mark_ready: false,
       }),
     });
   });
 
-  it('saves preparation then marks the schedule ready when requested', async () => {
-    const fetchImpl = vi
-      .fn()
-      .mockResolvedValueOnce(Response.json({ data: { id: 'prep_1' } }))
-      .mockResolvedValueOnce(Response.json({ data: { id: 'schedule_1' } }));
+  it('saves preparation and marks the schedule ready atomically when requested', async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(Response.json({ data: { id: 'prep_1' } }));
 
     await saveScheduleDayPreparation({
       orgId: 'org_1',
@@ -512,14 +510,17 @@ describe('schedule day preparation helpers', () => {
       fetchImpl,
     });
 
-    expect(fetchImpl).toHaveBeenNthCalledWith(2, '/api/visit-schedules/schedule_1', {
-      method: 'PATCH',
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledWith('/api/visit-preparations/schedule_1', {
+      method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
         'x-org-id': 'org_1',
       },
       body: JSON.stringify({
-        schedule_status: 'ready',
+        checklist: completeForm,
+        ...completeForm,
+        mark_ready: true,
       }),
     });
   });
@@ -551,15 +552,13 @@ describe('schedule day preparation helpers', () => {
           form: completeForm,
           markReady: true,
         },
-        fetchImpl: vi
-          .fn()
-          .mockResolvedValueOnce(Response.json({ data: { id: 'prep_1' } }))
-          .mockResolvedValueOnce(
+        fetchImpl: vi.fn(
+          async () =>
             new Response(JSON.stringify({ message: 'ready にできません' }), {
-              status: 409,
+              status: 400,
               headers: { 'Content-Type': 'application/json' },
             }),
-          ),
+        ),
       }),
     ).rejects.toThrow('ready にできません');
   });

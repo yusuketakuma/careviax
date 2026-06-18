@@ -20,6 +20,7 @@ const {
   notifyWorkflowMutationMock,
   evaluateReadyTransitionMock,
   getReadyTransitionErrorMessageMock,
+  sanitizeReadyTransitionDetailsMock,
   withOrgContextMock,
   auditLogCreateMock,
 } = vi.hoisted(() => ({
@@ -40,6 +41,18 @@ const {
   notifyWorkflowMutationMock: vi.fn(),
   evaluateReadyTransitionMock: vi.fn(),
   getReadyTransitionErrorMessageMock: vi.fn(),
+  sanitizeReadyTransitionDetailsMock: vi.fn((details) => ({
+    readiness_blockers: details.readiness_blockers,
+    onboarding_blockers: details.onboarding_blockers,
+    billing_blockers: details.billing_blockers.map(
+      ({ key, reason, action_label, severity }: Record<string, unknown>) => ({
+        key,
+        reason,
+        action_label,
+        severity,
+      }),
+    ),
+  })),
   withOrgContextMock: vi.fn(),
   auditLogCreateMock: vi.fn(),
 }));
@@ -90,6 +103,7 @@ vi.mock('@/server/services/workflow-dashboard-cache', () => ({
 vi.mock('@/server/services/visit-preparation-readiness', () => ({
   evaluateVisitScheduleReadyTransition: evaluateReadyTransitionMock,
   getVisitReadyTransitionErrorMessage: getReadyTransitionErrorMessageMock,
+  sanitizeVisitReadyTransitionDetails: sanitizeReadyTransitionDetailsMock,
 }));
 
 import { DELETE, GET, PATCH } from './route';

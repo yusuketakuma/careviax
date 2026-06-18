@@ -23,6 +23,7 @@ const {
   visitPreparationUpsertMock,
   visitVehicleResourceFindFirstMock,
   visitScheduleUpdateMock,
+  visitScheduleUpdateManyMock,
   computeOptimizedVisitRouteMock,
   withOrgContextMock,
   upsertOperationalTaskMock,
@@ -49,6 +50,7 @@ const {
   visitPreparationUpsertMock: vi.fn(),
   visitVehicleResourceFindFirstMock: vi.fn(),
   visitScheduleUpdateMock: vi.fn(),
+  visitScheduleUpdateManyMock: vi.fn(),
   computeOptimizedVisitRouteMock: vi.fn(),
   withOrgContextMock: vi.fn(),
   upsertOperationalTaskMock: vi.fn(),
@@ -180,12 +182,40 @@ function buildPutScheduleMock(overrides: Record<string, unknown> = {}) {
     vehicle_resource_id: null,
     carry_items_status: 'ready',
     schedule_status: 'planned',
+    confirmed_at: null,
     scheduled_date: new Date('2026-03-27T00:00:00Z'),
     route_order: 1,
     pharmacist_id: 'user_1',
+    version: 1,
     case_: {
       primary_pharmacist_id: 'user_primary',
       backup_pharmacist_id: null,
+    },
+    ...overrides,
+  };
+}
+
+function buildReadyTransitionScheduleMock(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'schedule_1',
+    case_id: 'case_1',
+    carry_items_status: 'ready',
+    scheduled_date: new Date('2026-03-27T00:00:00Z'),
+    preparation: {
+      org_id: 'org_1',
+      medication_changes_reviewed: true,
+      carry_items_confirmed: true,
+      previous_issues_reviewed: true,
+      route_confirmed: true,
+      offline_synced: true,
+    },
+    case_: {
+      patient: {
+        id: 'patient_1',
+        org_id: 'org_1',
+        contacts: [{ id: 'contact_1' }],
+      },
+      care_team_links: [{ role: 'physician' }],
     },
     ...overrides,
   };
@@ -1452,6 +1482,7 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
     visitScheduleFindFirstMock.mockResolvedValue(buildPutScheduleMock());
+    billingEvidenceBlockersMock.mockResolvedValue([]);
     visitPreparationUpsertMock.mockResolvedValue({
       id: 'prep_1',
       schedule_id: 'schedule_1',
@@ -1524,6 +1555,7 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
       id: 'schedule_1',
       vehicle_resource_id: 'vehicle_1',
     });
+    visitScheduleUpdateManyMock.mockResolvedValue({ count: 1 });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         visitPreparation: {
@@ -1531,6 +1563,7 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
         },
         visitSchedule: {
           update: visitScheduleUpdateMock,
+          updateMany: visitScheduleUpdateManyMock,
         },
       }),
     );
@@ -1667,6 +1700,309 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
       }),
     );
     expect(upsertOperationalTaskMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects mark_ready before upsert when checklist readiness is incomplete', async () => {
+    const response = await PUT(
+      createPutRequest({
+        ...completePreparationBody,
+        previous_issues_reviewed: false,
+        mark_ready: true,
+      }),
+      {
+        params: Promise.resolve({ scheduleId: 'schedule_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '訪問準備チェックリストが未完了のため ready へ進めません',
+      details: {
+        readiness_blockers: ['前回課題の確認'],
+        onboarding_blockers: [],
+        billing_blockers: [],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(visitPreparationUpsertMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+  });
+
+  it('upserts preparation and advances the schedule ready in the same transaction', async () => {
+    const txVisitScheduleFindFirstMock = vi
+      .fn()
+      .mockResolvedValue(buildReadyTransitionScheduleMock());
+    const txConsentFindFirstMock = vi.fn().mockResolvedValue({ id: 'consent_1' });
+    const txFirstVisitDocumentFindFirstMock = vi.fn().mockResolvedValue({
+      id: 'first_doc_1',
+      delivered_at: new Date('2026-03-26T00:00:00Z'),
+    });
+    const txManagementPlanFindFirstMock = vi.fn().mockResolvedValue({
+      id: 'plan_1',
+      status: 'approved',
+      approved_at: new Date('2026-03-20T00:00:00Z'),
+      next_review_date: null,
+    });
+    const txVisitRecordFindManyMock = vi.fn().mockResolvedValue([{ id: 'visit_record_1' }]);
+    const txMedicationCycleFindManyMock = vi.fn().mockResolvedValue([{ id: 'cycle_1' }]);
+
+    withOrgContextMock.mockImplementationOnce(async (_orgId, callback) =>
+      callback({
+        visitPreparation: {
+          upsert: visitPreparationUpsertMock,
+        },
+        visitSchedule: {
+          update: visitScheduleUpdateMock,
+          updateMany: visitScheduleUpdateManyMock,
+          findFirst: txVisitScheduleFindFirstMock,
+        },
+        consentRecord: {
+          findFirst: txConsentFindFirstMock,
+        },
+        firstVisitDocument: {
+          findFirst: txFirstVisitDocumentFindFirstMock,
+        },
+        managementPlan: {
+          findFirst: txManagementPlanFindFirstMock,
+        },
+        visitRecord: {
+          findMany: txVisitRecordFindManyMock,
+        },
+        medicationCycle: {
+          findMany: txMedicationCycleFindManyMock,
+        },
+        billingEvidence: {
+          findMany: vi.fn(),
+        },
+      }),
+    );
+
+    const response = await PUT(
+      createPutRequest({
+        ...completePreparationBody,
+        mark_ready: true,
+      }),
+      {
+        params: Promise.resolve({ scheduleId: 'schedule_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(visitPreparationUpsertMock).toHaveBeenCalled();
+    expect(txVisitScheduleFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          id: 'schedule_1',
+        }),
+      }),
+    );
+    expect(billingEvidenceBlockersMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        visitSchedule: expect.objectContaining({
+          findFirst: txVisitScheduleFindFirstMock,
+        }),
+      }),
+      expect.objectContaining({
+        orgId: 'org_1',
+        patientId: 'patient_1',
+        visitRecordIds: ['visit_record_1'],
+        cycleIds: ['cycle_1'],
+      }),
+    );
+    expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'schedule_1',
+        org_id: 'org_1',
+        version: 1,
+        confirmed_at: null,
+        pharmacist_id: 'user_1',
+        scheduled_date: new Date('2026-03-27T00:00:00Z'),
+        schedule_status: 'planned',
+      },
+      data: {
+        schedule_status: 'ready',
+        pre_visit_checklist_completed: true,
+        version: { increment: 1 },
+      },
+    });
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        dedupeKey: 'visit-preparation:schedule_1',
+        status: 'completed',
+      }),
+    );
+  });
+
+  it('rejects mark_ready when the schedule changed before the guarded ready update', async () => {
+    const txVisitScheduleFindFirstMock = vi
+      .fn()
+      .mockResolvedValue(buildReadyTransitionScheduleMock());
+    visitScheduleUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+    withOrgContextMock.mockImplementationOnce(async (_orgId, callback) =>
+      callback({
+        visitPreparation: {
+          upsert: visitPreparationUpsertMock,
+        },
+        visitSchedule: {
+          update: visitScheduleUpdateMock,
+          updateMany: visitScheduleUpdateManyMock,
+          findFirst: txVisitScheduleFindFirstMock,
+        },
+        consentRecord: {
+          findFirst: vi.fn().mockResolvedValue({ id: 'consent_1' }),
+        },
+        firstVisitDocument: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'first_doc_1',
+            delivered_at: new Date('2026-03-26T00:00:00Z'),
+          }),
+        },
+        managementPlan: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'plan_1',
+            status: 'approved',
+            approved_at: new Date('2026-03-20T00:00:00Z'),
+            next_review_date: null,
+          }),
+        },
+        visitRecord: {
+          findMany: vi.fn().mockResolvedValue([{ id: 'visit_record_1' }]),
+        },
+        medicationCycle: {
+          findMany: vi.fn().mockResolvedValue([{ id: 'cycle_1' }]),
+        },
+        billingEvidence: {
+          findMany: vi.fn(),
+        },
+      }),
+    );
+
+    const response = await PUT(
+      createPutRequest({
+        ...completePreparationBody,
+        mark_ready: true,
+      }),
+      {
+        params: Promise.resolve({ scheduleId: 'schedule_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '訪問予定が同時に更新されました。再読み込みしてください',
+    });
+    expect(visitScheduleUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'schedule_1',
+          schedule_status: 'planned',
+          version: 1,
+        }),
+      }),
+    );
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+  });
+
+  it('returns sanitized ready transition details when mark_ready is blocked after upsert', async () => {
+    const txVisitScheduleFindFirstMock = vi
+      .fn()
+      .mockResolvedValue(buildReadyTransitionScheduleMock());
+    billingEvidenceBlockersMock.mockResolvedValueOnce([
+      {
+        id: 'billing_evidence_secret',
+        visit_record_id: 'visit_record_secret',
+        blockers: [
+          {
+            key: 'missing_signed_receipt',
+            reason: '署名確認が未完了です',
+            action_label: '請求証跡を確認',
+            severity: 'high',
+          },
+        ],
+      },
+    ]);
+    withOrgContextMock.mockImplementationOnce(async (_orgId, callback) =>
+      callback({
+        visitPreparation: {
+          upsert: visitPreparationUpsertMock,
+        },
+        visitSchedule: {
+          update: visitScheduleUpdateMock,
+          updateMany: visitScheduleUpdateManyMock,
+          findFirst: txVisitScheduleFindFirstMock,
+        },
+        consentRecord: {
+          findFirst: vi.fn().mockResolvedValue({ id: 'consent_1' }),
+        },
+        firstVisitDocument: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'first_doc_1',
+            delivered_at: new Date('2026-03-26T00:00:00Z'),
+          }),
+        },
+        managementPlan: {
+          findFirst: vi.fn().mockResolvedValue({
+            id: 'plan_1',
+            status: 'approved',
+            approved_at: new Date('2026-03-20T00:00:00Z'),
+            next_review_date: null,
+          }),
+        },
+        visitRecord: {
+          findMany: vi.fn().mockResolvedValue([{ id: 'visit_record_1' }]),
+        },
+        medicationCycle: {
+          findMany: vi.fn().mockResolvedValue([{ id: 'cycle_1' }]),
+        },
+        billingEvidence: {
+          findMany: vi.fn(),
+        },
+      }),
+    );
+
+    const response = await PUT(
+      createPutRequest({
+        ...completePreparationBody,
+        mark_ready: true,
+      }),
+      {
+        params: Promise.resolve({ scheduleId: 'schedule_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '訪問準備に未解決の止まっている理由があるため ready へ進めません',
+      details: {
+        billing_blockers: [
+          {
+            key: 'missing_signed_receipt',
+            reason: '署名確認が未完了です',
+            action_label: '請求証跡を確認',
+            severity: 'high',
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain('billing_evidence_secret');
+    expect(JSON.stringify(body)).not.toContain('visit_record_secret');
+    expect(visitScheduleUpdateMock).not.toHaveBeenCalled();
+    expect(visitScheduleUpdateManyMock).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
   });
 
   it('stores route plan snapshots and assigns the selected vehicle resource', async () => {

@@ -295,29 +295,13 @@ export async function saveScheduleDayPreparation({
     body: JSON.stringify({
       checklist: request.form,
       ...request.form,
+      mark_ready: request.markReady,
     }),
   });
 
   if (!preparationRes.ok) {
     const error = (await preparationRes.json().catch(() => ({}))) as { message?: string };
     throw new Error(error.message ?? '訪問準備の保存に失敗しました');
-  }
-
-  if (request.markReady) {
-    const readyRes = await fetchImpl(`/api/visit-schedules/${request.scheduleId}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-org-id': orgId,
-      },
-      body: JSON.stringify({
-        schedule_status: 'ready',
-      }),
-    });
-    if (!readyRes.ok) {
-      const error = (await readyRes.json().catch(() => ({}))) as { message?: string };
-      throw new Error(error.message ?? '訪問予定を ready に更新できませんでした');
-    }
   }
 
   return preparationRes.json();

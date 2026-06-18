@@ -34,6 +34,7 @@ export const upsertVisitPreparationSchema = z.object({
   route_confirmed: z.boolean().default(false),
   route_plan_snapshot: routePlanSnapshotSchema.nullable().optional(),
   offline_synced: z.boolean().default(false),
+  mark_ready: z.boolean().default(false),
   /** テンプレートオプション — 指定時はチェックリストをテンプレートから初期化する */
   template_options: z
     .object({
