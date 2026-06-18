@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
 import { formatOptionalDate } from '@/lib/patient/home-visit-intake';
 import { resolvePatientMcsOpenTargets } from '@/lib/patient-mcs/source';
+import { formatYen } from '@/lib/ui/currency-format';
 import { listPatientBillingCaseRefs } from '@/server/services/patient-detail-billing-refs';
 import { buildPatientDetailWhere } from '@/server/services/patient-detail-scope';
 import type {
@@ -53,7 +54,7 @@ function formatTokyoDateKey(value: Date) {
 }
 
 function formatCurrency(value: number | null | undefined) {
-  return value == null ? '未記録' : `${value.toLocaleString('ja-JP')}円`;
+  return formatYen(value, '未記録');
 }
 
 function compact(values: Array<string | null | undefined | false>) {

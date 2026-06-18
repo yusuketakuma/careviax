@@ -24,6 +24,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loading } from '@/components/ui/loading';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
+import { CASE_STATUS_LABELS as caseStatusLabel } from '@/lib/constants/status-labels';
 import {
   Select,
   SelectContent,
@@ -73,15 +74,6 @@ type ManagementPlanFormState = {
   effective_from: string;
   next_review_date: string;
   contentText: string;
-};
-
-const caseStatusLabel: Record<string, string> = {
-  referral_received: '紹介受領',
-  assessment: 'アセスメント',
-  active: '稼働中',
-  on_hold: '保留',
-  discharged: '終了',
-  terminated: '解約',
 };
 
 const managementPlanStatusLabel: Record<ManagementPlan['status'], string> = {

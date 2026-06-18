@@ -19,13 +19,13 @@ import {
   type AdjustmentPlan,
   type AdjustmentPlanTone,
   type ConflictScheduleInput,
-} from '@/server/services/visit-schedule-conflicts';
+} from '@/lib/schedules/visit-schedule-conflicts';
 
 /**
  * p0_19「予定の重なりを直す」: 本日の訪問予定から、同一薬剤師の時間帯重複と
  * 同一社用車の同時使用を検知し、左に重なり一覧テーブル、中央に調整案 A/B/C、
  * 右に「次にやること」(推奨案の採用 / 患者再確認)を提示する読取専用の調整画面。
- * 検知・調整案合成のロジックは server/services/visit-schedule-conflicts.ts に集約する。
+ * 検知・調整案合成のロジックは lib/schedules/visit-schedule-conflicts.ts に集約する。
  */
 
 const PLAN_CARD_TONE: Record<AdjustmentPlanTone, string> = {

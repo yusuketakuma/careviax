@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
-import { prisma } from '@/lib/db';
+import { prisma } from '@/lib/db/client';
 import { validationError } from '@/lib/api/response';
 import { parseAuditLogFilters } from '@/lib/api/audit-log-filters';
 import { redactAuditLogsForResponse } from '@/lib/audit-logs/redaction';

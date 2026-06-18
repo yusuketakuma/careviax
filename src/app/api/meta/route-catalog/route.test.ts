@@ -40,6 +40,10 @@ describe('/api/meta/route-catalog GET', () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({
+      meta: {
+        scope: 'curated_operational_routes',
+        exhaustive: false,
+      },
       data: expect.arrayContaining([
         expect.objectContaining({
           path: '/api/patients',

@@ -131,45 +131,62 @@ async function uploadEvidenceDraft(
   visitRecordId: string,
   orgId: string,
 ): Promise<void> {
-  const dataUrl = await decryptOfflinePayload(draft.payload);
-  if (!dataUrl) throw new Error('写真データを復号できませんでした');
-  const blob = await (await fetchEvidenceSync(dataUrl)).blob();
-
   const jsonHeaders = { 'Content-Type': 'application/json', 'x-org-id': orgId };
+  let fileAssetId =
+    draft.uploadedVisitRecordId === visitRecordId ? (draft.uploadedFileAssetId ?? null) : null;
 
-  // 1. presigned-upload → 2. PUT → 3. complete(p0_31 残薬写真と同じ作法)
-  const presignRes = await fetchEvidenceSync('/api/files/presigned-upload', {
-    method: 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify({
-      purpose: 'visit-photo',
-      file_name: draft.fileName,
-      mime_type: draft.mimeType,
-      size_bytes: draft.sizeBytes,
-      visit_record_id: visitRecordId,
-    }),
-  });
-  const presignJson = await presignRes.json().catch(() => null);
-  if (!presignRes.ok) {
-    throw new Error(presignJson?.message ?? 'アップロードURLの取得に失敗しました');
+  if (!fileAssetId) {
+    const dataUrl = await decryptOfflinePayload(draft.payload);
+    if (!dataUrl) throw new Error('写真データを復号できませんでした');
+    const blob = await (await fetchEvidenceSync(dataUrl)).blob();
+
+    // 1. presigned-upload → 2. PUT → 3. complete(p0_31 残薬写真と同じ作法)
+    const presignRes = await fetchEvidenceSync('/api/files/presigned-upload', {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({
+        purpose: 'visit-photo',
+        file_name: draft.fileName,
+        mime_type: draft.mimeType,
+        size_bytes: draft.sizeBytes,
+        visit_record_id: visitRecordId,
+      }),
+    });
+    const presignJson = await presignRes.json().catch(() => null);
+    if (!presignRes.ok) {
+      throw new Error(presignJson?.message ?? 'アップロードURLの取得に失敗しました');
+    }
+
+    const uploadRes = await fetchEvidenceSync(presignJson.data.uploadUrl, {
+      method: 'PUT',
+      headers: presignJson.data.headers,
+      body: blob,
+    });
+    if (!uploadRes.ok) throw new Error('写真のアップロードに失敗しました');
+
+    const completeRes = await fetchEvidenceSync('/api/files/complete', {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({
+        file_id: presignJson.data.id,
+        etag: uploadRes.headers.get('etag') ?? undefined,
+      }),
+    });
+    if (!completeRes.ok) throw new Error('写真のアップロード確定に失敗しました');
+
+    const completedFileAssetId = presignJson?.data?.id;
+    if (typeof completedFileAssetId !== 'string' || !completedFileAssetId) {
+      throw new Error('写真のアップロード結果が不正です');
+    }
+    fileAssetId = completedFileAssetId;
+    await offlineDb.evidenceDrafts.update(draft.id!, {
+      uploadedFileAssetId: fileAssetId,
+      uploadedVisitRecordId: visitRecordId,
+      lastError: undefined,
+    });
   }
 
-  const uploadRes = await fetchEvidenceSync(presignJson.data.uploadUrl, {
-    method: 'PUT',
-    headers: presignJson.data.headers,
-    body: blob,
-  });
-  if (!uploadRes.ok) throw new Error('写真のアップロードに失敗しました');
-
-  const completeRes = await fetchEvidenceSync('/api/files/complete', {
-    method: 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify({
-      file_id: presignJson.data.id,
-      etag: uploadRes.headers.get('etag') ?? undefined,
-    }),
-  });
-  if (!completeRes.ok) throw new Error('写真のアップロード確定に失敗しました');
+  if (!fileAssetId) throw new Error('写真のアップロード結果が不正です');
 
   // 4. 訪問記録 attachments へ紐づけ(既存添付とマージ、楽観ロック version 必須)
   const detailRes = await fetchEvidenceSync(`/api/visit-records/${visitRecordId}`, {
@@ -185,7 +202,7 @@ async function uploadEvidenceDraft(
     headers: jsonHeaders,
     body: JSON.stringify({
       version: detail.version,
-      attachments: mergeVisitRecordAttachmentRefs(detail.attachments, presignJson.data.id),
+      attachments: mergeVisitRecordAttachmentRefs(detail.attachments, fileAssetId),
     }),
   });
   if (!patchRes.ok) {

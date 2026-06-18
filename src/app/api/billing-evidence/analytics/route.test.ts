@@ -4,12 +4,16 @@ import { NextRequest } from 'next/server';
 const {
   requireAuthContextMock,
   billingCandidateFindManyMock,
+  billingCandidateGroupByMock,
   billingEvidenceFindManyMock,
+  billingEvidenceGroupByMock,
   billingRuleCountMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   billingCandidateFindManyMock: vi.fn(),
+  billingCandidateGroupByMock: vi.fn(),
   billingEvidenceFindManyMock: vi.fn(),
+  billingEvidenceGroupByMock: vi.fn(),
   billingRuleCountMock: vi.fn(),
 }));
 
@@ -21,9 +25,11 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     billingCandidate: {
       findMany: billingCandidateFindManyMock,
+      groupBy: billingCandidateGroupByMock,
     },
     billingEvidence: {
       findMany: billingEvidenceFindManyMock,
+      groupBy: billingEvidenceGroupByMock,
     },
     billingRule: {
       count: billingRuleCountMock,
@@ -57,38 +63,63 @@ describe('/api/billing-evidence/analytics GET', () => {
     billingCandidateFindManyMock.mockResolvedValue([
       {
         billing_month: new Date('2026-03-01T00:00:00.000Z'),
-        status: 'candidate',
-        billing_code: 'M001',
-        billing_name: '在宅患者訪問薬剤管理指導料',
         source_snapshot: { revision_code: '2026' },
       },
       {
         billing_month: new Date('2026-03-01T00:00:00.000Z'),
-        status: 'confirmed',
-        billing_code: 'M001',
-        billing_name: '在宅患者訪問薬剤管理指導料',
         source_snapshot: { revision_code: '2026' },
       },
       {
         billing_month: new Date('2026-03-01T00:00:00.000Z'),
-        status: 'exported',
-        billing_code: 'A010',
-        billing_name: '麻薬加算',
         source_snapshot: { revision_code: '2024' },
       },
       {
         billing_month: new Date('2026-03-01T00:00:00.000Z'),
-        status: 'excluded',
-        billing_code: 'X999',
-        billing_name: '不正メタデータ確認',
         source_snapshot: ['unexpected'],
       },
     ]);
+    billingCandidateGroupByMock.mockImplementation(async (args: { by: string[] }) => {
+      if (args.by.includes('status')) {
+        return [
+          {
+            billing_month: new Date('2026-03-01T00:00:00.000Z'),
+            status: 'candidate',
+            _count: { id: 1 },
+          },
+          {
+            billing_month: new Date('2026-03-01T00:00:00.000Z'),
+            status: 'confirmed',
+            _count: { id: 1 },
+          },
+          {
+            billing_month: new Date('2026-03-01T00:00:00.000Z'),
+            status: 'exported',
+            _count: { id: 1 },
+          },
+          {
+            billing_month: new Date('2026-03-01T00:00:00.000Z'),
+            status: 'excluded',
+            _count: { id: 1 },
+          },
+        ];
+      }
+
+      return [
+        {
+          billing_code: 'M001',
+          billing_name: '在宅患者訪問薬剤管理指導料',
+          _count: { id: 1 },
+        },
+        {
+          billing_code: 'A010',
+          billing_name: '麻薬加算',
+          _count: { id: 1 },
+        },
+      ];
+    });
     billingEvidenceFindManyMock.mockResolvedValue([
       {
         billing_month: new Date('2026-03-01T00:00:00.000Z'),
-        claimable: true,
-        exclusion_reason: null,
         calculation_context: {
           effective_revision_code: '2026',
           site_config_status: 'resolved',
@@ -96,8 +127,6 @@ describe('/api/billing-evidence/analytics GET', () => {
       },
       {
         billing_month: new Date('2026-03-01T00:00:00.000Z'),
-        claimable: false,
-        exclusion_reason: '報告書送付が未完了です',
         calculation_context: {
           effective_revision_code: '2024',
           site_config_status: 'revision_mismatch',
@@ -105,11 +134,27 @@ describe('/api/billing-evidence/analytics GET', () => {
       },
       {
         billing_month: new Date('2026-03-01T00:00:00.000Z'),
-        claimable: false,
-        exclusion_reason: null,
         calculation_context: ['unexpected'],
       },
     ]);
+    billingEvidenceGroupByMock.mockImplementation(async (args: { by: string[] }) => {
+      if (args.by.includes('claimable')) {
+        return [
+          {
+            billing_month: new Date('2026-03-01T00:00:00.000Z'),
+            claimable: true,
+            _count: { id: 1 },
+          },
+          {
+            billing_month: new Date('2026-03-01T00:00:00.000Z'),
+            claimable: false,
+            _count: { id: 2 },
+          },
+        ];
+      }
+
+      return [{ exclusion_reason: '報告書送付が未完了です', _count: { id: 1 } }];
+    });
   });
 
   afterEach(() => {
@@ -160,6 +205,18 @@ describe('/api/billing-evidence/analytics GET', () => {
         }),
       }),
     );
+    expect(billingCandidateGroupByMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        by: ['billing_month', 'status'],
+        _count: { id: true },
+      }),
+    );
+    expect(billingCandidateGroupByMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        by: ['billing_code', 'billing_name'],
+        take: 5,
+      }),
+    );
     expect(billingEvidenceFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -167,6 +224,18 @@ describe('/api/billing-evidence/analytics GET', () => {
             gte: rangeStart,
           },
         }),
+      }),
+    );
+    expect(billingEvidenceGroupByMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        by: ['billing_month', 'claimable'],
+        _count: { id: true },
+      }),
+    );
+    expect(billingEvidenceGroupByMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        by: ['exclusion_reason'],
+        take: 5,
       }),
     );
   });

@@ -96,7 +96,7 @@ export function VoiceMemoContent({ visitId }: { visitId: string }) {
   // (p0_34 の window フックの作法)。デモは音声を持たない。
   useEffect(() => {
     if (process.env.NODE_ENV === 'production') return;
-    const target = window as unknown as Record<string, unknown>;
+    const target = window;
     target.__phosSeedVoiceMemoDemo = () => {
       interactedRef.current = true;
       // 録音途中なら確定処理(onstop)を切り離して破棄し、デモ状態を確実にする

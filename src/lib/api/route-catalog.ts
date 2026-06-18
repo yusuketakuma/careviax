@@ -20,6 +20,11 @@ export type RouteCatalogEntry = {
     | 'system';
 };
 
+export const routeCatalogMetadata = {
+  scope: 'curated_operational_routes',
+  exhaustive: false,
+} as const;
+
 export const routeCatalog: RouteCatalogEntry[] = [
   {
     path: '/api/patients',
@@ -340,7 +345,7 @@ export const routeCatalog: RouteCatalogEntry[] = [
     path: '/api/meta/route-catalog',
     methods: ['GET'],
     permission: 'canAdmin',
-    description: 'Route Handler 一覧定義',
+    description: '主要 Route Handler の運用カタログ（全 Route Handler 一覧ではない）',
     area: 'system',
   },
 ];

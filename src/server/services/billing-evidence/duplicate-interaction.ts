@@ -116,9 +116,6 @@ export const HOME_ADVERSE_EVENT_RULES_2026: Record<
   },
 };
 
-/** @deprecated 後方互換のエイリアス — 新コードでは resolveHomeDuplicateRules() を使用 */
-export const HOME_DUPLICATE_INTERACTION_RULES = HOME_DUPLICATE_INTERACTION_RULES_2024;
-
 const MEDICAL_2026_EFFECTIVE = new Date('2026-06-01');
 
 export function resolveHomeDuplicateRules(

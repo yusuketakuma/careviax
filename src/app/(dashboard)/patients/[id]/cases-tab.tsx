@@ -24,24 +24,10 @@ import { caseStatusTransitions, type CaseStatus } from '@/lib/validations/case';
 import { buildIntakeFieldRows, getHomeVisitIntake } from '@/lib/patient/intake-display';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 import { ClipboardList, Plus } from 'lucide-react';
-
-const caseStatusLabel: Record<CaseStatus, string> = {
-  referral_received: '紹介受領',
-  assessment: 'アセスメント',
-  active: '稼働中',
-  on_hold: '保留',
-  discharged: '終了',
-  terminated: '解約',
-};
-
-const caseStatusVariant: Record<CaseStatus, 'default' | 'secondary' | 'outline' | 'destructive'> = {
-  referral_received: 'secondary',
-  assessment: 'secondary',
-  active: 'default',
-  on_hold: 'outline',
-  discharged: 'outline',
-  terminated: 'destructive',
-};
+import {
+  CASE_STATUS_LABELS as caseStatusLabel,
+  CASE_STATUS_VARIANTS as caseStatusVariant,
+} from '@/lib/constants/status-labels';
 
 type CaseRow = {
   id: string;

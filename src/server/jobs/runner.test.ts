@@ -14,7 +14,7 @@ const {
   notificationCreateManyMock: vi.fn(),
 }));
 
-vi.mock('@/lib/db', () => ({
+vi.mock('@/lib/db/client', () => ({
   prisma: {
     integrationJob: {
       findFirst: integrationJobFindFirstMock,

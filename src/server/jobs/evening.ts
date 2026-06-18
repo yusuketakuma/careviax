@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import { prisma } from '@/lib/db';
+import { prisma } from '@/lib/db/client';
 import { todayUtcRange } from '@/lib/utils/date-boundary';
 import { runJob } from './runner';
 

@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/dialog';
 import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
 import { formatDateLabel } from '@/lib/ui/date-format';
 import {
   REPORT_TYPE_LABELS,
@@ -478,7 +479,11 @@ export default function ReportDetailPage() {
     mutationFn: async (formData: SendRequestData) => {
       const res = await fetch(`/api/care-reports/${id}/send`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+          'Idempotency-Key': createClientIdempotencyKey('care-report-send'),
+        },
         body: JSON.stringify(formData),
       });
       if (!res.ok) {
@@ -509,7 +514,11 @@ export default function ReportDetailPage() {
     mutationFn: async (requestData: BulkSendRequestData) => {
       const res = await fetch(`/api/care-reports/${id}/send`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+          'Idempotency-Key': createClientIdempotencyKey('care-report-send'),
+        },
         body: JSON.stringify(requestData),
       });
       if (!res.ok) {

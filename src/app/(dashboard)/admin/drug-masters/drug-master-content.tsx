@@ -43,6 +43,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import type { DrugMasterImportStatusResponse } from '@/types/drug-master-import-status';
 import {
@@ -59,6 +60,8 @@ import {
   formatStockHistoryActionLabel,
   type ImpactQueueKey,
 } from './drug-master-formulary-view-model';
+
+const DRUG_MASTER_SEARCH_DEBOUNCE_MS = 250;
 
 type DrugMasterRow = {
   id: string;
@@ -826,6 +829,14 @@ function DrugMasterOperationalContent({
     useState<FormularyRequestDecisionTarget | null>(null);
   const [expiryReferenceTime] = useState(() => Date.now());
   const reorderPointInputRef = useRef<HTMLInputElement | null>(null);
+  const debouncedSearchQuery = useDebouncedValue(
+    searchQuery.trim(),
+    DRUG_MASTER_SEARCH_DEBOUNCE_MS,
+  );
+  const debouncedTemplateSearchQuery = useDebouncedValue(
+    templateSearchQuery.trim(),
+    DRUG_MASTER_SEARCH_DEBOUNCE_MS,
+  );
 
   const { data: sitesData } = useQuery({
     queryKey: ['pharmacy-sites', orgId, 'stock-setup'],
@@ -844,7 +855,7 @@ function DrugMasterOperationalContent({
 
   const params = useMemo(() => {
     const p = new URLSearchParams({ limit: '50' });
-    if (searchQuery) p.set('q', searchQuery);
+    if (debouncedSearchQuery) p.set('q', debouncedSearchQuery);
     if (category) p.set('category', category);
     if (genericOnly) p.set('generic', 'true');
     if (narcoticOnly) p.set('narcotic', 'true');
@@ -854,7 +865,7 @@ function DrugMasterOperationalContent({
     if (stockedOnly && effectiveSelectedSiteId) p.set('stocked', 'true');
     return p.toString();
   }, [
-    searchQuery,
+    debouncedSearchQuery,
     category,
     genericOnly,
     narcoticOnly,
@@ -1061,10 +1072,10 @@ function DrugMasterOperationalContent({
   });
 
   const formularyTemplatesQuery = useQuery({
-    queryKey: ['pharmacy-drug-stock-templates', orgId, templateSearchQuery],
+    queryKey: ['pharmacy-drug-stock-templates', orgId, debouncedTemplateSearchQuery],
     queryFn: async () => {
       const params = new URLSearchParams({ limit: '50' });
-      const query = templateSearchQuery.trim();
+      const query = debouncedTemplateSearchQuery;
       if (query) params.set('q', query);
       const res = await fetch(`/api/pharmacy-drug-stock-templates?${params}`, {
         headers: { 'x-org-id': orgId },

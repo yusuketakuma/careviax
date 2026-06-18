@@ -1,6 +1,6 @@
 import { addDays, differenceInCalendarDays, startOfMonth, subMonths } from 'date-fns';
 import type { Prisma } from '@prisma/client';
-import { prisma } from '@/lib/db';
+import { prisma } from '@/lib/db/client';
 import { REPORT_TYPE_LABELS } from '@/lib/constants/status-labels';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 

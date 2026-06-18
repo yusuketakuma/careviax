@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { DataTable } from '@/components/ui/data-table';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { formatYen } from '@/lib/ui/currency-format';
 import {
   Select,
   SelectContent,
@@ -342,7 +343,7 @@ function toNullableString(value: string) {
 }
 
 function yen(value: number | null) {
-  return value == null ? '—' : `${value.toLocaleString('ja-JP')}円`;
+  return formatYen(value);
 }
 
 export function PcaPumpsContent() {

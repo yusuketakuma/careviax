@@ -21,6 +21,7 @@ import {
 import { toast } from 'sonner';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import { usePrescriptionDraft } from '@/lib/hooks/use-prescription-draft';
 import { isOfflineEncryptionUnavailableError } from '@/lib/offline/crypto';
 import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
@@ -55,6 +56,8 @@ import {
   type JahisSupplementalRecordDbView,
   type JahisSupplementalRecordView,
 } from '@/lib/pharmacy/jahis-supplemental-records-view';
+
+const PRESCRIPTION_TYPEAHEAD_DEBOUNCE_MS = 250;
 
 type PrescriptionLineInput = {
   line_number: number;
@@ -361,6 +364,14 @@ export function PrescriptionIntakeForm() {
       setPrescriptionMeta((prev) => ({ ...prev, ...patch })),
     [],
   );
+  const debouncedPatientSearch = useDebouncedValue(
+    patientSearch.trim(),
+    PRESCRIPTION_TYPEAHEAD_DEBOUNCE_MS,
+  );
+  const debouncedPrescriberInstitution = useDebouncedValue(
+    prescriberInstitution.trim(),
+    PRESCRIPTION_TYPEAHEAD_DEBOUNCE_MS,
+  );
 
   // Document state
   const [document, setDocument] = useState({
@@ -410,7 +421,7 @@ export function PrescriptionIntakeForm() {
   // p0_10 撮影・動作確認用のデモ明細注入(dev 限定で window に公開)
   useEffect(() => {
     if (process.env.NODE_ENV === 'production') return;
-    const target = window as unknown as Record<string, unknown>;
+    const target = window;
     target.__phosSeedPeriodReviewDemo = () => {
       updatePatientSelection({ selectedPatientName: '田中 一郎' });
       setLines([
@@ -599,17 +610,17 @@ export function PrescriptionIntakeForm() {
 
   // Fetch patients for search
   const { data: patientsData } = useQuery({
-    queryKey: ['patients-search', orgId, patientSearch],
+    queryKey: ['patients-search', orgId, debouncedPatientSearch],
     queryFn: async () => {
       const params = new URLSearchParams({ limit: '10' });
-      if (patientSearch) params.set('q', patientSearch);
+      if (debouncedPatientSearch) params.set('q', debouncedPatientSearch);
       return fetchOrgJson<{ data: PatientOption[] }>({
         url: `/api/patients?${params}`,
         orgId,
         errorMessage: '患者検索に失敗しました',
       });
     },
-    enabled: !!orgId && patientSearch.length >= 1,
+    enabled: !!orgId && debouncedPatientSearch.length >= 1,
   });
 
   const { data: selectedPatientData } = useQuery({
@@ -674,10 +685,10 @@ export function PrescriptionIntakeForm() {
   });
 
   const { data: prescriberInstitutionsData } = useQuery({
-    queryKey: ['prescriber-institutions', orgId, prescriberInstitution],
+    queryKey: ['prescriber-institutions', orgId, debouncedPrescriberInstitution],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (prescriberInstitution.trim()) params.set('q', prescriberInstitution.trim());
+      if (debouncedPrescriberInstitution) params.set('q', debouncedPrescriberInstitution);
       return fetchOrgJson<{ data: PrescriberInstitutionOption[] }>({
         url: `/api/prescriber-institutions?${params.toString()}`,
         orgId,

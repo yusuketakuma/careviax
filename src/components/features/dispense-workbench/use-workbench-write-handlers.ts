@@ -26,6 +26,7 @@ import {
   isQuantityAllowedForUnit,
 } from '@/lib/dispensing/quantity-unit';
 import { formatUtcDateKey } from '@/lib/date-key';
+import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
 import { useWorkbenchStore } from './dispensing-workbench.store';
 import { isRealDataEnabled } from './dispensing-workbench.adapter';
 import type { WorkbenchMutations } from './use-workbench-mutations';
@@ -472,10 +473,7 @@ function applyReturnedLineMetas(
 }
 
 function createClientActionId(prefix: string): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return `${prefix}:${crypto.randomUUID()}`;
-  }
-  return `${prefix}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+  return createClientIdempotencyKey(prefix);
 }
 
 function applyReturnedBatchVersions(data: unknown): void {

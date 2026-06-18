@@ -30,6 +30,7 @@ import { inferCareReportTargetRole } from '@/lib/reports/document-delivery-rules
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { getAuthSecret } from '@/lib/auth/secret';
 import { logger } from '@/lib/utils/logger';
+import { communicationChannelSchema } from '@/lib/validations/communication-channel';
 
 function toPrimaryCommunicationEventType(reportType: string) {
   switch (reportType) {
@@ -355,7 +356,7 @@ function buildDeliveryAttemptAuditChanges(args: {
 
 const recipientSchema = z
   .object({
-    channel: z.enum(['email', 'fax', 'phone', 'in_person', 'postal', 'ses', 'ph_os_share']),
+    channel: communicationChannelSchema,
     recipient_name: z.string().trim().min(1, '送付先氏名は必須です'),
     recipient_contact: z.string().trim().min(1, '送付先連絡先は必須です'),
     recipient_role: z

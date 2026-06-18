@@ -110,7 +110,7 @@ export function CollaborationContent({ patientId }: { patientId: string }) {
   // 撮影・動作確認用のデモ注入(dev 限定)
   useEffect(() => {
     if (process.env.NODE_ENV === 'production') return;
-    const target = window as unknown as Record<string, unknown>;
+    const target = window;
     target.__phosSeedPresenceDemo = () => {
       setDemoData(buildCollaborationDemoData());
     };

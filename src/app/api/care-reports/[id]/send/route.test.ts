@@ -442,6 +442,29 @@ describe('/api/care-reports/[id]/send POST', () => {
     });
   });
 
+  it('rejects unsupported communication channels before delivery side effects', async () => {
+    const response = await POST(
+      createRequest({
+        channel: 'sms',
+        recipient_name: '山田 太郎',
+        recipient_contact: '090-1234-5678',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: { channel: expect.any(Array) },
+    });
+  });
+
   it('rejects malformed Idempotency-Key before loading the report', async () => {
     const response = await POST(
       createRequest(

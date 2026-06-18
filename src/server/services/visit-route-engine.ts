@@ -389,26 +389,30 @@ async function computeGoogleWaypointRoute(args: {
       (error as { name?: string })?.name === 'TimeoutError' ||
       (error as { name?: string })?.name === 'AbortError';
     if (isTimeout) {
-      return {
-        status: 'unavailable',
+      return unavailableGoogleRoutePlan({
         note: 'timeout',
         travelMode: args.travelMode,
         origin: args.origin,
-        encodedPath: null,
-        orderedScheduleIds: args.waypoints.map((waypoint) => waypoint.scheduleId),
-        totalDistanceMeters: null,
-        totalDurationSeconds: null,
-        stopSummaries: [],
-      };
+        waypoints: args.waypoints,
+      });
     }
-    throw error;
+    return unavailableGoogleRoutePlan({
+      note: 'Google Routes API request failed',
+      travelMode: args.travelMode,
+      origin: args.origin,
+      waypoints: args.waypoints,
+    });
   } finally {
     abort.clear();
   }
 
   if (!response.ok) {
-    const errorText = await response.text().catch(() => '');
-    throw new Error(errorText || 'Google Routes API request failed');
+    return unavailableGoogleRoutePlan({
+      origin: args.origin,
+      travelMode: args.travelMode,
+      waypoints: args.waypoints,
+      note: `google_routes_http_${response.status}`,
+    });
   }
 
   const payload = await readJsonResponseBody(response);

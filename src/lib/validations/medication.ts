@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { dateKeySchema } from '@/lib/validations/date-key';
+
+const optionalDateStringSchema = dateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional();
 
 // ────────────────────────────────────────────────────────────────────────────
 // MedicationProfile
@@ -10,14 +13,8 @@ export const createMedicationProfileSchema = z.object({
   drug_name: z.string().min(1, '薬剤名は必須です'),
   dose: z.string().optional(),
   frequency: z.string().optional(),
-  start_date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
-    .optional(),
-  end_date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
-    .optional(),
+  start_date: optionalDateStringSchema,
+  end_date: optionalDateStringSchema,
   prescriber: z.string().optional(),
   is_current: z.boolean().optional().default(true),
   source: z.enum(['qr_scan', 'manual', 'prescription']).optional(),

@@ -13,6 +13,17 @@ export const COMMUNICATION_CHANNELS = [
 
 export const communicationChannelSchema = z.enum(COMMUNICATION_CHANNELS);
 
+export const EXTERNAL_COMMUNICATION_CHANNELS = [
+  'email',
+  'fax',
+  'phone',
+  'in_person',
+  'postal',
+  'ses',
+] as const satisfies readonly [CommunicationChannel, ...CommunicationChannel[]];
+
+export const externalCommunicationChannelSchema = z.enum(EXTERNAL_COMMUNICATION_CHANNELS);
+
 /**
  * 自動送信を行わない「記録専用」チャネル。
  *
@@ -48,7 +59,7 @@ export const DEFAULT_COMMUNICATION_CHANNEL = 'ph_os_share' as const satisfies Co
  * 自動送信処理を実行してはならない（手動送付の記録に留める）。
  */
 export function isRecordOnlyChannel(
-  channel: CommunicationChannel
+  channel: CommunicationChannel,
 ): channel is (typeof RECORD_ONLY_COMMUNICATION_CHANNELS)[number] {
   return (RECORD_ONLY_COMMUNICATION_CHANNELS as readonly CommunicationChannel[]).includes(channel);
 }

@@ -64,7 +64,7 @@ const {
   runJobMock: vi.fn(async (_jobType: string, fn: () => Promise<unknown>) => fn()),
 }));
 
-vi.mock('@/lib/db', () => ({
+vi.mock('@/lib/db/client', () => ({
   prisma: {
     prescriptionIntake: {
       findMany: prescriptionIntakeFindManyMock,

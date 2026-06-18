@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
 import { success } from '@/lib/api/response';
-import { routeCatalog } from '@/lib/api/route-catalog';
+import { routeCatalog, routeCatalogMetadata } from '@/lib/api/route-catalog';
 
 export async function GET(req: NextRequest) {
   const authResult = await requireAuthContext(req, {
@@ -10,5 +10,5 @@ export async function GET(req: NextRequest) {
   });
   if ('response' in authResult) return authResult.response;
 
-  return success({ data: routeCatalog });
+  return success({ data: routeCatalog, meta: routeCatalogMetadata });
 }

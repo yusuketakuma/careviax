@@ -33,12 +33,17 @@ vi.mock('../operational-tasks', () => ({
 }));
 
 import {
+  buildValidationLayers,
   describeBillingEvidenceBlockers,
   endOfMonth,
+  japanMonthRangeForBillingMonth,
   monthLabel,
+  readBillingCandidateWorkflowState,
   reviewBillingCandidate,
   startOfMonth,
   upsertBillingEvidenceForVisit,
+  writeBillingCandidateWorkflowState,
+  type BillingCandidateWorkflowState,
 } from './core';
 
 // ── Test Helpers ──
@@ -1518,5 +1523,313 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
         assignedTo: 'pharm_1',
       }),
     );
+  });
+});
+
+describe('billing-evidence/core: readBillingCandidateWorkflowState', () => {
+  const defaults: BillingCandidateWorkflowState = {
+    review_state: 'pending',
+    resolution_state: 'unresolved',
+    reviewed_at: null,
+    reviewed_by: null,
+    closed_at: null,
+    closed_by: null,
+    note: null,
+  };
+
+  it('returns defaults when source_snapshot is null', () => {
+    expect(readBillingCandidateWorkflowState(null)).toEqual(defaults);
+  });
+
+  it('returns defaults when source_snapshot is undefined', () => {
+    expect(readBillingCandidateWorkflowState(undefined)).toEqual(defaults);
+  });
+
+  it('returns defaults when source_snapshot is an array', () => {
+    expect(readBillingCandidateWorkflowState([{ review_state: 'reviewed' }])).toEqual(defaults);
+  });
+
+  it('returns defaults when source_snapshot is a non-object primitive', () => {
+    expect(readBillingCandidateWorkflowState('reviewed')).toEqual(defaults);
+    expect(readBillingCandidateWorkflowState(42)).toEqual(defaults);
+  });
+
+  it('returns defaults when billing_close is missing', () => {
+    expect(readBillingCandidateWorkflowState({ other: 'value' })).toEqual(defaults);
+  });
+
+  it('returns defaults when billing_close is not an object', () => {
+    expect(readBillingCandidateWorkflowState({ billing_close: 'reviewed' })).toEqual(defaults);
+    expect(readBillingCandidateWorkflowState({ billing_close: [] })).toEqual(defaults);
+  });
+
+  it('coerces an invalid review_state to pending', () => {
+    expect(
+      readBillingCandidateWorkflowState({ billing_close: { review_state: 'bogus' } }).review_state,
+    ).toBe('pending');
+  });
+
+  it('coerces an invalid resolution_state to unresolved', () => {
+    expect(
+      readBillingCandidateWorkflowState({ billing_close: { resolution_state: 'bogus' } })
+        .resolution_state,
+    ).toBe('unresolved');
+  });
+
+  it('preserves valid review_state and resolution_state values', () => {
+    expect(
+      readBillingCandidateWorkflowState({
+        billing_close: { review_state: 'reviewed', resolution_state: 'confirmed' },
+      }),
+    ).toMatchObject({ review_state: 'reviewed', resolution_state: 'confirmed' });
+
+    expect(
+      readBillingCandidateWorkflowState({
+        billing_close: { resolution_state: 'excluded' },
+      }).resolution_state,
+    ).toBe('excluded');
+  });
+
+  it('preserves valid string fields and nulls non-string fields', () => {
+    expect(
+      readBillingCandidateWorkflowState({
+        billing_close: {
+          review_state: 'reviewed',
+          resolution_state: 'confirmed',
+          reviewed_at: '2026-06-18T00:00:00.000Z',
+          reviewed_by: 'user_1',
+          closed_at: '2026-06-19T00:00:00.000Z',
+          closed_by: 'user_2',
+          note: 'looks good',
+        },
+      }),
+    ).toEqual({
+      review_state: 'reviewed',
+      resolution_state: 'confirmed',
+      reviewed_at: '2026-06-18T00:00:00.000Z',
+      reviewed_by: 'user_1',
+      closed_at: '2026-06-19T00:00:00.000Z',
+      closed_by: 'user_2',
+      note: 'looks good',
+    });
+
+    expect(
+      readBillingCandidateWorkflowState({
+        billing_close: {
+          reviewed_at: 123,
+          reviewed_by: null,
+          note: { nested: true },
+        },
+      }),
+    ).toMatchObject({ reviewed_at: null, reviewed_by: null, note: null });
+  });
+});
+
+describe('billing-evidence/core: writeBillingCandidateWorkflowState', () => {
+  it('writes a full default workflow when source_snapshot is empty', () => {
+    expect(writeBillingCandidateWorkflowState(null, {})).toEqual({
+      billing_close: {
+        review_state: 'pending',
+        resolution_state: 'unresolved',
+        reviewed_at: null,
+        reviewed_by: null,
+        closed_at: null,
+        closed_by: null,
+        note: null,
+      },
+    });
+  });
+
+  it('merges a partial workflow onto read defaults', () => {
+    const result = writeBillingCandidateWorkflowState(null, {
+      review_state: 'reviewed',
+      resolution_state: 'confirmed',
+      reviewed_by: 'user_1',
+    });
+
+    expect(result.billing_close).toEqual({
+      review_state: 'reviewed',
+      resolution_state: 'confirmed',
+      reviewed_at: null,
+      reviewed_by: 'user_1',
+      closed_at: null,
+      closed_by: null,
+      note: null,
+    });
+  });
+
+  it('merges onto an existing workflow read from the snapshot', () => {
+    const existing = {
+      billing_close: {
+        review_state: 'reviewed',
+        resolution_state: 'confirmed',
+        reviewed_by: 'user_1',
+      },
+    };
+
+    const result = writeBillingCandidateWorkflowState(existing, { note: 'closed out' });
+
+    expect(result.billing_close).toEqual({
+      review_state: 'reviewed',
+      resolution_state: 'confirmed',
+      reviewed_at: null,
+      reviewed_by: 'user_1',
+      closed_at: null,
+      closed_by: null,
+      note: 'closed out',
+    });
+  });
+
+  it('preserves sibling keys under source_snapshot', () => {
+    const result = writeBillingCandidateWorkflowState(
+      {
+        source_type: 'conference_note',
+        conference_note_id: 'note_1',
+        billing_close: { review_state: 'reviewed' },
+      },
+      { resolution_state: 'excluded' },
+    );
+
+    expect(result).toMatchObject({
+      source_type: 'conference_note',
+      conference_note_id: 'note_1',
+    });
+    expect(result.billing_close).toMatchObject({
+      review_state: 'reviewed',
+      resolution_state: 'excluded',
+    });
+  });
+
+  it('drops non-object snapshots (array/primitive) but still writes billing_close', () => {
+    expect(writeBillingCandidateWorkflowState([1, 2, 3], { note: 'x' })).toEqual({
+      billing_close: expect.objectContaining({ note: 'x' }),
+    });
+    expect(writeBillingCandidateWorkflowState('not-an-object', {})).toEqual({
+      billing_close: expect.any(Object),
+    });
+  });
+});
+
+describe('billing-evidence/core: buildValidationLayers', () => {
+  const baseWorkflow: BillingCandidateWorkflowState = {
+    review_state: 'pending',
+    resolution_state: 'unresolved',
+    reviewed_at: null,
+    reviewed_by: null,
+    closed_at: null,
+    closed_by: null,
+    note: null,
+  };
+
+  function build(
+    overrides: {
+      evidencePassed?: boolean;
+      candidateStatus?: string;
+      workflow?: Partial<BillingCandidateWorkflowState>;
+    } = {},
+  ) {
+    return buildValidationLayers({
+      evidencePassed: overrides.evidencePassed ?? true,
+      evidenceMessage: 'evidence-msg',
+      ruleMessage: 'rule-msg',
+      candidateStatus: overrides.candidateStatus ?? 'confirmed',
+      workflow: { ...baseWorkflow, ...overrides.workflow },
+    });
+  }
+
+  it('sets evidence layer based on evidencePassed', () => {
+    expect(build({ evidencePassed: true }).evidence).toMatchObject({
+      label: '請求根拠',
+      state: 'passed',
+      message: 'evidence-msg',
+    });
+    expect(build({ evidencePassed: false }).evidence.state).toBe('blocked');
+  });
+
+  it('close_review passes when candidate status is exported', () => {
+    const layers = build({ candidateStatus: 'exported' });
+    expect(layers.close_review).toMatchObject({
+      label: '月次締めレビュー',
+      state: 'passed',
+      message: 'レビュー完了',
+    });
+  });
+
+  it('close_review passes when closed_at is set regardless of review state', () => {
+    const layers = build({
+      candidateStatus: 'candidate',
+      workflow: { closed_at: '2026-06-19T00:00:00.000Z' },
+    });
+    expect(layers.close_review.state).toBe('passed');
+  });
+
+  it('close_review passes when reviewed and confirmed', () => {
+    const layers = build({
+      candidateStatus: 'candidate',
+      workflow: { review_state: 'reviewed', resolution_state: 'confirmed' },
+    });
+    expect(layers.close_review.state).toBe('passed');
+  });
+
+  it('close_review blocks when reviewed and excluded', () => {
+    const layers = build({
+      candidateStatus: 'candidate',
+      workflow: { review_state: 'reviewed', resolution_state: 'excluded' },
+    });
+    expect(layers.close_review).toMatchObject({
+      state: 'blocked',
+      message: 'レビューで除外',
+    });
+  });
+
+  it('close_review requires manual review otherwise', () => {
+    const layers = build({ candidateStatus: 'candidate' });
+    expect(layers.close_review).toMatchObject({
+      state: 'manual_review',
+      message: 'レビュー待ち',
+    });
+
+    const reviewedUnresolved = build({
+      candidateStatus: 'candidate',
+      workflow: { review_state: 'reviewed', resolution_state: 'unresolved' },
+    });
+    expect(reviewedUnresolved.close_review.state).toBe('manual_review');
+  });
+
+  it('rule_engine blocks for excluded candidate status', () => {
+    const layers = build({ candidateStatus: 'excluded' });
+    expect(layers.rule_engine).toMatchObject({
+      label: '算定ルール',
+      state: 'blocked',
+      message: 'rule-msg',
+      version: 'home-care-ssot-registry-v2',
+    });
+  });
+
+  it('rule_engine requires manual review for candidate status', () => {
+    expect(build({ candidateStatus: 'candidate' }).rule_engine.state).toBe('manual_review');
+  });
+
+  it('rule_engine passes for other statuses', () => {
+    expect(build({ candidateStatus: 'confirmed' }).rule_engine.state).toBe('passed');
+    expect(build({ candidateStatus: 'exported' }).rule_engine.state).toBe('passed');
+  });
+});
+
+describe('billing-evidence/core: japanMonthRangeForBillingMonth', () => {
+  it('computes JST month boundaries for 2026-06', () => {
+    const billingMonth = startOfMonth(new Date('2026-06-01T00:00:00.000Z'));
+    const range = japanMonthRangeForBillingMonth(billingMonth);
+
+    expect(range.start.toISOString()).toBe('2026-05-31T15:00:00.000Z');
+    expect(range.nextStart.toISOString()).toBe('2026-06-30T15:00:00.000Z');
+    expect(range.end.toISOString()).toBe('2026-06-30T14:59:59.999Z');
+  });
+
+  it('is stable regardless of the day component within the billing month', () => {
+    const range = japanMonthRangeForBillingMonth(new Date('2026-06-15T08:30:00.000Z'));
+
+    expect(range.start.toISOString()).toBe('2026-05-31T15:00:00.000Z');
+    expect(range.nextStart.toISOString()).toBe('2026-06-30T15:00:00.000Z');
   });
 });

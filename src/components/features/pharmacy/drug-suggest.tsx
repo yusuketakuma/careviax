@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Pill, AlertTriangle, Shield } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import {
   fetchDrugMasterSuggestions,
   type DrugMasterSuggestion,
@@ -54,16 +55,9 @@ export function DrugSuggest({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const normalizedValue = value.trim();
-  const [debouncedQuery, setDebouncedQuery] = useState(normalizedValue);
+  const debouncedQuery = useDebouncedValue(normalizedValue, DRUG_SUGGEST_DEBOUNCE_MS);
   const resolvedInputId = inputId ?? `drug-suggest-${generatedId}`;
   const listboxId = `${resolvedInputId}-listbox`;
-
-  useEffect(() => {
-    const handle = window.setTimeout(() => {
-      setDebouncedQuery(normalizedValue);
-    }, DRUG_SUGGEST_DEBOUNCE_MS);
-    return () => window.clearTimeout(handle);
-  }, [normalizedValue]);
 
   const { data } = useQuery({
     queryKey: ['drug-suggest', orgId, debouncedQuery],

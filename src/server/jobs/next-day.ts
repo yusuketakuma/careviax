@@ -1,6 +1,6 @@
 import { subDays } from 'date-fns';
 import type { Prisma } from '@prisma/client';
-import { prisma } from '@/lib/db';
+import { prisma } from '@/lib/db/client';
 import { formatDateKey } from '@/lib/date-key';
 import { runJob } from './runner';
 

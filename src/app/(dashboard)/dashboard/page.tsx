@@ -1,5 +1,5 @@
 import { auth } from '@/lib/auth/config';
-import { prisma } from '@/lib/db';
+import { prisma } from '@/lib/db/client';
 import { resolveLocalUserByIdentity } from '@/lib/auth/user-resolution';
 import { DashboardContent } from './dashboard-content';
 import { resolveDashboardFocusRole } from './dashboard-role-focus';

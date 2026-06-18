@@ -212,24 +212,6 @@ export interface JahisDaysOrTimes {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Shift-JIS Decoder (via @zxing/text-encoding)
-// ────────────────────────────────────────────────────────────────────────────
-
-/**
- * Shift-JIS バイト列を UTF-8 文字列にデコードする。
- */
-export async function decodeShiftJIS(bytes: Uint8Array): Promise<string> {
-  try {
-    const decoder = new TextDecoder('shift-jis');
-    return decoder.decode(bytes);
-  } catch {
-    const { TextDecoder: ZxingDecoder } = await import('@zxing/text-encoding');
-    const decoder = new ZxingDecoder('shift-jis');
-    return decoder.decode(bytes);
-  }
-}
-
-// ────────────────────────────────────────────────────────────────────────────
 // Parser
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -308,10 +290,6 @@ export function parseJahisQR(text: string): JahisQRData {
 // ────────────────────────────────────────────────────────────────────────────
 // Build (Export)
 // ────────────────────────────────────────────────────────────────────────────
-
-export function buildJahisQRText_placeholder_removed(): never {
-  throw new Error('unreachable');
-}
 
 function getInstitutionName(institution?: JahisInstitution | JahisQrExportInput['pharmacy']) {
   if (!institution) return undefined;

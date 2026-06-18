@@ -145,6 +145,37 @@ describe('/api/handoff-board', () => {
     expect(json.data.summary).toEqual({ outgoing_count: 0, incoming_count: 0 });
   });
 
+  it('re-reads a concurrently created board after a unique constraint race', async () => {
+    const raceWinner = {
+      id: 'board_race_winner',
+      org_id: 'org_1',
+      shift_date: '2026-04-01',
+      items: [],
+    };
+    const findUniqueMock = vi.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(raceWinner);
+    const createMock = vi.fn().mockRejectedValueOnce({ code: 'P2002' });
+    withOrgContextMock.mockImplementation(async (_orgId: string, fn: (tx: unknown) => unknown) =>
+      fn({
+        handoffBoard: {
+          findUnique: findUniqueMock,
+          create: createMock,
+        },
+        handoffItem: {
+          count: vi.fn().mockResolvedValue(0),
+        },
+      }),
+    );
+    userFindManyMock.mockResolvedValue([]);
+
+    const req = createRequest('http://localhost/api/handoff-board?date=2026-04-01');
+    const res = await GET(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(200);
+    const json = await res!.json();
+    expect(json.data.id).toBe('board_race_winner');
+    expect(createMock).toHaveBeenCalledTimes(1);
+    expect(findUniqueMock).toHaveBeenCalledTimes(2);
+  });
+
   it('returns a lightweight badge count without creating a missing board', async () => {
     const req = createRequest('http://localhost/api/handoff-board?date=2026-04-01&badge=1');
     const res = await GET(req, { params: Promise.resolve({}) });
@@ -229,5 +260,12 @@ describe('/api/handoff-board', () => {
     const req = createRequest('http://localhost/api/handoff-board?date=2026-6-1');
     const res = await GET(req, { params: Promise.resolve({}) });
     expect(res!.status).toBe(400);
+  });
+
+  it('returns 400 on non-existent calendar dates', async () => {
+    const req = createRequest('http://localhost/api/handoff-board?date=2026-02-31');
+    const res = await GET(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 });

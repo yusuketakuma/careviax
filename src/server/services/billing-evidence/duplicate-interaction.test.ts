@@ -1,8 +1,68 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
+  generateHomeDuplicateInteractionCandidates,
   parseHomeDuplicateInteractionFeeType,
   resolveHomeDuplicateRules,
+  type HomeDuplicateInteractionCandidatesTx,
 } from './duplicate-interaction';
+import type { RegeneratedBillingCandidateRecord } from './candidate-regeneration';
+
+type InquiryFixture = {
+  id: string;
+  cycle_id: string | null;
+  reason: string;
+  result: string;
+  proposal_origin: string | null;
+  residual_adjustment: boolean | null;
+  change_detail: string | null;
+  cycle: { patient_id: string | null } | null;
+  issue: { category: string | null } | null;
+};
+
+function inquiry(overrides: Partial<InquiryFixture> = {}): InquiryFixture {
+  return {
+    id: 'inq_1',
+    cycle_id: 'cycle_1',
+    reason: '相互作用',
+    result: 'changed',
+    proposal_origin: null,
+    residual_adjustment: null,
+    change_detail: null,
+    cycle: { patient_id: 'patient_1' },
+    issue: { category: null },
+    ...overrides,
+  };
+}
+
+function buildTx(
+  inquiries: InquiryFixture[],
+  candidateMocks: {
+    upsert?: ReturnType<typeof vi.fn>;
+    updateMany?: ReturnType<typeof vi.fn>;
+    findFirst?: ReturnType<typeof vi.fn>;
+  } = {},
+) {
+  const upsert = candidateMocks.upsert ?? vi.fn().mockResolvedValue({});
+  const updateMany = candidateMocks.updateMany ?? vi.fn().mockResolvedValue({ count: 1 });
+  const findFirst = candidateMocks.findFirst ?? vi.fn().mockResolvedValue(null);
+  const findManyMock = vi.fn().mockResolvedValue(inquiries);
+  const tx = {
+    billingCandidate: { upsert, updateMany, findFirst },
+    inquiryRecord: { findMany: findManyMock },
+  } as unknown as HomeDuplicateInteractionCandidatesTx;
+  return { tx, upsert, updateMany, findFirst, findManyMock };
+}
+
+const BILLING_MONTH = new Date('2026-06-01T00:00:00.000Z');
+
+function baseArgs(existingByKey = new Map<string, RegeneratedBillingCandidateRecord>()) {
+  return {
+    orgId: 'org_1',
+    billingMonth: BILLING_MONTH,
+    ruleIdByKey: new Map<string, string>(),
+    existingByKey,
+  };
+}
 
 describe('parseHomeDuplicateInteractionFeeType', () => {
   it('prefers structured pre-issuance residual metadata over free-text parsing', () => {
@@ -41,5 +101,146 @@ describe('resolveHomeDuplicateRules', () => {
       name: '調剤時残薬調整加算 イ（在宅・処方提案反映）',
       points: 50,
     });
+  });
+});
+
+describe('generateHomeDuplicateInteractionCandidates', () => {
+  it("treats inquiry result 'changed' as a claimable candidate with no exclusion reason", async () => {
+    const { tx, upsert } = buildTx([inquiry({ result: 'changed' })]);
+
+    const created = await generateHomeDuplicateInteractionCandidates(tx, baseArgs());
+
+    // 2026-06 → '1_i' rule for 相互作用 with no proposal/residual metadata
+    const rule = resolveHomeDuplicateRules(BILLING_MONTH)['1_i'];
+    expect(created).toEqual([{ status: 'candidate' }]);
+    expect(upsert).toHaveBeenCalledTimes(1);
+
+    const upsertArg = upsert.mock.calls[0][0] as {
+      create: {
+        status: string;
+        exclusion_reason: string | null;
+        billing_code: string;
+        billing_name: string;
+        source_snapshot: {
+          validation_layers: {
+            evidence: { state: string; message: string };
+            rule_engine: { state: string; message: string };
+          };
+        };
+      };
+    };
+    expect(upsertArg.create.status).toBe('candidate');
+    expect(upsertArg.create.exclusion_reason).toBeNull();
+    expect(upsertArg.create.billing_code).toBe(rule.code);
+    expect(upsertArg.create.billing_name).toBe(rule.name);
+    const layers = upsertArg.create.source_snapshot.validation_layers;
+    expect(layers.evidence.state).toBe('passed');
+    expect(layers.evidence.message).toBe('照会結果の変更確定を確認');
+    expect(layers.rule_engine.state).toBe('manual_review');
+    expect(layers.rule_engine.message).toBe(`${rule.targetLabel} の加算候補`);
+  });
+
+  it("excludes inquiry result 'unchanged' with the prescription-not-changed message", async () => {
+    const { tx, upsert } = buildTx([inquiry({ result: 'unchanged' })]);
+
+    const created = await generateHomeDuplicateInteractionCandidates(tx, baseArgs());
+
+    const rule = resolveHomeDuplicateRules(BILLING_MONTH)['1_i'];
+    const expectedMessage = `処方変更に至っていないため${rule.name}は算定できません`;
+    expect(created).toEqual([{ status: 'excluded' }]);
+
+    const upsertArg = upsert.mock.calls[0][0] as {
+      create: {
+        status: string;
+        exclusion_reason: string | null;
+        source_snapshot: {
+          validation_layers: {
+            evidence: { state: string; message: string };
+            rule_engine: { state: string; message: string };
+          };
+        };
+      };
+    };
+    expect(upsertArg.create.status).toBe('excluded');
+    expect(upsertArg.create.exclusion_reason).toBe(expectedMessage);
+    const layers = upsertArg.create.source_snapshot.validation_layers;
+    expect(layers.evidence.state).toBe('blocked');
+    expect(layers.evidence.message).toBe(expectedMessage);
+    expect(layers.rule_engine.state).toBe('blocked');
+    expect(layers.rule_engine.message).toBe(expectedMessage);
+  });
+
+  it('excludes an ambiguous/other inquiry result with the pending message', async () => {
+    const { tx, upsert } = buildTx([inquiry({ result: 'pending' })]);
+
+    const created = await generateHomeDuplicateInteractionCandidates(tx, baseArgs());
+
+    const rule = resolveHomeDuplicateRules(BILLING_MONTH)['1_i'];
+    const expectedMessage = `疑義照会の結果が未確定のため${rule.name}は保留です`;
+    expect(created).toEqual([{ status: 'excluded' }]);
+
+    const upsertArg = upsert.mock.calls[0][0] as {
+      create: { status: string; exclusion_reason: string | null };
+    };
+    expect(upsertArg.create.status).toBe('excluded');
+    expect(upsertArg.create.exclusion_reason).toBe(expectedMessage);
+  });
+
+  it('skips an inquiry whose cycle has no patient_id', async () => {
+    const { tx, upsert, findManyMock } = buildTx([
+      inquiry({ id: 'inq_no_patient', cycle: { patient_id: null } }),
+    ]);
+
+    const created = await generateHomeDuplicateInteractionCandidates(tx, baseArgs());
+
+    expect(created).toEqual([]);
+    expect(upsert).not.toHaveBeenCalled();
+    expect(findManyMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('also skips an inquiry whose cycle is null', async () => {
+    const { tx, upsert } = buildTx([inquiry({ id: 'inq_no_cycle', cycle: null })]);
+
+    const created = await generateHomeDuplicateInteractionCandidates(tx, baseArgs());
+
+    expect(created).toEqual([]);
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it('preserves the exclusion from an existing reviewed+excluded record via workflow note', async () => {
+    const feeType = '1_i';
+    const dedupeKey = `2026-06:home-dup:inq_existing:${feeType}`;
+    const preservedNote = 'レビューで手動除外しました';
+    const existing: RegeneratedBillingCandidateRecord = {
+      id: 'cand_existing',
+      dedupe_key: dedupeKey,
+      status: 'excluded',
+      updated_at: new Date('2026-06-10T00:00:00.000Z'),
+      source_snapshot: {
+        billing_close: {
+          review_state: 'reviewed',
+          resolution_state: 'excluded',
+          note: preservedNote,
+        },
+      },
+    };
+    const existingByKey = new Map<string, RegeneratedBillingCandidateRecord>([
+      [dedupeKey, existing],
+    ]);
+
+    const upsert = vi.fn().mockResolvedValue({});
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const { tx } = buildTx(
+      // result 'changed' would normally be a claimable candidate; existing review must keep it excluded
+      [inquiry({ id: 'inq_existing', result: 'changed' })],
+      { upsert, updateMany },
+    );
+
+    const created = await generateHomeDuplicateInteractionCandidates(tx, baseArgs(existingByKey));
+
+    // existing record is review-locked → persist returns existing.status without upsert/updateMany write
+    expect(created).toEqual([{ status: 'excluded' }]);
+    expect(upsert).not.toHaveBeenCalled();
+    expect(updateMany).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ClaimCandidateView } from '@/phos/contracts/phos_contracts';
+import { PhosDomainError } from '@/phos/contracts/phos_errors';
 import {
   assertCanExcludeClaimCandidate,
   buildExcludedClaimCandidateResponse,
@@ -76,5 +77,77 @@ describe('ClaimCandidate lifecycle', () => {
         client_version: 1,
       }),
     ).toThrow('STALE_VERSION');
+  });
+
+  it('throws contract-owned PHOS domain errors', () => {
+    expect(() =>
+      assertCanExcludeClaimCandidate(candidate({ server_version: 2 }), {
+        reason_code: 'NOT_ELIGIBLE',
+        idempotency_key: 'idem_3',
+        client_version: 1,
+      }),
+    ).toThrow(PhosDomainError);
+  });
+
+  it('rejects a whitespace-only reason_code on an otherwise-valid candidate with VALIDATION_ERROR', () => {
+    let caught: unknown;
+    try {
+      assertCanExcludeClaimCandidate(candidate(), {
+        reason_code: '   ',
+        idempotency_key: 'idem_4',
+        client_version: 1,
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(PhosDomainError);
+    const domainError = caught as PhosDomainError;
+    expect(domainError.error_code).toBe('VALIDATION_ERROR');
+    expect(domainError.status).toBe(400);
+    expect(domainError.details).toEqual({ field: 'reason_code' });
+  });
+
+  it('trims the reason_note when present', () => {
+    const response = buildExcludedClaimCandidateResponse({
+      candidate: candidate(),
+      command: {
+        reason_code: 'NOT_ELIGIBLE',
+        reason_note: '  対象外メモ  ',
+        idempotency_key: 'idem_5',
+        client_version: 1,
+      },
+      now: '2026-06-09T01:00:00.000Z',
+    });
+
+    expect(response.candidate.excluded_reason_note).toBe('対象外メモ');
+  });
+
+  it('omits excluded_reason_note entirely when reason_note is absent or empty', () => {
+    const withoutNote = buildExcludedClaimCandidateResponse({
+      candidate: candidate(),
+      command: {
+        reason_code: 'NOT_ELIGIBLE',
+        idempotency_key: 'idem_6',
+        client_version: 1,
+      },
+      now: '2026-06-09T01:00:00.000Z',
+    });
+
+    expect('excluded_reason_note' in withoutNote.candidate).toBe(false);
+    expect(withoutNote.candidate.excluded_reason_note).toBeUndefined();
+
+    const emptyNote = buildExcludedClaimCandidateResponse({
+      candidate: candidate(),
+      command: {
+        reason_code: 'NOT_ELIGIBLE',
+        reason_note: '',
+        idempotency_key: 'idem_7',
+        client_version: 1,
+      },
+      now: '2026-06-09T01:00:00.000Z',
+    });
+
+    expect('excluded_reason_note' in emptyNote.candidate).toBe(false);
   });
 });

@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/db';
+import { prisma } from '@/lib/db/client';
 import { importMedicalInstitutionOpenData } from '@/server/services/medical-institution-master-import';
 import { runJob } from './runner';
 

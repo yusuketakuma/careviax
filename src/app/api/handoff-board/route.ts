@@ -2,6 +2,9 @@ import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
+import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
+import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { dateKeySchema } from '@/lib/validations/date-key';
 import { countHandoffBadge } from '@/server/services/nav-badges';
 import { z } from 'zod';
 
@@ -14,22 +17,11 @@ import { z } from 'zod';
  */
 
 const dateQuerySchema = z.object({
-  date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, '日付はYYYY-MM-DD形式で指定してください')
-    .optional(),
+  date: dateKeySchema('日付はYYYY-MM-DD形式で指定してください').optional(),
 });
 
 function toDateOnly(dateStr: string): Date {
-  return new Date(`${dateStr}T00:00:00.000Z`);
-}
-
-function todayDateStr(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return utcDateFromLocalKey(dateStr);
 }
 
 type HandoffDirection = 'outgoing' | 'incoming';
@@ -43,6 +35,13 @@ function isCurrentHandoffItem(item: {
 
 const currentHandoffItemWhere = {
   OR: [{ lifecycle_status: { not: null } }, { consult_status: { not: null } }],
+};
+
+const handoffBoardInclude = {
+  items: {
+    where: currentHandoffItemWhere,
+    orderBy: { created_at: 'asc' as const },
+  },
 };
 
 /** 渡した/来たの判定。現行 item は作成者または宛先を必ず持つ。 */
@@ -68,7 +67,7 @@ export const GET = withAuthContext(
       return validationError('日付の形式が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const dateStr = parsed.data.date ?? todayDateStr();
+    const dateStr = parsed.data.date ?? localDateKey();
     const shiftDate = toDateOnly(dateStr);
     const badgeOnly = searchParams.get('badge') === '1';
 
@@ -83,36 +82,37 @@ export const GET = withAuthContext(
     const { board, monthItemCount } = await withOrgContext(
       ctx.orgId,
       async (tx) => {
-        const existing = await tx.handoffBoard.findUnique({
-          where: {
-            org_id_shift_date: {
-              org_id: ctx.orgId,
-              shift_date: shiftDate,
-            },
+        const boardWhere = {
+          org_id_shift_date: {
+            org_id: ctx.orgId,
+            shift_date: shiftDate,
           },
-          include: {
-            items: {
-              where: currentHandoffItemWhere,
-              orderBy: { created_at: 'asc' },
-            },
-          },
-        });
+        };
+        const findBoard = () =>
+          tx.handoffBoard.findUnique({
+            where: boardWhere,
+            include: handoffBoardInclude,
+          });
 
-        const resolvedBoard =
-          existing ??
-          (await tx.handoffBoard.create({
-            data: {
-              org_id: ctx.orgId,
-              shift_date: shiftDate,
-              created_by: ctx.userId,
-            },
-            include: {
-              items: {
-                where: currentHandoffItemWhere,
-                orderBy: { created_at: 'asc' },
+        const existing = await findBoard();
+        let resolvedBoard = existing;
+
+        if (!resolvedBoard) {
+          try {
+            resolvedBoard = await tx.handoffBoard.create({
+              data: {
+                org_id: ctx.orgId,
+                shift_date: shiftDate,
+                created_by: ctx.userId,
               },
-            },
-          }));
+              include: handoffBoardInclude,
+            });
+          } catch (error) {
+            if (!isPrismaUniqueConstraintError(error)) throw error;
+            resolvedBoard = await findBoard();
+            if (!resolvedBoard) throw error;
+          }
+        }
 
         const count = await tx.handoffItem.count({
           where: {

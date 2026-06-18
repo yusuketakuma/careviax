@@ -23,38 +23,74 @@ export async function GET(req: NextRequest) {
 
   const currentMonth = billingMonthForJapanTimestamp(new Date());
   const rangeStart = addUtcMonths(currentMonth, -5);
+  const candidateWhere = {
+    org_id: ctx.orgId,
+    billing_month: {
+      gte: rangeStart,
+    },
+  };
+  const evidenceWhere = {
+    org_id: ctx.orgId,
+    billing_month: {
+      gte: rangeStart,
+    },
+  };
 
-  const [candidates, evidences, ssotRuleCount] = await Promise.all([
+  const [
+    candidateRevisionRows,
+    candidateStatusGroups,
+    topCodeGroups,
+    evidenceContextRows,
+    evidenceClaimableGroups,
+    blockerReasonGroups,
+    ssotRuleCount,
+  ] = await Promise.all([
     prisma.billingCandidate.findMany({
-      where: {
-        org_id: ctx.orgId,
-        billing_month: {
-          gte: rangeStart,
-        },
-      },
+      where: candidateWhere,
       select: {
         billing_month: true,
-        status: true,
-        billing_code: true,
-        billing_name: true,
         source_snapshot: true,
       },
       orderBy: [{ billing_month: 'asc' }, { created_at: 'asc' }],
     }),
-    prisma.billingEvidence.findMany({
+    prisma.billingCandidate.groupBy({
+      by: ['billing_month', 'status'],
+      where: candidateWhere,
+      _count: { id: true },
+    }),
+    prisma.billingCandidate.groupBy({
+      by: ['billing_code', 'billing_name'],
       where: {
-        org_id: ctx.orgId,
-        billing_month: {
-          gte: rangeStart,
-        },
+        ...candidateWhere,
+        status: { in: ['confirmed', 'exported'] },
       },
+      _count: { id: true },
+      orderBy: [{ _count: { id: 'desc' } }, { billing_code: 'asc' }],
+      take: 5,
+    }),
+    prisma.billingEvidence.findMany({
+      where: evidenceWhere,
       select: {
         billing_month: true,
-        claimable: true,
-        exclusion_reason: true,
         calculation_context: true,
       },
       orderBy: [{ billing_month: 'asc' }, { created_at: 'asc' }],
+    }),
+    prisma.billingEvidence.groupBy({
+      by: ['billing_month', 'claimable'],
+      where: evidenceWhere,
+      _count: { id: true },
+    }),
+    prisma.billingEvidence.groupBy({
+      by: ['exclusion_reason'],
+      where: {
+        ...evidenceWhere,
+        claimable: false,
+        exclusion_reason: { not: null },
+      },
+      _count: { id: true },
+      orderBy: [{ _count: { id: 'desc' } }, { exclusion_reason: 'asc' }],
+      take: 5,
     }),
     prisma.billingRule.count({
       where: {
@@ -85,48 +121,69 @@ export async function GET(req: NextRequest) {
   const blockerReasons = new Map<string, number>();
   const observedMonths = new Set<string>();
 
-  for (const candidate of candidates) {
-    const monthKey = formatMonth(candidate.billing_month);
+  for (const group of candidateStatusGroups) {
+    const monthKey = formatMonth(group.billing_month);
     observedMonths.add(monthKey);
     const bucket = monthlyTrendByMonth.get(monthKey);
     if (!bucket) continue;
 
-    bucket.total_candidates += 1;
+    const count = group._count.id;
+    bucket.total_candidates += count;
+    switch (group.status) {
+      case 'confirmed':
+        bucket.confirmed += count;
+        break;
+      case 'excluded':
+        bucket.excluded += count;
+        break;
+      case 'exported':
+        bucket.exported += count;
+        break;
+      default:
+        bucket.review_pending += count;
+        break;
+    }
+  }
+
+  for (const candidate of candidateRevisionRows) {
+    const monthKey = formatMonth(candidate.billing_month);
+    observedMonths.add(monthKey);
+    const bucket = monthlyTrendByMonth.get(monthKey);
+    if (!bucket) continue;
     const candidateRevision =
       readJsonObjectString(candidate.source_snapshot, 'revision_code') ?? 'unknown';
     bucket.revision_counts[candidateRevision] =
       (bucket.revision_counts[candidateRevision] ?? 0) + 1;
-    switch (candidate.status) {
-      case 'confirmed':
-        bucket.confirmed += 1;
-        break;
-      case 'excluded':
-        bucket.excluded += 1;
-        break;
-      case 'exported':
-        bucket.exported += 1;
-        break;
-      default:
-        bucket.review_pending += 1;
-        break;
-    }
+  }
 
-    if (candidate.status === 'confirmed' || candidate.status === 'exported') {
-      const key = `${candidate.billing_code}:${candidate.billing_name}`;
-      const existing = topCodes.get(key);
-      if (existing) {
-        existing.count += 1;
-      } else {
-        topCodes.set(key, {
-          billing_code: candidate.billing_code,
-          billing_name: candidate.billing_name,
-          count: 1,
-        });
-      }
+  for (const group of topCodeGroups) {
+    topCodes.set(`${group.billing_code}:${group.billing_name}`, {
+      billing_code: group.billing_code,
+      billing_name: group.billing_name,
+      count: group._count.id,
+    });
+  }
+
+  for (const group of evidenceClaimableGroups) {
+    if (!group.billing_month) continue;
+    const monthKey = formatMonth(group.billing_month);
+    observedMonths.add(monthKey);
+    const bucket = monthlyTrendByMonth.get(monthKey);
+    if (!bucket) continue;
+    if (group.claimable) {
+      bucket.claimable_evidence += group._count.id;
+    } else {
+      bucket.unclaimable_evidence += group._count.id;
     }
   }
 
-  for (const evidence of evidences) {
+  for (const group of blockerReasonGroups) {
+    if (group.exclusion_reason) {
+      blockerReasons.set(group.exclusion_reason, group._count.id);
+    }
+  }
+
+  for (const evidence of evidenceContextRows) {
     if (!evidence.billing_month) continue;
     const monthKey = formatMonth(evidence.billing_month);
     observedMonths.add(monthKey);
@@ -138,18 +195,6 @@ export async function GET(req: NextRequest) {
     const siteConfigStatus = readJsonObjectString(evidence.calculation_context, 'site_config_status');
     if (siteConfigStatus === 'config_missing' || siteConfigStatus === 'revision_mismatch') {
       bucket.site_config_issue_count += 1;
-    }
-
-    if (evidence.claimable) {
-      bucket.claimable_evidence += 1;
-    } else {
-      bucket.unclaimable_evidence += 1;
-      if (evidence.exclusion_reason) {
-        blockerReasons.set(
-          evidence.exclusion_reason,
-          (blockerReasons.get(evidence.exclusion_reason) ?? 0) + 1,
-        );
-      }
     }
   }
 

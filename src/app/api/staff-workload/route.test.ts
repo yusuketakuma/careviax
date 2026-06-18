@@ -69,18 +69,22 @@ describe('/api/staff-workload', () => {
       { assigned_to: 'user_a', _count: { id: 2 } },
       { assigned_to: 'user_b', _count: { id: 1 } },
     ]);
-    taskFindManyMock.mockResolvedValue([
-      {
-        id: 'task_1',
-        assigned_to: 'user_a',
-        title: '鈴木さんの監査をしてほしい',
-        task_type: 'staff_work_request_audit',
-        priority: 'high',
-        status: 'pending',
-        due_date: new Date('2026-06-15T14:59:00.000Z'),
-        sla_due_at: null,
-      },
-    ]);
+    taskFindManyMock.mockImplementation(async (args: { where?: { assigned_to?: string } }) =>
+      args.where?.assigned_to === 'user_a'
+        ? [
+            {
+              id: 'task_1',
+              assigned_to: 'user_a',
+              title: '鈴木さんの監査をしてほしい',
+              task_type: 'staff_work_request_audit',
+              priority: 'high',
+              status: 'pending',
+              due_date: new Date('2026-06-15T14:59:00.000Z'),
+              sla_due_at: null,
+            },
+          ]
+        : [],
+    );
     visitScheduleFindManyMock.mockResolvedValue([
       {
         id: 'visit_1',
@@ -123,6 +127,23 @@ describe('/api/staff-workload', () => {
         }),
       }),
     );
+    expect(taskFindManyMock).toHaveBeenCalledTimes(2);
+    expect(taskFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          assigned_to: 'user_a',
+        }),
+        take: 4,
+      }),
+    );
+    expect(taskFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          assigned_to: 'user_b',
+        }),
+        take: 4,
+      }),
+    );
     await expect(response.json()).resolves.toMatchObject({
       date: '2026-06-15',
       data: [
@@ -149,6 +170,16 @@ describe('/api/staff-workload', () => {
   it('rejects invalid date filters before querying staff', async () => {
     const response = await GET(
       createRequest('http://localhost/api/staff-workload?date=2026/06/15'),
+    );
+    if (!response) throw new Error('response is undefined');
+
+    expect(response.status).toBe(400);
+    expect(membershipFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-existent calendar dates before querying staff', async () => {
+    const response = await GET(
+      createRequest('http://localhost/api/staff-workload?date=2026-02-31'),
     );
     if (!response) throw new Error('response is undefined');
 

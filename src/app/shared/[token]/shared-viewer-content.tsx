@@ -20,6 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
 
 type ExternalPayload = {
   patient: {
@@ -143,11 +144,7 @@ const GENDER_LABELS: Record<string, string> = {
 };
 
 function createSelfReportIdempotencyKey() {
-  const randomPart =
-    typeof globalThis.crypto?.randomUUID === 'function'
-      ? globalThis.crypto.randomUUID()
-      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-  return `self-report:${randomPart}`;
+  return createClientIdempotencyKey('self-report');
 }
 
 export function SharedViewerContent({ token }: { token: string }) {

@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import { dateKeySchema } from '@/lib/validations/date-key';
+
+const optionalDateStringSchema = dateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional();
 
 export const allergyEntrySchema = z.object({
   drug_name: z.string().min(1),
@@ -6,10 +9,7 @@ export const allergyEntrySchema = z.object({
   substance: z.string().optional(),
   category: z.enum(['drug', 'food', 'other']),
   severity: z.enum(['mild', 'moderate', 'severe', 'unknown']),
-  confirmed_at: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）')
-    .optional(),
+  confirmed_at: optionalDateStringSchema,
   source: z.string().optional(),
 });
 

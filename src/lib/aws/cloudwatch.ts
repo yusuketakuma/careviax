@@ -42,43 +42,5 @@ export async function putMetrics(metrics: MetricDatum[]): Promise<void> {
   }
 }
 
-/** Convenience: emit a single count metric. */
-export async function putCount(
-  metricName: string,
-  value: number,
-  dimensions?: Record<string, string>,
-): Promise<void> {
-  await putMetrics([
-    {
-      MetricName: metricName,
-      Value: value,
-      Unit: StandardUnit.Count,
-      Timestamp: new Date(),
-      Dimensions: dimensions
-        ? Object.entries(dimensions).map(([Name, Value]) => ({ Name, Value }))
-        : undefined,
-    },
-  ]);
-}
-
-/** Convenience: emit a single millisecond latency metric. */
-export async function putLatency(
-  metricName: string,
-  milliseconds: number,
-  dimensions?: Record<string, string>,
-): Promise<void> {
-  await putMetrics([
-    {
-      MetricName: metricName,
-      Value: milliseconds,
-      Unit: StandardUnit.Milliseconds,
-      Timestamp: new Date(),
-      Dimensions: dimensions
-        ? Object.entries(dimensions).map(([Name, Value]) => ({ Name, Value }))
-        : undefined,
-    },
-  ]);
-}
-
 export { StandardUnit };
 export type { MetricDatum };

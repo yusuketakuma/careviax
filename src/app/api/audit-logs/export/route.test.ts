@@ -14,7 +14,7 @@ vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
 }));
 
-vi.mock('@/lib/db', () => ({
+vi.mock('@/lib/db/client', () => ({
   prisma: {
     membership: {
       findFirst: membershipFindFirstMock,

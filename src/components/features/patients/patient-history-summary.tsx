@@ -3,12 +3,11 @@
 import { useId, useMemo } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { format, parseISO } from 'date-fns';
-import { ja } from 'date-fns/locale';
 import { Clock, FileText, History, Pill } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { OUTCOME_LABELS } from '@/lib/constants/visit';
+import { formatDateLabel as formatDate } from '@/lib/ui/date-format';
 
 type PrescriptionSummaryLine = {
   drug_name: string;
@@ -44,10 +43,6 @@ type PatientHistorySummaryProps = {
   excludeVisitRecordId?: string;
   className?: string;
 };
-
-function formatDate(value: string) {
-  return format(parseISO(value), 'yyyy/MM/dd', { locale: ja });
-}
 
 function buildDrugSummary(lines: PrescriptionSummaryLine[]) {
   if (lines.length === 0) return '薬剤明細なし';

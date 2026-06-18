@@ -83,7 +83,7 @@ export function EvidenceGalleryContent() {
   // 注入後は決定的な一覧(未同期/同期済み混在)へ差し替える。
   React.useEffect(() => {
     if (process.env.NODE_ENV === 'production') return;
-    const target = window as unknown as Record<string, unknown>;
+    const target = window;
     target.__phosSeedEvidenceDemo = () => {
       setDemoItems(buildEvidenceDemoItems());
     };

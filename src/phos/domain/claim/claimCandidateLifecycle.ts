@@ -5,7 +5,7 @@ import {
   type ClaimCandidateView,
   type ExcludeClaimCandidateRequest,
 } from '@/phos/contracts/phos_contracts';
-import { PhosDomainError } from '@/phos/backend/cards-repository';
+import { PhosDomainError } from '@/phos/contracts/phos_errors';
 
 export const FINAL_CLAIM_CANDIDATE_STATUSES = [
   ClaimCandidateStatus.APPROVED,

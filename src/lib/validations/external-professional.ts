@@ -5,8 +5,9 @@ import {
   optionalNullablePhoneNumberSchema,
   optionalPhoneNumberSchema,
 } from '@/lib/validations/phone';
+import { externalCommunicationChannelSchema } from '@/lib/validations/communication-channel';
 
-export const contactMethodSchema = z.enum(['email', 'fax', 'phone', 'in_person', 'postal', 'ses']);
+export const contactMethodSchema = externalCommunicationChannelSchema;
 
 export const professionTypeSchema = z.enum([
   'physician',

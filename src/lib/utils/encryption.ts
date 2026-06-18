@@ -63,25 +63,3 @@ export function decrypt(ciphertext: string): string {
 
   return decrypted.toString('utf8');
 }
-
-/**
- * Encrypt a value only if it's a non-empty string and not already encrypted.
- * Returns null/undefined as-is.
- */
-export function encryptIfPresent(value: string | null | undefined): string | null | undefined {
-  if (value == null || value === '') return value;
-  // Already encrypted values are base64 and start with a specific pattern;
-  // however, to avoid double-encryption, we use a prefix marker
-  if (value.startsWith('enc:')) return value;
-  return `enc:${encrypt(value)}`;
-}
-
-/**
- * Decrypt a value only if it has the encryption prefix.
- * Returns non-encrypted values as-is.
- */
-export function decryptIfPresent(value: string | null | undefined): string | null | undefined {
-  if (value == null || value === '') return value;
-  if (!value.startsWith('enc:')) return value;
-  return decrypt(value.slice(4));
-}

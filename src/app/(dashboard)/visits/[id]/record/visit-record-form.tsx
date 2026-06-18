@@ -8,6 +8,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import { toast } from 'sonner';
+import { formatYen } from '@/lib/ui/currency-format';
 import {
   AlertTriangle,
   Paperclip,
@@ -434,7 +435,7 @@ function buildDraftMetadata(values: FormValues, visitGeoLog: VisitGeoLog | null)
 }
 
 function formatVisitBillingAmount(value: number | null | undefined) {
-  return value == null ? '未記録' : `${value.toLocaleString('ja-JP')}円`;
+  return formatYen(value, '未記録');
 }
 
 function formatVisitBillingDateTime(value: string | null | undefined) {
@@ -1276,7 +1277,7 @@ export function VisitRecordForm({
   // p0_23 撮影用 dev フック: 未同期写真 2 件相当(橙バナー+未同期バッジ)を再現する
   useEffect(() => {
     if (process.env.NODE_ENV === 'production') return;
-    const target = window as unknown as Record<string, unknown>;
+    const target = window;
     target.__phosSeedVisitModeDemo = () => {
       setDemoUnsyncedPhotoCount(2);
     };

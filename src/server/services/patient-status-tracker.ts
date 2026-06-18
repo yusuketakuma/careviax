@@ -11,6 +11,7 @@ import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { derivePatientStatusIcon, STATUS_ICON_CONFIG } from '@/lib/patient/status-icon';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { listPatientRiskSummaries } from '@/server/services/patient-risk';
 import type { PatientStatusIcon } from '@/types/dashboard-home';
 
@@ -253,23 +254,22 @@ export async function trackPatientStatusChanges(
       });
 
       // Write audit log
-      await db.auditLog.create({
-        data: {
-          org_id: args.orgId,
-          actor_id: args.actorId,
+      await createAuditLogEntry(
+        db,
+        { orgId: args.orgId, userId: args.actorId },
+        {
           action: 'patient_status_change',
-          target_type: 'patient',
-          target_id: p.patient_id,
+          targetType: 'patient',
+          targetId: p.patient_id,
           changes: {
             from: previousStatus,
             from_label: STATUS_ICON_CONFIG[previousStatus].label,
             to: currentStatus,
             to_label: STATUS_ICON_CONFIG[currentStatus].label,
-            patient_name: p.patient_name,
             score: p.score,
           },
         },
-      });
+      );
 
       // Check notification triggers
       for (const trigger of NOTIFICATION_TRIGGERS) {

@@ -1,5 +1,5 @@
 import { startOfMonth, subMonths, endOfMonth } from 'date-fns';
-import { prisma } from '@/lib/db';
+import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
 import { runJob } from './runner';
 

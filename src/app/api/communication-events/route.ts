@@ -6,6 +6,7 @@ import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { z } from 'zod';
 import { learnContactProfileFromCommunication } from '@/lib/contact-profiles';
+import { externalCommunicationChannelSchema } from '@/lib/validations/communication-channel';
 import {
   buildCommunicationEventAssignmentWhere,
   canAccessCommunicationRequestRecord,
@@ -20,7 +21,7 @@ const createCommunicationEventSchema = z.object({
   patient_id: z.string().optional(),
   case_id: z.string().optional(),
   event_type: z.string().min(1, 'イベントタイプは必須です'),
-  channel: z.enum(['email', 'fax', 'phone', 'in_person', 'postal', 'ses']),
+  channel: externalCommunicationChannelSchema,
   direction: z.enum(['outbound', 'inbound']),
   counterpart_name: z.string().optional(),
   counterpart_contact: z.string().optional(),

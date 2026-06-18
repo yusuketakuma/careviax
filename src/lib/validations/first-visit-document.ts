@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { phoneNumberSchema } from '@/lib/validations/phone';
+import { dateKeySchema } from '@/lib/validations/date-key';
 
 const requiredPhoneNumberSchema = z
   .string()
@@ -29,9 +30,7 @@ const documentUrlSchema = z
     }
   }, '文書URLは相対パス、HTTPS、またはローカル開発用HTTPで指定してください');
 
-const documentActionDateSchema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, '日付形式が不正です（YYYY-MM-DD）');
+const documentActionDateSchema = dateKeySchema('日付形式が不正です（YYYY-MM-DD）');
 
 export const createFirstVisitDocumentSchema = z.object({
   patient_id: z.string().min(1, '患者IDは必須です'),

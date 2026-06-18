@@ -408,13 +408,17 @@ export function ReportEditForm({ reportId, reportType, content, onSaved }: Props
   const orgId = useOrgId();
   const queryClient = useQueryClient();
 
-  // Accumulated edits from child form
-  const [pendingFields, setPendingFields] = useState<Record<string, unknown>>({});
+  // Accumulated edits from child form. Only one of the two field shapes is ever
+  // populated (selected by reportType); the partial intersection lets either set
+  // assign without laundering through `Record<string, unknown>`.
+  const [pendingFields, setPendingFields] = useState<
+    Partial<PhysicianFields & CareManagerFields>
+  >({});
 
   function buildUpdatedContent(): PhysicianReportContent | CareManagerReportContent {
     if (reportType === 'physician_report') {
       const base = content as PhysicianReportContent;
-      const f = pendingFields as PhysicianFields;
+      const f = pendingFields;
       return {
         ...base,
         medication_management: {
@@ -451,7 +455,7 @@ export function ReportEditForm({ reportId, reportType, content, onSaved }: Props
       };
     } else {
       const base = content as CareManagerReportContent;
-      const f = pendingFields as CareManagerFields;
+      const f = pendingFields;
       return {
         ...base,
         medication_management_summary: {
@@ -534,12 +538,12 @@ export function ReportEditForm({ reportId, reportType, content, onSaved }: Props
       {reportType === 'physician_report' ? (
         <PhysicianEditForm
           initial={content as PhysicianReportContent}
-          onChange={(f) => setPendingFields(f as unknown as Record<string, unknown>)}
+          onChange={(f) => setPendingFields(f)}
         />
       ) : (
         <CareManagerEditForm
           initial={content as CareManagerReportContent}
-          onChange={(f) => setPendingFields(f as unknown as Record<string, unknown>)}
+          onChange={(f) => setPendingFields(f)}
         />
       )}
 

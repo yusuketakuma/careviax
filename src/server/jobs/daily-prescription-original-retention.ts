@@ -1,6 +1,6 @@
 import { addDays, addYears } from 'date-fns';
 import { Prisma } from '@prisma/client';
-import { prisma } from '@/lib/db';
+import { prisma } from '@/lib/db/client';
 import {
   buildFaxOriginalFollowupTaskKey,
   buildPrescriptionOriginalRetentionTaskKey,

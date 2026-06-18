@@ -103,6 +103,9 @@ export type OfflineEvidenceDraft = {
   synced: boolean;
   retryCount: number;
   lastError?: string;
+  /** Uploaded file asset id retained so retry can resume attachment without re-uploading PHI. */
+  uploadedFileAssetId?: string;
+  uploadedVisitRecordId?: string;
 };
 
 /**

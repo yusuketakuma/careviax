@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { dateKeyPattern, isValidDateKey } from '@/lib/validations/date-key';
 
 export const managementPlanContentSchema = z
   .object({
@@ -58,20 +59,6 @@ const optionalTrimmedStringSchema = z.preprocess((value) => {
   return trimmed.length > 0 ? trimmed : null;
 }, z.string().nullable().optional());
 
-function isValidDateString(value: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) return false;
-
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const date = new Date(Date.UTC(year, month - 1, day));
-
-  return (
-    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
-  );
-}
-
 const optionalDateStringSchema = (fieldName: string) =>
   z.preprocess(
     (value) => {
@@ -81,8 +68,8 @@ const optionalDateStringSchema = (fieldName: string) =>
     },
     z
       .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/, `${fieldName} の形式が不正です（YYYY-MM-DD）`)
-      .refine(isValidDateString, `${fieldName} の日付が不正です`)
+      .regex(dateKeyPattern, `${fieldName} の形式が不正です（YYYY-MM-DD）`)
+      .refine(isValidDateKey, `${fieldName} の日付が不正です`)
       .nullable()
       .optional(),
   );

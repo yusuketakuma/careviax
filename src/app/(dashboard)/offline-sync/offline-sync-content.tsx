@@ -94,7 +94,7 @@ export function OfflineSyncContent() {
   React.useEffect(() => {
     if (process.env.NODE_ENV === 'production') return;
     let active = true;
-    const target = window as unknown as Record<string, unknown>;
+    const target = window;
     target.__phosSeedOfflineSyncDemo = async (mode?: 'queue' | 'conflict') => {
       await seedOfflineSyncDemoData(mode);
       if (!active) return;

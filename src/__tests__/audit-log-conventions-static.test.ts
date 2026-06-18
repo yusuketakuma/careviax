@@ -8,7 +8,6 @@ const allowedAuditCreateFiles = [
   'src/lib/auth/security-events.ts',
   'src/server/services/billing-evidence/core.ts',
   'src/server/services/export-audit.ts',
-  'src/server/services/patient-status-tracker.ts',
   'src/server/services/visit-brief.ts',
 ];
 

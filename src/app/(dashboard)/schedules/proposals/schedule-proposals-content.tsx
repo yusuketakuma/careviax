@@ -62,6 +62,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
+import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
 import { cn } from '@/lib/utils';
 import { useReplaceSearchParams } from '@/lib/navigation/use-synced-search-params';
 import { formatEtaLabel } from '@/lib/visits/route-labels';
@@ -235,11 +236,7 @@ type ContactOutcome = 'attempted' | 'declined' | 'change_requested' | 'unreachab
 type ContactMethod = 'phone' | 'fax' | 'email';
 
 function createProposalGenerationIdempotencyKey(proposalId: string) {
-  const suffix =
-    typeof globalThis.crypto?.randomUUID === 'function'
-      ? globalThis.crypto.randomUUID()
-      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-  return `visit-reproposal:${proposalId}:${suffix}`;
+  return createClientIdempotencyKey('visit-reproposal', proposalId);
 }
 type ContactFormState = {
   outcome: ContactOutcome;

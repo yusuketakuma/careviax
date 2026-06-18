@@ -5,7 +5,7 @@ const { runJobMock, importCareServiceOfficeOpenDataMock } = vi.hoisted(() => ({
   importCareServiceOfficeOpenDataMock: vi.fn(),
 }));
 
-vi.mock('@/lib/db', () => ({
+vi.mock('@/lib/db/client', () => ({
   prisma: { marker: 'prisma' },
 }));
 

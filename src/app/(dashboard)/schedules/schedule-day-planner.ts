@@ -9,6 +9,7 @@ import type {
   VisitType,
 } from './day-view.shared';
 import { normalizeVehicleResourceSelectValue, toDateKey } from './day-view.shared';
+import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
 
 export type ScheduleDayRouteTravelMode = 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';
 
@@ -406,7 +407,7 @@ export function buildScheduleDayProposalGenerationPayload({
 }
 
 function createProposalIdempotencyKey() {
-  return `schedule-day:${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}:${Math.random()}`}`;
+  return createClientIdempotencyKey('schedule-day');
 }
 
 export async function generateScheduleDayProposals({

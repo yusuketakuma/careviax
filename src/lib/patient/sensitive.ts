@@ -36,23 +36,3 @@ export function maskEmailAddress(value: string | null | undefined) {
   const visible = localPart.slice(0, 1);
   return `${visible}${'*'.repeat(Math.max(2, localPart.length - 1))}@${domain}`;
 }
-
-export function maskAddress(value: string | null | undefined) {
-  if (!value) return null;
-  const normalized = value.trim();
-  if (normalized.length <= 6) return `${normalized.slice(0, 1)}***`;
-  return `${normalized.slice(0, 6)}***`;
-}
-
-export function maskPersonName(value: string | null | undefined) {
-  if (!value) return '';
-
-  return value
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((part) => {
-      if (part.length <= 1) return '○';
-      return `${part.slice(0, 1)}${'○'.repeat(Math.max(1, part.length - 1))}`;
-    })
-    .join(' ');
-}

@@ -1,4 +1,5 @@
 import { format, parseISO } from 'date-fns';
+import { createClientIdempotencyKey } from '@/lib/idempotency/client-key';
 import type { PatientContactStatus, Proposal } from './day-view.shared';
 
 type FetchLike = typeof fetch;
@@ -108,11 +109,7 @@ export function closeScheduleDayContactLogDialog(): ScheduleDayContactLogDialogS
 }
 
 export function createScheduleContactAttemptIdempotencyKey(proposalId: string) {
-  const suffix =
-    typeof globalThis.crypto?.randomUUID === 'function'
-      ? globalThis.crypto.randomUUID()
-      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-  return `visit-contact:${proposalId}:${suffix}`;
+  return createClientIdempotencyKey('visit-contact', proposalId);
 }
 
 export function buildScheduleDayContactAttemptRequest({

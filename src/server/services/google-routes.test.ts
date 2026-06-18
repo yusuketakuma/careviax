@@ -207,6 +207,64 @@ describe('google-routes', () => {
     });
   });
 
+  it('returns unavailable instead of throwing when Google Routes rejects the request', async () => {
+    process.env.ROUTING_API_PROVIDER = 'google';
+    process.env.GOOGLE_MAPS_SERVER_API_KEY = 'test-key';
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: 'quota exceeded' } }), { status: 429 }),
+    );
+
+    const result = await computeOptimizedVisitRoute({
+      origin: { lat: 35.0, lng: 139.0, label: '拠点A' },
+      travelMode: 'DRIVE',
+      waypoints: [
+        {
+          scheduleId: 'schedule_1',
+          patientName: '山田 太郎',
+          address: '東京都港区1-1-1',
+          lat: 35.1,
+          lng: 139.1,
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      status: 'unavailable',
+      note: 'google_routes_http_429',
+      orderedScheduleIds: ['schedule_1'],
+      totalDistanceMeters: null,
+      totalDurationSeconds: null,
+    });
+  });
+
+  it('returns unavailable instead of throwing when Google Routes fetch fails', async () => {
+    process.env.ROUTING_API_PROVIDER = 'google';
+    process.env.GOOGLE_MAPS_SERVER_API_KEY = 'test-key';
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('network down'));
+
+    const result = await computeOptimizedVisitRoute({
+      origin: { lat: 35.0, lng: 139.0, label: '拠点A' },
+      travelMode: 'DRIVE',
+      waypoints: [
+        {
+          scheduleId: 'schedule_1',
+          patientName: '山田 太郎',
+          address: '東京都港区1-1-1',
+          lat: 35.1,
+          lng: 139.1,
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      status: 'unavailable',
+      note: 'Google Routes API request failed',
+      orderedScheduleIds: ['schedule_1'],
+      totalDistanceMeters: null,
+      totalDurationSeconds: null,
+    });
+  });
+
   it('returns unavailable when Google Routes returns invalid JSON', async () => {
     process.env.ROUTING_API_PROVIDER = 'google';
     process.env.GOOGLE_MAPS_SERVER_API_KEY = 'test-key';

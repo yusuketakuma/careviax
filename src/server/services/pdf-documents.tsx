@@ -12,6 +12,7 @@ import {
 } from '@/lib/patient/home-visit-intake';
 import type { VisitScheduleAccessContext } from '@/lib/auth/visit-schedule-access';
 import { flattenPdfJson, readPdfJsonObject } from '@/server/services/pdf-document-json';
+import { formatYen } from '@/lib/ui/currency-format';
 import {
   MEDICATION_CALENDAR_SLOT_KEYS,
   MEDICATION_CALENDAR_SLOT_LABELS,
@@ -1364,7 +1365,7 @@ function renderConferenceNoteContent(record: ConferenceNotePdfRecord) {
 }
 
 function formatPdfCurrency(value: number | null | undefined) {
-  return typeof value === 'number' ? `${value.toLocaleString('ja-JP')}円` : '—';
+  return formatYen(value);
 }
 
 function formatPdfBillingMonth(value: Date) {

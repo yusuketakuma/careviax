@@ -262,6 +262,69 @@ describe('ReportDetailPage send safety dialog', () => {
     expect(screen.getByText('一括送付（1件）')).toBeTruthy();
   });
 
+  it('sends report delivery mutations with idempotency headers', async () => {
+    const mutationConfigs: Array<{ mutationFn?: (input: unknown) => Promise<unknown> }> = [];
+    useMutationMock.mockImplementation((config: { mutationFn?: (input: unknown) => Promise<unknown> }) => {
+      mutationConfigs.push(config);
+      return {
+        mutate: sendMutateMock,
+        isPending: false,
+      };
+    });
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
+      new Response(JSON.stringify({ data: { ok: true } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    render(<ReportDetailPage />);
+
+    await mutationConfigs[1]?.mutationFn?.({
+      channel: 'email',
+      recipient_name: '山田 太郎',
+      recipient_contact: 'doctor@example.com',
+      recipient_role: 'physician',
+      safety_ack: true,
+    });
+    await mutationConfigs[2]?.mutationFn?.({
+      recipients: [
+        {
+          channel: 'fax',
+          recipient_name: '青葉内科',
+          recipient_contact: '03-1111-1111',
+          recipient_role: 'physician',
+        },
+      ],
+      safety_ack: true,
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/care-reports/report_1/send',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Content-Type': 'application/json',
+          'x-org-id': 'org_1',
+          'Idempotency-Key': expect.stringMatching(/^care-report-send:/),
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/care-reports/report_1/send',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Content-Type': 'application/json',
+          'x-org-id': 'org_1',
+          'Idempotency-Key': expect.stringMatching(/^care-report-send:/),
+        }),
+      }),
+    );
+  });
+
   it('does not display or send legacy title/body report content', () => {
     useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
       const scope = options.queryKey?.[0];
