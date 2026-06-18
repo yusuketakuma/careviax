@@ -145,21 +145,13 @@ describe('CommunicationRequestsContent', () => {
     expect(screen.queryByText('連携ログ一覧')).toBeNull();
   });
 
-  it('sends request updated_at as the OCC token and refreshes it before closing', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({ data: { id: 'request_1', updated_at: '2026-06-18T00:01:00.000Z' } }),
-          { status: 200, headers: { 'content-type': 'application/json' } },
-        ),
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ data: { id: 'request_1' } }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        }),
-      );
+  it('sends reply, follow-up, and the OCC token through one resolve action', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify({ data: { request: { id: 'request_1', status: 'closed' } } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
     vi.stubGlobal('fetch', fetchMock);
 
     render(<CommunicationRequestsContent />);
@@ -205,16 +197,17 @@ describe('CommunicationRequestsContent', () => {
       },
       responderName: '',
       content: '服薬状況の確認が取れました',
-      followup: '',
+      followup: '夕食後薬の飲み忘れを確認',
     });
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      '/api/communication-requests/request_1',
+      '/api/communication-requests/request_1/resolve-followup',
       expect.objectContaining({
-        method: 'PATCH',
+        method: 'POST',
       }),
     );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
       expected_updated_at: '2026-06-18T00:00:00.000Z',
       response: {
@@ -222,11 +215,7 @@ describe('CommunicationRequestsContent', () => {
         content: '服薬状況の確認が取れました',
         responded_at: expect.any(String),
       },
-    });
-    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toMatchObject({
-      expected_updated_at: '2026-06-18T00:01:00.000Z',
-      status: 'closed',
-      status_change_reason: 'フォロー対応済み',
+      followup: '夕食後薬の飲み忘れを確認',
     });
   });
 });

@@ -149,8 +149,7 @@ export function CommunicationRequestsContent({
         : 'ホームから依頼・照会の対応キューにフォーカスして開いています。'
       : null;
 
-  // フォーカスモードの「対応済みにする」: 返信内容の記録 → 次回カード作成 → 完了化 を順に実行。
-  // 既存ミューテーションの副作用（ダイアログ開閉トースト）と切り離すため API を直接呼ぶ。
+  // フォーカスモードの「対応済みにする」: 返信内容、次回カード、完了化を一括記録する。
   const resolveFocusedMutation = useMutation({
     mutationFn: async ({
       item,
@@ -165,65 +164,26 @@ export function CommunicationRequestsContent({
     }) => {
       const jsonHeaders = { 'Content-Type': 'application/json', 'x-org-id': orgId };
 
-      let expectedUpdatedAt = item.updated_at;
-
-      // 返信内容が入力されていれば返信記録を残す（responded へ自動遷移）
-      if (content) {
-        const res = await fetch(`/api/communication-requests/${item.id}`, {
-          method: 'PATCH',
-          headers: jsonHeaders,
-          body: JSON.stringify({
-            expected_updated_at: expectedUpdatedAt,
-            response: {
-              responder_name: responderName || item.recipient_name || '担当者',
-              content,
-              responded_at: new Date().toISOString(),
-            },
-          }),
-        });
-        if (!res.ok) {
-          const error = await res.json().catch(() => ({}));
-          throw new Error(error.message ?? '返信記録の保存に失敗しました');
-        }
-        const payload = (await res.json()) as { data?: { updated_at?: string } };
-        expectedUpdatedAt = payload.data?.updated_at ?? expectedUpdatedAt;
-      }
-
-      // 次回カードへ残すことがあれば運用タスク（報告返信待ちフォロー）を作成
-      if (followup) {
-        const res = await fetch('/api/tasks', {
-          method: 'POST',
-          headers: jsonHeaders,
-          body: JSON.stringify({
-            task_type: 'report_response_followup',
-            title: `返信フォロー: ${item.subject}`,
-            description: followup,
-            ...(item.patient_id
-              ? { related_entity_type: 'patient', related_entity_id: item.patient_id }
-              : {}),
-          }),
-        });
-        if (!res.ok) {
-          const error = await res.json().catch(() => ({}));
-          throw new Error(error.message ?? '次回カードの作成に失敗しました');
-        }
-      }
-
-      // 依頼を完了（closed）に遷移。変更理由は監査要件のため文言で記録
-      const closeRes = await fetch(`/api/communication-requests/${item.id}`, {
-        method: 'PATCH',
+      const res = await fetch(`/api/communication-requests/${item.id}/resolve-followup`, {
+        method: 'POST',
         headers: jsonHeaders,
         body: JSON.stringify({
-          expected_updated_at: expectedUpdatedAt,
-          status: 'closed',
-          status_change_reason: followup
-            ? `フォロー対応済み（次回カードへ残す）: ${followup}`
-            : 'フォロー対応済み',
+          expected_updated_at: item.updated_at,
+          ...(content
+            ? {
+                response: {
+                  responder_name: responderName || item.recipient_name || '担当者',
+                  content,
+                  responded_at: new Date().toISOString(),
+                },
+              }
+            : {}),
+          ...(followup ? { followup } : {}),
         }),
       });
-      if (!closeRes.ok) {
-        const error = await closeRes.json().catch(() => ({}));
-        throw new Error(error.message ?? '依頼の完了に失敗しました');
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message ?? '対応の記録に失敗しました');
       }
     },
     onSuccess: async () => {

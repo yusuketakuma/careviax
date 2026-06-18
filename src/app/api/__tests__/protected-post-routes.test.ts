@@ -39,6 +39,7 @@ import { POST as medicationProfilesPost } from '../medication-profiles/route';
 import { POST as medicationIssuesPost } from '../medication-issues/route';
 import { POST as communicationEventsPost } from '../communication-events/route';
 import { POST as communicationRequestsPost } from '../communication-requests/route';
+import { POST as communicationRequestResolveFollowupPost } from '../communication-requests/[id]/resolve-followup/route';
 import { POST as conferenceNotesPost } from '../conference-notes/route';
 import { POST as careReportsPost } from '../care-reports/route';
 import { POST as tracingReportsPost } from '../tracing-reports/route';
@@ -97,6 +98,13 @@ const routes: RouteEntry[] = [
   {
     name: 'communication-requests POST',
     handler: (req) => communicationRequestsPost(req, emptyRouteContext),
+  },
+  {
+    name: 'communication-requests/[id]/resolve-followup POST',
+    handler: (req) =>
+      communicationRequestResolveFollowupPost(req, {
+        params: Promise.resolve({ id: 'request_1' }),
+      }),
   },
   { name: 'conference-notes POST', handler: (req) => conferenceNotesPost(req, emptyRouteContext) },
   { name: 'care-reports POST', handler: (req) => careReportsPost(req, emptyRouteContext) },
