@@ -141,6 +141,30 @@ describe('/api/communication-requests', () => {
     expect(communicationRequestFindManyMock.mock.calls[0][0].where).not.toHaveProperty('AND');
   });
 
+  it('uses stable cursor pagination when listing communication requests', async () => {
+    communicationRequestFindManyMock.mockResolvedValueOnce([
+      { id: 'request_2', requested_at: new Date('2026-06-18T00:01:00.000Z') },
+      { id: 'request_1', requested_at: new Date('2026-06-18T00:00:00.000Z') },
+    ]);
+
+    const response = (await GET(createGetRequest('?limit=1&cursor=request_cursor')))!;
+
+    expect(response.status).toBe(200);
+    expect(communicationRequestFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 2,
+        cursor: { id: 'request_cursor' },
+        skip: 1,
+        orderBy: [{ requested_at: 'desc' }, { id: 'desc' }],
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      data: [{ id: 'request_2' }],
+      hasMore: true,
+      nextCursor: 'request_2',
+    });
+  });
+
   it('trims scoped search filters before listing communication requests', async () => {
     const response = (await GET(
       createGetRequest(

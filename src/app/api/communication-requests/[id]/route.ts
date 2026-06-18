@@ -152,6 +152,7 @@ const ALLOWED_STATUS_TRANSITIONS: Record<
 };
 
 const patchCommunicationRequestSchema = z.object({
+  expected_updated_at: z.string().datetime('版情報が不正です'),
   status: optionalCommunicationRequestStatusSchema,
   status_change_reason: z
     .string()
@@ -189,7 +190,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
-  const { status, status_change_reason: statusChangeReason, response } = parsed.data;
+  const {
+    expected_updated_at: expectedUpdatedAtRaw,
+    status,
+    status_change_reason: statusChangeReason,
+    response,
+  } = parsed.data;
+  const expectedUpdatedAt = new Date(expectedUpdatedAtRaw);
   const nextStatus = status ?? (response ? 'responded' : undefined);
 
   const existing = await prisma.communicationRequest.findFirst({
@@ -199,6 +206,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       patient_id: true,
       case_id: true,
       status: true,
+      updated_at: true,
       related_entity_type: true,
       related_entity_id: true,
     },
@@ -222,6 +230,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   if (existing.status === 'closed' || existing.status === 'cancelled') {
     return forbidden('完了または取消済みの依頼は変更できません');
+  }
+
+  if (existing.updated_at.getTime() !== expectedUpdatedAt.getTime()) {
+    return conflict('連携依頼が同時に更新されました。再読み込みしてください');
   }
 
   if (nextStatus && nextStatus !== existing.status) {
@@ -302,6 +314,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             id,
             org_id: orgId,
             status: existing.status,
+            updated_at: expectedUpdatedAt,
           },
           data: {
             status: nextStatus,

@@ -63,18 +63,28 @@ vi.mock('@/lib/patient/emergency-contacts', () => ({
 
 import { GET, PATCH } from './route';
 
+const CURRENT_UPDATED_AT = '2026-06-18T00:00:00.000Z';
+const CURRENT_UPDATED_AT_DATE = new Date(CURRENT_UPDATED_AT);
+
 function createGetRequest() {
   return new NextRequest('http://localhost/api/communication-requests/request_1');
 }
 
 function createRequest(body: unknown, headers?: Record<string, string>) {
+  const requestBody =
+    typeof body === 'object' &&
+    body !== null &&
+    !Array.isArray(body) &&
+    !('expected_updated_at' in body)
+      ? { expected_updated_at: CURRENT_UPDATED_AT, ...body }
+      : body;
   return new NextRequest('http://localhost/api/communication-requests/request_1', {
     method: 'PATCH',
     headers: {
       'content-type': 'application/json',
       ...(headers ?? {}),
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify(requestBody),
   });
 }
 
@@ -240,6 +250,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
       patient_id: 'patient_1',
       case_id: 'case_1',
       status: 'received',
+      updated_at: CURRENT_UPDATED_AT_DATE,
       related_entity_type: null,
       related_entity_id: null,
     });
@@ -286,6 +297,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
     communicationRequestFindFirstMock.mockResolvedValue({
       id: 'request_1',
       status: 'draft',
+      updated_at: CURRENT_UPDATED_AT_DATE,
     });
 
     const response = await PATCH(
@@ -321,6 +333,60 @@ describe('/api/communication-requests/[id] PATCH', () => {
       code: 'VALIDATION_ERROR',
       message: 'ステータス変更理由は必須です',
     });
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('requires expected_updated_at before loading the request for mutation work', async () => {
+    const response = await PATCH(
+      createRequest(
+        {
+          expected_updated_at: undefined,
+          status: 'in_progress',
+          status_change_reason: '電話で受領確認し対応を開始',
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'request_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        expected_updated_at: expect.any(Array),
+      },
+    });
+    expect(communicationRequestFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationResponseCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns conflict for stale expected_updated_at before response or audit side effects', async () => {
+    const response = await PATCH(
+      createRequest(
+        {
+          expected_updated_at: '2026-06-17T23:59:59.000Z',
+          response: {
+            responder_name: '在宅主治医',
+            content: '現行処方で継続',
+          },
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'request_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '連携依頼が同時に更新されました。再読み込みしてください',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationResponseCreateMock).not.toHaveBeenCalled();
     expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
@@ -427,7 +493,12 @@ describe('/api/communication-requests/[id] PATCH', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(communicationRequestUpdateManyMock).toHaveBeenCalledWith({
-      where: { id: 'request_1', org_id: 'org_1', status: 'received' },
+      where: {
+        id: 'request_1',
+        org_id: 'org_1',
+        status: 'received',
+        updated_at: CURRENT_UPDATED_AT_DATE,
+      },
       data: { status: 'in_progress' },
     });
     expect(auditLogCreateMock).toHaveBeenCalledWith({
@@ -495,7 +566,12 @@ describe('/api/communication-requests/[id] PATCH', () => {
       }),
     });
     expect(communicationRequestUpdateManyMock).toHaveBeenCalledWith({
-      where: { id: 'request_1', org_id: 'org_1', status: 'received' },
+      where: {
+        id: 'request_1',
+        org_id: 'org_1',
+        status: 'received',
+        updated_at: CURRENT_UPDATED_AT_DATE,
+      },
       data: { status: 'responded' },
     });
     expect(auditLogCreateMock).toHaveBeenCalledWith({
@@ -534,7 +610,12 @@ describe('/api/communication-requests/[id] PATCH', () => {
       message: '連携依頼が同時に更新されました。再読み込みしてください',
     });
     expect(communicationRequestUpdateManyMock).toHaveBeenCalledWith({
-      where: { id: 'request_1', org_id: 'org_1', status: 'received' },
+      where: {
+        id: 'request_1',
+        org_id: 'org_1',
+        status: 'received',
+        updated_at: CURRENT_UPDATED_AT_DATE,
+      },
       data: { status: 'responded' },
     });
     expect(communicationResponseCreateMock).not.toHaveBeenCalled();
@@ -549,6 +630,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
       patient_id: 'patient_1',
       case_id: 'case_1',
       status: 'responded',
+      updated_at: CURRENT_UPDATED_AT_DATE,
       related_entity_type: null,
       related_entity_id: null,
     });
@@ -604,6 +686,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
       patient_id: 'patient_1',
       case_id: 'case_1',
       status: 'responded',
+      updated_at: CURRENT_UPDATED_AT_DATE,
       related_entity_type: null,
       related_entity_id: null,
     });
@@ -659,6 +742,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
       patient_id: 'patient_1',
       case_id: 'case_1',
       status: 'responded',
+      updated_at: CURRENT_UPDATED_AT_DATE,
       related_entity_type: null,
       related_entity_id: null,
     });
@@ -712,6 +796,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
       patient_id: 'patient_1',
       case_id: 'case_1',
       status: 'received',
+      updated_at: CURRENT_UPDATED_AT_DATE,
       related_entity_type: 'tracing_report',
       related_entity_id: 'tracing_1',
     });
@@ -792,6 +877,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
       patient_id: 'patient_1',
       case_id: 'case_1',
       status: 'received',
+      updated_at: CURRENT_UPDATED_AT_DATE,
       related_entity_type: 'tracing_report',
       related_entity_id: 'tracing_2',
     });
@@ -836,6 +922,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
       patient_id: 'patient_1',
       case_id: null,
       status: 'received',
+      updated_at: CURRENT_UPDATED_AT_DATE,
       related_entity_type: 'tracing_report',
       related_entity_id: 'tracing_2',
     });

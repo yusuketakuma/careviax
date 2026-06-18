@@ -171,7 +171,7 @@ const permissionRoutes: RouteEntry[] = [
         createRequest(
           'http://localhost/api/communication-requests/request_1',
           { 'x-org-id': 'org_1' },
-          {},
+          { expected_updated_at: '2026-06-18T00:00:00.000Z' },
         ),
         { params: Promise.resolve({ id: 'request_1' }) },
       ),

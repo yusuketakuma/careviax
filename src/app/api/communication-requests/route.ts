@@ -109,7 +109,7 @@ export const GET = withAuthContext(
       where,
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      orderBy: { requested_at: 'desc' },
+      orderBy: [{ requested_at: 'desc' }, { id: 'desc' }],
       select: {
         id: true,
         org_id: true,

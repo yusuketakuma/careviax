@@ -75,6 +75,7 @@ describe('CommunicationRequestsContent', () => {
               subject: '服薬情報提供書の確認',
               status: 'sent',
               requested_at: '2026-05-12T00:00:00.000Z',
+              updated_at: '2026-06-18T00:00:00.000Z',
               due_date: '2026-05-13T00:00:00.000Z',
               patient_id: 'patient_1',
               related_entity_type: 'tracing_report',
@@ -120,6 +121,7 @@ describe('CommunicationRequestsContent', () => {
               subject: '服薬情報提供書の確認',
               status: 'sent',
               requested_at: '2026-05-12T00:00:00.000Z',
+              updated_at: '2026-06-18T00:00:00.000Z',
               due_date: '2026-05-13T00:00:00.000Z',
               patient_id: 'patient_1',
               related_entity_type: 'care_report',
@@ -141,5 +143,90 @@ describe('CommunicationRequestsContent', () => {
     expect(screen.getByText('絞り込みと文脈')).toBeTruthy();
     expect(screen.queryByRole('group', { name: '表示モード' })).toBeNull();
     expect(screen.queryByText('連携ログ一覧')).toBeNull();
+  });
+
+  it('sends request updated_at as the OCC token and refreshes it before closing', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ data: { id: 'request_1', updated_at: '2026-06-18T00:01:00.000Z' } }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ data: { id: 'request_1' } }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<CommunicationRequestsContent />);
+
+    const mutationOptions = useMutationMock.mock.calls[0]?.[0] as {
+      mutationFn: (input: {
+        item: {
+          id: string;
+          request_type: string;
+          subject: string;
+          status: string;
+          requested_at: string;
+          updated_at: string;
+          due_date: string | null;
+          patient_id: string | null;
+          related_entity_type: string | null;
+          related_entity_id: string | null;
+          recipient_name: string | null;
+          recipient_role: string | null;
+          responses: [];
+        };
+        responderName: string;
+        content: string;
+        followup: string;
+      }) => Promise<void>;
+    };
+
+    await mutationOptions.mutationFn({
+      item: {
+        id: 'request_1',
+        request_type: 'tracing_report',
+        subject: '服薬情報提供書の確認',
+        status: 'sent',
+        requested_at: '2026-05-12T00:00:00.000Z',
+        updated_at: '2026-06-18T00:00:00.000Z',
+        due_date: null,
+        patient_id: 'patient_1',
+        related_entity_type: 'tracing_report',
+        related_entity_id: 'tracing_1',
+        recipient_name: '在宅主治医',
+        recipient_role: 'physician',
+        responses: [],
+      },
+      responderName: '',
+      content: '服薬状況の確認が取れました',
+      followup: '',
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      '/api/communication-requests/request_1',
+      expect.objectContaining({
+        method: 'PATCH',
+      }),
+    );
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
+      expected_updated_at: '2026-06-18T00:00:00.000Z',
+      response: {
+        responder_name: '在宅主治医',
+        content: '服薬状況の確認が取れました',
+        responded_at: expect.any(String),
+      },
+    });
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toMatchObject({
+      expected_updated_at: '2026-06-18T00:01:00.000Z',
+      status: 'closed',
+      status_change_reason: 'フォロー対応済み',
+    });
   });
 });

@@ -28,6 +28,7 @@ type CommunicationRequestRow = {
   subject: string;
   status: string;
   requested_at: string;
+  updated_at: string;
   due_date: string | null;
   patient_id: string | null;
   related_entity_type: string | null;
@@ -164,12 +165,15 @@ export function CommunicationRequestsContent({
     }) => {
       const jsonHeaders = { 'Content-Type': 'application/json', 'x-org-id': orgId };
 
+      let expectedUpdatedAt = item.updated_at;
+
       // 返信内容が入力されていれば返信記録を残す（responded へ自動遷移）
       if (content) {
         const res = await fetch(`/api/communication-requests/${item.id}`, {
           method: 'PATCH',
           headers: jsonHeaders,
           body: JSON.stringify({
+            expected_updated_at: expectedUpdatedAt,
             response: {
               responder_name: responderName || item.recipient_name || '担当者',
               content,
@@ -181,6 +185,8 @@ export function CommunicationRequestsContent({
           const error = await res.json().catch(() => ({}));
           throw new Error(error.message ?? '返信記録の保存に失敗しました');
         }
+        const payload = (await res.json()) as { data?: { updated_at?: string } };
+        expectedUpdatedAt = payload.data?.updated_at ?? expectedUpdatedAt;
       }
 
       // 次回カードへ残すことがあれば運用タスク（報告返信待ちフォロー）を作成
@@ -208,6 +214,7 @@ export function CommunicationRequestsContent({
         method: 'PATCH',
         headers: jsonHeaders,
         body: JSON.stringify({
+          expected_updated_at: expectedUpdatedAt,
           status: 'closed',
           status_change_reason: followup
             ? `フォロー対応済み（次回カードへ残す）: ${followup}`
