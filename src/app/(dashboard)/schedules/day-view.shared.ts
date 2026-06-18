@@ -289,14 +289,11 @@ export type VisitPreparationPack = {
     action_label: string;
   }>;
   recent_contact_logs: Array<{
-    id: string;
     outcome: PatientContactStatus;
-    contact_name: string | null;
-    contact_phone: string | null;
-    note: string | null;
+    contact_method: string | null;
+    has_note: boolean;
     callback_due_at: string | null;
     called_at: string;
-    called_by: string;
   }>;
   facility_mode: {
     label: string | null;

@@ -446,12 +446,28 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
       {
         id: 'log_1',
         outcome: 'attempted',
+        contact_method: 'phone',
         contact_name: '家族A',
         contact_phone: '090-0000-0000',
         note: '夕方に再架電予定',
         callback_due_at: new Date('2026-03-26T09:00:00Z'),
         called_at: new Date('2026-03-26T08:00:00Z'),
         called_by: 'user_1',
+        idempotency_key: 'contact-key-secret',
+        request_fingerprint: 'contact-fingerprint-secret',
+      },
+      {
+        id: 'log_2',
+        outcome: 'confirmed',
+        contact_method: 'email',
+        contact_name: '家族B',
+        contact_phone: '080-1111-2222',
+        note: '   ',
+        callback_due_at: null,
+        called_at: new Date('2026-03-25T08:00:00Z'),
+        called_by: 'user_2',
+        idempotency_key: 'contact-key-secret-2',
+        request_fingerprint: 'contact-fingerprint-secret-2',
       },
     ]);
     peerVisitScheduleFindManyMock.mockResolvedValue([
@@ -665,7 +681,21 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
         }),
       }),
     );
-    await expect(response.json()).resolves.toMatchObject({
+    expect(visitScheduleContactLogFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 4,
+        orderBy: [{ called_at: 'desc' }],
+        select: {
+          outcome: true,
+          contact_method: true,
+          note: true,
+          callback_due_at: true,
+          called_at: true,
+        },
+      }),
+    );
+    const body = await response.json();
+    expect(body).toMatchObject({
       data: {
         preparation: {
           id: 'prep_1',
@@ -804,6 +834,22 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
               action_label: '準備を完了',
             }),
           ],
+          recent_contact_logs: [
+            {
+              outcome: 'attempted',
+              contact_method: 'phone',
+              has_note: true,
+              callback_due_at: '2026-03-26T09:00:00.000Z',
+              called_at: '2026-03-26T08:00:00.000Z',
+            },
+            {
+              outcome: 'confirmed',
+              contact_method: 'email',
+              has_note: false,
+              callback_due_at: null,
+              called_at: '2026-03-25T08:00:00.000Z',
+            },
+          ],
           onboarding_readiness: expect.objectContaining({
             consent_obtained: true,
             emergency_contact_set: true,
@@ -820,6 +866,19 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
         },
       },
     });
+    expect(JSON.stringify(body.data.pack.recent_contact_logs)).not.toContain('log_1');
+    expect(JSON.stringify(body.data.pack.recent_contact_logs)).not.toContain('log_2');
+    expect(JSON.stringify(body.data.pack.recent_contact_logs)).not.toContain('家族A');
+    expect(JSON.stringify(body.data.pack.recent_contact_logs)).not.toContain('家族B');
+    expect(JSON.stringify(body.data.pack.recent_contact_logs)).not.toContain('090-0000-0000');
+    expect(JSON.stringify(body.data.pack.recent_contact_logs)).not.toContain('080-1111-2222');
+    expect(JSON.stringify(body.data.pack.recent_contact_logs)).not.toContain('夕方に再架電予定');
+    expect(JSON.stringify(body.data.pack.recent_contact_logs)).not.toContain('user_1');
+    expect(JSON.stringify(body.data.pack.recent_contact_logs)).not.toContain('user_2');
+    expect(JSON.stringify(body.data.pack.recent_contact_logs)).not.toContain('contact-key-secret');
+    expect(JSON.stringify(body.data.pack.recent_contact_logs)).not.toContain(
+      'contact-fingerprint-secret',
+    );
     expect(patientHomeCareFeatureSummaryMock).toHaveBeenCalledWith(expect.anything(), {
       orgId: 'org_1',
       patientId: 'patient_1',

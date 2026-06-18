@@ -1031,14 +1031,11 @@ export async function GET(
       orderBy: [{ called_at: 'desc' }],
       take: 4,
       select: {
-        id: true,
         outcome: true,
-        contact_name: true,
-        contact_phone: true,
+        contact_method: true,
         note: true,
         callback_due_at: true,
         called_at: true,
-        called_by: true,
       },
     }),
     canAccessParallelVisitContext
@@ -1471,7 +1468,9 @@ export async function GET(
           };
         }),
         recent_contact_logs: recentContactLogs.map((log) => ({
-          ...log,
+          outcome: log.outcome,
+          contact_method: log.contact_method,
+          has_note: Boolean(log.note?.trim()),
           callback_due_at: log.callback_due_at?.toISOString() ?? null,
           called_at: log.called_at.toISOString(),
         })),
