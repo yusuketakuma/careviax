@@ -161,6 +161,46 @@ describe('/api/billing-candidates/export GET', () => {
     );
   });
 
+  it.each([
+    ['csv export', ''],
+    ['claims xml export', '&format=claims-xml'],
+  ])('rejects %s when there are no confirmed or exported candidates', async (_caseName, suffix) => {
+    txMock.billingCandidate.findMany.mockResolvedValueOnce([]);
+
+    const response = await GET(
+      createRequest(
+        `http://localhost/api/billing-candidates/export?billing_month=2026-03-01${suffix}`,
+      ),
+      emptyRouteContext,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '確定済みまたは締め済みの請求候補がないためエクスポートできません',
+      details: {
+        billing_month: '2026-03-01',
+        patient_id: null,
+        billing_domain: 'home_care',
+        statuses: ['confirmed', 'exported'],
+      },
+    });
+    expect(txMock.billingCandidate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          billing_month: new Date('2026-03-01T00:00:00.000Z'),
+          billing_domain: 'home_care',
+          status: { in: ['confirmed', 'exported'] },
+        }),
+      }),
+    );
+    expect(txMock.patient.findMany).not.toHaveBeenCalled();
+    expect(txMock.residence.findMany).not.toHaveBeenCalled();
+    expect(txMock.prescriptionIntake.findMany).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+  });
+
   it('returns a PHI-minimal export preview without data export audit side effects', async () => {
     txMock.billingCandidate.findMany.mockResolvedValueOnce([
       {

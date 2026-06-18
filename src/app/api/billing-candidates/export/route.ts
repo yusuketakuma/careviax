@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
-import { error, validationError } from '@/lib/api/response';
+import { conflict, error, validationError } from '@/lib/api/response';
 import { readJsonObject, readJsonObjectString } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { recordDataExportAudit } from '@/server/services/export-audit';
@@ -184,7 +184,7 @@ export const GET = withAuthContext(
       });
     }
 
-    const candidates = await withOrgContext(ctx.orgId, async (tx) => {
+    const exportResult = await withOrgContext(ctx.orgId, async (tx) => {
       const records = await tx.billingCandidate.findMany({
         where: {
           org_id: ctx.orgId,
@@ -211,6 +211,7 @@ export const GET = withAuthContext(
           source_snapshot: true,
         },
       });
+      if (records.length === 0) return { kind: 'empty' as const };
 
       const patientIds = Array.from(
         new Set(
@@ -332,8 +333,17 @@ export const GET = withAuthContext(
         userAgent: ctx.userAgent,
       });
 
-      return candidates;
+      return { kind: 'records' as const, candidates };
     });
+    if (exportResult.kind === 'empty') {
+      return conflict('確定済みまたは締め済みの請求候補がないためエクスポートできません', {
+        billing_month: parsedBillingMonth?.canonical ?? null,
+        patient_id: patientId ?? null,
+        billing_domain: billingDomain,
+        statuses: ['confirmed', 'exported'],
+      });
+    }
+    const candidates = exportResult.candidates;
 
     const monthOf = (value: Date | string) =>
       value instanceof Date ? value.toISOString().slice(0, 7) : String(value).slice(0, 7);
