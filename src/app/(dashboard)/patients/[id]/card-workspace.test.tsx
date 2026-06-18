@@ -1343,6 +1343,8 @@ describe('CardWorkspace', () => {
 
     expect(billingMutate).toHaveBeenCalledWith({
       candidateId: 'candidate_1',
+      expectedUpdatedAt: '2026-06-10T00:00:00.000Z',
+      idempotencyKey: expect.stringMatching(/^billing-collection:/),
       status: 'collected',
       billedAmount: 3240,
       collectedAmount: 3240,

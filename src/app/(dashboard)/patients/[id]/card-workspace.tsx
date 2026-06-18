@@ -810,6 +810,8 @@ function PatientCardDocumentsPanel({
 
 type BillingCollectionFormInput = {
   candidateId: string;
+  expectedUpdatedAt: string;
+  idempotencyKey: string;
   status: string;
   billedAmount: number | null;
   collectedAmount: number | null;
@@ -822,6 +824,12 @@ type BillingCollectionFormInput = {
   saveReceiptCopy: boolean;
   saveInvoiceCopy: boolean;
 };
+
+function createBillingCollectionIdempotencyKey() {
+  const random =
+    globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `billing-collection:${random}`.slice(0, 128);
+}
 
 type BillingPaymentProfileFormInput = {
   patientId: string;
@@ -1673,9 +1681,15 @@ function BillingCollectionQuickForm({
           setError('請求書発行が必要な請求・集金では発行状態を発行済みにしてください。');
           return;
         }
+        if (!item.updated_at) {
+          setError('請求候補の最新版を取得してから集金記録を保存してください。');
+          return;
+        }
         setError(null);
         onSubmit?.({
           candidateId,
+          expectedUpdatedAt: item.updated_at,
+          idempotencyKey: createBillingCollectionIdempotencyKey(),
           status,
           billedAmount: billed,
           collectedAmount: collected,
@@ -3439,9 +3453,11 @@ export function CardWorkspace({
         headers: {
           'Content-Type': 'application/json',
           'x-org-id': orgId,
+          'Idempotency-Key': input.idempotencyKey,
         },
         body: JSON.stringify({
           status: input.status,
+          expected_updated_at: input.expectedUpdatedAt,
           billed_amount: input.billedAmount,
           collected_amount: input.collectedAmount,
           payment_method: input.paymentMethod,

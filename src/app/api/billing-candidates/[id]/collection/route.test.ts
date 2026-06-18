@@ -1,3 +1,4 @@
+import { createHash, createHmac } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
@@ -31,19 +32,71 @@ vi.mock('@/lib/db/rls', () => ({
 
 import { PATCH } from './route';
 
-function createRequest(body: unknown) {
+const CURRENT_UPDATED_AT = '2026-06-01T00:00:00.000Z';
+const LOCAL_AUTH_SECRET = 'ph-os-local-auth-secret';
+
+function createRequest(body: unknown, headers: Record<string, string> = {}) {
+  const requestBody =
+    body &&
+    typeof body === 'object' &&
+    !Array.isArray(body) &&
+    !('expected_updated_at' in body)
+      ? { expected_updated_at: CURRENT_UPDATED_AT, ...body }
+      : body;
   return new NextRequest('http://localhost/api/billing-candidates/candidate_1/collection', {
     method: 'PATCH',
     headers: {
       'content-type': 'application/json',
       'x-org-id': 'org_1',
+      ...headers,
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify(requestBody),
   });
 }
 
+function hashJson(value: unknown) {
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+}
+
+function keyedHashJson(value: unknown) {
+  return createHmac('sha256', LOCAL_AUTH_SECRET).update(JSON.stringify(value)).digest('hex');
+}
+
+function buildIdempotencyKeyHash(idempotencyKey: string) {
+  return `billing-collection:v1:${keyedHashJson({
+    purpose: 'billing_collection_idempotency_key',
+    org_id: 'org_1',
+    candidate_id: 'candidate_1',
+    idempotency_key: idempotencyKey,
+  })}`;
+}
+
+function buildRequestFingerprint(body: Record<string, unknown>) {
+  return `billing-collection-request:v1:${hashJson({
+    candidate_id: 'candidate_1',
+    expected_updated_at: body.expected_updated_at,
+    status: body.status,
+    billed_amount: body.billed_amount ?? null,
+    collected_amount: body.collected_amount ?? null,
+    payment_method: body.payment_method ?? null,
+    payer_name: body.payer_name ?? null,
+    billed_at: body.billed_at ? new Date(String(body.billed_at)).toISOString() : null,
+    scheduled_collection_at: body.scheduled_collection_at
+      ? new Date(String(body.scheduled_collection_at)).toISOString()
+      : null,
+    collected_at: body.collected_at ? new Date(String(body.collected_at)).toISOString() : null,
+    receipt_number: body.receipt_number ?? null,
+    receipt_issue_status: body.receipt_issue_status ?? null,
+    invoice_issue_status: body.invoice_issue_status ?? null,
+    save_receipt_copy: body.save_receipt_copy ?? false,
+    save_invoice_copy: body.save_invoice_copy ?? false,
+    unpaid_reason: body.unpaid_reason ?? null,
+    note: body.note ?? null,
+  })}`;
+}
+
 describe('/api/billing-candidates/[id]/collection PATCH', () => {
-  const updatedAt = new Date('2026-06-01T00:00:00.000Z');
+  const updatedAt = new Date(CURRENT_UPDATED_AT);
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -172,6 +225,131 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     await expect(response.json()).resolves.toMatchObject({
       data: { id: 'candidate_1' },
     });
+  });
+
+  it('stores hashed idempotency metadata for keyed collection updates without exposing it in audit changes', async () => {
+    const requestBody = {
+      status: 'billed',
+      billed_amount: 3240,
+      collected_amount: 0,
+      invoice_issue_status: 'issued',
+    };
+
+    const response = await PATCH(
+      createRequest(requestBody, { 'Idempotency-Key': 'collection-key-1' }),
+      { params: Promise.resolve({ id: 'candidate_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    const idempotencyKeyHash = buildIdempotencyKeyHash('collection-key-1');
+    const requestFingerprint = buildRequestFingerprint({
+      expected_updated_at: CURRENT_UPDATED_AT,
+      ...requestBody,
+      save_receipt_copy: false,
+      save_invoice_copy: false,
+    });
+    expect(updateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          calculation_breakdown: expect.objectContaining({
+            collection: expect.objectContaining({
+              status: 'billed',
+              idempotency_key_hash: idempotencyKeyHash,
+              idempotency_request_fingerprint: requestFingerprint,
+            }),
+          }),
+        },
+      }),
+    );
+    const auditChanges = auditLogCreateMock.mock.calls[0]?.[0]?.data?.changes as
+      | { collection?: Record<string, unknown> }
+      | undefined;
+    expect(auditChanges?.collection).not.toHaveProperty('idempotency_key_hash');
+    expect(auditChanges?.collection).not.toHaveProperty('idempotency_request_fingerprint');
+  });
+
+  it('replays the same idempotency key and body without duplicate update or audit side effects', async () => {
+    const requestBody = {
+      status: 'billed',
+      billed_amount: 3240,
+      collected_amount: 0,
+      invoice_issue_status: 'issued',
+    };
+    const idempotencyKeyHash = buildIdempotencyKeyHash('collection-key-1');
+    const requestFingerprint = buildRequestFingerprint({
+      expected_updated_at: CURRENT_UPDATED_AT,
+      ...requestBody,
+      save_receipt_copy: false,
+      save_invoice_copy: false,
+    });
+    findFirstMock.mockResolvedValueOnce({
+      id: 'candidate_1',
+      patient_id: 'patient_1',
+      billing_target_type: 'patient',
+      billing_target_id: 'patient_1',
+      status: 'confirmed',
+      calculation_breakdown: {
+        amount_yen: 3240,
+        collection: {
+          status: 'billed',
+          idempotency_key_hash: idempotencyKeyHash,
+          idempotency_request_fingerprint: requestFingerprint,
+        },
+      },
+      updated_at: new Date('2026-06-01T00:01:00.000Z'),
+    });
+
+    const response = await PATCH(
+      createRequest(requestBody, { 'Idempotency-Key': 'collection-key-1' }),
+      { params: Promise.resolve({ id: 'candidate_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(findUniqueMock).toHaveBeenCalledWith({ where: { id: 'candidate_1' } });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(taskFindFirstMock).not.toHaveBeenCalled();
+    expect(updateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an idempotency key reused with a different collection body', async () => {
+    findFirstMock.mockResolvedValueOnce({
+      id: 'candidate_1',
+      patient_id: 'patient_1',
+      billing_target_type: 'patient',
+      billing_target_id: 'patient_1',
+      status: 'confirmed',
+      calculation_breakdown: {
+        amount_yen: 3240,
+        collection: {
+          status: 'billed',
+          idempotency_key_hash: buildIdempotencyKeyHash('collection-key-1'),
+          idempotency_request_fingerprint: 'billing-collection-request:v1:different',
+        },
+      },
+      updated_at: updatedAt,
+    });
+
+    const response = await PATCH(
+      createRequest(
+        {
+          status: 'billed',
+          billed_amount: 3240,
+          collected_amount: 0,
+          invoice_issue_status: 'issued',
+        },
+        { 'Idempotency-Key': 'collection-key-1' },
+      ),
+      { params: Promise.resolve({ id: 'candidate_1' }) },
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'Idempotency-Keyが別の集金記録リクエストで使用されています',
+      details: { reason: 'key_reused_with_different_request' },
+    });
+    expect(updateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('does not save an invoice copy URL unless staff explicitly requests it', async () => {
@@ -419,6 +597,42 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
   });
 
+  it('requires expected_updated_at before loading the candidate for mutation work', async () => {
+    const response = await PATCH(
+      createRequest({
+        expected_updated_at: undefined,
+        status: 'billed',
+        billed_amount: 3240,
+      }),
+      { params: Promise.resolve({ id: 'candidate_1' }) },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      details: { expected_updated_at: expect.any(Array) },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed idempotency keys before loading the candidate', async () => {
+    const response = await PATCH(
+      createRequest(
+        {
+          status: 'billed',
+          billed_amount: 3240,
+        },
+        { 'Idempotency-Key': 'bad key with spaces' },
+      ),
+      { params: Promise.resolve({ id: 'candidate_1' }) },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: 'Idempotency-Keyが不正です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
+
   it('rejects scheduled collection without a scheduled date', async () => {
     const response = await PATCH(
       createRequest({
@@ -444,6 +658,23 @@ describe('/api/billing-candidates/[id]/collection PATCH', () => {
     });
 
     expect(response.status).toBe(404);
+    expect(updateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 for stale expected_updated_at before patient, task, update, or audit side effects', async () => {
+    const response = await PATCH(
+      createRequest({
+        expected_updated_at: '2026-05-31T23:59:59.000Z',
+        status: 'billed',
+        billed_amount: 3240,
+      }),
+      { params: Promise.resolve({ id: 'candidate_1' }) },
+    );
+
+    expect(response.status).toBe(409);
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(taskFindFirstMock).not.toHaveBeenCalled();
     expect(updateManyMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });

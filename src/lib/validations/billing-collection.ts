@@ -34,6 +34,7 @@ const statusesRequiringBilledAmount = new Set([
 export const updateBillingCollectionSchema = z
   .object({
     status: billingCollectionStatusSchema,
+    expected_updated_at: z.string().datetime('版情報が不正です'),
     billed_amount: optionalAmountSchema,
     collected_amount: optionalAmountSchema,
     payment_method: optionalTextSchema,

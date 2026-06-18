@@ -1,3 +1,4 @@
+import { createHash, createHmac } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { NextRequest, type NextResponse } from 'next/server';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
@@ -5,14 +6,19 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { requireAuthContext } from '@/lib/auth/context';
+import { getAuthSecret } from '@/lib/auth/secret';
 import { readJsonObject } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
-import { updateBillingCollectionSchema } from '@/lib/validations/billing-collection';
+import {
+  updateBillingCollectionSchema,
+  type UpdateBillingCollectionInput,
+} from '@/lib/validations/billing-collection';
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
 
 class BillingCollectionConflictError extends Error {}
 
 const BILLING_PAYMENT_PROFILE_TASK_TYPE = 'patient_billing_payment_profile';
+const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const receiptNumberPlaceholders = new Set(['未記録', '未発行/未記録', '未発行', '不要']);
 
 function buildBillingDocumentPdfUrl(candidateId: string, kind: 'receipt' | 'invoice') {
@@ -27,6 +33,97 @@ function normalizeNullableText(value: string | null | undefined) {
 function normalizeReceiptNumber(value: string | null | undefined) {
   const normalized = normalizeNullableText(value);
   return normalized && !receiptNumberPlaceholders.has(normalized) ? normalized : null;
+}
+
+function resolveBillingCollectionIdempotencyHashSecret() {
+  const configuredSecret = process.env.BILLING_COLLECTION_IDEMPOTENCY_HASH_SECRET?.trim();
+  if (configuredSecret) return configuredSecret;
+  const authSecret = getAuthSecret();
+  if (authSecret) return authSecret;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('billing collection idempotency hash secret is not configured');
+  }
+  return 'ph-os-local-billing-collection-idempotency-secret';
+}
+
+function keyedHashJson(value: unknown) {
+  return createHmac('sha256', resolveBillingCollectionIdempotencyHashSecret())
+    .update(JSON.stringify(value))
+    .digest('hex');
+}
+
+function hashJson(value: unknown) {
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+}
+
+function parseOptionalIdempotencyKey(value: string | null) {
+  if (value === null) return { ok: true as const, key: null };
+  const key = value.trim();
+  if (!IDEMPOTENCY_KEY_PATTERN.test(key)) {
+    return {
+      ok: false as const,
+      message: 'Idempotency-Keyが不正です',
+    };
+  }
+  return { ok: true as const, key };
+}
+
+function buildBillingCollectionIdempotencyKeyHash(args: {
+  orgId: string;
+  candidateId: string;
+  idempotencyKey: string;
+}) {
+  return `billing-collection:v1:${keyedHashJson({
+    purpose: 'billing_collection_idempotency_key',
+    org_id: args.orgId,
+    candidate_id: args.candidateId,
+    idempotency_key: args.idempotencyKey,
+  })}`;
+}
+
+function buildBillingCollectionRequestFingerprint(args: {
+  candidateId: string;
+  data: UpdateBillingCollectionInput;
+}) {
+  const data = args.data;
+  return `billing-collection-request:v1:${hashJson({
+    candidate_id: args.candidateId,
+    expected_updated_at: data.expected_updated_at,
+    status: data.status,
+    billed_amount: data.billed_amount ?? null,
+    collected_amount: data.collected_amount ?? null,
+    payment_method: normalizeNullableText(data.payment_method),
+    payer_name: normalizeNullableText(data.payer_name),
+    billed_at: data.billed_at ? new Date(data.billed_at).toISOString() : null,
+    scheduled_collection_at: data.scheduled_collection_at
+      ? new Date(data.scheduled_collection_at).toISOString()
+      : null,
+    collected_at: data.collected_at ? new Date(data.collected_at).toISOString() : null,
+    receipt_number: normalizeReceiptNumber(data.receipt_number),
+    receipt_issue_status: data.receipt_issue_status ?? null,
+    invoice_issue_status: data.invoice_issue_status ?? null,
+    save_receipt_copy: data.save_receipt_copy,
+    save_invoice_copy: data.save_invoice_copy,
+    unpaid_reason: normalizeNullableText(data.unpaid_reason),
+    note: normalizeNullableText(data.note),
+  })}`;
+}
+
+function readCollectionIdempotencyStatus(input: {
+  calculationBreakdown: unknown;
+  idempotencyKeyHash: string;
+  requestFingerprint: string;
+}) {
+  const breakdown = readJsonObject(input.calculationBreakdown);
+  const collection = readJsonObject(breakdown?.collection);
+  const existingKeyHash =
+    typeof collection?.idempotency_key_hash === 'string' ? collection.idempotency_key_hash : null;
+  if (existingKeyHash !== input.idempotencyKeyHash) return 'none' as const;
+  const existingFingerprint =
+    typeof collection?.idempotency_request_fingerprint === 'string'
+      ? collection.idempotency_request_fingerprint
+      : null;
+  return existingFingerprint === input.requestFingerprint ? ('replayed' as const) : ('conflict' as const);
 }
 
 function readReceiptIssue(metadata: unknown) {
@@ -96,10 +193,24 @@ export async function PATCH(
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
+  const parsedIdempotencyKey = parseOptionalIdempotencyKey(req.headers.get('idempotency-key'));
+  if (!parsedIdempotencyKey.ok) return validationError(parsedIdempotencyKey.message);
+
   const parsed = updateBillingCollectionSchema.safeParse(payload);
   if (!parsed.success) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
+  const expectedUpdatedAt = new Date(parsed.data.expected_updated_at);
+  const idempotencyKeyHash = parsedIdempotencyKey.key
+    ? buildBillingCollectionIdempotencyKeyHash({
+        orgId: ctx.orgId,
+        candidateId,
+        idempotencyKey: parsedIdempotencyKey.key,
+      })
+    : null;
+  const requestFingerprint = parsedIdempotencyKey.key
+    ? buildBillingCollectionRequestFingerprint({ candidateId, data: parsed.data })
+    : null;
 
   const result = await withOrgContext(ctx.orgId, async (tx) => {
     const candidate = await tx.billingCandidate.findFirst({
@@ -118,6 +229,23 @@ export async function PATCH(
       },
     });
     if (!candidate) return null;
+
+    if (idempotencyKeyHash && requestFingerprint) {
+      const replayStatus = readCollectionIdempotencyStatus({
+        calculationBreakdown: candidate.calculation_breakdown,
+        idempotencyKeyHash,
+        requestFingerprint,
+      });
+      if (replayStatus === 'replayed') {
+        return tx.billingCandidate.findUnique({ where: { id: candidateId } });
+      }
+      if (replayStatus === 'conflict') return 'idempotency-conflict' as const;
+    }
+    if (candidate.updated_at.getTime() !== expectedUpdatedAt.getTime()) {
+      throw new BillingCollectionConflictError(
+        '請求候補が他のユーザーによって更新されています。最新のデータを取得してください。',
+      );
+    }
 
     const candidatePatientId =
       candidate.patient_id ??
@@ -205,6 +333,12 @@ export async function PATCH(
       invoice_copy_url: invoiceCopyUrl,
       unpaid_reason: normalizeNullableText(parsed.data.unpaid_reason),
       note: normalizeNullableText(parsed.data.note),
+      ...(idempotencyKeyHash && requestFingerprint
+        ? {
+            idempotency_key_hash: idempotencyKeyHash,
+            idempotency_request_fingerprint: requestFingerprint,
+          }
+        : {}),
       updated_at: new Date().toISOString(),
       updated_by: ctx.userId,
     };
@@ -224,10 +358,23 @@ export async function PATCH(
       },
     });
     if (updateResult.count !== 1) {
+      if (idempotencyKeyHash && requestFingerprint) {
+        const winner = await tx.billingCandidate.findUnique({ where: { id: candidateId } });
+        const replayStatus = readCollectionIdempotencyStatus({
+          calculationBreakdown: winner?.calculation_breakdown,
+          idempotencyKeyHash,
+          requestFingerprint,
+        });
+        if (replayStatus === 'replayed') return winner;
+        if (replayStatus === 'conflict') return 'idempotency-conflict' as const;
+      }
       throw new BillingCollectionConflictError(
         '請求候補が他のユーザーによって更新されています。最新のデータを取得してください。',
       );
     }
+    const auditCollection = { ...collection };
+    delete auditCollection.idempotency_key_hash;
+    delete auditCollection.idempotency_request_fingerprint;
 
     await createAuditLogEntry(tx, ctx, {
       action: 'billing_collection_updated',
@@ -235,7 +382,7 @@ export async function PATCH(
       targetId: candidateId,
       changes: {
         status_before: candidate.status,
-        collection,
+        collection: auditCollection as Prisma.InputJsonObject,
       },
     });
 
@@ -252,6 +399,11 @@ export async function PATCH(
     return conflict(
       '請求候補が他のユーザーによって更新されています。最新のデータを取得してください。',
     );
+  }
+  if (result === 'idempotency-conflict') {
+    return conflict('Idempotency-Keyが別の集金記録リクエストで使用されています', {
+      reason: 'key_reused_with_different_request',
+    });
   }
   if (result === 'missing-receipt-number') {
     return validationError('領収証番号と発行状態を入力してください', {
