@@ -72,6 +72,16 @@ const careReportSelect = {
   },
 } satisfies Prisma.CareReportSelect;
 
+const careReportDeliverySummarySelect = {
+  id: true,
+  delivery_records: careReportSelect.delivery_records,
+} satisfies Prisma.CareReportSelect;
+
+const careReportListOrderBy = [
+  { created_at: 'desc' },
+  { id: 'desc' },
+] satisfies Prisma.CareReportOrderByWithRelationInput[];
+
 const reportStatusSchema = z.nativeEnum(ReportStatus);
 const reportTypeSchema = z.nativeEnum(ReportType);
 const optionalDateParamSchema = dateKeySchema('日付形式が不正です（YYYY-MM-DD）').optional();
@@ -105,6 +115,59 @@ function readSearchableReportText(contentValue: Prisma.JsonValue) {
     readJsonObjectString(content, 'plan'),
   ];
   return safeTextValues.filter(Boolean).join('\n').toLowerCase();
+}
+
+function appendCareReportWhereAnd(
+  where: Prisma.CareReportWhereInput,
+  clause: Prisma.CareReportWhereInput,
+): Prisma.CareReportWhereInput {
+  const existingAnd = where.AND ? (Array.isArray(where.AND) ? where.AND : [where.AND]) : [];
+  return { ...where, AND: [...existingAnd, clause] };
+}
+
+function buildCareReportCursorWhere(cursorReport: {
+  id: string;
+  created_at: Date;
+}): Prisma.CareReportWhereInput {
+  return {
+    OR: [
+      { created_at: { lt: cursorReport.created_at } },
+      {
+        created_at: { equals: cursorReport.created_at },
+        id: { lt: cursorReport.id },
+      },
+    ],
+  };
+}
+
+function buildDeliverySummary(
+  reports: Array<{
+    delivery_records: Array<{
+      status: ReportStatus | string;
+    }>;
+  }>,
+) {
+  return reports.reduce(
+    (summary, report) => {
+      const latestDeliveryStatus = report.delivery_records[0]?.status ?? null;
+      if (latestDeliveryStatus) {
+        summary.by_status[latestDeliveryStatus] =
+          (summary.by_status[latestDeliveryStatus] ?? 0) + 1;
+        if (latestDeliveryStatus === 'response_waiting') {
+          summary.pending_delivery_count += 1;
+        }
+      }
+      summary.failed_delivery_count += report.delivery_records.filter(
+        (record) => record.status === 'failed',
+      ).length;
+      return summary;
+    },
+    {
+      pending_delivery_count: 0,
+      failed_delivery_count: 0,
+      by_status: {} as Record<string, number>,
+    },
+  );
 }
 
 function isCareReportVisitTypeUniqueConflict(error: unknown) {
@@ -256,6 +319,8 @@ export const GET = withAuthContext(
       sent_from: sentFromRaw,
       sent_to: sentToRaw,
     } = parsedQuery.data;
+    const sentFrom = sentFromRaw ? new Date(`${sentFromRaw}T00:00:00.000Z`) : null;
+    const sentTo = sentToRaw ? new Date(`${sentToRaw}T23:59:59.999Z`) : null;
 
     const matchingPatients = query
       ? await prisma.patient.findMany({
@@ -275,7 +340,6 @@ export const GET = withAuthContext(
       : [];
 
     const matchedPatientIds = matchingPatients.map((patient) => patient.id);
-    const matchedPatientIdSet = new Set(matchedPatientIds);
     if (query && matchedPatientIds.length === 0 && !keyword) {
       return success({
         data: [],
@@ -306,11 +370,19 @@ export const GET = withAuthContext(
             },
           }
         : {}),
-      ...(deliveryStatus || recipient
+      ...(deliveryStatus || recipient || sentFrom || sentTo
         ? {
             delivery_records: {
               some: {
                 ...(deliveryStatus ? { status: deliveryStatus } : {}),
+                ...(sentFrom || sentTo
+                  ? {
+                      sent_at: {
+                        ...(sentFrom ? { gte: sentFrom } : {}),
+                        ...(sentTo ? { lte: sentTo } : {}),
+                      },
+                    }
+                  : {}),
                 ...(recipient
                   ? {
                       recipient_name: {
@@ -325,12 +397,31 @@ export const GET = withAuthContext(
         : {}),
       ...(accessWhere ? { AND: [accessWhere] } : {}),
     };
+    const canUseDbPagination = !keyword;
+    const cursorReport =
+      canUseDbPagination && cursor
+        ? await prisma.careReport.findFirst({
+            where: { ...where, id: cursor },
+            select: { id: true, created_at: true },
+          })
+        : null;
+    const listWhere = cursorReport
+      ? appendCareReportWhereAnd(where, buildCareReportCursorWhere(cursorReport))
+      : where;
 
     const reports = await prisma.careReport.findMany({
-      where,
-      orderBy: { created_at: 'desc' },
+      where: listWhere,
+      orderBy: careReportListOrderBy,
       select: careReportSelect,
+      ...(canUseDbPagination ? { take: limit + 1 } : {}),
     });
+    const deliverySummaryReports = canUseDbPagination
+      ? await prisma.careReport.findMany({
+          where,
+          orderBy: careReportListOrderBy,
+          select: careReportDeliverySummarySelect,
+        })
+      : reports;
 
     const patientIds = Array.from(new Set(reports.map((report) => report.patient_id)));
     const patientRows =
@@ -388,33 +479,20 @@ export const GET = withAuthContext(
       };
     });
 
-    const sentFrom = sentFromRaw ? new Date(`${sentFromRaw}T00:00:00.000Z`) : null;
-    const sentTo = sentToRaw ? new Date(`${sentToRaw}T23:59:59.999Z`) : null;
     const filteredData = enrichedData.filter((report) => {
-      if (query && !matchedPatientIdSet.has(report.patient_id)) {
-        return false;
-      }
       if (keyword) {
         if (!report._searchable_report_text.includes(keyword.toLowerCase())) {
-          return false;
-        }
-      }
-      if (sentFrom || sentTo) {
-        const hasMatchingDelivery = report.delivery_records.some((delivery) => {
-          if (!delivery.sent_at) return false;
-          if (sentFrom && delivery.sent_at < sentFrom) return false;
-          if (sentTo && delivery.sent_at > sentTo) return false;
-          return true;
-        });
-        if (!hasMatchingDelivery) {
           return false;
         }
       }
       return true;
     });
 
-    const cursorIndex = cursor ? filteredData.findIndex((report) => report.id === cursor) : -1;
-    const paginated = cursorIndex >= 0 ? filteredData.slice(cursorIndex + 1) : filteredData;
+    const paginated = canUseDbPagination
+      ? filteredData
+      : filteredData.slice(
+          cursor ? Math.max(filteredData.findIndex((report) => report.id === cursor) + 1, 0) : 0,
+        );
     const hasMore = paginated.length > limit;
     const data = (hasMore ? paginated.slice(0, limit) : paginated).map((report) => {
       const { _searchable_report_text: searchableReportText, ...reportForResponse } = report;
@@ -422,24 +500,9 @@ export const GET = withAuthContext(
       return reportForResponse;
     });
     const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
-    const deliverySummary = filteredData.reduce(
-      (summary, report) => {
-        if (report.latest_delivery_status) {
-          summary.by_status[report.latest_delivery_status] =
-            (summary.by_status[report.latest_delivery_status] ?? 0) + 1;
-          if (report.latest_delivery_status === 'response_waiting') {
-            summary.pending_delivery_count += 1;
-          }
-        }
-        summary.failed_delivery_count += report.failed_delivery_count;
-        return summary;
-      },
-      {
-        pending_delivery_count: 0,
-        failed_delivery_count: 0,
-        by_status: {} as Record<string, number>,
-      },
-    );
+    const deliverySummary = canUseDbPagination
+      ? buildDeliverySummary(deliverySummaryReports)
+      : buildDeliverySummary(filteredData);
 
     return success({ data, hasMore, nextCursor, deliverySummary });
   },

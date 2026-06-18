@@ -219,6 +219,10 @@ describe('/api/care-reports GET', () => {
           delivery_records: {
             some: expect.objectContaining({
               status: 'response_waiting',
+              sent_at: {
+                gte: new Date('2026-03-28T00:00:00.000Z'),
+                lte: new Date('2026-03-29T23:59:59.999Z'),
+              },
               recipient_name: { contains: '主治医', mode: 'insensitive' },
             }),
           },
@@ -260,11 +264,102 @@ describe('/api/care-reports GET', () => {
     });
   });
 
+  it('uses database keyset pagination for regular list pages', async () => {
+    const cursorCreatedAt = new Date('2026-03-28T09:30:00.000Z');
+    careReportFindFirstMock.mockResolvedValueOnce({
+      id: 'report_cursor',
+      created_at: cursorCreatedAt,
+    });
+    const firstPageRow = {
+      id: 'report_page_1',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      visit_record_id: 'visit_1',
+      report_type: 'physician_report',
+      status: 'response_waiting',
+      content: { summary: '訪問後報告' },
+      template_id: null,
+      pdf_url: null,
+      created_by: 'user_1',
+      created_at: new Date('2026-03-28T09:00:00.000Z'),
+      updated_at: new Date('2026-03-28T09:15:00.000Z'),
+      delivery_records: [
+        {
+          id: 'delivery_1',
+          channel: 'fax',
+          recipient_name: '在宅主治医',
+          status: 'response_waiting',
+          sent_at: new Date('2026-03-28T11:00:00.000Z'),
+        },
+      ],
+    };
+    const overflowRow = {
+      ...firstPageRow,
+      id: 'report_page_2',
+      created_at: new Date('2026-03-28T08:00:00.000Z'),
+      delivery_records: [],
+    };
+    careReportFindManyMock
+      .mockResolvedValueOnce([firstPageRow, overflowRow])
+      .mockResolvedValueOnce([firstPageRow, overflowRow]);
+
+    const response = await getCareReports(
+      createAuthenticatedRequest('http://localhost/api/care-reports?limit=1&cursor=report_cursor'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(careReportFindFirstMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'report_cursor',
+          org_id: 'org_1',
+        }),
+        select: { id: true, created_at: true },
+      }),
+    );
+    const listCall = careReportFindManyMock.mock.calls[0]?.[0];
+    expect(listCall).toMatchObject({
+      take: 2,
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      where: expect.objectContaining({
+        org_id: 'org_1',
+        AND: expect.arrayContaining([
+          expect.objectContaining({
+            OR: [
+              { created_at: { lt: cursorCreatedAt } },
+              {
+                created_at: { equals: cursorCreatedAt },
+                id: { lt: 'report_cursor' },
+              },
+            ],
+          }),
+        ]),
+      }),
+    });
+    const summaryCall = careReportFindManyMock.mock.calls[1]?.[0];
+    expect(summaryCall).toMatchObject({
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      select: expect.objectContaining({
+        delivery_records: expect.any(Object),
+      }),
+    });
+    expect(summaryCall.where).not.toHaveProperty('AND');
+
+    await expect(response.json()).resolves.toMatchObject({
+      data: [{ id: 'report_page_1' }],
+      hasMore: true,
+      nextCursor: 'report_page_1',
+      deliverySummary: {
+        pending_delivery_count: 1,
+      },
+    });
+  });
+
   it('does not match keywords against hidden report metadata', async () => {
     const response = await getCareReports(
-      createAuthenticatedRequest(
-        'http://localhost/api/care-reports?keyword=hidden_visit_record_1',
-      ),
+      createAuthenticatedRequest('http://localhost/api/care-reports?keyword=hidden_visit_record_1'),
     );
 
     if (!response) throw new Error('response is required');
