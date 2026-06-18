@@ -6,6 +6,10 @@ const dbMocks = vi.hoisted(() => ({
   delete: vi.fn(),
   below: vi.fn(),
   get: vi.fn(),
+  deleteVisitDrafts: vi.fn(),
+  equalsVisitDrafts: vi.fn(),
+  whereVisitDrafts: vi.fn(),
+  transaction: vi.fn(),
   toArray: vi.fn(),
   where: vi.fn(),
 }));
@@ -22,6 +26,7 @@ vi.mock('@/lib/offline/crypto', () => ({
 
 vi.mock('./offline-db', () => ({
   offlineDb: {
+    transaction: dbMocks.transaction,
     syncQueue: {
       add: dbMocks.add,
       update: dbMocks.update,
@@ -30,7 +35,7 @@ vi.mock('./offline-db', () => ({
       where: dbMocks.where,
     },
     visitDrafts: {
-      where: vi.fn(),
+      where: dbMocks.whereVisitDrafts,
     },
   },
 }));
@@ -59,10 +64,23 @@ describe('sync-engine PHI persistence', () => {
     );
     dbMocks.add.mockResolvedValue(1);
     dbMocks.update.mockResolvedValue(1);
-    dbMocks.get.mockResolvedValue(null);
     dbMocks.below.mockReturnValue({ toArray: dbMocks.toArray });
     dbMocks.where.mockReturnValue({ below: dbMocks.below });
+    dbMocks.equalsVisitDrafts.mockReturnValue({ delete: dbMocks.deleteVisitDrafts });
+    dbMocks.whereVisitDrafts.mockReturnValue({ equals: dbMocks.equalsVisitDrafts });
+    dbMocks.transaction.mockImplementation(
+      async (
+        _mode: string,
+        _syncQueueTable: unknown,
+        _visitDraftsTable: unknown,
+        callback: () => Promise<unknown>,
+      ) => callback(),
+    );
     dbMocks.toArray.mockResolvedValue([]);
+    dbMocks.get.mockImplementation(async (id: number) => {
+      const items = await dbMocks.toArray();
+      return Array.isArray(items) ? (items.find((item) => item.id === id) ?? null) : null;
+    });
     vi.stubGlobal('fetch', vi.fn());
   });
 
@@ -213,6 +231,201 @@ describe('sync-engine PHI persistence', () => {
     expect(dbMocks.delete).toHaveBeenCalledWith(21);
   });
 
+  it('single-flights sync processing when default endpoints are implicit or explicit', async () => {
+    dbMocks.toArray.mockResolvedValue([
+      {
+        id: 26,
+        entityType: 'visit_record',
+        payload: 'encv1:valid-visit-payload',
+        scope_id: 'schedule-1',
+        createdAt: new Date('2026-04-01T00:00:00.000Z'),
+        retryCount: 0,
+      },
+    ]);
+    cryptoMocks.decryptOfflinePayload.mockImplementation(
+      async (value: string | null | undefined) => {
+        if (value === 'encv1:valid-visit-payload') {
+          return JSON.stringify({ schedule_id: 'schedule-1', soap_subjective: '眠気あり' });
+        }
+        return value ?? null;
+      },
+    );
+
+    let resolveFetch!: (value: Response) => void;
+    vi.mocked(fetch).mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+
+    const first = processSyncQueue({ orgId: 'org-1', endpoints: {} });
+    const second = processSyncQueue({
+      orgId: 'org-1',
+      endpoints: { visit_record: '/api/visit-records' },
+    });
+
+    await waitForAsyncAssertion(() => {
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    resolveFetch(new Response(JSON.stringify({ data: { id: 'record-1' } }), { status: 201 }));
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { synced: 1, failed: 0 },
+      { synced: 1, failed: 0 },
+    ]);
+    expect(dbMocks.delete).toHaveBeenCalledTimes(1);
+    expect(dbMocks.delete).toHaveBeenCalledWith(26);
+  });
+
+  it('deletes the scoped visit draft only when the completed queue item is still current', async () => {
+    const createdAt = new Date('2026-04-01T00:00:00.000Z');
+    dbMocks.toArray.mockResolvedValue([
+      {
+        id: 22,
+        entityType: 'visit_record',
+        payload: 'encv1:valid-visit-payload',
+        scope_id: 'schedule-1',
+        createdAt,
+        retryCount: 0,
+      },
+    ]);
+    cryptoMocks.decryptOfflinePayload.mockImplementation(
+      async (value: string | null | undefined) => {
+        if (value === 'encv1:valid-visit-payload') {
+          return JSON.stringify({ schedule_id: 'schedule-1', soap_subjective: '眠気あり' });
+        }
+        return value ?? null;
+      },
+    );
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ data: { id: 'record-1' } })));
+
+    await expect(processSyncQueue({ orgId: 'org-1', endpoints: {} })).resolves.toEqual({
+      synced: 1,
+      failed: 0,
+    });
+
+    expect(dbMocks.delete).toHaveBeenCalledWith(22);
+    expect(dbMocks.whereVisitDrafts).toHaveBeenCalledWith('scheduleId');
+    expect(dbMocks.equalsVisitDrafts).toHaveBeenCalledWith('schedule-1');
+    expect(dbMocks.deleteVisitDrafts).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not delete a refreshed queue item or draft after an older visit payload succeeds', async () => {
+    const createdAt = new Date('2026-04-01T00:00:00.000Z');
+    dbMocks.toArray.mockResolvedValue([
+      {
+        id: 23,
+        entityType: 'visit_record',
+        payload: 'encv1:old-visit-payload',
+        scope_id: 'schedule-1',
+        createdAt,
+        retryCount: 0,
+      },
+    ]);
+    dbMocks.get.mockResolvedValue({
+      id: 23,
+      entityType: 'visit_record',
+      payload: 'encv1:new-visit-payload',
+      scope_id: 'schedule-1',
+      createdAt: new Date('2026-04-01T00:00:01.000Z'),
+      retryCount: 0,
+    });
+    cryptoMocks.decryptOfflinePayload.mockImplementation(
+      async (value: string | null | undefined) => {
+        if (value === 'encv1:old-visit-payload') {
+          return JSON.stringify({ schedule_id: 'schedule-1', soap_subjective: '古い入力' });
+        }
+        return value ?? null;
+      },
+    );
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ data: { id: 'record-1' } })));
+
+    await expect(processSyncQueue({ orgId: 'org-1', endpoints: {} })).resolves.toEqual({
+      synced: 0,
+      failed: 1,
+    });
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(dbMocks.delete).not.toHaveBeenCalled();
+    expect(dbMocks.deleteVisitDrafts).not.toHaveBeenCalled();
+  });
+
+  it('does not count stale successful responses as synced when the queue row changed', async () => {
+    const createdAt = new Date('2026-04-01T00:00:00.000Z');
+    dbMocks.toArray.mockResolvedValue([
+      {
+        id: 24,
+        entityType: 'visit_record',
+        payload: 'encv1:old-visit-payload',
+        scope_id: 'schedule-1',
+        createdAt,
+        retryCount: 0,
+      },
+    ]);
+    dbMocks.get.mockResolvedValue({
+      id: 24,
+      entityType: 'visit_record',
+      payload: 'encv1:old-visit-payload',
+      scope_id: 'schedule-1',
+      createdAt,
+      retryCount: 3,
+      lastError: 'HTTP 409 conflict',
+      conflict_state: 'server_conflict',
+      conflict_payload: 'encv1:conflict-payload',
+    });
+    cryptoMocks.decryptOfflinePayload.mockImplementation(
+      async (value: string | null | undefined) => {
+        if (value === 'encv1:old-visit-payload') {
+          return JSON.stringify({ schedule_id: 'schedule-1', soap_subjective: '古い入力' });
+        }
+        return value ?? null;
+      },
+    );
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ data: { id: 'record-1' } })));
+
+    await expect(processSyncQueue({ orgId: 'org-1', endpoints: {} })).resolves.toEqual({
+      synced: 0,
+      failed: 1,
+    });
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(dbMocks.delete).not.toHaveBeenCalled();
+    expect(dbMocks.deleteVisitDrafts).not.toHaveBeenCalled();
+  });
+
+  it('does not double-count a successful response when the queue row was already removed', async () => {
+    const createdAt = new Date('2026-04-01T00:00:00.000Z');
+    dbMocks.toArray.mockResolvedValue([
+      {
+        id: 25,
+        entityType: 'residual_medication',
+        payload: 'encv1:residual-payload',
+        scope_id: 'patient-1',
+        createdAt,
+        retryCount: 0,
+      },
+    ]);
+    dbMocks.get.mockResolvedValue(null);
+    cryptoMocks.decryptOfflinePayload.mockImplementation(
+      async (value: string | null | undefined) => {
+        if (value === 'encv1:residual-payload') {
+          return JSON.stringify({ patient_id: 'patient-1', note: '残薬あり' });
+        }
+        return value ?? null;
+      },
+    );
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ data: { id: 'record-1' } })));
+
+    await expect(processSyncQueue({ orgId: 'org-1', endpoints: {} })).resolves.toEqual({
+      synced: 0,
+      failed: 0,
+    });
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(dbMocks.delete).not.toHaveBeenCalled();
+  });
+
   it('drops malformed server conflict responses before persisting conflict snapshots', async () => {
     dbMocks.toArray.mockResolvedValue([
       {
@@ -359,5 +572,68 @@ describe('sync-engine PHI persistence', () => {
     });
 
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('does not report conflict overwrite success when the queue row changed before cleanup', async () => {
+    const createdAt = new Date('2026-04-01T00:00:00.000Z');
+    dbMocks.get
+      .mockResolvedValueOnce({
+        id: 14,
+        entityType: 'visit_record',
+        payload: 'encv1:valid-sync-payload',
+        conflict_payload: 'encv1:valid-conflict-payload',
+        scope_id: 'schedule-1',
+        createdAt,
+        retryCount: 3,
+        lastError: 'HTTP 409 conflict',
+        conflict_state: 'server_conflict',
+      })
+      .mockResolvedValueOnce({
+        id: 14,
+        entityType: 'visit_record',
+        payload: 'encv1:valid-sync-payload',
+        conflict_payload: 'encv1:new-conflict-payload',
+        scope_id: 'schedule-1',
+        createdAt,
+        retryCount: 3,
+        lastError: 'HTTP 409 conflict',
+        conflict_state: 'server_conflict',
+      });
+    cryptoMocks.decryptOfflinePayload.mockImplementation(
+      async (value: string | null | undefined) => {
+        if (value === 'encv1:valid-sync-payload') {
+          return JSON.stringify({ schedule_id: 'schedule-1', soap_subjective: '眠気あり' });
+        }
+        if (value === 'encv1:valid-conflict-payload') {
+          return JSON.stringify({
+            local: { schedule_id: 'schedule-1', soap_subjective: '眠気あり' },
+            server: {
+              id: 'visit-record-1',
+              version: 2,
+              patient_id: 'patient-1',
+              visit_date: '2026-04-01',
+              outcome_status: 'draft',
+              soap_subjective: null,
+              soap_objective: null,
+              soap_assessment: null,
+              soap_plan: null,
+              next_visit_suggestion_date: null,
+            },
+          });
+        }
+        return value ?? null;
+      },
+    );
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ data: { id: 'record-1' } })));
+
+    await expect(
+      overwriteVisitRecordConflict({ orgId: 'org-1', endpoints: {} }, 14),
+    ).resolves.toEqual({
+      ok: false,
+      message: '同期対象が更新されています。最新の状態を確認してから再実行してください',
+    });
+
+    expect(dbMocks.delete).not.toHaveBeenCalled();
+    expect(dbMocks.deleteVisitDrafts).not.toHaveBeenCalled();
   });
 });

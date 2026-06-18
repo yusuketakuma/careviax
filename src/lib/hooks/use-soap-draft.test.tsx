@@ -10,6 +10,7 @@ const dbMocks = vi.hoisted(() => ({
   first: vi.fn(),
   deleteWhere: vi.fn(),
   equals: vi.fn(),
+  transaction: vi.fn(),
   where: vi.fn(),
 }));
 
@@ -20,6 +21,7 @@ const cryptoMocks = vi.hoisted(() => ({
 
 vi.mock('@/lib/stores/offline-db', () => ({
   offlineDb: {
+    transaction: dbMocks.transaction,
     visitDrafts: {
       add: dbMocks.add,
       update: dbMocks.update,
@@ -81,6 +83,9 @@ describe('useSoapDraft PHI persistence', () => {
     dbMocks.update.mockResolvedValue(1);
     dbMocks.deleteWhere.mockResolvedValue(1);
     dbMocks.first.mockResolvedValue(undefined);
+    dbMocks.transaction.mockImplementation(
+      async (_mode: string, _table: unknown, callback: () => Promise<unknown>) => callback(),
+    );
     cryptoMocks.decryptOfflinePayload.mockImplementation(
       async (value: string | null | undefined) => value ?? null,
     );
@@ -170,6 +175,16 @@ describe('useSoapDraft PHI persistence', () => {
 
     expect(dbMocks.add).not.toHaveBeenCalled();
     expect(dbMocks.update).not.toHaveBeenCalled();
+  });
+
+  it('clears only visit drafts for the active schedule', async () => {
+    const { result } = renderHook(() => useSoapDraft('schedule-1', 'patient-1'));
+
+    await result.current.clearDraft();
+
+    expect(dbMocks.where).toHaveBeenCalledWith('scheduleId');
+    expect(dbMocks.equals).toHaveBeenCalledWith('schedule-1');
+    expect(dbMocks.deleteWhere).toHaveBeenCalledTimes(1);
   });
 
   it('restores display fields from decrypted encrypted structured SOAP', async () => {

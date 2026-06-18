@@ -17,7 +17,10 @@ const {
   setupAutoSyncMock,
   enqueueForSyncMock,
   syncOnlineStatusMock,
+  useNetworkOnlineMock,
+  refreshSyncCountMock,
   refreshSyncStateMock,
+  listEvidenceDraftSummariesForScheduleMock,
   toastErrorMock,
   toastSuccessMock,
   toastInfoMock,
@@ -32,7 +35,10 @@ const {
   setupAutoSyncMock: vi.fn(),
   enqueueForSyncMock: vi.fn(),
   syncOnlineStatusMock: vi.fn(),
+  useNetworkOnlineMock: vi.fn(),
+  refreshSyncCountMock: vi.fn(),
   refreshSyncStateMock: vi.fn(),
+  listEvidenceDraftSummariesForScheduleMock: vi.fn(),
   toastErrorMock: vi.fn(),
   toastSuccessMock: vi.fn(),
   toastInfoMock: vi.fn(),
@@ -57,6 +63,10 @@ vi.mock('sonner', () => ({
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
+}));
+
+vi.mock('@/lib/hooks/use-network-online', () => ({
+  useNetworkOnline: useNetworkOnlineMock,
 }));
 
 vi.mock('@/lib/hooks/use-media-query', () => ({
@@ -94,6 +104,7 @@ vi.mock('@/lib/stores/offline-store', () => ({
       isOffline: false,
       pendingSyncCount: 0,
       syncOnlineStatus: syncOnlineStatusMock,
+      refreshSyncCount: refreshSyncCountMock,
       refreshSyncState: refreshSyncStateMock,
     }),
 }));
@@ -106,7 +117,7 @@ vi.mock('@/lib/stores/sync-engine', () => ({
 
 // p0_23 未同期写真バッジ用(IndexedDB は jsdom で使えないためモック)
 vi.mock('@/lib/offline/evidence-drafts', () => ({
-  listEvidenceDraftSummaries: vi.fn(async () => []),
+  listEvidenceDraftSummariesForSchedule: listEvidenceDraftSummariesForScheduleMock,
 }));
 
 vi.mock('@/lib/visit-location', () => ({
@@ -221,7 +232,10 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
     saveDraftMock.mockResolvedValue(undefined);
     clearDraftMock.mockResolvedValue(undefined);
     setupAutoSyncMock.mockReturnValue(vi.fn());
+    useNetworkOnlineMock.mockReturnValue(true);
     refreshSyncStateMock.mockResolvedValue(undefined);
+    refreshSyncCountMock.mockResolvedValue(undefined);
+    listEvidenceDraftSummariesForScheduleMock.mockResolvedValue([]);
     visitRecordPostBodies.length = 0;
     fetchUrls.length = 0;
 
@@ -335,6 +349,54 @@ describe('VisitRecordForm carry-item acknowledgement', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('syncs offline state on mount and when network status changes', async () => {
+    const { rerender } = renderVisitRecordForm();
+
+    await waitFor(() => {
+      expect(syncOnlineStatusMock).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(refreshSyncCountMock).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(listEvidenceDraftSummariesForScheduleMock).toHaveBeenCalledWith('schedule_partial');
+    });
+    expect(refreshSyncStateMock).not.toHaveBeenCalled();
+
+    syncOnlineStatusMock.mockClear();
+    useNetworkOnlineMock.mockReturnValue(false);
+    rerender(<VisitRecordForm id="schedule_partial" facilityVisitContext={null} />);
+
+    await waitFor(() => {
+      expect(syncOnlineStatusMock).toHaveBeenCalledTimes(1);
+    });
+
+    syncOnlineStatusMock.mockClear();
+    useNetworkOnlineMock.mockReturnValue(true);
+    rerender(<VisitRecordForm id="schedule_partial" facilityVisitContext={null} />);
+
+    await waitFor(() => {
+      expect(syncOnlineStatusMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('logs count refresh failures without rejecting from the polling timer', async () => {
+    refreshSyncCountMock.mockRejectedValue(new Error('IndexedDB unavailable'));
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    renderVisitRecordForm();
+
+    await waitFor(() => {
+      expect(consoleWarn).toHaveBeenCalledWith(
+        '[offline-sync] sync count refresh failed',
+        expect.any(Error),
+      );
+    });
+    expect(refreshSyncStateMock).not.toHaveBeenCalled();
+
+    consoleWarn.mockRestore();
   });
 
   it('announces and clears the required partial carry-item acknowledgement error', async () => {
@@ -501,6 +563,8 @@ describe('VisitRecordForm patient-detail reflect (⑤)', () => {
     clearDraftMock.mockResolvedValue(undefined);
     setupAutoSyncMock.mockReturnValue(vi.fn());
     refreshSyncStateMock.mockResolvedValue(undefined);
+    refreshSyncCountMock.mockResolvedValue(undefined);
+    listEvidenceDraftSummariesForScheduleMock.mockResolvedValue([]);
     visitRecordPostBodies.length = 0;
     patientPatchBodies.length = 0;
 

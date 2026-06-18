@@ -31,7 +31,9 @@ export function States() {
 export function SettingsRow() {
   return (
     <div style={{ padding: 20, maxWidth: 420, display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+      <div
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
+      >
         <div>
           <p style={{ fontSize: 14, fontWeight: 500, margin: 0 }}>後発品への変更を許可</p>
           <p style={{ fontSize: 12, color: 'var(--muted-foreground)', margin: '2px 0 0' }}>
@@ -40,7 +42,9 @@ export function SettingsRow() {
         </div>
         <Switch checked aria-label="後発品変更を許可" />
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+      <div
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}
+      >
         <div>
           <p style={{ fontSize: 14, fontWeight: 500, margin: 0 }}>夜間の緊急連絡を受け付ける</p>
           <p style={{ fontSize: 12, color: 'var(--muted-foreground)', margin: '2px 0 0' }}>

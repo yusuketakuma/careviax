@@ -22,7 +22,16 @@ export function PatientDetailRight() {
               要介護3 / 訪問頻度 週1回 / 担当: 鈴木薬剤師
             </SheetDescription>
           </SheetHeader>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '0 16px', fontSize: 14, lineHeight: 1.6 }}>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+              padding: '0 16px',
+              fontSize: 14,
+              lineHeight: 1.6,
+            }}
+          >
             <div>生年月日: 1941/03/08（85歳）</div>
             <Separator />
             <div>主病名: 高血圧症、骨粗鬆症</div>

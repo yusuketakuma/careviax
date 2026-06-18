@@ -17,11 +17,16 @@ const PRETTIER_EXTENSIONS = new Set([
 
 const EXCLUDED_PREFIXES = [
   '.codex/',
+  '.design-sync/.cache/',
+  '.design-sync/learnings/',
+  '.design-sync/node_modules/',
+  '.ds-sync/',
   '.harness-mem/',
   '.omx/',
   '.playwright-mcp/',
   'artifacts/',
   'audits/',
+  'ds-bundle/',
   'reports/',
   'tmp/',
 ];

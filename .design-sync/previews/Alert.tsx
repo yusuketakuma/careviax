@@ -19,7 +19,8 @@ export function Destructive() {
       <Alert variant="destructive">
         <AlertTitle>相互作用の警告</AlertTitle>
         <AlertDescription>
-          併用禁忌の組み合わせ（ワルファリン × NSAIDs）が検出されました。処方医へ疑義照会してください。
+          併用禁忌の組み合わせ（ワルファリン ×
+          NSAIDs）が検出されました。処方医へ疑義照会してください。
         </AlertDescription>
       </Alert>
     </div>

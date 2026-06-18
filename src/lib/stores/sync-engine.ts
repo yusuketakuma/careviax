@@ -18,6 +18,11 @@ const DEFAULT_ENDPOINTS: Record<string, string> = {
   residual_medication: '/api/residual-medications',
 };
 
+type SyncQueueCompletionResult =
+  | { status: 'deleted' }
+  | { status: 'missing' }
+  | { status: 'stale' };
+
 type VisitRecordConflictSnapshot = {
   local: Record<string, unknown>;
   server: {
@@ -198,19 +203,24 @@ async function readSyncConflictPayload(payload: string | null | undefined) {
  * Called when the browser comes back online.
  */
 function syncConfigKey(config: SyncConfig) {
+  const endpoints = resolveSyncEndpoints(config);
   return JSON.stringify({
     orgId: config.orgId,
-    endpoints: Object.keys(config.endpoints)
+    endpoints: Object.keys(endpoints)
       .sort()
-      .map((key) => [key, config.endpoints[key]]),
+      .map((key) => [key, endpoints[key]]),
   });
+}
+
+function resolveSyncEndpoints(config: SyncConfig) {
+  return { ...DEFAULT_ENDPOINTS, ...config.endpoints };
 }
 
 async function processSyncQueueOnce(config: SyncConfig): Promise<{
   synced: number;
   failed: number;
 }> {
-  const endpoints = { ...DEFAULT_ENDPOINTS, ...config.endpoints };
+  const endpoints = resolveSyncEndpoints(config);
   const pending = await offlineDb.syncQueue.where('retryCount').below(MAX_RETRIES).toArray();
 
   let synced = 0;
@@ -236,6 +246,15 @@ async function processSyncQueueOnce(config: SyncConfig): Promise<{
         continue;
       }
 
+      const preflight = await verifyQueueItemCurrent(item);
+      if (preflight.status === 'stale') {
+        failed++;
+        continue;
+      }
+      if (preflight.status === 'missing') {
+        continue;
+      }
+
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -246,11 +265,12 @@ async function processSyncQueueOnce(config: SyncConfig): Promise<{
       });
 
       if (res.ok) {
-        await offlineDb.syncQueue.delete(item.id!);
-        if (item.entityType === 'visit_record' && item.scope_id) {
-          await offlineDb.visitDrafts.where('scheduleId').equals(item.scope_id).delete();
+        const completion = await deleteSyncedQueueItem(item);
+        if (completion.status === 'deleted') {
+          synced++;
+        } else if (completion.status === 'stale') {
+          failed++;
         }
-        synced++;
       } else if (res.status === 409) {
         const server = readExistingRecordFromConflictResponse(await readJsonResponseBody(res));
         // Keep the draft in queue so the user can resolve the conflict later.
@@ -286,6 +306,63 @@ async function processSyncQueueOnce(config: SyncConfig): Promise<{
   }
 
   return { synced, failed };
+}
+
+function readDateTime(value: unknown) {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'string' || typeof value === 'number') {
+    const time = new Date(value).getTime();
+    return Number.isFinite(time) ? time : null;
+  }
+  return null;
+}
+
+function isSameQueueItemForCompletion(current: OfflineSyncQueue, completed: OfflineSyncQueue) {
+  const currentCreatedAt = readDateTime(current.createdAt);
+  const completedCreatedAt = readDateTime(completed.createdAt);
+  if (currentCreatedAt === null || completedCreatedAt === null) return false;
+
+  return (
+    current.entityType === completed.entityType &&
+    current.scope_id === completed.scope_id &&
+    current.payload === completed.payload &&
+    currentCreatedAt === completedCreatedAt &&
+    current.retryCount === completed.retryCount &&
+    current.lastError === completed.lastError &&
+    current.conflict_state === completed.conflict_state &&
+    current.conflict_payload === completed.conflict_payload
+  );
+}
+
+async function deleteSyncedQueueItem(item: OfflineSyncQueue): Promise<SyncQueueCompletionResult> {
+  if (item.id === undefined) return { status: 'missing' };
+  const itemId = item.id;
+  return offlineDb.transaction('rw', offlineDb.syncQueue, offlineDb.visitDrafts, async () => {
+    const current = await offlineDb.syncQueue.get(itemId);
+    if (!current) return { status: 'missing' };
+    if (!isSameQueueItemForCompletion(current, item)) return { status: 'stale' };
+
+    await offlineDb.syncQueue.delete(itemId);
+    if (
+      current.entityType === 'visit_record' &&
+      item.entityType === 'visit_record' &&
+      current.scope_id &&
+      current.scope_id === item.scope_id
+    ) {
+      await offlineDb.visitDrafts.where('scheduleId').equals(current.scope_id).delete();
+    }
+    return { status: 'deleted' };
+  });
+}
+
+async function verifyQueueItemCurrent(
+  item: OfflineSyncQueue,
+): Promise<{ status: 'current' } | { status: 'missing' } | { status: 'stale' }> {
+  if (item.id === undefined) return { status: 'missing' };
+  const current = await offlineDb.syncQueue.get(item.id);
+  if (!current) return { status: 'missing' };
+  if (!isSameQueueItemForCompletion(current, item)) return { status: 'stale' };
+  return { status: 'current' };
 }
 
 export async function processSyncQueue(config: SyncConfig): Promise<{
@@ -428,6 +505,15 @@ export async function overwriteVisitRecordConflict(
     return { ok: false, message: '競合情報が不足しています' };
   }
 
+  const preflight = await verifyQueueItemCurrent(item);
+  if (preflight.status === 'missing') return { ok: false, message: '競合対象が見つかりません' };
+  if (preflight.status === 'stale') {
+    return {
+      ok: false,
+      message: '同期対象が更新されています。最新の状態を確認してから再実行してください',
+    };
+  }
+
   const endpoint = config.endpoints.visit_record ?? DEFAULT_ENDPOINTS.visit_record;
   const res = await fetch(endpoint, {
     method: 'POST',
@@ -444,9 +530,12 @@ export async function overwriteVisitRecordConflict(
   });
 
   if (res.ok) {
-    await offlineDb.syncQueue.delete(itemId);
-    if (item.scope_id) {
-      await offlineDb.visitDrafts.where('scheduleId').equals(item.scope_id).delete();
+    const completion = await deleteSyncedQueueItem(item);
+    if (completion.status === 'stale') {
+      return {
+        ok: false,
+        message: '同期対象が更新されています。最新の状態を確認してから再実行してください',
+      };
     }
     return { ok: true };
   }

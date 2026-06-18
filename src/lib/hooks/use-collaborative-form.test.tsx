@@ -241,9 +241,22 @@ describe('useCollaborativeForm', () => {
     expect(createYjsProviderMock).not.toHaveBeenCalled();
     expect(result.current.yDoc).toBeNull();
     expect(result.current.awareness).toBeNull();
+    expect(
+      useRealtimeEventsMock.mock.calls.some(
+        ([options]) =>
+          options.enabled === false &&
+          JSON.stringify(options.presenceTargets) ===
+            JSON.stringify([{ entityType: 'dispense_task', entityId: 'dt_1' }]),
+      ),
+    ).toBe(true);
+    expect(result.current.presenceData).toEqual([]);
+
+    const presenceGetCountAfterDenial = (
+      global.fetch as ReturnType<typeof vi.fn>
+    ).mock.calls.filter(([input]) => String(input).startsWith('/api/presence?')).length;
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(5_000);
+      await vi.advanceTimersByTimeAsync(35_000);
       await Promise.resolve();
     });
 
@@ -253,7 +266,66 @@ describe('useCollaborativeForm', () => {
       ([input, init]) => String(input) === '/api/presence' && init?.method === 'POST',
     );
     expect(tokenRequestCount).toBe(1);
+    expect(
+      (global.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(([input]) =>
+        String(input).startsWith('/api/presence?'),
+      ),
+    ).toHaveLength(presenceGetCountAfterDenial);
     expect(presencePostCalls).toHaveLength(0);
+  });
+
+  it('posts the active field on focus and clears it on blur', async () => {
+    isYjsProviderConfiguredMock.mockReturnValue(false);
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith('/api/presence?')) {
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      }
+      if (url === '/api/presence') {
+        return new Response(null, { status: 204 });
+      }
+      return new Response(null, { status: 404 });
+    }) as typeof fetch;
+
+    const { result } = renderHook(() => useTestCollaborativeForm(), {
+      wrapper: createWrapper(),
+    });
+
+    const collaborativeField = result.current.registerCollaborative('note');
+    act(() => {
+      collaborativeField.onFocus();
+    });
+
+    await waitFor(() => {
+      const presencePostCalls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(
+        ([input, init]) => String(input) === '/api/presence' && init?.method === 'POST',
+      );
+      expect(presencePostCalls).toHaveLength(1);
+      expect(JSON.parse(String(presencePostCalls[0]?.[1]?.body))).toEqual({
+        entity_type: 'dispense_task',
+        entity_id: 'dt_1',
+        active_field: 'note',
+      });
+    });
+
+    act(() => {
+      collaborativeField.onBlur({
+        target: { name: 'note' },
+        type: 'blur',
+      } as unknown as React.FocusEvent<HTMLElement>);
+    });
+
+    await waitFor(() => {
+      const presencePostCalls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.filter(
+        ([input, init]) => String(input) === '/api/presence' && init?.method === 'POST',
+      );
+      expect(presencePostCalls).toHaveLength(2);
+      expect(JSON.parse(String(presencePostCalls[1]?.[1]?.body))).toEqual({
+        entity_type: 'dispense_task',
+        entity_id: 'dt_1',
+        active_field: null,
+      });
+    });
   });
 
   it('refreshes the Yjs provider before the room token expires without recreating the document', async () => {

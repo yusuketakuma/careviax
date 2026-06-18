@@ -21,10 +21,13 @@ import {
 
 setupDomTestEnv();
 
-const useRealtimeEventsMock = vi.hoisted(() => vi.fn());
+const { useOrgIdMock, useRealtimeEventsMock } = vi.hoisted(() => ({
+  useOrgIdMock: vi.fn(),
+  useRealtimeEventsMock: vi.fn(),
+}));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
-  useOrgId: () => 'org_1',
+  useOrgId: useOrgIdMock,
 }));
 
 vi.mock('@/lib/hooks/use-realtime-events', () => ({
@@ -206,6 +209,7 @@ function renderWorkspace() {
 beforeEach(() => {
   useUIStore.setState({ workspaceRailOpen: true });
   vi.clearAllMocks();
+  useOrgIdMock.mockReturnValue('org_1');
   useRealtimeEventsMock.mockReturnValue({ connected: false });
 });
 
@@ -376,6 +380,10 @@ describe('HandoffWorkspace', () => {
       expect(handoffBoardFetchCount()).toBeGreaterThan(1);
     });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['nav-badges'] });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['tasks', 'handoff-confirmation', 'org_1'],
+    });
+    expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ['tasks'] });
     expect(invalidateSpy).not.toHaveBeenCalledWith({ queryKey: ['nav-badges', 'handoff'] });
     invalidateSpy.mockRestore();
   });
@@ -411,6 +419,16 @@ describe('HandoffWorkspace', () => {
     expect(screen.getByTestId('handoff-open-transfer')).toBeTruthy();
     expect(screen.getByTestId('handoff-outgoing-section')).toBeTruthy();
     expect(screen.getByTestId('handoff-incoming-section')).toBeTruthy();
+  });
+
+  it('disables handoff realtime and data loading until org is available', () => {
+    useOrgIdMock.mockReturnValue('');
+    const fetchMock = stubFetch();
+
+    renderWorkspace();
+
+    expect(useRealtimeEventsMock).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }));
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

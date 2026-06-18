@@ -55,11 +55,21 @@ export function ColorVariants() {
       </div>
       <div>
         <div style={{ fontSize: 12, marginBottom: 6 }}>期限内対応率（注意水準）</div>
-        <SegmentedProgressBar value={4} max={10} className="h-3" filledClassName="bg-state-confirm" />
+        <SegmentedProgressBar
+          value={4}
+          max={10}
+          className="h-3"
+          filledClassName="bg-state-confirm"
+        />
       </div>
       <div>
         <div style={{ fontSize: 12, marginBottom: 6 }}>未対応の疑義照会</div>
-        <SegmentedProgressBar value={2} max={10} className="h-3" filledClassName="bg-state-blocked" />
+        <SegmentedProgressBar
+          value={2}
+          max={10}
+          className="h-3"
+          filledClassName="bg-state-blocked"
+        />
       </div>
     </div>
   );

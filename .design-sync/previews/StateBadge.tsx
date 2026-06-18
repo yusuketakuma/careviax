@@ -35,8 +35,12 @@ export function WorkflowLabels() {
 export function WithoutIcon() {
   return (
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', padding: 20 }}>
-      <StateBadge role="done" showIcon={false}>報告書提出済み</StateBadge>
-      <StateBadge role="waiting" showIcon={false}>承認待ち</StateBadge>
+      <StateBadge role="done" showIcon={false}>
+        報告書提出済み
+      </StateBadge>
+      <StateBadge role="waiting" showIcon={false}>
+        承認待ち
+      </StateBadge>
     </div>
   );
 }

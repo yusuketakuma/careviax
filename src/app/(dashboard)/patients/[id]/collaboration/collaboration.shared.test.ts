@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PresenceUser } from '@/components/features/collaboration/presence-avatars';
+import type { PresenceUser } from '@/lib/collaboration/presence-contract';
 import type { PatientWorkspaceActivity } from '../patient-detail.types';
 import {
   buildCollaborationComments,

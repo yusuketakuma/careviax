@@ -53,7 +53,8 @@ export function Confirmation() {
             </DialogDescription>
           </DialogHeader>
           <p style={{ fontSize: 14, lineHeight: 1.6, margin: 0 }}>
-            山田 太郎 様（要介護2）への定期訪問を確定してよろしいですか。確定後はスケジュールに反映されます。
+            山田 太郎
+            様（要介護2）への定期訪問を確定してよろしいですか。確定後はスケジュールに反映されます。
           </p>
           <DialogFooter>
             <Button variant="outline">戻る</Button>

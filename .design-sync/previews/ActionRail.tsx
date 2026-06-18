@@ -37,10 +37,18 @@ export function ManyActions() {
   return (
     <div style={{ padding: 20, maxWidth: 520 }}>
       <ActionRail>
-        <Button variant="ghost" size="sm">下書き保存</Button>
-        <Button variant="outline" size="sm">PDF出力</Button>
-        <Button variant="outline" size="sm">医師へ送信</Button>
-        <Button variant="default" size="sm">報告書を確定</Button>
+        <Button variant="ghost" size="sm">
+          下書き保存
+        </Button>
+        <Button variant="outline" size="sm">
+          PDF出力
+        </Button>
+        <Button variant="outline" size="sm">
+          医師へ送信
+        </Button>
+        <Button variant="default" size="sm">
+          報告書を確定
+        </Button>
       </ActionRail>
     </div>
   );

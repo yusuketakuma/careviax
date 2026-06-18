@@ -26,12 +26,13 @@ import {
 } from 'lucide-react';
 import { z } from 'zod';
 import { visitRecordBaseSchema } from '@/lib/validations/visit-record';
+import { useNetworkOnline } from '@/lib/hooks/use-network-online';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useSpeechRecognition } from '@/lib/hooks/use-speech-recognition';
 import { useSoapDraft } from '@/lib/hooks/use-soap-draft';
 import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import { isOfflineEncryptionUnavailableError } from '@/lib/offline/crypto';
-import { listEvidenceDraftSummaries } from '@/lib/offline/evidence-drafts';
+import { listEvidenceDraftSummariesForSchedule } from '@/lib/offline/evidence-drafts';
 import {
   enqueueForSync,
   registerVisitRecordConflict,
@@ -454,6 +455,7 @@ export function VisitRecordForm({
 }) {
   const router = useRouter();
   const orgId = useOrgId();
+  const isNetworkOnline = useNetworkOnline();
   const isBootstrappingOrg = !orgId;
   const queryClient = useQueryClient();
   const [draftHydrated, setDraftHydrated] = useState(false);
@@ -481,7 +483,9 @@ export function VisitRecordForm({
   const isOffline = useOfflineStore((state) => state.isOffline);
   const pendingSyncCount = useOfflineStore((state) => state.pendingSyncCount);
   const syncOnlineStatus = useOfflineStore((state) => state.syncOnlineStatus);
+  const refreshSyncCount = useOfflineStore((state) => state.refreshSyncCount);
   const refreshSyncState = useOfflineStore((state) => state.refreshSyncState);
+  const syncCountRefreshFailureNotifiedRef = useRef(false);
 
   // Fetch schedule details
   const { data: schedule, isLoading: scheduleLoading } = useQuery<ScheduleDetail>({
@@ -523,7 +527,7 @@ export function VisitRecordForm({
   // p0_23: この訪問の未同期写真ドラフト(p0_48 撮影分)。橙バナーとモバイル未同期バッジに使う
   const { data: evidenceDraftSummaries } = useQuery({
     queryKey: ['visit-evidence-drafts', id],
-    queryFn: () => listEvidenceDraftSummaries(),
+    queryFn: () => listEvidenceDraftSummariesForSchedule(id),
   });
 
   const { data: visitPreparationSnapshot, isLoading: visitPreparationLoading } =
@@ -632,18 +636,16 @@ export function VisitRecordForm({
   }, [carryItemAcknowledgementError, form, requiresCarryItemWarningAcknowledgement]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-
     syncOnlineStatus();
+  }, [isNetworkOnline, syncOnlineStatus]);
 
-    window.addEventListener('online', syncOnlineStatus);
-    window.addEventListener('offline', syncOnlineStatus);
-
-    return () => {
-      window.removeEventListener('online', syncOnlineStatus);
-      window.removeEventListener('offline', syncOnlineStatus);
-    };
-  }, [syncOnlineStatus]);
+  const refreshSyncCountSafely = useCallback(() => {
+    void refreshSyncCount().catch((error) => {
+      if (syncCountRefreshFailureNotifiedRef.current) return;
+      syncCountRefreshFailureNotifiedRef.current = true;
+      console.warn('[offline-sync] sync count refresh failed', error);
+    });
+  }, [refreshSyncCount]);
 
   useEffect(() => {
     if (!orgId || typeof window === 'undefined') return;
@@ -655,10 +657,10 @@ export function VisitRecordForm({
       },
     });
     const initialTimer = window.setTimeout(() => {
-      void refreshSyncState();
+      refreshSyncCountSafely();
     }, 0);
     const timer = window.setInterval(() => {
-      void refreshSyncState();
+      refreshSyncCountSafely();
     }, 5000);
 
     return () => {
@@ -666,7 +668,7 @@ export function VisitRecordForm({
       window.clearTimeout(initialTimer);
       window.clearInterval(timer);
     };
-  }, [orgId, refreshSyncState]);
+  }, [orgId, refreshSyncCountSafely]);
 
   useEffect(() => {
     if (!schedule?.patient_id) return;

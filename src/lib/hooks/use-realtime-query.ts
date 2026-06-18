@@ -1,13 +1,8 @@
 'use client';
 
-import { useCallback, useMemo } from 'react';
-import {
-  useQuery,
-  useQueryClient,
-  type QueryKey,
-  type UseQueryOptions,
-} from '@tanstack/react-query';
-import { useRealtimeEvents } from './use-realtime-events';
+import { useQuery, type QueryKey, type UseQueryOptions } from '@tanstack/react-query';
+import { useRealtimeInvalidation } from './use-realtime-invalidation';
+import type { RealtimePresenceTarget } from '@/lib/realtime/shared-event-stream';
 
 interface UseRealtimeQueryOptions<TData> extends Omit<
   UseQueryOptions<TData>,
@@ -15,63 +10,38 @@ interface UseRealtimeQueryOptions<TData> extends Omit<
 > {
   queryKey: QueryKey;
   queryFn: () => Promise<TData>;
-  invalidateOn?: string[];
+  invalidateOn?: readonly string[] | false;
+  shouldInvalidate?: (event: unknown) => boolean;
+  onRealtimeEvent?: (event: unknown) => void;
   fallbackRefetchInterval?: UseQueryOptions<TData>['refetchInterval'];
   pollWhenConnected?: boolean;
+  presenceTargets?: RealtimePresenceTarget[];
 }
 
 export function useRealtimeQuery<TData>({
   queryKey,
   queryFn,
   invalidateOn = [],
+  shouldInvalidate,
+  onRealtimeEvent,
   fallbackRefetchInterval,
   pollWhenConnected = false,
+  presenceTargets = [],
   ...options
 }: UseRealtimeQueryOptions<TData>) {
-  const queryClient = useQueryClient();
-  const queryKeyHash = JSON.stringify(queryKey);
-  const invalidateOnHash = JSON.stringify(invalidateOn);
-  const realtimeQueryKey = useMemo(
-    () => queryKey,
-    // Preserve structural comparison for callers that build equivalent query keys per render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [queryKeyHash],
-  );
-  const realtimeInvalidateOn = useMemo(
-    () => invalidateOn,
-    // Preserve structural comparison for callers that build equivalent event lists per render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [invalidateOnHash],
-  );
-
-  const onEvent = useCallback(
-    (event: unknown) => {
-      if (realtimeInvalidateOn.length === 0) {
-        queryClient.invalidateQueries({ queryKey: realtimeQueryKey });
-        return;
-      }
-
-      const eventType =
-        typeof event === 'object' && event !== null && 'type' in event
-          ? (event as { type: string }).type
-          : undefined;
-
-      if (eventType && realtimeInvalidateOn.includes(eventType)) {
-        queryClient.invalidateQueries({ queryKey: realtimeQueryKey });
-      }
-    },
-    [queryClient, realtimeQueryKey, realtimeInvalidateOn],
-  );
-
-  const { connected } = useRealtimeEvents({
-    onEvent,
+  const { connected, receivesRealtimeUpdates } = useRealtimeInvalidation({
+    queryKey,
     enabled: options.enabled !== false,
+    invalidateOn,
+    shouldInvalidate,
+    onRealtimeEvent,
+    presenceTargets,
   });
 
   const refetchInterval =
     fallbackRefetchInterval === undefined
       ? options.refetchInterval
-      : connected && realtimeInvalidateOn.length > 0 && !pollWhenConnected
+      : connected && receivesRealtimeUpdates && !pollWhenConnected
         ? false
         : fallbackRefetchInterval;
 

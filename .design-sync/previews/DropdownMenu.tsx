@@ -2,30 +2,27 @@ import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuLabel,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
-  DropdownMenuCheckboxItem,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   Button,
 } from 'ph-os';
-import {
-  PencilIcon,
-  CopyIcon,
-  SendIcon,
-  Trash2Icon,
-  MoreHorizontalIcon,
-} from 'lucide-react';
+import { PencilIcon, CopyIcon, SendIcon, Trash2Icon, ChevronDownIcon } from 'lucide-react';
+
+// base-ui Menu portals its popup to document.body (Floating-UI anchored to the
+// trigger), so an open menu cannot be captured inside a per-cell screenshot
+// crop. These previews therefore show the real, DS-styled trigger; the menu
+// opens on click in the live design tool (item set documented in the prompt).
 
 export function ActionsMenu() {
   return (
-    <div style={{ position: 'relative', minHeight: 280, padding: 20 }}>
-      <DropdownMenu defaultOpen modal={false}>
-        <DropdownMenuTrigger render={<Button variant="outline" size="icon" />}>
-          <MoreHorizontalIcon />
+    <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: 24 }}>
+      <DropdownMenu>
+        <DropdownMenuTrigger render={<Button variant="outline" size="sm" />}>
+          処方の操作
+          <ChevronDownIcon />
         </DropdownMenuTrigger>
         <DropdownMenuContent>
           <DropdownMenuLabel>処方の操作</DropdownMenuLabel>
@@ -41,11 +38,11 @@ export function ActionsMenu() {
             </DropdownMenuItem>
             <DropdownMenuItem>
               <SendIcon />
-              監査へ送る
+              処方医へ送信
             </DropdownMenuItem>
           </DropdownMenuGroup>
           <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive">
+          <DropdownMenuItem>
             <Trash2Icon />
             削除
           </DropdownMenuItem>
@@ -55,39 +52,18 @@ export function ActionsMenu() {
   );
 }
 
-export function CheckboxColumns() {
+export function PlainTrigger() {
   return (
-    <div style={{ position: 'relative', minHeight: 280, padding: 20 }}>
-      <DropdownMenu defaultOpen modal={false}>
-        <DropdownMenuTrigger render={<Button variant="outline" />}>
-          表示する列
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
-          <DropdownMenuLabel>表示項目</DropdownMenuLabel>
-          <DropdownMenuCheckboxItem checked>患者名</DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem checked>訪問予定日</DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem checked={false}>要介護度</DropdownMenuCheckboxItem>
-          <DropdownMenuCheckboxItem checked>担当薬剤師</DropdownMenuCheckboxItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
-  );
-}
-
-export function RadioSort() {
-  return (
-    <div style={{ position: 'relative', minHeight: 260, padding: 20 }}>
-      <DropdownMenu defaultOpen modal={false}>
-        <DropdownMenuTrigger render={<Button variant="outline" />}>
+    <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: 24 }}>
+      <DropdownMenu>
+        <DropdownMenuTrigger render={<Button variant="ghost" size="sm" />}>
           並び替え
+          <ChevronDownIcon />
         </DropdownMenuTrigger>
         <DropdownMenuContent>
-          <DropdownMenuLabel>並び替え基準</DropdownMenuLabel>
-          <DropdownMenuRadioGroup value="visit">
-            <DropdownMenuRadioItem value="visit">訪問予定日順</DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="name">氏名（カナ）順</DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="care">要介護度順</DropdownMenuRadioItem>
-          </DropdownMenuRadioGroup>
+          <DropdownMenuItem>新しい順</DropdownMenuItem>
+          <DropdownMenuItem>古い順</DropdownMenuItem>
+          <DropdownMenuItem>優先度順</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

@@ -207,21 +207,23 @@ export function usePrescriptionDraft(orgId: string) {
         JSON.stringify(snapshot),
         'prescription draft payload',
       );
-      const existing = await offlineDb.prescriptionDrafts.where('orgId').equals(orgId).first();
+      await offlineDb.transaction('rw', offlineDb.prescriptionDrafts, async () => {
+        const existing = await offlineDb.prescriptionDrafts.where('orgId').equals(orgId).first();
 
-      if (existing?.id !== undefined) {
-        await offlineDb.prescriptionDrafts.update(existing.id, {
-          payload,
-          updatedAt: new Date(),
-        });
-      } else {
-        await offlineDb.prescriptionDrafts.add({
-          orgId,
-          payload,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
-      }
+        if (existing?.id !== undefined) {
+          await offlineDb.prescriptionDrafts.update(existing.id, {
+            payload,
+            updatedAt: new Date(),
+          });
+        } else {
+          await offlineDb.prescriptionDrafts.add({
+            orgId,
+            payload,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+        }
+      });
     },
     [orgId],
   );

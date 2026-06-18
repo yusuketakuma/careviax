@@ -42,19 +42,45 @@
     "Textarea": "src/components/ui/textarea.tsx",
     "Toaster": "src/components/ui/sonner.tsx"
   },
-  "runtimeFontPrefixes": [
-    "Meiryo",
-    "Hiragino",
-    "Yu Gothic"
-  ],
-  "guidelinesGlob": [
-    "docs/ui-ux-design-guidelines.md"
-  ],
+  "runtimeFontPrefixes": ["Meiryo", "Hiragino", "Yu Gothic"],
+  "guidelinesGlob": ["docs/ui-ux-design-guidelines.md"],
   "overrides": {
     "DropdownMenu": {
       "cardMode": "single",
-      "viewport": "480x560",
-      "primaryStory": "ActionsMenu"
+      "primaryStory": "ActionsMenu",
+      "viewport": "480x560"
+    },
+    "AlertDialog": {
+      "cardMode": "single",
+      "primaryStory": "DestructiveDefault"
+    },
+    "ConfirmDialog": {
+      "cardMode": "single",
+      "primaryStory": "Default"
+    },
+    "Dialog": {
+      "cardMode": "single",
+      "primaryStory": "EditPatient"
+    },
+    "Select": {
+      "cardMode": "single",
+      "primaryStory": "Open"
+    },
+    "Sheet": {
+      "cardMode": "single",
+      "primaryStory": "PatientDetailRight"
+    },
+    "DataTable": {
+      "cardMode": "column"
+    },
+    "ErrorBoundary": {
+      "cardMode": "column"
+    },
+    "FilterSummaryBar": {
+      "cardMode": "column"
+    },
+    "SegmentedProgressBar": {
+      "cardMode": "column"
     }
   },
   "readmeHeader": ".design-sync/conventions.md"

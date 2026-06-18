@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -8,10 +8,9 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
 import { CommentThread } from '@/components/features/comments/comment-thread';
-import type { PresenceUser } from '@/components/features/collaboration/presence-avatars';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { usePresenceUsers } from '@/lib/hooks/use-presence-users';
 import { usePresenceHeartbeat } from '@/lib/hooks/use-presence-heartbeat';
-import { useRealtimeEvents } from '@/lib/hooks/use-realtime-events';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import type { PatientOverview } from '../patient-detail.types';
 import {
@@ -58,39 +57,9 @@ export function CollaborationContent({ patientId }: { patientId: string }) {
     activeField: 'collaboration',
   });
 
-  const presenceQueryKey = ['presence', PATIENT_PRESENCE_ENTITY_TYPE, patientId, orgId];
-  const presenceTargets = useMemo(
-    () => [{ entityType: PATIENT_PRESENCE_ENTITY_TYPE, entityId: patientId }],
-    [patientId],
-  );
-  const realtimePresence = useRealtimeEvents({
-    onEvent: (event) => {
-      const e = event as { type?: string; entity_type?: string; entity_id?: string };
-      if (
-        e.type === 'presence_update' &&
-        e.entity_type === PATIENT_PRESENCE_ENTITY_TYPE &&
-        e.entity_id === patientId
-      ) {
-        queryClient.invalidateQueries({ queryKey: presenceQueryKey });
-      }
-    },
-    enabled: Boolean(orgId) && Boolean(patientId),
-    presenceTargets,
-  });
-
-  const presenceQuery = useQuery<PresenceUser[]>({
-    queryKey: presenceQueryKey,
-    queryFn: async () => {
-      const res = await fetch(
-        `/api/presence?entity_type=${PATIENT_PRESENCE_ENTITY_TYPE}&entity_id=${encodeURIComponent(patientId)}`,
-        { headers: { 'x-org-id': orgId } },
-      );
-      if (!res.ok) return [];
-      const json = (await res.json()) as { data?: PresenceUser[] };
-      return json.data ?? [];
-    },
-    refetchInterval: realtimePresence.connected ? false : 30_000,
-    enabled: Boolean(orgId) && Boolean(patientId),
+  const presenceQuery = usePresenceUsers({
+    entityType: PATIENT_PRESENCE_ENTITY_TYPE,
+    entityId: patientId,
   });
 
   // 患者名・ローディング/エラー表示と「最新を読み込む」の refetch 対象(card-workspace とキャッシュ共有)
@@ -123,7 +92,7 @@ export function CollaborationContent({ patientId }: { patientId: string }) {
   const refreshMutation = useMutation({
     mutationFn: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: presenceQueryKey }),
+        queryClient.invalidateQueries({ queryKey: presenceQuery.queryKey }),
         queryClient.invalidateQueries({ queryKey: overviewQueryKey }),
       ]);
     },
@@ -135,8 +104,7 @@ export function CollaborationContent({ patientId }: { patientId: string }) {
     },
   });
 
-  const presenceViews =
-    demoData?.presence ?? buildPresenceViews(presenceQuery.data ?? [], selfUserId);
+  const presenceViews = demoData?.presence ?? buildPresenceViews(presenceQuery.users, selfUserId);
 
   // デモ注入時(撮影・動作確認の __phosSeedPresenceDemo)は overview の読み込みを
   // 待たずに presence を表示する。本番では demoData は常に null のため挙動は不変。

@@ -19,7 +19,8 @@ export function DestructiveDefault() {
           <AlertDialogHeader>
             <AlertDialogTitle>処方記録を削除しますか</AlertDialogTitle>
             <AlertDialogDescription>
-              山田 太郎 様の 2026/06/12 調剤記録を削除します。この操作は取り消せません。監査ログには削除履歴が残ります。
+              山田 太郎 様の 2026/06/12
+              調剤記録を削除します。この操作は取り消せません。監査ログには削除履歴が残ります。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -43,7 +44,8 @@ export function WithMedia() {
             </AlertDialogMedia>
             <AlertDialogTitle>併用禁忌が検出されました</AlertDialogTitle>
             <AlertDialogDescription>
-              ワルファリン × NSAIDs の組み合わせは出血リスクが高まります。処方医へ疑義照会を行ってから調剤を続行してください。
+              ワルファリン × NSAIDs
+              の組み合わせは出血リスクが高まります。処方医へ疑義照会を行ってから調剤を続行してください。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

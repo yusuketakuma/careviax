@@ -41,8 +41,12 @@ export function WithActions() {
         ]}
         actions={
           <>
-            <Button variant="outline" size="sm">条件をクリア</Button>
-            <Button variant="default" size="sm">CSV出力</Button>
+            <Button variant="outline" size="sm">
+              条件をクリア
+            </Button>
+            <Button variant="default" size="sm">
+              CSV出力
+            </Button>
           </>
         }
       />

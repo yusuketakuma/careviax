@@ -6,6 +6,7 @@ import { setupDomTestEnv } from '@/test/dom-test-utils';
 
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useRealtimeEventsMock = vi.hoisted(() => vi.fn());
+const usePresenceHeartbeatMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
 const invalidateQueriesMock = vi.hoisted(() => vi.fn());
 
@@ -15,6 +16,10 @@ vi.mock('@/lib/hooks/use-org-id', () => ({
 
 vi.mock('@/lib/hooks/use-realtime-events', () => ({
   useRealtimeEvents: useRealtimeEventsMock,
+}));
+
+vi.mock('@/lib/hooks/use-presence-heartbeat', () => ({
+  usePresenceHeartbeat: usePresenceHeartbeatMock,
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -33,6 +38,7 @@ describe('PresenceAvatars', () => {
     vi.clearAllMocks();
     useOrgIdMock.mockReturnValue('org_1');
     useRealtimeEventsMock.mockReturnValue({ connected: true });
+    usePresenceHeartbeatMock.mockReturnValue(undefined);
     useQueryMock.mockReturnValue({
       data: [
         {
@@ -55,6 +61,11 @@ describe('PresenceAvatars', () => {
         presenceTargets: [{ entityType: 'patient', entityId: 'patient_1' }],
       }),
     );
+    expect(usePresenceHeartbeatMock).toHaveBeenCalledWith({
+      entityType: 'patient',
+      entityId: 'patient_1',
+      enabled: true,
+    });
     expect(useQueryMock).toHaveBeenCalledWith(
       expect.objectContaining({
         queryKey: ['presence', 'patient', 'patient_1', 'org_1'],

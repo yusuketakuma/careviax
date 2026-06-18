@@ -90,4 +90,79 @@ describe('useRealtimeQuery', () => {
     expect(invalidateQueriesMock).toHaveBeenCalledTimes(1);
     expect(invalidateQueriesMock).toHaveBeenCalledWith({ queryKey: ['workflow'] });
   });
+
+  it('forwards presence targets to the shared realtime stream', () => {
+    renderHook(() =>
+      useRealtimeQuery({
+        queryKey: ['presence', 'patient', 'patient_1', 'org_1'],
+        queryFn: async () => [],
+        enabled: true,
+        invalidateOn: ['presence_update'],
+        presenceTargets: [{ entityType: 'patient', entityId: 'patient_1' }],
+      }),
+    );
+
+    expect(useRealtimeEventsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        presenceTargets: [{ entityType: 'patient', entityId: 'patient_1' }],
+      }),
+    );
+  });
+
+  it('uses the custom invalidation predicate when provided', () => {
+    renderHook(() =>
+      useRealtimeQuery({
+        queryKey: ['presence', 'patient', 'patient_1', 'org_1'],
+        queryFn: async () => [],
+        invalidateOn: ['presence_update'],
+        shouldInvalidate: (event) =>
+          typeof event === 'object' &&
+          event !== null &&
+          'entity_id' in event &&
+          event.entity_id === 'patient_1',
+      }),
+    );
+
+    const realtimeOptions = useRealtimeEventsMock.mock.calls[0]?.[0];
+    realtimeOptions.onEvent({
+      type: 'presence_update',
+      entity_type: 'patient',
+      entity_id: 'patient_2',
+    });
+    realtimeOptions.onEvent({
+      type: 'presence_update',
+      entity_type: 'patient',
+      entity_id: 'patient_1',
+    });
+
+    expect(invalidateQueriesMock).toHaveBeenCalledTimes(1);
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({
+      queryKey: ['presence', 'patient', 'patient_1', 'org_1'],
+    });
+  });
+
+  it('lets callers update the realtime query cache without invalidating the query', () => {
+    const onRealtimeEvent = vi.fn();
+    useRealtimeEventsMock.mockReturnValue({ connected: true });
+
+    renderHook(() =>
+      useRealtimeQuery({
+        queryKey: ['notifications', 'inbox', 'org_1'],
+        queryFn: async () => ({ data: [] }),
+        invalidateOn: false,
+        onRealtimeEvent,
+        fallbackRefetchInterval: 30_000,
+      }),
+    );
+
+    const realtimeOptions = useRealtimeEventsMock.mock.calls[0]?.[0];
+    realtimeOptions.onEvent({ type: 'notification', id: 'notification_1' });
+
+    expect(onRealtimeEvent).toHaveBeenCalledWith({
+      type: 'notification',
+      id: 'notification_1',
+    });
+    expect(invalidateQueriesMock).not.toHaveBeenCalled();
+    expect(useQueryMock).toHaveBeenCalledWith(expect.objectContaining({ refetchInterval: false }));
+  });
 });

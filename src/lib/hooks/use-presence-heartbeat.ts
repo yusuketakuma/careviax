@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { useOrgId } from './use-org-id';
+import { postPresenceUpdate } from '@/lib/collaboration/presence-api-client';
 
 interface UsePresenceHeartbeatOptions {
   entityType: string;
@@ -31,17 +32,7 @@ export function usePresenceHeartbeat({
     if (!enabled || !orgId || !entityId) return;
 
     const postPresence = () => {
-      fetch('/api/presence', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
-        body: JSON.stringify({
-          entity_type: entityType,
-          entity_id: entityId,
-          active_field: activeField,
-        }),
-      }).catch(() => {
-        // presence はベストエフォート
-      });
+      void postPresenceUpdate({ orgId, entityType, entityId, activeField });
     };
 
     const initialTimer =

@@ -3,6 +3,7 @@ import type { SyncQueueItemSummary } from '@/lib/stores/sync-engine';
 import {
   buildOfflineSyncConflictView,
   buildOfflineSyncRows,
+  collectOfflineSyncScheduleIds,
   resolveSyncRowPatientLabel,
 } from './offline-sync.shared';
 
@@ -74,6 +75,19 @@ describe('resolveSyncRowPatientLabel', () => {
     expect(resolveSyncRowPatientLabel(buildItem({ payload: {}, scope_id: undefined }), NAMES)).toBe(
       '対象不明',
     );
+  });
+});
+
+describe('collectOfflineSyncScheduleIds', () => {
+  it('collects unique schedule ids needed for patient-name lookup', () => {
+    expect(
+      collectOfflineSyncScheduleIds([
+        buildItem({ payload: { schedule_id: 'sched_1' }, scope_id: 'ignored' }),
+        buildItem({ payload: {}, scope_id: 'sched_2' }),
+        buildItem({ payload: { schedule_id: 'sched_1' }, scope_id: 'sched_1' }),
+        buildItem({ payload: { patient_id: 'patient_1' }, scope_id: undefined }),
+      ]),
+    ).toEqual(['sched_1', 'sched_2']);
   });
 });
 

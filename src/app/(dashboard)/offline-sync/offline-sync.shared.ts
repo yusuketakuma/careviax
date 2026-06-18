@@ -31,6 +31,15 @@ function readString(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value : null;
 }
 
+export function collectOfflineSyncScheduleIds(items: SyncQueueItemSummary[]): string[] {
+  const scheduleIds = new Set<string>();
+  for (const item of items) {
+    const scheduleId = readString(item.payload.schedule_id) ?? readString(item.scope_id);
+    if (scheduleId) scheduleIds.add(scheduleId);
+  }
+  return Array.from(scheduleIds);
+}
+
 export function resolveSyncRowPatientLabel(
   item: Pick<SyncQueueItemSummary, 'payload' | 'scope_id'>,
   patientNameByScheduleId: ReadonlyMap<string, string>,

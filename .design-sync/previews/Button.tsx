@@ -29,7 +29,9 @@ export function States() {
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', padding: 20 }}>
       <Button>送信する</Button>
       <Button disabled>送信中…</Button>
-      <Button variant="outline" disabled>無効</Button>
+      <Button variant="outline" disabled>
+        無効
+      </Button>
     </div>
   );
 }

@@ -29,6 +29,7 @@ import { cn } from '@/lib/utils';
 import {
   buildOfflineSyncConflictView,
   buildOfflineSyncRows,
+  collectOfflineSyncScheduleIds,
   type OfflineSyncConflictView,
   type OfflineSyncRowStatusKey,
 } from './offline-sync.shared';
@@ -46,11 +47,13 @@ const STATUS_BADGE_CLASSES: Record<OfflineSyncRowStatusKey, string> = {
   queued: 'border-blue-300 bg-blue-50 text-blue-700',
 };
 
-/** visitBriefCache から scheduleId→患者名の解決マップを作る(ベストエフォート)。 */
-async function loadPatientNameMap(): Promise<Map<string, string>> {
+/** visitBriefCache から必要な scheduleId だけ患者名の解決マップを作る(ベストエフォート)。 */
+async function loadPatientNameMap(scheduleIds: string[]): Promise<Map<string, string>> {
   const map = new Map<string, string>();
+  if (scheduleIds.length === 0) return map;
+
   try {
-    const rows = await offlineDb.visitBriefCache.toArray();
+    const rows = await offlineDb.visitBriefCache.where('scheduleId').anyOf(scheduleIds).toArray();
     await Promise.all(
       rows.map(async (row) => {
         try {
@@ -80,15 +83,27 @@ export function OfflineSyncContent() {
 
   React.useEffect(() => {
     let active = true;
-    void refreshSyncState();
-    void loadPatientNameMap().then((names) => {
-      if (active) setPatientNames(names);
+    refreshSyncState().catch((error) => {
+      if (!active) return;
+      toast.error(error instanceof Error ? error.message : '未同期データの読み込みに失敗しました');
     });
 
     return () => {
       active = false;
     };
   }, [refreshSyncState]);
+
+  React.useEffect(() => {
+    let active = true;
+    const scheduleIds = collectOfflineSyncScheduleIds(pendingQueue);
+    loadPatientNameMap(scheduleIds).then((names) => {
+      if (active) setPatientNames(names);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [pendingQueue]);
 
   // 撮影・動作確認用のデモ注入(dev 限定)
   React.useEffect(() => {

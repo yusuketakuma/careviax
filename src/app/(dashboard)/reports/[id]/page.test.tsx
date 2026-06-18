@@ -264,18 +264,21 @@ describe('ReportDetailPage send safety dialog', () => {
 
   it('sends report delivery mutations with idempotency headers', async () => {
     const mutationConfigs: Array<{ mutationFn?: (input: unknown) => Promise<unknown> }> = [];
-    useMutationMock.mockImplementation((config: { mutationFn?: (input: unknown) => Promise<unknown> }) => {
-      mutationConfigs.push(config);
-      return {
-        mutate: sendMutateMock,
-        isPending: false,
-      };
-    });
-    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
-      new Response(JSON.stringify({ data: { ok: true } }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }),
+    useMutationMock.mockImplementation(
+      (config: { mutationFn?: (input: unknown) => Promise<unknown> }) => {
+        mutationConfigs.push(config);
+        return {
+          mutate: sendMutateMock,
+          isPending: false,
+        };
+      },
+    );
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ data: { ok: true } }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
     );
 
     render(<ReportDetailPage />);

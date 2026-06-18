@@ -22,7 +22,11 @@ export function Required() {
 
 export function Disabled() {
   return (
-    <div className="group" data-disabled="true" style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 20, maxWidth: 360 }}>
+    <div
+      className="group"
+      data-disabled="true"
+      style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: 20, maxWidth: 360 }}
+    >
       <Label htmlFor="insurer-no">保険者番号</Label>
       <Input id="insurer-no" defaultValue="01130012" disabled />
     </div>

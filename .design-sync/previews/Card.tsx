@@ -27,7 +27,8 @@ export function PatientCard() {
         <CardContent>
           <p style={{ fontSize: 14, fontWeight: 500, margin: '0 0 6px' }}>78歳 / 男性 / 要介護2</p>
           <p style={{ fontSize: 14, lineHeight: 1.7, margin: 0, color: 'var(--muted-foreground)' }}>
-            次回訪問 2026/06/20 10:00。服薬指導と残薬確認を予定。前回訪問時に嚥下困難の訴えあり、一包化を検討。
+            次回訪問 2026/06/20
+            10:00。服薬指導と残薬確認を予定。前回訪問時に嚥下困難の訴えあり、一包化を検討。
           </p>
         </CardContent>
         <CardFooter>

@@ -5,6 +5,7 @@ import { offlineDb, type OfflineEvidenceDraft } from '@/lib/stores/offline-db';
 import { createFetchTimeout } from '@/lib/utils/abort-timeout';
 import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
 import {
+  MAX_EVIDENCE_SYNC_RETRIES,
   mergeVisitRecordAttachmentRefs,
   pickSyncableEvidenceDrafts,
   resolveScheduleVisitRecordId,
@@ -57,19 +58,35 @@ export type EvidenceDraftSummary = {
 
 /** 未同期ドラフトのメタデータ一覧(画像 payload は復号しない)。 */
 export async function listEvidenceDraftSummaries(): Promise<EvidenceDraftSummary[]> {
-  const drafts = await offlineDb.evidenceDrafts.toArray();
-  return drafts
-    .filter((draft) => !draft.synced)
-    .map((draft) => ({
-      id: draft.id ?? null,
-      scheduleId: draft.scheduleId,
-      category: draft.category,
-      fileName: draft.fileName,
-      capturedAt:
-        draft.capturedAt instanceof Date
-          ? draft.capturedAt.toISOString()
-          : String(draft.capturedAt),
-    }));
+  const drafts = await offlineDb.evidenceDrafts
+    .where('retryCount')
+    .aboveOrEqual(0)
+    .and((draft) => !draft.synced)
+    .toArray();
+  return mapEvidenceDraftSummaries(drafts);
+}
+
+/** 指定訪問の未同期ドラフトのメタデータ一覧(画像 payload は復号しない)。 */
+export async function listEvidenceDraftSummariesForSchedule(
+  scheduleId: string,
+): Promise<EvidenceDraftSummary[]> {
+  const drafts = await offlineDb.evidenceDrafts
+    .where('scheduleId')
+    .equals(scheduleId)
+    .and((draft) => !draft.synced && draft.retryCount >= 0)
+    .toArray();
+  return mapEvidenceDraftSummaries(drafts);
+}
+
+function mapEvidenceDraftSummaries(drafts: OfflineEvidenceDraft[]): EvidenceDraftSummary[] {
+  return drafts.map((draft) => ({
+    id: draft.id ?? null,
+    scheduleId: draft.scheduleId,
+    category: draft.category,
+    fileName: draft.fileName,
+    capturedAt:
+      draft.capturedAt instanceof Date ? draft.capturedAt.toISOString() : String(draft.capturedAt),
+  }));
 }
 
 type EvidenceSyncConfig = { orgId: string };
@@ -219,7 +236,13 @@ async function syncEvidenceDraftsOnce(config: EvidenceSyncConfig): Promise<Evide
   const result: EvidenceSyncResult = { synced: 0, skipped: 0, failed: 0 };
   if (typeof window !== 'undefined' && !window.navigator.onLine) return result;
 
-  const drafts = pickSyncableEvidenceDrafts(await offlineDb.evidenceDrafts.toArray());
+  const drafts = pickSyncableEvidenceDrafts(
+    await offlineDb.evidenceDrafts
+      .where('retryCount')
+      .below(MAX_EVIDENCE_SYNC_RETRIES)
+      .and((draft) => !draft.synced)
+      .toArray(),
+  );
   if (drafts.length === 0) return result;
 
   const headers = { 'x-org-id': config.orgId };

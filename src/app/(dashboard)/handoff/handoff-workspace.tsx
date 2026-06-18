@@ -29,7 +29,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { WorkspaceActionRail } from '@/components/features/workspace/action-rail';
 import { HandoffConfirmPanel } from '@/components/features/visits/handoff-confirm-panel';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { useRealtimeEvents } from '@/lib/hooks/use-realtime-events';
+import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { cn } from '@/lib/utils';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
@@ -70,6 +70,16 @@ async function fetchHandoffBoard(orgId: string): Promise<HandoffBoardResponse> {
   if (!res.ok) throw new Error('ハンドオフボードの取得に失敗しました');
   const json = await res.json();
   return json.data;
+}
+
+const HANDOFF_BOARD_INVALIDATION_EVENTS = ['workflow_refresh', 'cycle_transition'] as const;
+
+function isHandoffBoardInvalidationEvent(event: unknown) {
+  const eventType =
+    typeof event === 'object' && event !== null && 'type' in event
+      ? (event as { type: string }).type
+      : undefined;
+  return HANDOFF_BOARD_INVALIDATION_EVENTS.some((type) => type === eventType);
 }
 
 async function fetchOperationCockpit(orgId: string): Promise<DashboardCockpitResponse> {
@@ -830,29 +840,22 @@ export function HandoffWorkspace() {
     void queryClient.invalidateQueries({ queryKey: ['tasks'] });
   }, [queryClient]);
 
-  const handleRealtimeEvent = useCallback(
+  const invalidateRelatedBoardCaches = useCallback(
     (event: unknown) => {
-      const eventType =
-        typeof event === 'object' && event !== null && 'type' in event
-          ? (event as { type: string }).type
-          : undefined;
-      if (eventType === 'workflow_refresh' || eventType === 'cycle_transition') {
-        invalidateBoard();
-      }
+      if (!isHandoffBoardInvalidationEvent(event)) return;
+      void queryClient.invalidateQueries({ queryKey: ['nav-badges'] });
+      void queryClient.invalidateQueries({ queryKey: ['tasks', 'handoff-confirmation', orgId] });
     },
-    [invalidateBoard],
+    [orgId, queryClient],
   );
 
-  const realtime = useRealtimeEvents({
-    onEvent: handleRealtimeEvent,
-    enabled: !isBootstrappingOrg,
-  });
-
-  const boardQuery = useQuery({
+  const boardQuery = useRealtimeQuery({
     queryKey: ['handoff-board', 'workspace', orgId],
     queryFn: () => fetchHandoffBoard(orgId),
     enabled: !isBootstrappingOrg,
-    refetchInterval: realtime.connected ? false : 30_000,
+    invalidateOn: HANDOFF_BOARD_INVALIDATION_EVENTS,
+    fallbackRefetchInterval: 30_000,
+    onRealtimeEvent: invalidateRelatedBoardCaches,
   });
   const cockpitQuery = useQuery({
     queryKey: ['dashboard', 'cockpit', orgId],

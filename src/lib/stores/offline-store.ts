@@ -1,5 +1,9 @@
 import { create } from 'zustand';
-import { getPendingSyncCount, listSyncQueueItems, type SyncQueueItemSummary } from '@/lib/stores/sync-engine';
+import {
+  getPendingSyncCount,
+  listSyncQueueItems,
+  type SyncQueueItemSummary,
+} from '@/lib/stores/sync-engine';
 
 interface OfflineState {
   isOffline: boolean;
@@ -16,6 +20,7 @@ interface OfflineState {
   lastSyncedAt: string | null;
   syncOnlineStatus: () => void;
   markSynced: (at?: Date) => void;
+  refreshSyncCount: () => Promise<void>;
   refreshSyncState: () => Promise<void>;
 }
 
@@ -33,6 +38,16 @@ export const useOfflineStore = create<OfflineState>((set) => ({
   },
   markSynced: (at) => {
     set({ lastSyncedAt: (at ?? new Date()).toISOString() });
+  },
+  refreshSyncCount: async () => {
+    const count = await getPendingSyncCount();
+    const now = new Date().toISOString();
+    const isOnline = typeof window === 'undefined' || window.navigator.onLine;
+    set((state) => ({
+      pendingSyncCount: count,
+      lastSyncRefreshAt: now,
+      lastSyncedAt: isOnline ? now : state.lastSyncedAt,
+    }));
   },
   refreshSyncState: async () => {
     const [count, items] = await Promise.all([getPendingSyncCount(), listSyncQueueItems()]);

@@ -29,10 +29,7 @@ export function NoDocuments() {
 export function MinimalNoIcon() {
   return (
     <div style={{ padding: 24, maxWidth: 520 }}>
-      <EmptyState
-        icon={Inbox}
-        title="未読の疑義照会はありません"
-      />
+      <EmptyState icon={Inbox} title="未読の疑義照会はありません" />
     </div>
   );
 }

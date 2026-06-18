@@ -182,6 +182,133 @@ Loop 1-4 first pass: fix handoff-board create race, Google Routes non-OK degrada
 
 Loop 2/5/8 pass 1: inspect DB/API aggregation and error-handling consolidation candidates, prioritizing safe high-impact changes with focused tests.
 
+## Loop 4 - Async Safety, Pass 2
+
+### Found Candidates
+
+- The shared realtime SSE stream invoked each event/status listener directly. A throwing consumer listener could abort dispatch for later listeners and push the shared stream toward reconnect/error handling even though the network stream itself was healthy.
+
+### Implemented
+
+- Wrapped event and status listener callbacks in `src/lib/realtime/shared-event-stream.ts` with exception isolation and centralized realtime listener logging.
+- Covered event listener and status listener failures in `src/lib/realtime/shared-event-stream.test.ts`, including the non-reconnect expectation for a healthy shared stream.
+
+### Stability Impact
+
+- One broken subscriber can no longer stop other subscribers from receiving realtime events or status transitions for the same shared SSE connection.
+
+### Tests and Validation
+
+- `pnpm exec vitest run src/lib/realtime/shared-event-stream.test.ts`: passed, 1 file / 4 tests.
+
+## Loop 6 - Cache and State Management, Pass 1
+
+### Found Candidates
+
+- `PresenceAvatars` duplicated the presence heartbeat effect even though `usePresenceHeartbeat` already owns the same POST/interval/cleanup responsibility.
+- Re-scan found `useCollaborativeForm` still building the same best-effort `/api/presence` POST request shape for active-field updates.
+- Re-scan found `VisitRecordForm` still owning direct `online`/`offline` event listeners even though `useNetworkOnline` is the existing shared browser network-state subscription hook.
+
+### Implemented
+
+- Replaced the local `PresenceAvatars` timer/ref/fetch effect with the existing `usePresenceHeartbeat` hook.
+- Updated `src/components/features/collaboration/presence-avatars.test.tsx` to verify the shared heartbeat hook receives the correct entity and enabled state.
+- Extracted `postPresenceUpdate` from `usePresenceHeartbeat` and migrated `useCollaborativeForm` active-field focus/blur updates to the shared sender.
+- Added `src/lib/hooks/use-presence-heartbeat.test.ts` for shared request shape and best-effort network failure behavior.
+- Replaced `VisitRecordForm`'s direct `window.addEventListener('online'/'offline')` effect with `useNetworkOnline` plus the existing offline-store `syncOnlineStatus` update.
+
+### Duplicate State / Timer Logic Reduced
+
+- Removed one local interval implementation and one duplicate best-effort presence POST path from the component layer.
+- Removed the second hand-built presence POST request payload from collaborative form focus/blur handling while preserving immediate active-field updates.
+- Removed one more component-owned browser online/offline listener pair from the visit-record form.
+
+### Tests and Validation
+
+- `pnpm exec vitest run src/components/features/collaboration/presence-avatars.test.tsx src/lib/hooks/use-collaborative-form.test.tsx`: passed, 2 files / 26 tests.
+- `pnpm exec vitest run src/lib/hooks/use-presence-heartbeat.test.ts src/lib/hooks/use-collaborative-form.test.tsx src/components/features/collaboration/presence-avatars.test.tsx`: passed, 3 files / 28 tests.
+- `pnpm exec vitest run 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx'`: passed, 1 file / 8 tests.
+- Targeted ESLint over the presence hook/collaborative form/presence avatars files: passed.
+- Targeted ESLint over the visit-record form/network hook files: passed.
+
+## Loop 9 - Measurement and Validation, Pass 1
+
+### Found Candidates
+
+- Full `pnpm lint` and `pnpm format:check` picked up local/generated design-sync artifacts (`.ds-sync`, `.design-sync`, `ds-bundle`) even though they are not tracked source files.
+
+### Implemented
+
+- Added local/generated design-sync directories to ESLint global ignores.
+- Added the same local/generated prefixes to `tools/scripts/check-format-changed-files.mjs` so format validation matches the repository source boundary.
+
+### Validation Results
+
+- Targeted ESLint over changed source/test files: passed.
+- `pnpm format:check`: passed.
+- `pnpm lint`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm date-slices:check`: passed.
+- `pnpm eventbridge-schedules:check`: passed.
+- Final `pnpm test`: passed, 981 files / 1 skipped and 7660 tests / 1 skipped.
+- Final `pnpm build`: passed, Next.js 16.2.9 webpack build and 272 generated app routes.
+- `git diff --check`: passed.
+
+### Re-scan Result
+
+- `/api/presence` POST request construction is now centralized in `postPresenceUpdate`; remaining hits are the shared helper and its callers/tests.
+- Shared realtime SSE listener dispatch now catches per-listener exceptions for both event and status callbacks.
+- No new tracked-source duplicate timer/request implementation was found in the current collaboration/realtime slice.
+
+## Maintainability Re-audit - Collaboration/Realtime Slice
+
+### Subagents
+
+- Architecture Agent (`019edafa-6aea-7b21-ab32-6ba6e422504c`)
+- Refactor/Duplication Agent (`019edafa-7416-7b00-b91e-021d1be854db`)
+- Test & Behavior Agent (`019edafa-79fc-72a1-b280-4498cc83cc7f`)
+- Strict Review Agent (`019edafa-80ba-7ca3-8f6a-21ebe6a1d48f`)
+
+### Found Candidates
+
+- `PresenceUser` was owned by the UI component `presence-avatars.tsx` while lib hooks imported it.
+- Presence response parsing / query key / fetch logic was duplicated in presence avatars, collaborative form, and patient collaboration.
+- Collaborator color hashing was duplicated in avatars, field lock indicators, and Yjs cursor overlay.
+- `postPresenceUpdate` lived in a hook file despite being a presence API client helper.
+- `.design-sync/**` was incorrectly excluded from lint/format checks even though `.design-sync` inputs are tracked source files.
+- Realtime listener logging emitted raw `Error` objects.
+- Missing regression tests for heartbeat timers, active-field focus/blur POST, visit-record network status sync, and shared presence parsing.
+
+### Implemented
+
+- Added `src/lib/collaboration/presence.ts` as the owner for `PresenceUser`, presence response parsing, query key/URL construction, fetch, POST, and collaborator color selection.
+- Migrated `PresenceAvatars`, `useCollaborativeForm`, patient collaboration content/shared helpers, `FieldLockIndicator`, and `CursorOverlay` to the lib-owned presence contract.
+- Removed UI-to-lib type dependency on `presence-avatars.tsx`.
+- Sanitized realtime listener exception logging to `{ name, message }` instead of raw error object.
+- Re-scoped `.design-sync` validation ignores to generated subpaths only and formatted tracked `.design-sync` inputs.
+- Added `src/lib/collaboration/presence.test.ts` and expanded heartbeat/collaborative form/visit-record/realtime tests.
+
+### Duplicate Implementations Reduced
+
+- Presence user parsing and malformed-row filtering now has one implementation.
+- Presence query key / URL / fetch construction now has one implementation.
+- Presence POST request construction now has one implementation under `lib/collaboration`.
+- Collaborator color hashing now has one implementation.
+- `VisitRecordForm` remains on the shared network-state hook instead of owning online/offline listeners.
+
+### Tests and Validation
+
+- `pnpm exec vitest run src/lib/collaboration/presence.test.ts src/lib/hooks/use-presence-heartbeat.test.ts src/lib/hooks/use-collaborative-form.test.tsx src/components/features/collaboration/presence-avatars.test.tsx 'src/app/(dashboard)/patients/[id]/collaboration/collaboration-content.test.tsx' 'src/app/(dashboard)/patients/[id]/collaboration/collaboration.shared.test.ts' 'src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx' src/lib/realtime/shared-event-stream.test.ts`: passed, 8 files / 58 tests.
+- Targeted ESLint over touched source/test/config files and `.design-sync/previews/Button.tsx`: passed.
+- `pnpm exec prettier --check .design-sync/previews/Button.tsx .design-sync/config.json .design-sync/NOTES.md`: passed.
+- `pnpm format:check`: passed.
+- `pnpm lint`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm date-slices:check`: passed.
+- `pnpm eventbridge-schedules:check`: passed.
+- `pnpm test`: passed, 982 files / 1 skipped and 7668 tests / 1 skipped.
+- `pnpm build`: passed, Next.js 16.2.9 webpack build and 272 generated app routes.
+
 ---
 
 # New Goal (2026-06-18 JST) — Maintainability Refactoring
@@ -312,7 +439,7 @@ Blocked: C11 (diverged user-visible label strings — product/UX sign-off), C12 
 
 ### Implemented (C07: client→server layer violation fix)
 
-- `git mv src/server/services/visit-schedule-conflicts.ts → src/lib/schedules/visit-schedule-conflicts.ts`. The module is pure (only imports a type from `@/lib/validations/visit-schedule`, no prisma/db/server-only), and its sole importer is the client component `conflict-resolution-content.tsx`. Moving it to the leaf `lib/` layer removes the only client→server *value* import in the repo.
+- `git mv src/server/services/visit-schedule-conflicts.ts → src/lib/schedules/visit-schedule-conflicts.ts`. The module is pure (only imports a type from `@/lib/validations/visit-schedule`, no prisma/db/server-only), and its sole importer is the client component `conflict-resolution-content.tsx`. Moving it to the leaf `lib/` layer removes the only client→server _value_ import in the repo.
 - Updated `conflict-resolution-content.tsx` import path + the doc comment to `@/lib/schedules/visit-schedule-conflicts`. No other importers existed.
 - Deferred (Low/short): pinning extra schedule-day-planner pure builders in its existing test — to be picked up in a later test pass.
 
@@ -387,3 +514,189 @@ Blocked: C11 (diverged user-visible label strings — product/UX sign-off), C12 
 ### Next Loop Target
 
 - C09b (split `billing-evidence/core.ts` 2241 into siblings via barrel) + C10 (extract oversized route/component logic into existing services) remain — to continue after this commit/push. (`patients/[id]` route → patient-detail; `care-reports/[id]/send` → idempotency/delivery; `visit-preparations` → detail service; drug-master-content → hook). Both are larger structural moves backed by the C04/C05 characterization pins; to be executed with per-step typecheck + targeted tests.
+
+## 20260618-2332 JST - Realtime/Presence Maintainability + Performance Loop
+
+### Implemented
+
+- Consolidated presence read policy into `usePresenceUsers`, backed by `presence-api-client` and pure `presence-contract`; migrated `PresenceAvatars`, `useCollaborativeForm`, and patient collaboration content away from duplicated query/SSE/fallback polling logic.
+- Extracted `useRealtimeInvalidation` and simplified `useRealtimeQuery` to reuse it; migrated notifications, handoff board, admin realtime, and prescriptions infinite-query invalidation to the shared realtime invalidation contract where appropriate.
+- Changed presence SSE handling from full `/api/presence` refetch on every `presence_update` to cache patching via `readPresenceUpdateEvent` + `mergePresenceUserUpdate`; disconnected/failure fallback polling remains.
+- Debounced shared stream reconnects when presence target sets change in a burst, reducing org-wide SSE abort/reconnect churn from rapid presence mount/unmount.
+- Fixed prescriptions workspace realtime event contract to invalidate on actual backend `workflow_refresh` broadcasts instead of the non-emitted `prescription_intake_created` event.
+- Narrowed handoff realtime task invalidation from broad `['tasks']` prefix to `['tasks','handoff-confirmation',orgId]` while leaving explicit mutation refresh behavior unchanged.
+- Split pure UI presence helpers/types (`presence-contract`) from transport helpers (`presence-api-client`); added static regression coverage so visual collaboration atoms do not import the API transport layer.
+
+### Subagent Review Results Addressed
+
+- Test Auditor High: denied collaboration token now has test coverage proving presence stream disabled, `presenceData` empty, no post-focus presence POST, and no extra presence GET after denial.
+- Test Auditor Medium: added missing-org disabled coverage for prescriptions, notifications, admin realtime, and handoff.
+- Test Auditor Medium: strengthened notifications/admin cache merge tests for duplicate handling, timestamp ordering, and caps.
+- Performance Auditor Medium: removed N x M presence GET refetch behavior by patching cache from presence payloads.
+- Performance Auditor Medium: batched presence target reconnect aborts.
+- Performance Auditor Low: narrowed handoff realtime task invalidation.
+- Strict Reviewer P1: fixed prescriptions realtime event mismatch.
+- Strict Reviewer P3: separated pure presence contract from API transport.
+
+### Validation So Far
+
+- Focused realtime/presence suites passed after each slice, latest: 10 files / 70 tests passed.
+- Targeted ESLint over touched realtime/presence/prescriptions files: exit 0.
+- `pnpm typecheck`: exit 0.
+- Final gates after subagent follow-ups: `pnpm format:check` exit 0; `pnpm lint` exit 0; `pnpm typecheck` exit 0; `pnpm date-slices:check` exit 0; `pnpm eventbridge-schedules:check` exit 0; `pnpm test` exit 0 with 985 files passed / 1 skipped and 7689 tests passed / 1 skipped; `pnpm build` exit 0 for 272 app routes; `git diff --check` exit 0.
+
+### Rescan Result
+
+- `rg` rescan found direct `useRealtimeEvents` only inside `use-realtime-invalidation`; presence fetch/query helpers only inside `presence-api-client` and `usePresenceUsers`; visual collaboration atoms now import only `presence-contract`.
+- Remaining actionable candidates move outside this slice: larger `useCollaborativeForm` CRDT/provider decomposition and offline draft hook commonality need separate characterization before structural changes.
+
+## 20260618-2343 JST - Collaborative Form Responsibility Split
+
+### Implemented
+
+- Extracted room-token client contract into `src/lib/collaboration/room-token-client.ts`:
+  - token response parser
+  - Retry-After parser
+  - bounded retry delay calculation
+  - `/api/collaboration/room-token` fetch classifier (`ok`, `access-denied`, `transient-error`)
+- Added `src/lib/collaboration/room-token-client.test.ts` for malformed payloads, Retry-After seconds/date parsing, capped backoff, success request shape, denied responses, transient 429, malformed JSON, and expired tokens.
+- Extracted Yjs provider/document/awareness lifecycle from `useCollaborativeForm` into `src/lib/hooks/use-yjs-collaboration-room.ts`.
+- Reduced `useCollaborativeForm.ts` to the integration responsibilities it owns: presence data access, access-denied state, active-field presence posting, and `registerCollaborative` wiring.
+
+### Validation
+
+- Focused `pnpm exec vitest run src/lib/collaboration/room-token-client.test.ts src/lib/hooks/use-collaborative-form.test.tsx`: exit 0, 2 files / 30 tests passed.
+- Targeted ESLint over `room-token-client`, `use-yjs-collaboration-room`, `use-collaborative-form`, and related tests: exit 0.
+- `pnpm typecheck`: exit 0.
+- `wc -l`: `use-collaborative-form.ts` now 140 lines; extracted `use-yjs-collaboration-room.ts` 373 lines and `room-token-client.ts` 119 lines.
+
+### Final Validation
+
+- `pnpm format:check`: exit 0.
+- `pnpm lint`: exit 0.
+- `pnpm typecheck`: exit 0.
+- `pnpm date-slices:check`: exit 0.
+- `pnpm eventbridge-schedules:check`: exit 0.
+- `pnpm test`: exit 0, 986 files passed / 1 skipped and 7694 tests passed / 1 skipped.
+- `pnpm build`: exit 0, 272 app routes generated.
+- `git diff --check`: exit 0.
+
+### Rescan Result
+
+- `rg` rescan shows room-token parsing/fetch/backoff now lives in `room-token-client`; `useCollaborativeForm` no longer owns direct provider creation and delegates Yjs provider/document/renewal lifecycle to `useYjsCollaborationRoom`.
+- No direct realtime/presence duplicate implementation resurfaced in the touched collaboration paths.
+- Next highest-value executable candidate remains offline draft hook commonality; it needs characterization before any extraction to avoid merging distinct offline persistence semantics.
+
+## 20260619-0004 JST - Offline Draft/Sync Performance + Reliability Loop
+
+### Subagent Findings Integrated
+
+- Refactor Agent: identified duplicated encrypted draft load/save/clear shape, duplicated legacy SOAP plaintext purge, autosave lifecycle commonality, and online sync listener duplication.
+- Performance Agent: prioritized the hot-path issue where visit record form polling called full `refreshSyncState()`, forcing sync queue detail decryption/JSON parsing every 5 seconds.
+- Concurrency Agent: identified stale queue success deleting newer visit drafts and non-atomic draft upsert patterns.
+- Test Agent: identified missing direct voice memo storage tests, missing v8 offline DB migration coverage, and missing prescription/SOAP draft scope/update/clear tests.
+
+### Implemented
+
+- Split offline store refresh into lightweight `refreshSyncCount()` and detailed `refreshSyncState()`; migrated visit record form's 5-second polling to count-only refresh while leaving `/offline-sync` on detailed refresh.
+- Added `offline-store` tests proving count-only refresh does not call `listSyncQueueItems()` and therefore avoids queue payload decrypt/parse work.
+- Guarded sync queue success cleanup with a current-item check; if a queue row was changed or replaced while an older POST was in flight, the old success no longer deletes the refreshed queue item or scoped visit draft.
+- Wrapped SOAP and prescription draft save upsert paths in Dexie transactions without changing snapshot or scope semantics.
+- Consolidated duplicated legacy plaintext SOAP field purge into `src/lib/offline/soap-draft-legacy.ts`, reused by both DB migration and SOAP draft save updates.
+- Changed evidence draft summary/sync candidate reads to use the new `retryCount` index path, avoiding unindexed all-table scans for retry-limited sync work.
+- Added Dexie v9 schema to index evidence draft `retryCount`; v8 data is preserved through migration.
+- Limited `/offline-sync` patient-name resolution to schedule IDs present in the current pending queue instead of decrypting every `visitBriefCache` row, and added error handling for initial refresh failures.
+- Added direct storage tests for voice memo drafts and expanded offline DB migration/draft hook regression tests.
+
+### Validation
+
+- `pnpm exec vitest run src/lib/stores/offline-store.test.ts src/lib/stores/sync-engine.test.ts src/lib/hooks/use-prescription-draft.test.tsx src/lib/hooks/use-soap-draft.test.tsx src/lib/offline/voice-memo-drafts.test.ts src/lib/stores/offline-db.test.ts src/app/(dashboard)/offline-sync/offline-sync.shared.test.ts src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx`: exit 0, 8 files / 54 tests passed before evidence index follow-up.
+- `pnpm exec vitest run src/lib/offline/evidence-drafts.test.ts src/lib/offline/evidence-drafts.shared.test.ts src/lib/stores/offline-db.test.ts src/lib/stores/offline-store.test.ts src/lib/stores/sync-engine.test.ts src/lib/offline/voice-memo-drafts.test.ts src/lib/hooks/use-prescription-draft.test.tsx src/lib/hooks/use-soap-draft.test.tsx`: exit 0, 8 files / 47 tests passed after evidence index follow-up.
+- Targeted ESLint over touched offline sync/draft files: exit 0.
+- `pnpm typecheck`: exit 0.
+
+### Rescan Result
+
+- `refreshSyncCount()` is now used by visit record polling; detailed `refreshSyncState()` remains for `/offline-sync` and post-mutation refreshes.
+- Legacy SOAP plaintext purge has a single implementation.
+- Evidence draft sync now uses `retryCount` index; boolean `synced` index was avoided after focused test exposed IndexedDB `DataError` for boolean key range usage.
+- Remaining actionable candidates: sync queue claim/lease for cross-tab replay, PHOS queue dedupe races, autosave hash-skip/common timer hook, and additional evidence sync failure/retry tests. Blocked/deferred: voice memo server sync/STT and full dashboard/PHOS queue engine unification require product/external-service design decisions.
+
+## 20260619-0123 JST - Offline Sync Post-Review Hardening + Full Gate
+
+### Post-Review Findings Addressed
+
+- Strict Review High: production imports of new SOAP legacy purge helper and new offline tests are now represented in the working tree and included in validation scope; no clean-checkout missing-module issue remains as long as these new files are included with the change set.
+- Strict Review High/Medium: `deleteSyncedQueueItem()` is now a transaction-scoped compare-and-delete operation. It compares payload/scope/entity/createdAt plus `retryCount`, `lastError`, `conflict_state`, and `conflict_payload`, and returns `deleted`, `missing`, or `stale` instead of silently no-oping.
+- Test Auditor High: normal sync and conflict overwrite paths now both verify stale queue rows are not deleted and stale overwrite is reported as a failure message instead of success.
+- Strict Review Low: Dexie v9 evidence migration now normalizes malformed legacy evidence rows with missing/non-finite `retryCount` to `0` and missing/non-boolean `synced` to `false`, preserving uploaded file metadata.
+- Test Auditor Medium/Low: added count-refresh timestamp/failure immutability coverage, retry-index filtering coverage, and a fake-indexeddb voice memo transaction rollback test.
+
+### Implemented
+
+- Changed sync completion cleanup to run inside `offlineDb.transaction('rw', syncQueue, visitDrafts, ...)`.
+- Changed `processSyncQueue()` so stale successful responses are not counted as synced.
+- Changed `overwriteVisitRecordConflict()` so stale completion returns `{ ok: false }` with a refresh/retry message.
+- Added `readDateTime()` to make completion identity tolerant of Date/string/number stored timestamps without weakening type contracts.
+- Added v9 Dexie `.upgrade()` normalization for evidence draft retry/synced fields.
+- Added `voice-memo-drafts.integration.test.ts` to prove old voice memo drafts survive replacement add failure.
+
+### Validation
+
+- Focused post-review tests: `pnpm exec vitest run src/lib/stores/sync-engine.test.ts src/lib/stores/offline-db.test.ts src/lib/stores/offline-store.test.ts src/lib/offline/evidence-drafts.test.ts src/lib/offline/voice-memo-drafts.test.ts src/lib/offline/voice-memo-drafts.integration.test.ts --reporter=dot --testTimeout=30000` passed with 6 files / 32 tests.
+- Broader offline target tests: `pnpm exec vitest run src/lib/hooks/use-prescription-draft.test.tsx src/lib/hooks/use-soap-draft.test.tsx src/app/(dashboard)/offline-sync/offline-sync.shared.test.ts src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx src/lib/stores/sync-engine.test.ts src/lib/stores/offline-db.test.ts src/lib/stores/offline-store.test.ts src/lib/offline/evidence-drafts.test.ts src/lib/offline/evidence-drafts.shared.test.ts src/lib/offline/voice-memo-drafts.test.ts src/lib/offline/voice-memo-drafts.integration.test.ts --reporter=dot --testTimeout=30000` passed with 11 files / 73 tests.
+- `pnpm format:check`: passed.
+- `pnpm lint`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm test`: passed with 989 files passed / 1 skipped and 7719 tests passed / 1 skipped.
+- `pnpm build`: passed, 272 app routes generated.
+- `pnpm date-slices:check`: passed.
+- `pnpm eventbridge-schedules:check`: passed.
+- `git diff --check`: passed.
+
+### Rescan Result
+
+- `rg` confirms visit-record polling uses `refreshSyncCount()` while detailed queue decryption remains scoped to `/offline-sync` and explicit post-mutation refreshes.
+- `rg` confirms evidence summary/sync candidate reads use the `retryCount` index path and no boolean `synced` index query remains.
+- `rg` confirms SOAP legacy plaintext purge has one implementation in `src/lib/offline/soap-draft-legacy.ts`.
+- Post-review actionable items in the current offline slice are implemented and validated. A fresh read-only performance/reliability subagent (`019edb8b-32f8-7520-8357-8b1a870c6585`) is running to identify any remaining actionable candidate before the next loop.
+
+### Remaining Candidates
+
+- Actionable candidates still under consideration for the next loop: durable cross-tab sync queue lease/claim, PHOS offline action/evidence dedupe races, autosave hash-skip/common timer hook, and deeper evidence upload partial-complete recovery tests.
+- Blocked/deferred: voice memo server sync/STT requires external STT/product/PHI retention decisions; full PHOS/dashboard queue engine unification requires broader product/runtime contract decisions.
+
+## 20260619-0140 JST - Offline Sync Short Follow-Up Loop
+
+### Re-Audit Findings Addressed
+
+- Performance re-audit High: `syncConfigKey()` now builds its active-run key from canonical default-merged endpoints, so `{ endpoints: {} }` and `{ visit_record: '/api/visit-records' }` share the same single-flight run.
+- Performance re-audit High: sync queue rows are now checked again before POST/overwrite. If the row changed or disappeared after the initial queue read, the stale request is not sent.
+- Performance re-audit Medium: visit record polling now catches `refreshSyncCount()` failures and logs one warning instead of producing repeated unhandled rejections every 5 seconds.
+- Performance re-audit Medium: visit record evidence badge now calls `listEvidenceDraftSummariesForSchedule(id)`, using the `scheduleId` index instead of reading all unsynced evidence summaries for one visit.
+
+### Implemented
+
+- Added `resolveSyncEndpoints(config)` and reused it for both `syncConfigKey()` and processing.
+- Added `verifyQueueItemCurrent()` and used it before normal sync POST and conflict overwrite POST.
+- Added schedule-scoped evidence summary helper while preserving the existing all-summary helper for screens that need all drafts.
+- Added visit-record form regression tests for schedule-scoped evidence summary and safe sync-count refresh failure handling.
+- Added sync-engine regression coverage proving implicit and explicit default endpoint configs coalesce to one fetch.
+
+### Validation
+
+- Focused tests: `pnpm exec vitest run src/lib/stores/sync-engine.test.ts src/lib/offline/evidence-drafts.test.ts src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx --reporter=dot --testTimeout=30000` passed with 3 files / 30 tests.
+- Broader offline target tests: `pnpm exec vitest run src/lib/hooks/use-prescription-draft.test.tsx src/lib/hooks/use-soap-draft.test.tsx src/app/(dashboard)/offline-sync/offline-sync.shared.test.ts src/app/(dashboard)/visits/[id]/record/visit-record-form.test.tsx src/lib/stores/sync-engine.test.ts src/lib/stores/offline-db.test.ts src/lib/stores/offline-store.test.ts src/lib/offline/evidence-drafts.test.ts src/lib/offline/evidence-drafts.shared.test.ts src/lib/offline/voice-memo-drafts.test.ts src/lib/offline/voice-memo-drafts.integration.test.ts --reporter=dot --testTimeout=30000` passed with 11 files / 76 tests.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- `pnpm lint`: passed.
+- `git diff --check`: passed.
+- `pnpm test`: passed with 989 files passed / 1 skipped and 7722 tests passed / 1 skipped.
+- `pnpm build`: passed, 272 app routes generated.
+- `pnpm date-slices:check`: passed.
+- `pnpm eventbridge-schedules:check`: passed.
+
+### Remaining Candidates
+
+- Actionable but larger next-loop items: durable cross-tab sync/evidence leases, queue/server idempotency key contract, singleton draft duplicate collapse migration, skipped evidence backoff, and autosave hash-skip/common timer hook.
+- Blocked/deferred: voice memo server sync/STT and full PHOS/dashboard queue engine unification require product/external-service/runtime decisions.

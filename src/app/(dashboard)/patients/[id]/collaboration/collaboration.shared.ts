@@ -1,4 +1,4 @@
-import type { PresenceUser } from '@/components/features/collaboration/presence-avatars';
+import type { PresenceUser } from '@/lib/collaboration/presence-contract';
 import type { PatientWorkspaceActivity } from '../patient-detail.types';
 
 /**

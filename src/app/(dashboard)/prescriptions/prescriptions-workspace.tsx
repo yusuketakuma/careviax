@@ -1,14 +1,14 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { FilePlus, FileText, Keyboard } from 'lucide-react';
 import Link from 'next/link';
 import { ActionRail } from '@/components/ui/action-rail';
 import { Button } from '@/components/ui/button';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { useRealtimeEvents } from '@/lib/hooks/use-realtime-events';
+import { useRealtimeInvalidation } from '@/lib/hooks/use-realtime-invalidation';
 import { CYCLE_STATUS_SHORT_LABELS } from '@/lib/prescription/cycle-workspace';
 import {
   useKeyboardShortcuts,
@@ -27,11 +27,11 @@ type FilterKey = 'all' | string;
 type FilterOption = { value: FilterKey; label: string };
 
 const PRESCRIPTION_INTAKE_PAGE_SIZE = 50;
-const REALTIME_INVALIDATE_EVENTS = new Set([
+const REALTIME_INVALIDATE_EVENTS = [
+  'workflow_refresh',
   'cycle_transition',
-  'prescription_intake_created',
   'qr_draft_confirmed',
-]);
+] as const;
 
 const STATUS_FILTER_OPTIONS: FilterOption[] = [
   { value: 'all', label: '全' },
@@ -136,7 +136,6 @@ function PrescriptionShortcutRail() {
 
 export function PrescriptionsWorkspace({ className }: { className?: string } = {}) {
   const orgId = useOrgId();
-  const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<FilterKey>('all');
   const [sourceFilter, setSourceFilter] = useState<FilterKey>('all');
 
@@ -167,21 +166,11 @@ export function PrescriptionsWorkspace({ className }: { className?: string } = {
     enabled: !!orgId,
   });
 
-  const handleRealtimeEvent = useCallback(
-    (event: unknown) => {
-      const eventType =
-        typeof event === 'object' && event !== null && 'type' in event
-          ? (event as { type: string }).type
-          : undefined;
-
-      if (!eventType || !REALTIME_INVALIDATE_EVENTS.has(eventType)) return;
-
-      queryClient.invalidateQueries({ queryKey: ['prescription-intakes', orgId] });
-    },
-    [orgId, queryClient],
-  );
-
-  useRealtimeEvents({ onEvent: handleRealtimeEvent, enabled: !!orgId });
+  useRealtimeInvalidation({
+    queryKey: ['prescription-intakes', orgId],
+    enabled: !!orgId,
+    invalidateOn: REALTIME_INVALIDATE_EVENTS,
+  });
 
   const loadedItems = useMemo(() => data?.pages.flatMap((page) => page.data) ?? [], [data]);
   const totalMatchingCount = data?.pages[0]?.totalCount ?? loadedItems.length;

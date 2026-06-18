@@ -36,7 +36,13 @@ export function SingleError() {
     <div style={{ padding: 24, maxWidth: 560 }}>
       <FormErrorSummary
         title="処方内容を確認してください"
-        items={[{ path: 'dosage', label: '用法・用量', message: '1日あたりの投与量が上限を超えています。' }]}
+        items={[
+          {
+            path: 'dosage',
+            label: '用法・用量',
+            message: '1日あたりの投与量が上限を超えています。',
+          },
+        ]}
       />
     </div>
   );

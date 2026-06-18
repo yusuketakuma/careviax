@@ -141,6 +141,7 @@ describe('PrescriptionsWorkspace', () => {
     vi.stubGlobal('fetch', fetchMock);
     useOrgIdMock.mockReturnValue('org_1');
     useQueryClientMock.mockReturnValue({ invalidateQueries: invalidateQueriesMock });
+    useRealtimeEventsMock.mockReturnValue({ connected: true });
     useInfiniteQueryMock.mockReturnValue({
       data: {
         pages: [
@@ -230,7 +231,11 @@ describe('PrescriptionsWorkspace', () => {
     expect(realtimeOptions.enabled).toBe(true);
 
     realtimeOptions.onEvent({ type: 'workflow_refresh' });
-    expect(invalidateQueriesMock).not.toHaveBeenCalled();
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({
+      queryKey: ['prescription-intakes', 'org_1'],
+    });
+
+    invalidateQueriesMock.mockClear();
 
     realtimeOptions.onEvent({ type: 'qr_draft_created' });
     expect(invalidateQueriesMock).not.toHaveBeenCalled();
@@ -242,8 +247,16 @@ describe('PrescriptionsWorkspace', () => {
 
     invalidateQueriesMock.mockClear();
     realtimeOptions.onEvent({ type: 'prescription_intake_created' });
-    expect(invalidateQueriesMock).toHaveBeenCalledWith({
-      queryKey: ['prescription-intakes', 'org_1'],
-    });
+    expect(invalidateQueriesMock).not.toHaveBeenCalled();
+  });
+
+  it('disables the intake query and realtime invalidation until org is available', () => {
+    useOrgIdMock.mockReturnValue('');
+
+    render(<PrescriptionsWorkspace />);
+
+    expect(latestInfiniteQueryOptions()).toEqual(expect.objectContaining({ enabled: false }));
+    expect(latestRealtimeOptions()).toEqual(expect.objectContaining({ enabled: false }));
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

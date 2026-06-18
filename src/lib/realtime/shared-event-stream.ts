@@ -17,11 +17,13 @@ type SharedRealtimeStream = {
   presenceTargets: Map<string, { target: RealtimePresenceTarget; count: number }>;
   abortController: AbortController | null;
   reconnectTimer: ReturnType<typeof setTimeout> | null;
+  presenceTargetReconnectTimer: ReturnType<typeof setTimeout> | null;
   reconnectAttempt: number;
   connected: boolean;
   stopped: boolean;
 };
 
+const PRESENCE_TARGET_RECONNECT_DEBOUNCE_MS = 150;
 const streams = new Map<string, SharedRealtimeStream>();
 
 function presenceTargetKey(target: RealtimePresenceTarget) {
@@ -51,11 +53,39 @@ function clearReconnectTimer(stream: SharedRealtimeStream) {
   stream.reconnectTimer = null;
 }
 
+function clearPresenceTargetReconnectTimer(stream: SharedRealtimeStream) {
+  if (!stream.presenceTargetReconnectTimer) return;
+  clearTimeout(stream.presenceTargetReconnectTimer);
+  stream.presenceTargetReconnectTimer = null;
+}
+
+function schedulePresenceTargetReconnect(stream: SharedRealtimeStream) {
+  if (!stream.abortController || stream.presenceTargetReconnectTimer) return;
+
+  stream.presenceTargetReconnectTimer = setTimeout(() => {
+    stream.presenceTargetReconnectTimer = null;
+    if (stream.stopped || !stream.abortController) return;
+    stream.abortController.abort();
+  }, PRESENCE_TARGET_RECONNECT_DEBOUNCE_MS);
+}
+
+function logRealtimeListenerError(error: unknown) {
+  if (error instanceof Error) {
+    console.error('[realtime] listener failed', { name: error.name, message: error.message });
+    return;
+  }
+  console.error('[realtime] listener failed', { message: String(error) });
+}
+
 function emitStatus(stream: SharedRealtimeStream, connected: boolean) {
   if (stream.connected === connected) return;
   stream.connected = connected;
   for (const listener of stream.statusListeners) {
-    listener(connected);
+    try {
+      listener(connected);
+    } catch (error) {
+      logRealtimeListenerError(error);
+    }
   }
 }
 
@@ -73,7 +103,11 @@ function dispatchSseChunk(stream: SharedRealtimeStream, chunk: string) {
   if (parsed == null) return;
   const event = normalizeRealtimeEventPayload(parsed) ?? parsed;
   for (const listener of stream.listeners) {
-    listener(event);
+    try {
+      listener(event);
+    } catch (error) {
+      logRealtimeListenerError(error);
+    }
   }
 }
 
@@ -142,6 +176,7 @@ async function connectSharedStream(stream: SharedRealtimeStream) {
 function stopSharedStream(stream: SharedRealtimeStream) {
   stream.stopped = true;
   clearReconnectTimer(stream);
+  clearPresenceTargetReconnectTimer(stream);
   if (stream.abortController) {
     stream.abortController.abort();
     stream.abortController = null;
@@ -161,6 +196,7 @@ function getOrCreateSharedStream(orgId: string) {
     presenceTargets: new Map(),
     abortController: null,
     reconnectTimer: null,
+    presenceTargetReconnectTimer: null,
     reconnectAttempt: 0,
     connected: false,
     stopped: false,
@@ -194,11 +230,15 @@ export function subscribeSharedRealtimeStream(args: {
 
   if (args.onStatus) {
     stream.statusListeners.add(args.onStatus);
-    args.onStatus(stream.connected);
+    try {
+      args.onStatus(stream.connected);
+    } catch (error) {
+      logRealtimeListenerError(error);
+    }
   }
 
-  if (presenceTargetsChanged && stream.abortController) {
-    stream.abortController.abort();
+  if (presenceTargetsChanged) {
+    schedulePresenceTargetReconnect(stream);
   }
 
   if (!stream.abortController && !stream.reconnectTimer) {
@@ -220,8 +260,8 @@ export function subscribeSharedRealtimeStream(args: {
     if (args.onStatus) {
       stream.statusListeners.delete(args.onStatus);
     }
-    if (removedPresenceTarget && stream.listeners.size > 0 && stream.abortController) {
-      stream.abortController.abort();
+    if (removedPresenceTarget && stream.listeners.size > 0) {
+      schedulePresenceTargetReconnect(stream);
     }
     if (stream.listeners.size === 0) {
       stopSharedStream(stream);

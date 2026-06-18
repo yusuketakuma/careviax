@@ -2,7 +2,15 @@ import { StatusDot } from 'ph-os';
 
 export function WithLabels() {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'flex-start', padding: 20 }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+        alignItems: 'flex-start',
+        padding: 20,
+      }}
+    >
       <StatusDot role="waiting" showLabel label="他職種の確認待ち" />
       <StatusDot role="confirm" showLabel label="要確認（残薬あり）" />
       <StatusDot role="done" showLabel label="訪問完了" />
@@ -14,7 +22,15 @@ export function WithLabels() {
 
 export function TagDots() {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'flex-start', padding: 20 }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10,
+        alignItems: 'flex-start',
+        padding: 20,
+      }}
+    >
       <StatusDot role="hazard" showLabel label="ハイリスク薬を含む" />
       <StatusDot role="info" showLabel label="補足情報あり" />
     </div>
@@ -23,7 +39,16 @@ export function TagDots() {
 
 export function InlineWithText() {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'flex-start', padding: 20, fontSize: 14 }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+        alignItems: 'flex-start',
+        padding: 20,
+        fontSize: 14,
+      }}
+    >
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
         <StatusDot role="done" label="完了" />
         田中 花子 様 ・ 5/12 訪問

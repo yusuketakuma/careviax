@@ -1,11 +1,8 @@
 import Dexie, { type Table } from 'dexie';
-
-type LegacyPlaintextSoapDraftFields = {
-  soapSubjective?: string;
-  soapObjective?: string;
-  soapAssessment?: string;
-  soapPlan?: string;
-};
+import {
+  purgeLegacyPlaintextSoapDraftFields,
+  type LegacyPlaintextSoapDraftFields,
+} from '@/lib/offline/soap-draft-legacy';
 
 // Offline draft types
 export type OfflineVisitDraft = {
@@ -33,15 +30,6 @@ export type OfflineVisitDraft = {
   updatedAt: Date;
   synced: boolean;
 };
-
-function purgeLegacyPlaintextSoapDraftFields(
-  draft: OfflineVisitDraft & LegacyPlaintextSoapDraftFields,
-) {
-  delete draft.soapSubjective;
-  delete draft.soapObjective;
-  delete draft.soapAssessment;
-  delete draft.soapPlan;
-}
 
 export type OfflineResidualDraft = {
   id?: number;
@@ -222,6 +210,31 @@ class PhOsOfflineDB extends Dexie {
       evidenceDrafts: '++id, scheduleId, patientId, createdAt',
       voiceMemoDrafts: '++id, visitId, createdAt',
     });
+
+    // v9: 証跡写真ドラフトの一覧・同期対象抽出を retryCount index で絞れるようにする
+    this.version(9)
+      .stores({
+        visitDrafts: '++id, scheduleId, patientId, synced',
+        residualDrafts: '++id, patientId, synced',
+        syncQueue: '++id, entityType, scope_id, retryCount, createdAt, conflict_state',
+        visitBriefCache: '++id, scheduleId, scheduledDate, patientId, updatedAt',
+        prescriptionDrafts: '++id, orgId, updatedAt',
+        evidenceDrafts: '++id, retryCount, scheduleId, patientId, createdAt',
+        voiceMemoDrafts: '++id, visitId, createdAt',
+      })
+      .upgrade((tx) =>
+        tx
+          .table('evidenceDrafts')
+          .toCollection()
+          .modify((draft: Partial<OfflineEvidenceDraft>) => {
+            if (typeof draft.retryCount !== 'number' || !Number.isFinite(draft.retryCount)) {
+              draft.retryCount = 0;
+            }
+            if (typeof draft.synced !== 'boolean') {
+              draft.synced = false;
+            }
+          }),
+      );
   }
 }
 

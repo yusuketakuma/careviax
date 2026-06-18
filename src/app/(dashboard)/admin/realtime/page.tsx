@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, type ElementType } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { AlertTriangle, BellRing, Clock, RefreshCw, Route, Sparkles } from 'lucide-react';
@@ -11,7 +11,7 @@ import { getAdminRealtimeShortcutLinks } from '@/components/features/admin/admin
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { useRealtimeEvents } from '@/lib/hooks/use-realtime-events';
+import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { normalizeNotificationStreamPayload } from '@/lib/notifications/stream-payload';
 
 type NotificationType = 'urgent' | 'business' | 'reminder' | 'system';
@@ -72,39 +72,27 @@ function mergeNotifications(current: Notification[], incoming: Notification[]) {
   return unique.slice(0, 12);
 }
 
+const ADMIN_REALTIME_WORKFLOW_EVENTS = ['workflow_refresh', 'cycle_transition'] as const;
+
 export default function RealtimePage() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
-  const handleRealtimeEvent = useCallback(
+  const handleNotificationRealtimeEvent = useCallback(
     (event: unknown) => {
       const nextNotifications = normalizeNotificationStreamPayload(event);
-      if (nextNotifications.length > 0) {
-        queryClient.setQueryData<{ data: Notification[] }>(
-          ['admin-realtime-notifications', orgId],
-          (current) => ({
-            data: mergeNotifications(current?.data ?? [], nextNotifications),
-          }),
-        );
-        return;
-      }
+      if (nextNotifications.length === 0) return;
 
-      const eventType =
-        typeof event === 'object' && event !== null && 'type' in event
-          ? (event as { type: string }).type
-          : undefined;
-      if (eventType === 'workflow_refresh' || eventType === 'cycle_transition') {
-        queryClient.invalidateQueries({ queryKey: ['admin-realtime-workflow', orgId] });
-      }
+      queryClient.setQueryData<{ data: Notification[] }>(
+        ['admin-realtime-notifications', orgId],
+        (current) => ({
+          data: mergeNotifications(current?.data ?? [], nextNotifications),
+        }),
+      );
     },
     [orgId, queryClient],
   );
 
-  const realtime = useRealtimeEvents({
-    onEvent: handleRealtimeEvent,
-    enabled: Boolean(orgId),
-  });
-
-  const workflowQuery = useQuery({
+  const workflowQuery = useRealtimeQuery({
     queryKey: ['admin-realtime-workflow', orgId],
     queryFn: async () => {
       const res = await fetch('/api/dashboard/workflow?view=realtime', {
@@ -114,10 +102,11 @@ export default function RealtimePage() {
       return res.json() as Promise<{ data: WorkflowSnapshot }>;
     },
     enabled: !!orgId,
-    refetchInterval: realtime.connected ? false : 15_000,
+    invalidateOn: ADMIN_REALTIME_WORKFLOW_EVENTS,
+    fallbackRefetchInterval: 15_000,
   });
 
-  const notificationsQuery = useQuery({
+  const notificationsQuery = useRealtimeQuery({
     queryKey: ['admin-realtime-notifications', orgId],
     queryFn: async () => {
       const res = await fetch('/api/notifications?limit=12&is_read=false', {
@@ -127,13 +116,16 @@ export default function RealtimePage() {
       return res.json() as Promise<{ data: Notification[] }>;
     },
     enabled: !!orgId,
-    refetchInterval: realtime.connected ? false : 60_000,
+    invalidateOn: false,
+    fallbackRefetchInterval: 60_000,
+    onRealtimeEvent: handleNotificationRealtimeEvent,
   });
 
   const workflow = workflowQuery.data?.data;
   const notifications = notificationsQuery.data?.data ?? [];
   const workbenchItems = workflow?.unified_workbench ?? [];
   const liveNotifications = notifications.slice(0, 8);
+  const realtimeConnected = workflowQuery.connected || notificationsQuery.connected;
 
   const routeHealth = [
     {
@@ -185,7 +177,7 @@ export default function RealtimePage() {
               <span className="font-medium">{workbenchItems.length}</span>
             </div>
             <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
-              {realtime.connected
+              {realtimeConnected
                 ? 'SSE 接続中です。新着通知は即時反映されます。'
                 : 'SSE 再接続中です。未接続時は定期再取得へフォールバックします。'}
             </div>

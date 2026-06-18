@@ -1,0 +1,85 @@
+/**
+ * @vitest-environment jsdom
+ */
+import { renderHook } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { useQueryClientMock, useRealtimeEventsMock, invalidateQueriesMock } = vi.hoisted(() => ({
+  useQueryClientMock: vi.fn(),
+  useRealtimeEventsMock: vi.fn(),
+  invalidateQueriesMock: vi.fn(),
+}));
+
+vi.mock('@tanstack/react-query', () => ({
+  useQueryClient: useQueryClientMock,
+}));
+
+vi.mock('./use-realtime-events', () => ({
+  useRealtimeEvents: useRealtimeEventsMock,
+}));
+
+import { useRealtimeInvalidation } from './use-realtime-invalidation';
+
+describe('useRealtimeInvalidation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useQueryClientMock.mockReturnValue({ invalidateQueries: invalidateQueriesMock });
+    useRealtimeEventsMock.mockReturnValue({ connected: true });
+  });
+
+  it('invalidates the query for matching realtime events', () => {
+    const { result } = renderHook(() =>
+      useRealtimeInvalidation({
+        queryKey: ['prescription-intakes', 'org_1'],
+        invalidateOn: ['prescription_intake_created'],
+      }),
+    );
+
+    const realtimeOptions = useRealtimeEventsMock.mock.calls[0]?.[0];
+    realtimeOptions.onEvent({ type: 'workflow_refresh' });
+    realtimeOptions.onEvent({ type: 'prescription_intake_created' });
+
+    expect(result.current.connected).toBe(true);
+    expect(result.current.receivesRealtimeUpdates).toBe(true);
+    expect(invalidateQueriesMock).toHaveBeenCalledTimes(1);
+    expect(invalidateQueriesMock).toHaveBeenCalledWith({
+      queryKey: ['prescription-intakes', 'org_1'],
+    });
+  });
+
+  it('can receive realtime events without invalidating the query', () => {
+    const onRealtimeEvent = vi.fn();
+
+    renderHook(() =>
+      useRealtimeInvalidation({
+        queryKey: ['notifications', 'inbox', 'org_1'],
+        invalidateOn: false,
+        onRealtimeEvent,
+      }),
+    );
+
+    const realtimeOptions = useRealtimeEventsMock.mock.calls[0]?.[0];
+    realtimeOptions.onEvent({ type: 'notification', id: 'notification_1' });
+
+    expect(onRealtimeEvent).toHaveBeenCalledWith({
+      type: 'notification',
+      id: 'notification_1',
+    });
+    expect(invalidateQueriesMock).not.toHaveBeenCalled();
+  });
+
+  it('forwards presence targets to the shared realtime stream', () => {
+    renderHook(() =>
+      useRealtimeInvalidation({
+        queryKey: ['presence', 'patient', 'patient_1', 'org_1'],
+        presenceTargets: [{ entityType: 'patient', entityId: 'patient_1' }],
+      }),
+    );
+
+    expect(useRealtimeEventsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        presenceTargets: [{ entityType: 'patient', entityId: 'patient_1' }],
+      }),
+    );
+  });
+});

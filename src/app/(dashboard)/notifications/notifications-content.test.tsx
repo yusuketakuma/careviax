@@ -149,6 +149,15 @@ describe('NotificationsContent', () => {
     expect(useQueryMock).toHaveBeenCalledWith(expect.objectContaining({ refetchInterval: false }));
   });
 
+  it('disables realtime inbox loading until org is available', () => {
+    useOrgIdMock.mockReturnValue('');
+
+    render(<NotificationsContent />);
+
+    expect(useRealtimeEventsMock).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }));
+    expect(useQueryMock).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }));
+  });
+
   it('merges notification stream items into the inbox cache', () => {
     const setQueryData = vi.fn();
     let realtimeOptions: { onEvent: (event: unknown) => void } | null = null;
@@ -182,9 +191,27 @@ describe('NotificationsContent', () => {
     const updater = setQueryData.mock.calls[0]?.[1] as
       | ((current: { data: typeof NOTIFICATIONS }) => { data: typeof NOTIFICATIONS })
       | undefined;
-    expect(updater?.({ data: [NOTIFICATIONS[0]] }).data.map((item) => item.id)).toEqual([
+    const currentItems = [
+      ...Array.from({ length: 51 }, (_, index) => ({
+        ...NOTIFICATIONS[0],
+        id: `old_${index}`,
+        title: `old ${index}`,
+        created_at: new Date(Date.UTC(2026, 5, 10, 0, index)).toISOString(),
+      })),
+      {
+        ...NOTIFICATIONS[0],
+        id: 'notification_4',
+        title: '古い通知',
+        created_at: '2026-06-10T08:30:00.000Z',
+      },
+    ];
+    const merged = updater?.({ data: currentItems }).data ?? [];
+    expect(merged).toHaveLength(50);
+    expect(merged.slice(0, 3).map((item) => item.id)).toEqual([
       'notification_4',
-      'notification_1',
+      'old_50',
+      'old_49',
     ]);
+    expect(merged[0]?.title).toBe('新しい通知');
   });
 });

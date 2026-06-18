@@ -33,7 +33,16 @@ export function Closed() {
 
 export function Open() {
   return (
-    <div style={{ padding: 20, paddingBottom: 220, maxWidth: 320, display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div
+      style={{
+        padding: 20,
+        paddingBottom: 220,
+        maxWidth: 320,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
+      }}
+    >
       <Label>担当薬剤師</Label>
       <Select
         defaultValue="sato"
@@ -63,7 +72,16 @@ export function Open() {
 
 export function Grouped() {
   return (
-    <div style={{ padding: 20, paddingBottom: 280, maxWidth: 320, display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div
+      style={{
+        padding: 20,
+        paddingBottom: 280,
+        maxWidth: 320,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
+      }}
+    >
       <Label>訪問区分</Label>
       <Select
         defaultValue="home-med"

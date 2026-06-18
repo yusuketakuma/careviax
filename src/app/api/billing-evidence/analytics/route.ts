@@ -192,7 +192,10 @@ export async function GET(req: NextRequest) {
     const evidenceRevision =
       readJsonObjectString(evidence.calculation_context, 'effective_revision_code') ?? 'unknown';
     bucket.revision_counts[evidenceRevision] = (bucket.revision_counts[evidenceRevision] ?? 0) + 1;
-    const siteConfigStatus = readJsonObjectString(evidence.calculation_context, 'site_config_status');
+    const siteConfigStatus = readJsonObjectString(
+      evidence.calculation_context,
+      'site_config_status',
+    );
     if (siteConfigStatus === 'config_missing' || siteConfigStatus === 'revision_mismatch') {
       bucket.site_config_issue_count += 1;
     }

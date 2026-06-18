@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { usePathname, useRouter } from 'next/navigation';
 import { BellOff } from 'lucide-react';
 import { toast } from 'sonner';
@@ -16,7 +16,7 @@ import {
   type NotificationCategory,
 } from '@/lib/notifications/notification-category';
 import { useOfflineStore } from '@/lib/stores/offline-store';
-import { useRealtimeEvents } from '@/lib/hooks/use-realtime-events';
+import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { normalizeNotificationStreamPayload } from '@/lib/notifications/stream-payload';
 import type { NotificationCategoryFilter } from './notifications-query-state';
@@ -85,12 +85,7 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
     [orgId, queryClient],
   );
 
-  const realtime = useRealtimeEvents({
-    onEvent: handleRealtimeEvent,
-    enabled: Boolean(orgId),
-  });
-
-  const { data, isLoading } = useQuery<{ data: NotificationItem[] }>({
+  const { data, isLoading } = useRealtimeQuery<{ data: NotificationItem[] }>({
     queryKey: ['notifications', 'inbox', orgId],
     queryFn: async () => {
       const res = await fetch('/api/notifications?limit=50', {
@@ -100,7 +95,9 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
       return res.json();
     },
     enabled: Boolean(orgId),
-    refetchInterval: realtime.connected ? false : 30_000,
+    fallbackRefetchInterval: 30_000,
+    invalidateOn: false,
+    onRealtimeEvent: handleRealtimeEvent,
   });
 
   const markReadMutation = useMutation({

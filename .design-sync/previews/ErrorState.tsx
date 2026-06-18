@@ -50,10 +50,7 @@ export function Forbidden() {
 export function Unauthorized() {
   return (
     <div style={{ padding: 24, maxWidth: 560 }}>
-      <ErrorState
-        variant="unauthorized"
-        action={{ label: 'ログイン画面へ', onClick: () => {} }}
-      />
+      <ErrorState variant="unauthorized" action={{ label: 'ログイン画面へ', onClick: () => {} }} />
     </div>
   );
 }

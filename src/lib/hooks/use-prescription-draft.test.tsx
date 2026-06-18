@@ -10,6 +10,7 @@ const dbMocks = vi.hoisted(() => ({
   first: vi.fn(),
   deleteWhere: vi.fn(),
   equals: vi.fn(),
+  transaction: vi.fn(),
   where: vi.fn(),
 }));
 
@@ -20,6 +21,7 @@ const cryptoMocks = vi.hoisted(() => ({
 
 vi.mock('@/lib/stores/offline-db', () => ({
   offlineDb: {
+    transaction: dbMocks.transaction,
     prescriptionDrafts: {
       add: dbMocks.add,
       update: dbMocks.update,
@@ -107,6 +109,9 @@ describe('usePrescriptionDraft PHI persistence', () => {
     dbMocks.update.mockResolvedValue(1);
     dbMocks.deleteWhere.mockResolvedValue(1);
     dbMocks.first.mockResolvedValue(undefined);
+    dbMocks.transaction.mockImplementation(
+      async (_mode: string, _table: unknown, callback: () => Promise<unknown>) => callback(),
+    );
     cryptoMocks.decryptOfflinePayload.mockImplementation(
       async (value: string | null | undefined) => value ?? null,
     );
@@ -147,6 +152,58 @@ describe('usePrescriptionDraft PHI persistence', () => {
 
     expect(dbMocks.add).not.toHaveBeenCalled();
     expect(dbMocks.update).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when org id is not available', async () => {
+    const { result } = renderHook(() => usePrescriptionDraft(''));
+
+    await expect(result.current.loadDraft()).resolves.toBeNull();
+    await expect(result.current.saveDraft(makeSnapshot())).resolves.toBeUndefined();
+    await expect(result.current.clearDraft()).resolves.toBeUndefined();
+
+    expect(dbMocks.where).not.toHaveBeenCalled();
+    expect(dbMocks.transaction).not.toHaveBeenCalled();
+    expect(cryptoMocks.encryptOfflinePayloadRequired).not.toHaveBeenCalled();
+  });
+
+  it('updates the existing org-scoped prescription draft instead of adding a duplicate', async () => {
+    dbMocks.first.mockResolvedValue({
+      id: 9,
+      orgId: 'org-1',
+      payload: 'encv1:old',
+      createdAt: new Date('2026-04-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-01T00:00:00.000Z'),
+    });
+    const { result } = renderHook(() => usePrescriptionDraft('org-1'));
+
+    await result.current.saveDraft(makeSnapshot());
+
+    expect(dbMocks.transaction).toHaveBeenCalledWith(
+      'rw',
+      expect.objectContaining({
+        add: dbMocks.add,
+        update: dbMocks.update,
+      }),
+      expect.any(Function),
+    );
+    expect(dbMocks.update).toHaveBeenCalledWith(
+      9,
+      expect.objectContaining({
+        payload: 'encv1:prescription draft payload:sealed',
+        updatedAt: expect.any(Date),
+      }),
+    );
+    expect(dbMocks.add).not.toHaveBeenCalled();
+  });
+
+  it('clears only prescription drafts for the active org', async () => {
+    const { result } = renderHook(() => usePrescriptionDraft('org-1'));
+
+    await result.current.clearDraft();
+
+    expect(dbMocks.where).toHaveBeenCalledWith('orgId');
+    expect(dbMocks.equals).toHaveBeenCalledWith('org-1');
+    expect(dbMocks.deleteWhere).toHaveBeenCalledTimes(1);
   });
 
   it('restores encrypted prescription drafts from a valid snapshot payload', async () => {

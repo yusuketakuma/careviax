@@ -30,7 +30,9 @@ function createHangingSseResponse() {
 describe('subscribeSharedRealtimeStream', () => {
   afterEach(() => {
     resetSharedRealtimeStreamsForTests();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it('shares one SSE connection across multiple listeners for the same org', async () => {
@@ -90,6 +92,65 @@ describe('subscribeSharedRealtimeStream', () => {
     expect(signal?.aborted).toBe(true);
   });
 
+  it('isolates listener exceptions without reconnecting the shared stream', async () => {
+    const eventError = new Error('event listener failed');
+    const statusError = new Error('status listener failed');
+    const throwingListener = vi.fn(() => {
+      throw eventError;
+    });
+    const secondListener = vi.fn();
+    const throwingStatus = vi.fn(() => {
+      throw statusError;
+    });
+    const secondStatus = vi.fn();
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        createOpenSseResponse([
+          'data: {"type":"notification_created","notification_id":"notification_1"}\n\n',
+        ]),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const unsubscribeFirst = subscribeSharedRealtimeStream({
+      orgId: 'org_1',
+      onEvent: throwingListener,
+      onStatus: throwingStatus,
+    });
+    const unsubscribeSecond = subscribeSharedRealtimeStream({
+      orgId: 'org_1',
+      onEvent: secondListener,
+      onStatus: secondStatus,
+    });
+
+    await vi.waitFor(() => {
+      expect(secondListener).toHaveBeenCalledWith({
+        type: 'notification_created',
+        notification_id: 'notification_1',
+      });
+      expect(secondStatus).toHaveBeenCalledWith(true);
+    });
+
+    expect(throwingListener).toHaveBeenCalledTimes(1);
+    expect(throwingStatus).toHaveBeenCalledTimes(2);
+    expect(secondStatus).toHaveBeenCalledWith(false);
+    expect(secondStatus).toHaveBeenCalledWith(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(consoleError).toHaveBeenCalledTimes(3);
+    expect(consoleError).toHaveBeenCalledWith('[realtime] listener failed', {
+      name: 'Error',
+      message: eventError.message,
+    });
+    expect(consoleError).toHaveBeenCalledWith('[realtime] listener failed', {
+      name: 'Error',
+      message: statusError.message,
+    });
+
+    unsubscribeSecond();
+    unsubscribeFirst();
+  });
+
   it('passes requested presence targets on the shared SSE URL', async () => {
     const listener = vi.fn();
     const fetchMock = vi
@@ -124,9 +185,11 @@ describe('subscribeSharedRealtimeStream', () => {
     unsubscribe();
   });
 
-  it('aborts the active SSE connection when a new presence target is added', async () => {
+  it('debounces active SSE reconnects when presence targets change in a burst', async () => {
+    vi.useFakeTimers();
     const firstListener = vi.fn();
     const secondListener = vi.fn();
+    const thirdListener = vi.fn();
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(createHangingSseResponse())
@@ -143,17 +206,31 @@ describe('subscribeSharedRealtimeStream', () => {
     });
     const firstSignal = (fetchMock.mock.calls[0]?.[1] as { signal: AbortSignal } | undefined)
       ?.signal;
+    const abortListener = vi.fn();
+    firstSignal?.addEventListener('abort', abortListener);
 
     const unsubscribeSecond = subscribeSharedRealtimeStream({
       orgId: 'org_1',
       onEvent: secondListener,
       presenceTargets: [{ entityType: 'patient', entityId: 'patient_1' }],
     });
-
-    await vi.waitFor(() => {
-      expect(firstSignal?.aborted).toBe(true);
+    const unsubscribeThird = subscribeSharedRealtimeStream({
+      orgId: 'org_1',
+      onEvent: thirdListener,
+      presenceTargets: [{ entityType: 'patient', entityId: 'patient_2' }],
     });
 
+    expect(firstSignal?.aborted).toBe(false);
+    expect(abortListener).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(149);
+    expect(firstSignal?.aborted).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(firstSignal?.aborted).toBe(true);
+    expect(abortListener).toHaveBeenCalledTimes(1);
+
+    unsubscribeThird();
     unsubscribeSecond();
     unsubscribeFirst();
   });

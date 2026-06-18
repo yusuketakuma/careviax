@@ -5,6 +5,10 @@
 import { useCallback } from 'react';
 import { offlineDb, type OfflineVisitDraft } from '@/lib/stores/offline-db';
 import { decryptOfflinePayload, encryptOfflinePayloadRequired } from '@/lib/offline/crypto';
+import {
+  purgeLegacyPlaintextSoapDraftFields,
+  type LegacyPlaintextSoapDraftFields,
+} from '@/lib/offline/soap-draft-legacy';
 import { parseJsonOrNull, parseJsonObjectOrNull, readJsonObject } from '@/lib/db/json';
 import type { StructuredSoap } from '@/types/structured-soap';
 import type {
@@ -51,22 +55,6 @@ export type SoapDraftMetadata = {
   residualMedications?: SoapDraftResidualMedication[];
   visitGeoLog?: VisitGeoLog | null;
 };
-
-type LegacyPlaintextSoapDraftFields = {
-  soapSubjective?: string;
-  soapObjective?: string;
-  soapAssessment?: string;
-  soapPlan?: string;
-};
-
-function purgeLegacyPlaintextSoapDraftFields(
-  draft: OfflineVisitDraft & LegacyPlaintextSoapDraftFields,
-) {
-  delete draft.soapSubjective;
-  delete draft.soapObjective;
-  delete draft.soapAssessment;
-  delete draft.soapPlan;
-}
 
 function readStringArray(value: unknown) {
   return Array.isArray(value)
@@ -307,8 +295,6 @@ export function useSoapDraft(scheduleId: string, patientId: string) {
             'SOAP draft visitGeoLog',
           )
         : undefined;
-      const existing = await offlineDb.visitDrafts.where('scheduleId').equals(scheduleId).first();
-
       const draftPatch = {
         structuredSoap,
         currentStep,
@@ -326,23 +312,27 @@ export function useSoapDraft(scheduleId: string, patientId: string) {
         updatedAt: new Date(),
       } satisfies Partial<OfflineVisitDraft>;
 
-      if (existing?.id !== undefined) {
-        await offlineDb.visitDrafts.update(existing.id, (draft) => {
-          Object.assign(draft, draftPatch);
-          purgeLegacyPlaintextSoapDraftFields(
-            draft as OfflineVisitDraft & LegacyPlaintextSoapDraftFields,
-          );
-        });
-      } else {
-        await offlineDb.visitDrafts.add({
-          scheduleId,
-          patientId,
-          pharmacistId: '', // sync 時に補完
-          ...draftPatch,
-          createdAt: new Date(),
-          synced: false,
-        });
-      }
+      await offlineDb.transaction('rw', offlineDb.visitDrafts, async () => {
+        const existing = await offlineDb.visitDrafts.where('scheduleId').equals(scheduleId).first();
+
+        if (existing?.id !== undefined) {
+          await offlineDb.visitDrafts.update(existing.id, (draft) => {
+            Object.assign(draft, draftPatch);
+            purgeLegacyPlaintextSoapDraftFields(
+              draft as OfflineVisitDraft & LegacyPlaintextSoapDraftFields,
+            );
+          });
+        } else {
+          await offlineDb.visitDrafts.add({
+            scheduleId,
+            patientId,
+            pharmacistId: '', // sync 時に補完
+            ...draftPatch,
+            createdAt: new Date(),
+            synced: false,
+          });
+        }
+      });
     },
     [patientId, scheduleId],
   );
