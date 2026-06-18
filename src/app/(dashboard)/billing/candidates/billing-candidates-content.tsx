@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { useMutation, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { format, subMonths, addMonths } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -136,6 +136,25 @@ type BillingCandidatesResponse = {
   hasMore: boolean;
   nextCursor?: string;
   summary: BillingCandidateSummary;
+};
+
+type BillingExportPreviewResponse = {
+  data: {
+    billing_month: string | null;
+    billing_domain: BillingDomain;
+    total_count: number;
+    exportable_count: number;
+    total_points: number;
+    total_amount_yen: number;
+    status_counts: Record<string, number>;
+    insurance_type_counts: {
+      medical: number;
+      care: number;
+      self: number;
+    };
+    exclusion_reasons: Array<{ reason: string; count: number }>;
+    generated_at: string;
+  };
 };
 
 type BillingCandidatesContentProps = {
@@ -349,8 +368,33 @@ export function BillingCandidatesContent({
     enabled: !!orgId,
   });
 
+  const exportPreviewQuery = useQuery({
+    queryKey: [
+      'billing-candidates-export-preview',
+      orgId,
+      billingMonthStr,
+      patientIdFilter,
+      billingDomain,
+    ],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        billing_month: billingMonthStr,
+        billing_domain: billingDomain,
+        preview: '1',
+      });
+      if (patientIdFilter) params.set('patient_id', patientIdFilter);
+      const res = await fetch(`/api/billing-candidates/export?${params.toString()}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      if (!res.ok) throw new Error('請求CSVの出力前確認に失敗しました');
+      return res.json() as Promise<BillingExportPreviewResponse>;
+    },
+    enabled: !!orgId,
+  });
+
   const candidates = data?.pages.flatMap((p) => p.data) ?? [];
   const summary = data?.pages[0]?.summary ?? null;
+  const exportPreview = exportPreviewQuery.data?.data ?? null;
   const targetCandidateIndex = targetCandidateId
     ? candidates.findIndex((candidate) => candidate.id === targetCandidateId)
     : -1;
@@ -746,6 +790,10 @@ export function BillingCandidatesContent({
   ).length;
   const closeBlocked = summary?.blocked_from_close ?? warningCount;
   const closeReady = summary?.ready_to_close ?? okCount;
+  const exportableCount =
+    exportPreview?.exportable_count ??
+    candidates.filter((c) => VALIDATION_OK.includes(c.status)).length;
+  const canExportCsv = exportableCount > 0 && !isExporting && !exportPreviewQuery.isLoading;
 
   return (
     <div className="space-y-4">
@@ -933,12 +981,71 @@ export function BillingCandidatesContent({
             size="sm"
             variant="outline"
             onClick={() => void handleExport()}
-            disabled={candidates.length === 0 || isExporting}
+            disabled={!canExportCsv}
           >
             <Download className="mr-1.5 size-3.5" aria-hidden="true" />
             {isExporting ? '出力中...' : 'CSV出力'}
           </Button>
         </ActionRail>
+
+        <div
+          className="rounded-md border border-border/70 bg-muted/20 px-4 py-3"
+          data-testid="billing-export-preview"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">出力前確認</h3>
+              <p className="text-xs text-muted-foreground">
+                CSVに含まれる確定・締め済み候補を全件集計します。
+              </p>
+            </div>
+            <Badge variant="outline">{exportPreviewQuery.isFetching ? '確認中' : 'CSV対象'}</Badge>
+          </div>
+          {exportPreviewQuery.isError ? (
+            <p className="mt-2 text-xs text-red-700">出力前確認を取得できませんでした。</p>
+          ) : (
+            <div className="mt-3 grid gap-2 text-sm sm:grid-cols-4">
+              <div>
+                <p className="text-xs text-muted-foreground">出力対象</p>
+                <p className="font-semibold tabular-nums">{exportableCount}件</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">合計点数</p>
+                <p className="font-semibold tabular-nums">
+                  {(exportPreview?.total_points ?? 0).toLocaleString('ja-JP')}点
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">金額候補</p>
+                <p className="font-semibold tabular-nums">
+                  {(exportPreview?.total_amount_yen ?? 0).toLocaleString('ja-JP')}円
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">未出力候補</p>
+                <p className="font-semibold tabular-nums">
+                  {(
+                    (exportPreview?.status_counts.candidate ?? 0) +
+                    (exportPreview?.status_counts.excluded ?? 0)
+                  ).toLocaleString('ja-JP')}
+                  件
+                </p>
+              </div>
+            </div>
+          )}
+          {exportPreview?.exclusion_reasons.length ? (
+            <div className="mt-3 border-t border-border/70 pt-2 text-xs text-muted-foreground">
+              <p className="font-medium text-foreground">除外理由</p>
+              <ul className="mt-1 space-y-1">
+                {exportPreview.exclusion_reasons.slice(0, 3).map((item) => (
+                  <li key={item.reason}>
+                    {item.reason} ({item.count}件)
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
 
         <FilterSummaryBar
           items={[

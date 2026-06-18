@@ -14,9 +14,23 @@ import { BILLING_MONTH_FORMAT_MESSAGE, parseStrictBillingMonth } from '../billin
 
 type ExportFormat = 'csv' | 'claims-xml';
 
+type ExportPreviewRecord = {
+  billing_domain: string;
+  points: number | null;
+  quantity: number;
+  status: string;
+  exclusion_reason: string | null;
+  calculation_breakdown: unknown;
+  source_snapshot: unknown;
+};
+
 function parseExportFormat(value: string | null): ExportFormat | null {
   if (value === null || value === '') return 'csv';
   return value === 'csv' || value === 'claims-xml' ? value : null;
+}
+
+function parsePreviewMode(value: string | null) {
+  return value === '1' || value === 'true';
 }
 
 function filenamePrefixFor(billingDomain: string) {
@@ -67,6 +81,52 @@ function readAmountYen(source: unknown, calculationBreakdown: unknown) {
   return typeof sourceRental?.amount_yen === 'number' ? sourceRental.amount_yen : '';
 }
 
+function buildExportPreview(records: ExportPreviewRecord[]) {
+  const statusCounts: Record<string, number> = {};
+  const insuranceTypeCounts: Record<ClaimsExportRecord['insuranceType'], number> = {
+    medical: 0,
+    care: 0,
+    self: 0,
+  };
+  const exclusionReasonCounts = new Map<string, number>();
+  let exportableCount = 0;
+  let totalPoints = 0;
+  let totalAmountYen = 0;
+
+  for (const record of records) {
+    statusCounts[record.status] = (statusCounts[record.status] ?? 0) + 1;
+    if (record.status === 'excluded' && record.exclusion_reason) {
+      exclusionReasonCounts.set(
+        record.exclusion_reason,
+        (exclusionReasonCounts.get(record.exclusion_reason) ?? 0) + 1,
+      );
+    }
+    if (record.status !== 'confirmed' && record.status !== 'exported') continue;
+
+    exportableCount += 1;
+    insuranceTypeCounts[resolveInsuranceType(record.billing_domain, record.source_snapshot)] += 1;
+    if (typeof record.points === 'number') {
+      totalPoints += record.points * record.quantity;
+    }
+    const amountYen = readAmountYen(record.source_snapshot, record.calculation_breakdown);
+    if (typeof amountYen === 'number') {
+      totalAmountYen += amountYen;
+    }
+  }
+
+  return {
+    total_count: records.length,
+    exportable_count: exportableCount,
+    total_points: totalPoints,
+    total_amount_yen: totalAmountYen,
+    status_counts: statusCounts,
+    insurance_type_counts: insuranceTypeCounts,
+    exclusion_reasons: Array.from(exclusionReasonCounts.entries())
+      .map(([reason, count]) => ({ reason, count }))
+      .sort((left, right) => right.count - left.count || left.reason.localeCompare(right.reason)),
+  };
+}
+
 export const GET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
@@ -74,6 +134,7 @@ export const GET = withAuthContext(
     const patientId = searchParams.get('patient_id');
     const requestedBillingDomain = parseBillingDomain(searchParams.get('billing_domain'));
     const exportFormat = parseExportFormat(searchParams.get('format'));
+    const preview = parsePreviewMode(searchParams.get('preview'));
 
     const parsedBillingMonth = billingMonth === null ? null : parseStrictBillingMonth(billingMonth);
     if (billingMonth !== null && !parsedBillingMonth) {
@@ -89,6 +150,39 @@ export const GET = withAuthContext(
       return validationError('format は csv または claims-xml を指定してください');
     }
     const billingDomain = requestedBillingDomain ?? 'home_care';
+
+    if (preview) {
+      const previewData = await withOrgContext(ctx.orgId, async (tx) => {
+        const records = await tx.billingCandidate.findMany({
+          where: {
+            org_id: ctx.orgId,
+            ...(parsedBillingMonth ? { billing_month: parsedBillingMonth.start } : {}),
+            ...(patientId ? { patient_id: patientId } : {}),
+            billing_domain: billingDomain,
+          },
+          select: {
+            billing_domain: true,
+            points: true,
+            quantity: true,
+            status: true,
+            exclusion_reason: true,
+            calculation_breakdown: true,
+            source_snapshot: true,
+          },
+        });
+
+        return buildExportPreview(records);
+      });
+
+      return NextResponse.json({
+        data: {
+          ...previewData,
+          billing_month: parsedBillingMonth?.canonical ?? null,
+          billing_domain: billingDomain,
+          generated_at: new Date().toISOString(),
+        },
+      });
+    }
 
     const candidates = await withOrgContext(ctx.orgId, async (tx) => {
       const records = await tx.billingCandidate.findMany({

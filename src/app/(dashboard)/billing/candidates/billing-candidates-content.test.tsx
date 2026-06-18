@@ -127,6 +127,32 @@ describe('BillingCandidatesContent', () => {
             { status: 200 },
           );
         }
+        if (url.startsWith('/api/billing-candidates/export?') && url.includes('preview=1')) {
+          return new Response(
+            JSON.stringify({
+              data: {
+                billing_month: '2026-03-01',
+                billing_domain: 'home_care',
+                total_count: 2,
+                exportable_count: 1,
+                total_points: 3240,
+                total_amount_yen: 0,
+                status_counts: {
+                  candidate: 1,
+                  confirmed: 1,
+                },
+                insurance_type_counts: {
+                  medical: 1,
+                  care: 0,
+                  self: 0,
+                },
+                exclusion_reasons: [],
+                generated_at: '2026-06-18T00:00:00.000Z',
+              },
+            }),
+            { status: 200 },
+          );
+        }
         if (url === '/api/billing-candidates/candidate_other' && init?.method === 'PATCH') {
           return new Response(
             JSON.stringify({
@@ -155,7 +181,10 @@ describe('BillingCandidatesContent', () => {
     expect(screen.getByText('candidate_target')).toBeTruthy();
 
     const fetchMock = vi.mocked(fetch);
-    const requestUrl = String(fetchMock.mock.calls[0]?.[0]);
+    const listRequest = fetchMock.mock.calls.find(([input]) =>
+      String(input).startsWith('/api/billing-candidates?'),
+    );
+    const requestUrl = String(listRequest?.[0]);
     expect(requestUrl).toContain('billing_month=2026-03-01');
     expect(requestUrl).toContain('patient_id=patient_1');
     expect(requestUrl).toContain('billing_domain=home_care');
@@ -164,6 +193,24 @@ describe('BillingCandidatesContent', () => {
     const rows = within(table).getAllByRole('row');
     const targetRow = rows.find((row) => row.textContent?.includes('在宅患者訪問薬剤管理指導料'));
     expect(targetRow?.className).toContain('ring-primary');
+  });
+
+  it('shows full export preview before CSV download', async () => {
+    renderBillingCandidatesContent();
+
+    const preview = await screen.findByTestId('billing-export-preview');
+    expect(within(preview).getByText('出力前確認')).toBeTruthy();
+    await waitFor(() => {
+      const normalizedText = preview.textContent?.replace(/\s/g, '') ?? '';
+      expect(normalizedText).toContain('出力対象1件');
+      expect(normalizedText).toContain('合計点数3,240点');
+    });
+
+    const previewCall = vi
+      .mocked(fetch)
+      .mock.calls.find(([input]) => String(input).startsWith('/api/billing-candidates/export?'));
+    expect(String(previewCall?.[0])).toContain('preview=1');
+    expect(String(previewCall?.[0])).toContain('billing_domain=home_care');
   });
 
   it('sends expected_updated_at when reviewing a billing candidate', async () => {

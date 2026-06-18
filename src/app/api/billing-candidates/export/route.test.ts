@@ -161,6 +161,95 @@ describe('/api/billing-candidates/export GET', () => {
     );
   });
 
+  it('returns a PHI-minimal export preview without data export audit side effects', async () => {
+    txMock.billingCandidate.findMany.mockResolvedValueOnce([
+      {
+        billing_domain: 'home_care',
+        points: 650,
+        quantity: 2,
+        status: 'confirmed',
+        exclusion_reason: null,
+        calculation_breakdown: {},
+        source_snapshot: { payer_basis: 'medical' },
+      },
+      {
+        billing_domain: 'home_care',
+        points: 420,
+        quantity: 1,
+        status: 'exported',
+        exclusion_reason: null,
+        calculation_breakdown: {},
+        source_snapshot: { payer_basis: 'care' },
+      },
+      {
+        billing_domain: 'home_care',
+        points: null,
+        quantity: 1,
+        status: 'candidate',
+        exclusion_reason: null,
+        calculation_breakdown: {},
+        source_snapshot: { payer_basis: 'medical' },
+      },
+      {
+        billing_domain: 'home_care',
+        points: null,
+        quantity: 1,
+        status: 'excluded',
+        exclusion_reason: '報告書送付が未完了です',
+        calculation_breakdown: {},
+        source_snapshot: { payer_basis: 'medical' },
+      },
+    ]);
+
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/billing-candidates/export?billing_month=2026-03-01&preview=1',
+      ),
+      emptyRouteContext,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('application/json');
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        billing_month: '2026-03-01',
+        billing_domain: 'home_care',
+        total_count: 4,
+        exportable_count: 2,
+        total_points: 1720,
+        total_amount_yen: 0,
+        status_counts: {
+          confirmed: 1,
+          exported: 1,
+          candidate: 1,
+          excluded: 1,
+        },
+        insurance_type_counts: {
+          medical: 1,
+          care: 1,
+          self: 0,
+        },
+        exclusion_reasons: [{ reason: '報告書送付が未完了です', count: 1 }],
+      },
+    });
+    expect(txMock.billingCandidate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          billing_month: new Date('2026-03-01T00:00:00.000Z'),
+          billing_domain: 'home_care',
+        },
+        select: expect.not.objectContaining({
+          patient_id: true,
+        }),
+      }),
+    );
+    expect(txMock.patient.findMany).not.toHaveBeenCalled();
+    expect(txMock.residence.findMany).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+  });
+
   it('exports empty source snapshot metadata for malformed source snapshots', async () => {
     txMock.billingCandidate.findMany.mockResolvedValueOnce([
       {
