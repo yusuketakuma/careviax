@@ -461,7 +461,8 @@ describe('billing-evidence service', () => {
   });
 
   it('does not use home-care billing evidence blockers for PCA rental close', async () => {
-    const updateMock = vi.fn().mockResolvedValue({});
+    const candidateUpdatedAt = new Date('2026-06-30T00:30:00.000Z');
+    const updateManyMock = vi.fn().mockResolvedValue({ count: 1 });
     const tx = {
       billingCandidate: {
         findMany: vi
@@ -470,6 +471,7 @@ describe('billing-evidence service', () => {
             {
               id: 'candidate_pca_1',
               status: 'confirmed',
+              updated_at: candidateUpdatedAt,
               source_snapshot: {
                 billing_close: {
                   review_state: 'reviewed',
@@ -484,6 +486,7 @@ describe('billing-evidence service', () => {
             {
               id: 'candidate_pca_1',
               status: 'exported',
+              updated_at: new Date('2026-06-30T00:31:00.000Z'),
               source_snapshot: {
                 billing_close: {
                   review_state: 'reviewed',
@@ -494,7 +497,7 @@ describe('billing-evidence service', () => {
               },
             },
           ]),
-        update: updateMock,
+        updateMany: updateManyMock,
       },
       billingEvidence: {
         count: vi.fn().mockResolvedValue(99),
@@ -514,6 +517,7 @@ describe('billing-evidence service', () => {
 
     expect(result.blocked).toBe(false);
     expect(result.exported_count).toBe(1);
+    expect(result.exported_candidate_ids).toEqual(['candidate_pca_1']);
     expect(tx.billingEvidence.count).not.toHaveBeenCalled();
     expect(tx.billingEvidence.findMany).not.toHaveBeenCalled();
     expect(tx.billingCandidate.findMany).toHaveBeenCalledWith(
@@ -525,9 +529,16 @@ describe('billing-evidence service', () => {
         },
       }),
     );
-    expect(updateMock).toHaveBeenCalledWith(
+    expect(updateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'candidate_pca_1' },
+        where: {
+          id: 'candidate_pca_1',
+          org_id: 'org_1',
+          billing_month: new Date('2026-06-01T00:00:00.000Z'),
+          billing_domain: 'pca_rental',
+          status: 'confirmed',
+          updated_at: candidateUpdatedAt,
+        },
         data: expect.objectContaining({
           status: 'exported',
         }),
@@ -542,6 +553,143 @@ describe('billing-evidence service', () => {
         }),
       }),
     });
+  });
+
+  it('rejects monthly close when a confirmed candidate changes during close', async () => {
+    const candidateUpdatedAt = new Date('2026-03-31T00:30:00.000Z');
+    const updateManyMock = vi.fn().mockResolvedValue({ count: 0 });
+    const tx = {
+      billingCandidate: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'candidate_1',
+            status: 'confirmed',
+            updated_at: candidateUpdatedAt,
+            source_snapshot: {
+              billing_close: {
+                review_state: 'reviewed',
+                resolution_state: 'confirmed',
+                reviewed_at: '2026-03-31T00:00:00.000Z',
+                reviewed_by: 'user_1',
+              },
+            },
+          },
+        ]),
+        updateMany: updateManyMock,
+      },
+      billingEvidence: {
+        count: vi.fn().mockResolvedValue(0),
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      auditLog: {
+        create: vi.fn(),
+      },
+    };
+
+    await expect(
+      closeBillingCandidatesForMonth(tx, {
+        orgId: 'org_1',
+        billingMonth: new Date(Date.UTC(2026, 2, 1)),
+        actorId: 'user_2',
+      }),
+    ).rejects.toThrow('BILLING_CLOSE_STALE_CANDIDATE');
+
+    expect(updateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: 'candidate_1',
+          org_id: 'org_1',
+          billing_month: new Date('2026-03-01T00:00:00.000Z'),
+          billing_domain: 'home_care',
+          status: 'confirmed',
+          updated_at: candidateUpdatedAt,
+        },
+      }),
+    );
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('returns only candidate ids exported by the current close attempt', async () => {
+    const currentUpdatedAt1 = new Date('2026-03-31T00:30:00.000Z');
+    const currentUpdatedAt2 = new Date('2026-03-31T00:31:00.000Z');
+    const updateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    const tx = {
+      billingCandidate: {
+        findMany: vi
+          .fn()
+          .mockResolvedValueOnce([
+            {
+              id: 'candidate_current_1',
+              status: 'confirmed',
+              updated_at: currentUpdatedAt1,
+              source_snapshot: null,
+            },
+            {
+              id: 'candidate_current_2',
+              status: 'confirmed',
+              updated_at: currentUpdatedAt2,
+              source_snapshot: null,
+            },
+            {
+              id: 'candidate_old_exported',
+              status: 'exported',
+              updated_at: new Date('2026-03-30T00:00:00.000Z'),
+              source_snapshot: null,
+            },
+            {
+              id: 'candidate_excluded',
+              status: 'excluded',
+              updated_at: new Date('2026-03-29T00:00:00.000Z'),
+              source_snapshot: null,
+            },
+          ])
+          .mockResolvedValueOnce([
+            { status: 'exported', source_snapshot: null },
+            { status: 'exported', source_snapshot: null },
+            { status: 'exported', source_snapshot: null },
+            { status: 'excluded', source_snapshot: null },
+          ]),
+        updateMany: updateManyMock,
+      },
+      billingEvidence: {
+        count: vi.fn().mockResolvedValue(0),
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      auditLog: {
+        create: vi.fn().mockResolvedValue({}),
+      },
+    };
+
+    const result = await closeBillingCandidatesForMonth(tx, {
+      orgId: 'org_1',
+      billingMonth: new Date(Date.UTC(2026, 2, 1)),
+      actorId: 'user_2',
+    });
+
+    expect(result.blocked).toBe(false);
+    expect(result.exported_count).toBe(2);
+    expect(result.exported_candidate_ids).toEqual(['candidate_current_1', 'candidate_current_2']);
+    expect(updateManyMock).toHaveBeenCalledTimes(2);
+    expect(updateManyMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'candidate_current_1',
+          status: 'confirmed',
+          updated_at: currentUpdatedAt1,
+        }),
+      }),
+    );
+    expect(updateManyMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'candidate_current_2',
+          status: 'confirmed',
+          updated_at: currentUpdatedAt2,
+        }),
+      }),
+    );
   });
 
   it('generates information provision and duplicate-interaction candidates with validation layers', async () => {

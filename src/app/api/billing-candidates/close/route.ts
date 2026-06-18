@@ -18,6 +18,7 @@ import { BILLING_MONTH_FORMAT_MESSAGE, parseStrictBillingMonth } from '../billin
 
 type ClaimsExportCloseOutcome =
   | { transmitted: false; reason: 'not_configured' }
+  | { transmitted: false; reason: 'no_records' }
   | { transmitted: true; recordCount: number }
   | { transmitted: false; reason: 'failed' };
 
@@ -32,10 +33,14 @@ async function transmitClaimsExportForClose(args: {
   orgId: string;
   billingMonth: Date;
   billingDomain: string;
+  candidateIds: string[];
   ctx: AuthContext;
 }): Promise<ClaimsExportCloseOutcome> {
   if (!isClaimsExportConsumerConfigured()) {
     return { transmitted: false, reason: 'not_configured' };
+  }
+  if (args.candidateIds.length === 0) {
+    return { transmitted: false, reason: 'no_records' };
   }
 
   try {
@@ -46,6 +51,7 @@ async function transmitClaimsExportForClose(args: {
           billing_month: args.billingMonth,
           billing_domain: args.billingDomain,
           status: 'exported',
+          id: { in: args.candidateIds },
         },
         select: {
           patient_id: true,
@@ -133,6 +139,10 @@ function parseBillingDomain(value: unknown) {
   return value === 'home_care' || value === 'pca_rental' ? value : null;
 }
 
+function isBillingCloseStaleCandidatesError(cause: unknown) {
+  return cause instanceof Error && cause.message === 'BILLING_CLOSE_STALE_CANDIDATE';
+}
+
 export async function POST(req: NextRequest) {
   const authResult = await requireAuthContext(req, {
     permission: 'canManageBilling',
@@ -156,14 +166,31 @@ export async function POST(req: NextRequest) {
     return validationError('billing_domain は home_care または pca_rental を指定してください');
   }
 
-  const result = await withOrgContext(ctx.orgId, (tx) =>
-    closeBillingCandidatesForMonth(tx, {
-      orgId: ctx.orgId,
-      billingMonth: parsedBillingMonth.start,
-      actorId: ctx.userId,
-      billingDomain,
-    }),
-  );
+  let result;
+  try {
+    result = await withOrgContext(ctx.orgId, (tx) =>
+      closeBillingCandidatesForMonth(tx, {
+        orgId: ctx.orgId,
+        billingMonth: parsedBillingMonth.start,
+        actorId: ctx.userId,
+        billingDomain,
+      }),
+    );
+  } catch (cause) {
+    if (isBillingCloseStaleCandidatesError(cause)) {
+      return error(
+        'BILLING_CLOSE_STALE_CANDIDATES',
+        '請求候補が他のユーザーによって更新されています。最新のデータを取得してから月次締めしてください。',
+        409,
+        {
+          billing_month: parsedBillingMonth.start.toISOString(),
+          billing_domain: billingDomain,
+          conflictCount: 1,
+        },
+      );
+    }
+    throw cause;
+  }
 
   if (result.blocked) {
     return error(
@@ -187,6 +214,7 @@ export async function POST(req: NextRequest) {
     orgId: ctx.orgId,
     billingMonth: parsedBillingMonth.start,
     billingDomain,
+    candidateIds: result.exported_candidate_ids,
     ctx,
   });
 

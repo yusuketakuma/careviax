@@ -2106,9 +2106,18 @@ export async function reviewBillingCandidate(
   return updated;
 }
 
-type CloseBillingCandidatesTx = BillingCandidateWorkbenchSummaryTx & {
-  billingCandidate: BillingCandidateWorkbenchSummaryTx['billingCandidate'] & {
-    update?(args: unknown): Promise<unknown>;
+type CloseBillingCandidatesTx = {
+  billingCandidate: {
+    findMany(args: unknown): Promise<
+      Array<{
+        id?: string;
+        status: string;
+        source_snapshot: Prisma.JsonValue | null;
+        exclusion_reason?: string | null;
+        updated_at: Date;
+      }>
+    >;
+    updateMany?(args: unknown): Promise<{ count: number }>;
   };
   billingEvidence: BillingCandidateWorkbenchSummaryTx['billingEvidence'] & {
     count(args: unknown): Promise<number>;
@@ -2139,6 +2148,7 @@ export async function closeBillingCandidatesForMonth(
       id: true,
       status: true,
       source_snapshot: true,
+      updated_at: true,
     },
   });
 
@@ -2155,7 +2165,7 @@ export async function closeBillingCandidatesForMonth(
       : 0;
   if (pendingReview.length > 0 || blockedEvidenceCount > 0) {
     return {
-      blocked: true,
+      blocked: true as const,
       summary: await getBillingCandidateWorkbenchSummary(tx, {
         orgId: args.orgId,
         billingMonth,
@@ -2166,32 +2176,42 @@ export async function closeBillingCandidatesForMonth(
   }
 
   const closedAt = new Date();
-  const exported = await Promise.all(
-    candidates
-      .filter((candidate) => candidate.status === 'confirmed')
-      .map((candidate) => {
-        if (!tx.billingCandidate.update) {
-          throw new Error('BILLING_CANDIDATE_UPDATE_UNAVAILABLE');
-        }
-        if (!candidate.id) {
-          throw new Error('BILLING_CANDIDATE_ID_UNAVAILABLE');
-        }
-        return tx.billingCandidate.update({
-          where: { id: candidate.id },
-          data: {
-            status: 'exported',
-            source_snapshot: writeBillingCandidateWorkflowState(candidate.source_snapshot, {
-              review_state: 'reviewed',
-              resolution_state: 'confirmed',
-              closed_at: closedAt.toISOString(),
-              closed_by: args.actorId,
-              reviewed_at: readBillingCandidateWorkflowState(candidate.source_snapshot).reviewed_at,
-              reviewed_by: readBillingCandidateWorkflowState(candidate.source_snapshot).reviewed_by,
-            }),
-          },
-        });
-      }),
-  );
+  const candidatesToExport = candidates.filter((candidate) => candidate.status === 'confirmed');
+  const exportedCandidateIds: string[] = [];
+  for (const candidate of candidatesToExport) {
+    if (!tx.billingCandidate.updateMany) {
+      throw new Error('BILLING_CANDIDATE_UPDATE_UNAVAILABLE');
+    }
+    if (!candidate.id) {
+      throw new Error('BILLING_CANDIDATE_ID_UNAVAILABLE');
+    }
+    const workflow = readBillingCandidateWorkflowState(candidate.source_snapshot);
+    const result = await tx.billingCandidate.updateMany({
+      where: {
+        id: candidate.id,
+        org_id: args.orgId,
+        billing_month: billingMonth,
+        billing_domain: billingDomain,
+        status: 'confirmed',
+        updated_at: candidate.updated_at,
+      },
+      data: {
+        status: 'exported',
+        source_snapshot: writeBillingCandidateWorkflowState(candidate.source_snapshot, {
+          review_state: 'reviewed',
+          resolution_state: 'confirmed',
+          closed_at: closedAt.toISOString(),
+          closed_by: args.actorId,
+          reviewed_at: workflow.reviewed_at,
+          reviewed_by: workflow.reviewed_by,
+        }),
+      },
+    });
+    if (result.count !== 1) {
+      throw new Error('BILLING_CLOSE_STALE_CANDIDATE');
+    }
+    exportedCandidateIds.push(candidate.id);
+  }
 
   await tx.auditLog.create({
     data: {
@@ -2203,14 +2223,15 @@ export async function closeBillingCandidatesForMonth(
       changes: {
         billing_month: billingMonth.toISOString(),
         billing_domain: billingDomain,
-        exported_count: exported.length,
+        exported_count: candidatesToExport.length,
       },
     },
   });
 
   return {
-    blocked: false,
-    exported_count: exported.length,
+    blocked: false as const,
+    exported_count: candidatesToExport.length,
+    exported_candidate_ids: exportedCandidateIds,
     summary: await getBillingCandidateWorkbenchSummary(tx, {
       orgId: args.orgId,
       billingMonth,
