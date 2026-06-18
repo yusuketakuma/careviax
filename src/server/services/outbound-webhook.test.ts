@@ -38,11 +38,20 @@ vi.mock('@/lib/db/client', () => ({
 }));
 
 import {
+  dispatchWebhookEvent,
   dispatchWebhookEventForOrg,
   isAllowedWebhookUrl,
   retryDueWebhookDeliveries,
 } from './outbound-webhook';
 import { encryptWebhookSecret } from './webhook-secret-encryption';
+
+async function waitForCondition(predicate: () => boolean, message: string) {
+  for (let attempts = 0; attempts < 50; attempts += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error(message);
+}
 
 describe('outbound-webhook', () => {
   let originalEncryptionKey: string | undefined;
@@ -239,6 +248,60 @@ describe('outbound-webhook', () => {
     expect(unref).toHaveBeenCalledTimes(1);
     expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutHandle);
     expect(abortSignalTimeoutSpy).not.toHaveBeenCalled();
+  });
+
+  it('bounds concurrent first-attempt webhook dispatches', async () => {
+    lookupMock.mockResolvedValue([{ address: '8.8.8.8', family: 4 }]);
+    webhookDeliveryUpsertMock.mockImplementation(async () => ({}));
+    webhookDeliveryUpdateMock.mockImplementation(async () => ({}));
+    const releases: Array<() => void> = [];
+    let activeFetches = 0;
+    let maxActiveFetches = 0;
+    fetchMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          activeFetches += 1;
+          maxActiveFetches = Math.max(maxActiveFetches, activeFetches);
+          releases.push(() => {
+            activeFetches -= 1;
+            resolve({ status: 202, ok: true });
+          });
+        }),
+    );
+
+    const registrations = Array.from({ length: 6 }, (_, index) => ({
+      id: `webhook_${index + 1}`,
+      orgId: 'org_1',
+      url: `https://hooks.example.com/${index + 1}`,
+      secret: `secret_${index + 1}`,
+      events: ['patient.created' as const],
+      isActive: true,
+      createdAt: new Date('2026-04-05T00:00:00.000Z'),
+    }));
+
+    const resultPromise = dispatchWebhookEvent(registrations, 'patient.created', 'org_1', {
+      patientId: 'patient_1',
+    });
+
+    await waitForCondition(
+      () => releases.length === 4,
+      'expected the first webhook dispatch window to start',
+    );
+    expect(releases).toHaveLength(4);
+    expect(maxActiveFetches).toBe(4);
+
+    releases.splice(0, 4).forEach((release) => release());
+
+    await waitForCondition(
+      () => releases.length === 2,
+      'expected the second webhook dispatch window to start',
+    );
+    expect(maxActiveFetches).toBeLessThanOrEqual(4);
+
+    releases.splice(0).forEach((release) => release());
+    await expect(resultPromise).resolves.toHaveLength(6);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(maxActiveFetches).toBeLessThanOrEqual(4);
   });
 
   it('decrypts encrypted webhook secrets before signing deliveries', async () => {

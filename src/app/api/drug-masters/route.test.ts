@@ -46,33 +46,36 @@ function createRequest(url: string) {
   return new NextRequest(url);
 }
 
+function buildDrugMasterHit(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'drug_1',
+    yj_code: '123456789012',
+    receipt_code: null,
+    jan_code: null,
+    drug_name: 'アムロジピンOD錠5mg',
+    drug_name_kana: 'アムロジピン',
+    generic_name: 'アムロジピンベシル酸塩',
+    drug_price: 12.3,
+    unit: '錠',
+    dosage_form: '錠剤',
+    therapeutic_category: '2171',
+    manufacturer: 'テスト製薬',
+    is_generic: true,
+    is_narcotic: false,
+    is_psychotropic: false,
+    is_high_risk: true,
+    is_lasa_risk: true,
+    tall_man_name: 'amLODIPine OD錠5mg',
+    lasa_group_key: 'amlodipine_amiodarone',
+    max_administration_days: null,
+    ...overrides,
+  };
+}
+
 describe('/api/drug-masters GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    drugMasterFindManyMock.mockResolvedValue([
-      {
-        id: 'drug_1',
-        yj_code: '123456789012',
-        receipt_code: null,
-        jan_code: null,
-        drug_name: 'アムロジピンOD錠5mg',
-        drug_name_kana: 'アムロジピン',
-        generic_name: 'アムロジピンベシル酸塩',
-        drug_price: 12.3,
-        unit: '錠',
-        dosage_form: '錠剤',
-        therapeutic_category: '2171',
-        manufacturer: 'テスト製薬',
-        is_generic: true,
-        is_narcotic: false,
-        is_psychotropic: false,
-        is_high_risk: true,
-        is_lasa_risk: true,
-        tall_man_name: 'amLODIPine OD錠5mg',
-        lasa_group_key: 'amlodipine_amiodarone',
-        max_administration_days: null,
-      },
-    ]);
+    drugMasterFindManyMock.mockResolvedValue([buildDrugMasterHit()]);
     drugMasterCountMock.mockResolvedValue(1);
     pharmacySiteFindFirstMock.mockResolvedValue({ id: 'site_1' });
     pharmacyDrugStockFindManyMock.mockResolvedValue([]);
@@ -275,5 +278,35 @@ describe('/api/drug-masters GET', () => {
         }),
       }),
     );
+  });
+
+  it('skips total counting for lightweight candidate searches', async () => {
+    drugMasterFindManyMock.mockResolvedValue([
+      buildDrugMasterHit({ id: 'drug_1' }),
+      buildDrugMasterHit({ id: 'drug_2', yj_code: '987654321098' }),
+    ]);
+
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/drug-masters?q=%E3%82%A2%E3%83%A0&limit=1&includeTotal=false',
+      ),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(drugMasterFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 2,
+      }),
+    );
+    expect(drugMasterCountMock).not.toHaveBeenCalled();
+    const payload = await response.json();
+    expect(payload).toMatchObject({
+      data: [expect.objectContaining({ id: 'drug_1' })],
+      hasMore: true,
+      nextCursor: '1',
+    });
+    expect(payload).not.toHaveProperty('totalCount');
   });
 });

@@ -3,7 +3,7 @@ import type { Prisma, PrismaClient } from '@prisma/client';
 import {
   deriveListBadge,
   type DispenseWorkbenchPatientRow,
-} from '@/app/(dashboard)/dispense/dispense-workbench.shared';
+} from '@/lib/dispensing/dispense-workbench-shared';
 import {
   buildMedicationCycleAssignmentWhere,
   buildSetPlanAssignmentWhere,

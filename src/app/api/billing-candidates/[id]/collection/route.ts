@@ -2,6 +2,7 @@ import { createHash, createHmac } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { NextRequest, type NextResponse } from 'next/server';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { parseOptionalIdempotencyKey } from '@/lib/api/idempotency-key';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
@@ -18,7 +19,6 @@ import { requireWritablePatient } from '@/server/services/patient-write-guard';
 class BillingCollectionConflictError extends Error {}
 
 const BILLING_PAYMENT_PROFILE_TASK_TYPE = 'patient_billing_payment_profile';
-const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const receiptNumberPlaceholders = new Set(['未記録', '未発行/未記録', '未発行', '不要']);
 
 function buildBillingDocumentPdfUrl(candidateId: string, kind: 'receipt' | 'invoice') {
@@ -54,18 +54,6 @@ function keyedHashJson(value: unknown) {
 
 function hashJson(value: unknown) {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');
-}
-
-function parseOptionalIdempotencyKey(value: string | null) {
-  if (value === null) return { ok: true as const, key: null };
-  const key = value.trim();
-  if (!IDEMPOTENCY_KEY_PATTERN.test(key)) {
-    return {
-      ok: false as const,
-      message: 'Idempotency-Keyが不正です',
-    };
-  }
-  return { ok: true as const, key };
 }
 
 function buildBillingCollectionIdempotencyKeyHash(args: {
@@ -123,7 +111,9 @@ function readCollectionIdempotencyStatus(input: {
     typeof collection?.idempotency_request_fingerprint === 'string'
       ? collection.idempotency_request_fingerprint
       : null;
-  return existingFingerprint === input.requestFingerprint ? ('replayed' as const) : ('conflict' as const);
+  return existingFingerprint === input.requestFingerprint
+    ? ('replayed' as const)
+    : ('conflict' as const);
 }
 
 function readReceiptIssue(metadata: unknown) {

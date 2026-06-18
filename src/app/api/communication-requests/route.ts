@@ -3,7 +3,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeJsonInput } from '@/lib/db/json';
 import { success, validationError, notFound } from '@/lib/api/response';
-import { parsePaginationParams } from '@/lib/api/pagination';
+import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
@@ -142,11 +142,7 @@ export const GET = withAuthContext(
       },
     });
 
-    const hasMore = requests.length > limit;
-    const data = hasMore ? requests.slice(0, limit) : requests;
-    const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
-
-    return success({ data, hasMore, nextCursor });
+    return success(buildCursorPage(requests, limit, (request) => request.id));
   },
   {
     permission: 'canReport',

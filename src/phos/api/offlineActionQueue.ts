@@ -12,6 +12,7 @@ import { PhosApiError } from './types';
 
 const MAX_RETRIES = 3;
 export const PHOS_OFFLINE_ACTION_REPLAY_BATCH_SIZE = 25;
+let activeOfflineActionReplay: Promise<{ synced: number; failed: number }> | null = null;
 
 export type PhosOfflineActionRecord = {
   id?: number;
@@ -145,7 +146,7 @@ async function readNextOfflineActionReplayBatch(
     .toArray();
 }
 
-export async function retryPhosOfflineCardActions(input: {
+async function retryPhosOfflineCardActionsOnce(input: {
   client: Pick<PhosApiClient, 'executeCardAction'>;
   observability?: PhosOfflineSyncMetricEmitter;
 }): Promise<{ synced: number; failed: number }> {
@@ -193,4 +194,17 @@ export async function retryPhosOfflineCardActions(input: {
   }
 
   return { synced, failed };
+}
+
+export async function retryPhosOfflineCardActions(input: {
+  client: Pick<PhosApiClient, 'executeCardAction'>;
+  observability?: PhosOfflineSyncMetricEmitter;
+}): Promise<{ synced: number; failed: number }> {
+  if (activeOfflineActionReplay) return activeOfflineActionReplay;
+
+  const replay = retryPhosOfflineCardActionsOnce(input).finally(() => {
+    activeOfflineActionReplay = null;
+  });
+  activeOfflineActionReplay = replay;
+  return replay;
 }

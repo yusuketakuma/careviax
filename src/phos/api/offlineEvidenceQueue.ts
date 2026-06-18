@@ -19,6 +19,11 @@ const MAX_EVIDENCE_UPLOAD_TIMEOUT_MS = 120_000;
 export const PHOS_OFFLINE_EVIDENCE_REPLAY_BATCH_SIZE = 10;
 export const MAX_OFFLINE_EVIDENCE_FILE_SIZE_BYTES = 25 * 1024 * 1024;
 export const MAX_OFFLINE_EVIDENCE_QUEUE_BYTES = 75 * 1024 * 1024;
+let activeEvidenceUploadReplay: Promise<{
+  synced: number;
+  failed: number;
+  verified_visits: VisitModeView[];
+}> | null = null;
 
 export type PhosOfflineEvidenceInput = {
   card_id: string;
@@ -288,7 +293,7 @@ async function readNextOfflineEvidenceReplayBatch(
     .toArray();
 }
 
-export async function retryPhosOfflineEvidenceUploads(input: {
+async function retryPhosOfflineEvidenceUploadsOnce(input: {
   client: Pick<PhosApiClient, 'getVisitMode' | 'presignEvidenceUpload' | 'updateVisitStep'>;
   fetchImpl?: typeof fetch;
   signal?: AbortSignal;
@@ -355,4 +360,19 @@ export async function retryPhosOfflineEvidenceUploads(input: {
   }
 
   return { synced, failed, verified_visits: [...verifiedVisits.values()] };
+}
+
+export async function retryPhosOfflineEvidenceUploads(input: {
+  client: Pick<PhosApiClient, 'getVisitMode' | 'presignEvidenceUpload' | 'updateVisitStep'>;
+  fetchImpl?: typeof fetch;
+  signal?: AbortSignal;
+  uploadTimeoutMs?: number;
+}): Promise<{ synced: number; failed: number; verified_visits: VisitModeView[] }> {
+  if (activeEvidenceUploadReplay) return activeEvidenceUploadReplay;
+
+  const replay = retryPhosOfflineEvidenceUploadsOnce(input).finally(() => {
+    activeEvidenceUploadReplay = null;
+  });
+  activeEvidenceUploadReplay = replay;
+  return replay;
 }

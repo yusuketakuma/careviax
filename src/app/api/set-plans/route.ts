@@ -5,7 +5,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError, conflict } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
-import { buildSetPlanPackagingSummary } from '@/lib/prescription/set-plan-packaging';
+import { buildSetPlanPackagingSummary } from '@/lib/dispensing/set-plan-packaging';
 import {
   transitionCycleStatus,
   InvalidTransitionError,

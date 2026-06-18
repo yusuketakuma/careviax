@@ -154,6 +154,7 @@ describe('/api/first-visit-documents', () => {
       expect(careCaseFindManyMock).not.toHaveBeenCalled();
       expect(firstVisitDocumentFindManyMock).toHaveBeenCalledWith(
         expect.objectContaining({
+          orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
           where: {
             org_id: 'org_1',
             patient_id: 'patient_1',

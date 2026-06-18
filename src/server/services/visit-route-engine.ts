@@ -1,9 +1,14 @@
 import { readJsonResponseBody } from '@/lib/api/response-body';
 import { readJsonObject } from '@/lib/db/json';
+import { mapWithConcurrency, normalizeConcurrencyLimit } from '@/lib/utils/concurrency';
 import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
 import type { VisitRouteOrigin, VisitRoutePlan, VisitRouteTravelMode } from '@/types/visit-route';
 import { createFetchTimeout } from './fetch-timeout';
-import { createRoadTravelEstimator } from './road-routing';
+import {
+  createRoadTravelEstimator,
+  type RoadTravelEstimator,
+  type TravelEstimate,
+} from './road-routing';
 
 export type { VisitRouteOrigin, VisitRoutePlan, VisitRouteTravelMode } from '@/types/visit-route';
 
@@ -233,6 +238,100 @@ function haversineDistanceKm(from: { lat: number; lng: number }, to: { lat: numb
   return 2 * earthRadiusKm * Math.asin(Math.sqrt(h));
 }
 
+type RouteMatrixCell = { meters: number; seconds: number };
+type RouteMatrix = Array<Array<RouteMatrixCell | null>>;
+type NodePoint = { lat: number; lng: number };
+
+const DEFAULT_ROUTE_MATRIX_PAIR_CONCURRENCY = 8;
+const MAX_ROUTE_MATRIX_PAIR_CONCURRENCY = 16;
+
+function normalizeRouteMatrixPairConcurrency(value: unknown) {
+  return normalizeConcurrencyLimit(value, {
+    defaultValue: DEFAULT_ROUTE_MATRIX_PAIR_CONCURRENCY,
+    max: MAX_ROUTE_MATRIX_PAIR_CONCURRENCY,
+  });
+}
+
+function estimateToMatrixCell(
+  estimate: TravelEstimate | null,
+  from: NodePoint,
+  to: NodePoint,
+  travelMode: VisitRouteTravelMode,
+): RouteMatrixCell | null {
+  if (estimate && Number.isFinite(estimate.durationMinutes)) {
+    const fallbackDistanceKm = haversineDistanceKm(from, to);
+    const distanceKm = Number.isFinite(estimate.distanceKm)
+      ? estimate.distanceKm
+      : fallbackDistanceKm;
+    if (Number.isFinite(distanceKm)) {
+      return {
+        meters: distanceKm * 1000,
+        seconds: Math.round(estimate.durationMinutes * 60),
+      };
+    }
+  }
+
+  const fallbackDistanceKm = haversineDistanceKm(from, to);
+  if (!Number.isFinite(fallbackDistanceKm)) return null;
+  const meters = fallbackDistanceKm * 1000;
+  return {
+    meters,
+    seconds: Math.round((meters / 1000 / localSpeedKph(travelMode)) * 3600),
+  };
+}
+
+async function buildRouteMatrix(args: {
+  nodes: NodePoint[];
+  travelMode: VisitRouteTravelMode;
+  estimateRoadTravel:
+    | RoadTravelEstimator
+    | ((from: NodePoint, to: NodePoint) => Promise<TravelEstimate | null>);
+}): Promise<RouteMatrix> {
+  const matrix: RouteMatrix = Array.from({ length: args.nodes.length }, () =>
+    new Array<RouteMatrixCell | null>(args.nodes.length).fill(null),
+  );
+  const estimateMatrix =
+    'estimateMatrix' in args.estimateRoadTravel &&
+    typeof args.estimateRoadTravel.estimateMatrix === 'function'
+      ? await args.estimateRoadTravel.estimateMatrix(args.nodes)
+      : null;
+
+  if (estimateMatrix) {
+    for (let i = 0; i < args.nodes.length; i += 1) {
+      for (let j = 0; j < args.nodes.length; j += 1) {
+        if (i === j) continue;
+        matrix[i][j] = estimateToMatrixCell(
+          estimateMatrix[i]?.[j] ?? null,
+          args.nodes[i]!,
+          args.nodes[j]!,
+          args.travelMode,
+        );
+      }
+    }
+    return matrix;
+  }
+
+  const pairs: Array<{ i: number; j: number }> = [];
+  for (let i = 0; i < args.nodes.length; i += 1) {
+    for (let j = 0; j < args.nodes.length; j += 1) {
+      if (i !== j) pairs.push({ i, j });
+    }
+  }
+
+  await mapWithConcurrency(
+    pairs,
+    normalizeRouteMatrixPairConcurrency(process.env.ROUTING_API_CONCURRENCY),
+    async ({ i, j }) => {
+      const from = args.nodes[i]!;
+      const to = args.nodes[j]!;
+      const estimate = await args.estimateRoadTravel(from, to);
+      matrix[i][j] = estimateToMatrixCell(estimate, from, to, args.travelMode);
+    },
+  );
+
+  return matrix;
+}
+
 async function computeGoogleWaypointRoute(args: {
   origin: VisitRouteOrigin;
   travelMode: VisitRouteTravelMode;
@@ -431,46 +530,15 @@ async function computeHeuristicRoute(args: {
   const estimateRoadTravel = createRoadTravelEstimator(args.travelMode);
 
   // Fix #8: all nodes in order: [origin, waypoint_0, waypoint_1, ...]
-  // Build all unique (from, to) pairs and fetch in parallel
-  type NodePoint = { lat: number; lng: number };
   const nodes: NodePoint[] = [
     { lat: args.origin.lat, lng: args.origin.lng },
     ...args.waypoints.map((w) => ({ lat: w.lat, lng: w.lng })),
   ];
-  const n = nodes.length;
-
-  // matrix[i][j] = { meters, seconds } | null, i !== j
-  const matrix: Array<Array<{ meters: number; seconds: number } | null>> = Array.from(
-    { length: n },
-    () => new Array<{ meters: number; seconds: number } | null>(n).fill(null),
-  );
-
-  const pairs: Array<{ i: number; j: number }> = [];
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j < n; j++) {
-      if (i !== j) pairs.push({ i, j });
-    }
-  }
-
-  await Promise.all(
-    pairs.map(async ({ i, j }) => {
-      const estimate = await estimateRoadTravel(nodes[i], nodes[j]);
-      if (estimate) {
-        matrix[i][j] = {
-          meters: estimate.distanceKm * 1000,
-          seconds: Math.round(estimate.durationMinutes * 60),
-        };
-      } else {
-        const distKm = haversineDistanceKm(nodes[i], nodes[j]);
-        if (Number.isFinite(distKm)) {
-          const meters = distKm * 1000;
-          const seconds = Math.round((meters / 1000 / localSpeedKph(args.travelMode)) * 3600);
-          matrix[i][j] = { meters, seconds };
-        }
-        // else: matrix[i][j] stays null (unreachable pair)
-      }
-    }),
-  );
+  const matrix = await buildRouteMatrix({
+    nodes,
+    travelMode: args.travelMode,
+    estimateRoadTravel,
+  });
 
   // waypoint node index in `nodes` array = waypointIndex + 1 (0 is origin)
   const remaining = args.waypoints.map((_, idx) => idx); // indices into args.waypoints

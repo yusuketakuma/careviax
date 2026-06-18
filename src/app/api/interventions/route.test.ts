@@ -128,6 +128,7 @@ describe('/api/interventions', () => {
       });
       expect(interventionFindManyMock).toHaveBeenCalledWith(
         expect.objectContaining({
+          orderBy: [{ performed_at: 'desc' }, { id: 'desc' }],
           where: expect.objectContaining({
             patient_id: 'patient_1',
           }),

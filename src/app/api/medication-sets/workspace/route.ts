@@ -13,8 +13,8 @@ import type {
   SetWorkspaceFacilityGroup,
   SetWorkspaceResponse,
   SetWorkspaceRow,
-} from '@/app/(dashboard)/set/set-workspace.shared';
-import { deriveRowStatus, deriveSlotMarks } from './set-derivations';
+} from '@/lib/dispensing/set-workspace-shared';
+import { deriveRowStatus, deriveSlotMarks } from '@/lib/dispensing/set-derivations';
 
 /**
  * new_09_set(セット準備ワークスペース)用 BFF。

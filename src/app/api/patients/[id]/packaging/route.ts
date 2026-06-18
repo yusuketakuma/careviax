@@ -5,7 +5,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { withOrgContext } from '@/lib/db/rls';
 import { notFound, success, validationError } from '@/lib/api/response';
-import { buildPackagingInstructions } from '@/lib/prescription/packaging';
+import { buildPackagingInstructions } from '@/lib/dispensing/packaging';
 import { patientPackagingProfileSchema } from '@/lib/validations/patient-packaging';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { requireWritablePatient } from '@/server/services/patient-write-guard';

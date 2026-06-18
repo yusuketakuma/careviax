@@ -63,6 +63,9 @@ const {
   prismaCareReportCreateMock,
   prismaPatientFindManyMock,
   prismaCareReportFindManyMock,
+  prismaDeliveryRecordCountMock,
+  prismaDeliveryRecordFindManyMock,
+  prismaDeliveryRecordGroupByMock,
   prismaCareCaseFindFirstMock,
   prismaCareCaseFindManyMock,
   prismaVisitScheduleFindManyMock,
@@ -109,6 +112,9 @@ const {
   prismaCareReportCreateMock: vi.fn(),
   prismaPatientFindManyMock: vi.fn(),
   prismaCareReportFindManyMock: vi.fn(),
+  prismaDeliveryRecordCountMock: vi.fn(),
+  prismaDeliveryRecordFindManyMock: vi.fn(),
+  prismaDeliveryRecordGroupByMock: vi.fn(),
   prismaCareCaseFindFirstMock: vi.fn(),
   prismaCareCaseFindManyMock: vi.fn(),
   prismaVisitScheduleFindManyMock: vi.fn(),
@@ -147,6 +153,11 @@ vi.mock('@/lib/db/client', () => ({
     careReport: {
       create: prismaCareReportCreateMock,
       findMany: prismaCareReportFindManyMock,
+    },
+    deliveryRecord: {
+      count: prismaDeliveryRecordCountMock,
+      findMany: prismaDeliveryRecordFindManyMock,
+      groupBy: prismaDeliveryRecordGroupByMock,
     },
     patient: {
       findMany: prismaPatientFindManyMock,
@@ -195,7 +206,7 @@ vi.mock('@/lib/prescriptions/prescriber-institutions', () => ({
   findLatestPrescriberInstitutionSuggestion: vi.fn().mockResolvedValue(null),
 }));
 
-vi.mock('@/lib/prescription/packaging', () => ({
+vi.mock('@/lib/dispensing/packaging', () => ({
   extractPackagingInstructionTags: vi.fn().mockReturnValue([]),
   parsePackagingMethod: vi.fn().mockReturnValue({ method: null }),
 }));
@@ -835,6 +846,9 @@ describe('Workflow: prescription intake to care report', () => {
       { id: IDS.patient, name: '山田 太郎', name_kana: 'ヤマダ タロウ' },
     ]);
     prismaCareCaseFindManyMock.mockResolvedValue([{ id: IDS.case, patient_id: IDS.patient }]);
+    prismaDeliveryRecordCountMock.mockResolvedValue(0);
+    prismaDeliveryRecordGroupByMock.mockResolvedValue([]);
+    prismaDeliveryRecordFindManyMock.mockResolvedValue([]);
 
     const response = await getCareReports(
       Object.assign(

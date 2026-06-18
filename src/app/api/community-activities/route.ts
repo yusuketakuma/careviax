@@ -1,5 +1,5 @@
 import { withAuthContext } from '@/lib/auth/context';
-import { parsePaginationParams } from '@/lib/api/pagination';
+import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
@@ -44,14 +44,10 @@ export const GET = withAuthContext(
       },
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      orderBy: { activity_date: 'desc' },
+      orderBy: [{ activity_date: 'desc' }, { id: 'desc' }],
     });
 
-    const hasMore = items.length > limit;
-    const data = hasMore ? items.slice(0, limit) : items;
-    const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
-
-    return success({ data, hasMore, nextCursor });
+    return success(buildCursorPage(items, limit, (item) => item.id));
   },
   {
     permission: 'canReport',

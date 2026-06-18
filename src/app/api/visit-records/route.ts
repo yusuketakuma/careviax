@@ -933,7 +933,7 @@ async function saveVisitRecord(ctx: AuthContext, input: CreateVisitRecordInput) 
 
     const missingHomeVisit2026Items = getMissingHomeVisit2026CompletionItems({
       outcomeStatus: outcome_status,
-      structuredSoap: structured_soap,
+      structuredSoap: structured_soap as Partial<StructuredSoap> | null | undefined,
       visitType: schedule.visit_type,
       residualMedicationCount: residual_medications?.length ?? 0,
       billingBlockers,

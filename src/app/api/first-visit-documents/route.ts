@@ -2,7 +2,7 @@ import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
-import { parsePaginationParams } from '@/lib/api/pagination';
+import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { createFirstVisitDocumentSchema } from '@/lib/validations/first-visit-document';
 import { prisma } from '@/lib/db/client';
@@ -113,7 +113,7 @@ export const GET = withAuthContext(
       where,
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      orderBy: { created_at: 'desc' },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       select: {
         id: true,
         org_id: true,
@@ -128,11 +128,7 @@ export const GET = withAuthContext(
       },
     });
 
-    const hasMore = docs.length > limit;
-    const data = hasMore ? docs.slice(0, limit) : docs;
-    const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
-
-    return success({ data, hasMore, nextCursor });
+    return success(buildCursorPage(docs, limit, (doc) => doc.id));
   },
   {
     permission: 'canVisit',

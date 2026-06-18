@@ -2,6 +2,8 @@
 
 import { decryptOfflinePayload, encryptOfflinePayloadRequired } from '@/lib/offline/crypto';
 import { offlineDb, type OfflineEvidenceDraft } from '@/lib/stores/offline-db';
+import { createFetchTimeout } from '@/lib/utils/abort-timeout';
+import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
 import {
   mergeVisitRecordAttachmentRefs,
   pickSyncableEvidenceDrafts,
@@ -71,6 +73,9 @@ export async function listEvidenceDraftSummaries(): Promise<EvidenceDraftSummary
 }
 
 type EvidenceSyncConfig = { orgId: string };
+const DEFAULT_EVIDENCE_SYNC_FETCH_TIMEOUT_MS = 15_000;
+const MAX_EVIDENCE_SYNC_FETCH_TIMEOUT_MS = 60_000;
+const activeEvidenceSyncRuns = new Map<string, Promise<EvidenceSyncResult>>();
 
 export type EvidenceSyncResult = {
   synced: number;
@@ -78,6 +83,30 @@ export type EvidenceSyncResult = {
   skipped: number;
   failed: number;
 };
+
+function evidenceSyncFetchTimeoutMs() {
+  return normalizePositiveTimeoutMs(process.env.NEXT_PUBLIC_EVIDENCE_SYNC_FETCH_TIMEOUT_MS, {
+    fallbackMs: DEFAULT_EVIDENCE_SYNC_FETCH_TIMEOUT_MS,
+    maxMs: MAX_EVIDENCE_SYNC_FETCH_TIMEOUT_MS,
+  });
+}
+
+async function fetchEvidenceSync(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const abort = createFetchTimeout(
+    evidenceSyncFetchTimeoutMs(),
+    new Error('EVIDENCE_SYNC_TIMEOUT'),
+  );
+  try {
+    return await fetch(input, { ...init, signal: abort.signal });
+  } catch (error) {
+    if (abort.signal.aborted) {
+      throw new Error('証跡写真の同期がタイムアウトしました');
+    }
+    throw error;
+  } finally {
+    abort.clear();
+  }
+}
 
 /**
  * ドラフトの訪問(予定)ID から添付先の訪問記録 ID を解決する。
@@ -88,11 +117,11 @@ async function resolveVisitRecordIdForDraft(
   scheduleId: string,
   headers: Record<string, string>,
 ): Promise<string | null> {
-  const scheduleRes = await fetch(`/api/visit-schedules/${scheduleId}`, { headers });
+  const scheduleRes = await fetchEvidenceSync(`/api/visit-schedules/${scheduleId}`, { headers });
   if (scheduleRes.ok) {
     return resolveScheduleVisitRecordId(await scheduleRes.json().catch(() => null));
   }
-  const recordRes = await fetch(`/api/visit-records/${scheduleId}`, { headers });
+  const recordRes = await fetchEvidenceSync(`/api/visit-records/${scheduleId}`, { headers });
   return recordRes.ok ? scheduleId : null;
 }
 
@@ -104,12 +133,12 @@ async function uploadEvidenceDraft(
 ): Promise<void> {
   const dataUrl = await decryptOfflinePayload(draft.payload);
   if (!dataUrl) throw new Error('写真データを復号できませんでした');
-  const blob = await (await fetch(dataUrl)).blob();
+  const blob = await (await fetchEvidenceSync(dataUrl)).blob();
 
   const jsonHeaders = { 'Content-Type': 'application/json', 'x-org-id': orgId };
 
   // 1. presigned-upload → 2. PUT → 3. complete(p0_31 残薬写真と同じ作法)
-  const presignRes = await fetch('/api/files/presigned-upload', {
+  const presignRes = await fetchEvidenceSync('/api/files/presigned-upload', {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({
@@ -125,14 +154,14 @@ async function uploadEvidenceDraft(
     throw new Error(presignJson?.message ?? 'アップロードURLの取得に失敗しました');
   }
 
-  const uploadRes = await fetch(presignJson.data.uploadUrl, {
+  const uploadRes = await fetchEvidenceSync(presignJson.data.uploadUrl, {
     method: 'PUT',
     headers: presignJson.data.headers,
     body: blob,
   });
   if (!uploadRes.ok) throw new Error('写真のアップロードに失敗しました');
 
-  const completeRes = await fetch('/api/files/complete', {
+  const completeRes = await fetchEvidenceSync('/api/files/complete', {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({
@@ -143,7 +172,7 @@ async function uploadEvidenceDraft(
   if (!completeRes.ok) throw new Error('写真のアップロード確定に失敗しました');
 
   // 4. 訪問記録 attachments へ紐づけ(既存添付とマージ、楽観ロック version 必須)
-  const detailRes = await fetch(`/api/visit-records/${visitRecordId}`, {
+  const detailRes = await fetchEvidenceSync(`/api/visit-records/${visitRecordId}`, {
     headers: { 'x-org-id': orgId },
   });
   const detail = await detailRes.json().catch(() => null);
@@ -151,7 +180,7 @@ async function uploadEvidenceDraft(
     throw new Error('訪問記録の取得に失敗しました');
   }
 
-  const patchRes = await fetch(`/api/visit-records/${visitRecordId}`, {
+  const patchRes = await fetchEvidenceSync(`/api/visit-records/${visitRecordId}`, {
     method: 'PATCH',
     headers: jsonHeaders,
     body: JSON.stringify({
@@ -169,7 +198,7 @@ async function uploadEvidenceDraft(
  * 未同期の写真ドラフトを送信する。訪問記録が未作成の訪問は保留(skipped)とし、
  * 端末上は「未同期」のまま残す。成功したドラフトは削除する。
  */
-export async function syncEvidenceDrafts(config: EvidenceSyncConfig): Promise<EvidenceSyncResult> {
+async function syncEvidenceDraftsOnce(config: EvidenceSyncConfig): Promise<EvidenceSyncResult> {
   const result: EvidenceSyncResult = { synced: 0, skipped: 0, failed: 0 };
   if (typeof window !== 'undefined' && !window.navigator.onLine) return result;
 
@@ -207,11 +236,21 @@ export async function syncEvidenceDrafts(config: EvidenceSyncConfig): Promise<Ev
   return result;
 }
 
+export async function syncEvidenceDrafts(config: EvidenceSyncConfig): Promise<EvidenceSyncResult> {
+  const activeRun = activeEvidenceSyncRuns.get(config.orgId);
+  if (activeRun) return activeRun;
+  const run = syncEvidenceDraftsOnce(config).finally(() => {
+    activeEvidenceSyncRuns.delete(config.orgId);
+  });
+  activeEvidenceSyncRuns.set(config.orgId, run);
+  return run;
+}
+
 /** online 復帰時の自動送信(p0_48「戻ったら自動で送信します」)。teardown を返す。 */
 export function setupEvidenceAutoSync(config: EvidenceSyncConfig): () => void {
   const handler = () => {
-    syncEvidenceDrafts(config).catch(() => {
-      // 失敗しても次回 online 時に再試行する
+    syncEvidenceDrafts(config).catch((error) => {
+      console.warn('[offline-evidence] automatic sync failed', error);
     });
   };
 

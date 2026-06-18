@@ -3,8 +3,12 @@ import { deriveFacilityLabel } from '@/lib/utils/facility';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { formatUtcDateKey } from '@/lib/date-key';
 import { createFacilityBatchPrescriptionIntakeSchema } from '@/lib/validations/prescription';
-import { collectDuplicatePrescriptionLines, collectStructuringBlockedLines } from '../shared';
+import {
+  collectDuplicatePrescriptionLines,
+  collectStructuringBlockedLines,
+} from '@/lib/prescription/intake-validation';
 import { PrescriberInstitutionReferenceValidationError } from '@/lib/prescriptions/prescriber-institutions';
 import {
   createPrescriptionIntakeInTx,
@@ -74,7 +78,7 @@ function normalizeIdentityText(value: string) {
 
 function dateKeyFromDb(value: Date | string | null | undefined) {
   if (!value) return '';
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (value instanceof Date) return formatUtcDateKey(value);
   return String(value).slice(0, 10);
 }
 

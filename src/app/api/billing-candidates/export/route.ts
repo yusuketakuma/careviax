@@ -10,6 +10,7 @@ import {
   resolveClaimsExportConfig,
   type ClaimsExportRecord,
 } from '@/server/adapters/claims-export';
+import { BILLING_DOMAIN_ERROR_MESSAGE, parseOptionalBillingDomain } from '../billing-domain';
 import { BILLING_MONTH_FORMAT_MESSAGE, parseStrictBillingMonth } from '../billing-month';
 
 type ExportFormat = 'csv' | 'claims-xml';
@@ -58,11 +59,6 @@ function csvCell(value: string | number | null | undefined) {
 
 function isSafeFilterId(value: string | null) {
   return !value || /^[A-Za-z0-9_-]{1,80}$/.test(value);
-}
-
-function parseBillingDomain(value: string | null) {
-  if (value === null || value === '') return undefined;
-  return value === 'home_care' || value === 'pca_rental' ? value : null;
 }
 
 function readBillingTargetName(candidate: {
@@ -132,7 +128,7 @@ export const GET = withAuthContext(
     const { searchParams } = new URL(req.url);
     const billingMonth = searchParams.get('billing_month');
     const patientId = searchParams.get('patient_id');
-    const requestedBillingDomain = parseBillingDomain(searchParams.get('billing_domain'));
+    const requestedBillingDomain = parseOptionalBillingDomain(searchParams.get('billing_domain'));
     const exportFormat = parseExportFormat(searchParams.get('format'));
     const preview = parsePreviewMode(searchParams.get('preview'));
 
@@ -144,7 +140,7 @@ export const GET = withAuthContext(
       return validationError('patient_id の形式が不正です');
     }
     if (requestedBillingDomain === null) {
-      return validationError('billing_domain は home_care または pca_rental を指定してください');
+      return validationError(BILLING_DOMAIN_ERROR_MESSAGE);
     }
     if (exportFormat === null) {
       return validationError('format は csv または claims-xml を指定してください');

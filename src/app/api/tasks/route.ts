@@ -6,7 +6,7 @@ import { prisma } from '@/lib/db/client';
 import { isPrismaErrorCode, isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
-import { parsePaginationParams } from '@/lib/api/pagination';
+import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { success, validationError } from '@/lib/api/response';
 import { canCompleteTaskInline } from '@/lib/tasks/inline-completion';
 import { createTaskSchema, taskPriorityValues, taskStatusValues } from '@/lib/validations/task';
@@ -166,10 +166,9 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const hasMore = tasks.length > limit;
-  const data = hasMore ? tasks.slice(0, limit) : tasks;
+  const page = buildCursorPage(tasks, limit, (task) => task.id);
   const assignedUserIds = Array.from(
-    new Set(data.map((task) => task.assigned_to).filter((id): id is string => Boolean(id))),
+    new Set(page.data.map((task) => task.assigned_to).filter((id): id is string => Boolean(id))),
   );
   const assignedUsers =
     assignedUserIds.length === 0
@@ -181,15 +180,15 @@ export async function GET(req: NextRequest) {
   const assignedUserNameById = new Map(assignedUsers.map((user) => [user.id, user.name]));
 
   return success({
-    data: data.map((task) => ({
+    data: page.data.map((task) => ({
       ...task,
       assigned_to_name: task.assigned_to
         ? (assignedUserNameById.get(task.assigned_to) ?? null)
         : null,
       can_complete_inline: canCompleteTaskInline(task),
     })),
-    hasMore,
-    nextCursor: hasMore ? data[data.length - 1]?.id : undefined,
+    hasMore: page.hasMore,
+    nextCursor: page.nextCursor,
   });
 }
 

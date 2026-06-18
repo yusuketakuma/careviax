@@ -4,7 +4,7 @@ import { success, validationError } from '@/lib/api/response';
 import { parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
 import { listDispenseWorkbenchPatients } from '@/server/services/dispense-workbench-patients';
-import type { DispenseWorkbenchPatientsResponse } from '@/app/(dashboard)/dispense/dispense-workbench.shared';
+import type { DispenseWorkbenchPatientsResponse } from '@/lib/dispensing/dispense-workbench-shared';
 
 /**
  * 調剤ワークベンチ左ペイン: 患者中心リスト(計画 §11-2 共通行 / §11-3-1)。

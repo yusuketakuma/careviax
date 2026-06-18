@@ -3,6 +3,7 @@ import { zipSync } from 'fflate';
 import { z } from 'zod';
 import { prisma } from '@/lib/db/client';
 import { hasPermission } from '@/lib/auth/permissions';
+import { mapWithConcurrency } from '@/lib/utils/concurrency';
 import {
   buildVisitScheduleAssignmentWhere,
   canAccessVisitScheduleAssignment,
@@ -155,27 +156,6 @@ async function withSerializableRetry<TValue>(
   }
 
   throw new Error('bulk export transaction could not be completed');
-}
-
-async function mapWithConcurrency<TValue, TResult>(
-  values: TValue[],
-  concurrency: number,
-  mapper: (value: TValue, index: number) => Promise<TResult>,
-) {
-  const results = new Array<TResult>(values.length);
-  let nextIndex = 0;
-
-  async function worker() {
-    while (nextIndex < values.length) {
-      const currentIndex = nextIndex;
-      nextIndex += 1;
-      results[currentIndex] = await mapper(values[currentIndex]!, currentIndex);
-    }
-  }
-
-  await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, () => worker()));
-
-  return results;
 }
 
 type BulkExportAccessDb = Pick<Prisma.TransactionClient, 'careCase' | 'patient' | 'visitSchedule'>;

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { NextRequest } from 'next/server';
 import { success, notFound, validationError, error } from '@/lib/api/response';
+import { parseOptionalIdempotencyKey } from '@/lib/api/idempotency-key';
 import { checkAuthRateLimit } from '@/lib/api/rate-limit';
 import { getClientIp } from '@/lib/api/request-ip';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
@@ -16,7 +17,6 @@ import {
 
 // OTP is intentionally accepted only via the `x-otp` header to keep the secret
 // out of POST body request logs (Sentry breadcrumbs, WAF, Next.js logger).
-const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 const SELF_REPORT_EVENT_SUBJECT = '外部共有ポータルから自己申告を受信';
 
 const createSelfReportSchema = z.object({
@@ -36,18 +36,6 @@ function containsBodyOtp(payload: Record<string, unknown>) {
 function readOptionalText(value: string | undefined) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
-}
-
-function parseOptionalIdempotencyKey(value: string | null) {
-  if (value === null) return { ok: true as const, key: null };
-  const key = value.trim();
-  if (!IDEMPOTENCY_KEY_PATTERN.test(key)) {
-    return {
-      ok: false as const,
-      message: 'Idempotency-Keyが不正です',
-    };
-  }
-  return { ok: true as const, key };
 }
 
 function hashJson(value: unknown) {

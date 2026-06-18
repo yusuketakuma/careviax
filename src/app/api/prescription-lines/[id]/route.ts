@@ -7,6 +7,7 @@ import { success, validationError, notFound, conflict } from '@/lib/api/response
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { formatNullableUtcDateKey } from '@/lib/date-key';
+import { optionalUtcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { buildPrescriptionIntakeAssignmentWhere } from '@/server/services/prescription-access';
 import { dateKeySchema } from '@/lib/validations/date-key';
 import { z } from 'zod';
@@ -33,13 +34,6 @@ const updatePrescriptionLineSchema = z
   .refine((value) => Object.keys(value).some((key) => key !== 'expected_updated_at'), {
     message: '更新する項目を指定してください',
   });
-
-function toDateColumnValue(value: string | null | undefined) {
-  if (value === undefined) return undefined;
-  if (value === null) return null;
-  const [year, month, day] = value.split('-').map((part) => Number.parseInt(part, 10));
-  return new Date(Date.UTC(year, month - 1, day));
-}
 
 function toDateKey(value: Date | null) {
   return formatNullableUtcDateKey(value);
@@ -101,9 +95,11 @@ export const PATCH = withAuthContext<{ id: string }>(
       }
 
       const effectiveStartDate =
-        'start_date' in updates ? toDateColumnValue(updates.start_date) : existing.start_date;
+        'start_date' in updates
+          ? optionalUtcDateFromLocalKey(updates.start_date)
+          : existing.start_date;
       const effectiveEndDate =
-        'end_date' in updates ? toDateColumnValue(updates.end_date) : existing.end_date;
+        'end_date' in updates ? optionalUtcDateFromLocalKey(updates.end_date) : existing.end_date;
       const effectiveStartKey = toDateKey(effectiveStartDate ?? null);
       const effectiveEndKey = toDateKey(effectiveEndDate ?? null);
       if (effectiveStartKey && effectiveEndKey && effectiveStartKey > effectiveEndKey) {
@@ -123,8 +119,9 @@ export const PATCH = withAuthContext<{ id: string }>(
         unit?: string | null;
       } = {};
 
-      if ('start_date' in updates) data.start_date = toDateColumnValue(updates.start_date);
-      if ('end_date' in updates) data.end_date = toDateColumnValue(updates.end_date);
+      if ('start_date' in updates)
+        data.start_date = optionalUtcDateFromLocalKey(updates.start_date);
+      if ('end_date' in updates) data.end_date = optionalUtcDateFromLocalKey(updates.end_date);
       if (updates.days !== undefined) data.days = updates.days;
       if (updates.frequency !== undefined) data.frequency = updates.frequency;
       if (updates.dose !== undefined) data.dose = updates.dose;

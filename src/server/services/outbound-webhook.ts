@@ -9,6 +9,7 @@ import { createHmac } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { readJsonObject } from '@/lib/db/json';
+import { mapWithConcurrency, normalizeConcurrencyLimit } from '@/lib/utils/concurrency';
 import { logger } from '@/lib/utils/logger';
 import { createFetchTimeout } from './fetch-timeout';
 import { readWebhookSigningSecret } from './webhook-secret-encryption';
@@ -110,9 +111,13 @@ type WebhookDeliveryPersistenceClient = {
   webhookDelivery?: WebhookDeliveryStore;
 };
 
+let webhookDeliveryPersistenceClientPromise: Promise<WebhookDeliveryPersistenceClient> | null =
+  null;
+
 const WEBHOOK_RETRY_DELAY_MS = 5 * 60 * 1000;
 const DEFAULT_WEBHOOK_RETRY_LIMIT = 50;
 const MAX_WEBHOOK_RETRY_LIMIT = 100;
+const DEFAULT_WEBHOOK_DISPATCH_CONCURRENCY = 4;
 const DEFAULT_WEBHOOK_RETRY_CONCURRENCY = 4;
 const MAX_WEBHOOK_RETRY_CONCURRENCY = 8;
 const WEBHOOK_MAX_DELIVERY_ATTEMPTS = 8;
@@ -333,8 +338,13 @@ async function loadWebhookRegistrationsForOrg(orgId: string) {
 }
 
 async function loadWebhookDeliveryPersistenceClient() {
-  const { prisma } = await import('@/lib/db/client');
-  return prisma as unknown as WebhookDeliveryPersistenceClient;
+  webhookDeliveryPersistenceClientPromise ??= import('@/lib/db/client')
+    .then(({ prisma }) => prisma as unknown as WebhookDeliveryPersistenceClient)
+    .catch((error: unknown) => {
+      webhookDeliveryPersistenceClientPromise = null;
+      throw error;
+    });
+  return webhookDeliveryPersistenceClientPromise;
 }
 
 function deliveryWhere(registration: WebhookRegistration, payload: WebhookPayload) {
@@ -359,31 +369,10 @@ function normalizeWebhookRetryLimit(value: number | undefined) {
 }
 
 function normalizeWebhookRetryConcurrency(value: number | undefined) {
-  if (value === undefined || !Number.isFinite(value)) return DEFAULT_WEBHOOK_RETRY_CONCURRENCY;
-  const normalized = Math.trunc(value);
-  if (normalized <= 0) return DEFAULT_WEBHOOK_RETRY_CONCURRENCY;
-  return Math.min(normalized, MAX_WEBHOOK_RETRY_CONCURRENCY);
-}
-
-async function mapWithConcurrency<T, R>(
-  items: readonly T[],
-  concurrency: number,
-  mapper: (item: T) => Promise<R>,
-) {
-  const results = new Array<R>(items.length);
-  let nextIndex = 0;
-
-  await Promise.all(
-    Array.from({ length: Math.min(items.length, concurrency) }, async () => {
-      while (nextIndex < items.length) {
-        const index = nextIndex;
-        nextIndex += 1;
-        results[index] = await mapper(items[index]!);
-      }
-    }),
-  );
-
-  return results;
+  return normalizeConcurrencyLimit(value, {
+    defaultValue: DEFAULT_WEBHOOK_RETRY_CONCURRENCY,
+    max: MAX_WEBHOOK_RETRY_CONCURRENCY,
+  });
 }
 
 function readStoredWebhookPayload(record: WebhookDeliveryRetryRecord): WebhookPayload | null {
@@ -816,7 +805,9 @@ export async function dispatchWebhookEvent(
     data,
   };
 
-  return Promise.all(active.map((reg) => dispatchToEndpoint(reg, payload)));
+  return mapWithConcurrency(active, DEFAULT_WEBHOOK_DISPATCH_CONCURRENCY, (registration) =>
+    dispatchToEndpoint(registration, payload),
+  );
 }
 
 export async function dispatchWebhookEventForOrg(

@@ -77,6 +77,10 @@ describe('/api/community-activities', () => {
 
     expect(response.status).toBe(200);
     expect(communityActivityFindManyMock).toHaveBeenCalled();
+    expect(communityActivityFindManyMock.mock.calls[0]?.[0].orderBy).toEqual([
+      { activity_date: 'desc' },
+      { id: 'desc' },
+    ]);
   });
 
   it('creates a community activity record', async () => {

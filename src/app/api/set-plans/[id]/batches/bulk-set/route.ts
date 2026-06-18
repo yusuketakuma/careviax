@@ -8,7 +8,7 @@ import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import {
   buildSetBatchHistorySnapshot,
   createSetBatchChangeLog,
-} from '@/lib/prescription/set-batch-history';
+} from '@/lib/dispensing/set-batch-history';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { buildSetPlanAssignmentWhere } from '@/server/services/prescription-access';
 import { z } from 'zod';

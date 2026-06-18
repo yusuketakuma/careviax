@@ -2,7 +2,7 @@ import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { success, validationError } from '@/lib/api/response';
-import { parsePaginationParams } from '@/lib/api/pagination';
+import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { z } from 'zod';
@@ -105,7 +105,7 @@ export const GET = withAuthContext(
       where,
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      orderBy: { created_at: 'desc' },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       select: {
         id: true,
         org_id: true,
@@ -123,8 +123,8 @@ export const GET = withAuthContext(
       },
     });
 
-    const hasMore = reports.length > limit;
-    const rawData = hasMore ? reports.slice(0, limit) : reports;
+    const page = buildCursorPage(reports, limit, (report) => report.id);
+    const rawData = page.data;
 
     const patientIds = [...new Set(rawData.map((r) => r.patient_id))];
     const patients = await prisma.patient.findMany({
@@ -137,9 +137,7 @@ export const GET = withAuthContext(
       ...r,
       patient_name: patientNameById.get(r.patient_id) ?? null,
     }));
-    const nextCursor = hasMore ? rawData[rawData.length - 1]?.id : undefined;
-
-    return success({ data, hasMore, nextCursor });
+    return success({ data, hasMore: page.hasMore, nextCursor: page.nextCursor });
   },
   {
     permission: 'canReport',

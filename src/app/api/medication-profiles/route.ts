@@ -1,7 +1,7 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { notFound, success, validationError } from '@/lib/api/response';
-import { parsePaginationParams } from '@/lib/api/pagination';
+import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { createMedicationProfileSchema } from '@/lib/validations/medication';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { prisma } from '@/lib/db/client';
@@ -44,7 +44,7 @@ export const GET = withAuthContext(
       where,
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      orderBy: { created_at: 'desc' },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       select: {
         id: true,
         org_id: true,
@@ -63,11 +63,7 @@ export const GET = withAuthContext(
       },
     });
 
-    const hasMore = profiles.length > limit;
-    const data = hasMore ? profiles.slice(0, limit) : profiles;
-    const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
-
-    return success({ data, hasMore, nextCursor });
+    return success(buildCursorPage(profiles, limit, (profile) => profile.id));
   },
   {
     permission: 'canVisit',

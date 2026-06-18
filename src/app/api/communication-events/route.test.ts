@@ -154,6 +154,10 @@ describe('/api/communication-events', () => {
       }),
     );
     expect(communicationEventFindManyMock.mock.calls[0][0].where).not.toHaveProperty('AND');
+    expect(communicationEventFindManyMock.mock.calls[0][0].orderBy).toEqual([
+      { occurred_at: 'desc' },
+      { id: 'desc' },
+    ]);
     expect(communicationEventFindManyMock.mock.calls[0][0].select).toMatchObject({
       attachments: true,
     });

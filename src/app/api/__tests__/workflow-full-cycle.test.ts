@@ -813,6 +813,9 @@ function buildTx(state: TestState) {
       ),
       findMany: vi.fn(async () => state.dispenseResults),
     },
+    drugMaster: {
+      findMany: vi.fn(async () => []),
+    },
     membership: {
       findFirst: vi.fn(async () => ({ id: 'membership_admin' })),
       findMany: vi.fn(async () => [{ user_id: 'auditor_1' }]),
@@ -1349,6 +1352,8 @@ describe('workflow full-cycle integration', () => {
             actual_drug_name: 'アムロジピン錠5mg',
             actual_drug_code: '111',
             actual_quantity: 14,
+            actual_quantity_confirmed: true,
+            actual_quantity_source: 'prescription_quantity_confirmed',
             actual_unit: '錠',
             carry_type: 'carry',
           },

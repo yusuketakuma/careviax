@@ -444,6 +444,36 @@ describe('/api/visit-schedule-proposals', () => {
     );
   });
 
+  it('filters proposals for global search without changing the unbounded list default', async () => {
+    await GET(
+      createRequest(
+        'http://localhost/api/visit-schedule-proposals?q=田中&status=patient_contact_pending&pharmacist_id=user_2&limit=8',
+      ),
+    );
+
+    expect(visitScheduleProposalFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          case_: {
+            is: {
+              patient: {
+                is: {
+                  name: {
+                    contains: '田中',
+                    mode: 'insensitive',
+                  },
+                },
+              },
+            },
+          },
+          proposal_status: 'patient_contact_pending',
+          proposed_pharmacist_id: 'user_2',
+        }),
+        take: 8,
+      }),
+    );
+  });
+
   it('rejects unsupported status filters before querying proposals', async () => {
     const response = (await GET(
       createRequest('http://localhost/api/visit-schedule-proposals?status=unknown'),
@@ -453,6 +483,20 @@ describe('/api/visit-schedule-proposals', () => {
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'status が不正です',
+    });
+    expect(visitScheduleProposalFindManyMock).not.toHaveBeenCalled();
+    expect(userFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid proposal search limits before querying proposals', async () => {
+    const response = (await GET(
+      createRequest('http://localhost/api/visit-schedule-proposals?limit=200'),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'limit は 1〜50 の整数で指定してください',
     });
     expect(visitScheduleProposalFindManyMock).not.toHaveBeenCalled();
     expect(userFindManyMock).not.toHaveBeenCalled();

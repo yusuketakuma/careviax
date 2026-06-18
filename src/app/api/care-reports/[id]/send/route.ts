@@ -3,6 +3,7 @@ import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { Prisma, type MemberRole } from '@prisma/client';
 import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { parseOptionalIdempotencyKey } from '@/lib/api/idempotency-key';
 import { withOrgContext } from '@/lib/db/rls';
 import {
   conflict,
@@ -56,7 +57,6 @@ function maskRecipientContact(channel: string, contact: string) {
 const EMAIL_DELIVERY_FAILURE_REASON = 'メール送信に失敗しました';
 const STALE_DRAFT_DELIVERY_MS = 10 * 60 * 1000;
 const STALE_SEND_REQUEST_MS = 10 * 60 * 1000;
-const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 
 type SendRecipient = {
   channel: 'email' | 'fax' | 'phone' | 'in_person' | 'postal' | 'ses' | 'ph_os_share';
@@ -128,18 +128,6 @@ function resolveCareReportIdempotencyHashSecret() {
 function keyedHashJson(value: unknown) {
   const secret = resolveCareReportIdempotencyHashSecret();
   return createHmac('sha256', secret).update(JSON.stringify(value)).digest('hex');
-}
-
-function parseOptionalIdempotencyKey(value: string | null) {
-  if (value === null) return { ok: true as const, key: null };
-  const key = value.trim();
-  if (!IDEMPOTENCY_KEY_PATTERN.test(key)) {
-    return {
-      ok: false as const,
-      message: 'Idempotency-Keyが不正です',
-    };
-  }
-  return { ok: true as const, key };
 }
 
 function buildCareReportSendIdempotencyKeyHash(args: { reportId: string; idempotencyKey: string }) {

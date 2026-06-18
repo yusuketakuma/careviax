@@ -108,6 +108,7 @@ describe('/api/medication-profiles', () => {
     });
     expect(medicationProfileFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
         where: expect.objectContaining({
           org_id: 'org_1',
           patient_id: 'patient_1',

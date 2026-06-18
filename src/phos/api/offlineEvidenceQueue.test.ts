@@ -3,6 +3,7 @@
 import 'fake-indexeddb/auto';
 
 import { webcrypto } from 'node:crypto';
+import { waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearOfflineEncryptionKey,
@@ -309,6 +310,56 @@ describe('PH-OS offline evidence queue', () => {
       client_version: 7,
       payload: { evidence_key: 'evidence_1' },
     });
+    expect(await phosOfflineEvidenceDb.pendingEvidence.count()).toBe(0);
+  });
+
+  it('single-flights concurrent offline evidence upload replays against the shared queue', async () => {
+    await enqueuePhosOfflineEvidence({
+      card_id: 'card_1',
+      packet_id: 'packet_1',
+      evidence_key: 'singleflight_photo',
+      label: '同時再送写真',
+      evidence_type: 'PHOTO',
+      file_name: 'singleflight.jpg',
+      mime_type: 'image/jpeg',
+      sha256: 'g'.repeat(64),
+      offline_op_class: 'NON_BLOCKING',
+      file: new Blob([new Uint8Array([1, 2])], { type: 'image/jpeg' }),
+    });
+
+    let resolveUpload!: (value: Response) => void;
+    const client = retryClient();
+    const fetchImpl = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveUpload = resolve;
+        }),
+    ) as unknown as typeof fetch;
+
+    const first = retryPhosOfflineEvidenceUploads({ client, fetchImpl });
+    const second = retryPhosOfflineEvidenceUploads({
+      client: retryClient(),
+      fetchImpl: vi.fn<typeof fetch>(async () => new Response(null, { status: 200 })),
+    });
+
+    await waitFor(() => {
+      expect(client.presignEvidenceUpload).toHaveBeenCalledTimes(1);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+    });
+
+    resolveUpload(new Response(null, { status: 200 }));
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      {
+        synced: 1,
+        failed: 0,
+        verified_visits: [expect.objectContaining({ packet_id: 'packet_1', server_version: 8 })],
+      },
+      {
+        synced: 1,
+        failed: 0,
+        verified_visits: [expect.objectContaining({ packet_id: 'packet_1', server_version: 8 })],
+      },
+    ]);
     expect(await phosOfflineEvidenceDb.pendingEvidence.count()).toBe(0);
   });
 

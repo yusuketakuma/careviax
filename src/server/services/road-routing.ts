@@ -1,18 +1,26 @@
 import { readJsonResponseBody } from '@/lib/api/response-body';
 import { readJsonObject } from '@/lib/db/json';
+import { mapWithConcurrency, normalizeConcurrencyLimit } from '@/lib/utils/concurrency';
 import { normalizePositiveTimeoutMs } from '@/lib/utils/timeout';
 import { createFetchTimeout } from './fetch-timeout';
 
-type RoutePoint = {
+export type RoutePoint = {
   lat: number | null;
   lng: number | null;
 };
 
 export type RouteTravelMode = 'DRIVE' | 'BICYCLE' | 'WALK' | 'TWO_WHEELER';
 
-type TravelEstimate = {
+export type TravelEstimate = {
   durationMinutes: number;
   distanceKm: number;
+};
+
+export type TravelEstimateMatrix = Array<Array<TravelEstimate | null>>;
+
+export type RoadTravelEstimator = {
+  (from: RoutePoint, to: RoutePoint): Promise<TravelEstimate | null>;
+  estimateMatrix(points: RoutePoint[]): Promise<TravelEstimateMatrix | null>;
 };
 
 function readFiniteNumber(value: unknown) {
@@ -25,6 +33,47 @@ function readMatrixCell(payload: unknown, key: 'durations' | 'distances') {
   const row = object[key][0];
   if (!Array.isArray(row)) return null;
   return readFiniteNumber(row[0]);
+}
+
+function readNumericMatrix(payload: unknown, key: 'durations' | 'distances', size: number) {
+  const object = readJsonObject(payload);
+  if (!object || !Array.isArray(object[key]) || object[key].length !== size) return null;
+
+  const matrix: Array<Array<number | null>> = [];
+  for (const row of object[key]) {
+    if (!Array.isArray(row) || row.length !== size) return null;
+    const normalizedRow: Array<number | null> = [];
+    for (const value of row) {
+      if (value === null) {
+        normalizedRow.push(null);
+        continue;
+      }
+      const numericValue = readFiniteNumber(value);
+      if (numericValue === null) return null;
+      normalizedRow.push(numericValue);
+    }
+    matrix.push(normalizedRow);
+  }
+
+  return matrix;
+}
+
+function readOsrmTravelEstimateMatrix(payload: unknown, size: number): TravelEstimateMatrix | null {
+  const durations = readNumericMatrix(payload, 'durations', size);
+  if (!durations) return null;
+  const distances = readNumericMatrix(payload, 'distances', size);
+  if (!distances) return null;
+
+  return durations.map((row, rowIndex) =>
+    row.map((durationSeconds, columnIndex) => {
+      if (durationSeconds === null) return null;
+      const distanceMeters = distances[rowIndex]?.[columnIndex] ?? null;
+      return {
+        durationMinutes: durationSeconds / 60,
+        distanceKm: distanceMeters === null ? Number.NaN : distanceMeters / 1000,
+      };
+    }),
+  );
 }
 
 function parseGoogleDurationSeconds(value: unknown) {
@@ -56,11 +105,37 @@ export interface RoutingProvider {
     to: RoutePoint,
     travelMode: RouteTravelMode,
   ): Promise<TravelEstimate | null>;
+  estimateMatrix?(
+    points: RoutePoint[],
+    travelMode: RouteTravelMode,
+  ): Promise<TravelEstimateMatrix | null>;
 }
 
 // ─── OSRM Provider ────────────────────────────────────────────────────────────
 
 const DEFAULT_TIMEOUT_MS = 1500;
+const DEFAULT_MATRIX_PAIR_CONCURRENCY = 8;
+const MAX_MATRIX_PAIR_CONCURRENCY = 16;
+const DEFAULT_MAX_MATRIX_PAIR_FALLBACKS = 64;
+const MAX_MATRIX_PAIR_FALLBACKS = 256;
+
+function normalizeMatrixPairConcurrency(value: unknown) {
+  return normalizeConcurrencyLimit(value, {
+    defaultValue: DEFAULT_MATRIX_PAIR_CONCURRENCY,
+    max: MAX_MATRIX_PAIR_CONCURRENCY,
+  });
+}
+
+function normalizeMaxMatrixPairFallbacks(value: unknown) {
+  return normalizeConcurrencyLimit(value, {
+    defaultValue: DEFAULT_MAX_MATRIX_PAIR_FALLBACKS,
+    max: MAX_MATRIX_PAIR_FALLBACKS,
+  });
+}
+
+function createEmptyTravelEstimateMatrix(size: number): TravelEstimateMatrix {
+  return Array.from({ length: size }, () => new Array<TravelEstimate | null>(size).fill(null));
+}
 
 class OsrmProvider implements RoutingProvider {
   private readonly baseUrl: string;
@@ -114,6 +189,38 @@ class OsrmProvider implements RoutingProvider {
         durationMinutes: durationSeconds / 60,
         distanceKm: distanceMeters === null ? Number.NaN : distanceMeters / 1000,
       };
+    } catch {
+      return null;
+    } finally {
+      abort.clear();
+    }
+  }
+
+  async estimateMatrix(
+    points: RoutePoint[],
+    travelMode: RouteTravelMode,
+  ): Promise<TravelEstimateMatrix | null> {
+    if (points.length === 0) return [];
+    if (points.some((point) => point.lat == null || point.lng == null)) return null;
+
+    const profile =
+      travelMode === 'BICYCLE' ? 'cycling' : travelMode === 'WALK' ? 'foot' : this.profile;
+    const coordinates = points.map((point) => `${point.lng},${point.lat}`).join(';');
+    const url = new URL(`/table/v1/${profile}/${coordinates}`, this.baseUrl);
+    url.searchParams.set('annotations', 'distance,duration');
+
+    const abort = createFetchTimeout(this.timeoutMs);
+
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        signal: abort.signal,
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      });
+      if (!response.ok) return null;
+
+      return readOsrmTravelEstimateMatrix(await readJsonResponseBody(response), points.length);
     } catch {
       return null;
     } finally {
@@ -200,11 +307,16 @@ function createProvider(): RoutingProvider | null {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-export function createRoadTravelEstimator(travelMode: RouteTravelMode = 'DRIVE') {
+export function createRoadTravelEstimator(
+  travelMode: RouteTravelMode = 'DRIVE',
+): RoadTravelEstimator {
   const cache = new Map<string, Promise<TravelEstimate | null>>();
   const provider = createProvider();
 
-  return async (from: RoutePoint, to: RoutePoint): Promise<TravelEstimate | null> => {
+  const estimateTravel = (async (
+    from: RoutePoint,
+    to: RoutePoint,
+  ): Promise<TravelEstimate | null> => {
     if (!provider) return null;
 
     const key = `${travelMode}:${from.lat ?? 'na'}:${from.lng ?? 'na'}=>${to.lat ?? 'na'}:${to.lng ?? 'na'}`;
@@ -214,5 +326,38 @@ export function createRoadTravelEstimator(travelMode: RouteTravelMode = 'DRIVE')
     const estimatePromise = provider.estimate(from, to, travelMode);
     cache.set(key, estimatePromise);
     return estimatePromise;
+  }) as RoadTravelEstimator;
+
+  estimateTravel.estimateMatrix = async (points: RoutePoint[]) => {
+    if (!provider) return null;
+    const providerMatrix = await provider.estimateMatrix?.(points, travelMode);
+    if (providerMatrix) return providerMatrix;
+
+    const pairCount = Math.max(0, points.length * (points.length - 1));
+    if (
+      pairCount > normalizeMaxMatrixPairFallbacks(process.env.ROUTING_API_MAX_MATRIX_PAIR_FALLBACKS)
+    ) {
+      return createEmptyTravelEstimateMatrix(points.length);
+    }
+
+    const matrix = createEmptyTravelEstimateMatrix(points.length);
+    const pairs: Array<{ i: number; j: number }> = [];
+    for (let i = 0; i < points.length; i += 1) {
+      for (let j = 0; j < points.length; j += 1) {
+        if (i !== j) pairs.push({ i, j });
+      }
+    }
+
+    await mapWithConcurrency(
+      pairs,
+      normalizeMatrixPairConcurrency(process.env.ROUTING_API_CONCURRENCY),
+      async ({ i, j }) => {
+        matrix[i][j] = await estimateTravel(points[i]!, points[j]!);
+      },
+    );
+
+    return matrix;
   };
+
+  return estimateTravel;
 }

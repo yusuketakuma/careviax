@@ -10,8 +10,8 @@ import {
   buildSetBatchHistorySnapshot,
   collectChangedLineIds,
   createSetBatchChangeLog,
-} from '@/lib/prescription/set-batch-history';
-import { buildSetPlanPackagingSummary } from '@/lib/prescription/set-plan-packaging';
+} from '@/lib/dispensing/set-batch-history';
+import { buildSetPlanPackagingSummary } from '@/lib/dispensing/set-plan-packaging';
 import {
   collectNarcoticCandidateYjCode,
   handlingTagsWithMasterNarcotic,
@@ -21,7 +21,7 @@ import {
   resolvePackagingSettings,
   type PackagingInstructionTagValue,
   type PackagingMethodValue,
-} from '@/lib/prescription/packaging';
+} from '@/lib/dispensing/packaging';
 import { parseFrequencyToSlots } from '@/lib/dispensing/packaging-group';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { buildSetPlanAssignmentWhere } from '@/server/services/prescription-access';

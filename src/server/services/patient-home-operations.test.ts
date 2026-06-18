@@ -485,8 +485,9 @@ describe('getPatientHomeOperationsData', () => {
         }),
       }),
     );
-    expect(vi.mocked(db.billingCandidate.findMany).mock.calls[0]?.[0]).not.toHaveProperty('take');
+    expect(vi.mocked(db.billingCandidate.findMany).mock.calls[0]?.[0]).toHaveProperty('take', 36);
     expect(vi.mocked(db.conferenceNote.findMany).mock.calls[0]?.[0]).toHaveProperty('take', 16);
+    expect(db.visitRecord.findMany).not.toHaveBeenCalled();
     expect(db.careReport.findMany).toHaveBeenCalledWith({
       where: {
         org_id: 'org_1',
@@ -503,6 +504,58 @@ describe('getPatientHomeOperationsData', () => {
         },
       },
     });
+  });
+
+  it('bounds billing candidate rows while keeping open and excluded counts exact when count is available', async () => {
+    const count = vi.fn().mockResolvedValueOnce(42).mockResolvedValueOnce(3);
+    const db = createDb({
+      billingCandidate: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'candidate_latest',
+            billing_month: new Date('2026-06-01T00:00:00.000Z'),
+            billing_name: '居宅療養管理指導',
+            points: 518,
+            status: 'candidate',
+            exclusion_reason: null,
+            calculation_breakdown: null,
+            updated_at: new Date('2026-06-10T00:00:00.000Z'),
+          },
+        ]),
+        count,
+      },
+    });
+
+    const result = await getPatientHomeOperationsData(db as never, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    const billingItem = result?.items.find((item) => item.key === 'billing');
+    expect(billingItem).toMatchObject({
+      status: '確認待ち',
+      alerts: expect.arrayContaining([
+        '未処理の算定候補が42件あります',
+        '除外・ブロック中の算定候補が3件あります',
+      ]),
+      metrics: expect.arrayContaining([
+        { label: '算定候補', value: '42件' },
+        { label: 'ブロック', value: '3件' },
+      ]),
+    });
+    expect(vi.mocked(db.billingCandidate.findMany).mock.calls[0]?.[0]).toHaveProperty('take', 36);
+    expect(count).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({ status: { in: ['candidate', 'confirmed'] } }),
+      }),
+    );
+    expect(count).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ where: expect.objectContaining({ status: 'excluded' }) }),
+    );
   });
 
   it('raises conference report delivery alerts when generated drafts still need sending or failed', async () => {

@@ -118,6 +118,10 @@ describe('/api/notifications GET', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(findManyMock).toHaveBeenCalledOnce();
+    expect(findManyMock.mock.calls[0]?.[0].orderBy).toEqual([
+      { created_at: 'desc' },
+      { id: 'desc' },
+    ]);
   });
 
   it('returns only unread count for header summary requests', async () => {

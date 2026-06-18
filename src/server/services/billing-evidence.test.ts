@@ -16,7 +16,7 @@ const {
   resolveOperationalTasksMock: vi.fn(),
 }));
 
-vi.mock('./home-care-billing-ssot', () => ({
+vi.mock('./billing-rules', () => ({
   ensureHomeCareBillingSsot: ensureHomeCareBillingSsotMock,
   buildBillingCandidateSpecs: buildBillingCandidateSpecsMock,
   HOME_CARE_BILLING_RULESET_VERSION: 'home-care-ssot-registry-v2',

@@ -9,7 +9,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import {
   ensureHomeCareBillingSsot,
   getHomeCareBillingSsotSummary,
-} from '@/server/services/home-care-billing-ssot';
+} from '@/server/services/billing-rules';
 
 const payerBasisSchema = z.enum(['medical', 'care', 'self_pay', 'non_billable']);
 const ruleTypeSchema = z.enum(['base', 'addition', 'regional_addition', 'reduction']);

@@ -6,6 +6,7 @@ import { parseJsonOrNull, readJsonObject } from '@/lib/db/json';
 import { offlineDb, type OfflineSyncQueue } from './offline-db';
 
 const MAX_RETRIES = 3;
+const activeSyncQueueRuns = new Map<string, Promise<{ synced: number; failed: number }>>();
 
 type SyncConfig = {
   orgId: string;
@@ -196,7 +197,16 @@ async function readSyncConflictPayload(payload: string | null | undefined) {
  * Process all pending items in the sync queue.
  * Called when the browser comes back online.
  */
-export async function processSyncQueue(config: SyncConfig): Promise<{
+function syncConfigKey(config: SyncConfig) {
+  return JSON.stringify({
+    orgId: config.orgId,
+    endpoints: Object.keys(config.endpoints)
+      .sort()
+      .map((key) => [key, config.endpoints[key]]),
+  });
+}
+
+async function processSyncQueueOnce(config: SyncConfig): Promise<{
   synced: number;
   failed: number;
 }> {
@@ -276,6 +286,21 @@ export async function processSyncQueue(config: SyncConfig): Promise<{
   }
 
   return { synced, failed };
+}
+
+export async function processSyncQueue(config: SyncConfig): Promise<{
+  synced: number;
+  failed: number;
+}> {
+  const key = syncConfigKey(config);
+  const activeRun = activeSyncQueueRuns.get(key);
+  if (activeRun) return activeRun;
+
+  const run = processSyncQueueOnce(config).finally(() => {
+    activeSyncQueueRuns.delete(key);
+  });
+  activeSyncQueueRuns.set(key, run);
+  return run;
 }
 
 /**
@@ -451,8 +476,8 @@ export async function overwriteVisitRecordConflict(
  */
 export function setupAutoSync(config: SyncConfig): () => void {
   const handler = () => {
-    processSyncQueue(config).catch(() => {
-      // Silently fail — will retry next time
+    processSyncQueue(config).catch((error) => {
+      console.warn('[offline-sync] automatic sync failed', error);
     });
   };
 

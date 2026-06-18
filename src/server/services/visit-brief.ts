@@ -1,6 +1,7 @@
 import type { Prisma, MemberRole } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { isoOrNull } from '@/lib/utils/date';
+import { mapWithConcurrency, normalizeConcurrencyLimit } from '@/lib/utils/concurrency';
 import { normalizeJsonInput, readJsonObject } from '@/lib/db/json';
 import { formatDateKey } from '@/lib/date-key';
 import { detectMedicationChanges as detectChangesShared } from '@/lib/prescription/medication-diff';
@@ -15,7 +16,7 @@ import { generateVisitBriefAiSummary } from '@/server/services/visit-brief-ai';
 import { buildPatientStateSnapshot } from '@/server/services/patient-state-snapshot';
 import { diffPatientStateSnapshots } from '@/server/services/visit-brief-patient-diff';
 import { getHomeVisitIntake, buildBaselineContext } from '@/lib/patient/home-visit-intake';
-import { SET_METHOD_LABELS } from '@/lib/prescription/set-methods';
+import { SET_METHOD_LABELS } from '@/lib/dispensing/set-methods';
 import { readJahisSupplementalDetails } from '@/lib/pharmacy/jahis-supplemental-records-view';
 import type {
   VisitBrief,
@@ -1710,29 +1711,10 @@ export async function getScheduleVisitBrief(
 }
 
 function getVisitBriefBatchConcurrency() {
-  const value = Number(process.env.VISIT_BRIEF_BATCH_CONCURRENCY ?? 4);
-  if (!Number.isFinite(value)) return 4;
-  return Math.min(Math.max(Math.trunc(value), 1), 8);
-}
-
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  concurrency: number,
-  mapper: (item: T) => Promise<R>,
-) {
-  const results = new Array<R>(items.length);
-  let nextIndex = 0;
-
-  async function worker() {
-    while (nextIndex < items.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      results[index] = await mapper(items[index]);
-    }
-  }
-
-  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()));
-  return results;
+  return normalizeConcurrencyLimit(process.env.VISIT_BRIEF_BATCH_CONCURRENCY, {
+    defaultValue: 4,
+    max: 8,
+  });
 }
 
 export async function getScheduleVisitBriefsForPatients(

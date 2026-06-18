@@ -5,6 +5,7 @@ const {
   careCaseFindManyMock,
   patientInsuranceFindManyMock,
   prescriptionIntakeFindFirstMock,
+  prescriptionIntakeFindManyMock,
   visitScheduleFindManyMock,
   visitScheduleCountMock,
   userFindFirstMock,
@@ -14,6 +15,7 @@ const {
   pharmacySiteInsuranceConfigFindFirstMock,
   resolvePatientInsuranceMock,
   findLatestPrescriptionIntakeClassificationMock,
+  findLatestPrescriptionIntakeClassificationsByCaseIdsMock,
   validateBillingRequirementsMock,
   getBillingCadencePreviewMock,
   resolveBillingRuntimeContextMock,
@@ -22,6 +24,7 @@ const {
   careCaseFindManyMock: vi.fn(),
   patientInsuranceFindManyMock: vi.fn(),
   prescriptionIntakeFindFirstMock: vi.fn(),
+  prescriptionIntakeFindManyMock: vi.fn(),
   visitScheduleFindManyMock: vi.fn(),
   visitScheduleCountMock: vi.fn(),
   userFindFirstMock: vi.fn(),
@@ -31,6 +34,7 @@ const {
   pharmacySiteInsuranceConfigFindFirstMock: vi.fn(),
   resolvePatientInsuranceMock: vi.fn(),
   findLatestPrescriptionIntakeClassificationMock: vi.fn(),
+  findLatestPrescriptionIntakeClassificationsByCaseIdsMock: vi.fn(),
   validateBillingRequirementsMock: vi.fn(),
   getBillingCadencePreviewMock: vi.fn(),
   resolveBillingRuntimeContextMock: vi.fn(),
@@ -48,6 +52,7 @@ vi.mock('@/lib/db/client', () => ({
     },
     prescriptionIntake: {
       findFirst: prescriptionIntakeFindFirstMock,
+      findMany: prescriptionIntakeFindManyMock,
     },
     visitSchedule: {
       findMany: visitScheduleFindManyMock,
@@ -75,6 +80,8 @@ vi.mock('./patient-insurance', () => ({
 
 vi.mock('./prescription-intake-classification', () => ({
   findLatestPrescriptionIntakeClassification: findLatestPrescriptionIntakeClassificationMock,
+  findLatestPrescriptionIntakeClassificationsByCaseIds:
+    findLatestPrescriptionIntakeClassificationsByCaseIdsMock,
 }));
 
 vi.mock('./billing-requirement-validator', () => ({
@@ -90,6 +97,20 @@ import {
   buildVisitScheduleBillingPreview,
   buildVisitScheduleBillingPreviewBatch,
 } from './visit-schedule-billing-preview';
+
+async function waitForAsyncAssertion(assertion: () => void) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    try {
+      assertion();
+      return;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+  throw lastError;
+}
 
 function makeInsuranceRecord(overrides: Record<string, unknown> = {}) {
   return {
@@ -137,7 +158,19 @@ describe('buildVisitScheduleBillingPreview', () => {
     ]);
     findLatestPrescriptionIntakeClassificationMock.mockResolvedValue({
       prescription_category: 'regular',
+      emergency_category: null,
     });
+    findLatestPrescriptionIntakeClassificationsByCaseIdsMock.mockResolvedValue(
+      new Map([
+        [
+          'case_1',
+          {
+            prescription_category: 'regular',
+            emergency_category: null,
+          },
+        ],
+      ]),
+    );
     resolvePatientInsuranceMock.mockImplementation(
       (_prisma: unknown, args: { type: 'medical' | 'care' }) => {
         if (args.type === 'medical') {
@@ -319,7 +352,15 @@ describe('buildVisitScheduleBillingPreview', () => {
         },
       },
     });
-    expect(findLatestPrescriptionIntakeClassificationMock).toHaveBeenCalledTimes(1);
+    expect(findLatestPrescriptionIntakeClassificationsByCaseIdsMock).toHaveBeenCalledTimes(1);
+    expect(findLatestPrescriptionIntakeClassificationsByCaseIdsMock).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        orgId: 'org_1',
+        caseIds: ['case_1'],
+      },
+    );
+    expect(findLatestPrescriptionIntakeClassificationMock).not.toHaveBeenCalled();
     expect(resolveBillingRuntimeContextMock).toHaveBeenCalledTimes(1);
     expect(validateBillingRequirementsMock).toHaveBeenCalledTimes(1);
     expect(validateBillingRequirementsMock).toHaveBeenCalledWith(
@@ -374,7 +415,15 @@ describe('buildVisitScheduleBillingPreview', () => {
 
     expect(careCaseFindManyMock).toHaveBeenCalledTimes(1);
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
-    expect(findLatestPrescriptionIntakeClassificationMock).toHaveBeenCalledTimes(1);
+    expect(findLatestPrescriptionIntakeClassificationsByCaseIdsMock).toHaveBeenCalledTimes(1);
+    expect(findLatestPrescriptionIntakeClassificationsByCaseIdsMock).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        orgId: 'org_1',
+        caseIds: ['case_1'],
+      },
+    );
+    expect(findLatestPrescriptionIntakeClassificationMock).not.toHaveBeenCalled();
     expect(patientInsuranceFindManyMock).toHaveBeenCalledTimes(1);
     expect(patientInsuranceFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -508,7 +557,15 @@ describe('buildVisitScheduleBillingPreview', () => {
       'org_1',
     );
 
-    expect(findLatestPrescriptionIntakeClassificationMock).toHaveBeenCalledTimes(2);
+    expect(findLatestPrescriptionIntakeClassificationsByCaseIdsMock).toHaveBeenCalledTimes(1);
+    expect(findLatestPrescriptionIntakeClassificationsByCaseIdsMock).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        orgId: 'org_1',
+        caseIds: ['case_1', 'case_2'],
+      },
+    );
+    expect(findLatestPrescriptionIntakeClassificationMock).not.toHaveBeenCalled();
     expect(patientInsuranceFindManyMock).toHaveBeenCalledTimes(1);
     expect(resolveBillingRuntimeContextMock).toHaveBeenCalledTimes(1);
     expect(resolveBillingRuntimeContextMock).toHaveBeenCalledWith(
@@ -874,5 +931,97 @@ describe('buildVisitScheduleBillingPreview', () => {
       current: { id: 'plan_1', status: 'approved' },
       reviewOverdue: true,
     });
+  });
+
+  it('bounds concurrent batch preview validation work', async () => {
+    const originalConcurrency = process.env.BILLING_PREVIEW_BATCH_CONCURRENCY;
+    process.env.BILLING_PREVIEW_BATCH_CONCURRENCY = '2';
+    careCaseFindManyMock.mockResolvedValue(
+      Array.from({ length: 4 }, (_, index) => ({
+        id: `case_${index + 1}`,
+        patient_id: `patient_${index + 1}`,
+        primary_pharmacist_id: 'pharm_1',
+        required_visit_support: null,
+        patient: {
+          id: `patient_${index + 1}`,
+        },
+      })),
+    );
+    findLatestPrescriptionIntakeClassificationsByCaseIdsMock.mockResolvedValue(
+      new Map(
+        Array.from({ length: 4 }, (_, index) => [
+          `case_${index + 1}`,
+          {
+            prescription_category: 'regular',
+            emergency_category: null,
+          },
+        ]),
+      ),
+    );
+    patientInsuranceFindManyMock.mockResolvedValue(
+      Array.from({ length: 4 }, (_, index) =>
+        makeInsuranceRecord({
+          id: `insurance_${index + 1}`,
+          patient_id: `patient_${index + 1}`,
+          insurance_type: 'medical',
+        }),
+      ),
+    );
+    let activeValidations = 0;
+    let maxActiveValidations = 0;
+    const pendingValidations: Array<() => void> = [];
+    validateBillingRequirementsMock.mockImplementation(
+      async () =>
+        new Promise<[]>((resolve) => {
+          activeValidations += 1;
+          maxActiveValidations = Math.max(maxActiveValidations, activeValidations);
+          pendingValidations.push(() => {
+            activeValidations -= 1;
+            resolve([]);
+          });
+        }),
+    );
+
+    try {
+      const run = buildVisitScheduleBillingPreviewBatch(
+        Array.from({ length: 4 }, (_, index) => ({
+          key: `proposal_${index + 1}`,
+          caseId: `case_${index + 1}`,
+          proposedDate: '2026-04-03',
+          pharmacistId: 'pharm_1',
+          siteId: 'site_1',
+          visitType: 'regular',
+        })),
+        'org_1',
+      );
+
+      await waitForAsyncAssertion(() => {
+        expect(pendingValidations).toHaveLength(2);
+      });
+      expect(maxActiveValidations).toBe(2);
+
+      pendingValidations.splice(0).forEach((release) => release());
+      await waitForAsyncAssertion(() => {
+        expect(pendingValidations).toHaveLength(2);
+      });
+      expect(maxActiveValidations).toBe(2);
+
+      pendingValidations.splice(0).forEach((release) => release());
+      await expect(run).resolves.toMatchObject({
+        proposal_1: expect.any(Object),
+        proposal_2: expect.any(Object),
+        proposal_3: expect.any(Object),
+        proposal_4: expect.any(Object),
+      });
+      expect(validateBillingRequirementsMock).toHaveBeenCalledTimes(4);
+      expect(maxActiveValidations).toBe(2);
+    } finally {
+      pendingValidations.splice(0).forEach((release) => release());
+      if (originalConcurrency === undefined) {
+        delete process.env.BILLING_PREVIEW_BATCH_CONCURRENCY;
+      } else {
+        process.env.BILLING_PREVIEW_BATCH_CONCURRENCY = originalConcurrency;
+      }
+    }
   });
 });

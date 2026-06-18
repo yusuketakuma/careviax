@@ -1,4 +1,4 @@
-import type { VisitPriority, VisitType } from '@/app/(dashboard)/schedules/day-view.shared';
+import type { VisitPriority, VisitType } from '@/lib/validations/visit-schedule';
 
 /**
  * p0_19「予定の重なりを直す」: 当日の訪問予定から、
@@ -332,12 +332,12 @@ export function buildScheduleConflictViewModel(
   const vehicleRows = vehicleConflicts
     .flatMap((conflict) => conflict.rows)
     // 同一予定が薬剤師行で既に出ている場合も、社用車視点の「同時使用」行として別途 1 行残す
-    .filter((row, index, rows) => rows.findIndex((other) => other.scheduleId === row.scheduleId) === index);
+    .filter(
+      (row, index, rows) =>
+        rows.findIndex((other) => other.scheduleId === row.scheduleId) === index,
+    );
 
-  const rows = [
-    ...pharmacistRows.sort(compareRows),
-    ...vehicleRows.sort(compareRows),
-  ];
+  const rows = [...pharmacistRows.sort(compareRows), ...vehicleRows.sort(compareRows)];
 
   const plans = buildAdjustmentPlans(pharmacistConflicts, vehicleConflicts, scheduleById);
 

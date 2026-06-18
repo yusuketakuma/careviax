@@ -5,7 +5,7 @@ import {
   buildBillingCandidateSpecs,
   ensureHomeCareBillingSsot,
   type HomeCareBillingRuleEngineTx,
-} from '../home-care-billing-ssot';
+} from '../billing-rules';
 import {
   startOfMonth,
   asRecord,

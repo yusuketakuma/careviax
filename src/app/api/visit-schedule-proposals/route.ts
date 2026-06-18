@@ -47,6 +47,7 @@ import {
 import type { ProposalCandidateDiagnostic } from '@/server/services/visit-schedule-planner';
 
 const proposalDateQuerySchema = visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）');
+const proposalLimitQuerySchema = z.coerce.number().int().min(1).max(50);
 const PROPOSAL_CREATE_SERIALIZABLE_RETRY_LIMIT = 3;
 
 class VisitProposalCreateRetryLimitError extends Error {
@@ -142,6 +143,22 @@ function parseProposalDateQuery(value: string | null, fieldName: 'date_from' | '
     return {
       ok: false as const,
       response: validationError(`${fieldName} の日付形式が不正です（YYYY-MM-DD）`),
+    };
+  }
+
+  return { ok: true as const, value: parsed.data };
+}
+
+function parseProposalLimitQuery(value: string | null) {
+  if (value == null) {
+    return { ok: true as const, value: undefined };
+  }
+
+  const parsed = proposalLimitQuerySchema.safeParse(value);
+  if (!parsed.success) {
+    return {
+      ok: false as const,
+      response: validationError('limit は 1〜50 の整数で指定してください'),
     };
   }
 
@@ -292,6 +309,9 @@ export const GET = withAuthContext(
     const status = searchParams.get('status');
     const dateFrom = searchParams.get('date_from');
     const dateTo = searchParams.get('date_to');
+    const pharmacistId = searchParams.get('pharmacist_id')?.trim() || null;
+    const query = searchParams.get('q')?.trim() || null;
+    const limit = searchParams.get('limit');
     const assignmentWhere = buildVisitScheduleProposalAssignmentWhere(ctx);
 
     const parsedStatus = status ? proposalStatusSchema.safeParse(status) : null;
@@ -303,20 +323,30 @@ export const GET = withAuthContext(
     if (!parsedDateFrom.ok) return parsedDateFrom.response;
     const parsedDateTo = parseProposalDateQuery(dateTo, 'date_to');
     if (!parsedDateTo.ok) return parsedDateTo.response;
+    const parsedLimit = parseProposalLimitQuery(limit);
+    if (!parsedLimit.ok) return parsedLimit.response;
+
+    const caseRelationWhere: Prisma.CareCaseWhereInput = {};
+    if (patientId) {
+      caseRelationWhere.patient_id = patientId;
+    }
+    if (query) {
+      caseRelationWhere.patient = {
+        is: {
+          name: {
+            contains: query,
+            mode: 'insensitive',
+          },
+        },
+      };
+    }
 
     const proposals = await prisma.visitScheduleProposal.findMany({
       where: {
         org_id: ctx.orgId,
         ...(caseId ? { case_id: caseId } : {}),
-        ...(patientId
-          ? {
-              case_: {
-                is: {
-                  patient_id: patientId,
-                },
-              },
-            }
-          : {}),
+        ...(Object.keys(caseRelationWhere).length > 0 ? { case_: { is: caseRelationWhere } } : {}),
+        ...(pharmacistId ? { proposed_pharmacist_id: pharmacistId } : {}),
         ...(parsedStatus ? { proposal_status: parsedStatus.data } : {}),
         ...(dateFrom || dateTo
           ? {
@@ -402,6 +432,7 @@ export const GET = withAuthContext(
         },
       },
       orderBy: [{ proposed_date: 'asc' }, { time_window_start: 'asc' }],
+      take: parsedLimit.value,
     });
 
     const pharmacistIds = Array.from(

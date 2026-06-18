@@ -2,7 +2,7 @@ import { withAuthContext } from '@/lib/auth/context';
 import { ADMIN_MEMBER_ROLES } from '@/lib/auth/member-roles';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, notFound, conflict } from '@/lib/api/response';
-import { parsePaginationParams } from '@/lib/api/pagination';
+import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { prisma } from '@/lib/db/client';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
@@ -65,17 +65,13 @@ export const GET = withAuthContext(async (req, ctx) => {
 
   const tasks = await prisma.dispenseTask.findMany({
     where,
-    orderBy: [{ created_at: 'asc' }],
+    orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
     take: limit + 1,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     include: cycleInclude,
   });
 
-  const hasMore = tasks.length > limit;
-  const data = hasMore ? tasks.slice(0, limit) : tasks;
-  const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
-
-  return success({ data, nextCursor, hasMore });
+  return success(buildCursorPage(tasks, limit, (task) => task.id));
 });
 
 export const POST = withAuthContext(

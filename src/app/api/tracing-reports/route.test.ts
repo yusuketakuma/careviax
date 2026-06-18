@@ -115,6 +115,11 @@ describe('/api/tracing-reports', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expect(tracingReportFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      }),
+    );
     await expect(response.json()).resolves.toMatchObject({
       data: [{ id: 'report_1', patient_id: 'patient_1' }],
     });

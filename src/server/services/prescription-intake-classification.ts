@@ -18,11 +18,35 @@ type PrescriptionIntakeReader = {
   };
 };
 
+type PrescriptionIntakeBatchReader = {
+  prescriptionIntake: {
+    findMany: (args: {
+      where: Record<string, unknown>;
+      orderBy: Array<{ created_at: 'desc' }>;
+      select: {
+        prescription_category: true;
+        emergency_category: true;
+        cycle: {
+          select: {
+            case_id: true;
+          };
+        };
+      };
+    }) => Promise<
+      Array<
+        PrescriptionIntakeClassification & {
+          cycle: { case_id: string } | null;
+        }
+      >
+    >;
+  };
+};
+
 export async function findLatestPrescriptionIntakeClassification(
   db: PrescriptionIntakeReader,
   args:
     | { orgId: string; caseId: string; cycleId?: never }
-    | { orgId: string; cycleId: string; caseId?: never }
+    | { orgId: string; cycleId: string; caseId?: never },
 ): Promise<PrescriptionIntakeClassification | null> {
   try {
     return await db.prescriptionIntake.findFirst({
@@ -38,11 +62,56 @@ export async function findLatestPrescriptionIntakeClassification(
       },
     });
   } catch (error) {
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === 'P2022'
-    ) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2022') {
       return null;
+    }
+    throw error;
+  }
+}
+
+export async function findLatestPrescriptionIntakeClassificationsByCaseIds(
+  db: PrescriptionIntakeBatchReader,
+  args: { orgId: string; caseIds: string[] },
+): Promise<Map<string, PrescriptionIntakeClassification | null>> {
+  const caseIds = [...new Set(args.caseIds.filter(Boolean))];
+  const latestByCaseId = new Map<string, PrescriptionIntakeClassification | null>(
+    caseIds.map((caseId) => [caseId, null]),
+  );
+  if (caseIds.length === 0) return latestByCaseId;
+
+  try {
+    const rows = await db.prescriptionIntake.findMany({
+      where: {
+        org_id: args.orgId,
+        cycle: {
+          case_id: { in: caseIds },
+        },
+      },
+      orderBy: [{ created_at: 'desc' }],
+      select: {
+        prescription_category: true,
+        emergency_category: true,
+        cycle: {
+          select: {
+            case_id: true,
+          },
+        },
+      },
+    });
+
+    for (const row of rows) {
+      const caseId = row.cycle?.case_id;
+      if (!caseId || latestByCaseId.get(caseId) !== null) continue;
+      latestByCaseId.set(caseId, {
+        prescription_category: row.prescription_category,
+        emergency_category: row.emergency_category,
+      });
+    }
+
+    return latestByCaseId;
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2022') {
+      return latestByCaseId;
     }
     throw error;
   }

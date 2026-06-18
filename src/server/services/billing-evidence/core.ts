@@ -12,7 +12,7 @@ import {
   ensureHomeCareBillingSsot,
   HOME_CARE_BILLING_RULESET_VERSION,
   type HomeCareBillingRuleEngineTx,
-} from '../home-care-billing-ssot';
+} from '../billing-rules';
 import { resolveBillingRuntimeContext } from '../billing-runtime-context';
 import { getHomeVisit2026BillingEligibility } from '@/lib/visits/home-visit-2026-evidence';
 import {

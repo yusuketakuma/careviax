@@ -8,7 +8,7 @@ import { prisma } from '@/lib/db/client';
 import {
   buildSetBatchHistorySnapshot,
   createSetBatchChangeLog,
-} from '@/lib/prescription/set-batch-history';
+} from '@/lib/dispensing/set-batch-history';
 import {
   collectNarcoticCandidateYjCode,
   handlingTagsWithMasterNarcotic,
@@ -16,7 +16,7 @@ import {
 import {
   extractPackagingInstructionTags,
   resolvePackagingSettings,
-} from '@/lib/prescription/packaging';
+} from '@/lib/dispensing/packaging';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import {
   buildSetBatchAssignmentWhere,

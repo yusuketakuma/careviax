@@ -20,6 +20,14 @@ import {
   buildSetBatchHistorySnapshot,
   createSetBatchChangeLog,
 } from '@/lib/dispensing/set-batch-history';
+import {
+  CARRY_PACKET_EVIDENCE_SCHEMA_VERSION,
+  CARRY_PACKET_ITEM_KEYS,
+  OUTSIDE_MED_EVIDENCE_KINDS,
+  SET_AUDIT_REQUIRED_CHECKLIST_KEYS,
+  type CarryPacketItemKey,
+  type OutsideMedEvidenceKind,
+} from '@/lib/dispensing/set-audit-constants';
 import { RejectCode, SetAuditCellState, type ScheduleStatus } from '@prisma/client';
 import { ADMIN_MEMBER_ROLES } from '@/lib/auth/member-roles';
 import { parseFrequencyToSlots } from '@/lib/dispensing/packaging-group';
@@ -47,17 +55,6 @@ const approvedScopeSchema = z
 
 // p0_15: 6項目チェックリスト(項目キー → 真偽)。3ペイン再構築の右ペインで記録する。
 const checklistSchema = z.record(z.string().min(1), z.boolean()).optional();
-
-const CARRY_PACKET_EVIDENCE_SCHEMA_VERSION = 1;
-const OUTSIDE_MED_EVIDENCE_KINDS = [
-  'prn',
-  'topical',
-  'cold',
-  'injection',
-  'liquid',
-  'other',
-] as const;
-const CARRY_PACKET_ITEM_KEYS = ['cal', 'ton', 'gai', 'liq', 'doc', 'note'] as const;
 
 const outsideMedEvidenceSchema = z
   .object({
@@ -115,18 +112,6 @@ const createSetAuditSchema = z.object({
   cell_audits: z.array(cellAuditSchema).max(500).optional(),
 });
 
-// 監査OK(approved)に必須の6チェック項目。
-// Set-audit API validation checklist. Keep server-side so UI route removal cannot weaken audit validation.
-// クライアント側 gate だけでは要求改竄でバイパス可能なので、サーバでも完了を必須にする。
-const SET_AUDIT_REQUIRED_CHECKLIST_KEYS = [
-  'date_match',
-  'timing_match',
-  'quantity_match',
-  'no_discontinued',
-  'residual_usage_ok',
-  'cold_storage_separated',
-] as const;
-
 const NON_READY_MUTABLE_VISIT_SCHEDULE_STATUSES: ScheduleStatus[] = [
   'planned',
   'in_preparation',
@@ -160,8 +145,6 @@ type IdempotentSetAuditReplay = ExistingSetAuditForReplay & {
 };
 
 type CarryPacketEvidence = z.infer<typeof carryPacketEvidenceSchema>;
-type OutsideMedEvidenceKind = (typeof OUTSIDE_MED_EVIDENCE_KINDS)[number];
-type CarryPacketItemKey = (typeof CARRY_PACKET_ITEM_KEYS)[number];
 type CarryPacketEvidenceValidationResult =
   | { ok: true; evidence: CarryPacketEvidence; summary: CarryPacketEvidence['summary'] }
   | { ok: false; reason: string };

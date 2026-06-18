@@ -5,6 +5,10 @@ import { toPrismaJsonInput } from '@/lib/db/json';
 const MAX_RETRIES = 3;
 const DEFAULT_JOB_STALE_LOCK_MS = 6 * 60 * 60 * 1000;
 const MAX_JOB_STALE_LOCK_MS = 24 * 60 * 60 * 1000;
+type RunJobResult =
+  | { processedCount: number; errors?: string[] }
+  | { processedCount: 0; skipped: true };
+const activeJobRuns = new Map<string, Promise<RunJobResult>>();
 
 function resolveJobStaleLockMs(value: string | undefined = process.env.JOB_STALE_LOCK_MS) {
   const parsed = Number(value ?? DEFAULT_JOB_STALE_LOCK_MS);
@@ -32,12 +36,16 @@ async function isJobAlreadyRunning(jobType: string, orgId?: string): Promise<boo
   return existing !== null;
 }
 
-export async function runJob(
+function jobRunKey(jobType: string, orgId?: string, dedupeKey?: string) {
+  return `${orgId ?? 'global'}:${jobType}:${dedupeKey ?? 'singleton'}`;
+}
+
+async function runJobOnce(
   jobType: string,
   fn: () => Promise<{ processedCount: number; errors?: string[] }>,
   orgId?: string,
   dedupeKey?: string,
-) {
+): Promise<RunJobResult> {
   // Skip if the same job type is already in progress
   if (await isJobAlreadyRunning(jobType, orgId)) {
     console.warn(`[runner] Skipping duplicate job execution: ${jobType} (already running)`);
@@ -120,6 +128,25 @@ export async function runJob(
   }
 
   throw lastError;
+}
+
+export async function runJob(
+  jobType: string,
+  fn: () => Promise<{ processedCount: number; errors?: string[] }>,
+  orgId?: string,
+  dedupeKey?: string,
+): Promise<RunJobResult> {
+  const activeKey = jobRunKey(jobType, orgId, dedupeKey);
+  if (activeJobRuns.has(activeKey)) {
+    console.warn(`[runner] Skipping duplicate in-process job execution: ${jobType}`);
+    return { processedCount: 0, skipped: true };
+  }
+
+  const run = runJobOnce(jobType, fn, orgId, dedupeKey).finally(() => {
+    activeJobRuns.delete(activeKey);
+  });
+  activeJobRuns.set(activeKey, run);
+  return run;
 }
 
 /**

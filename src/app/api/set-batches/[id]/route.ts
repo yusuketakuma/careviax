@@ -8,7 +8,7 @@ import { prisma } from '@/lib/db/client';
 import {
   buildSetBatchHistorySnapshot,
   createSetBatchChangeLog,
-} from '@/lib/prescription/set-batch-history';
+} from '@/lib/dispensing/set-batch-history';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { buildSetBatchAssignmentWhere } from '@/server/services/prescription-access';
 import { z } from 'zod';

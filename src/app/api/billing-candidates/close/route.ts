@@ -14,6 +14,7 @@ import {
   resolveClaimsExportConfig,
   type ClaimsExportRecord,
 } from '@/server/adapters/claims-export';
+import { BILLING_DOMAIN_ERROR_MESSAGE, parseBillingDomainOrDefault } from '../billing-domain';
 import { BILLING_MONTH_FORMAT_MESSAGE, parseStrictBillingMonth } from '../billing-month';
 
 type ClaimsExportCloseOutcome =
@@ -134,11 +135,6 @@ async function transmitClaimsExportForClose(args: {
   }
 }
 
-function parseBillingDomain(value: unknown) {
-  if (value === undefined || value === null || value === '') return 'home_care';
-  return value === 'home_care' || value === 'pca_rental' ? value : null;
-}
-
 function isBillingCloseStaleCandidatesError(cause: unknown) {
   return cause instanceof Error && cause.message === 'BILLING_CLOSE_STALE_CANDIDATE';
 }
@@ -161,9 +157,9 @@ export async function POST(req: NextRequest) {
   if (!parsedBillingMonth) {
     return validationError(BILLING_MONTH_FORMAT_MESSAGE);
   }
-  const billingDomain = parseBillingDomain(payload.billing_domain);
+  const billingDomain = parseBillingDomainOrDefault(payload.billing_domain);
   if (!billingDomain) {
-    return validationError('billing_domain は home_care または pca_rental を指定してください');
+    return validationError(BILLING_DOMAIN_ERROR_MESSAGE);
   }
 
   let result;

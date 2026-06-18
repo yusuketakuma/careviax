@@ -39,7 +39,11 @@ vi.mock('@/lib/db/rls', () => ({
 }));
 
 import { GET } from './route';
-import { buildCalendarMatrix, deriveRowStatus, deriveSlotMarks } from './set-derivations';
+import {
+  buildCalendarMatrix,
+  deriveRowStatus,
+  deriveSlotMarks,
+} from '@/lib/dispensing/set-derivations';
 
 function createRequest(query = '') {
   return new NextRequest(`http://localhost/api/medication-sets/workspace${query}`, {

@@ -77,6 +77,30 @@ describe('runJob', () => {
     expect(integrationJobCreateMock).not.toHaveBeenCalled();
   });
 
+  it('skips duplicate in-process starts before the running row is visible', async () => {
+    let resolveJob!: (value: { processedCount: number }) => void;
+    const firstFn = vi.fn(
+      () =>
+        new Promise<{ processedCount: number }>((resolve) => {
+          resolveJob = resolve;
+        }),
+    );
+    const secondFn = vi.fn();
+
+    const first = runJob('test_job', firstFn, 'org_1');
+    const second = runJob('test_job', secondFn, 'org_1');
+
+    await expect(second).resolves.toEqual({ processedCount: 0, skipped: true });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(firstFn).toHaveBeenCalledTimes(1);
+    expect(secondFn).not.toHaveBeenCalled();
+    expect(integrationJobCreateMock).toHaveBeenCalledTimes(1);
+
+    resolveJob({ processedCount: 1 });
+    await expect(first).resolves.toEqual({ processedCount: 1 });
+  });
+
   it('does not skip execution for stale running job locks', async () => {
     integrationJobFindFirstMock.mockResolvedValue(null);
 

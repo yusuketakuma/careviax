@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db/client';
+import { mapWithConcurrency, normalizeConcurrencyLimit } from '@/lib/utils/concurrency';
 import {
   getBillingCadencePreview,
   validateBillingRequirements,
@@ -9,7 +10,10 @@ import {
 } from './billing-requirement-validator';
 import { resolveBillingPayerBasis } from './billing-payer-basis';
 import { resolvePatientInsurance } from './patient-insurance';
-import { findLatestPrescriptionIntakeClassification } from './prescription-intake-classification';
+import {
+  findLatestPrescriptionIntakeClassification,
+  findLatestPrescriptionIntakeClassificationsByCaseIds,
+} from './prescription-intake-classification';
 import type { InsuranceApplicationStatus, InsuranceType } from '@prisma/client';
 import type {
   BillingRuntimeHomeComprehensive,
@@ -33,6 +37,16 @@ export type VisitScheduleBillingPreview = {
   warnings: string[];
   home_comprehensive_preview: BillingRuntimeHomeComprehensive | null;
 };
+
+const DEFAULT_BILLING_PREVIEW_BATCH_CONCURRENCY = 8;
+const MAX_BILLING_PREVIEW_BATCH_CONCURRENCY = 16;
+
+function resolveBillingPreviewBatchConcurrency() {
+  return normalizeConcurrencyLimit(process.env.BILLING_PREVIEW_BATCH_CONCURRENCY, {
+    defaultValue: DEFAULT_BILLING_PREVIEW_BATCH_CONCURRENCY,
+    max: MAX_BILLING_PREVIEW_BATCH_CONCURRENCY,
+  });
+}
 
 type CareInsuranceApplicationPreview = {
   application_status: InsuranceApplicationStatus;
@@ -849,6 +863,7 @@ export async function buildVisitScheduleBillingPreviewBatch(
   if (
     typeof prisma.careCase?.findMany !== 'function' ||
     typeof prisma.prescriptionIntake?.findFirst !== 'function' ||
+    typeof prisma.prescriptionIntake?.findMany !== 'function' ||
     typeof prisma.visitSchedule?.findMany !== 'function' ||
     typeof prisma.visitSchedule?.count !== 'function' ||
     typeof prisma.user?.findFirst !== 'function' ||
@@ -871,19 +886,10 @@ export async function buildVisitScheduleBillingPreviewBatch(
     select: BILLING_PREVIEW_CARE_CASE_SELECT,
   });
   const careCaseById = new Map(careCases.map((careCase) => [careCase.id, careCase]));
-  const latestIntakeEntries = await Promise.all(
-    careCases.map(
-      async (careCase) =>
-        [
-          careCase.id,
-          await findLatestPrescriptionIntakeClassification(prisma, {
-            orgId,
-            caseId: careCase.id,
-          }),
-        ] as const,
-    ),
-  );
-  const latestIntakeByCaseId = new Map(latestIntakeEntries);
+  const latestIntakeByCaseId = await findLatestPrescriptionIntakeClassificationsByCaseIds(prisma, {
+    orgId,
+    caseIds: careCases.map((careCase) => careCase.id),
+  });
   const insurancePrefetch = await prefetchBillingPreviewPatientInsurance({
     orgId,
     careCases,
@@ -905,8 +911,10 @@ export async function buildVisitScheduleBillingPreviewBatch(
   });
   const runtimeContextCache: BillingPreviewRuntimeContextCache = new Map();
   const previewByInput = new Map<string, Promise<VisitScheduleBillingPreview | null>>();
-  const entries = await Promise.all(
-    args.map(async (item) => {
+  const entries = await mapWithConcurrency(
+    args,
+    resolveBillingPreviewBatchConcurrency(),
+    async (item) => {
       const inputKey = JSON.stringify([
         item.caseId,
         item.proposedDate,
@@ -940,7 +948,7 @@ export async function buildVisitScheduleBillingPreviewBatch(
       }
 
       return [item.key, await preview] as const;
-    }),
+    },
   );
 
   return Object.fromEntries(entries.filter(([, value]) => value != null));

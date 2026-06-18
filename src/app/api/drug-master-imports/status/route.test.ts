@@ -46,7 +46,8 @@ vi.mock('@/lib/db/client', () => ({
   },
 }));
 
-import { GET, type DrugMasterImportStatusResponse } from './route';
+import type { DrugMasterImportStatusResponse } from '@/types/drug-master-import-status';
+import { GET } from './route';
 
 type DrugMasterImportSourceStatus = DrugMasterImportStatusResponse['sources'][number];
 

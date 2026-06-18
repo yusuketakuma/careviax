@@ -3,27 +3,35 @@ import { buildVisitRecordCaseScope, type PatientDetailScopeArgs } from './patien
 
 export type PatientBillingRefsDb = {
   medicationCycle: Pick<Prisma.TransactionClient['medicationCycle'], 'findMany'>;
-  visitRecord: Pick<Prisma.TransactionClient['visitRecord'], 'findMany'>;
+  visitRecord?: Pick<Prisma.TransactionClient['visitRecord'], 'findMany'>;
 };
 
 export async function listPatientBillingCaseRefs(
   db: PatientBillingRefsDb,
   args: Pick<PatientDetailScopeArgs, 'orgId' | 'patientId'>,
   caseIds: string[],
+  options: { includeVisitRecordIds?: boolean } = {},
 ) {
   if (caseIds.length === 0) {
     return { visitRecordIds: [] as string[], cycleIds: [] as string[] };
   }
 
-  const [visitRecords, cycles] = await Promise.all([
-    db.visitRecord.findMany({
-      where: {
-        org_id: args.orgId,
-        patient_id: args.patientId,
-        ...buildVisitRecordCaseScope(caseIds),
-      },
-      select: { id: true },
-    }),
+  const visitRecordIdsPromise =
+    options.includeVisitRecordIds !== false && db.visitRecord
+      ? db.visitRecord
+          .findMany({
+            where: {
+              org_id: args.orgId,
+              patient_id: args.patientId,
+              ...buildVisitRecordCaseScope(caseIds),
+            },
+            select: { id: true },
+          })
+          .then((items) => items.map((item) => item.id))
+      : Promise.resolve([] as string[]);
+
+  const [visitRecordIds, cycles] = await Promise.all([
+    visitRecordIdsPromise,
     db.medicationCycle.findMany({
       where: {
         org_id: args.orgId,
@@ -35,7 +43,7 @@ export async function listPatientBillingCaseRefs(
   ]);
 
   return {
-    visitRecordIds: visitRecords.map((item) => item.id),
+    visitRecordIds,
     cycleIds: cycles.map((item) => item.id),
   };
 }

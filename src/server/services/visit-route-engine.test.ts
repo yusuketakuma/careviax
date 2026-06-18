@@ -20,6 +20,14 @@ describe('computeOptimizedVisitRoute (heuristic path)', () => {
   const origin = { lat: 35.0, lng: 139.0, label: '本店' };
   const travelMode = 'DRIVE' as const;
 
+  async function waitForCondition(predicate: () => boolean, message: string) {
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      if (predicate()) return;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    throw new Error(message);
+  }
+
   // Helper: estimator that always returns null (forces haversine fallback)
   function nullEstimator() {
     return async () => null;
@@ -160,6 +168,90 @@ describe('computeOptimizedVisitRoute (heuristic path)', () => {
     expect(result.status).toBe('ok');
     expect(result.note).toBe('優先度補正を含むヒューリスティック順序を表示しています');
     expect(result.orderedScheduleIds).toEqual(['emergency_far', 'normal_near']);
+  });
+
+  it('uses the estimator matrix API instead of per-pair estimates', async () => {
+    const estimateOne = vi.fn(async () => null);
+    const estimateMatrix = vi.fn(async () => [
+      [null, { durationMinutes: 20, distanceKm: 20 }, { durationMinutes: 5, distanceKm: 5 }],
+      [{ durationMinutes: 20, distanceKm: 20 }, null, { durationMinutes: 10, distanceKm: 10 }],
+      [{ durationMinutes: 5, distanceKm: 5 }, { durationMinutes: 10, distanceKm: 10 }, null],
+    ]);
+    createRoadTravelEstimatorMock.mockReturnValue(Object.assign(estimateOne, { estimateMatrix }));
+
+    const result = await computeOptimizedVisitRoute({
+      origin,
+      travelMode,
+      waypoints: [
+        { scheduleId: 'sched_far', patientName: '患者A', address: '住所A', lat: 35.2, lng: 139.0 },
+        {
+          scheduleId: 'sched_near',
+          patientName: '患者B',
+          address: '住所B',
+          lat: 35.05,
+          lng: 139.0,
+        },
+      ],
+    });
+
+    expect(result.status).toBe('ok');
+    expect(result.orderedScheduleIds).toEqual(['sched_near', 'sched_far']);
+    expect(estimateMatrix).toHaveBeenCalledTimes(1);
+    expect(estimateMatrix).toHaveBeenCalledWith([
+      { lat: 35.0, lng: 139.0 },
+      { lat: 35.2, lng: 139.0 },
+      { lat: 35.05, lng: 139.0 },
+    ]);
+    expect(estimateOne).not.toHaveBeenCalled();
+  });
+
+  it('limits per-pair estimator concurrency when matrix estimates are unavailable', async () => {
+    const releases: Array<() => void> = [];
+    let active = 0;
+    let maxActive = 0;
+    let started = 0;
+    const totalPairs = 5 * 4;
+    createRoadTravelEstimatorMock.mockReturnValue(
+      vi.fn(
+        () =>
+          new Promise((resolve) => {
+            active += 1;
+            started += 1;
+            maxActive = Math.max(maxActive, active);
+            releases.push(() => {
+              active -= 1;
+              resolve({ durationMinutes: 1, distanceKm: 1 });
+            });
+          }),
+      ),
+    );
+
+    const resultPromise = computeOptimizedVisitRoute({
+      origin,
+      travelMode,
+      waypoints: [
+        { scheduleId: 'sched_1', patientName: '患者A', address: '住所A', lat: 35.1, lng: 139.0 },
+        { scheduleId: 'sched_2', patientName: '患者B', address: '住所B', lat: 35.2, lng: 139.0 },
+        { scheduleId: 'sched_3', patientName: '患者C', address: '住所C', lat: 35.3, lng: 139.0 },
+        { scheduleId: 'sched_4', patientName: '患者D', address: '住所D', lat: 35.4, lng: 139.0 },
+      ],
+    });
+
+    await waitForCondition(() => releases.length === 8, 'expected first route-pair batch');
+    expect(maxActive).toBe(8);
+
+    let released = 0;
+    while (released < totalPairs) {
+      await waitForCondition(() => releases.length > 0, 'expected route-pair work');
+      const batch = releases.splice(0);
+      released += batch.length;
+      batch.forEach((release) => release());
+    }
+
+    const result = await resultPromise;
+    expect(result.status).toBe('ok');
+    expect(started).toBe(totalPairs);
+    expect(maxActive).toBeLessThanOrEqual(8);
   });
 });
 

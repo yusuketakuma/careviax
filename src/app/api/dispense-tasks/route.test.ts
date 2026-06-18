@@ -98,6 +98,7 @@ describe('/api/dispense-tasks GET', () => {
     expect(response.status).toBe(200);
     expect(dispenseTaskFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
+        orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
         where: {
           org_id: 'org_1',
           status: 'pending',

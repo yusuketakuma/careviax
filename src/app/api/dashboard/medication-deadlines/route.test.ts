@@ -88,6 +88,31 @@ describe('/api/dashboard/medication-deadlines', () => {
     expect(getLastDeadlineWindowDays()).toBe(7);
   });
 
+  it('filters medication deadlines for global search by patient name with a bounded limit', async () => {
+    const response = (await GET(createRequest('?within_days=14&q=田中&limit=8')))!;
+
+    expect(response.status).toBe(200);
+    expect(visitScheduleFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          case_: {
+            is: {
+              patient: {
+                is: {
+                  name: {
+                    contains: '田中',
+                    mode: 'insensitive',
+                  },
+                },
+              },
+            },
+          },
+        }),
+        take: 8,
+      }),
+    );
+  });
+
   it('rejects malformed within_days values before querying schedules', async () => {
     const response = (await GET(createRequest('?within_days=20abc')))!;
 

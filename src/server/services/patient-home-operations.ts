@@ -319,6 +319,7 @@ const FIRST_VISIT_DOCUMENT_TYPES = [
   { documentType: 'consent', templateType: 'consent_form', label: '同意書' },
 ] as const;
 const TOP_ALERT_LIMIT = 8;
+const BILLING_CANDIDATE_HOME_LIMIT = 36;
 const HOME_OPERATION_ALERT_PRIORITY: Record<PatientHomeOperationItem['key'], number> = {
   documents: 0,
   prescription: 1,
@@ -357,6 +358,21 @@ type FirstVisitDocumentHomeAction = {
   printBatchId: string | null;
   storageLocation: string | null;
   createdAt: Date;
+};
+
+type BillingCandidateHomeSource = {
+  id: string;
+  billing_month: Date;
+  billing_name: string;
+  points: number | null;
+  status: string;
+  exclusion_reason: string | null;
+  calculation_breakdown: Prisma.JsonValue | null;
+  updated_at: Date;
+};
+
+type BillingCandidateCountDelegate = {
+  count?: (args: { where: Prisma.BillingCandidateWhereInput }) => Promise<number>;
 };
 
 const FIRST_VISIT_DOCUMENT_STATUS_LABELS: Record<string, string> = {
@@ -634,6 +650,13 @@ function estimateCandidateAmount(candidate: {
   const amountYen = readNumber(breakdown?.amount_yen);
   if (amountYen != null) return amountYen;
   return candidate.points;
+}
+
+async function maybeCountBillingCandidates(db: DbClient, where: Prisma.BillingCandidateWhereInput) {
+  const delegate = db.billingCandidate as typeof db.billingCandidate &
+    BillingCandidateCountDelegate;
+  if (typeof delegate.count !== 'function') return null;
+  return delegate.count({ where });
 }
 
 function buildDocumentItem(args: {
@@ -1039,21 +1062,16 @@ function buildBillingItem(args: {
   patientId: string;
   billingSupportFlag: boolean;
   paymentProfile: BillingPaymentProfileSnapshot | null;
-  candidates: Array<{
-    id: string;
-    billing_month: Date;
-    billing_name: string;
-    points: number | null;
-    status: string;
-    exclusion_reason: string | null;
-    calculation_breakdown: Prisma.JsonValue | null;
-    updated_at: Date;
-  }>;
+  candidates: BillingCandidateHomeSource[];
+  openCandidateCount: number | null;
+  excludedCandidateCount: number | null;
 }): PatientHomeOperationItem {
   const openCandidates = args.candidates.filter((item) =>
     ['candidate', 'confirmed'].includes(item.status),
   );
   const excluded = args.candidates.filter((item) => item.status === 'excluded');
+  const openCandidateCount = args.openCandidateCount ?? openCandidates.length;
+  const excludedCandidateCount = args.excludedCandidateCount ?? excluded.length;
   const latest = args.candidates[0] ?? null;
   const candidateCollections = args.candidates.map((candidate) => ({
     candidate,
@@ -1104,8 +1122,8 @@ function buildBillingItem(args: {
   const alerts = compact([
     !args.billingSupportFlag && '請求支援フラグが未設定です',
     !paymentProfile && '患者ごとの支払者・支払方法が未設定です',
-    openCandidates.length > 0 && `未処理の算定候補が${openCandidates.length}件あります`,
-    excluded.length > 0 && `除外・ブロック中の算定候補が${excluded.length}件あります`,
+    openCandidateCount > 0 && `未処理の算定候補が${openCandidateCount}件あります`,
+    excludedCandidateCount > 0 && `除外・ブロック中の算定候補が${excludedCandidateCount}件あります`,
     latest &&
       !latestCollection &&
       ['confirmed', 'exported'].includes(latest.status) &&
@@ -1123,8 +1141,7 @@ function buildBillingItem(args: {
   return {
     key: 'billing',
     label: '請求・集金',
-    status:
-      openCandidates.length > 0 ? '確認待ち' : args.billingSupportFlag ? '支援対象' : '未設定',
+    status: openCandidateCount > 0 ? '確認待ち' : args.billingSupportFlag ? '支援対象' : '未設定',
     description: latest
       ? `${formatDate(latest.billing_month)} ${latest.billing_name} / ${latest.status}`
       : paymentProfile
@@ -1138,8 +1155,8 @@ function buildBillingItem(args: {
     tone: alerts.length > 0 ? 'attention' : args.billingSupportFlag ? 'ok' : 'neutral',
     updated_at: toIso(latest?.updated_at),
     metrics: [
-      { label: '算定候補', value: `${openCandidates.length}件` },
-      { label: 'ブロック', value: `${excluded.length}件` },
+      { label: '算定候補', value: `${openCandidateCount}件` },
+      { label: 'ブロック', value: `${excludedCandidateCount}件` },
       {
         label: '支払設定',
         value: paymentProfile
@@ -1486,7 +1503,17 @@ export async function getPatientHomeOperationsData(
   const caseIds = patient.cases.map((careCase) => careCase.id);
   const activeCaseId =
     patient.cases.find((careCase) => careCase.status === 'active')?.id ?? caseIds[0] ?? null;
-  const billingRefs = await listPatientBillingCaseRefs(db, args, caseIds);
+  const billingRefs = await listPatientBillingCaseRefs(db, args, caseIds, {
+    includeVisitRecordIds: false,
+  });
+  const billingCandidateWhere: Prisma.BillingCandidateWhereInput = {
+    org_id: args.orgId,
+    OR: [
+      { patient_id: args.patientId },
+      { billing_target_type: 'patient', billing_target_id: args.patientId },
+      ...(billingRefs.cycleIds.length > 0 ? [{ cycle_id: { in: billingRefs.cycleIds } }] : []),
+    ],
+  };
   const now = new Date();
   const conferenceScopeWhere = {
     org_id: args.orgId,
@@ -1515,6 +1542,8 @@ export async function getPatientHomeOperationsData(
     mcsProfileTask,
     latestIntake,
     billingCandidates,
+    openBillingCandidateCount,
+    excludedBillingCandidateCount,
     billingPaymentProfileTask,
     nextConference,
     unresolvedDueConferences,
@@ -1618,15 +1647,9 @@ export async function getPatientHomeOperationsData(
           },
         }),
     db.billingCandidate.findMany({
-      where: {
-        org_id: args.orgId,
-        OR: [
-          { patient_id: args.patientId },
-          { billing_target_type: 'patient', billing_target_id: args.patientId },
-          ...(billingRefs.cycleIds.length > 0 ? [{ cycle_id: { in: billingRefs.cycleIds } }] : []),
-        ],
-      },
+      where: billingCandidateWhere,
       orderBy: [{ billing_month: 'desc' }, { updated_at: 'desc' }],
+      take: BILLING_CANDIDATE_HOME_LIMIT,
       select: {
         id: true,
         billing_month: true,
@@ -1637,6 +1660,14 @@ export async function getPatientHomeOperationsData(
         calculation_breakdown: true,
         updated_at: true,
       },
+    }),
+    maybeCountBillingCandidates(db, {
+      ...billingCandidateWhere,
+      status: { in: ['candidate', 'confirmed'] },
+    }),
+    maybeCountBillingCandidates(db, {
+      ...billingCandidateWhere,
+      status: 'excluded',
     }),
     db.task.findFirst({
       where: {
@@ -1813,6 +1844,8 @@ export async function getPatientHomeOperationsData(
       billingSupportFlag: patient.billing_support_flag,
       paymentProfile: billingPaymentProfile,
       candidates: billingCandidates,
+      openCandidateCount: openBillingCandidateCount,
+      excludedCandidateCount: excludedBillingCandidateCount,
     }),
     buildConferenceItem({
       patientId: args.patientId,

@@ -170,11 +170,30 @@ const routes: Array<{ name: string; handler: Handler }> = [
   },
   {
     name: 'billing-candidates/export GET',
-    handler: () =>
-      billingCandidatesExportGet(
+    handler: () => {
+      txMock.billingCandidate.findMany.mockResolvedValueOnce([
+        {
+          id: 'candidate_1',
+          patient_id: 'patient_1',
+          billing_domain: 'home_care',
+          billing_target_type: 'patient',
+          billing_target_id: null,
+          billing_target_name: null,
+          cycle_id: null,
+          billing_month: new Date('2026-03-01T00:00:00.000Z'),
+          billing_code: 'HC001',
+          billing_name: '在宅訪問管理',
+          points: 100,
+          calculation_breakdown: {},
+          status: 'confirmed',
+          source_snapshot: {},
+        },
+      ]);
+      return billingCandidatesExportGet(
         createRequest('http://localhost/api/billing-candidates/export', { 'x-org-id': 'org_1' }),
         emptyRouteContext,
-      ),
+      );
+    },
   },
   {
     name: 'billing-candidates/[id]/documents/pdf GET',

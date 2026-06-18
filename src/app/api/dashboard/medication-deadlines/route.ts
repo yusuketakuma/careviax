@@ -1,7 +1,11 @@
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
-import { boundedIntegerSearchParam, parseSearchParams } from '@/lib/api/validation';
+import {
+  boundedIntegerSearchParam,
+  optionalBlankableBoundedIntegerSearchParam,
+  parseSearchParams,
+} from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
 import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 
@@ -15,6 +19,11 @@ const medicationDeadlineQuerySchema = z.object({
     MAX_MEDICATION_DEADLINE_WITHIN_DAYS,
     DEFAULT_MEDICATION_DEADLINE_WITHIN_DAYS,
   ),
+  limit: optionalBlankableBoundedIntegerSearchParam('limit', 1, 50),
+  q: z.preprocess(
+    (value) => (typeof value === 'string' ? value.trim() : value),
+    z.string().max(100).optional(),
+  ),
 });
 
 export const GET = withAuthContext(
@@ -25,6 +34,7 @@ export const GET = withAuthContext(
       return validationError('クエリパラメータが不正です', parsed.error.flatten().fieldErrors);
     }
     const withinDays = parsed.data.within_days;
+    const query = parsed.data.q || null;
 
     // medication_end_date(@db.Date)は UTC 深夜で保存されるため UTC 深夜境界で比較する
     const today = utcDateFromLocalKey(localDateKey());
@@ -39,8 +49,25 @@ export const GET = withAuthContext(
           lte: deadline,
         },
         schedule_status: { notIn: ['cancelled', 'completed'] },
+        ...(query
+          ? {
+              case_: {
+                is: {
+                  patient: {
+                    is: {
+                      name: {
+                        contains: query,
+                        mode: 'insensitive',
+                      },
+                    },
+                  },
+                },
+              },
+            }
+          : {}),
       },
       orderBy: { medication_end_date: 'asc' },
+      take: parsed.data.limit,
       select: {
         id: true,
         case_id: true,
@@ -48,6 +75,16 @@ export const GET = withAuthContext(
         medication_end_date: true,
         visit_type: true,
         pharmacist_id: true,
+        case_: {
+          select: {
+            patient: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
       },
     });
 

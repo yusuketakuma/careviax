@@ -1,7 +1,7 @@
 import { isAdmin, withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError, forbidden } from '@/lib/api/response';
-import { parsePaginationParams } from '@/lib/api/pagination';
+import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 
 export const GET = withAuthContext(async (req, ctx) => {
@@ -46,16 +46,12 @@ export const GET = withAuthContext(async (req, ctx) => {
         where,
         take: limit + 1,
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-        orderBy: { created_at: 'desc' },
+        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       }),
     { requestContext: ctx, maxWaitMs: 10_000, timeoutMs: 20_000 },
   );
 
-  const hasMore = notifications.length > limit;
-  const data = hasMore ? notifications.slice(0, limit) : notifications;
-  const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
-
-  return success({ data, hasMore, nextCursor });
+  return success(buildCursorPage(notifications, limit, (notification) => notification.id));
 });
 
 export const PATCH = withAuthContext(async (req, ctx) => {

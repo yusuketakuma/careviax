@@ -12,6 +12,7 @@ import {
   upsertBillingEvidenceForVisit,
 } from '@/server/services/billing-evidence';
 import { generatePcaRentalBillingCandidatesForMonth } from '@/server/services/pca-rental-billing';
+import { BILLING_DOMAIN_ERROR_MESSAGE, parseOptionalBillingDomain } from './billing-domain';
 import { BILLING_MONTH_FORMAT_MESSAGE, parseStrictBillingMonth } from './billing-month';
 
 function readWorkflowState(sourceSnapshot: unknown) {
@@ -27,18 +28,6 @@ function readBillingTargetName(candidate: {
   return typeof target?.name === 'string' ? target.name : null;
 }
 
-function parseBillingDomain(value: string | null) {
-  if (value === null || value === '') return undefined;
-  return value === 'home_care' || value === 'pca_rental' ? value : null;
-}
-
-function parseBillingDomainBodyValue(value: unknown) {
-  if (value == null || value === '') return undefined;
-  return typeof value === 'string' && (value === 'home_care' || value === 'pca_rental')
-    ? value
-    : null;
-}
-
 export const GET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
@@ -47,13 +36,13 @@ export const GET = withAuthContext(
     const billingMonth = searchParams.get('billing_month');
     const patientId = searchParams.get('patient_id') ?? undefined;
     const status = searchParams.get('status') ?? undefined;
-    const requestedBillingDomain = parseBillingDomain(searchParams.get('billing_domain'));
+    const requestedBillingDomain = parseOptionalBillingDomain(searchParams.get('billing_domain'));
     const parsedBillingMonth = billingMonth === null ? null : parseStrictBillingMonth(billingMonth);
     if (billingMonth !== null && !parsedBillingMonth) {
       return validationError(BILLING_MONTH_FORMAT_MESSAGE);
     }
     if (requestedBillingDomain === null) {
-      return validationError('billing_domain は home_care または pca_rental を指定してください');
+      return validationError(BILLING_DOMAIN_ERROR_MESSAGE);
     }
     const billingDomain = requestedBillingDomain ?? 'home_care';
 
@@ -141,9 +130,9 @@ export const POST = withAuthContext(
 
     const { billing_month } = payload;
     if (!billing_month) return validationError('billing_month は必須です');
-    const billingDomain = parseBillingDomainBodyValue(payload.billing_domain);
+    const billingDomain = parseOptionalBillingDomain(payload.billing_domain);
     if (billingDomain === null) {
-      return validationError('billing_domain は home_care または pca_rental を指定してください');
+      return validationError(BILLING_DOMAIN_ERROR_MESSAGE);
     }
 
     const billingMonth = parseStrictBillingMonth(billing_month);

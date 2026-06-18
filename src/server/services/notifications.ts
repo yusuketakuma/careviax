@@ -2,6 +2,7 @@ import { Prisma, type MemberRole, type NotificationType } from '@prisma/client';
 import webpush from 'web-push';
 import { isMemberRole } from '@/lib/auth/member-roles';
 import { readJsonObject } from '@/lib/db/json';
+import { mapWithConcurrency, normalizeConcurrencyLimit } from '@/lib/utils/concurrency';
 import { logger } from '@/lib/utils/logger';
 import { getRealtimeAdapter } from '@/server/adapters/realtime';
 import { LineNotificationAdapter } from '@/server/adapters/line';
@@ -10,9 +11,18 @@ import { SmsNotificationAdapter } from '@/server/adapters/sms';
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT ?? 'mailto:noreply@ph-os.jp';
+const DEFAULT_NOTIFICATION_DELIVERY_CONCURRENCY = 16;
+const MAX_NOTIFICATION_DELIVERY_CONCURRENCY = 32;
 
 function getWebPushEnabled() {
   return Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
+}
+
+function resolveNotificationDeliveryConcurrency() {
+  return normalizeConcurrencyLimit(process.env.NOTIFICATION_DELIVERY_CONCURRENCY, {
+    defaultValue: DEFAULT_NOTIFICATION_DELIVERY_CONCURRENCY,
+    max: MAX_NOTIFICATION_DELIVERY_CONCURRENCY,
+  });
 }
 
 if (getWebPushEnabled()) {
@@ -82,8 +92,15 @@ function scheduleNotificationDeliveries(tasks: NotificationDeliveryTask[]) {
   if (tasks.length === 0) return;
 
   setTimeout(() => {
-    void Promise.allSettled(tasks.map((task) => Promise.resolve().then(task))).then((results) => {
-      const failedCount = results.filter((result) => result.status === 'rejected').length;
+    void mapWithConcurrency(tasks, resolveNotificationDeliveryConcurrency(), async (task) => {
+      try {
+        await task();
+        return null;
+      } catch (error) {
+        return error;
+      }
+    }).then((results) => {
+      const failedCount = results.filter((result) => result !== null).length;
       if (failedCount > 0) {
         logger.warn('[notifications] background delivery failed', { failedCount });
       }
@@ -119,12 +136,13 @@ async function broadcastPersistedNotifications(notifications: PersistedNotificat
 
   try {
     const adapter = getRealtimeAdapter();
-    await Promise.all(
-      notifications.map((notification) =>
+    await mapWithConcurrency(
+      notifications,
+      resolveNotificationDeliveryConcurrency(),
+      async (notification) =>
         adapter.broadcastStatusUpdate(buildNotificationUserChannel(notification.user_id), [
           toNotificationStreamItem(notification),
         ] as unknown as Record<string, unknown>),
-      ),
     );
   } catch {
     // Realtime notification delivery is best-effort; persisted rows remain the source of truth.
@@ -268,8 +286,10 @@ export async function dispatchNotificationEvent(tx: Tx, input: DispatchNotificat
     }
   }
 
-  const notifications = await Promise.all(
-    targetUserIds.map((userId) => {
+  const notifications = await mapWithConcurrency(
+    targetUserIds,
+    resolveNotificationDeliveryConcurrency(),
+    async (userId) => {
       if (input.dedupeKey) {
         return tx.notification.upsert({
           where: {
@@ -314,7 +334,7 @@ export async function dispatchNotificationEvent(tx: Tx, input: DispatchNotificat
           metadata: input.metadata ?? Prisma.JsonNull,
         },
       });
-    }),
+    },
   );
 
   await broadcastPersistedNotifications(notifications);

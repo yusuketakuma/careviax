@@ -9,7 +9,7 @@ import {
   buildCalendarMatrix,
   type CalendarPivotBatch,
   type CalendarPivotLine,
-} from '@/app/api/medication-sets/workspace/set-derivations';
+} from '@/lib/dispensing/set-derivations';
 import { normalizedDrugCode } from '@/lib/prescription/controlled-handling-tags';
 
 function hasKnownNarcoticClassificationTag(tags: readonly string[]): boolean {

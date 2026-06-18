@@ -40,6 +40,20 @@ async function runScheduledDeliveries() {
   await Promise.resolve();
 }
 
+async function waitForAsyncAssertion(assertion: () => void) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    try {
+      assertion();
+      return;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+  throw lastError;
+}
+
 function createTx() {
   const notificationRuleFindMany = vi.fn();
   const membershipFindMany = vi.fn();
@@ -206,6 +220,68 @@ describe('dispatchNotificationEvent', () => {
       ([args]) => (args as { data: { user_id: string } }).data.user_id,
     );
     expect(userIds).toEqual(['user_1', 'user_2', 'user_3']);
+  });
+
+  it('bounds concurrent notification row creation for large recipient sets', async () => {
+    const originalConcurrency = process.env.NOTIFICATION_DELIVERY_CONCURRENCY;
+    process.env.NOTIFICATION_DELIVERY_CONCURRENCY = '2';
+    const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
+      createTx();
+    notificationRuleFindMany.mockResolvedValue([]);
+    membershipFindMany.mockResolvedValue([]);
+    userFindMany.mockResolvedValue([]);
+
+    let activeCreates = 0;
+    let maxActiveCreates = 0;
+    const pendingCreates: Array<() => void> = [];
+    notificationCreate.mockImplementation(
+      async ({ data }) =>
+        new Promise((resolve) => {
+          activeCreates += 1;
+          maxActiveCreates = Math.max(maxActiveCreates, activeCreates);
+          pendingCreates.push(() => {
+            activeCreates -= 1;
+            resolve({
+              id: `notification_${data.user_id as string}`,
+              ...data,
+            });
+          });
+        }),
+    );
+
+    try {
+      const run = dispatchNotificationEvent(tx, {
+        orgId: 'org_1',
+        eventType: 'patient_self_report_followup_due',
+        type: 'urgent',
+        title: '折り返し依頼',
+        message: '至急対応してください',
+        explicitUserIds: ['user_1', 'user_2', 'user_3', 'user_4'],
+      });
+
+      await waitForAsyncAssertion(() => {
+        expect(pendingCreates).toHaveLength(2);
+      });
+      expect(maxActiveCreates).toBe(2);
+
+      pendingCreates.splice(0).forEach((release) => release());
+      await waitForAsyncAssertion(() => {
+        expect(pendingCreates).toHaveLength(2);
+      });
+      expect(maxActiveCreates).toBe(2);
+
+      pendingCreates.splice(0).forEach((release) => release());
+      await expect(run).resolves.toHaveLength(4);
+      expect(notificationCreate).toHaveBeenCalledTimes(4);
+      expect(maxActiveCreates).toBe(2);
+    } finally {
+      pendingCreates.splice(0).forEach((release) => release());
+      if (originalConcurrency === undefined) {
+        delete process.env.NOTIFICATION_DELIVERY_CONCURRENCY;
+      } else {
+        process.env.NOTIFICATION_DELIVERY_CONCURRENCY = originalConcurrency;
+      }
+    }
   });
 
   it('ignores unsupported role recipients before querying memberships', async () => {

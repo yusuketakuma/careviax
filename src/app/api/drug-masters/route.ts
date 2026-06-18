@@ -21,6 +21,7 @@ const drugMasterQuerySchema = z.object({
   highRisk: booleanParam,
   lasa: booleanParam,
   stocked: booleanParam,
+  includeTotal: booleanParam,
   site_id: z.string().trim().optional(),
   cursor: z.string().trim().optional(),
   limit: boundedIntegerSearchParam('limit', 1, 100, 50),
@@ -46,6 +47,7 @@ export const GET = withAuthContext(async (req: NextRequest, authCtx) => {
   const highRiskOnly = parsed.data.highRisk ?? false;
   const lasaOnly = parsed.data.lasa ?? false;
   const stockedOnly = parsed.data.stocked ?? false;
+  const includeTotal = parsed.data.includeTotal ?? true;
   const siteId = parsed.data.site_id;
   if (siteId) {
     const site = await prisma.pharmacySite.findFirst({
@@ -138,7 +140,7 @@ export const GET = withAuthContext(async (req: NextRequest, authCtx) => {
         max_administration_days: true,
       },
     }),
-    prisma.drugMaster.count({ where }),
+    includeTotal ? prisma.drugMaster.count({ where }) : Promise.resolve(null),
   ]);
 
   const hasMore = drugs.length > limit;
@@ -218,7 +220,7 @@ export const GET = withAuthContext(async (req: NextRequest, authCtx) => {
           : null,
     })),
     hasMore,
-    totalCount,
+    ...(includeTotal ? { totalCount: totalCount ?? 0 } : {}),
     nextCursor: hasMore ? String(offset + limit) : undefined,
   });
 });

@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { normalizeJsonInput } from '@/lib/db/json';
-import { HOME_CARE_BILLING_RULESET_VERSION } from '../home-care-billing-ssot';
+import { HOME_CARE_BILLING_RULESET_VERSION } from '../billing-rules';
 import type { AdditionalBillingRuleDefinition } from './core';
 import {
   startOfMonth,

@@ -76,11 +76,6 @@ const careReportContentSelect = {
   content: true,
 } satisfies Prisma.CareReportSelect;
 
-const careReportDeliverySummarySelect = {
-  id: true,
-  delivery_records: careReportBaseSelect.delivery_records,
-} satisfies Prisma.CareReportSelect;
-
 type CareReportListRow = Prisma.CareReportGetPayload<{
   select: typeof careReportBaseSelect;
 }> & {
@@ -183,6 +178,90 @@ function buildDeliverySummary(
       by_status: {} as Record<string, number>,
     },
   );
+}
+
+const DELIVERY_SUMMARY_LATEST_CHUNK_SIZE = 500;
+
+function chunkArray<T>(items: T[], chunkSize: number) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += chunkSize) {
+    chunks.push(items.slice(index, index + chunkSize));
+  }
+  return chunks;
+}
+
+async function buildDeliverySummaryForWhere(where: Prisma.CareReportWhereInput) {
+  const deliveryWhere = {
+    report: {
+      is: where,
+    },
+  } satisfies Prisma.DeliveryRecordWhereInput;
+
+  const [failedDeliveryCount, latestGroups] = await Promise.all([
+    prisma.deliveryRecord.count({
+      where: {
+        ...deliveryWhere,
+        status: 'failed',
+      },
+    }),
+    prisma.deliveryRecord.groupBy({
+      by: ['report_id'],
+      where: deliveryWhere,
+      _max: {
+        created_at: true,
+      },
+    }),
+  ]);
+
+  const latestConditions = latestGroups.flatMap((group) =>
+    group._max.created_at
+      ? [
+          {
+            report_id: group.report_id,
+            created_at: group._max.created_at,
+          },
+        ]
+      : [],
+  );
+
+  const latestRows = (
+    await Promise.all(
+      chunkArray(latestConditions, DELIVERY_SUMMARY_LATEST_CHUNK_SIZE).map((conditions) =>
+        prisma.deliveryRecord.findMany({
+          where: {
+            OR: conditions,
+          },
+          select: {
+            id: true,
+            report_id: true,
+            status: true,
+            created_at: true,
+          },
+          orderBy: [{ report_id: 'asc' }, { created_at: 'desc' }, { id: 'desc' }],
+        }),
+      ),
+    )
+  ).flat();
+
+  const latestStatusByReport = new Map<string, ReportStatus | string>();
+  for (const row of latestRows) {
+    if (!latestStatusByReport.has(row.report_id)) {
+      latestStatusByReport.set(row.report_id, row.status);
+    }
+  }
+
+  const byStatus: Record<string, number> = {};
+  let pendingDeliveryCount = 0;
+  for (const status of latestStatusByReport.values()) {
+    byStatus[status] = (byStatus[status] ?? 0) + 1;
+    if (status === 'response_waiting') pendingDeliveryCount += 1;
+  }
+
+  return {
+    pending_delivery_count: pendingDeliveryCount,
+    failed_delivery_count: failedDeliveryCount,
+    by_status: byStatus,
+  };
 }
 
 function isCareReportVisitTypeUniqueConflict(error: unknown) {
@@ -431,13 +510,6 @@ export const GET = withAuthContext(
       select: shouldReadContent ? careReportContentSelect : careReportBaseSelect,
       ...(canUseDbPagination ? { take: limit + 1 } : {}),
     })) as CareReportListRow[];
-    const deliverySummaryReports = canUseDbPagination
-      ? await prisma.careReport.findMany({
-          where,
-          orderBy: careReportListOrderBy,
-          select: careReportDeliverySummarySelect,
-        })
-      : reports;
 
     const patientIds = Array.from(new Set(reports.map((report) => report.patient_id)));
     const patientRows =
@@ -520,7 +592,7 @@ export const GET = withAuthContext(
     });
     const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
     const deliverySummary = canUseDbPagination
-      ? buildDeliverySummary(deliverySummaryReports)
+      ? await buildDeliverySummaryForWhere(where)
       : buildDeliverySummary(filteredData);
 
     return success({ data, hasMore, nextCursor, deliverySummary });

@@ -1,7 +1,7 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { success, validationError } from '@/lib/api/response';
-import { parsePaginationParams } from '@/lib/api/pagination';
+import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { z } from 'zod';
@@ -243,7 +243,7 @@ export const GET = withAuthContext(
       where,
       take: limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      orderBy: { occurred_at: 'desc' },
+      orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
       select: {
         id: true,
         org_id: true,
@@ -263,11 +263,7 @@ export const GET = withAuthContext(
       },
     });
 
-    const hasMore = events.length > limit;
-    const data = hasMore ? events.slice(0, limit) : events;
-    const nextCursor = hasMore ? data[data.length - 1]?.id : undefined;
-
-    return success({ data, hasMore, nextCursor });
+    return success(buildCursorPage(events, limit, (event) => event.id));
   },
   {
     permission: 'canReport',

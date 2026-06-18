@@ -25,7 +25,7 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
-vi.mock('@/server/services/home-care-billing-ssot', () => ({
+vi.mock('@/server/services/billing-rules', () => ({
   ensureHomeCareBillingSsot: ensureHomeCareBillingSsotMock,
   getHomeCareBillingSsotSummary: getHomeCareBillingSsotSummaryMock,
 }));

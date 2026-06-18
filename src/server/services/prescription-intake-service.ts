@@ -10,12 +10,12 @@ import {
   extractPackagingInstructionTags,
   parsePackagingMethod,
   type PackagingMethodValue,
-} from '@/lib/prescription/packaging';
+} from '@/lib/dispensing/packaging';
 import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
 import {
   collectDuplicatePrescriptionLines,
   collectStructuringBlockedLines,
-} from '@/app/api/prescription-intakes/shared';
+} from '@/lib/prescription/intake-validation';
 import { detectMedicationChanges, type MedicationChange } from '@/lib/prescription/medication-diff';
 import type { Prisma, PrescriptionSourceType } from '@prisma/client';
 import { InvalidTransitionError, VersionConflictError } from '@/lib/db/cycle-transition';

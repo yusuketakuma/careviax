@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { authMock, membershipFindFirstMock, visitRecordFindManyMock } = vi.hoisted(() => ({
-  authMock: vi.fn(),
-  membershipFindFirstMock: vi.fn(),
-  visitRecordFindManyMock: vi.fn(),
-}));
+const { authMock, membershipFindFirstMock, patientFindManyMock, visitRecordGroupByMock } =
+  vi.hoisted(() => ({
+    authMock: vi.fn(),
+    membershipFindFirstMock: vi.fn(),
+    patientFindManyMock: vi.fn(),
+    visitRecordGroupByMock: vi.fn(),
+  }));
 
 vi.mock('@/lib/auth/config', () => ({
   auth: authMock,
@@ -16,8 +18,11 @@ vi.mock('@/lib/db/client', () => ({
     membership: {
       findFirst: membershipFindFirstMock,
     },
+    patient: {
+      findMany: patientFindManyMock,
+    },
     visitRecord: {
-      findMany: visitRecordFindManyMock,
+      groupBy: visitRecordGroupByMock,
     },
   },
 }));
@@ -69,71 +74,28 @@ describe('/api/dashboard/monthly-stats GET', () => {
   it('returns grouped monthly patient stats', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
-    visitRecordFindManyMock.mockResolvedValue([
+    visitRecordGroupByMock.mockResolvedValue([
       {
         patient_id: 'patient_1',
-        schedule: {
-          case_: {
-            patient: {
-              id: 'patient_1',
-              name: '山田 太郎',
-              medical_insurance_number: 'M001',
-              care_insurance_number: null,
-            },
-          },
-        },
-      },
-      {
-        patient_id: 'patient_1',
-        schedule: {
-          case_: {
-            patient: {
-              id: 'patient_1',
-              name: '山田 太郎',
-              medical_insurance_number: 'M001',
-              care_insurance_number: null,
-            },
-          },
-        },
+        _count: { _all: 2 },
       },
       {
         patient_id: 'patient_2',
-        schedule: {
-          case_: {
-            patient: {
-              id: 'patient_2',
-              name: '佐藤 花子',
-              medical_insurance_number: null,
-              care_insurance_number: 'C002',
-            },
-          },
-        },
+        _count: { _all: 3 },
+      },
+    ]);
+    patientFindManyMock.mockResolvedValue([
+      {
+        id: 'patient_1',
+        name: '山田 太郎',
+        medical_insurance_number: 'M001',
+        care_insurance_number: null,
       },
       {
-        patient_id: 'patient_2',
-        schedule: {
-          case_: {
-            patient: {
-              id: 'patient_2',
-              name: '佐藤 花子',
-              medical_insurance_number: null,
-              care_insurance_number: 'C002',
-            },
-          },
-        },
-      },
-      {
-        patient_id: 'patient_2',
-        schedule: {
-          case_: {
-            patient: {
-              id: 'patient_2',
-              name: '佐藤 花子',
-              medical_insurance_number: null,
-              care_insurance_number: 'C002',
-            },
-          },
-        },
+        id: 'patient_2',
+        name: '佐藤 花子',
+        medical_insurance_number: null,
+        care_insurance_number: 'C002',
       },
     ]);
 
@@ -145,6 +107,36 @@ describe('/api/dashboard/monthly-stats GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    const expectedMonthStart = new Date(2026, 2, 1);
+    const expectedMonthEnd = new Date(2026, 2, 31, 23, 59, 59, 999);
+    expect(visitRecordGroupByMock).toHaveBeenCalledWith({
+      by: ['patient_id'],
+      where: {
+        org_id: 'org_1',
+        visit_date: {
+          gte: expectedMonthStart,
+          lte: expectedMonthEnd,
+        },
+        outcome_status: {
+          in: ['completed', 'completed_with_issue', 'delivery_only', 'revisit_needed'],
+        },
+      },
+      _count: {
+        _all: true,
+      },
+    });
+    expect(patientFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        id: { in: ['patient_1', 'patient_2'] },
+      },
+      select: {
+        id: true,
+        name: true,
+        medical_insurance_number: true,
+        care_insurance_number: true,
+      },
+    });
     await expect(response.json()).resolves.toMatchObject({
       month: '2026-03',
       summary: {

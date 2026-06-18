@@ -9,6 +9,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
 import { formatNullableUtcDateKey } from '@/lib/date-key';
+import { optionalUtcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { dateKeySchema } from '@/lib/validations/date-key';
@@ -66,13 +67,6 @@ async function resolveTaskCycleId(
     select: { cycle_id: true },
   });
   return task?.cycle_id ?? null;
-}
-
-function toDateColumnValue(value: string | null | undefined) {
-  if (value === undefined) return undefined;
-  if (value === null) return null;
-  const [year, month, day] = value.split('-').map((part) => Number.parseInt(part, 10));
-  return new Date(Date.UTC(year, month - 1, day));
 }
 
 function toDateKey(value: Date | null | undefined) {
@@ -156,9 +150,9 @@ export const PATCH = withAuthContext(async (req, ctx, { params }) => {
           }
 
           const effectiveStartDate =
-            'start_date' in line ? toDateColumnValue(line.start_date) : before.start_date;
+            'start_date' in line ? optionalUtcDateFromLocalKey(line.start_date) : before.start_date;
           const effectiveEndDate =
-            'end_date' in line ? toDateColumnValue(line.end_date) : before.end_date;
+            'end_date' in line ? optionalUtcDateFromLocalKey(line.end_date) : before.end_date;
           const effectiveStartKey = toDateKey(effectiveStartDate);
           const effectiveEndKey = toDateKey(effectiveEndDate);
           if (effectiveStartKey && effectiveEndKey && effectiveStartKey > effectiveEndKey) {
@@ -172,8 +166,8 @@ export const PATCH = withAuthContext(async (req, ctx, { params }) => {
             end_date?: Date | null;
             days?: number;
           } = {};
-          if ('start_date' in line) data.start_date = toDateColumnValue(line.start_date);
-          if ('end_date' in line) data.end_date = toDateColumnValue(line.end_date);
+          if ('start_date' in line) data.start_date = optionalUtcDateFromLocalKey(line.start_date);
+          if ('end_date' in line) data.end_date = optionalUtcDateFromLocalKey(line.end_date);
           if (line.days !== undefined) data.days = line.days;
 
           const claim = await tx.prescriptionLine.updateMany({

@@ -49,7 +49,8 @@ export const GET = withAuthContext(
 
     const { monthStart, monthLabel } = parsedMonth;
     const monthEnd = endOfMonth(monthStart);
-    const visitRecords = await prisma.visitRecord.findMany({
+    const visitCountsByPatient = await prisma.visitRecord.groupBy({
+      by: ['patient_id'],
       where: {
         org_id: ctx.orgId,
         visit_date: {
@@ -60,30 +61,32 @@ export const GET = withAuthContext(
           in: ['completed', 'completed_with_issue', 'delivery_only', 'revisit_needed'],
         },
       },
-      select: {
-        patient_id: true,
-        schedule: {
-          select: {
-            case_: {
-              select: {
-                patient: {
-                  select: {
-                    id: true,
-                    name: true,
-                    medical_insurance_number: true,
-                    care_insurance_number: true,
-                  },
-                },
-              },
-            },
-          },
-        },
+      _count: {
+        _all: true,
       },
     });
 
+    const patientIds = visitCountsByPatient.map((row) => row.patient_id);
+    const patients =
+      patientIds.length === 0
+        ? []
+        : await prisma.patient.findMany({
+            where: {
+              org_id: ctx.orgId,
+              id: { in: patientIds },
+            },
+            select: {
+              id: true,
+              name: true,
+              medical_insurance_number: true,
+              care_insurance_number: true,
+            },
+          });
+    const patientById = new Map(patients.map((patient) => [patient.id, patient]));
+
     const buckets = new Map<string, MonthlyBucket>();
-    for (const record of visitRecords) {
-      const patient = record.schedule?.case_?.patient;
+    for (const row of visitCountsByPatient) {
+      const patient = patientById.get(row.patient_id);
       if (!patient) continue;
 
       const hasMedical = Boolean(patient.medical_insurance_number);
@@ -98,7 +101,7 @@ export const GET = withAuthContext(
         visit_count: 0,
         monthly_limit: monthlyLimit,
       };
-      existing.visit_count += 1;
+      existing.visit_count += row._count._all;
       buckets.set(key, existing);
     }
 

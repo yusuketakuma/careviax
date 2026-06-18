@@ -37,6 +37,20 @@ vi.mock('./offline-db', () => ({
 
 import { enqueueForSync, overwriteVisitRecordConflict, processSyncQueue } from './sync-engine';
 
+async function waitForAsyncAssertion(assertion: () => void) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    try {
+      assertion();
+      return;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+  throw lastError;
+}
+
 describe('sync-engine PHI persistence', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -152,6 +166,51 @@ describe('sync-engine PHI persistence', () => {
       conflict_state: undefined,
       conflict_payload: undefined,
     });
+  });
+
+  it('single-flights concurrent sync queue processing for the same org and endpoints', async () => {
+    dbMocks.toArray.mockResolvedValue([
+      {
+        id: 21,
+        entityType: 'residual_medication',
+        payload: 'encv1:valid-residual-payload',
+        scope_id: 'patient-1',
+        createdAt: new Date('2026-04-01T00:00:00.000Z'),
+        retryCount: 0,
+      },
+    ]);
+    cryptoMocks.decryptOfflinePayload.mockImplementation(
+      async (value: string | null | undefined) => {
+        if (value === 'encv1:valid-residual-payload') {
+          return JSON.stringify({ patient_id: 'patient-1', note: '残薬あり' });
+        }
+        return value ?? null;
+      },
+    );
+
+    let resolveFetch!: (value: Response) => void;
+    vi.mocked(fetch).mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+
+    const config = { orgId: 'org-1', endpoints: { residual_medication: '/api/residuals' } };
+    const first = processSyncQueue(config);
+    const second = processSyncQueue(config);
+
+    await waitForAsyncAssertion(() => {
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    resolveFetch(new Response(JSON.stringify({ data: { id: 'server-1' } }), { status: 201 }));
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { synced: 1, failed: 0 },
+      { synced: 1, failed: 0 },
+    ]);
+    expect(dbMocks.delete).toHaveBeenCalledTimes(1);
+    expect(dbMocks.delete).toHaveBeenCalledWith(21);
   });
 
   it('drops malformed server conflict responses before persisting conflict snapshots', async () => {

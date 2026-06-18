@@ -7,7 +7,7 @@ import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { formatDateKey } from '@/lib/date-key';
 import { dateKeySchema } from '@/lib/validations/date-key';
-import { buildSetPlanPackagingSummary } from '@/lib/prescription/set-plan-packaging';
+import { buildSetPlanPackagingSummary } from '@/lib/dispensing/set-plan-packaging';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { buildSetPlanAssignmentWhere } from '@/server/services/prescription-access';
 import { MAX_SET_PLAN_DAY_COUNT, isSetPlanPeriodWithinLimit } from '@/lib/set-plan-period';

@@ -80,6 +80,20 @@ function actionResponse(): ActionResponse {
   };
 }
 
+async function waitForAsyncAssertion(assertion: () => void) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    try {
+      assertion();
+      return;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+  throw lastError;
+}
+
 describe('PH-OS offline action queue', () => {
   beforeEach(async () => {
     vi.restoreAllMocks();
@@ -169,6 +183,42 @@ describe('PH-OS offline action queue', () => {
     });
 
     expect(executeCardAction).toHaveBeenCalledWith('card_1', request, { offlineReplay: true });
+    expect(await phosOfflineActionDb.offlineActions.count()).toBe(0);
+  });
+
+  it('single-flights concurrent offline action replays against the shared queue', async () => {
+    await enqueuePhosOfflineCardAction({
+      card_id: 'card_1',
+      request: {
+        action_code: ActionCode.CONFIRM_PRESCRIPTION_DIFF,
+        idempotency_key: 'idem_singleflight',
+        client_version: 1,
+      },
+      offline_op_class: 'NON_BLOCKING',
+    });
+
+    let resolveReplay!: (value: ActionResponse) => void;
+    const executeCardAction = vi.fn(
+      () =>
+        new Promise<ActionResponse>((resolve) => {
+          resolveReplay = resolve;
+        }),
+    );
+
+    const first = retryPhosOfflineCardActions({ client: { executeCardAction } });
+    const second = retryPhosOfflineCardActions({
+      client: { executeCardAction: vi.fn(async () => actionResponse()) },
+    });
+
+    await waitForAsyncAssertion(() => {
+      expect(executeCardAction).toHaveBeenCalledTimes(1);
+    });
+
+    resolveReplay(actionResponse());
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { synced: 1, failed: 0 },
+      { synced: 1, failed: 0 },
+    ]);
     expect(await phosOfflineActionDb.offlineActions.count()).toBe(0);
   });
 
