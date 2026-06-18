@@ -12,6 +12,25 @@ const READ_ONLY_FIELDS = new Set(['id', 'org_id', 'created_at', 'updated_at']);
 const READ_ONLY_RELATION_ID_PATTERN = /(?:^|_)id$/;
 const READ_ONLY_MODEL_PATTERNS = [/AuditLog$/, /History$/, /Job$/, /Log$/] as const;
 const NON_EDITABLE_MODEL_FIELDS: Record<string, ReadonlySet<string>> = {
+  BillingCandidate: new Set([
+    'billing_domain',
+    'billing_target_type',
+    'billing_target_id',
+    'billing_target_name',
+    'cycle_id',
+    'evidence_id',
+    'rule_id',
+    'dedupe_key',
+    'billing_month',
+    'billing_code',
+    'billing_name',
+    'points',
+    'quantity',
+    'calculation_breakdown',
+    'source_snapshot',
+    'status',
+    'exclusion_reason',
+  ]),
   Membership: new Set([
     'user_id',
     'site_id',

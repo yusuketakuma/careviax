@@ -221,12 +221,13 @@ export function DataExplorerContent() {
 
   const editableFields =
     tableData?.columns.filter((column) => column.isEditable).map((column) => column.name) ?? [];
+  const hasEditableFields = editableFields.length > 0;
 
   return (
     <PageScaffold>
       <AdminPageHeader
         title="データ探索"
-        description="監査ドキュメントで未露出だった backend graph を含め、全テーブルを一覧・閲覧・更新します。seed で投入した代表データを画面から直接検証・補正できます。"
+        description="監査ドキュメントで未露出だった backend graph を含め、全テーブルを一覧・閲覧し、許可フィールドのみ更新します。seed で投入した代表データを画面から直接検証できます。"
         shortcuts={getAdminDataExplorerShortcutLinks()}
       />
 
@@ -360,9 +361,10 @@ export function DataExplorerContent() {
 
         <Card className="xl:h-[calc(100vh-13rem)] xl:overflow-hidden">
           <CardHeader>
-            <CardTitle>詳細 / 更新</CardTitle>
+            <CardTitle>詳細 / 許可フィールド更新</CardTitle>
             <CardDescription>
-              編集可能フィールドのみ JSON で保存します。型は DB 側で検証されます。
+              編集可能フィールドのみ JSON
+              で保存します。専用ワークフロー管理のテーブルは閲覧のみです。
             </CardDescription>
           </CardHeader>
           <CardContent className="flex h-full min-h-0 flex-col gap-4">
@@ -379,6 +381,11 @@ export function DataExplorerContent() {
                     <Badge variant="secondary">{effectiveSelectedTable || '未選択'}</Badge>
                     <Badge variant="outline">{editableFields.length} editable fields</Badge>
                   </div>
+                  {!hasEditableFields ? (
+                    <div className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                      このテーブルは専用ワークフローで更新します。Data Explorer では閲覧のみです。
+                    </div>
+                  ) : null}
                   <Textarea
                     value={editorValue}
                     onChange={(event) => {
@@ -389,13 +396,13 @@ export function DataExplorerContent() {
                       }));
                     }}
                     className="min-h-[20rem] flex-1 font-mono text-xs"
-                    disabled={!selectedRow}
+                    disabled={!selectedRow || !hasEditableFields}
                   />
                   <div className="flex items-center gap-2">
                     <LoadingButton
                       loading={saveMutation.isPending}
                       onClick={() => saveMutation.mutate()}
-                      disabled={!selectedRow}
+                      disabled={!selectedRow || !hasEditableFields}
                     >
                       <Save className="mr-2 size-4" aria-hidden="true" />
                       保存

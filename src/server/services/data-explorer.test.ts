@@ -352,7 +352,7 @@ describe('data explorer service hardening', () => {
     expect(tx.$queryRawUnsafe).toHaveBeenCalledTimes(2);
   });
 
-  it('keeps relation id fields read-only across editable models', async () => {
+  it('keeps BillingCandidate business fields read-only so review and close APIs own workflow changes', async () => {
     mockOrgContext(async (query) => {
       if (query.includes('COUNT(*)')) {
         return [{ row_count: 1 }];
@@ -365,6 +365,9 @@ describe('data explorer service hardening', () => {
             patient_id: 'patient_1',
             billing_month: new Date('2026-04-01T00:00:00.000Z'),
             status: 'candidate',
+            source_snapshot: { billing_close: { review_state: 'pending' } },
+            calculation_breakdown: { base_points: 650 },
+            exclusion_reason: null,
           },
         },
       ];
@@ -372,12 +375,37 @@ describe('data explorer service hardening', () => {
 
     const result = await listDataExplorerRows('org_1', 'BillingCandidate');
     const editableByField = new Map(result.columns.map((field) => [field.name, field.isEditable]));
+    const readOnlyFields = [
+      'id',
+      'org_id',
+      'patient_id',
+      'billing_domain',
+      'billing_target_type',
+      'billing_target_id',
+      'billing_target_name',
+      'cycle_id',
+      'evidence_id',
+      'rule_id',
+      'dedupe_key',
+      'billing_month',
+      'billing_code',
+      'billing_name',
+      'points',
+      'quantity',
+      'calculation_breakdown',
+      'source_snapshot',
+      'status',
+      'exclusion_reason',
+      'created_at',
+      'updated_at',
+    ];
 
-    expect(editableByField.get('id')).toBe(false);
-    expect(editableByField.get('org_id')).toBe(false);
-    expect(editableByField.get('patient_id')).toBe(false);
-    expect(editableByField.get('billing_month')).toBe(true);
-    expect(editableByField.get('status')).toBe(true);
+    for (const field of readOnlyFields) {
+      expect(editableByField.get(field)).toBe(false);
+    }
+    expect(result.columns.filter((field) => field.isEditable).map((field) => field.name)).toEqual(
+      [],
+    );
 
     vi.clearAllMocks();
     await expect(
@@ -387,34 +415,37 @@ describe('data explorer service hardening', () => {
     ).rejects.toThrow('No editable fields were provided');
     expect(withOrgContextMock).not.toHaveBeenCalled();
 
-    const updateTx = mockOrgContext(async () => [
-      {
-        row: {
-          id: 'candidate_1',
-          org_id: 'org_1',
-          patient_id: 'patient_1',
-          status: 'ready',
-        },
-      },
-    ]);
+    await expect(
+      updateDataExplorerRow('org_1', 'BillingCandidate', 'candidate_1', {
+        billing_month: '2026-05-01',
+        billing_code: 'tampered_code',
+        billing_name: 'tampered name',
+        points: 9999,
+        quantity: 99,
+        status: 'exported',
+        source_snapshot: { billing_close: { closed_at: '2026-05-31T00:00:00.000Z' } },
+        calculation_breakdown: { amount_yen: 999999 },
+        exclusion_reason: 'tampered',
+      }),
+    ).rejects.toThrow('No editable fields were provided');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+  });
 
-    await updateDataExplorerRow('org_1', 'BillingCandidate', 'candidate_1', {
-      patient_id: 'patient_2',
-      status: 'ready',
+  it('reports BillingCandidate as read-only in model editability counts', async () => {
+    mockOrgContext(async (query) => {
+      if (query.includes('COUNT(*)')) {
+        return [{ table_name: 'BillingCandidate', row_count: 3 }];
+      }
+      return [];
     });
-    const updateCall = updateTx.$queryRawUnsafe.mock.calls[0];
-    const sql = String(updateCall?.[0] ?? '');
-    expect(sql).toContain('UPDATE "BillingCandidate" AS t');
-    expect(sql).toContain('SET ("status")');
-    expect(sql).not.toContain('SET ("patient_id"');
-    expect(sql).not.toContain('SET ("patient_id",');
-    expect(sql).not.toContain('"patient_id", "status"');
-    expect(sql).not.toContain('"status", "patient_id"');
-    expect(updateCall?.slice(1)).toEqual([
-      JSON.stringify({ status: 'ready' }),
-      'candidate_1',
-      'org_1',
-    ]);
+
+    const models = await listDataExplorerModels('org_1');
+
+    expect(models.find((model) => model.modelName === 'BillingCandidate')).toMatchObject({
+      coverageCategory: 'partial',
+      editableFieldCount: 0,
+      rowCount: 3,
+    });
   });
 
   it('strips user auth and lifecycle fields from mixed edit patches', async () => {
