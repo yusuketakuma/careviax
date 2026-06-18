@@ -4,6 +4,9 @@ import { success, validationError, notFound } from '@/lib/api/response';
 import { buildVisitScheduleProposalCaseAccessWhere } from '@/lib/auth/visit-schedule-access';
 import { prisma } from '@/lib/db/client';
 import { buildVisitScheduleBillingPreview } from '@/server/services/visit-schedule-billing-preview';
+import { visitScheduleDateKeySchema } from '@/lib/validations/visit-schedule';
+
+const proposedDateSchema = visitScheduleDateKeySchema('日付形式が不正です（YYYY-MM-DD）');
 
 export const GET = withAuthContext(
   async (req: NextRequest, ctx: AuthContext) => {
@@ -16,6 +19,12 @@ export const GET = withAuthContext(
 
     if (!caseId || !proposedDate) {
       return validationError('case_id と proposed_date が必要です');
+    }
+    const parsedProposedDate = proposedDateSchema.safeParse(proposedDate);
+    if (!parsedProposedDate.success) {
+      return validationError('入力値が不正です', {
+        proposed_date: ['日付形式が不正です（YYYY-MM-DD）'],
+      });
     }
 
     const caseAccessWhere = buildVisitScheduleProposalCaseAccessWhere(ctx, pharmacistId);
@@ -32,7 +41,7 @@ export const GET = withAuthContext(
     const preview = await buildVisitScheduleBillingPreview({
       orgId: ctx.orgId,
       caseId,
-      proposedDate,
+      proposedDate: parsedProposedDate.data,
       pharmacistId,
       siteId,
       visitType: visitTypeParam,

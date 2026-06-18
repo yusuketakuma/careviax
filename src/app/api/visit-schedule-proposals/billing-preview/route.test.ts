@@ -129,4 +129,25 @@ describe('/api/visit-schedule-proposals/billing-preview GET', () => {
     expect(response.status).toBe(404);
     expect(buildVisitScheduleBillingPreviewMock).not.toHaveBeenCalled();
   });
+
+  it('rejects invalid proposed_date values before case lookup', async () => {
+    const response = await GET(
+      new NextRequest(
+        'http://localhost/api/visit-schedule-proposals/billing-preview?case_id=case_1&proposed_date=2026-02-30',
+      ),
+      emptyRouteContext,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        proposed_date: ['日付形式が不正です（YYYY-MM-DD）'],
+      },
+    });
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(buildVisitScheduleBillingPreviewMock).not.toHaveBeenCalled();
+  });
 });
