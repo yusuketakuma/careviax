@@ -17,10 +17,10 @@ import type {
 import { describeBillingEvidenceBlockers } from '@/server/services/billing-evidence';
 import {
   VISIT_READY_CARRY_ITEMS_STATUS_BLOCKER,
+  VISIT_READY_PREPARATION_ITEMS,
   buildVisitReadyOnboardingBlockers,
   buildVisitReadyReadinessBlockers,
   isVisitReadyPrimaryPhysicianRole,
-  isVisitCarryItemsStatusBlockingReady,
   type VisitReadyOnboardingReadiness,
 } from '@/server/services/visit-preparation-readiness';
 
@@ -47,14 +47,6 @@ const VEHICLE_ASSIGNABLE_STATUSES = new Set([
   'departed',
   'in_progress',
 ]);
-const PREPARATION_SUMMARY_ITEMS = [
-  ['medication_changes_reviewed', '薬歴・前回変更の確認'],
-  ['carry_items_confirmed', '持参薬・物品確認'],
-  ['previous_issues_reviewed', '前回課題の確認'],
-  ['route_confirmed', 'ルート確認'],
-  ['offline_synced', 'オフライン同期確認'],
-] as const;
-
 type DayBoardScheduleReadySource = {
   id: string;
   case_id: string;
@@ -347,28 +339,31 @@ function buildPreparationSummary(schedule: {
   if (!schedule.preparation) {
     return {
       completed_count: 0,
-      total_count: PREPARATION_SUMMARY_ITEMS.length,
+      total_count: VISIT_READY_PREPARATION_ITEMS.length,
       status: 'unknown',
       incomplete_labels: ['準備未確認'],
       ready_blocker_summary: schedule.ready_blocker_summary,
     };
   }
 
-  const completedCount = PREPARATION_SUMMARY_ITEMS.filter(
+  const completedCount = VISIT_READY_PREPARATION_ITEMS.filter(
     ([field]) => schedule.preparation?.[field] === true,
   ).length;
-  const incompleteLabels: string[] = PREPARATION_SUMMARY_ITEMS.flatMap(([field, label]) =>
-    schedule.preparation?.[field] === true ? [] : [label],
+  const incompleteLabels = buildVisitReadyReadinessBlockers(
+    schedule.preparation,
+    schedule.carry_items_status,
   );
-  const carryItemsBlocked = isVisitCarryItemsStatusBlockingReady(schedule.carry_items_status);
-  if (carryItemsBlocked) incompleteLabels.unshift(VISIT_READY_CARRY_ITEMS_STATUS_BLOCKER);
-  if (completedCount === PREPARATION_SUMMARY_ITEMS.length && !schedule.preparation?.prepared_at) {
+  const carryItemsBlocked = incompleteLabels.includes(VISIT_READY_CARRY_ITEMS_STATUS_BLOCKER);
+  if (
+    completedCount === VISIT_READY_PREPARATION_ITEMS.length &&
+    !schedule.preparation?.prepared_at
+  ) {
     incompleteLabels.unshift('準備完了時刻未確定');
   }
 
   return {
     completed_count: completedCount,
-    total_count: PREPARATION_SUMMARY_ITEMS.length,
+    total_count: VISIT_READY_PREPARATION_ITEMS.length,
     status: incompleteLabels.length === 0 ? 'ready' : carryItemsBlocked ? 'blocked' : 'incomplete',
     incomplete_labels: incompleteLabels,
     ready_blocker_summary: schedule.ready_blocker_summary,

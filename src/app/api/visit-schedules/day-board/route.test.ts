@@ -331,7 +331,7 @@ describe('/api/visit-schedules/day-board', () => {
         pharmacist_id: 'user_1',
         visit_type: 'regular',
         schedule_status: 'planned',
-        carry_items_status: 'ready',
+        carry_items_status: 'partial',
         priority: 'normal',
         scheduled_date: new Date('2026-06-12T00:00:00.000Z'),
         site_id: 'site_1',
@@ -397,8 +397,8 @@ describe('/api/visit-schedules/day-board', () => {
       preparation_summary: {
         completed_count: 3,
         total_count: 5,
-        status: 'incomplete',
-        incomplete_labels: ['持参薬・物品確認', 'ルート確認'],
+        status: 'blocked',
+        incomplete_labels: ['持参物ステータス未解決', '持参薬・物品確認', 'ルート確認'],
       },
     });
     expect(json.data.vehicle_resources).toEqual([

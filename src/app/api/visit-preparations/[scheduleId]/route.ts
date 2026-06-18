@@ -23,10 +23,7 @@ import {
   resolveOperationalTasks,
 } from '@/server/services/operational-tasks';
 import { listBillingEvidenceBlockers } from '@/server/services/billing-evidence';
-import {
-  VISIT_READY_CARRY_ITEMS_STATUS_BLOCKER,
-  isVisitCarryItemsStatusBlockingReady,
-} from '@/server/services/visit-preparation-readiness';
+import { buildVisitReadyReadinessBlockers } from '@/server/services/visit-preparation-readiness';
 import {
   getPatientHomeCareFeatureSummary,
   selectScheduleHomeCareFeatureHighlights,
@@ -1152,16 +1149,10 @@ export async function GET(
     return Boolean(primaryGroup && targetGroup && primaryGroup.key === targetGroup.key);
   });
 
-  const readinessBlockers = [
-    !preparation?.medication_changes_reviewed ? '薬歴・前回変更の確認' : null,
-    !preparation?.carry_items_confirmed ? '持参薬・物品確認' : null,
-    isVisitCarryItemsStatusBlockingReady(schedule.carry_items_status)
-      ? VISIT_READY_CARRY_ITEMS_STATUS_BLOCKER
-      : null,
-    !preparation?.previous_issues_reviewed ? '前回課題の確認' : null,
-    !preparation?.route_confirmed ? 'ルート確認' : null,
-    !preparation?.offline_synced ? 'オフライン同期確認' : null,
-  ].filter((value): value is string => value != null);
+  const readinessBlockers = buildVisitReadyReadinessBlockers(
+    preparation,
+    schedule.carry_items_status,
+  );
   const homeCareFeatureSummary = await getPatientHomeCareFeatureSummary(prisma, {
     orgId: ctx.orgId,
     patientId: schedule.case_.patient.id,
@@ -1570,16 +1561,10 @@ export async function PUT(
     return forbiddenResponse('この訪問予定の準備情報を更新する権限がありません');
   }
 
-  const readinessBlockers = [
-    !parsed.data.medication_changes_reviewed ? '薬歴・前回変更の確認' : null,
-    !parsed.data.carry_items_confirmed ? '持参薬・物品確認' : null,
-    isVisitCarryItemsStatusBlockingReady(schedule.carry_items_status)
-      ? VISIT_READY_CARRY_ITEMS_STATUS_BLOCKER
-      : null,
-    !parsed.data.previous_issues_reviewed ? '前回課題の確認' : null,
-    !parsed.data.route_confirmed ? 'ルート確認' : null,
-    !parsed.data.offline_synced ? 'オフライン同期確認' : null,
-  ].filter((value): value is string => value != null);
+  const readinessBlockers = buildVisitReadyReadinessBlockers(
+    parsed.data,
+    schedule.carry_items_status,
+  );
   const preparationReady = readinessBlockers.length === 0;
 
   const templateOpts = parsed.data.template_options;

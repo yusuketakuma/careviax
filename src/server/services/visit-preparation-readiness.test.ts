@@ -9,6 +9,7 @@ vi.mock('./billing-evidence', () => ({
 }));
 
 import {
+  buildVisitReadyReadinessBlockers,
   evaluateVisitScheduleReadyTransition,
   getVisitReadyTransitionErrorMessage,
   VISIT_READY_CHECKLIST_BLOCKED_MESSAGE,
@@ -380,5 +381,22 @@ describe('evaluateVisitScheduleReadyTransition', () => {
         ],
       },
     } satisfies { ok: false; details: VisitReadyTransitionBlockers });
+  });
+});
+
+describe('buildVisitReadyReadinessBlockers', () => {
+  it('builds the shared checklist and carry-status blocker list without requiring a DB record', () => {
+    expect(
+      buildVisitReadyReadinessBlockers(
+        {
+          medication_changes_reviewed: true,
+          carry_items_confirmed: false,
+          previous_issues_reviewed: true,
+          route_confirmed: false,
+          offline_synced: true,
+        },
+        'partial',
+      ),
+    ).toEqual([VISIT_READY_CARRY_ITEMS_STATUS_BLOCKER, '持参薬・物品確認', 'ルート確認']);
   });
 });

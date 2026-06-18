@@ -707,7 +707,7 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
           handoff: {
             assignment_mode: 'fallback',
           },
-          readiness_blockers: expect.arrayContaining(['薬歴・前回変更の確認', '前回課題の確認']),
+          readiness_blockers: ['薬歴・前回変更の確認', '前回課題の確認', 'オフライン同期確認'],
           facility_mode: {
             same_day_patient_count: 2,
             same_day_patient_names: expect.arrayContaining(['山田 太郎', '山田 花子']),
@@ -984,7 +984,12 @@ describe('/api/visit-preparations/[scheduleId] GET', () => {
       await expect(response.json()).resolves.toMatchObject({
         data: {
           pack: {
-            readiness_blockers: expect.arrayContaining(['持参物ステータス未解決']),
+            readiness_blockers: [
+              '持参物ステータス未解決',
+              '薬歴・前回変更の確認',
+              '前回課題の確認',
+              'オフライン同期確認',
+            ],
           },
         },
       });
@@ -2124,4 +2129,41 @@ describe('/api/visit-preparations/[scheduleId] PUT', () => {
       });
     },
   );
+
+  it('prioritizes unresolved carry item status in incomplete preparation task descriptions', async () => {
+    visitScheduleFindFirstMock.mockResolvedValueOnce(
+      buildPutScheduleMock({ carry_items_status: 'partial' }),
+    );
+    visitPreparationUpsertMock.mockResolvedValueOnce({
+      id: 'prep_1',
+      schedule_id: 'schedule_1',
+      checklist: {},
+      medication_changes_reviewed: true,
+      carry_items_confirmed: false,
+      previous_issues_reviewed: true,
+      route_confirmed: false,
+      offline_synced: true,
+      prepared_by: 'user_1',
+      prepared_at: null,
+    });
+
+    const response = await PUT(
+      createPutRequest({
+        ...completePreparationBody,
+        carry_items_confirmed: false,
+        route_confirmed: false,
+      }),
+      { params: Promise.resolve({ scheduleId: 'schedule_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(upsertOperationalTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        description: '未完了: 持参物ステータス未解決、持参薬・物品確認、ルート確認',
+      }),
+    );
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+  });
 });

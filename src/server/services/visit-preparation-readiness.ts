@@ -19,12 +19,15 @@ type ReadyTransitionDb = Pick<
 
 export type VisitReadyPreparation = {
   org_id: string;
+} & VisitReadyPreparationChecklist;
+
+export type VisitReadyPreparationChecklist = {
   medication_changes_reviewed: boolean;
   carry_items_confirmed: boolean;
   previous_issues_reviewed: boolean;
   route_confirmed: boolean;
   offline_synced: boolean;
-} | null;
+};
 
 export type VisitReadyOnboardingKey =
   | 'consent_obtained'
@@ -55,13 +58,13 @@ export type VisitReadyTransitionResult =
   | { ok: true }
   | { ok: false; details: VisitReadyTransitionBlockers };
 
-const PREPARATION_READY_ITEMS = [
+export const VISIT_READY_PREPARATION_ITEMS = [
   ['medication_changes_reviewed', '薬歴・前回変更の確認'],
   ['carry_items_confirmed', '持参薬・物品確認'],
   ['previous_issues_reviewed', '前回課題の確認'],
   ['route_confirmed', 'ルート確認'],
   ['offline_synced', 'オフライン同期確認'],
-] as const satisfies ReadonlyArray<readonly [keyof NonNullable<VisitReadyPreparation>, string]>;
+] as const satisfies ReadonlyArray<readonly [keyof VisitReadyPreparationChecklist, string]>;
 
 const ONBOARDING_READY_ITEMS = [
   ['consent_obtained', '同意未取得'],
@@ -84,15 +87,15 @@ export function isVisitCarryItemsStatusBlockingReady(status: string | null | und
 }
 
 export function buildVisitReadyReadinessBlockers(
-  preparation: VisitReadyPreparation,
+  preparation: VisitReadyPreparationChecklist | null,
   carryItemsStatus?: string | null,
 ) {
-  const blockers: string[] = PREPARATION_READY_ITEMS.flatMap(([field, label]) =>
+  const checklistBlockers: string[] = VISIT_READY_PREPARATION_ITEMS.flatMap(([field, label]) =>
     preparation?.[field] ? [] : [label],
   );
-  if (isVisitCarryItemsStatusBlockingReady(carryItemsStatus)) {
-    blockers.push(VISIT_READY_CARRY_ITEMS_STATUS_BLOCKER);
-  }
+  const blockers = isVisitCarryItemsStatusBlockingReady(carryItemsStatus)
+    ? [VISIT_READY_CARRY_ITEMS_STATUS_BLOCKER, ...checklistBlockers]
+    : checklistBlockers;
   return blockers;
 }
 
