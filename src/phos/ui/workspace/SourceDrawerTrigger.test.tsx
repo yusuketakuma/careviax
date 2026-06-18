@@ -36,7 +36,7 @@ describe('SourceDrawerTrigger', () => {
       'https://example.test/rx_1',
     );
 
-    const closeButton = within(drawer).getByRole('button', { name: 'Close' });
+    const closeButton = within(drawer).getByRole('button', { name: '閉じる' });
     closeButton.focus();
     fireEvent.keyDown(document, { key: 'Tab' });
     expect(drawer.contains(document.activeElement)).toBe(true);
@@ -101,10 +101,11 @@ describe('SourceDrawerTrigger', () => {
     expect(within(drawer).getByText('外部プロトコル相対')).toBeTruthy();
     expect(within(drawer).getByText('ftp資料')).toBeTruthy();
     expect(within(drawer).getByText('data資料')).toBeTruthy();
-    expect(within(drawer).getAllByRole('link', { name: /原文/ }).map((link) => link.getAttribute('href'))).toEqual([
-      '/source/rx_safe',
-      'https://example.test/care_safe',
-    ]);
+    expect(
+      within(drawer)
+        .getAllByRole('link', { name: /原文/ })
+        .map((link) => link.getAttribute('href')),
+    ).toEqual(['/source/rx_safe', 'https://example.test/care_safe']);
   });
 
   it('keeps empty source state inside the sheet instead of the right pane only', () => {

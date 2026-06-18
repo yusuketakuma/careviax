@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import {
   PhosActionLabel,
@@ -49,6 +49,8 @@ export function HandoffPanel({
   const createReasonOptions = Object.entries(PhosHandoffCreateReasonLabel);
   const returnReasonOptions = Object.entries(PhosHandoffReturnReasonLabel);
   const requestedActionOptions = Array.from(new Set(createRequestedActions));
+  const createFormId = useId();
+  const createErrorId = `${createFormId}-error`;
   const [returningId, setReturningId] = useState<string | undefined>();
   const [reasonCode, setReasonCode] = useState(returnReasonOptions[0]?.[0] ?? '');
   const [note, setNote] = useState('');
@@ -103,6 +105,8 @@ export function HandoffPanel({
           <button
             type="button"
             className="min-h-11 rounded-md border border-border/70 bg-background px-3 text-sm font-medium text-foreground transition hover:bg-muted/45 focus-visible:ring-3 focus-visible:ring-ring/50"
+            aria-expanded={createOpen}
+            aria-controls={createFormId}
             onClick={() => {
               setCreateOpen((current) => !current);
               setCreateError(undefined);
@@ -114,6 +118,7 @@ export function HandoffPanel({
           </button>
           {createOpen ? (
             <div
+              id={createFormId}
               className="mt-3 rounded-md border border-border/70 bg-background p-3"
               onKeyDown={(event) => {
                 if (!isConfirmShortcut(event)) return;
@@ -149,6 +154,8 @@ export function HandoffPanel({
                 id="handoff-summary"
                 className="mt-2 min-h-24 w-full rounded-md border border-border/70 bg-background px-3 py-2 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
                 value={createSummary}
+                aria-invalid={Boolean(createError)}
+                aria-describedby={createError ? createErrorId : undefined}
                 onChange={(event) => {
                   setCreateSummary(event.target.value);
                   setCreateError(undefined);
@@ -199,7 +206,12 @@ export function HandoffPanel({
               </select>
               <SourceRefList sources={createSources} />
               {createError ? (
-                <p className="mt-2 text-sm" style={{ color: warningFeedbackStyle.color }}>
+                <p
+                  id={createErrorId}
+                  role="alert"
+                  className="mt-2 text-sm"
+                  style={{ color: warningFeedbackStyle.color }}
+                >
                   {createError}
                 </p>
               ) : null}
@@ -260,6 +272,7 @@ export function HandoffPanel({
                         type="button"
                         className="min-h-11 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/50 data-[enabled=false]:cursor-not-allowed data-[enabled=false]:bg-muted data-[enabled=false]:text-muted-foreground"
                         data-enabled={canResolve ? 'true' : 'false'}
+                        aria-disabled={!canResolve}
                         aria-label={
                           canResolve
                             ? PhosHandoffPanelCopy.RESOLVE_ARIA
@@ -332,7 +345,11 @@ export function HandoffPanel({
                       }}
                     />
                     {error ? (
-                      <p className="mt-2 text-sm" style={{ color: warningFeedbackStyle.color }}>
+                      <p
+                        role="alert"
+                        className="mt-2 text-sm"
+                        style={{ color: warningFeedbackStyle.color }}
+                      >
                         {error}
                       </p>
                     ) : null}

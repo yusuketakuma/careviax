@@ -1,26 +1,16 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, useId } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Pill, AlertTriangle, Shield } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import {
+  fetchDrugMasterSuggestions,
+  type DrugMasterSuggestion,
+} from '@/lib/pharmacy/drug-master-suggestions';
 
-type DrugMasterHit = {
-  id: string;
-  yj_code: string;
-  drug_name: string;
-  drug_name_kana: string | null;
-  generic_name: string | null;
-  drug_price: number | null;
-  unit: string | null;
-  dosage_form: string | null;
-  manufacturer: string | null;
-  is_generic: boolean;
-  is_narcotic: boolean;
-  is_psychotropic: boolean;
-  max_administration_days: number | null;
-};
+const DRUG_SUGGEST_DEBOUNCE_MS = 250;
 
 export type DrugSelection = {
   drug_name: string;
@@ -41,6 +31,9 @@ interface DrugSuggestProps {
   placeholder?: string;
   required?: boolean;
   className?: string;
+  inputId?: string;
+  ariaLabel?: string;
+  ariaDescribedBy?: string;
 }
 
 export function DrugSuggest({
@@ -50,33 +43,45 @@ export function DrugSuggest({
   placeholder = '薬剤名を入力（マスター検索）',
   required = false,
   className = '',
+  inputId,
+  ariaLabel,
+  ariaDescribedBy,
 }: DrugSuggestProps) {
   const orgId = useOrgId();
+  const generatedId = useId();
   const [open, setOpen] = useState(false);
   const [focusedIdx, setFocusedIdx] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const normalizedValue = value.trim();
+  const [debouncedQuery, setDebouncedQuery] = useState(normalizedValue);
+  const resolvedInputId = inputId ?? `drug-suggest-${generatedId}`;
+  const listboxId = `${resolvedInputId}-listbox`;
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      setDebouncedQuery(normalizedValue);
+    }, DRUG_SUGGEST_DEBOUNCE_MS);
+    return () => window.clearTimeout(handle);
+  }, [normalizedValue]);
 
   const { data } = useQuery({
-    queryKey: ['drug-suggest', orgId, value],
+    queryKey: ['drug-suggest', orgId, debouncedQuery],
     queryFn: async () => {
-      if (!value || value.length < 2) return [];
-      const params = new URLSearchParams({ q: value, limit: '10' });
-      const res = await fetch(`/api/drug-masters?${params}`, {
-        headers: { 'x-org-id': orgId },
-      });
-      if (!res.ok) return [];
-      const json = await res.json();
-      return (json.data ?? []) as DrugMasterHit[];
+      return fetchDrugMasterSuggestions({ query: debouncedQuery, orgId });
     },
-    enabled: !!orgId && value.length >= 2,
+    enabled: !!orgId && debouncedQuery.length >= 2,
     staleTime: 30_000,
   });
 
   const suggestions = useMemo(() => data ?? [], [data]);
+  const activeOptionId =
+    open && focusedIdx >= 0 && suggestions[focusedIdx]
+      ? `${listboxId}-option-${suggestions[focusedIdx].id}`
+      : undefined;
 
   const handleSelect = useCallback(
-    (drug: DrugMasterHit) => {
+    (drug: DrugMasterSuggestion) => {
       onSelect({
         drug_name: drug.drug_name,
         drug_code: drug.yj_code,
@@ -133,6 +138,7 @@ export function DrugSuggest({
   return (
     <div className="relative">
       <input
+        id={resolvedInputId}
         ref={inputRef}
         type="text"
         value={value}
@@ -149,19 +155,23 @@ export function DrugSuggest({
         role="combobox"
         aria-expanded={open && suggestions.length > 0}
         aria-autocomplete="list"
-        aria-controls="drug-suggestions"
+        aria-controls={suggestions.length > 0 ? listboxId : undefined}
+        aria-activedescendant={activeOptionId}
+        aria-label={ariaLabel ?? placeholder}
+        aria-describedby={ariaDescribedBy}
       />
 
       {open && suggestions.length > 0 && (
         <ul
           ref={listRef}
-          id="drug-suggestions"
+          id={listboxId}
           role="listbox"
           className="absolute left-0 top-full z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-md border bg-popover shadow-lg"
         >
           {suggestions.map((drug, idx) => (
             <li
               key={drug.id}
+              id={`${listboxId}-option-${drug.id}`}
               role="option"
               aria-selected={idx === focusedIdx}
               className={[

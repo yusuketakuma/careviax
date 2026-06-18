@@ -2,12 +2,10 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
-import {
-  narcoticUseCategoryLabels,
-  specialProcedureLabels,
-} from '@/lib/patient/home-visit-intake';
+import { narcoticUseCategoryLabels, specialProcedureLabels } from '@/lib/patient/home-visit-intake';
 import type {
   PatientStructuredCareItem,
   PatientStructuredCareList,
@@ -27,13 +25,7 @@ function formatCareDate(iso: string): string {
   return `${d.getUTCFullYear()}/${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
 }
 
-function StructuredCareRow({
-  item,
-  label,
-}: {
-  item: PatientStructuredCareItem;
-  label: string;
-}) {
+function StructuredCareRow({ item, label }: { item: PatientStructuredCareItem; label: string }) {
   return (
     <li className="rounded-lg border border-border/70 bg-background px-3 py-2 text-sm">
       <div className="flex items-center justify-between gap-2">
@@ -44,7 +36,7 @@ function StructuredCareRow({
             'shrink-0 text-xs',
             item.is_active
               ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-              : 'border-slate-200 bg-slate-50 text-slate-600'
+              : 'border-slate-200 bg-slate-50 text-slate-600',
           )}
         >
           {item.is_active ? '実施中' : '終了'}
@@ -70,7 +62,7 @@ function StructuredCareRow({
 export function PatientStructuredCarePanel({ patientId }: { patientId: string }) {
   const orgId = useOrgId();
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['patient-structured-care', patientId, orgId],
     queryFn: async () => {
       const response = await fetch(`/api/patients/${patientId}/structured-care`, {
@@ -87,8 +79,29 @@ export function PatientStructuredCarePanel({ patientId }: { patientId: string })
   const procedures = data?.data?.procedures ?? [];
   const narcotics = data?.data?.narcotics ?? [];
 
-  // 取得中・失敗・データ無しは空カードを避けて非表示
-  if (isLoading || error) return null;
+  // 取得中・データ無しは空カードを避けて非表示
+  if (isLoading) return null;
+  if (error) {
+    return (
+      <section
+        className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-950"
+        aria-label="在宅医療処置・麻薬"
+        data-testid="patient-structured-care-panel-error"
+      >
+        <h3 className="text-base font-semibold">在宅医療処置・麻薬</h3>
+        <p className="mt-1 text-sm">在宅医療処置・麻薬の取得に失敗しました。</p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="mt-3 min-h-[44px] bg-background sm:min-h-0"
+          onClick={() => void refetch()}
+        >
+          再読み込み
+        </Button>
+      </section>
+    );
+  }
   if (procedures.length === 0 && narcotics.length === 0) return null;
 
   return (

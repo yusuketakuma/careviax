@@ -44,7 +44,7 @@ import {
 } from '@/components/ui/sheet';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { PageScaffold } from '@/components/layout/page-scaffold';
-import type { DrugMasterImportStatusResponse } from '@/app/api/drug-master-imports/status/route';
+import type { DrugMasterImportStatusResponse } from '@/types/drug-master-import-status';
 import {
   buildBulkPreviewViewModel,
   buildDrugMasterFilterViewModel,
@@ -864,7 +864,13 @@ function DrugMasterOperationalContent({
     stockedOnly,
   ]);
 
-  const { data, isLoading } = useQuery({
+  const {
+    data,
+    isLoading,
+    isError: isDrugMasterError,
+    error: drugMasterError,
+    refetch: refetchDrugMasters,
+  } = useQuery({
     queryKey: ['drug-masters', orgId, params],
     queryFn: async () => {
       const res = await fetch(`/api/drug-masters?${params}`, {
@@ -1084,6 +1090,7 @@ function DrugMasterOperationalContent({
         q: genericName,
         generic: 'true',
         limit: '20',
+        includeTotal: 'false',
       });
       const res = await fetch(`/api/drug-masters?${params}`, {
         headers: { 'x-org-id': orgId },
@@ -3393,6 +3400,14 @@ function DrugMasterOperationalContent({
           setPreferredGenericId(null);
         }}
         selectedRowIndex={selectedRowIndex}
+        errorMessage={
+          isDrugMasterError
+            ? drugMasterError instanceof Error
+              ? drugMasterError.message
+              : '医薬品マスターの取得に失敗しました'
+            : undefined
+        }
+        onRetry={() => void refetchDrugMasters()}
       />
 
       <ConfirmDialog

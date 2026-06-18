@@ -25,7 +25,7 @@ function createWrapper() {
 function stubFetch(payload: unknown) {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => new Response(JSON.stringify(payload), { status: 200 }))
+    vi.fn(async () => new Response(JSON.stringify(payload), { status: 200 })),
   );
 }
 
@@ -91,5 +91,18 @@ describe('PatientStructuredCarePanel', () => {
       expect(globalThis.fetch as ReturnType<typeof vi.fn>).toHaveBeenCalled();
     });
     expect(screen.queryByTestId('patient-structured-care-panel')).toBeNull();
+  });
+
+  it('取得失敗時は空カードではなく再読み込み可能なエラー状態を表示する', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('server error', { status: 500 })),
+    );
+
+    render(<PatientStructuredCarePanel patientId="p1" />, { wrapper: createWrapper() });
+
+    expect(await screen.findByTestId('patient-structured-care-panel-error')).toBeTruthy();
+    expect(screen.getByText('在宅医療処置・麻薬の取得に失敗しました。')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '再読み込み' })).toBeTruthy();
   });
 });

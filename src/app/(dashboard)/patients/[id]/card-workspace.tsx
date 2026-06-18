@@ -145,6 +145,8 @@ const UNRESOLVED_CATEGORY_LABELS: Record<VisitBriefUnresolvedItem['source_type']
   billing: '事務',
 };
 
+const SSR_PATIENT_OVERVIEW_STALE_TIME_MS = 30_000;
+
 /** 当日は HH:mm、それ以外は M/d 表示(06_card 直近の動きの時刻表記) */
 function formatActivityTime(value: string): string {
   const date = parseISO(value);
@@ -3248,6 +3250,7 @@ export function CardWorkspace({
   const orgId = useOrgId();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const [initialPatientUpdatedAt] = useState(() => (initialPatient ? Date.now() : undefined));
 
   // P1-13 今だれが見ているか: このカードを開いていることを共有(ベストエフォート)
   usePresenceHeartbeat({
@@ -3273,6 +3276,8 @@ export function CardWorkspace({
     },
     enabled: Boolean(orgId),
     initialData: initialPatient ?? undefined,
+    initialDataUpdatedAt: initialPatientUpdatedAt,
+    staleTime: initialPatient ? SSR_PATIENT_OVERVIEW_STALE_TIME_MS : 0,
   });
 
   const { data: homeOperations } = useQuery<PatientHomeOperationsSnapshot>({

@@ -98,6 +98,7 @@ export function HandoffQueue({
                           type="button"
                           className="min-h-11 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/50 data-[enabled=false]:cursor-not-allowed data-[enabled=false]:bg-muted data-[enabled=false]:text-muted-foreground"
                           data-enabled={canResolve ? 'true' : 'false'}
+                          aria-disabled={!canResolve}
                           aria-label={
                             canResolve
                               ? PhosHandoffPanelCopy.RESOLVE_ARIA
@@ -185,7 +186,11 @@ export function HandoffQueue({
                       }}
                     />
                     {error ? (
-                      <p className="mt-2 text-sm" style={{ color: warningFeedbackStyle.color }}>
+                      <p
+                        role="alert"
+                        className="mt-2 text-sm"
+                        style={{ color: warningFeedbackStyle.color }}
+                      >
                         {error}
                       </p>
                     ) : null}

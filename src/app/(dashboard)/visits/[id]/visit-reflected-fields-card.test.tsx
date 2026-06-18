@@ -25,7 +25,7 @@ function createWrapper() {
 function stubFetch(payload: unknown) {
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => new Response(JSON.stringify(payload), { status: 200 }))
+    vi.fn(async () => new Response(JSON.stringify(payload), { status: 200 })),
   );
 }
 
@@ -102,5 +102,18 @@ describe('VisitReflectedFieldsCard', () => {
       expect(globalThis.fetch as ReturnType<typeof vi.fn>).toHaveBeenCalled();
     });
     expect(screen.queryByTestId('visit-reflected-fields-card')).toBeNull();
+  });
+
+  it('取得失敗時は空カードではなく再読み込み可能なエラー状態を表示する', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('server error', { status: 500 })),
+    );
+
+    render(<VisitReflectedFieldsCard recordId="vr_1" />, { wrapper: createWrapper() });
+
+    expect(await screen.findByTestId('visit-reflected-fields-card-error')).toBeTruthy();
+    expect(screen.getByText('反映済み項目の取得に失敗しました。')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '再読み込み' })).toBeTruthy();
   });
 });

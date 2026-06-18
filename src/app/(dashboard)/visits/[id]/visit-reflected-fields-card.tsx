@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
@@ -22,7 +23,7 @@ import type { PatientFieldRevisionListItem } from '@/server/services/patient-fie
 export function VisitReflectedFieldsCard({ recordId }: { recordId: string }) {
   const orgId = useOrgId();
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['visit-reflected-fields', recordId, orgId],
     queryFn: async () => {
       const res = await fetch(`/api/visit-records/${recordId}/reflected-fields`, {
@@ -37,7 +38,34 @@ export function VisitReflectedFieldsCard({ recordId }: { recordId: string }) {
   });
 
   const items = data?.data ?? [];
-  if (isLoading || error) return null;
+  if (isLoading) return null;
+  if (error) {
+    return (
+      <Card
+        data-testid="visit-reflected-fields-card-error"
+        className="border-amber-200 bg-amber-50"
+      >
+        <CardHeader className="pb-2">
+          <h2 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-amber-950">
+            <RefreshCw className="size-4 text-amber-700" aria-hidden="true" />
+            この訪問から患者詳細へ反映した項目
+          </h2>
+          <p className="text-xs leading-5 text-amber-900">反映済み項目の取得に失敗しました。</p>
+        </CardHeader>
+        <CardContent>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="min-h-[44px] bg-background sm:min-h-0"
+            onClick={() => void refetch()}
+          >
+            再読み込み
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
   if (items.length === 0) return null;
 
   return (

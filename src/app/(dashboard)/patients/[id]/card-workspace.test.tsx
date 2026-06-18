@@ -3,7 +3,11 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
-import type { PatientDocumentsSnapshot, PatientWorkspace } from './patient-detail.types';
+import type {
+  PatientDocumentsSnapshot,
+  PatientOverview,
+  PatientWorkspace,
+} from './patient-detail.types';
 import type { PatientHomeOperationsSnapshot } from '@/types/patient-home-operations';
 
 const useQueryMock = vi.hoisted(() => vi.fn());
@@ -161,6 +165,90 @@ function buildWorkspace(overrides: Partial<PatientWorkspace> = {}): PatientWorks
     set_plan: null,
     prescription_document_url: null,
     ...overrides,
+  };
+}
+
+function buildVisitBrief(
+  overrides: Partial<PatientOverview['visit_brief']> = {},
+): PatientOverview['visit_brief'] {
+  const base: PatientOverview['visit_brief'] = {
+    patient: {
+      id: 'patient_1',
+      name: '田中 一郎',
+    },
+    context: 'patient',
+    generated_at: '2026-06-18T00:00:00.000Z',
+    last_prescribed_date: null,
+    baseline_context: null,
+    medication_changes: [],
+    patient_changes: [],
+    medications: [],
+    dispensing_items: [],
+    delivery_status: [],
+    dosage_form_support: [],
+    multidisciplinary_updates: [],
+    jahis_supplemental_records: [],
+    unresolved_items: [],
+    must_check_today: [],
+    rule_summary: {
+      generation_id: 'rule_1',
+      headline: '確認事項はありません',
+      bullets: [],
+      must_check_today: [],
+      source_refs: [],
+      generated_at: '2026-06-18T00:00:00.000Z',
+    },
+    ai_summary: {
+      generation_id: 'ai_1',
+      provider: 'rule',
+      requested_provider: 'disabled',
+      is_fallback: true,
+      model: null,
+      fallback_reason: null,
+      headline: '確認事項はありません',
+      bullets: [],
+      must_check_today: [],
+      source_refs: [],
+      generated_at: '2026-06-18T00:00:00.000Z',
+      duration_ms: null,
+      recent_generation_count_24h: 0,
+      recent_failure_count_24h: 0,
+      recent_failure_rate_24h: null,
+    },
+    conference_summary: {
+      recent_conferences: 0,
+      pending_action_items: 0,
+      last_conference_date: null,
+      last_conference_type: null,
+      summary: null,
+      highlighted_risks: [],
+    },
+    facility_context: null,
+    drug_cautions: [],
+  };
+
+  return {
+    ...base,
+    ...overrides,
+    patient: {
+      ...base.patient,
+      ...overrides.patient,
+    },
+    rule_summary: {
+      ...base.rule_summary,
+      ...overrides.rule_summary,
+    },
+    ai_summary: {
+      ...base.ai_summary,
+      ...overrides.ai_summary,
+    },
+    conference_summary:
+      overrides.conference_summary === null
+        ? null
+        : {
+            ...base.conference_summary!,
+            ...overrides.conference_summary,
+          },
   };
 }
 
@@ -351,16 +439,17 @@ function mockPatientQuery(
     notes: null,
     summary_metrics: { open_tasks_count: 0 },
     risk_summary: null,
-    visit_brief: {
+    visit_brief: buildVisitBrief({
       conference_summary: {
         recent_conferences: 1,
         pending_action_items: 0,
         last_conference_date: '2026-06-01T00:00:00.000Z',
         last_conference_type: 'discharge_conference',
         summary: '退院前カンファで初回訪問を確認',
+        highlighted_risks: [],
       },
       unresolved_items: [],
-    },
+    }),
     jahis_supplemental_records: [],
     workspace,
     privacy: {
@@ -833,6 +922,64 @@ describe('CardWorkspace', () => {
     expect(screen.getByTestId('patient-profile-summary')).toBeTruthy();
     expect(screen.getByTestId('patient-home-operations-panel')).toBeTruthy();
     expect(screen.queryByTestId('card-prescription-section')).toBeNull();
+  });
+
+  it('keeps the server-rendered overview fresh during initial hydration', () => {
+    useQueryMock.mockClear();
+    mockPatientQuery(buildWorkspace());
+    const initialPatient: PatientOverview = {
+      id: 'patient_1',
+      name: 'SSR 患者',
+      name_kana: 'エスエスアール',
+      birth_date: '1942-04-12',
+      gender: 'male',
+      archived_at: null,
+      archived_by: null,
+      archived_by_name: null,
+      allergy_info: [],
+      residences: [],
+      scheduling_preference: null,
+      visit_schedules: [],
+      lab_summary: [],
+      foundation: {
+        summary: { status: 'ready', label: '確認済み', items: [] },
+        items: [],
+        changes_since_last_visit: [],
+        latest_labs: [],
+        insurances: [],
+        archive: { archived: false, archived_at: null, archived_by_name: null },
+      },
+      cases: [],
+      conditions: [],
+      phone: null,
+      medical_insurance_number: null,
+      care_insurance_number: null,
+      billing_support_flag: false,
+      notes: null,
+      summary_metrics: { open_tasks_count: 0 },
+      risk_summary: null,
+      visit_brief: buildVisitBrief({ patient: { id: 'patient_1', name: 'SSR 患者' } }),
+      jahis_supplemental_records: [],
+      workspace: buildWorkspace(),
+      privacy: {
+        sensitive_fields_masked: false,
+        address_fields_masked: false,
+        can_view_detail: true,
+      },
+    };
+
+    render(<CardWorkspace patientId="patient_1" initialPatient={initialPatient} />);
+
+    const overviewQueryOptions = useQueryMock.mock.calls.find(
+      ([options]) => options.queryKey?.[0] === 'patient-overview',
+    )?.[0];
+    expect(overviewQueryOptions).toMatchObject({
+      queryKey: ['patient-overview', 'patient_1', 'org_1'],
+      initialData: initialPatient,
+      staleTime: 30_000,
+      enabled: true,
+    });
+    expect(typeof overviewQueryOptions.initialDataUpdatedAt).toBe('number');
   });
 
   it('creates a deduplicated foundation review task from a non-ready foundation item', async () => {

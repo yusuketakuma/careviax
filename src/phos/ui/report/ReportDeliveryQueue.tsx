@@ -211,6 +211,7 @@ export function ReportDeliveryQueue({
                     type="button"
                     className="min-h-11 rounded-md border border-border/70 bg-primary px-3 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/50 data-[enabled=false]:cursor-not-allowed data-[enabled=false]:opacity-55"
                     data-enabled={canRegisterReply(delivery)}
+                    aria-disabled={!canRegisterReply(delivery)}
                     onClick={() => registerReply(delivery)}
                   >
                     返信を登録
@@ -257,6 +258,7 @@ export function ReportDeliveryQueue({
                       type="button"
                       className="min-h-11 rounded-md border border-border/70 bg-primary px-3 text-sm font-medium text-primary-foreground transition hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/50 data-[enabled=false]:cursor-not-allowed data-[enabled=false]:opacity-55"
                       data-enabled={canMarkActionDone(delivery)}
+                      aria-disabled={!canMarkActionDone(delivery)}
                       onClick={() => markActionDone(delivery)}
                     >
                       返信対応を完了

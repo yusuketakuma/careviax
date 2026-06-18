@@ -19,6 +19,7 @@ import {
   ClipboardCopy,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { formatUtcDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { usePrescriptionDraft } from '@/lib/hooks/use-prescription-draft';
 import { isOfflineEncryptionUnavailableError } from '@/lib/offline/crypto';
@@ -33,7 +34,7 @@ import {
   PACKAGING_INSTRUCTION_TAG_LABELS,
   PACKAGING_METHOD_LABELS,
   parsePackagingMethod,
-} from '@/lib/prescription/packaging';
+} from '@/lib/dispensing/packaging';
 import {
   emptyLine,
   fetchOrgJson,
@@ -198,6 +199,7 @@ function GenericCandidatePanel({
         q: query,
         generic: 'true',
         limit: '5',
+        includeTotal: 'false',
       });
       const res = await fetch(`/api/drug-masters?${params}`, {
         headers: { 'x-org-id': orgId },
@@ -287,7 +289,7 @@ function GenericCandidatePanel({
 
 function dateKeyFromApi(value: string | Date | null | undefined): string {
   if (!value) return '';
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (value instanceof Date) return formatUtcDateKey(value);
   return String(value).slice(0, 10);
 }
 
@@ -2297,6 +2299,7 @@ export function PrescriptionIntakeForm() {
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <DrugSuggest
                   value={line.drug_name}
+                  ariaLabel={`明細行 ${index + 1} の薬剤名`}
                   onTextChange={(text) => updateLine(index, 'drug_name', text)}
                   onSelect={(drug: DrugSelection) => {
                     setLines((prev) =>
@@ -2334,6 +2337,7 @@ export function PrescriptionIntakeForm() {
                   value={line.dose}
                   onChange={(e) => updateLine(index, 'dose', e.target.value)}
                   placeholder="用量 *"
+                  aria-label={`明細行 ${index + 1} の用量`}
                   className="min-h-[44px] sm:h-8 sm:min-h-0 rounded-md border border-input bg-background px-2 text-sm"
                   required
                 />
@@ -2342,6 +2346,7 @@ export function PrescriptionIntakeForm() {
                   value={line.frequency}
                   onChange={(e) => updateLine(index, 'frequency', e.target.value)}
                   placeholder="用法 *"
+                  aria-label={`明細行 ${index + 1} の用法`}
                   className="min-h-[44px] sm:h-8 sm:min-h-0 rounded-md border border-input bg-background px-2 text-sm"
                   required
                 />
@@ -2351,6 +2356,7 @@ export function PrescriptionIntakeForm() {
                   onChange={(e) => updateLine(index, 'days', parseInt(e.target.value, 10) || 1)}
                   placeholder="日数 *"
                   min={1}
+                  aria-label={`明細行 ${index + 1} の日数`}
                   className="min-h-[44px] sm:h-8 sm:min-h-0 rounded-md border border-input bg-background px-2 text-sm"
                   required
                 />
@@ -2361,7 +2367,7 @@ export function PrescriptionIntakeForm() {
                   value={line.route ?? ''}
                   onChange={(e) => updateLine(index, 'route', e.target.value || undefined)}
                   className="min-h-[44px] sm:h-8 sm:min-h-0 rounded-md border border-input bg-background px-2 text-sm"
-                  aria-label="投与経路"
+                  aria-label={`明細行 ${index + 1} の投与経路`}
                 >
                   <option value="">投与経路</option>
                   {ROUTE_OPTIONS.map((opt) => (
@@ -2376,7 +2382,7 @@ export function PrescriptionIntakeForm() {
                     updateLine(index, 'dispensing_method', e.target.value || undefined)
                   }
                   className="min-h-[44px] sm:h-8 sm:min-h-0 rounded-md border border-input bg-background px-2 text-sm"
-                  aria-label="調剤方法"
+                  aria-label={`明細行 ${index + 1} の調剤方法`}
                 >
                   <option value="">調剤方法</option>
                   {METHOD_OPTIONS.map((opt) => (
@@ -2390,6 +2396,7 @@ export function PrescriptionIntakeForm() {
                   value={line.dosage_form ?? ''}
                   onChange={(e) => updateLine(index, 'dosage_form', e.target.value || undefined)}
                   placeholder="剤形（錠剤等）"
+                  aria-label={`明細行 ${index + 1} の剤形`}
                   className="min-h-[44px] sm:h-8 sm:min-h-0 rounded-md border border-input bg-background px-2 text-sm"
                 />
                 <input
@@ -2397,7 +2404,7 @@ export function PrescriptionIntakeForm() {
                   value={line.start_date ?? ''}
                   onChange={(e) => updateLine(index, 'start_date', e.target.value || undefined)}
                   className="min-h-[44px] sm:h-8 sm:min-h-0 rounded-md border border-input bg-background px-2 text-sm"
-                  aria-label="服用開始日"
+                  aria-label={`明細行 ${index + 1} の服用開始日`}
                 />
               </div>
               {/* Row 3: Packaging instructions */}
@@ -2408,6 +2415,7 @@ export function PrescriptionIntakeForm() {
                   updateLine(index, 'packaging_instructions', e.target.value || undefined)
                 }
                 placeholder="包装指示（一包化指示、粉砕指示等）"
+                aria-label={`明細行 ${index + 1} の包装指示`}
                 className="min-h-[44px] sm:h-8 sm:min-h-0 w-full rounded-md border border-input bg-background px-2 text-sm"
               />
               <input
@@ -2415,6 +2423,7 @@ export function PrescriptionIntakeForm() {
                 value={line.notes ?? ''}
                 onChange={(e) => updateLine(index, 'notes', e.target.value || undefined)}
                 placeholder="備考（分包しない、PTPのまま、外用部位など）"
+                aria-label={`明細行 ${index + 1} の備考`}
                 className="min-h-[44px] sm:h-8 sm:min-h-0 w-full rounded-md border border-input bg-background px-2 text-sm"
               />
               <label className="flex items-center gap-2 text-xs text-muted-foreground">

@@ -21,7 +21,7 @@ import {
   PACKAGING_METHOD_LABELS,
   PACKAGING_METHOD_OPTIONS,
   type PackagingMethodValue,
-} from '@/lib/prescription/packaging';
+} from '@/lib/dispensing/packaging';
 import { getPatientCareQueryKeys, invalidateQueryKeys } from '@/lib/visits/query-invalidations';
 
 type PackagingResponse = {

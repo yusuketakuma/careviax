@@ -105,11 +105,14 @@ export function NotificationBell() {
       }
 
       setNotifications((prev) => {
-        const merged = [...items, ...prev];
-        const unique = merged.filter(
-          (notification, index, all) =>
-            all.findIndex((candidate) => candidate.id === notification.id) === index,
-        );
+        const uniqueById = new Map<string, Notification>();
+        for (const notification of prev) {
+          uniqueById.set(notification.id, notification);
+        }
+        for (const notification of items) {
+          uniqueById.set(notification.id, notification);
+        }
+        const unique = [...uniqueById.values()];
         unique.sort(
           (left, right) =>
             new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),

@@ -364,6 +364,7 @@ export function VisitMode({
         type="button"
         className="min-h-11 w-full rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 focus-visible:ring-3 focus-visible:ring-ring/50 data-[enabled=false]:cursor-not-allowed data-[enabled=false]:bg-muted data-[enabled=false]:text-muted-foreground"
         data-enabled={canExecuteComplete ? 'true' : 'false'}
+        aria-disabled={!canExecuteComplete}
         aria-label={canExecuteComplete ? '訪問を完了する' : '訪問を完了する（未完了）'}
         onClick={() => {
           if (!canExecuteComplete) return;
@@ -382,6 +383,7 @@ export function VisitMode({
             type="button"
             className="min-h-11 rounded-md border border-border/70 bg-background px-3 text-sm font-semibold text-foreground transition hover:bg-muted/45 focus-visible:ring-3 focus-visible:ring-ring/50 data-[enabled=false]:cursor-not-allowed data-[enabled=false]:text-muted-foreground"
             data-enabled={canMovePrevious ? 'true' : 'false'}
+            aria-disabled={!canMovePrevious}
             onClick={() => {
               if (!previousStep || isSubmitting) return;
               setSaveMessage(undefined);
@@ -394,6 +396,7 @@ export function VisitMode({
             type="button"
             className="min-h-11 rounded-md border border-border/70 bg-background px-3 text-sm font-semibold text-foreground transition hover:bg-muted/45 focus-visible:ring-3 focus-visible:ring-ring/50 data-[enabled=false]:cursor-not-allowed data-[enabled=false]:text-muted-foreground"
             data-enabled={!isSubmitting ? 'true' : 'false'}
+            aria-disabled={isSubmitting}
             onClick={saveDraft}
           >
             {PhosVisitFooterCopy.SAVE_DRAFT}
@@ -402,6 +405,7 @@ export function VisitMode({
             type="button"
             className="min-h-11 rounded-md border border-border/70 bg-background px-3 text-sm font-semibold text-foreground transition hover:bg-muted/45 focus-visible:ring-3 focus-visible:ring-ring/50 data-[enabled=false]:cursor-not-allowed data-[enabled=false]:text-muted-foreground"
             data-enabled={canMoveNext ? 'true' : 'false'}
+            aria-disabled={!canMoveNext}
             onClick={() => {
               if (!nextStep || isSubmitting) return;
               setSaveMessage(undefined);

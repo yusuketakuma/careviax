@@ -24,6 +24,7 @@ import {
   Download,
   Printer,
   Search,
+  AlertTriangle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -76,6 +77,9 @@ interface DataTableProps<TData> {
   renderExpandedRow?: (row: Row<TData>) => React.ReactNode;
   toolbar?: DataTableToolbarOptions;
   emptyMessage?: string;
+  errorMessage?: string;
+  errorActionLabel?: string;
+  onRetry?: () => void;
 }
 
 function getColumnMeta<TData>(column: ColumnDef<TData>): DataTableColumnMeta<TData> | undefined {
@@ -122,6 +126,9 @@ export function DataTable<TData>({
   renderExpandedRow,
   toolbar,
   emptyMessage = 'データがありません',
+  errorMessage,
+  errorActionLabel = '再読み込み',
+  onRetry,
 }: DataTableProps<TData>) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
@@ -424,6 +431,29 @@ export function DataTable<TData>({
         </div>
       )}
 
+      {errorMessage ? (
+        <div
+          role="alert"
+          className="flex flex-col gap-3 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex min-w-0 items-start gap-2">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <p className="min-w-0 break-words">{errorMessage}</p>
+          </div>
+          {onRetry ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="min-h-[44px] border-destructive/40 text-destructive hover:bg-destructive/10 sm:min-h-0"
+              onClick={onRetry}
+            >
+              {errorActionLabel}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="hidden overflow-auto rounded-md border border-border md:block">
         {showLoadingSkeleton ? (
           <div className="p-4">
@@ -568,7 +598,7 @@ export function DataTable<TData>({
                       <span className="min-w-[6rem] text-xs font-medium text-muted-foreground">
                         {meta?.mobileLabel ?? getColumnLabel(cell.column.columnDef, cell.column.id)}
                       </span>
-                      <span className="text-right text-sm text-foreground">
+                      <span className="min-w-0 flex-1 break-words text-right text-sm text-foreground">
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </span>
                     </div>
