@@ -8,8 +8,14 @@ import {
   writeBillingCandidateWorkflowState,
   type Tx,
 } from './billing-evidence';
+import {
+  persistRegeneratedBillingCandidate,
+  resolveRegeneratedCandidateStatus,
+  type RegeneratedBillingCandidateRecord,
+  type RegeneratedBillingCandidateTx,
+} from './billing-evidence/candidate-regeneration';
 
-type PcaRentalBillingTx = {
+type PcaRentalBillingTx = RegeneratedBillingCandidateTx & {
   pcaPumpRental: {
     findMany(args: unknown): Promise<
       Array<{
@@ -35,13 +41,12 @@ type PcaRentalBillingTx = {
     >;
   };
   billingCandidate: {
-    findMany(args: unknown): Promise<
-      Array<{
-        dedupe_key: string | null;
-        source_snapshot: Prisma.JsonValue | null;
-      }>
-    >;
+    findMany(args: unknown): Promise<RegeneratedBillingCandidateRecord[]>;
     upsert(args: unknown): Promise<{ status: string }>;
+    updateMany?(args: unknown): Promise<{ count: number }>;
+    findFirst?(
+      args: unknown,
+    ): Promise<{ status: string; source_snapshot?: Prisma.JsonValue | null } | null>;
     deleteMany(args: unknown): Promise<unknown>;
   };
 };
@@ -122,7 +127,10 @@ export async function generatePcaRentalBillingCandidatesForMonth(
             dedupe_key: { in: dedupeKeys },
           },
           select: {
+            id: true,
             dedupe_key: true,
+            status: true,
+            updated_at: true,
             source_snapshot: true,
           },
         });
@@ -139,13 +147,9 @@ export async function generatePcaRentalBillingCandidatesForMonth(
     const dedupeKey = `pca-rental:${monthKey}:${rental.id}`;
     const existing = existingByKey.get(dedupeKey);
     const workflow = readBillingCandidateWorkflowState(existing?.source_snapshot);
-    const status = workflow.closed_at
-      ? 'exported'
-      : workflow.resolution_state === 'confirmed'
-        ? 'confirmed'
-        : workflow.resolution_state === 'excluded'
-          ? 'excluded'
-          : 'candidate';
+    const status = resolveRegeneratedCandidateStatus(existing, 'candidate');
+    const exclusionReason =
+      status === 'excluded' ? (workflow.note ?? 'PCAレンタル請求から除外') : null;
     const calculationBreakdown = toInputJsonObject({
       calculation_unit: 'yen',
       amount_yen: rental.rental_fee_yen,
@@ -199,13 +203,10 @@ export async function generatePcaRentalBillingCandidatesForMonth(
       workflow,
     );
 
-    const candidate = await db.billingCandidate.upsert({
-      where: {
-        org_id_dedupe_key: {
-          org_id: args.orgId,
-          dedupe_key: dedupeKey,
-        },
-      },
+    const candidate = await persistRegeneratedBillingCandidate(db, {
+      orgId: args.orgId,
+      dedupeKey,
+      existing,
       create: {
         org_id: args.orgId,
         patient_id: null,
@@ -225,8 +226,11 @@ export async function generatePcaRentalBillingCandidatesForMonth(
         calculation_breakdown: calculationBreakdown,
         source_snapshot: sourceSnapshot,
         status,
-        exclusion_reason:
-          status === 'excluded' ? (workflow.note ?? 'PCAレンタル請求から除外') : null,
+        exclusion_reason: exclusionReason,
+      },
+      updateScope: {
+        billing_month: billingMonth,
+        billing_domain: 'pca_rental',
       },
       update: {
         billing_domain: 'pca_rental',
@@ -239,8 +243,7 @@ export async function generatePcaRentalBillingCandidatesForMonth(
         calculation_breakdown: calculationBreakdown,
         source_snapshot: sourceSnapshot,
         status,
-        exclusion_reason:
-          status === 'excluded' ? (workflow.note ?? 'PCAレンタル請求から除外') : null,
+        exclusion_reason: exclusionReason,
       },
     });
 
@@ -256,7 +259,7 @@ export async function generatePcaRentalBillingCandidatesForMonth(
         path: ['source_type'],
         equals: 'pca_pump_rental',
       },
-      status: { not: 'exported' },
+      status: 'candidate',
       ...(dedupeKeys.length > 0 ? { dedupe_key: { notIn: dedupeKeys } } : {}),
     },
   });

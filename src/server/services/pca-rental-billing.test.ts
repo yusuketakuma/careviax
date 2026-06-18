@@ -94,20 +94,14 @@ describe('generatePcaRentalBillingCandidatesForMonth', () => {
         }),
         status: 'candidate',
       }),
-      update: expect.objectContaining({
-        billing_domain: 'pca_rental',
-        billing_target_type: 'institution',
-        billing_target_id: 'institution_1',
-        billing_target_name: 'みなと病院',
-        status: 'candidate',
-      }),
+      update: {},
     });
     expect(deleteManyMock).toHaveBeenCalledWith({
       where: expect.objectContaining({
         org_id: 'org_1',
         billing_month: new Date('2026-06-01T00:00:00.000Z'),
         billing_domain: 'pca_rental',
-        status: { not: 'exported' },
+        status: 'candidate',
       }),
     });
   });
@@ -142,7 +136,10 @@ describe('generatePcaRentalBillingCandidatesForMonth', () => {
       billingCandidate: {
         findMany: vi.fn().mockResolvedValue([
           {
+            id: 'candidate_pca_1',
             dedupe_key: 'pca-rental:2026-06-01:rental_1',
+            status: 'confirmed',
+            updated_at: new Date('2026-06-30T00:00:00.000Z'),
             source_snapshot: {
               billing_close: {
                 review_state: 'reviewed',
@@ -154,6 +151,8 @@ describe('generatePcaRentalBillingCandidatesForMonth', () => {
           },
         ]),
         upsert: upsertMock,
+        updateMany: vi.fn(),
+        findFirst: vi.fn(),
         deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
       },
     };
@@ -164,10 +163,76 @@ describe('generatePcaRentalBillingCandidatesForMonth', () => {
     });
 
     expect(candidates).toEqual([{ status: 'confirmed' }]);
-    expect(upsertMock).toHaveBeenCalledWith(
+    expect(upsertMock).not.toHaveBeenCalled();
+  });
+
+  it('updates only unresolved existing PCA rental candidates with an updated_at guard', async () => {
+    const updatedAt = new Date('2026-06-15T00:00:00.000Z');
+    const updateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    const upsertMock = vi.fn();
+    const tx = {
+      pcaPumpRental: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'rental_1',
+            institution_id: 'institution_1',
+            rented_at: new Date('2026-06-01T00:00:00.000Z'),
+            due_at: null,
+            returned_at: null,
+            rental_fee_yen: 12000,
+            contact_name: null,
+            pump: {
+              id: 'pump_1',
+              asset_code: 'PCA-001',
+              model_name: 'CADD Legacy PCA',
+              serial_number: null,
+            },
+            institution: {
+              id: 'institution_1',
+              name: 'みなと病院',
+              institution_code: null,
+            },
+          },
+        ]),
+      },
+      billingCandidate: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'candidate_pca_1',
+            dedupe_key: 'pca-rental:2026-06-01:rental_1',
+            status: 'candidate',
+            updated_at: updatedAt,
+            source_snapshot: null,
+          },
+        ]),
+        upsert: upsertMock,
+        updateMany: updateManyMock,
+        findFirst: vi.fn(),
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+    };
+
+    const candidates = await generatePcaRentalBillingCandidatesForMonth(tx, {
+      orgId: 'org_1',
+      billingMonth: new Date('2026-06-01T00:00:00.000Z'),
+    });
+
+    expect(candidates).toEqual([{ status: 'candidate' }]);
+    expect(upsertMock).not.toHaveBeenCalled();
+    expect(updateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        create: expect.objectContaining({ status: 'confirmed' }),
-        update: expect.objectContaining({ status: 'confirmed' }),
+        where: {
+          id: 'candidate_pca_1',
+          org_id: 'org_1',
+          dedupe_key: 'pca-rental:2026-06-01:rental_1',
+          updated_at: updatedAt,
+          billing_month: new Date('2026-06-01T00:00:00.000Z'),
+          billing_domain: 'pca_rental',
+        },
+        data: expect.objectContaining({
+          status: 'candidate',
+          billing_target_id: 'institution_1',
+        }),
       }),
     );
   });

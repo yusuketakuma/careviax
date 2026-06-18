@@ -11,6 +11,12 @@ import {
   writeBillingCandidateWorkflowState,
   mergeCandidateSourceSnapshot,
 } from './core';
+import {
+  persistRegeneratedBillingCandidate,
+  resolveRegeneratedCandidateStatus,
+  type RegeneratedBillingCandidateRecord,
+  type RegeneratedBillingCandidateTx,
+} from './candidate-regeneration';
 
 function isInputJsonObject(
   value: Prisma.InputJsonValue | null | undefined,
@@ -97,9 +103,13 @@ export function parseInformationProvisionFeeType(
   return fallbackType ?? '2_i';
 }
 
-export type InformationProvisionCandidatesTx = {
+export type InformationProvisionCandidatesTx = RegeneratedBillingCandidateTx & {
   billingCandidate: {
     upsert(args: unknown): Promise<unknown>;
+    updateMany?(args: unknown): Promise<{ count: number }>;
+    findFirst?(
+      args: unknown,
+    ): Promise<{ status: string; source_snapshot?: Prisma.JsonValue | null } | null>;
   };
   careReport: {
     findMany(args: unknown): Promise<
@@ -134,7 +144,7 @@ export async function generateInformationProvisionCandidates(
     orgId: string;
     billingMonth: Date;
     ruleIdByKey: Map<string, string>;
-    existingByKey: Map<string, { source_snapshot: Prisma.JsonValue | null }>;
+    existingByKey: Map<string, RegeneratedBillingCandidateRecord>;
     claimableEvidenceByPatient: Map<string, { any: number; care: number }>;
   },
 ) {
@@ -213,16 +223,10 @@ export async function generateInformationProvisionCandidates(
         : alreadyClaimedThisMonth
           ? '同一月内に同種の服薬情報等提供料候補が既に存在します'
           : null;
-    const status =
-      exclusionReason != null
-        ? 'excluded'
-        : existingWorkflow.closed_at
-          ? 'exported'
-          : existingWorkflow.resolution_state === 'confirmed'
-            ? 'confirmed'
-            : existingWorkflow.resolution_state === 'excluded'
-              ? 'excluded'
-              : 'candidate';
+    const generatedStatus = exclusionReason != null ? 'excluded' : 'candidate';
+    const status = resolveRegeneratedCandidateStatus(existing, generatedStatus);
+    const preservedExclusionReason =
+      status === 'excluded' ? (existingWorkflow.note ?? exclusionReason) : null;
     const calculationBreakdown = normalizedJsonObject({
       source_type: 'tracing_report',
       source_id: report.id,
@@ -256,13 +260,10 @@ export async function generateInformationProvisionCandidates(
       existingWorkflow,
     );
 
-    const candidate = await tx.billingCandidate.upsert({
-      where: {
-        org_id_dedupe_key: {
-          org_id: args.orgId,
-          dedupe_key: dedupeKey,
-        },
-      },
+    const candidate = await persistRegeneratedBillingCandidate(tx, {
+      orgId: args.orgId,
+      dedupeKey,
+      existing,
       create: {
         org_id: args.orgId,
         patient_id: report.patient_id,
@@ -282,7 +283,11 @@ export async function generateInformationProvisionCandidates(
         calculation_breakdown: calculationBreakdown,
         source_snapshot: sourceSnapshot,
         status,
-        exclusion_reason: exclusionReason,
+        exclusion_reason: preservedExclusionReason,
+      },
+      updateScope: {
+        billing_month: monthStart,
+        billing_domain: 'home_care',
       },
       update: {
         billing_domain: 'home_care',
@@ -296,11 +301,11 @@ export async function generateInformationProvisionCandidates(
         calculation_breakdown: calculationBreakdown,
         source_snapshot: sourceSnapshot,
         status,
-        exclusion_reason: exclusionReason,
+        exclusion_reason: preservedExclusionReason,
       },
     });
 
-    created.push(candidate as GeneratedBillingCandidate);
+    created.push(candidate);
     if (status !== 'excluded') {
       claimedInfoTypes.add(typeScopeKey);
     }
@@ -327,16 +332,10 @@ export async function generateInformationProvisionCandidates(
         : alreadyClaimedThisMonth
           ? '同一月内に同種の服薬情報等提供料候補が既に存在します'
           : null;
-    const status =
-      exclusionReason != null
-        ? 'excluded'
-        : existingWorkflow.closed_at
-          ? 'exported'
-          : existingWorkflow.resolution_state === 'confirmed'
-            ? 'confirmed'
-            : existingWorkflow.resolution_state === 'excluded'
-              ? 'excluded'
-              : 'candidate';
+    const generatedStatus = exclusionReason != null ? 'excluded' : 'candidate';
+    const status = resolveRegeneratedCandidateStatus(existing, generatedStatus);
+    const preservedExclusionReason =
+      status === 'excluded' ? (existingWorkflow.note ?? exclusionReason) : null;
     const calculationBreakdown = normalizedJsonObject({
       source_type: 'care_report',
       source_id: report.id,
@@ -370,13 +369,10 @@ export async function generateInformationProvisionCandidates(
       existingWorkflow,
     );
 
-    const candidate = await tx.billingCandidate.upsert({
-      where: {
-        org_id_dedupe_key: {
-          org_id: args.orgId,
-          dedupe_key: dedupeKey,
-        },
-      },
+    const candidate = await persistRegeneratedBillingCandidate(tx, {
+      orgId: args.orgId,
+      dedupeKey,
+      existing,
       create: {
         org_id: args.orgId,
         patient_id: report.patient_id,
@@ -396,7 +392,11 @@ export async function generateInformationProvisionCandidates(
         calculation_breakdown: calculationBreakdown,
         source_snapshot: sourceSnapshot,
         status,
-        exclusion_reason: exclusionReason,
+        exclusion_reason: preservedExclusionReason,
+      },
+      updateScope: {
+        billing_month: monthStart,
+        billing_domain: 'home_care',
       },
       update: {
         billing_domain: 'home_care',
@@ -410,11 +410,11 @@ export async function generateInformationProvisionCandidates(
         calculation_breakdown: calculationBreakdown,
         source_snapshot: sourceSnapshot,
         status,
-        exclusion_reason: exclusionReason,
+        exclusion_reason: preservedExclusionReason,
       },
     });
 
-    created.push(candidate as GeneratedBillingCandidate);
+    created.push(candidate);
     if (status !== 'excluded') {
       claimedInfoTypes.add(typeScopeKey);
     }

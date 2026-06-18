@@ -21,6 +21,12 @@ import {
   generateHomeDuplicateInteractionCandidates,
   type HomeDuplicateInteractionCandidatesTx,
 } from './duplicate-interaction';
+import {
+  persistRegeneratedBillingCandidate,
+  resolveRegeneratedCandidateStatus,
+  type RegeneratedBillingCandidateRecord,
+  type RegeneratedBillingCandidateTx,
+} from './candidate-regeneration';
 
 function isInputJsonObject(
   value: Prisma.InputJsonValue | null | undefined,
@@ -53,15 +59,15 @@ function readFacilityStandards(context: Record<string, unknown>): Record<string,
 
 type GenerateBillingCandidatesTx = InformationProvisionCandidatesTx &
   HomeDuplicateInteractionCandidatesTx &
+  RegeneratedBillingCandidateTx &
   HomeCareBillingRuleEngineTx & {
     billingCandidate: {
-      findMany(args: unknown): Promise<
-        Array<{
-          dedupe_key: string | null;
-          source_snapshot: Prisma.JsonValue | null;
-        }>
-      >;
+      findMany(args: unknown): Promise<RegeneratedBillingCandidateRecord[]>;
       upsert(args: unknown): Promise<unknown>;
+      updateMany?(args: unknown): Promise<{ count: number }>;
+      findFirst?(
+        args: unknown,
+      ): Promise<{ status: string; source_snapshot?: Prisma.JsonValue | null } | null>;
       deleteMany(args: unknown): Promise<unknown>;
     };
     billingEvidence: {
@@ -149,7 +155,10 @@ export async function generateBillingCandidatesForMonth(
       billing_month: monthStart,
     },
     select: {
+      id: true,
       dedupe_key: true,
+      status: true,
+      updated_at: true,
       source_snapshot: true,
     },
   });
@@ -240,17 +249,9 @@ export async function generateBillingCandidatesForMonth(
       const dedupeKey = `${monthStart.toISOString().slice(0, 10)}:${evidence.id}:${spec.code}`;
       const existing = existingByKey.get(dedupeKey);
       const existingWorkflow = readBillingCandidateWorkflowState(existing?.source_snapshot);
-      const preservedStatus = existingWorkflow.closed_at
-        ? 'exported'
-        : existingWorkflow.resolution_state === 'confirmed'
-          ? 'confirmed'
-          : existingWorkflow.resolution_state === 'excluded'
-            ? 'excluded'
-            : spec.status;
+      const preservedStatus = resolveRegeneratedCandidateStatus(existing, spec.status);
       const preservedExclusionReason =
-        preservedStatus === 'excluded' && existingWorkflow.note
-          ? existingWorkflow.note
-          : spec.exclusionReason;
+        preservedStatus === 'excluded' ? (existingWorkflow.note ?? spec.exclusionReason) : null;
       const calculationBreakdown = normalizedJsonObject(spec.calculationBreakdown);
       const sourceSnapshot = writeBillingCandidateWorkflowState(
         normalizedJsonObject(
@@ -273,13 +274,10 @@ export async function generateBillingCandidatesForMonth(
         existingWorkflow,
       );
 
-      const candidate = await db.billingCandidate.upsert({
-        where: {
-          org_id_dedupe_key: {
-            org_id: args.orgId,
-            dedupe_key: dedupeKey,
-          },
-        },
+      const candidate = await persistRegeneratedBillingCandidate(db, {
+        orgId: args.orgId,
+        dedupeKey,
+        existing,
         create: {
           org_id: args.orgId,
           patient_id: evidence.patient_id,
@@ -301,6 +299,10 @@ export async function generateBillingCandidatesForMonth(
           status: preservedStatus,
           exclusion_reason: preservedExclusionReason,
         },
+        updateScope: {
+          billing_month: monthStart,
+          billing_domain: 'home_care',
+        },
         update: {
           evidence_id: evidence.id,
           billing_domain: 'home_care',
@@ -319,7 +321,7 @@ export async function generateBillingCandidatesForMonth(
         },
       });
 
-      created.push(candidate as GeneratedBillingCandidate);
+      created.push(candidate);
     }
   }
 
@@ -330,7 +332,7 @@ export async function generateBillingCandidatesForMonth(
         billing_month: monthStart,
         billing_domain: 'home_care',
         evidence_id: { in: blockedEvidenceIds },
-        status: { not: 'exported' },
+        status: 'candidate',
       },
     });
   }

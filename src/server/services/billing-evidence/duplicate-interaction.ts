@@ -10,6 +10,12 @@ import {
   writeBillingCandidateWorkflowState,
   mergeCandidateSourceSnapshot,
 } from './core';
+import {
+  persistRegeneratedBillingCandidate,
+  resolveRegeneratedCandidateStatus,
+  type RegeneratedBillingCandidateRecord,
+  type RegeneratedBillingCandidateTx,
+} from './candidate-regeneration';
 
 function isInputJsonObject(
   value: Prisma.InputJsonValue | null | undefined,
@@ -152,9 +158,13 @@ export function parseHomeDuplicateInteractionFeeType(args: {
   return isResidual ? '1_ro' : '1_i';
 }
 
-export type HomeDuplicateInteractionCandidatesTx = {
+export type HomeDuplicateInteractionCandidatesTx = RegeneratedBillingCandidateTx & {
   billingCandidate: {
     upsert(args: unknown): Promise<unknown>;
+    updateMany?(args: unknown): Promise<{ count: number }>;
+    findFirst?(
+      args: unknown,
+    ): Promise<{ status: string; source_snapshot?: Prisma.JsonValue | null } | null>;
   };
   inquiryRecord: {
     findMany(args: unknown): Promise<
@@ -181,7 +191,7 @@ export async function generateHomeDuplicateInteractionCandidates(
     orgId: string;
     billingMonth: Date;
     ruleIdByKey: Map<string, string>;
-    existingByKey: Map<string, { source_snapshot: Prisma.JsonValue | null }>;
+    existingByKey: Map<string, RegeneratedBillingCandidateRecord>;
   },
 ) {
   const monthStart = startOfMonth(args.billingMonth);
@@ -235,16 +245,10 @@ export async function generateHomeDuplicateInteractionCandidates(
         : inquiry.result === 'unchanged'
           ? `処方変更に至っていないため${rule.name}は算定できません`
           : `疑義照会の結果が未確定のため${rule.name}は保留です`;
-    const status =
-      exclusionReason != null
-        ? 'excluded'
-        : existingWorkflow.closed_at
-          ? 'exported'
-          : existingWorkflow.resolution_state === 'confirmed'
-            ? 'confirmed'
-            : existingWorkflow.resolution_state === 'excluded'
-              ? 'excluded'
-              : 'candidate';
+    const generatedStatus = exclusionReason != null ? 'excluded' : 'candidate';
+    const status = resolveRegeneratedCandidateStatus(existing, generatedStatus);
+    const preservedExclusionReason =
+      status === 'excluded' ? (existingWorkflow.note ?? exclusionReason) : null;
     const calculationBreakdown = normalizedJsonObject({
       source_type: 'inquiry_record',
       source_id: inquiry.id,
@@ -275,13 +279,10 @@ export async function generateHomeDuplicateInteractionCandidates(
       existingWorkflow,
     );
 
-    const candidate = await tx.billingCandidate.upsert({
-      where: {
-        org_id_dedupe_key: {
-          org_id: args.orgId,
-          dedupe_key: dedupeKey,
-        },
-      },
+    const candidate = await persistRegeneratedBillingCandidate(tx, {
+      orgId: args.orgId,
+      dedupeKey,
+      existing,
       create: {
         org_id: args.orgId,
         patient_id: inquiry.cycle.patient_id,
@@ -301,7 +302,11 @@ export async function generateHomeDuplicateInteractionCandidates(
         calculation_breakdown: calculationBreakdown,
         source_snapshot: sourceSnapshot,
         status,
-        exclusion_reason: exclusionReason,
+        exclusion_reason: preservedExclusionReason,
+      },
+      updateScope: {
+        billing_month: monthStart,
+        billing_domain: 'home_care',
       },
       update: {
         billing_domain: 'home_care',
@@ -315,11 +320,11 @@ export async function generateHomeDuplicateInteractionCandidates(
         calculation_breakdown: calculationBreakdown,
         source_snapshot: sourceSnapshot,
         status,
-        exclusion_reason: exclusionReason,
+        exclusion_reason: preservedExclusionReason,
       },
     });
 
-    created.push(candidate as GeneratedBillingCandidate);
+    created.push(candidate);
   }
 
   return created;

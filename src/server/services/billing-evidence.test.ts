@@ -249,7 +249,7 @@ describe('billing-evidence service', () => {
         billing_month: billingMonth,
         billing_domain: 'home_care',
         evidence_id: { in: ['evidence_blocked'] },
-        status: { not: 'exported' },
+        status: 'candidate',
       },
     });
     expect(created).toHaveLength(1);
@@ -349,6 +349,232 @@ describe('billing-evidence service', () => {
         careLevelCategory: 'care_required',
       }),
     );
+  });
+
+  it('updates only unresolved existing home-care candidates with an updated_at guard', async () => {
+    const billingMonth = new Date(Date.UTC(2026, 2, 1));
+    const openUpdatedAt = new Date('2026-03-20T00:00:00.000Z');
+    const closedUpdatedAt = new Date('2026-03-21T00:00:00.000Z');
+    const updateManyMock = vi.fn().mockResolvedValue({ count: 1 });
+    const upsertMock = vi.fn();
+
+    buildBillingCandidateSpecsMock.mockResolvedValue([
+      {
+        ssotKey: 'medical.home_visit.single',
+        code: 'MED_HOME_VISIT_SINGLE',
+        name: '在宅患者訪問薬剤管理指導料 単一建物1人',
+        status: 'candidate',
+        points: 650,
+        exclusionReason: null,
+        calculationBreakdown: {},
+        sourceSnapshot: {},
+      },
+      {
+        ssotKey: 'medical.home_visit.addon',
+        code: 'MED_HOME_VISIT_ADDON',
+        name: '在宅加算',
+        status: 'candidate',
+        points: 100,
+        exclusionReason: null,
+        calculationBreakdown: {},
+        sourceSnapshot: {},
+      },
+    ]);
+
+    const tx = {
+      billingEvidence: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'evidence_ok',
+            patient_id: 'patient_1',
+            cycle_id: 'cycle_1',
+            payer_basis: 'medical',
+            billing_service_type: 'medical_home_visit',
+            provider_scope: 'pharmacy',
+            building_patient_count: 1,
+            monthly_count_snapshot: 1,
+            weekly_count_snapshot: 1,
+            claimable: true,
+            exclusion_reason: null,
+            calculation_context: {},
+          },
+        ]),
+      },
+      sourceOfTruthMatrix: makeSourceOfTruthMatrixDelegate(),
+      billingRule: makeBillingRuleDelegate([
+        { id: 'rule_1', ssot_key: 'medical.home_visit.single' },
+        { id: 'rule_2', ssot_key: 'medical.home_visit.addon' },
+      ]),
+      billingCandidate: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'candidate_open',
+            dedupe_key: '2026-03-01:evidence_ok:MED_HOME_VISIT_SINGLE',
+            status: 'candidate',
+            updated_at: openUpdatedAt,
+            source_snapshot: null,
+          },
+          {
+            id: 'candidate_closed',
+            dedupe_key: '2026-03-01:evidence_ok:MED_HOME_VISIT_ADDON',
+            status: 'exported',
+            updated_at: closedUpdatedAt,
+            source_snapshot: {
+              billing_close: {
+                review_state: 'reviewed',
+                resolution_state: 'confirmed',
+                reviewed_at: '2026-03-30T00:00:00.000Z',
+                reviewed_by: 'user_1',
+                closed_at: '2026-03-31T00:00:00.000Z',
+                closed_by: 'user_2',
+              },
+            },
+          },
+        ]),
+        upsert: upsertMock,
+        updateMany: updateManyMock,
+        findFirst: vi.fn(),
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      tracingReport: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      careReport: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      inquiryRecord: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+    };
+
+    const candidates = await generateBillingCandidatesForMonth(tx, {
+      orgId: 'org_1',
+      billingMonth,
+    });
+
+    expect(candidates.map((candidate) => candidate.status)).toEqual(['candidate', 'exported']);
+    expect(upsertMock).not.toHaveBeenCalled();
+    expect(updateManyMock).toHaveBeenCalledTimes(1);
+    expect(updateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: 'candidate_open',
+          org_id: 'org_1',
+          dedupe_key: '2026-03-01:evidence_ok:MED_HOME_VISIT_SINGLE',
+          updated_at: openUpdatedAt,
+          billing_month: new Date('2026-03-01T00:00:00.000Z'),
+          billing_domain: 'home_care',
+        },
+        data: expect.objectContaining({
+          status: 'candidate',
+          billing_name: '在宅患者訪問薬剤管理指導料 単一建物1人',
+        }),
+      }),
+    );
+  });
+
+  it('does not overwrite a regenerated candidate when the updated_at guard misses', async () => {
+    const billingMonth = new Date(Date.UTC(2026, 2, 1));
+    const staleUpdatedAt = new Date('2026-03-20T00:00:00.000Z');
+    const updateManyMock = vi.fn().mockResolvedValue({ count: 0 });
+    const findFirstMock = vi.fn().mockResolvedValue({
+      status: 'confirmed',
+      source_snapshot: {
+        billing_close: {
+          review_state: 'reviewed',
+          resolution_state: 'confirmed',
+          reviewed_at: '2026-03-20T00:01:00.000Z',
+          reviewed_by: 'user_1',
+        },
+      },
+    });
+
+    buildBillingCandidateSpecsMock.mockResolvedValue([
+      {
+        ssotKey: 'medical.home_visit.single',
+        code: 'MED_HOME_VISIT_SINGLE',
+        name: '在宅患者訪問薬剤管理指導料 単一建物1人',
+        status: 'candidate',
+        points: 650,
+        exclusionReason: null,
+        calculationBreakdown: {},
+        sourceSnapshot: {},
+      },
+    ]);
+
+    const tx = {
+      billingEvidence: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'evidence_ok',
+            patient_id: 'patient_1',
+            cycle_id: 'cycle_1',
+            payer_basis: 'medical',
+            billing_service_type: 'medical_home_visit',
+            provider_scope: 'pharmacy',
+            building_patient_count: 1,
+            monthly_count_snapshot: 1,
+            weekly_count_snapshot: 1,
+            claimable: true,
+            exclusion_reason: null,
+            calculation_context: {},
+          },
+        ]),
+      },
+      sourceOfTruthMatrix: makeSourceOfTruthMatrixDelegate(),
+      billingRule: makeBillingRuleDelegate([
+        { id: 'rule_1', ssot_key: 'medical.home_visit.single' },
+      ]),
+      billingCandidate: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'candidate_open',
+            dedupe_key: '2026-03-01:evidence_ok:MED_HOME_VISIT_SINGLE',
+            status: 'candidate',
+            updated_at: staleUpdatedAt,
+            source_snapshot: null,
+          },
+        ]),
+        upsert: vi.fn(),
+        updateMany: updateManyMock,
+        findFirst: findFirstMock,
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      tracingReport: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      careReport: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      inquiryRecord: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+    };
+
+    const candidates = await generateBillingCandidatesForMonth(tx, {
+      orgId: 'org_1',
+      billingMonth,
+    });
+
+    expect(candidates).toEqual([{ status: 'confirmed' }]);
+    expect(updateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'candidate_open',
+          updated_at: staleUpdatedAt,
+        }),
+      }),
+    );
+    expect(findFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'candidate_open',
+        org_id: 'org_1',
+      },
+      select: {
+        status: true,
+        source_snapshot: true,
+      },
+    });
   });
 
   it('includes unclaimable billing evidence in blocker summary even when no billing candidates exist', async () => {
@@ -864,6 +1090,119 @@ describe('billing-evidence service', () => {
         }),
       }),
     );
+  });
+
+  it('keeps closed information-provision and duplicate-interaction candidates immutable during regeneration', async () => {
+    const billingMonth = new Date(Date.UTC(2026, 2, 1));
+    const upsertMock = vi.fn();
+    const updateManyMock = vi.fn();
+
+    buildBillingCandidateSpecsMock.mockResolvedValue([]);
+
+    const tx = {
+      billingEvidence: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'evidence_home',
+            patient_id: 'patient_home',
+            cycle_id: 'cycle_home',
+            payer_basis: 'medical',
+            billing_service_type: 'medical_home_visit',
+            provider_scope: 'pharmacy',
+            building_patient_count: 1,
+            monthly_count_snapshot: 1,
+            weekly_count_snapshot: 1,
+            claimable: true,
+            exclusion_reason: null,
+            calculation_context: {},
+          },
+        ]),
+      },
+      sourceOfTruthMatrix: makeSourceOfTruthMatrixDelegate(),
+      billingRule: makeBillingRuleDelegate([
+        { id: 'rule_info_2_i', ssot_key: 'medical.information_provision.2_medical' },
+        { id: 'rule_dup_1_i', ssot_key: 'medical.home_duplicate_interaction.change_other' },
+      ]),
+      billingCandidate: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'candidate_info_closed',
+            dedupe_key: '2026-03:info:trace_1:2_i',
+            status: 'exported',
+            updated_at: new Date('2026-03-31T00:00:00.000Z'),
+            source_snapshot: {
+              billing_close: {
+                review_state: 'reviewed',
+                resolution_state: 'confirmed',
+                reviewed_at: '2026-03-30T00:00:00.000Z',
+                reviewed_by: 'user_1',
+                closed_at: '2026-03-31T00:00:00.000Z',
+                closed_by: 'user_2',
+              },
+            },
+          },
+          {
+            id: 'candidate_dup_closed',
+            dedupe_key: '2026-03:home-dup:inq_1:1_i',
+            status: 'exported',
+            updated_at: new Date('2026-03-31T00:00:00.000Z'),
+            source_snapshot: {
+              billing_close: {
+                review_state: 'reviewed',
+                resolution_state: 'confirmed',
+                reviewed_at: '2026-03-30T00:00:00.000Z',
+                reviewed_by: 'user_1',
+                closed_at: '2026-03-31T00:00:00.000Z',
+                closed_by: 'user_2',
+              },
+            },
+          },
+        ]),
+        upsert: upsertMock,
+        updateMany: updateManyMock,
+        findFirst: vi.fn(),
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      tracingReport: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'trace_1',
+            patient_id: 'patient_home',
+            case_id: 'case_1',
+            content: { billing_fee_type: '2_i' },
+            status: 'sent',
+            sent_at: new Date('2026-03-15T09:00:00.000Z'),
+          },
+        ]),
+      },
+      careReport: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+      inquiryRecord: {
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'inq_1',
+            cycle_id: 'cycle_1',
+            reason: '相互作用',
+            result: 'unchanged',
+            change_detail: '処方変更なし',
+            proposal_origin: null,
+            residual_adjustment: false,
+            cycle: { patient_id: 'patient_other' },
+            issue: { category: 'interaction' },
+          },
+        ]),
+      },
+    };
+
+    const candidates = await generateBillingCandidatesForMonth(tx, {
+      orgId: 'org_1',
+      billingMonth,
+    });
+
+    expect(candidates).toEqual([{ status: 'exported' }, { status: 'exported' }]);
+    expect(upsertMock).not.toHaveBeenCalled();
+    expect(updateManyMock).not.toHaveBeenCalled();
   });
 
   it('generates 2026 duplicate-interaction candidates for the canonical UTC June billing month', async () => {
