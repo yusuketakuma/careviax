@@ -135,11 +135,35 @@ model CareReport {
   updated_at      DateTime     @updatedAt
 
   delivery_records DeliveryRecord[]
+  send_requests    CareReportSendRequest[]
 
+  @@unique([id, org_id])
   @@index([org_id])
   @@index([patient_id])
   @@index([status])
   @@index([case_id])
+}
+
+model CareReportSendRequest {
+  id                   String     @id @default(cuid())
+  org_id               String
+  report_id            String
+  report               CareReport @relation(fields: [report_id, org_id], references: [id, org_id])
+  idempotency_key_hash String
+  request_fingerprint  String
+  claim_token          String
+  status               String     @default("in_progress")
+  response_status      Int?
+  response_body        Json?
+  completed_at         DateTime?
+  created_by           String
+  created_at           DateTime   @default(now())
+  updated_at           DateTime   @updatedAt
+
+  @@unique([org_id, report_id, idempotency_key_hash], name: "org_report_send_request_idempotency_key", map: "CareReportSendRequest_org_report_idem_key")
+  @@index([org_id])
+  @@index([org_id, report_id], map: "CareReportSendRequest_org_id_report_id_idx")
+  @@index([status])
 }
 
 model DeliveryRecord {

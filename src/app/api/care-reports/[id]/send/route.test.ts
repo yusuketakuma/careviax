@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { createHmac } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 
 const {
@@ -16,6 +17,7 @@ const {
   resolveOperationalTasksMock,
   learnContactProfileFromCommunicationMock,
   communicationEventCreateMock,
+  loggerErrorMock,
   txMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
@@ -31,8 +33,15 @@ const {
   resolveOperationalTasksMock: vi.fn(),
   learnContactProfileFromCommunicationMock: vi.fn(),
   communicationEventCreateMock: vi.fn(),
+  loggerErrorMock: vi.fn(),
   txMock: {
     deliveryRecord: {
+      findFirst: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn(),
+    },
+    careReportSendRequest: {
       findFirst: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
@@ -111,6 +120,15 @@ vi.mock('@/lib/contact-profiles', () => ({
   learnContactProfileFromCommunication: learnContactProfileFromCommunicationMock,
 }));
 
+vi.mock('@/lib/utils/logger', () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: loggerErrorMock,
+  },
+}));
+
 import { POST } from './route';
 
 function buildUniqueConstraintError() {
@@ -121,12 +139,13 @@ function buildUniqueConstraintError() {
   });
 }
 
-function createRequest(body: unknown) {
+function createRequest(body: unknown, headers: Record<string, string> = {}) {
   return new NextRequest('http://localhost/api/care-reports/report_1/send', {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       'x-org-id': 'org_1',
+      ...headers,
     },
     body: JSON.stringify(body),
   });
@@ -141,6 +160,22 @@ function createMalformedRequest() {
     },
     body: '{"channel":',
   });
+}
+
+function buildExpectedSendRequestFingerprint(
+  recipients: unknown[],
+  secret = 'ph-os-local-auth-secret',
+) {
+  return `care-report-send-request:v2:${createHmac('sha256', secret)
+    .update(
+      JSON.stringify({
+        action: 'care_report.send',
+        report_id: 'report_1',
+        recipients,
+        safety_ack: true,
+      }),
+    )
+    .digest('hex')}`;
 }
 
 describe('/api/care-reports/[id]/send POST', () => {
@@ -228,6 +263,10 @@ describe('/api/care-reports/[id]/send POST', () => {
       messageId: 'ses-message-1',
       stub: false,
     });
+    txMock.careReportSendRequest.findFirst.mockResolvedValue(null);
+    txMock.careReportSendRequest.create.mockResolvedValue({ id: 'send_request_1' });
+    txMock.careReportSendRequest.update.mockResolvedValue({ id: 'send_request_1' });
+    txMock.careReportSendRequest.updateMany.mockResolvedValue({ count: 1 });
     txMock.deliveryRecord.findFirst.mockResolvedValue(null);
     txMock.deliveryRecord.create.mockResolvedValue({
       id: 'delivery_1',
@@ -401,6 +440,32 @@ describe('/api/care-reports/[id]/send POST', () => {
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
     });
+  });
+
+  it('rejects malformed Idempotency-Key before loading the report', async () => {
+    const response = await POST(
+      createRequest(
+        {
+          channel: 'email',
+          recipient_name: '山田 太郎',
+          recipient_contact: 'doctor@example.com',
+          recipient_role: 'physician',
+          safety_ack: true,
+        },
+        { 'idempotency-key': 'bad key with spaces' },
+      ),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'Idempotency-Keyが不正です',
+    });
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank report ids before loading the report or delivery side effects', async () => {
@@ -692,25 +757,28 @@ describe('/api/care-reports/[id]/send POST', () => {
       occurredAt: expect.any(Date),
       markSuccess: true,
     });
-    expect(txMock.careReport.update).toHaveBeenCalledWith({
-      where: { id: 'report_1' },
-      data: expect.objectContaining({
-        status: 'sent',
-        content: expect.objectContaining({
-          report_delivery_targets: [
-            expect.objectContaining({
-              delivery_record_id: 'delivery_1',
-              recipient_name: '山田 太郎',
-              recipient_role: 'physician',
-              channel: 'email',
-              status: 'sent',
-              delivered_at: expect.any(String),
-            }),
-          ],
+    expect(txMock.careReport.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'report_1' },
+        data: expect.objectContaining({
+          status: 'sent',
+          content: expect.objectContaining({
+            report_delivery_targets: [
+              expect.objectContaining({
+                delivery_record_id: 'delivery_1',
+                recipient_name: '山田 太郎',
+                recipient_role: 'physician',
+                channel: 'email',
+                status: 'sent',
+                delivered_at: expect.any(String),
+              }),
+            ],
+          }),
         }),
       }),
-    });
-    await expect(response.json()).resolves.toMatchObject({
+    );
+    const json = await response.json();
+    expect(json).toMatchObject({
       data: {
         deliveries: [
           {
@@ -721,6 +789,447 @@ describe('/api/care-reports/[id]/send POST', () => {
         ],
       },
     });
+    expect(JSON.stringify(json)).not.toContain('doctor@example.com');
+    expect(JSON.stringify(json)).not.toContain('山田 太郎');
+  });
+
+  it('stores a completed response for a keyed report send request', async () => {
+    const response = await POST(
+      createRequest(
+        {
+          channel: 'email',
+          recipient_name: '山田 太郎',
+          recipient_contact: 'doctor@example.com',
+          recipient_role: 'physician',
+          safety_ack: true,
+        },
+        { 'idempotency-key': 'send-key-1' },
+      ),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(txMock.careReportSendRequest.create).toHaveBeenCalledWith({
+      data: {
+        org_id: 'org_1',
+        report_id: 'report_1',
+        idempotency_key_hash: expect.stringMatching(/^care-report-send:v2:[a-f0-9]{64}$/),
+        request_fingerprint: expect.stringMatching(/^care-report-send-request:v2:[a-f0-9]{64}$/),
+        claim_token: expect.stringMatching(/^[0-9a-f-]{36}$/),
+        created_by: 'user_1',
+      },
+      select: { id: true },
+    });
+    expect(sendCareReportEmailMock).toHaveBeenCalledOnce();
+    expect(txMock.careReportSendRequest.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'send_request_1',
+        org_id: 'org_1',
+        report_id: 'report_1',
+        status: 'in_progress',
+        claim_token: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      },
+      data: expect.objectContaining({
+        status: 'completed',
+        response_status: 200,
+        completed_at: expect.any(Date),
+        response_body: expect.objectContaining({
+          data: expect.objectContaining({
+            deliveries: [
+              expect.objectContaining({
+                delivery_record_id: 'delivery_1',
+                status: 'sent',
+              }),
+            ],
+          }),
+        }),
+      }),
+    });
+    const storedResponse =
+      txMock.careReportSendRequest.updateMany.mock.calls.at(-1)?.[0]?.data.response_body;
+    expect(JSON.stringify(storedResponse)).not.toContain('doctor@example.com');
+    expect(JSON.stringify(storedResponse)).not.toContain('山田 太郎');
+    expect(JSON.stringify(storedResponse)).not.toContain('patient_1');
+    expect(JSON.stringify(storedResponse)).not.toContain('source_provenance');
+    expect(JSON.stringify(storedResponse)).not.toContain('report.pdf');
+    const json = await response.json();
+    expect(json).toEqual(storedResponse);
+    expect(json).toMatchObject({
+      data: {
+        report: { id: 'report_1', status: 'sent' },
+        deliveries: [
+          {
+            delivery_record_id: 'delivery_1',
+            status: 'sent',
+            recipient_contact_masked: 'd***@example.com',
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(json)).not.toContain('doctor@example.com');
+    expect(JSON.stringify(json)).not.toContain('山田 太郎');
+
+    sendCareReportEmailMock.mockClear();
+    txMock.deliveryRecord.findFirst.mockClear();
+    txMock.deliveryRecord.create.mockClear();
+    txMock.careReport.update.mockClear();
+    txMock.careReportSendRequest.updateMany.mockClear();
+    txMock.careReportSendRequest.findFirst.mockResolvedValueOnce({
+      id: 'send_request_1',
+      request_fingerprint: buildExpectedSendRequestFingerprint([
+        {
+          channel: 'email',
+          recipient_name: '山田 太郎',
+          recipient_contact: 'doctor@example.com',
+          recipient_role: 'physician',
+        },
+      ]),
+      status: 'completed',
+      response_status: 200,
+      response_body: storedResponse,
+      updated_at: new Date('2026-06-18T00:00:00Z'),
+    });
+
+    const replayedResponse = await POST(
+      createRequest(
+        {
+          channel: 'email',
+          recipient_name: '山田 太郎',
+          recipient_contact: 'doctor@example.com',
+          recipient_role: 'physician',
+          safety_ack: true,
+        },
+        { 'idempotency-key': 'send-key-1' },
+      ),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!replayedResponse) throw new Error('replayedResponse is required');
+    expect(replayedResponse.status).toBe(200);
+    await expect(replayedResponse.json()).resolves.toEqual(json);
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    expect(txMock.deliveryRecord.findFirst).not.toHaveBeenCalled();
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(txMock.careReport.update).not.toHaveBeenCalled();
+    expect(txMock.careReportSendRequest.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('reclaims a stale keyed send request with a new claim token before completion', async () => {
+    const staleUpdatedAt = new Date(Date.now() - 11 * 60 * 1000);
+    const requestFingerprint = buildExpectedSendRequestFingerprint([
+      {
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+      },
+    ]);
+    const staleRecord = {
+      id: 'send_request_1',
+      request_fingerprint: requestFingerprint,
+      status: 'in_progress',
+      response_status: null,
+      response_body: null,
+      updated_at: staleUpdatedAt,
+    };
+    txMock.careReportSendRequest.findFirst
+      .mockResolvedValueOnce(staleRecord)
+      .mockResolvedValueOnce(staleRecord);
+
+    const response = await POST(
+      createRequest(
+        {
+          channel: 'email',
+          recipient_name: '山田 太郎',
+          recipient_contact: 'doctor@example.com',
+          recipient_role: 'physician',
+          safety_ack: true,
+        },
+        { 'idempotency-key': 'send-key-stale' },
+      ),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(txMock.careReportSendRequest.updateMany).toHaveBeenCalledTimes(2);
+    const reclaimCall = txMock.careReportSendRequest.updateMany.mock.calls[0]?.[0];
+    const completeCall = txMock.careReportSendRequest.updateMany.mock.calls[1]?.[0];
+    const newClaimToken = reclaimCall?.data.claim_token;
+    expect(reclaimCall).toMatchObject({
+      where: {
+        id: 'send_request_1',
+        org_id: 'org_1',
+        report_id: 'report_1',
+        status: 'in_progress',
+        request_fingerprint: requestFingerprint,
+        updated_at: staleUpdatedAt,
+      },
+      data: {
+        status: 'in_progress',
+        response_status: null,
+        completed_at: null,
+        created_by: 'user_1',
+      },
+    });
+    expect(newClaimToken).toEqual(expect.stringMatching(/^[0-9a-f-]{36}$/));
+    expect(completeCall?.where).toMatchObject({
+      id: 'send_request_1',
+      org_id: 'org_1',
+      report_id: 'report_1',
+      status: 'in_progress',
+      claim_token: newClaimToken,
+    });
+    expect(completeCall?.where.claim_token).not.toBe('old-claim-token');
+  });
+
+  it('falls back to the auth secret when the dedicated idempotency hash secret is blank', async () => {
+    const originalDedicatedSecret = process.env.CARE_REPORT_IDEMPOTENCY_HASH_SECRET;
+    const originalNextAuthSecret = process.env.NEXTAUTH_SECRET;
+    const originalAuthSecret = process.env.AUTH_SECRET;
+    process.env.CARE_REPORT_IDEMPOTENCY_HASH_SECRET = '   ';
+    process.env.NEXTAUTH_SECRET = 'auth-secret-for-idempotency-test';
+    delete process.env.AUTH_SECRET;
+    try {
+      const response = await POST(
+        createRequest(
+          {
+            channel: 'email',
+            recipient_name: '山田 太郎',
+            recipient_contact: 'doctor@example.com',
+            recipient_role: 'physician',
+            safety_ack: true,
+          },
+          { 'idempotency-key': 'send-key-blank-secret' },
+        ),
+        { params: Promise.resolve({ id: 'report_1' }) },
+      );
+
+      if (!response) throw new Error('response is required');
+      expect(response.status).toBe(200);
+      const createCall = txMock.careReportSendRequest.create.mock.calls.at(-1)?.[0];
+      expect(createCall?.data.request_fingerprint).toBe(
+        buildExpectedSendRequestFingerprint(
+          [
+            {
+              channel: 'email',
+              recipient_name: '山田 太郎',
+              recipient_contact: 'doctor@example.com',
+              recipient_role: 'physician',
+            },
+          ],
+          'auth-secret-for-idempotency-test',
+        ),
+      );
+      expect(createCall?.data.request_fingerprint).not.toBe(
+        buildExpectedSendRequestFingerprint(
+          [
+            {
+              channel: 'email',
+              recipient_name: '山田 太郎',
+              recipient_contact: 'doctor@example.com',
+              recipient_role: 'physician',
+            },
+          ],
+          '',
+        ),
+      );
+    } finally {
+      if (originalDedicatedSecret === undefined) {
+        delete process.env.CARE_REPORT_IDEMPOTENCY_HASH_SECRET;
+      } else {
+        process.env.CARE_REPORT_IDEMPOTENCY_HASH_SECRET = originalDedicatedSecret;
+      }
+      if (originalNextAuthSecret === undefined) {
+        delete process.env.NEXTAUTH_SECRET;
+      } else {
+        process.env.NEXTAUTH_SECRET = originalNextAuthSecret;
+      }
+      if (originalAuthSecret === undefined) {
+        delete process.env.AUTH_SECRET;
+      } else {
+        process.env.AUTH_SECRET = originalAuthSecret;
+      }
+    }
+  });
+
+  it('returns the sent response when keyed idempotency completion cannot be persisted', async () => {
+    txMock.careReportSendRequest.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    const response = await POST(
+      createRequest(
+        {
+          channel: 'email',
+          recipient_name: '山田 太郎',
+          recipient_contact: 'doctor@example.com',
+          recipient_role: 'physician',
+          safety_ack: true,
+        },
+        { 'idempotency-key': 'send-key-1' },
+      ),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        report: { id: 'report_1', status: 'sent' },
+        deliveries: [{ delivery_record_id: 'delivery_1', status: 'sent' }],
+      },
+    });
+    expect(sendCareReportEmailMock).toHaveBeenCalledOnce();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'care_report.send_idempotency_completion_failed',
+        orgId: 'org_1',
+        userId: 'user_1',
+        entityType: 'care_report',
+        entityId: 'report_1',
+        targetId: 'send_request_1',
+        code: 'CARE_REPORT_SEND_IDEMPOTENCY_COMPLETION_FAILED',
+        status: 200,
+        count: 0,
+      }),
+    );
+  });
+
+  it('replays a completed keyed send response without external delivery side effects', async () => {
+    const requestFingerprint = buildExpectedSendRequestFingerprint([
+      {
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+      },
+    ]);
+    txMock.careReportSendRequest.findFirst.mockResolvedValueOnce({
+      id: 'send_request_1',
+      request_fingerprint: requestFingerprint,
+      status: 'completed',
+      response_status: 200,
+      response_body: {
+        data: {
+          report: { id: 'report_1', status: 'sent' },
+          deliveries: [{ delivery_record_id: 'delivery_1', status: 'sent' }],
+          sent_count: 1,
+          failed_count: 0,
+          reused_delivery_count: 0,
+          retry_finalized_from_existing_delivery: false,
+        },
+      },
+      updated_at: new Date('2026-06-18T00:00:00Z'),
+    });
+    careCaseFindManyMock.mockResolvedValueOnce([{ care_team_links: [] }]);
+
+    const response = await POST(
+      createRequest(
+        {
+          channel: 'email',
+          recipient_name: '山田 太郎',
+          recipient_contact: 'doctor@example.com',
+          recipient_role: 'physician',
+          safety_ack: true,
+        },
+        { 'idempotency-key': 'send-key-1' },
+      ),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        deliveries: [{ delivery_record_id: 'delivery_1', status: 'sent' }],
+        sent_count: 1,
+      },
+    });
+    expect(txMock.deliveryRecord.findFirst).not.toHaveBeenCalled();
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    expect(txMock.careReport.update).not.toHaveBeenCalled();
+    expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(txMock.careReportSendRequest.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('returns idempotency conflict when the same key is reused with different recipients', async () => {
+    txMock.careReportSendRequest.findFirst.mockResolvedValueOnce({
+      id: 'send_request_1',
+      request_fingerprint: 'care-report-send-request:v2:' + 'a'.repeat(64),
+      status: 'completed',
+      response_status: 200,
+      response_body: { data: { ok: true } },
+      updated_at: new Date('2026-06-18T00:00:00Z'),
+    });
+
+    const response = await POST(
+      createRequest(
+        {
+          channel: 'email',
+          recipient_name: '山田 太郎',
+          recipient_contact: 'doctor@example.com',
+          recipient_role: 'physician',
+          safety_ack: true,
+        },
+        { 'idempotency-key': 'send-key-1' },
+      ),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'IDEMPOTENCY_CONFLICT',
+      message: 'Idempotency-Keyが別の報告書送付リクエストで使用されています',
+      details: { reason: 'key_reused_with_different_request' },
+    });
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+  });
+
+  it('returns conflict without sending when the same keyed request is already in progress', async () => {
+    const requestFingerprint = buildExpectedSendRequestFingerprint([
+      {
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+      },
+    ]);
+    txMock.careReportSendRequest.findFirst.mockResolvedValueOnce({
+      id: 'send_request_1',
+      request_fingerprint: requestFingerprint,
+      status: 'in_progress',
+      response_status: null,
+      response_body: null,
+      updated_at: new Date(),
+    });
+
+    const response = await POST(
+      createRequest(
+        {
+          channel: 'email',
+          recipient_name: '山田 太郎',
+          recipient_contact: 'doctor@example.com',
+          recipient_role: 'physician',
+          safety_ack: true,
+        },
+        { 'idempotency-key': 'send-key-1' },
+      ),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同じIdempotency-Keyの報告書送付が進行中です',
+      details: { reason: 'request_in_progress' },
+    });
+    expect(txMock.careReportSendRequest.updateMany).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
   });
 
   it('appends delivery target provenance without dropping existing report content metadata', async () => {
@@ -753,24 +1262,26 @@ describe('/api/care-reports/[id]/send POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    expect(txMock.careReport.update).toHaveBeenCalledWith({
-      where: { id: 'report_1' },
-      data: expect.objectContaining({
-        status: 'sent',
-        content: {
-          source_provenance: { visit_record_id: 'visit_record_1' },
-          report_delivery_targets: [
-            { delivery_record_id: 'delivery_previous' },
-            expect.objectContaining({
-              delivery_record_id: 'delivery_1',
-              recipient_role: 'physician',
-              channel: 'fax',
-              status: 'sent',
-            }),
-          ],
-        },
+    expect(txMock.careReport.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'report_1' },
+        data: expect.objectContaining({
+          status: 'sent',
+          content: {
+            source_provenance: { visit_record_id: 'visit_record_1' },
+            report_delivery_targets: [
+              { delivery_record_id: 'delivery_previous' },
+              expect.objectContaining({
+                delivery_record_id: 'delivery_1',
+                recipient_role: 'physician',
+                channel: 'fax',
+                status: 'sent',
+              }),
+            ],
+          },
+        }),
       }),
-    });
+    );
   });
 
   it('does not resend when the same recipient already has a sent delivery record', async () => {
@@ -807,18 +1318,20 @@ describe('/api/care-reports/[id]/send POST', () => {
     expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
     expect(sendCareReportEmailMock).not.toHaveBeenCalled();
     expect(txMock.deliveryRecord.update).not.toHaveBeenCalled();
-    expect(txMock.careReport.update).toHaveBeenCalledWith({
-      where: { id: 'report_1' },
-      data: expect.objectContaining({
-        content: expect.objectContaining({
-          report_delivery_targets: [
-            expect.objectContaining({
-              delivery_record_id: 'delivery_existing',
-            }),
-          ],
+    expect(txMock.careReport.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'report_1' },
+        data: expect.objectContaining({
+          content: expect.objectContaining({
+            report_delivery_targets: [
+              expect.objectContaining({
+                delivery_record_id: 'delivery_existing',
+              }),
+            ],
+          }),
         }),
       }),
-    });
+    );
     await expect(response.json()).resolves.toMatchObject({
       data: {
         deliveries: [
@@ -870,6 +1383,97 @@ describe('/api/care-reports/[id]/send POST', () => {
     expect(txMock.deliveryRecord.updateMany).not.toHaveBeenCalled();
     expect(sendCareReportEmailMock).not.toHaveBeenCalled();
     expect(txMock.careReport.update).not.toHaveBeenCalled();
+  });
+
+  it('stores a keyed delivery-conflict response without raw contact details', async () => {
+    txMock.deliveryRecord.findFirst.mockResolvedValueOnce({
+      id: 'delivery_in_progress',
+      status: 'draft',
+      updated_at: new Date(),
+    });
+
+    const response = await POST(
+      createRequest(
+        {
+          channel: 'email',
+          recipient_name: '山田 太郎',
+          recipient_contact: 'doctor@example.com',
+          recipient_role: 'physician',
+          safety_ack: true,
+        },
+        { 'idempotency-key': 'send-key-conflict' },
+      ),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    expect(txMock.careReportSendRequest.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'send_request_1',
+        org_id: 'org_1',
+        report_id: 'report_1',
+        status: 'in_progress',
+        claim_token: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      },
+      data: expect.objectContaining({
+        status: 'completed',
+        response_status: 409,
+        response_body: expect.objectContaining({
+          code: 'WORKFLOW_CONFLICT',
+          details: expect.objectContaining({
+            recipient_contact_masked: 'd***@example.com',
+          }),
+        }),
+      }),
+    });
+    const body = await response.json();
+    expect(JSON.stringify(body)).not.toContain('doctor@example.com');
+    expect(JSON.stringify(txMock.careReportSendRequest.updateMany.mock.calls.at(-1))).not.toContain(
+      'doctor@example.com',
+    );
+  });
+
+  it('returns the delivery-conflict response when keyed idempotency completion cannot be persisted', async () => {
+    txMock.deliveryRecord.findFirst.mockResolvedValueOnce({
+      id: 'delivery_in_progress',
+      status: 'draft',
+      updated_at: new Date(),
+    });
+    txMock.careReportSendRequest.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    const response = await POST(
+      createRequest(
+        {
+          channel: 'email',
+          recipient_name: '山田 太郎',
+          recipient_contact: 'doctor@example.com',
+          recipient_role: 'physician',
+          safety_ack: true,
+        },
+        { 'idempotency-key': 'send-key-conflict' },
+      ),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      details: { recipient_contact_masked: 'd***@example.com' },
+    });
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'care_report.send_idempotency_completion_failed',
+        code: 'CARE_REPORT_SEND_IDEMPOTENCY_COMPLETION_FAILED',
+        entityId: 'report_1',
+        targetId: 'send_request_1',
+        status: 409,
+        count: 0,
+      }),
+    );
   });
 
   it('reclaims a stale draft delivery and retries the send attempt', async () => {
@@ -1229,10 +1833,12 @@ describe('/api/care-reports/[id]/send POST', () => {
         }),
       }),
     );
-    expect(txMock.careReport.update).toHaveBeenCalledWith({
-      where: { id: 'report_1' },
-      data: { status: 'failed' },
-    });
+    expect(txMock.careReport.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'report_1' },
+        data: { status: 'failed' },
+      }),
+    );
     expect(learnContactProfileFromCommunicationMock).toHaveBeenCalledWith(txMock, {
       orgId: 'org_1',
       counterpartName: '山田 太郎',
@@ -1272,6 +1878,137 @@ describe('/api/care-reports/[id]/send POST', () => {
     expect(JSON.stringify(json)).not.toContain('doctor@example.com');
   });
 
+  it('stores and replays keyed all-recipient send failure responses without re-sending', async () => {
+    sendCareReportEmailMock.mockRejectedValueOnce(new Error('SES unavailable'));
+
+    const failedResponse = await POST(
+      createRequest(
+        {
+          channel: 'email',
+          recipient_name: '山田 太郎',
+          recipient_contact: 'doctor@example.com',
+          recipient_role: 'physician',
+          safety_ack: true,
+        },
+        { 'idempotency-key': 'send-key-failure' },
+      ),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!failedResponse) throw new Error('failedResponse is required');
+    expect(failedResponse.status).toBe(502);
+    const storedFailureBody =
+      txMock.careReportSendRequest.updateMany.mock.calls.at(-1)?.[0]?.data.response_body;
+    expect(storedFailureBody).toMatchObject({
+      code: 'EXTERNAL_EMAIL_SEND_FAILED',
+      details: {
+        deliveries: [
+          {
+            delivery_record_id: 'delivery_1',
+            status: 'failed',
+            recipient_contact_masked: 'd***@example.com',
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(storedFailureBody)).not.toContain('doctor@example.com');
+    expect(JSON.stringify(storedFailureBody)).not.toContain('山田 太郎');
+
+    vi.clearAllMocks();
+    requireAuthContextMock.mockResolvedValue({
+      ctx: {
+        userId: 'user_1',
+        orgId: 'org_1',
+        role: 'admin',
+      },
+    });
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'confirmed',
+      visit_record_id: null,
+      content: {},
+      report_type: 'physician_report',
+      pdf_url: 'https://example.com/report.pdf',
+    });
+    txMock.careReportSendRequest.findFirst.mockResolvedValueOnce({
+      id: 'send_request_1',
+      request_fingerprint: buildExpectedSendRequestFingerprint([
+        {
+          channel: 'email',
+          recipient_name: '山田 太郎',
+          recipient_contact: 'doctor@example.com',
+          recipient_role: 'physician',
+        },
+      ]),
+      status: 'completed',
+      response_status: 502,
+      response_body: storedFailureBody,
+      updated_at: new Date('2026-06-18T00:00:00Z'),
+    });
+    withOrgContextMock.mockImplementation(async (_orgId, callback) => callback(txMock));
+
+    const replayedResponse = await POST(
+      createRequest(
+        {
+          channel: 'email',
+          recipient_name: '山田 太郎',
+          recipient_contact: 'doctor@example.com',
+          recipient_role: 'physician',
+          safety_ack: true,
+        },
+        { 'idempotency-key': 'send-key-failure' },
+      ),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!replayedResponse) throw new Error('replayedResponse is required');
+    expect(replayedResponse.status).toBe(502);
+    await expect(replayedResponse.json()).resolves.toMatchObject(storedFailureBody);
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+  });
+
+  it('returns the external failure response when keyed idempotency completion cannot be persisted', async () => {
+    sendCareReportEmailMock.mockRejectedValueOnce(new Error('SES unavailable'));
+    txMock.careReportSendRequest.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    const response = await POST(
+      createRequest(
+        {
+          channel: 'email',
+          recipient_name: '山田 太郎',
+          recipient_contact: 'doctor@example.com',
+          recipient_role: 'physician',
+          safety_ack: true,
+        },
+        { 'idempotency-key': 'send-key-failure' },
+      ),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'EXTERNAL_EMAIL_SEND_FAILED',
+      details: {
+        provider: 'ses',
+        deliveries: [{ delivery_record_id: 'delivery_1', status: 'failed' }],
+      },
+    });
+    expect(loggerErrorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'care_report.send_idempotency_completion_failed',
+        code: 'CARE_REPORT_SEND_IDEMPOTENCY_COMPLETION_FAILED',
+        entityId: 'report_1',
+        targetId: 'send_request_1',
+        status: 502,
+        count: 0,
+      }),
+    );
+  });
+
   it('keeps the report awaiting response when a bulk send partially fails', async () => {
     txMock.deliveryRecord.create
       .mockResolvedValueOnce({ id: 'delivery_success', status: 'draft' })
@@ -1305,25 +2042,27 @@ describe('/api/care-reports/[id]/send POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    expect(txMock.careReport.update).toHaveBeenCalledWith({
-      where: { id: 'report_1' },
-      data: expect.objectContaining({
-        status: 'response_waiting',
-        content: expect.objectContaining({
-          report_delivery_targets: [
-            expect.objectContaining({
-              delivery_record_id: 'delivery_success',
-              status: 'sent',
-            }),
-            expect.objectContaining({
-              delivery_record_id: 'delivery_failed',
-              status: 'failed',
-              failure_reason: 'メール送信に失敗しました',
-            }),
-          ],
+    expect(txMock.careReport.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'report_1' },
+        data: expect.objectContaining({
+          status: 'response_waiting',
+          content: expect.objectContaining({
+            report_delivery_targets: [
+              expect.objectContaining({
+                delivery_record_id: 'delivery_success',
+                status: 'sent',
+              }),
+              expect.objectContaining({
+                delivery_record_id: 'delivery_failed',
+                status: 'failed',
+                failure_reason: 'メール送信に失敗しました',
+              }),
+            ],
+          }),
         }),
       }),
-    });
+    );
     const json = await response.json();
     expect(json).toMatchObject({
       data: {

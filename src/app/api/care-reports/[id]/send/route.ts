@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { createHash } from 'node:crypto';
+import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { Prisma, type MemberRole } from '@prisma/client';
 import { requireAuthContext, type AuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
@@ -27,6 +27,8 @@ import { learnContactProfileFromCommunication } from '@/lib/contact-profiles';
 import { transitionCycleStatus } from '@/lib/db/cycle-transition';
 import { inferCareReportTargetRole } from '@/lib/reports/document-delivery-rules';
 import { toPrismaJsonInput } from '@/lib/db/json';
+import { getAuthSecret } from '@/lib/auth/secret';
+import { logger } from '@/lib/utils/logger';
 
 function toPrimaryCommunicationEventType(reportType: string) {
   switch (reportType) {
@@ -53,6 +55,8 @@ function maskRecipientContact(channel: string, contact: string) {
 
 const EMAIL_DELIVERY_FAILURE_REASON = 'メール送信に失敗しました';
 const STALE_DRAFT_DELIVERY_MS = 10 * 60 * 1000;
+const STALE_SEND_REQUEST_MS = 10 * 60 * 1000;
+const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 
 type SendRecipient = {
   channel: 'email' | 'fax' | 'phone' | 'in_person' | 'postal' | 'ses' | 'ph_os_share';
@@ -108,6 +112,59 @@ function buildDeliveryIntentKey(args: {
     comparableContact(args.channel, args.recipientContact),
   ].join(':');
   return `care-report:v1:${createHash('sha256').update(material).digest('hex')}`;
+}
+
+function resolveCareReportIdempotencyHashSecret() {
+  const configuredSecret = process.env.CARE_REPORT_IDEMPOTENCY_HASH_SECRET?.trim();
+  if (configuredSecret) return configuredSecret;
+  const authSecret = getAuthSecret();
+  if (authSecret) return authSecret;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('care report idempotency hash secret is not configured');
+  }
+  return 'ph-os-local-care-report-idempotency-secret';
+}
+
+function keyedHashJson(value: unknown) {
+  const secret = resolveCareReportIdempotencyHashSecret();
+  return createHmac('sha256', secret).update(JSON.stringify(value)).digest('hex');
+}
+
+function parseOptionalIdempotencyKey(value: string | null) {
+  if (value === null) return { ok: true as const, key: null };
+  const key = value.trim();
+  if (!IDEMPOTENCY_KEY_PATTERN.test(key)) {
+    return {
+      ok: false as const,
+      message: 'Idempotency-Keyが不正です',
+    };
+  }
+  return { ok: true as const, key };
+}
+
+function buildCareReportSendIdempotencyKeyHash(args: { reportId: string; idempotencyKey: string }) {
+  return `care-report-send:v2:${keyedHashJson({
+    purpose: 'care_report_send_idempotency_key',
+    report_id: args.reportId,
+    idempotency_key: args.idempotencyKey,
+  })}`;
+}
+
+function buildCareReportSendRequestFingerprint(args: {
+  reportId: string;
+  recipients: SendRecipient[];
+}) {
+  return `care-report-send-request:v2:${keyedHashJson({
+    action: 'care_report.send',
+    report_id: args.reportId,
+    recipients: args.recipients.map((recipient) => ({
+      channel: recipient.channel,
+      recipient_name: recipient.recipient_name,
+      recipient_contact: recipient.recipient_contact,
+      recipient_role: recipient.recipient_role,
+    })),
+    safety_ack: true,
+  })}`;
 }
 
 function isUniqueConstraintError(error: unknown) {
@@ -604,7 +661,6 @@ function buildDeliveryResponseItem(outcome: DeliveryOutcome) {
   return {
     delivery_record_id: outcome.deliveryRecordId,
     channel: outcome.recipient.channel,
-    recipient_name: outcome.recipient.recipient_name,
     recipient_role: outcome.recipient.recipient_role,
     recipient_contact_masked: maskRecipientContact(
       outcome.recipient.channel,
@@ -622,6 +678,308 @@ function buildDeliveryResponseItem(outcome: DeliveryOutcome) {
 class DeliveryInProgressConflict extends Error {
   constructor() {
     super('同じ送付先への報告書送付が進行中です。送付履歴を確認してください');
+  }
+}
+
+function isStaleSendRequest(updatedAt: Date | null | undefined, now = new Date()) {
+  if (!(updatedAt instanceof Date)) return false;
+  return now.getTime() - updatedAt.getTime() >= STALE_SEND_REQUEST_MS;
+}
+
+function toJsonSerializable(value: unknown) {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
+
+function readRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function minimizeDeliveryForIdempotencyReplay(value: unknown) {
+  const delivery = readRecord(value);
+  if (!delivery) return value;
+  return {
+    delivery_record_id: delivery.delivery_record_id,
+    channel: delivery.channel,
+    recipient_role: delivery.recipient_role,
+    recipient_contact_masked: delivery.recipient_contact_masked,
+    status: delivery.status,
+    failure_reason: delivery.failure_reason,
+    retryable: delivery.retryable,
+    reused_existing_delivery: delivery.reused_existing_delivery,
+    external_send_skipped: delivery.external_send_skipped,
+  };
+}
+
+function minimizeResponseBodyForIdempotencyReplay(responseBody: unknown) {
+  const body = readRecord(responseBody);
+  if (!body) return responseBody;
+  const data = readRecord(body.data);
+  const details = readRecord(body.details);
+  if (data) {
+    const report = readRecord(data.report);
+    return {
+      data: {
+        report: report
+          ? {
+              id: report.id,
+              status: report.status,
+            }
+          : data.report,
+        deliveries: Array.isArray(data.deliveries)
+          ? data.deliveries.map(minimizeDeliveryForIdempotencyReplay)
+          : data.deliveries,
+        sent_count: data.sent_count,
+        failed_count: data.failed_count,
+        reused_delivery_count: data.reused_delivery_count,
+        retry_finalized_from_existing_delivery: data.retry_finalized_from_existing_delivery,
+      },
+    };
+  }
+  if (details) {
+    return {
+      code: body.code,
+      message: body.message,
+      details: {
+        ...details,
+        deliveries: Array.isArray(details.deliveries)
+          ? details.deliveries.map(minimizeDeliveryForIdempotencyReplay)
+          : details.deliveries,
+      },
+    };
+  }
+  return body;
+}
+
+type ReportSendIdempotencyClaim =
+  | { kind: 'none' }
+  | { kind: 'claimed'; id: string; claimToken: string }
+  | { kind: 'claimable'; id: string }
+  | { kind: 'replayed'; responseStatus: number; responseBody: Prisma.JsonValue }
+  | { kind: 'idempotency_conflict' }
+  | { kind: 'in_progress' };
+
+type ReportSendRequestRecord = {
+  id: string;
+  request_fingerprint: string;
+  status: string;
+  response_status: number | null;
+  response_body: Prisma.JsonValue | null;
+  updated_at: Date | null;
+};
+
+async function peekCareReportSendIdempotency(args: {
+  ctx: AuthContext;
+  reportId: string;
+  idempotencyKey: string | null;
+  requestFingerprint: string | null;
+}): Promise<ReportSendIdempotencyClaim> {
+  const requestFingerprint = args.requestFingerprint;
+  if (!args.idempotencyKey || !requestFingerprint) return { kind: 'none' };
+  const idempotencyKeyHash = buildCareReportSendIdempotencyKeyHash({
+    reportId: args.reportId,
+    idempotencyKey: args.idempotencyKey,
+  });
+
+  const existing = await withOrgContext(
+    args.ctx.orgId,
+    (tx) =>
+      tx.careReportSendRequest.findFirst({
+        where: {
+          org_id: args.ctx.orgId,
+          report_id: args.reportId,
+          idempotency_key_hash: idempotencyKeyHash,
+        },
+        select: {
+          id: true,
+          request_fingerprint: true,
+          status: true,
+          response_status: true,
+          response_body: true,
+          updated_at: true,
+        },
+      }),
+    { requestContext: args.ctx },
+  );
+
+  return existing
+    ? replayOrConflictFromSendRequest(existing, requestFingerprint)
+    : { kind: 'none' };
+}
+
+function replayOrConflictFromSendRequest(
+  existing: ReportSendRequestRecord,
+  requestFingerprint: string,
+): ReportSendIdempotencyClaim {
+  if (existing.request_fingerprint !== requestFingerprint) {
+    return { kind: 'idempotency_conflict' };
+  }
+  if (
+    existing.status === 'completed' &&
+    existing.response_status != null &&
+    existing.response_body != null
+  ) {
+    return {
+      kind: 'replayed',
+      responseStatus: existing.response_status,
+      responseBody: existing.response_body,
+    };
+  }
+  if (!isStaleSendRequest(existing.updated_at)) {
+    return { kind: 'in_progress' };
+  }
+  return { kind: 'claimable', id: existing.id };
+}
+
+async function claimCareReportSendIdempotency(args: {
+  ctx: AuthContext;
+  reportId: string;
+  idempotencyKey: string | null;
+  requestFingerprint: string | null;
+}): Promise<ReportSendIdempotencyClaim> {
+  const requestFingerprint = args.requestFingerprint;
+  if (!args.idempotencyKey || !requestFingerprint) return { kind: 'none' };
+
+  const idempotencyKeyHash = buildCareReportSendIdempotencyKeyHash({
+    reportId: args.reportId,
+    idempotencyKey: args.idempotencyKey,
+  });
+
+  return withOrgContext(
+    args.ctx.orgId,
+    async (tx) => {
+      const findExisting = () =>
+        tx.careReportSendRequest.findFirst({
+          where: {
+            org_id: args.ctx.orgId,
+            report_id: args.reportId,
+            idempotency_key_hash: idempotencyKeyHash,
+          },
+          select: {
+            id: true,
+            request_fingerprint: true,
+            status: true,
+            response_status: true,
+            response_body: true,
+            updated_at: true,
+          },
+        });
+
+      const existing = await findExisting();
+      if (existing) {
+        const interpreted = replayOrConflictFromSendRequest(existing, requestFingerprint);
+        if (interpreted.kind !== 'claimable') return interpreted;
+        const claimToken = randomUUID();
+        const claimed = await tx.careReportSendRequest.updateMany({
+          where: {
+            id: existing.id,
+            org_id: args.ctx.orgId,
+            report_id: args.reportId,
+            status: existing.status,
+            request_fingerprint: requestFingerprint,
+            updated_at: existing.updated_at,
+          },
+          data: {
+            status: 'in_progress',
+            response_status: null,
+            completed_at: null,
+            claim_token: claimToken,
+            created_by: args.ctx.userId,
+          },
+        });
+        return claimed.count === 1
+          ? { kind: 'claimed', id: existing.id, claimToken }
+          : { kind: 'in_progress' };
+      }
+
+      try {
+        const claimToken = randomUUID();
+        const created = await tx.careReportSendRequest.create({
+          data: {
+            org_id: args.ctx.orgId,
+            report_id: args.reportId,
+            idempotency_key_hash: idempotencyKeyHash,
+            request_fingerprint: requestFingerprint,
+            claim_token: claimToken,
+            created_by: args.ctx.userId,
+          },
+          select: { id: true },
+        });
+        return { kind: 'claimed', id: created.id, claimToken };
+      } catch (createError) {
+        if (!isUniqueConstraintError(createError)) throw createError;
+        const raced = await findExisting();
+        if (!raced) return { kind: 'in_progress' };
+        const interpreted = replayOrConflictFromSendRequest(raced, requestFingerprint);
+        return interpreted.kind === 'claimable' ? { kind: 'in_progress' } : interpreted;
+      }
+    },
+    { requestContext: args.ctx },
+  );
+}
+
+async function completeCareReportSendIdempotency(args: {
+  ctx: AuthContext;
+  claim: ReportSendIdempotencyClaim;
+  reportId: string;
+  responseStatus: number;
+  responseBody: unknown;
+}) {
+  const claim = args.claim;
+  if (claim.kind !== 'claimed') return true;
+  const serializableBody = toJsonSerializable(args.responseBody);
+  try {
+    const updatedCount = await withOrgContext(
+      args.ctx.orgId,
+      async (tx) => {
+        const updated = await tx.careReportSendRequest.updateMany({
+          where: {
+            id: claim.id,
+            org_id: args.ctx.orgId,
+            report_id: args.reportId,
+            status: 'in_progress',
+            claim_token: claim.claimToken,
+          },
+          data: {
+            status: 'completed',
+            response_status: args.responseStatus,
+            response_body: toPrismaJsonInput(serializableBody),
+            completed_at: new Date(),
+          },
+        });
+        return updated.count;
+      },
+      { requestContext: args.ctx },
+    );
+    if (updatedCount === 1) return true;
+    logger.error({
+      event: 'care_report.send_idempotency_completion_failed',
+      orgId: args.ctx.orgId,
+      userId: args.ctx.userId,
+      entityType: 'care_report',
+      entityId: args.reportId,
+      targetId: claim.id,
+      code: 'CARE_REPORT_SEND_IDEMPOTENCY_COMPLETION_FAILED',
+      status: args.responseStatus,
+      count: updatedCount,
+    });
+    return false;
+  } catch (cause) {
+    logger.error(
+      {
+        event: 'care_report.send_idempotency_completion_failed',
+        orgId: args.ctx.orgId,
+        userId: args.ctx.userId,
+        entityType: 'care_report',
+        entityId: args.reportId,
+        targetId: claim.id,
+        code: 'CARE_REPORT_SEND_IDEMPOTENCY_COMPLETION_FAILED',
+        status: args.responseStatus,
+      },
+      cause,
+    );
+    return false;
   }
 }
 
@@ -926,6 +1284,10 @@ async function finalizeReportDelivery(args: {
             }),
           ),
         },
+        select: {
+          id: true,
+          status: true,
+        },
       });
 
       if (report.visit_record_id) {
@@ -1081,6 +1443,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!normalized.ok) {
     return validationError('入力値が不正です', normalized.details);
   }
+  const parsedIdempotencyKey = parseOptionalIdempotencyKey(req.headers.get('idempotency-key'));
+  if (!parsedIdempotencyKey.ok) {
+    return validationError(parsedIdempotencyKey.message);
+  }
 
   const existing = await prisma.careReport.findFirst({
     where: { id, org_id: ctx.orgId },
@@ -1107,6 +1473,37 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   ) {
     return forbiddenResponse('この報告書を送信する権限がありません');
   }
+
+  const recipients = normalized.recipients;
+  const requestFingerprint = parsedIdempotencyKey.key
+    ? buildCareReportSendRequestFingerprint({
+        reportId: id,
+        recipients,
+      })
+    : null;
+  const idempotencyPeek = await peekCareReportSendIdempotency({
+    ctx,
+    reportId: id,
+    idempotencyKey: parsedIdempotencyKey.key,
+    requestFingerprint,
+  });
+  if (idempotencyPeek.kind === 'replayed') {
+    return success(idempotencyPeek.responseBody, idempotencyPeek.responseStatus);
+  }
+  if (idempotencyPeek.kind === 'idempotency_conflict') {
+    return error(
+      'IDEMPOTENCY_CONFLICT',
+      'Idempotency-Keyが別の報告書送付リクエストで使用されています',
+      409,
+      { reason: 'key_reused_with_different_request' },
+    );
+  }
+  if (idempotencyPeek.kind === 'in_progress') {
+    return conflict('同じIdempotency-Keyの報告書送付が進行中です', {
+      reason: 'request_in_progress',
+    });
+  }
+
   if (existing.status === 'draft') {
     return conflict('薬剤師確認済みの報告書のみ送付できます', {
       status: existing.status,
@@ -1126,7 +1523,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
   }
 
-  const recipients = normalized.recipients;
   const roleMismatch = validateRecipientRoles(existing.report_type, recipients);
   if (roleMismatch) {
     return validationError('報告書タイプと送付先区分が一致していません', {
@@ -1149,6 +1545,34 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     });
   }
 
+  const idempotencyClaim = await claimCareReportSendIdempotency({
+    ctx,
+    reportId: id,
+    idempotencyKey: parsedIdempotencyKey.key,
+    requestFingerprint,
+  });
+  if (idempotencyClaim.kind === 'replayed') {
+    return success(idempotencyClaim.responseBody, idempotencyClaim.responseStatus);
+  }
+  if (idempotencyClaim.kind === 'idempotency_conflict') {
+    return error(
+      'IDEMPOTENCY_CONFLICT',
+      'Idempotency-Keyが別の報告書送付リクエストで使用されています',
+      409,
+      { reason: 'key_reused_with_different_request' },
+    );
+  }
+  if (idempotencyClaim.kind === 'in_progress') {
+    return conflict('同じIdempotency-Keyの報告書送付が進行中です', {
+      reason: 'request_in_progress',
+    });
+  }
+  if (idempotencyClaim.kind === 'claimable') {
+    return conflict('同じIdempotency-Keyの報告書送付が進行中です', {
+      reason: 'request_in_progress',
+    });
+  }
+
   // 各送付先を順次処理(監査・送達は送付先単位)。
   const outcomes: DeliveryOutcome[] = [];
   for (const recipient of recipients) {
@@ -1162,14 +1586,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       outcomes.push(outcome);
     } catch (cause) {
       if (cause instanceof DeliveryInProgressConflict) {
-        return conflict(cause.message, {
-          report_id: id,
-          recipient_contact_masked: maskRecipientContact(
-            recipient.channel,
-            recipient.recipient_contact,
-          ),
-          channel: recipient.channel,
+        const responseBody = {
+          code: 'WORKFLOW_CONFLICT',
+          message: cause.message,
+          details: {
+            report_id: id,
+            recipient_contact_masked: maskRecipientContact(
+              recipient.channel,
+              recipient.recipient_contact,
+            ),
+            channel: recipient.channel,
+          },
+        };
+        const replayBody = minimizeResponseBodyForIdempotencyReplay(responseBody);
+        await completeCareReportSendIdempotency({
+          ctx,
+          claim: idempotencyClaim,
+          reportId: id,
+          responseStatus: 409,
+          responseBody: replayBody,
         });
+        return success(idempotencyClaim.kind === 'claimed' ? replayBody : responseBody, 409);
       }
       throw cause;
     }
@@ -1191,11 +1628,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       { requestContext: ctx },
     );
 
-    return error('EXTERNAL_EMAIL_SEND_FAILED', 'メール送信に失敗しました', 502, {
-      provider: 'ses',
-      failed_recipients: failures.length,
-      deliveries: failures.map(buildDeliveryResponseItem),
+    const responseBody = {
+      code: 'EXTERNAL_EMAIL_SEND_FAILED',
+      message: 'メール送信に失敗しました',
+      details: {
+        provider: 'ses',
+        failed_recipients: failures.length,
+        deliveries: failures.map(buildDeliveryResponseItem),
+      },
+    };
+    const replayBody = minimizeResponseBodyForIdempotencyReplay(responseBody);
+    await completeCareReportSendIdempotency({
+      ctx,
+      claim: idempotencyClaim,
+      reportId: id,
+      responseStatus: 502,
+      responseBody: replayBody,
     });
+    return success(idempotencyClaim.kind === 'claimed' ? replayBody : responseBody, 502);
   }
 
   const report = await finalizeReportDelivery({ ctx, reportId: id, report: existing, outcomes });
@@ -1204,8 +1654,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const reusedDeliveryCount = outcomes.filter(
     (outcome) => outcome.reusedExistingDelivery === true,
   ).length;
-
-  return success({
+  const responseBody = {
     data: {
       report,
       deliveries,
@@ -1214,5 +1663,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       reused_delivery_count: reusedDeliveryCount,
       retry_finalized_from_existing_delivery: reusedDeliveryCount > 0,
     },
+  };
+  const replayBody = minimizeResponseBodyForIdempotencyReplay(responseBody);
+  await completeCareReportSendIdempotency({
+    ctx,
+    claim: idempotencyClaim,
+    reportId: id,
+    responseStatus: 200,
+    responseBody: replayBody,
   });
+
+  return success(idempotencyClaim.kind === 'claimed' ? replayBody : responseBody);
 }
