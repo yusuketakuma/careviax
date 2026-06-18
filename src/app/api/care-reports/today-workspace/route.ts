@@ -9,6 +9,7 @@ import type {
   ReportDraftRow,
   ReportOpenIssue,
   ReportCreatedRow,
+  ReportFailedDelivery,
   ReportResolvedToday,
   ReportsTodayWorkspaceResponse,
   ReportWaitingReply,
@@ -49,6 +50,16 @@ const REPORT_STATUS_LABELS: Record<string, string> = {
   sent: '送付済',
   failed: '送付失敗',
   response_waiting: '返信待ち',
+};
+
+const DELIVERY_CHANNEL_LABELS: Record<string, string> = {
+  email: 'メール',
+  ses: 'メール',
+  fax: 'FAX',
+  phone: '電話',
+  in_person: '対面',
+  postal: '郵送',
+  ph_os_share: 'PH-OS共有',
 };
 
 /** 「山本 健」→「山本」。空白を含まない名前はそのまま。 */
@@ -102,13 +113,78 @@ function buildReportTitle(reportType: string, content: unknown): string {
   );
 }
 
+type WorkspaceDeliveryRecord = {
+  id: string;
+  channel: string;
+  recipient_name: string | null;
+  status: string;
+  sent_at: Date | null;
+  failure_reason: string | null;
+  retry_count: number;
+  updated_at: Date;
+};
+
+function retryLabel(retryCount: number): string {
+  return retryCount > 0 ? `再送${retryCount}回` : '再送未実施';
+}
+
+function sanitizeFailureReason(reason: string | null): string | null {
+  if (!reason) return null;
+  const normalized = reason.trim();
+  if (!normalized) return null;
+
+  if (
+    normalized === 'メール送信に失敗しました' ||
+    normalized === '送付に失敗しました' ||
+    normalized === '外部送信に失敗しました'
+  ) {
+    return normalized;
+  }
+
+  return '送付に失敗しました';
+}
+
+function selectLatestFailedDelivery(
+  deliveryRecords: WorkspaceDeliveryRecord[],
+): WorkspaceDeliveryRecord | null {
+  return (
+    deliveryRecords
+      .filter((delivery) => delivery.status === 'failed')
+      .sort((left, right) => right.updated_at.getTime() - left.updated_at.getTime())[0] ?? null
+  );
+}
+
+function buildFailedDeliverySummary(
+  reportId: string,
+  delivery: WorkspaceDeliveryRecord,
+): ReportFailedDelivery {
+  return {
+    delivery_record_id: delivery.id,
+    recipient_label: delivery.recipient_name?.trim() || '宛先未設定',
+    channel: delivery.channel,
+    failure_reason: sanitizeFailureReason(delivery.failure_reason),
+    retry_count: delivery.retry_count,
+    failed_at: delivery.updated_at.toISOString(),
+    action: { label: '宛先確認・再送', href: `/reports/${reportId}` },
+  };
+}
+
+function describeFailedDelivery(delivery: ReportFailedDelivery): string {
+  const channel = DELIVERY_CHANNEL_LABELS[delivery.channel] ?? delivery.channel;
+  const parts = [channel, delivery.recipient_label, retryLabel(delivery.retry_count)];
+  if (delivery.failure_reason) {
+    parts.push(`理由: ${delivery.failure_reason}`);
+  }
+  return `${parts.join(' / ')}。宛先とチャネルを確認して再送してください。`;
+}
+
 function buildReportOpenIssues(args: {
   report: {
     id: string;
     status: string;
     report_type: string;
     content: unknown;
-    delivery_records: Array<{ status: string; sent_at: Date | null }>;
+    delivery_records: WorkspaceDeliveryRecord[];
   };
   patientLabel: string;
 }): ReportOpenIssue[] {
@@ -143,17 +219,21 @@ function buildReportOpenIssues(args: {
     });
   }
 
-  const hasFailedDelivery = args.report.delivery_records.some(
-    (delivery) => delivery.status === 'failed',
-  );
-  if (args.report.status === 'failed' || hasFailedDelivery) {
+  const failedDelivery = selectLatestFailedDelivery(args.report.delivery_records);
+  if (args.report.status === 'failed' || failedDelivery) {
+    const failedDeliverySummary = failedDelivery
+      ? buildFailedDeliverySummary(args.report.id, failedDelivery)
+      : null;
     issues.push({
       id: `${args.report.id}-delivery-failed`,
       report_id: args.report.id,
       severity: 'critical',
       title: `${args.patientLabel} — 送付失敗`,
-      description: '送付失敗の記録があります。宛先とチャネルを確認して再送してください。',
-      action: { label: '再送確認', href },
+      description: failedDeliverySummary
+        ? describeFailedDelivery(failedDeliverySummary)
+        : '送付失敗の記録があります。宛先とチャネルを確認して再送してください。',
+      failed_delivery: failedDeliverySummary,
+      action: { label: '宛先確認・再送', href },
     });
   }
 
@@ -263,14 +343,17 @@ export const GET = withAuthContext(
             created_at: true,
             updated_at: true,
             delivery_records: {
-              orderBy: [{ sent_at: 'desc' }, { updated_at: 'desc' }],
-              take: 3,
+              orderBy: [{ updated_at: 'desc' }],
+              take: 6,
               select: {
                 id: true,
                 channel: true,
                 recipient_name: true,
                 status: true,
                 sent_at: true,
+                failure_reason: true,
+                retry_count: true,
+                updated_at: true,
               },
             },
           },
@@ -532,11 +615,20 @@ export const GET = withAuthContext(
         });
 
         const createdReports: ReportCreatedRow[] = recentReports.map((report) => {
-          const deliveredRecords = report.delivery_records.filter(
-            (delivery) =>
-              delivery.sent_at && ['sent', 'response_waiting'].includes(delivery.status),
-          );
+          const deliveryRecords = [...report.delivery_records];
+          const deliveredRecords = deliveryRecords
+            .filter(
+              (delivery) =>
+                delivery.sent_at && ['sent', 'response_waiting'].includes(delivery.status),
+            )
+            .sort(
+              (left, right) => (right.sent_at?.getTime() ?? 0) - (left.sent_at?.getTime() ?? 0),
+            );
           const lastDelivery = deliveredRecords[0] ?? null;
+          const failedDelivery = selectLatestFailedDelivery(deliveryRecords);
+          const failedDeliverySummary = failedDelivery
+            ? buildFailedDeliverySummary(report.id, failedDelivery)
+            : null;
           const patient = patientLabel(report.patient_id) ?? '患者未設定';
           return {
             id: report.id,
@@ -553,6 +645,7 @@ export const GET = withAuthContext(
             last_sent_at: lastDelivery?.sent_at?.toISOString() ?? null,
             last_recipient_label: lastDelivery?.recipient_name ?? null,
             last_channel: lastDelivery?.channel ?? null,
+            failed_delivery: failedDeliverySummary,
             action: { label: '→ 詳細へ', href: `/reports/${report.id}` },
           };
         });

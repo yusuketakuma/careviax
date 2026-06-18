@@ -116,6 +116,7 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
       last_sent_at: '2026-06-11T02:10:00.000Z',
       last_recipient_label: '山田 太郎',
       last_channel: 'fax',
+      failed_delivery: null,
       action: { label: '→ 詳細へ', href: '/reports/report_sent' },
     },
     {
@@ -132,7 +133,33 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
       last_sent_at: null,
       last_recipient_label: null,
       last_channel: null,
+      failed_delivery: null,
       action: { label: '→ 詳細へ', href: '/reports/report_draft' },
+    },
+    {
+      id: 'report_failed',
+      patient_label: '高橋 茂 様',
+      report_type: 'physician_report',
+      report_type_label: '医師への報告',
+      status: 'failed',
+      status_label: '送付失敗',
+      title: '主治医への再送確認',
+      created_at: '2026-06-11T04:00:00.000Z',
+      updated_at: '2026-06-11T04:30:00.000Z',
+      reported_to_professional: false,
+      last_sent_at: null,
+      last_recipient_label: null,
+      last_channel: null,
+      failed_delivery: {
+        delivery_record_id: 'delivery_failed',
+        recipient_label: 'やまもと内科',
+        channel: 'email',
+        failure_reason: 'メール送信に失敗しました',
+        retry_count: 1,
+        failed_at: '2026-06-11T04:40:00.000Z',
+        action: { label: '宛先確認・再送', href: '/reports/report_failed' },
+      },
+      action: { label: '→ 詳細へ', href: '/reports/report_failed' },
     },
   ],
   open_issues: [
@@ -153,7 +180,7 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
       action: { label: '根拠を確認', href: '/reports/report_draft' },
     },
   ],
-  counts: { to_write: 3, waiting: 2, resolved: 1, created: 2, open_issues: 2 },
+  counts: { to_write: 3, waiting: 2, resolved: 1, created: 3, open_issues: 2 },
   evidence: { template_count: 3, monthly_delivery_count: 14 },
 };
 
@@ -211,11 +238,11 @@ const COCKPIT: DashboardCockpitResponse = {
   team_capacity: [],
 };
 
-function stubFetch() {
+function stubFetch(workspace: ReportsTodayWorkspaceResponse = TODAY_WORKSPACE) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes('/api/care-reports/today-workspace')) {
-      return new Response(JSON.stringify({ data: TODAY_WORKSPACE }), { status: 200 });
+      return new Response(JSON.stringify({ data: workspace }), { status: 200 });
     }
     if (url.includes('/api/dashboard/cockpit')) {
       return new Response(JSON.stringify({ data: COCKPIT }), { status: 200 });
@@ -259,7 +286,7 @@ describe('ReportShareWorkspace', () => {
     });
 
     // ヘッダーメタ(書く/待つ/解決の当日件数)
-    expect(screen.getByText(/書く3件・課題2件・作成済み2件・待つ2件・解決1件/)).toBeTruthy();
+    expect(screen.getByText(/書く3件・課題2件・作成済み3件・待つ2件・解決1件/)).toBeTruthy();
     // テンプレート編集はアウトライン副操作
     expect(screen.getByTestId('report-edit-templates').textContent).toContain('テンプレートを編集');
 
@@ -293,6 +320,12 @@ describe('ReportShareWorkspace', () => {
     expect(screen.getByText('他職種へ報告済み')).toBeTruthy();
     expect(screen.getByText(/06\/11 11:10 \/ 山田 太郎 \/ FAX/)).toBeTruthy();
     expect(screen.getByText('他職種未報告')).toBeTruthy();
+    expect(screen.getAllByText('送付失敗').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('メール / やまもと内科 / 再送1回')).toBeTruthy();
+    expect(screen.getByText('メール送信に失敗しました')).toBeTruthy();
+    expect(screen.getByRole('link', { name: '宛先確認・再送' }).getAttribute('href')).toBe(
+      '/reports/report_failed',
+    );
 
     // 返信待ち / 今日解決した待ち
     expect(screen.getByText('返信待ち')).toBeTruthy();
@@ -328,6 +361,23 @@ describe('ReportShareWorkspace', () => {
     await waitFor(() => {
       expect(routerPushMock).toHaveBeenCalledWith('/reports/rep_generated');
     });
+  });
+
+  it('does not render unsafe raw failure reasons from failed deliveries', async () => {
+    const workspace = JSON.parse(JSON.stringify(TODAY_WORKSPACE)) as ReportsTodayWorkspaceResponse;
+    const failedReport = workspace.created_reports.find((report) => report.id === 'report_failed');
+    if (!failedReport?.failed_delivery) throw new Error('failed delivery fixture is required');
+    failedReport.failed_delivery.failure_reason = 'SMTP 550 doctor@example.com 090-1234-5678';
+
+    stubFetch(workspace);
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('送付失敗').length).toBeGreaterThanOrEqual(1);
+    });
+    expect(screen.queryByText(/doctor@example\.com/)).toBeNull();
+    expect(screen.queryByText(/090-1234-5678/)).toBeNull();
+    expect(screen.queryByText(/SMTP 550/)).toBeNull();
   });
 
   it('renders the shared action rail (next action, blocked reasons, evidence)', async () => {
@@ -370,7 +420,7 @@ describe('ReportShareWorkspace', () => {
 describe('report-share-workspace helpers', () => {
   it('builds header meta with counts', () => {
     expect(buildHeaderMeta(new Date(2026, 5, 11), TODAY_WORKSPACE.counts)).toMatch(
-      /^6\/11\(木\) — 書く3件・課題2件・作成済み2件・待つ2件・解決1件$/,
+      /^6\/11\(木\) — 書く3件・課題2件・作成済み3件・待つ2件・解決1件$/,
     );
   });
 

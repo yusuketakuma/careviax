@@ -77,6 +77,21 @@ function formatDateTime(iso: string): string {
   return `${month}/${day} ${formatTimeOfDay(iso)}`;
 }
 
+function deliveryRetryLabel(retryCount: number): string {
+  return retryCount > 0 ? `再送${retryCount}回` : '再送未実施';
+}
+
+function displayFailureReason(reason: string | null): string | null {
+  if (
+    reason === 'メール送信に失敗しました' ||
+    reason === '送付に失敗しました' ||
+    reason === '外部送信に失敗しました'
+  ) {
+    return reason;
+  }
+  return null;
+}
+
 async function fetchReportsTodayWorkspace(orgId: string): Promise<ReportsTodayWorkspaceResponse> {
   const res = await fetch('/api/care-reports/today-workspace', {
     headers: { 'x-org-id': orgId },
@@ -371,6 +386,40 @@ function ReportOpenIssuesSection({ issues }: { issues: ReportOpenIssue[] }) {
 }
 
 function CreatedReportStatusCell({ report }: { report: ReportCreatedRow }) {
+  if (report.failed_delivery) {
+    const failedDelivery = report.failed_delivery;
+    const failureReason = displayFailureReason(failedDelivery.failure_reason);
+    return (
+      <div className="space-y-2">
+        <div className="rounded-md border border-red-200 bg-red-50 p-2 text-red-800">
+          <span className="block text-sm font-semibold">送付失敗</span>
+          <span className="block text-xs leading-5">
+            {(DELIVERY_CHANNEL_LABELS[failedDelivery.channel] ?? failedDelivery.channel) +
+              ` / ${failedDelivery.recipient_label} / ${deliveryRetryLabel(
+                failedDelivery.retry_count,
+              )}`}
+          </span>
+          {failureReason ? <span className="block text-xs leading-5">{failureReason}</span> : null}
+          <Link
+            href={failedDelivery.action.href}
+            className={cn(
+              buttonVariants({ variant: 'outline', size: 'sm' }),
+              'mt-2 border-red-200 bg-white text-red-800 hover:bg-red-100',
+            )}
+          >
+            {failedDelivery.action.label}
+          </Link>
+        </div>
+        {report.reported_to_professional ? (
+          <span className="block text-xs leading-5 text-muted-foreground">
+            直近成功: {report.last_sent_at ? formatDateTime(report.last_sent_at) : '送信日時未記録'}
+            {report.last_recipient_label ? ` / ${report.last_recipient_label}` : ''}
+          </span>
+        ) : null}
+      </div>
+    );
+  }
+
   if (!report.reported_to_professional) {
     return (
       <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">

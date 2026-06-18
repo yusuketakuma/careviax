@@ -56,6 +56,16 @@ export type ReportResolvedToday = {
   action: { label: string; href: string };
 };
 
+export type ReportFailedDelivery = {
+  delivery_record_id: string;
+  recipient_label: string;
+  channel: string;
+  failure_reason: string | null;
+  retry_count: number;
+  failed_at: string;
+  action: { label: string; href: string };
+};
+
 export type ReportCreatedRow = {
   id: string;
   patient_label: string;
@@ -70,6 +80,7 @@ export type ReportCreatedRow = {
   last_sent_at: string | null;
   last_recipient_label: string | null;
   last_channel: string | null;
+  failed_delivery: ReportFailedDelivery | null;
   action: { label: string; href: string };
 };
 
@@ -81,6 +92,7 @@ export type ReportOpenIssue = {
   severity: ReportOpenIssueSeverity;
   title: string;
   description: string;
+  failed_delivery?: ReportFailedDelivery | null;
   action: { label: string; href: string };
 };
 

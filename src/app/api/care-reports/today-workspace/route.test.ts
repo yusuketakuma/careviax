@@ -394,10 +394,40 @@ describe('/api/care-reports/today-workspace', () => {
           updated_at: new Date('2026-06-11T03:30:00.000Z'),
           delivery_records: [],
         },
+        {
+          id: 'report_failed',
+          patient_id: 'p_takahashi',
+          report_type: 'physician_report',
+          status: 'failed',
+          content: {
+            title: '主治医への再送確認',
+            source_provenance: {
+              medication_cycle_id: 'cycle_2',
+              prescription_line_ids: ['line_2'],
+            },
+            billing_context: { payer_basis: 'medical' },
+          },
+          created_at: new Date('2026-06-11T04:00:00.000Z'),
+          updated_at: new Date('2026-06-11T04:30:00.000Z'),
+          delivery_records: [
+            {
+              id: 'delivery_failed',
+              channel: 'email',
+              recipient_name: 'やまもと内科',
+              recipient_contact: 'doctor@example.com',
+              status: 'failed',
+              sent_at: null,
+              failure_reason: 'SMTP 550 doctor@example.com 090-1234-5678',
+              retry_count: 1,
+              updated_at: new Date('2026-06-11T04:40:00.000Z'),
+            },
+          ],
+        },
       ],
       patients: [
         { id: 'p_tanaka', name: '田中 一郎' },
         { id: 'p_kato', name: '加藤 ミサ' },
+        { id: 'p_takahashi', name: '高橋 茂' },
       ],
     });
 
@@ -406,7 +436,7 @@ describe('/api/care-reports/today-workspace', () => {
     expect(res!.status).toBe(200);
     const json = await res!.json();
 
-    expect(json.data.created_reports).toHaveLength(2);
+    expect(json.data.created_reports).toHaveLength(3);
     expect(json.data.created_reports[0]).toMatchObject({
       id: 'report_sent',
       patient_label: '田中 一郎 様',
@@ -423,6 +453,21 @@ describe('/api/care-reports/today-workspace', () => {
       reported_to_professional: false,
       last_sent_at: null,
     });
+    expect(json.data.created_reports[2]).toMatchObject({
+      id: 'report_failed',
+      patient_label: '高橋 茂 様',
+      reported_to_professional: false,
+      last_sent_at: null,
+      failed_delivery: {
+        delivery_record_id: 'delivery_failed',
+        recipient_label: 'やまもと内科',
+        channel: 'email',
+        failure_reason: '送付に失敗しました',
+        retry_count: 1,
+        failed_at: '2026-06-11T04:40:00.000Z',
+        action: { label: '宛先確認・再送', href: '/reports/report_failed' },
+      },
+    });
     expect(json.data.open_issues).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -438,10 +483,25 @@ describe('/api/care-reports/today-workspace', () => {
           id: 'report_draft-billing-context',
           severity: 'warning',
         }),
+        expect.objectContaining({
+          id: 'report_failed-delivery-failed',
+          severity: 'critical',
+          action: { label: '宛先確認・再送', href: '/reports/report_failed' },
+          description:
+            'メール / やまもと内科 / 再送1回 / 理由: 送付に失敗しました。宛先とチャネルを確認して再送してください。',
+          failed_delivery: expect.objectContaining({
+            delivery_record_id: 'delivery_failed',
+            retry_count: 1,
+          }),
+        }),
       ]),
     );
-    expect(json.data.counts.created).toBe(2);
-    expect(json.data.counts.open_issues).toBe(3);
+    const responseText = JSON.stringify(json.data);
+    expect(responseText).not.toContain('doctor@example.com');
+    expect(responseText).not.toContain('090-1234-5678');
+    expect(responseText).not.toContain('SMTP 550');
+    expect(json.data.counts.created).toBe(3);
+    expect(json.data.counts.open_issues).toBe(4);
   });
 
   it('returns 400 on invalid date param', async () => {
