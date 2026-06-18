@@ -6,9 +6,58 @@ import { buildCommunicationRequestAssignmentWhere } from '@/server/services/comm
 import { validationError } from '@/lib/api/response';
 import { communicationRequestStatusSchema } from '@/lib/validations/communication-request';
 
+type ExportProfile = 'internal' | 'external';
+
+const INTERNAL_HEADER = [
+  'id',
+  'patient_id',
+  'patient_name',
+  'request_type',
+  'status',
+  'subject',
+  'recipient_name',
+  'recipient_role',
+  'related_entity_type',
+  'related_entity_id',
+  'requested_at',
+  'due_date',
+  'latest_responder_name',
+  'latest_responded_at',
+  'fax_ready',
+  'nsips_csv_profile',
+  'context_snapshot',
+  'content',
+] as const;
+
+const EXTERNAL_HEADER = [
+  'id',
+  'request_type',
+  'status',
+  'recipient_role',
+  'related_entity_type',
+  'requested_at',
+  'due_date',
+  'latest_responded_at',
+  'fax_ready',
+  'nsips_csv_profile',
+  'redaction_profile',
+] as const;
+
 function csvCell(value: string | number | null | undefined) {
   if (value == null) return '';
   return `"${String(value).replace(/"/g, '""')}"`;
+}
+
+function parseExportProfile(value: string | null): ExportProfile | null {
+  if (!value || value === 'internal') return 'internal';
+  if (value === 'external') return 'external';
+  return null;
+}
+
+function buildFilename(status: string | undefined, profile: ExportProfile) {
+  const statusSuffix = status ? `_${status}` : '';
+  const profileSuffix = profile === 'external' ? '_external' : '';
+  return `communication_requests${statusSuffix}${profileSuffix}.csv`;
 }
 
 export const GET = withAuthContext(
@@ -21,6 +70,12 @@ export const GET = withAuthContext(
         status: ['対応していないステータスです'],
       });
     }
+    const profile = parseExportProfile(searchParams.get('profile'));
+    if (!profile) {
+      return validationError('エクスポートプロファイルが不正です', {
+        profile: ['internal または external を指定してください'],
+      });
+    }
     const requestType = searchParams.get('request_type') ?? undefined;
     const assignmentWhere = await buildCommunicationRequestAssignmentWhere({
       db: prisma,
@@ -28,14 +83,56 @@ export const GET = withAuthContext(
       accessContext: ctx,
     });
 
-    const rows = await withOrgContext(ctx.orgId, async (tx) => {
+    const csvRows = await withOrgContext(ctx.orgId, async (tx) => {
+      const where = {
+        org_id: ctx.orgId,
+        ...(status ? { status: status.data } : {}),
+        ...(requestType ? { request_type: requestType } : {}),
+        ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+      };
+
+      if (profile === 'external') {
+        const requests = await tx.communicationRequest.findMany({
+          where,
+          orderBy: [{ requested_at: 'desc' }],
+          select: {
+            id: true,
+            request_type: true,
+            recipient_role: true,
+            related_entity_type: true,
+            status: true,
+            due_date: true,
+            requested_at: true,
+            responses: {
+              orderBy: [{ responded_at: 'desc' }],
+              take: 1,
+              select: {
+                responded_at: true,
+              },
+            },
+          },
+        });
+
+        return requests.map((request) => {
+          const latestResponse = request.responses[0] ?? null;
+          return [
+            csvCell(request.id),
+            csvCell(request.request_type),
+            csvCell(request.status),
+            csvCell(request.recipient_role ?? ''),
+            csvCell(request.related_entity_type ?? ''),
+            csvCell(request.requested_at.toISOString()),
+            csvCell(request.due_date?.toISOString() ?? ''),
+            csvCell(latestResponse?.responded_at.toISOString() ?? ''),
+            csvCell(request.recipient_role?.includes('FAX') ? 'yes' : ''),
+            csvCell('handoff-external-redacted'),
+            csvCell(profile),
+          ];
+        });
+      }
+
       const requests = await tx.communicationRequest.findMany({
-        where: {
-          org_id: ctx.orgId,
-          ...(status ? { status: status.data } : {}),
-          ...(requestType ? { request_type: requestType } : {}),
-          ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
-        },
+        where,
         orderBy: [{ requested_at: 'desc' }],
         select: {
           id: true,
@@ -92,79 +189,33 @@ export const GET = withAuthContext(
           request.context_snapshot && typeof request.context_snapshot === 'object'
             ? JSON.stringify(request.context_snapshot)
             : '';
-        return {
-          id: request.id,
-          patient_id: request.patient_id ?? '',
-          patient_name: request.patient_id ? (patientById.get(request.patient_id) ?? '') : '',
-          request_type: request.request_type,
-          status: request.status,
-          subject: request.subject,
-          recipient_name: request.recipient_name ?? '',
-          recipient_role: request.recipient_role ?? '',
-          related_entity_type: request.related_entity_type ?? '',
-          related_entity_id: request.related_entity_id ?? '',
-          requested_at: request.requested_at.toISOString(),
-          due_date: request.due_date?.toISOString() ?? '',
-          latest_responder_name: latestResponse?.responder_name ?? '',
-          latest_responded_at: latestResponse?.responded_at.toISOString() ?? '',
-          fax_ready: request.recipient_role?.includes('FAX') ? 'yes' : '',
-          nsips_csv_profile: 'handoff-prep',
-          context_snapshot: contextSnapshot,
-          content: request.content,
-        };
+        return [
+          csvCell(request.id),
+          csvCell(request.patient_id ?? ''),
+          csvCell(request.patient_id ? (patientById.get(request.patient_id) ?? '') : ''),
+          csvCell(request.request_type),
+          csvCell(request.status),
+          csvCell(request.subject),
+          csvCell(request.recipient_name ?? ''),
+          csvCell(request.recipient_role ?? ''),
+          csvCell(request.related_entity_type ?? ''),
+          csvCell(request.related_entity_id ?? ''),
+          csvCell(request.requested_at.toISOString()),
+          csvCell(request.due_date?.toISOString() ?? ''),
+          csvCell(latestResponse?.responder_name ?? ''),
+          csvCell(latestResponse?.responded_at.toISOString() ?? ''),
+          csvCell(request.recipient_role?.includes('FAX') ? 'yes' : ''),
+          csvCell('handoff-prep'),
+          csvCell(contextSnapshot),
+          csvCell(request.content),
+        ];
       });
     });
 
-    const header = [
-      'id',
-      'patient_id',
-      'patient_name',
-      'request_type',
-      'status',
-      'subject',
-      'recipient_name',
-      'recipient_role',
-      'related_entity_type',
-      'related_entity_id',
-      'requested_at',
-      'due_date',
-      'latest_responder_name',
-      'latest_responded_at',
-      'fax_ready',
-      'nsips_csv_profile',
-      'context_snapshot',
-      'content',
-    ].join(',');
+    const header = profile === 'external' ? EXTERNAL_HEADER : INTERNAL_HEADER;
+    const csv = [header.join(','), ...csvRows.map((row) => row.join(','))].join('\n');
 
-    const csv = [
-      header,
-      ...rows.map((row) =>
-        [
-          csvCell(row.id),
-          csvCell(row.patient_id),
-          csvCell(row.patient_name),
-          csvCell(row.request_type),
-          csvCell(row.status),
-          csvCell(row.subject),
-          csvCell(row.recipient_name),
-          csvCell(row.recipient_role),
-          csvCell(row.related_entity_type),
-          csvCell(row.related_entity_id),
-          csvCell(row.requested_at),
-          csvCell(row.due_date),
-          csvCell(row.latest_responder_name),
-          csvCell(row.latest_responded_at),
-          csvCell(row.fax_ready),
-          csvCell(row.nsips_csv_profile),
-          csvCell(row.context_snapshot),
-          csvCell(row.content),
-        ].join(','),
-      ),
-    ].join('\n');
-
-    const filename = status
-      ? `communication_requests_${status.data}.csv`
-      : 'communication_requests.csv';
+    const filename = buildFilename(status?.data, profile);
 
     return new NextResponse(csv, {
       status: 200,
