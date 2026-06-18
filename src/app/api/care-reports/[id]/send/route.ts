@@ -52,6 +52,7 @@ function maskRecipientContact(channel: string, contact: string) {
 }
 
 const EMAIL_DELIVERY_FAILURE_REASON = 'メール送信に失敗しました';
+const STALE_DRAFT_DELIVERY_MS = 10 * 60 * 1000;
 
 type SendRecipient = {
   channel: 'email' | 'fax' | 'phone' | 'in_person' | 'postal' | 'ses' | 'ph_os_share';
@@ -115,6 +116,11 @@ function isUniqueConstraintError(error: unknown) {
 
 function isDeliveredReportStatus(status: string) {
   return status === 'sent' || status === 'confirmed' || status === 'response_waiting';
+}
+
+function isStaleDraftDelivery(updatedAt: Date | null | undefined, now = new Date()) {
+  if (!(updatedAt instanceof Date)) return false;
+  return now.getTime() - updatedAt.getTime() >= STALE_DRAFT_DELIVERY_MS;
 }
 
 function recipientContactMatches(
@@ -637,6 +643,7 @@ async function processRecipient(args: {
         select: {
           id: true,
           status: true,
+          updated_at: true,
         },
       });
       if (existingDeliveryRecord && isDeliveredReportStatus(existingDeliveryRecord.status)) {
@@ -647,7 +654,41 @@ async function processRecipient(args: {
         };
       }
       if (existingDeliveryRecord?.status === 'draft') {
-        throw new DeliveryInProgressConflict();
+        if (!isStaleDraftDelivery(existingDeliveryRecord.updated_at)) {
+          throw new DeliveryInProgressConflict();
+        }
+        const staleClaim = await tx.deliveryRecord.updateMany({
+          where: {
+            id: existingDeliveryRecord.id,
+            org_id: ctx.orgId,
+            status: 'draft',
+            updated_at: existingDeliveryRecord.updated_at,
+          },
+          data: {
+            recipient_name: recipient.recipient_name,
+            recipient_contact: recipient.recipient_contact,
+            delivery_intent_key: deliveryIntentKey,
+            failure_reason: null,
+            retry_count: { increment: 1 },
+          },
+        });
+        if (staleClaim.count !== 1) {
+          throw new DeliveryInProgressConflict();
+        }
+        await createAuditLogEntry(tx, ctx, {
+          action: 'care_report_delivery_attempted',
+          targetType: 'care_report',
+          targetId: reportId,
+          changes: buildDeliveryAttemptAuditChanges({
+            deliveryRecordId: existingDeliveryRecord.id,
+            report: { ...report, id: reportId },
+            request: { ...recipient, safety_ack: true },
+          }),
+        });
+        return {
+          id: existingDeliveryRecord.id,
+          status: existingDeliveryRecord.status,
+        };
       }
 
       const deliveryRecord =
@@ -685,6 +726,7 @@ async function processRecipient(args: {
                   select: {
                     id: true,
                     status: true,
+                    updated_at: true,
                   },
                 });
                 if (racedDeliveryRecord && isDeliveredReportStatus(racedDeliveryRecord.status)) {
@@ -1103,7 +1145,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (cause instanceof DeliveryInProgressConflict) {
         return conflict(cause.message, {
           report_id: id,
-          recipient_contact: recipient.recipient_contact,
+          recipient_contact_masked: maskRecipientContact(
+            recipient.channel,
+            recipient.recipient_contact,
+          ),
           channel: recipient.channel,
         });
       }

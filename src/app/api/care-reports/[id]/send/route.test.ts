@@ -36,6 +36,7 @@ const {
       findFirst: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
     careReport: {
       findFirst: vi.fn(),
@@ -236,6 +237,7 @@ describe('/api/care-reports/[id]/send POST', () => {
       id: 'delivery_1',
       status: 'sent',
     });
+    txMock.deliveryRecord.updateMany.mockResolvedValue({ count: 1 });
     txMock.auditLog.create.mockResolvedValue({ id: 'audit_1' });
     txMock.careReport.update.mockResolvedValue({
       id: 'report_1',
@@ -837,6 +839,7 @@ describe('/api/care-reports/[id]/send POST', () => {
     txMock.deliveryRecord.findFirst.mockResolvedValueOnce({
       id: 'delivery_in_progress',
       status: 'draft',
+      updated_at: new Date(),
     });
 
     const response = await POST(
@@ -852,17 +855,131 @@ describe('/api/care-reports/[id]/send POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toMatchObject({
+    const json = await response.json();
+    expect(json).toMatchObject({
       code: 'WORKFLOW_CONFLICT',
       message: '同じ送付先への報告書送付が進行中です。送付履歴を確認してください',
       details: {
         report_id: 'report_1',
-        recipient_contact: 'doctor@example.com',
+        recipient_contact_masked: 'd***@example.com',
         channel: 'email',
       },
     });
+    expect(JSON.stringify(json)).not.toContain('doctor@example.com');
     expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(txMock.deliveryRecord.updateMany).not.toHaveBeenCalled();
     expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    expect(txMock.careReport.update).not.toHaveBeenCalled();
+  });
+
+  it('reclaims a stale draft delivery and retries the send attempt', async () => {
+    const staleUpdatedAt = new Date('2026-06-11T00:00:00.000Z');
+    txMock.deliveryRecord.findFirst.mockResolvedValueOnce({
+      id: 'delivery_stale_draft',
+      status: 'draft',
+      updated_at: staleUpdatedAt,
+    });
+
+    const response = await POST(
+      createRequest({
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(txMock.deliveryRecord.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'delivery_stale_draft',
+        org_id: 'org_1',
+        status: 'draft',
+        updated_at: staleUpdatedAt,
+      },
+      data: expect.objectContaining({
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        delivery_intent_key: expect.stringMatching(/^care-report:v1:[a-f0-9]{64}$/),
+        failure_reason: null,
+        retry_count: { increment: 1 },
+      }),
+    });
+    expect(txMock.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'care_report_delivery_attempted',
+          target_type: 'care_report',
+          target_id: 'report_1',
+          changes: expect.objectContaining({
+            delivery_record_id: 'delivery_stale_draft',
+            channel: 'email',
+            safety_ack: true,
+            recipient: expect.objectContaining({
+              contact_masked: 'd***@example.com',
+            }),
+          }),
+        }),
+      }),
+    );
+    expect(txMock.auditLog.create.mock.invocationCallOrder[0]).toBeLessThan(
+      sendCareReportEmailMock.mock.invocationCallOrder[0],
+    );
+    expect(sendCareReportEmailMock).toHaveBeenCalled();
+    expect(txMock.deliveryRecord.update).toHaveBeenCalledWith({
+      where: { id: 'delivery_stale_draft' },
+      data: expect.objectContaining({
+        status: 'sent',
+        failure_reason: null,
+      }),
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        deliveries: [{ delivery_record_id: 'delivery_stale_draft', status: 'sent' }],
+      },
+    });
+  });
+
+  it('returns conflict if a stale draft delivery is claimed by another request first', async () => {
+    const staleUpdatedAt = new Date('2026-06-11T00:00:00.000Z');
+    txMock.deliveryRecord.findFirst.mockResolvedValueOnce({
+      id: 'delivery_stale_draft',
+      status: 'draft',
+      updated_at: staleUpdatedAt,
+    });
+    txMock.deliveryRecord.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    const response = await POST(
+      createRequest({
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    const json = await response.json();
+    expect(json).toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同じ送付先への報告書送付が進行中です。送付履歴を確認してください',
+      details: {
+        report_id: 'report_1',
+        recipient_contact_masked: 'd***@example.com',
+        channel: 'email',
+      },
+    });
+    expect(JSON.stringify(json)).not.toContain('doctor@example.com');
+    expect(txMock.auditLog.create).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    expect(txMock.deliveryRecord.update).not.toHaveBeenCalled();
     expect(txMock.careReport.update).not.toHaveBeenCalled();
   });
 
