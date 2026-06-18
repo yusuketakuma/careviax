@@ -600,6 +600,25 @@ type DeliveryOutcome = {
   reusedExistingDelivery?: boolean;
 };
 
+function buildDeliveryResponseItem(outcome: DeliveryOutcome) {
+  return {
+    delivery_record_id: outcome.deliveryRecordId,
+    channel: outcome.recipient.channel,
+    recipient_name: outcome.recipient.recipient_name,
+    recipient_role: outcome.recipient.recipient_role,
+    recipient_contact_masked: maskRecipientContact(
+      outcome.recipient.channel,
+      outcome.recipient.recipient_contact,
+    ),
+    status: outcome.failureReason ? 'failed' : 'sent',
+    failure_reason: outcome.failureReason,
+    retryable: outcome.failureReason !== null,
+    reused_existing_delivery: outcome.reusedExistingDelivery === true,
+    external_send_skipped:
+      outcome.reusedExistingDelivery === true && outcome.failureReason === null,
+  };
+}
+
 class DeliveryInProgressConflict extends Error {
   constructor() {
     super('同じ送付先への報告書送付が進行中です。送付履歴を確認してください');
@@ -1175,22 +1194,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return error('EXTERNAL_EMAIL_SEND_FAILED', 'メール送信に失敗しました', 502, {
       provider: 'ses',
       failed_recipients: failures.length,
+      deliveries: failures.map(buildDeliveryResponseItem),
     });
   }
 
   const report = await finalizeReportDelivery({ ctx, reportId: id, report: existing, outcomes });
 
-  const deliveries = outcomes.map((outcome) => ({
-    delivery_record_id: outcome.deliveryRecordId,
-    channel: outcome.recipient.channel,
-    recipient_name: outcome.recipient.recipient_name,
-    recipient_role: outcome.recipient.recipient_role,
-    status: outcome.failureReason ? 'failed' : 'sent',
-    failure_reason: outcome.failureReason,
-    reused_existing_delivery: outcome.reusedExistingDelivery === true,
-    external_send_skipped:
-      outcome.reusedExistingDelivery === true && outcome.failureReason === null,
-  }));
+  const deliveries = outcomes.map(buildDeliveryResponseItem);
   const reusedDeliveryCount = outcomes.filter(
     (outcome) => outcome.reusedExistingDelivery === true,
   ).length;

@@ -1251,9 +1251,25 @@ describe('/api/care-reports/[id]/send POST', () => {
         }),
       }),
     );
-    await expect(response.json()).resolves.toMatchObject({
+    const json = await response.json();
+    expect(json).toMatchObject({
       code: 'EXTERNAL_EMAIL_SEND_FAILED',
+      details: {
+        provider: 'ses',
+        failed_recipients: 1,
+        deliveries: [
+          {
+            delivery_record_id: 'delivery_1',
+            channel: 'email',
+            recipient_contact_masked: 'd***@example.com',
+            status: 'failed',
+            failure_reason: 'メール送信に失敗しました',
+            retryable: true,
+          },
+        ],
+      },
     });
+    expect(JSON.stringify(json)).not.toContain('doctor@example.com');
   });
 
   it('keeps the report awaiting response when a bulk send partially fails', async () => {
@@ -1308,7 +1324,8 @@ describe('/api/care-reports/[id]/send POST', () => {
         }),
       }),
     });
-    await expect(response.json()).resolves.toMatchObject({
+    const json = await response.json();
+    expect(json).toMatchObject({
       data: {
         report: { status: 'response_waiting' },
         sent_count: 1,
@@ -1319,10 +1336,14 @@ describe('/api/care-reports/[id]/send POST', () => {
             delivery_record_id: 'delivery_failed',
             status: 'failed',
             failure_reason: 'メール送信に失敗しました',
+            retryable: true,
+            recipient_contact_masked: 'd***@example.com',
           },
         ],
       },
     });
+    expect(JSON.stringify(json)).not.toContain('doctor@example.com');
+    expect(JSON.stringify(json)).not.toContain('03-1234-5678');
   });
 
   it('records primary communication events for confirmed care-manager reports', async () => {
