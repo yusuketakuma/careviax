@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
@@ -51,7 +51,7 @@ describe('BillingCandidatesContent', () => {
     vi.clearAllMocks();
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (input: RequestInfo | URL) => {
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
         if (url.startsWith('/api/billing-candidates?')) {
           return new Response(
@@ -72,6 +72,7 @@ describe('BillingCandidatesContent', () => {
                   quantity: 1,
                   status: 'candidate',
                   exclusion_reason: null,
+                  updated_at: '2026-06-18T00:00:00.000Z',
                   calculation_breakdown: { amount_yen: 1080 },
                   source_snapshot: {
                     billing_scope: 'home_care_ssot',
@@ -97,6 +98,7 @@ describe('BillingCandidatesContent', () => {
                   quantity: 1,
                   status: 'confirmed',
                   exclusion_reason: null,
+                  updated_at: '2026-06-18T00:01:00.000Z',
                   calculation_breakdown: { amount_yen: 3240 },
                   source_snapshot: {
                     billing_scope: 'home_care_ssot',
@@ -120,6 +122,18 @@ describe('BillingCandidatesContent', () => {
                 ready_to_close: 1,
                 blocked_from_close: 1,
                 blocker_reasons: [],
+              },
+            }),
+            { status: 200 },
+          );
+        }
+        if (url === '/api/billing-candidates/candidate_other' && init?.method === 'PATCH') {
+          return new Response(
+            JSON.stringify({
+              data: {
+                id: 'candidate_other',
+                status: 'confirmed',
+                updated_at: '2026-06-18T00:02:00.000Z',
               },
             }),
             { status: 200 },
@@ -150,5 +164,31 @@ describe('BillingCandidatesContent', () => {
     const rows = within(table).getAllByRole('row');
     const targetRow = rows.find((row) => row.textContent?.includes('在宅患者訪問薬剤管理指導料'));
     expect(targetRow?.className).toContain('ring-primary');
+  });
+
+  it('sends expected_updated_at when reviewing a billing candidate', async () => {
+    renderBillingCandidatesContent();
+
+    const table = await screen.findByRole('table', { name: '月次請求候補一覧' });
+    const candidateRow = within(table)
+      .getAllByRole('row')
+      .find((row) => row.textContent?.includes('居宅療養管理指導料'));
+    if (!candidateRow) throw new Error('candidate row is required');
+
+    fireEvent.click(within(candidateRow).getByRole('button', { name: '確定' }));
+
+    await waitFor(() => {
+      const patchCall = vi
+        .mocked(fetch)
+        .mock.calls.find(
+          ([input, init]) =>
+            String(input) === '/api/billing-candidates/candidate_other' && init?.method === 'PATCH',
+        );
+      expect(patchCall).toBeTruthy();
+      expect(JSON.parse(String(patchCall?.[1]?.body))).toEqual({
+        action: 'confirm',
+        expected_updated_at: '2026-06-18T00:00:00.000Z',
+      });
+    });
   });
 });

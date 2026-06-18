@@ -44,6 +44,7 @@ type BillingCandidate = {
   quantity: number;
   status: string;
   exclusion_reason: string | null;
+  updated_at: string;
   effective_revision_code?: string | null;
   site_config_revision_code?: string | null;
   site_config_status?: string | null;
@@ -388,14 +389,21 @@ export function BillingCandidatesContent({
   });
 
   const reviewMutation = useMutation({
-    mutationFn: async (input: { id: string; action: 'confirm' | 'exclude' | 'reopen' }) => {
+    mutationFn: async (input: {
+      id: string;
+      action: 'confirm' | 'exclude' | 'reopen';
+      expectedUpdatedAt: string;
+    }) => {
       const res = await fetch(`/api/billing-candidates/${input.id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           'x-org-id': orgId,
         },
-        body: JSON.stringify({ action: input.action }),
+        body: JSON.stringify({
+          action: input.action,
+          expected_updated_at: input.expectedUpdatedAt,
+        }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -628,7 +636,11 @@ export function BillingCandidatesContent({
                     size="sm"
                     variant="outline"
                     onClick={() =>
-                      reviewMutation.mutate({ id: row.original.id, action: 'confirm' })
+                      reviewMutation.mutate({
+                        id: row.original.id,
+                        action: 'confirm',
+                        expectedUpdatedAt: row.original.updated_at,
+                      })
                     }
                     disabled={reviewMutation.isPending}
                   >
@@ -638,7 +650,11 @@ export function BillingCandidatesContent({
                     size="sm"
                     variant="outline"
                     onClick={() =>
-                      reviewMutation.mutate({ id: row.original.id, action: 'exclude' })
+                      reviewMutation.mutate({
+                        id: row.original.id,
+                        action: 'exclude',
+                        expectedUpdatedAt: row.original.updated_at,
+                      })
                     }
                     disabled={reviewMutation.isPending}
                   >
@@ -650,7 +666,13 @@ export function BillingCandidatesContent({
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => reviewMutation.mutate({ id: row.original.id, action: 'reopen' })}
+                  onClick={() =>
+                    reviewMutation.mutate({
+                      id: row.original.id,
+                      action: 'reopen',
+                      expectedUpdatedAt: row.original.updated_at,
+                    })
+                  }
                   disabled={reviewMutation.isPending}
                 >
                   差戻し
@@ -660,7 +682,13 @@ export function BillingCandidatesContent({
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => reviewMutation.mutate({ id: row.original.id, action: 'reopen' })}
+                  onClick={() =>
+                    reviewMutation.mutate({
+                      id: row.original.id,
+                      action: 'reopen',
+                      expectedUpdatedAt: row.original.updated_at,
+                    })
+                  }
                   disabled={reviewMutation.isPending}
                 >
                   再レビュー

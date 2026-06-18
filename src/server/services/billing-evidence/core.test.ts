@@ -36,6 +36,7 @@ import {
   describeBillingEvidenceBlockers,
   endOfMonth,
   monthLabel,
+  reviewBillingCandidate,
   startOfMonth,
   upsertBillingEvidenceForVisit,
 } from './core';
@@ -253,6 +254,93 @@ describe('billing-evidence/core: billing month date helpers', () => {
 
     expect(startOfMonth(billingMonth).toISOString()).toBe('2026-12-01T00:00:00.000Z');
     expect(endOfMonth(billingMonth).toISOString()).toBe('2026-12-31T23:59:59.999Z');
+  });
+});
+
+describe('reviewBillingCandidate', () => {
+  const currentUpdatedAt = new Date('2026-06-18T00:00:00.000Z');
+
+  function makeReviewTx(
+    overrides: {
+      candidateUpdatedAt?: Date;
+      updateCount?: number;
+    } = {},
+  ) {
+    const candidate = {
+      id: 'candidate_1',
+      org_id: 'org_1',
+      status: 'candidate',
+      source_snapshot: null,
+      exclusion_reason: null,
+      updated_at: overrides.candidateUpdatedAt ?? currentUpdatedAt,
+    };
+    const updatedCandidate = {
+      ...candidate,
+      status: 'confirmed',
+      updated_at: new Date('2026-06-18T00:01:00.000Z'),
+    };
+    return {
+      billingCandidate: {
+        findFirst: vi.fn().mockResolvedValueOnce(candidate).mockResolvedValueOnce(updatedCandidate),
+        updateMany: vi.fn().mockResolvedValue({ count: overrides.updateCount ?? 1 }),
+      },
+    };
+  }
+
+  it('updates only when expectedUpdatedAt matches the current candidate version', async () => {
+    const tx = makeReviewTx();
+
+    const result = await reviewBillingCandidate(tx as never, {
+      orgId: 'org_1',
+      billingCandidateId: 'candidate_1',
+      action: 'confirm',
+      actorId: 'user_1',
+      expectedUpdatedAt: currentUpdatedAt,
+    });
+
+    expect(tx.billingCandidate.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: 'candidate_1',
+          org_id: 'org_1',
+          updated_at: currentUpdatedAt,
+        },
+        data: expect.objectContaining({
+          status: 'confirmed',
+        }),
+      }),
+    );
+    expect(result.status).toBe('confirmed');
+  });
+
+  it('rejects stale expectedUpdatedAt before updating', async () => {
+    const tx = makeReviewTx();
+
+    await expect(
+      reviewBillingCandidate(tx as never, {
+        orgId: 'org_1',
+        billingCandidateId: 'candidate_1',
+        action: 'confirm',
+        actorId: 'user_1',
+        expectedUpdatedAt: new Date('2026-06-17T00:00:00.000Z'),
+      }),
+    ).rejects.toThrow('BILLING_CANDIDATE_STALE');
+
+    expect(tx.billingCandidate.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects races that update the candidate after the initial read', async () => {
+    const tx = makeReviewTx({ updateCount: 0 });
+
+    await expect(
+      reviewBillingCandidate(tx as never, {
+        orgId: 'org_1',
+        billingCandidateId: 'candidate_1',
+        action: 'confirm',
+        actorId: 'user_1',
+        expectedUpdatedAt: currentUpdatedAt,
+      }),
+    ).rejects.toThrow('BILLING_CANDIDATE_STALE');
   });
 });
 

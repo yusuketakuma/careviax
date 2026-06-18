@@ -78,6 +78,7 @@ vi.mock('@/server/services/pca-rental-billing', () => ({
 import { GET as rawGET, POST as rawPOST } from './route';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
+const CANDIDATE_UPDATED_AT = '2026-06-18T00:00:00.000Z';
 const GET = Object.assign((req: NextRequest) => rawGET(req, emptyRouteContext), {
   authOptions: (rawGET as unknown as AuthenticatedRouteHandler).authOptions,
 });
@@ -114,6 +115,7 @@ describe('/api/billing-candidates', () => {
         id: 'candidate_1',
         patient_id: 'patient_1',
         status: 'confirmed',
+        updated_at: new Date(CANDIDATE_UPDATED_AT),
         source_snapshot: {
           billing_close: {
             review_state: 'reviewed',
@@ -125,6 +127,7 @@ describe('/api/billing-candidates', () => {
         id: 'candidate_2',
         patient_id: 'patient_2',
         status: 'candidate',
+        updated_at: new Date('2026-06-18T00:05:00.000Z'),
         source_snapshot: null,
       },
     ]);
@@ -178,6 +181,7 @@ describe('/api/billing-candidates', () => {
         id: 'candidate_1',
         patient_id: 'patient_1',
         status: 'confirmed',
+        updated_at: new Date(CANDIDATE_UPDATED_AT),
         source_snapshot: {
           billing_close: {
             review_state: 'reviewed',
@@ -233,6 +237,7 @@ describe('/api/billing-candidates', () => {
       data: [
         {
           status: 'confirmed',
+          updated_at: CANDIDATE_UPDATED_AT,
           patient_name: '佐藤 花子',
           workflow_state: {
             review_state: 'reviewed',

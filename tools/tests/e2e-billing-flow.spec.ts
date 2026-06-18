@@ -15,6 +15,7 @@ type MockBillingCandidate = {
   quantity: number;
   status: MockBillingCandidateStatus;
   exclusion_reason: string | null;
+  updated_at: string;
   source_snapshot: {
     billing_scope: string;
     selection_mode: string;
@@ -72,10 +73,7 @@ async function openBillingRoute(page: Page, path: string) {
   await openStableRoute(page, path);
 }
 
-function requestBodyIncludes(
-  request: { body: unknown },
-  expected: string,
-) {
+function requestBodyIncludes(request: { body: unknown }, expected: string) {
   return JSON.stringify(request.body).includes(expected);
 }
 
@@ -104,6 +102,7 @@ function createMockCandidate(
     quantity: 1,
     status: input.status,
     exclusion_reason: input.exclusionReason ?? null,
+    updated_at: '2026-04-25T01:30:00.000Z',
     source_snapshot: {
       billing_scope: 'home_care_ssot',
       selection_mode: isPending ? 'manual' : 'automatic',
@@ -180,6 +179,7 @@ function updateCandidateForAction(
     };
   }
 
+  candidate.updated_at = '2026-04-25T02:00:00.000Z';
   candidate.source_snapshot.billing_close = { ...candidate.workflow_state };
   candidate.source_snapshot.selection_mode = action === 'reopen' ? 'manual' : 'automatic';
   candidate.source_snapshot.validation_layers.close_review = {
@@ -284,7 +284,7 @@ async function installBillingCandidateRouteMocks(page: Page) {
     await recordRequest(route);
     const candidateId = new URL(request.url()).pathname.split('/').pop();
     const candidate = candidates.find((item) => item.id === candidateId);
-    const body = readRouteBody<{ action?: string }>(route);
+    const body = readRouteBody<{ action?: string; expected_updated_at?: string }>(route);
     const action = body?.action;
     if (
       request.method() !== 'PATCH' ||
@@ -292,6 +292,17 @@ async function installBillingCandidateRouteMocks(page: Page) {
       !['confirm', 'exclude', 'reopen'].includes(action ?? '')
     ) {
       await fulfillJson(route, { message: 'mock candidate not found' }, 404);
+      return;
+    }
+    if (body?.expected_updated_at !== candidate.updated_at) {
+      await fulfillJson(
+        route,
+        {
+          message:
+            '請求候補が他のユーザーによって更新されています。最新のデータを取得してください。',
+        },
+        409,
+      );
       return;
     }
 

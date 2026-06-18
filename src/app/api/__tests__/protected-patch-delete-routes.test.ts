@@ -25,6 +25,7 @@ const { authMock, prismaMock, withOrgContextMock, txMock } = vi.hoisted(() => {
     visit_deadline_date: null,
     escalation_reason: null,
     finalized_schedule_id: null,
+    updated_at: new Date('2026-06-18T00:00:00.000Z'),
     cycle: {
       overall_status: 'ready_to_dispense',
     },
@@ -157,11 +158,11 @@ const permissionRoutes: RouteEntry[] = [
         createRequest(
           'http://localhost/api/billing-candidates/candidate_1',
           { 'x-org-id': 'org_1' },
-          { action: 'confirm' },
+          { action: 'confirm', expected_updated_at: '2026-06-18T00:00:00.000Z' },
         ),
         { params: Promise.resolve({ id: 'candidate_1' }) },
       ),
-    successBody: { action: 'confirm' },
+    successBody: { action: 'confirm', expected_updated_at: '2026-06-18T00:00:00.000Z' },
   },
   {
     name: 'communication-requests/[id] PATCH',

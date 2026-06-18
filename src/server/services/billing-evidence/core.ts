@@ -2030,6 +2030,7 @@ export async function reviewBillingCandidate(
     action: 'confirm' | 'exclude' | 'reopen';
     note?: string | null;
     actorId: string;
+    expectedUpdatedAt?: Date;
   },
 ) {
   const candidate = await tx.billingCandidate.findFirst({
@@ -2044,6 +2045,12 @@ export async function reviewBillingCandidate(
   }
   if (candidate.status === 'exported') {
     throw new Error('BILLING_CANDIDATE_CLOSED');
+  }
+  if (
+    args.expectedUpdatedAt &&
+    candidate.updated_at.getTime() !== args.expectedUpdatedAt.getTime()
+  ) {
+    throw new Error('BILLING_CANDIDATE_STALE');
   }
 
   const reviewedAt = new Date();
@@ -2072,13 +2079,31 @@ export async function reviewBillingCandidate(
             args.note ?? (args.action === 'exclude' ? (candidate.exclusion_reason ?? null) : null),
         };
 
-  return tx.billingCandidate.update({
-    where: { id: candidate.id },
+  const updateResult = await tx.billingCandidate.updateMany({
+    where: {
+      id: candidate.id,
+      org_id: args.orgId,
+      ...(args.expectedUpdatedAt ? { updated_at: args.expectedUpdatedAt } : {}),
+    },
     data: {
       status: nextStatus,
       source_snapshot: writeBillingCandidateWorkflowState(candidate.source_snapshot, nextWorkflow),
     },
   });
+  if (updateResult.count === 0) {
+    throw new Error('BILLING_CANDIDATE_STALE');
+  }
+
+  const updated = await tx.billingCandidate.findFirst({
+    where: {
+      id: candidate.id,
+      org_id: args.orgId,
+    },
+  });
+  if (!updated) {
+    throw new Error('BILLING_CANDIDATE_NOT_FOUND');
+  }
+  return updated;
 }
 
 type CloseBillingCandidatesTx = BillingCandidateWorkbenchSummaryTx & {
