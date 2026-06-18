@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Search } from 'lucide-react';
+import { AlertTriangle, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -21,7 +21,9 @@ import {
   type SearchCategory,
   type SearchResultRow,
   type PatientSearchItem,
+  type ScheduleProposalSearchItem,
   type PrescriptionSearchItem,
+  type MedicationDeadlineSearchItem,
   type DrugSearchItem,
   type FacilitySearchItem,
   type ReportSearchItem,
@@ -29,7 +31,9 @@ import {
   SEARCH_CATEGORY_LABELS,
   SEARCH_CATEGORY_BADGE_CLASSES,
   buildPatientResult,
+  buildScheduleProposalResult,
   buildPrescriptionResult,
+  buildMedicationDeadlineResult,
   buildDrugResult,
   buildFacilityResult,
   buildReportResult,
@@ -38,7 +42,9 @@ import {
 
 const SEARCH_CATEGORIES: SearchCategory[] = [
   'patient',
+  'proposal',
   'prescription',
+  'medicationDeadline',
   'drug',
   'facility',
   'report',
@@ -51,7 +57,9 @@ type AllResults = Record<SearchCategory, SearchResultRow[]>;
 
 const EMPTY_ALL_RESULTS: AllResults = {
   patient: [],
+  proposal: [],
   prescription: [],
+  medicationDeadline: [],
   drug: [],
   facility: [],
   report: [],
@@ -79,6 +87,7 @@ export function SearchContent({
   const [counts, setCounts] = useState<CategoryCounts>({});
   const [isLoading, setIsLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [failedCategories, setFailedCategories] = useState<SearchCategory[]>([]);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [advancedFilter, setAdvancedFilter] = useState<AdvancedFilterState>(EMPTY_ADVANCED_FILTER);
   const [pharmacists, setPharmacists] = useState<Pharmacist[]>([]);
@@ -121,11 +130,13 @@ export function SearchContent({
         setAllResults(EMPTY_ALL_RESULTS);
         setCounts({});
         setSearchError(null);
+        setFailedCategories([]);
         setIsLoading(false);
         return;
       }
       setIsLoading(true);
       setSearchError(null);
+      setFailedCategories([]);
 
       try {
         const q = encodeURIComponent(normalized);
@@ -133,7 +144,8 @@ export function SearchContent({
         const sig = controller.signal;
 
         // 接続可能な詳細絞り込み条件を既存 API に AND 合成(第一版)
-        const visitScheduleParams = new URLSearchParams({ q });
+        const visitScheduleParams = new URLSearchParams({ q: normalized });
+        visitScheduleParams.set('limit', '8');
         if (advancedFilter.assigneeId) {
           visitScheduleParams.set('pharmacist_id', advancedFilter.assigneeId);
         }
@@ -141,6 +153,18 @@ export function SearchContent({
           const { from, to } = resolveDateRange(advancedFilter.visitDateRange);
           visitScheduleParams.set('date_from', from);
           visitScheduleParams.set('date_to', to);
+        }
+        if (advancedFilter.proposalStatus) {
+          visitScheduleParams.set('status', advancedFilter.proposalStatus);
+        }
+        const medicationDeadlineParams = new URLSearchParams();
+        if (advancedFilter.medicationDeadlineWithinDays != null) {
+          medicationDeadlineParams.set(
+            'within_days',
+            String(advancedFilter.medicationDeadlineWithinDays),
+          );
+          medicationDeadlineParams.set('q', normalized);
+          medicationDeadlineParams.set('limit', '8');
         }
         const cycleStatusParam = advancedFilter.cycleStatus
           ? `&status=${encodeURIComponent(advancedFilter.cycleStatus)}`
@@ -150,24 +174,72 @@ export function SearchContent({
             ? `&care_tags=${encodeURIComponent(advancedFilter.careTags.join(','))}`
             : '';
 
-        const [patientRes, prescriptionRes, drugRes, facilityRes, reportRes, contactRes] =
-          await Promise.all([
-            fetch(`/api/patients?q=${q}&limit=8`, { headers, signal: sig }).catch(() => null),
-            // prescription-intakes の q は API 側未実装(source_type/status のみ対応)のため
-            // クライアント側で patient.name による前方一致フィルタを補完する。
-            // 将来 API 側 q 実装時にフィルタ除去可。
-            fetch(`/api/prescription-intakes?q=${q}&limit=8${cycleStatusParam}${careTagsParam}`, {
-              headers,
-              signal: sig,
-            }).catch(() => null),
-            fetch(`/api/drug-masters?q=${q}&limit=8`, { signal: sig }).catch(() => null),
-            fetch(`/api/facilities?q=${q}&limit=8`, { headers, signal: sig }).catch(() => null),
-            fetch(`/api/care-reports?q=${q}`, { headers, signal: sig }).catch(() => null),
-            fetch(`/api/contact-profiles?q=${q}`, { headers, signal: sig }).catch(() => null),
-          ]);
+        const [
+          patientRes,
+          proposalRes,
+          prescriptionRes,
+          medicationDeadlineRes,
+          drugRes,
+          facilityRes,
+          reportRes,
+          contactRes,
+        ] = await Promise.all([
+          fetch(`/api/patients?q=${q}&limit=8`, { headers, signal: sig }).catch(() => null),
+          fetch(`/api/visit-schedule-proposals?${visitScheduleParams.toString()}`, {
+            headers,
+            signal: sig,
+          }).catch(() => null),
+          // prescription-intakes の q は API 側未実装(source_type/status のみ対応)のため
+          // クライアント側で patient.name による前方一致フィルタを補完する。
+          // 将来 API 側 q 実装時にフィルタ除去可。
+          fetch(`/api/prescription-intakes?q=${q}&limit=8${cycleStatusParam}${careTagsParam}`, {
+            headers,
+            signal: sig,
+          }).catch(() => null),
+          advancedFilter.medicationDeadlineWithinDays != null
+            ? fetch(`/api/dashboard/medication-deadlines?${medicationDeadlineParams.toString()}`, {
+                headers,
+                signal: sig,
+              }).catch(() => null)
+            : Promise.resolve(null),
+          fetch(`/api/drug-masters?q=${q}&limit=8`, { signal: sig }).catch(() => null),
+          fetch(`/api/facilities?q=${q}&limit=8`, { headers, signal: sig }).catch(() => null),
+          fetch(`/api/care-reports?q=${q}&limit=8`, { headers, signal: sig }).catch(() => null),
+          fetch(`/api/contact-profiles?q=${q}`, { headers, signal: sig }).catch(() => null),
+        ]);
+
+        if (sig.aborted) return;
+
+        const nextFailedCategories: SearchCategory[] = [];
+        const noteFailure = (
+          searchCategory: SearchCategory,
+          response: Response | null,
+          attempted = true,
+        ) => {
+          if (attempted && (!response || !response.ok)) {
+            nextFailedCategories.push(searchCategory);
+          }
+        };
+
+        noteFailure('patient', patientRes);
+        noteFailure('proposal', proposalRes);
+        noteFailure('prescription', prescriptionRes);
+        noteFailure(
+          'medicationDeadline',
+          medicationDeadlineRes,
+          advancedFilter.medicationDeadlineWithinDays != null,
+        );
+        noteFailure('drug', drugRes);
+        noteFailure('facility', facilityRes);
+        noteFailure('report', reportRes);
+        noteFailure('contact', contactRes);
 
         const patientData = patientRes?.ok
           ? (((await patientRes.json()) as { data: PatientSearchItem[] }).data ?? [])
+          : [];
+
+        const proposalData = proposalRes?.ok
+          ? (((await proposalRes.json()) as { data: ScheduleProposalSearchItem[] }).data ?? [])
           : [];
 
         // prescription-intakes の API 側 q 未対応のためクライアントフィルタで補完
@@ -179,6 +251,17 @@ export function SearchContent({
           return patientName.includes(normalized) || normalized.length === 0;
         });
 
+        const medicationDeadlinePayload = medicationDeadlineRes?.ok
+          ? ((await medicationDeadlineRes.json()) as {
+              critical?: { items?: MedicationDeadlineSearchItem[] };
+              warning?: { items?: MedicationDeadlineSearchItem[] };
+            })
+          : null;
+        const medicationDeadlineData = [
+          ...(medicationDeadlinePayload?.critical?.items ?? []),
+          ...(medicationDeadlinePayload?.warning?.items ?? []),
+        ].slice(0, 8);
+
         const drugData = drugRes?.ok
           ? (((await drugRes.json()) as { data: DrugSearchItem[] }).data ?? [])
           : [];
@@ -187,7 +270,6 @@ export function SearchContent({
           ? (((await facilityRes.json()) as { data: FacilitySearchItem[] }).data ?? [])
           : [];
 
-        // care-reports は limit なしのため先頭 8 件に slice
         const reportRaw = reportRes?.ok
           ? (((await reportRes.json()) as { data: ReportSearchItem[] }).data ?? [])
           : [];
@@ -197,12 +279,11 @@ export function SearchContent({
           ? (((await contactRes.json()) as { data: ContactSearchItem[] }).data ?? [])
           : [];
 
-        // medicationDeadlineWithinDays は /api/dashboard/medication-deadlines で取得可能だが
-        // 結果リストの統合が複雑なため第一版は API 呼び出しのみ省略し将来接続。
-
         const built: AllResults = {
           patient: patientData.map(buildPatientResult),
+          proposal: proposalData.map(buildScheduleProposalResult),
           prescription: prescriptionData.map(buildPrescriptionResult),
+          medicationDeadline: medicationDeadlineData.map(buildMedicationDeadlineResult),
           drug: drugData.map(buildDrugResult),
           facility: facilityData.map(buildFacilityResult),
           report: reportData.map((item) => buildReportResult(item)),
@@ -210,6 +291,7 @@ export function SearchContent({
         };
 
         setAllResults(built);
+        setFailedCategories(nextFailedCategories);
         setCounts(
           Object.fromEntries(
             SEARCH_CATEGORIES.map((cat) => [cat, built[cat].length]),
@@ -281,6 +363,19 @@ export function SearchContent({
       {isLoading ? <p className="text-sm text-muted-foreground">検索中...</p> : null}
       {/* エラー */}
       {searchError ? <p className="text-sm text-destructive">{searchError}</p> : null}
+      {failedCategories.length > 0 && !searchError ? (
+        <div
+          role="status"
+          className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+        >
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          <p>
+            一部の検索結果を取得できませんでした:{' '}
+            {failedCategories.map((cat) => SEARCH_CATEGORY_LABELS[cat]).join('、')}。
+            条件を変えずに再検索できます。
+          </p>
+        </div>
+      ) : null}
 
       {/* 結果リスト */}
       {!isLoading && !searchError ? (
@@ -288,13 +383,14 @@ export function SearchContent({
           <EmptyState
             icon={Search}
             title="キーワードを入力して横断検索"
-            description="キーワードを入力すると患者・処方・薬剤・施設・報告書・連絡先を横断して探します。"
+            description="キーワードを入力すると患者・訪問候補・処方・薬切れ・薬剤・施設・報告書・連絡先を横断して探します。"
           />
         ) : !hasResults ? (
-          <div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border px-6 text-center text-sm text-muted-foreground">
-            <Search className="size-7" aria-hidden="true" />
-            <p>一致する結果がありません</p>
-          </div>
+          <EmptyState
+            icon={Search}
+            title="一致する結果がありません"
+            description="キーワードや詳細条件を見直して、もう一度検索してください。"
+          />
         ) : (
           <div role="list" aria-label={`${SEARCH_CATEGORY_LABELS[category]}の検索結果`}>
             <div className="space-y-3">

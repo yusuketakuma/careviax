@@ -1,25 +1,17 @@
 // @vitest-environment node
 
 import { describe, expect, it } from 'vitest';
-import { formatPrescriptionCardNumber as formatPrescriptionCardNumberFromLib } from '@/lib/prescription/rx-number';
 import {
-  formatPrescriptionCardNumber,
   buildPatientResult,
   buildPrescriptionResult,
   buildDrugResult,
   buildFacilityResult,
   buildReportResult,
   buildContactResult,
+  buildScheduleProposalResult,
+  buildMedicationDeadlineResult,
   SEARCH_CATEGORY_BADGE_CLASSES,
 } from './search-result-builders';
-
-// 本体テストは src/lib/prescription/rx-number.test.ts へ移設済み。
-describe('formatPrescriptionCardNumber (re-export)', () => {
-  it('re-exports the shared rx-number formatter so existing imports keep working', () => {
-    expect(formatPrescriptionCardNumber).toBe(formatPrescriptionCardNumberFromLib);
-    expect(formatPrescriptionCardNumber('abc1234', '2026-05-20')).toBe('RX-202605-1234');
-  });
-});
 
 describe('buildPatientResult', () => {
   it('builds title with 様 suffix', () => {
@@ -32,11 +24,7 @@ describe('buildPatientResult', () => {
     const row = buildPatientResult({
       id: 'p1',
       name: '田中',
-      conditions: [
-        { name: '心不全', is_primary: true },
-        { name: '糖尿病' },
-        { name: '高血圧' },
-      ],
+      conditions: [{ name: '心不全', is_primary: true }, { name: '糖尿病' }, { name: '高血圧' }],
     });
     expect(row.subtitle).toContain('心不全・糖尿病');
     expect(row.subtitle).not.toContain('高血圧');
@@ -141,7 +129,11 @@ describe('buildDrugResult', () => {
 
 describe('buildFacilityResult', () => {
   it('title is name and subtitle is facility_type', () => {
-    const row = buildFacilityResult({ id: 'f1', name: '○○施設', facility_type: '特別養護老人ホーム' });
+    const row = buildFacilityResult({
+      id: 'f1',
+      name: '○○施設',
+      facility_type: '特別養護老人ホーム',
+    });
     expect(row.title).toBe('○○施設');
     expect(row.subtitle).toBe('特別養護老人ホーム');
   });
@@ -191,7 +183,11 @@ describe('buildReportResult', () => {
 
 describe('buildContactResult', () => {
   it('title is name and subtitle is row.subtitle', () => {
-    const row = buildContactResult({ id: 'c1', name: '山田 医師', subtitle: '○○クリニック / 内科' });
+    const row = buildContactResult({
+      id: 'c1',
+      name: '山田 医師',
+      subtitle: '○○クリニック / 内科',
+    });
     expect(row.title).toBe('山田 医師');
     expect(row.subtitle).toBe('○○クリニック / 内科');
   });
@@ -205,5 +201,49 @@ describe('buildContactResult', () => {
     const row = buildContactResult({ id: 'c1', name: '山田 医師' });
     expect(row.href).toContain('/admin/contact-profiles');
     expect(row.href).toContain(encodeURIComponent('山田 医師'));
+  });
+});
+
+describe('buildScheduleProposalResult', () => {
+  it('builds a proposal row linked to the existing schedule proposal detail', () => {
+    const row = buildScheduleProposalResult({
+      id: 'proposal_1',
+      proposal_status: 'patient_contact_pending',
+      patient_contact_status: 'pending',
+      proposed_date: '2026-06-18',
+      time_window_start: '2026-06-18T09:00:00.000+09:00',
+      time_window_end: '2026-06-18T10:00:00.000+09:00',
+      proposed_pharmacist: { name: '佐藤 薬剤師' },
+      case_: { patient: { id: 'p1', name: '田中 一郎' } },
+    });
+
+    expect(row.badgeClassName).toBe(SEARCH_CATEGORY_BADGE_CLASSES.proposal);
+    expect(row.badgeLabel).toBe('訪問候補');
+    expect(row.title).toBe('田中 一郎 様の訪問候補');
+    expect(row.subtitle).toContain('架電待ち');
+    expect(row.subtitle).toContain('未架電');
+    expect(row.subtitle).toContain('佐藤 薬剤師');
+    expect(row.href).toBe('/schedules/proposals?workspace=dashboard&detail=proposal_1');
+  });
+});
+
+describe('buildMedicationDeadlineResult', () => {
+  it('builds a medication deadline row linked to the schedule day', () => {
+    const row = buildMedicationDeadlineResult({
+      id: 'schedule_1',
+      case_id: 'case_1',
+      scheduled_date: '2026-06-18T00:00:00.000Z',
+      medication_end_date: '2026-06-20T00:00:00.000Z',
+      visit_type: 'regular',
+      pharmacist_id: 'user_1',
+      case_: { patient: { id: 'p1', name: '田中 一郎' } },
+    });
+
+    expect(row.badgeClassName).toBe(SEARCH_CATEGORY_BADGE_CLASSES.medicationDeadline);
+    expect(row.badgeLabel).toBe('薬切れ');
+    expect(row.title).toBe('田中 一郎 様の薬切れ予定');
+    expect(row.subtitle).toContain('薬切れ 6/20');
+    expect(row.subtitle).toContain('訪問予定 6/18');
+    expect(row.href).toBe('/schedules?date=2026-06-18');
   });
 });

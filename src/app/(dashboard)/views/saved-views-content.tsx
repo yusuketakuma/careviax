@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -16,6 +17,7 @@ import { cn } from '@/lib/utils';
 import {
   DEFAULT_SAVED_VIEW_CONDITIONS,
   SAVED_VIEW_PRESETS,
+  buildSavedViewApplyHref,
   formatConditionChipLabel,
   parseSavedView,
   type SavedViewCondition,
@@ -217,6 +219,7 @@ function NamedSavedViewsCard({
   orgId: string;
   currentConditions: SavedViewCondition[];
 }) {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const queryKey = ['saved-views', orgId, VIEWS_PAGE_SCOPE];
   const [newName, setNewName] = useState('');
@@ -315,8 +318,9 @@ function NamedSavedViewsCard({
 
   /** 呼び出し(適用): 保存した条件を現在の絞り込みに反映する。 */
   function recallView(view: SavedViewRecord) {
-    const filterConditions = view.filters?.conditions;
-    const summary = Array.isArray(filterConditions) ? `(${filterConditions.length}件の条件)` : '';
+    const filterConditions = parseSavedView(view.filters)?.conditions ?? [];
+    const summary = filterConditions.length > 0 ? `(${filterConditions.length}件の条件)` : '';
+    router.push(buildSavedViewApplyHref(filterConditions));
     toast.success(`「${view.name}」を適用しました${summary}`);
   }
 
@@ -387,7 +391,11 @@ function NamedSavedViewsCard({
           />
         </div>
       ) : (
-        <ul className="mt-5 flex flex-col gap-2" aria-label="保存したビュー" data-testid="named-view-list">
+        <ul
+          className="mt-5 flex flex-col gap-2"
+          aria-label="保存したビュー"
+          data-testid="named-view-list"
+        >
           {views.map((view) => (
             <li
               key={view.id}

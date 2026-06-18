@@ -88,6 +88,12 @@ type SelfReportSubmitError = Error & {
   status?: number;
 };
 
+type SelfReportFieldErrors = Partial<{
+  reporterName: string;
+  subject: string;
+  content: string;
+}>;
+
 const SCOPE_DISPLAY_NAMES: Record<string, string> = {
   allergy_info: 'アレルギー情報',
   medication_list: '服薬一覧',
@@ -154,6 +160,7 @@ export function SharedViewerContent({ token }: { token: string }) {
   const [content, setContent] = useState('');
   const [preferredContactTime, setPreferredContactTime] = useState('');
   const [requestedCallback, setRequestedCallback] = useState(true);
+  const [selfReportErrors, setSelfReportErrors] = useState<SelfReportFieldErrors>({});
   const selfReportSubmissionRef = useRef<{
     payloadFingerprint: string;
     idempotencyKey: string;
@@ -222,6 +229,7 @@ export function SharedViewerContent({ token }: { token: string }) {
       setContent('');
       setPreferredContactTime('');
       setRequestedCallback(true);
+      setSelfReportErrors({});
       void viewerQuery.refetch();
       toast.success('自己申告を受け付けました');
     },
@@ -250,10 +258,30 @@ export function SharedViewerContent({ token }: { token: string }) {
     setActiveOtp(otpInput.trim());
   }
 
+  function clearSelfReportError(field: keyof SelfReportFieldErrors) {
+    setSelfReportErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+  }
+
   function submitSelfReport() {
     if (selfReportMutation.isPending) return;
-    if (!reporterName.trim() || !subject.trim() || !content.trim()) {
-      toast.error('報告者氏名・件名・内容は必須です');
+    const nextErrors: SelfReportFieldErrors = {};
+    if (!reporterName.trim()) {
+      nextErrors.reporterName = '報告者氏名を入力してください';
+    }
+    if (!subject.trim()) {
+      nextErrors.subject = '件名を入力してください';
+    }
+    if (!content.trim()) {
+      nextErrors.content = '内容を入力してください';
+    }
+    setSelfReportErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) {
+      toast.error('必須項目を確認してください');
       return;
     }
 
@@ -528,15 +556,38 @@ export function SharedViewerContent({ token }: { token: string }) {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {Object.keys(selfReportErrors).length > 0 ? (
+                <div
+                  role="alert"
+                  className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                >
+                  報告者氏名・件名・内容を確認してください。
+                </div>
+              ) : null}
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label htmlFor="reporter-name">報告者氏名</Label>
+                  <Label htmlFor="reporter-name">
+                    報告者氏名 <span aria-hidden="true">*</span>
+                  </Label>
                   <Input
                     id="reporter-name"
                     value={reporterName}
-                    onChange={(event) => setReporterName(event.target.value)}
+                    onChange={(event) => {
+                      setReporterName(event.target.value);
+                      clearSelfReportError('reporterName');
+                    }}
                     placeholder="例: 山田花子"
+                    required
+                    aria-invalid={Boolean(selfReportErrors.reporterName)}
+                    aria-describedby={
+                      selfReportErrors.reporterName ? 'reporter-name-error' : undefined
+                    }
                   />
+                  {selfReportErrors.reporterName ? (
+                    <p id="reporter-name-error" role="alert" className="text-xs text-destructive">
+                      {selfReportErrors.reporterName}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="reporter-relation">患者との関係</Label>
@@ -565,24 +616,50 @@ export function SharedViewerContent({ token }: { token: string }) {
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="report-subject">件名</Label>
+                <Label htmlFor="report-subject">
+                  件名 <span aria-hidden="true">*</span>
+                </Label>
                 <Input
                   id="report-subject"
                   value={subject}
-                  onChange={(event) => setSubject(event.target.value)}
+                  onChange={(event) => {
+                    setSubject(event.target.value);
+                    clearSelfReportError('subject');
+                  }}
                   placeholder="例: 残薬が増えてきた"
+                  required
+                  aria-invalid={Boolean(selfReportErrors.subject)}
+                  aria-describedby={selfReportErrors.subject ? 'report-subject-error' : undefined}
                 />
+                {selfReportErrors.subject ? (
+                  <p id="report-subject-error" role="alert" className="text-xs text-destructive">
+                    {selfReportErrors.subject}
+                  </p>
+                ) : null}
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="report-content">内容</Label>
+                <Label htmlFor="report-content">
+                  内容 <span aria-hidden="true">*</span>
+                </Label>
                 <Textarea
                   id="report-content"
                   value={content}
-                  onChange={(event) => setContent(event.target.value)}
+                  onChange={(event) => {
+                    setContent(event.target.value);
+                    clearSelfReportError('content');
+                  }}
                   placeholder="服薬の困りごと、残薬、体調変化、連絡事項を入力してください"
                   rows={5}
+                  required
+                  aria-invalid={Boolean(selfReportErrors.content)}
+                  aria-describedby={selfReportErrors.content ? 'report-content-error' : undefined}
                 />
+                {selfReportErrors.content ? (
+                  <p id="report-content-error" role="alert" className="text-xs text-destructive">
+                    {selfReportErrors.content}
+                  </p>
+                ) : null}
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">

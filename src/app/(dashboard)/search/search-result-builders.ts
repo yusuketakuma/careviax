@@ -5,11 +5,12 @@
 
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import {
-  REPORT_TYPE_LABELS,
-  REPORT_STATUS_CONFIG,
-} from '@/lib/constants/status-labels';
+import { REPORT_TYPE_LABELS, REPORT_STATUS_CONFIG } from '@/lib/constants/status-labels';
 import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
+import {
+  CONTACT_STATUS_LABELS,
+  PROPOSAL_STATUS_LABELS,
+} from '@/lib/visits/visit-schedule-status-labels';
 
 // ---------------------------------------------------------------------------
 // カテゴリバッジ色定義
@@ -18,7 +19,9 @@ import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
 /** CLAUDE.md UI ガイドライン準拠の落ち着いた淡色。重大色(赤/橙/黄)は使わない。 */
 export const SEARCH_CATEGORY_BADGE_CLASSES: Record<SearchCategory, string> = {
   patient: 'bg-blue-50 text-blue-700 border-blue-200',
+  proposal: 'bg-cyan-50 text-cyan-700 border-cyan-200',
   prescription: 'bg-violet-50 text-violet-700 border-violet-200',
+  medicationDeadline: 'bg-rose-50 text-rose-700 border-rose-200',
   drug: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   facility: 'bg-sky-50 text-sky-700 border-sky-200',
   report: 'bg-amber-50 text-amber-700 border-amber-200',
@@ -27,14 +30,24 @@ export const SEARCH_CATEGORY_BADGE_CLASSES: Record<SearchCategory, string> = {
 
 export const SEARCH_CATEGORY_LABELS: Record<SearchCategory, string> = {
   patient: '患者',
+  proposal: '訪問候補',
   prescription: '処方カード',
+  medicationDeadline: '薬切れ',
   drug: '薬剤',
   facility: '施設',
   report: '報告書',
   contact: '連絡先',
 };
 
-export type SearchCategory = 'patient' | 'prescription' | 'drug' | 'facility' | 'report' | 'contact';
+export type SearchCategory =
+  | 'patient'
+  | 'proposal'
+  | 'prescription'
+  | 'medicationDeadline'
+  | 'drug'
+  | 'facility'
+  | 'report'
+  | 'contact';
 
 // ---------------------------------------------------------------------------
 // 結果行の共通型
@@ -102,13 +115,36 @@ export type ContactSearchItem = {
   kind?: string | null;
 };
 
-// ---------------------------------------------------------------------------
-// RX 番号フォーマッタ
-// ---------------------------------------------------------------------------
+export type ScheduleProposalSearchItem = {
+  id: string;
+  proposal_status: string;
+  patient_contact_status?: string | null;
+  proposed_date: string;
+  time_window_start?: string | null;
+  time_window_end?: string | null;
+  proposed_pharmacist?: { name?: string | null } | null;
+  case_?: {
+    patient?: {
+      id?: string | null;
+      name?: string | null;
+    } | null;
+  } | null;
+};
 
-// 本体は src/lib/prescription/rx-number.ts へ移動済み。既存 import 互換のため re-export する。
-export { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
-export type { PrescriptionCardNumberFormat } from '@/lib/prescription/rx-number';
+export type MedicationDeadlineSearchItem = {
+  id: string;
+  case_id: string;
+  scheduled_date: string;
+  medication_end_date: string;
+  visit_type?: string | null;
+  pharmacist_id?: string | null;
+  case_?: {
+    patient?: {
+      id?: string | null;
+      name?: string | null;
+    } | null;
+  } | null;
+};
 
 // ---------------------------------------------------------------------------
 // 日付フォーマット helper
@@ -121,6 +157,10 @@ function formatDateMD(dateStr: string): string {
   } catch {
     return dateStr;
   }
+}
+
+function dateKeyFromDateString(dateStr: string): string {
+  return dateStr.slice(0, 10);
 }
 
 // ---------------------------------------------------------------------------
@@ -199,7 +239,10 @@ export function buildFacilityResult(item: FacilitySearchItem): SearchResultRow {
   };
 }
 
-export function buildReportResult(item: ReportSearchItem, patientName?: string | null): SearchResultRow {
+export function buildReportResult(
+  item: ReportSearchItem,
+  patientName?: string | null,
+): SearchResultRow {
   const dateText = formatDateMD(item.created_at);
   const typeLabel = REPORT_TYPE_LABELS[item.report_type] ?? '報告書';
   const titleBase = `${dateText} ${typeLabel}`;
@@ -224,5 +267,50 @@ export function buildContactResult(item: ContactSearchItem): SearchResultRow {
     title: item.name,
     subtitle: item.subtitle ?? null,
     href: `/admin/contact-profiles?q=${encodeURIComponent(item.name)}`,
+  };
+}
+
+export function buildScheduleProposalResult(item: ScheduleProposalSearchItem): SearchResultRow {
+  const patientName = item.case_?.patient?.name ?? '患者未設定';
+  const dateText = formatDateMD(item.proposed_date);
+  const timeText =
+    item.time_window_start && item.time_window_end
+      ? `${formatDateMD(item.time_window_start)} ${format(new Date(item.time_window_start), 'HH:mm')}〜${format(
+          new Date(item.time_window_end),
+          'HH:mm',
+        )}`
+      : dateText;
+  const proposalStatus =
+    PROPOSAL_STATUS_LABELS[item.proposal_status as keyof typeof PROPOSAL_STATUS_LABELS] ??
+    item.proposal_status;
+  const contactStatus = item.patient_contact_status
+    ? (CONTACT_STATUS_LABELS[item.patient_contact_status as keyof typeof CONTACT_STATUS_LABELS] ??
+      item.patient_contact_status)
+    : null;
+  const pharmacistName = item.proposed_pharmacist?.name ?? null;
+  const subtitleParts = [timeText, proposalStatus, contactStatus, pharmacistName].filter(Boolean);
+
+  return {
+    id: item.id,
+    badgeLabel: SEARCH_CATEGORY_LABELS.proposal,
+    badgeClassName: SEARCH_CATEGORY_BADGE_CLASSES.proposal,
+    title: `${patientName} 様の訪問候補`,
+    subtitle: subtitleParts.join(' / '),
+    href: `/schedules/proposals?workspace=dashboard&detail=${encodeURIComponent(item.id)}`,
+  };
+}
+
+export function buildMedicationDeadlineResult(item: MedicationDeadlineSearchItem): SearchResultRow {
+  const patientName = item.case_?.patient?.name ?? '患者未設定';
+  const endDateText = formatDateMD(item.medication_end_date);
+  const scheduledDateText = formatDateMD(item.scheduled_date);
+
+  return {
+    id: item.id,
+    badgeLabel: SEARCH_CATEGORY_LABELS.medicationDeadline,
+    badgeClassName: SEARCH_CATEGORY_BADGE_CLASSES.medicationDeadline,
+    title: `${patientName} 様の薬切れ予定`,
+    subtitle: `薬切れ ${endDateText} / 訪問予定 ${scheduledDateText}`,
+    href: `/schedules?date=${encodeURIComponent(dateKeyFromDateString(item.scheduled_date))}`,
   };
 }

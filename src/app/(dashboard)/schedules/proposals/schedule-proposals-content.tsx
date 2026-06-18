@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
-import { ja } from 'date-fns/locale';
 import {
   AlertTriangle,
   CalendarClock,
@@ -65,6 +64,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { cn } from '@/lib/utils';
 import { useReplaceSearchParams } from '@/lib/navigation/use-synced-search-params';
+import { formatEtaLabel } from '@/lib/visits/route-labels';
 import {
   applyVisitScheduleProposalRouteUpdates,
   type VisitRouteConfirmationContext,
@@ -334,20 +334,6 @@ const CONTACT_METHOD_LABELS: Record<ContactMethod, string> = {
   fax: 'FAX',
   email: 'メール',
 };
-
-function formatEtaLabel(
-  baseDate: string,
-  timeWindowStart: string | null,
-  offsetSeconds: number | null,
-) {
-  if (offsetSeconds == null) {
-    return timeLabel(timeWindowStart, null);
-  }
-
-  const parsed = parseISO(`${baseDate}T09:00:00`);
-  const eta = new Date(parsed.getTime() + offsetSeconds * 1000);
-  return format(eta, 'HH:mm', { locale: ja });
-}
 
 function ProposalDecisionBadges({ proposal }: { proposal: Proposal }) {
   return (
@@ -753,8 +739,11 @@ export function ScheduleProposalsContent({
     if (patientId.trim()) params.set('patient_id', patientId.trim());
     if (dateFrom) params.set('date_from', dateFrom);
     if (dateTo) params.set('date_to', dateTo);
+    if (filterPreset === 'contact' && activeTab === 'patient_contact_pending') {
+      params.set('status', 'patient_contact_pending');
+    }
     return params.toString();
-  }, [caseId, dateFrom, dateTo, patientId]);
+  }, [activeTab, caseId, dateFrom, dateTo, filterPreset, patientId]);
 
   const proposalsQuery = useRealtimeQuery({
     queryKey: ['schedule-proposals-dashboard', orgId, queryParams],
@@ -1525,8 +1514,9 @@ export function ScheduleProposalsContent({
         ? null
         : formatEtaLabel(
             toDateKey(detail.proposed_date),
-            point.time_window_start,
+            null,
             planById.get(point.schedule_id)?.arrivalOffsetSeconds ?? null,
+            point.time_window_start,
           ),
     }));
   }, [detail, detailRouteDraft.draftIds, detailRouteDraft.manualDirty]);

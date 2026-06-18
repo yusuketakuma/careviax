@@ -412,7 +412,7 @@ export default function ReportDetailPage() {
     channel: false,
   });
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['care-report', id, orgId],
     queryFn: async () => {
       const res = await fetch(`/api/care-reports/${id}`, {
@@ -591,6 +591,29 @@ export default function ReportDetailPage() {
       <PageScaffold>
         <WorkflowBackLink href="/reports" label="報告書一覧へ戻る" className="mb-3" />
         <Loading />
+      </PageScaffold>
+    );
+  }
+
+  if (error) {
+    return (
+      <PageScaffold>
+        <WorkflowBackLink href="/reports" label="報告書一覧へ戻る" className="mb-3" />
+        <Alert className="border-amber-200 bg-amber-50 text-amber-950">
+          <AlertTriangle className="size-4 text-amber-700" aria-hidden="true" />
+          <AlertTitle>報告書を取得できませんでした</AlertTitle>
+          <AlertDescription className="text-amber-900">
+            通信状態または権限を確認して、再読み込みしてください。
+          </AlertDescription>
+        </Alert>
+        <Button
+          type="button"
+          variant="outline"
+          className="mt-4 min-h-[44px] bg-background sm:min-h-0"
+          onClick={() => void refetch()}
+        >
+          再読み込み
+        </Button>
       </PageScaffold>
     );
   }
@@ -1381,7 +1404,9 @@ export default function ReportDetailPage() {
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="send-recipient-contact">送付先連絡先</Label>
+                <Label htmlFor="send-recipient-contact">
+                  送付先連絡先 <span aria-hidden="true">*</span>
+                </Label>
                 <Input
                   id="send-recipient-contact"
                   value={sendForm.recipient_contact}
@@ -1391,10 +1416,16 @@ export default function ReportDetailPage() {
                   placeholder="メールアドレスまたはFAX番号"
                   aria-invalid={Boolean(sendFormErrors.recipient_contact)}
                   aria-describedby={
-                    sendFormErrors.recipient_contact ? 'send-recipient-contact-error' : undefined
+                    sendFormErrors.recipient_contact
+                      ? 'send-recipient-contact-helper send-recipient-contact-error'
+                      : 'send-recipient-contact-helper'
                   }
                   className="min-h-[44px] sm:h-8 sm:min-h-0"
+                  required
                 />
+                <p id="send-recipient-contact-helper" className="text-xs text-muted-foreground">
+                  メール送信ではメールアドレス、FAX送信ではFAX番号を入力してください。
+                </p>
                 {sendFormErrors.recipient_contact ? (
                   <p
                     id="send-recipient-contact-error"

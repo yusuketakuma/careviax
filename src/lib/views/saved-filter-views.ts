@@ -1,4 +1,5 @@
 import { buildMyDayHref } from '@/lib/dashboard/home-link-builders';
+import { formatDateKey } from '@/lib/date-key';
 
 /**
  * p1_01「よく使う絞り込み」(/views)のプリセット定義と、
@@ -38,9 +39,7 @@ const CONDITION_FIELD_LABELS: Record<SavedViewConditionField, string> = {
 };
 
 /** 既知の条件値の表示名。未知の値は値をそのまま表示する(保存データの後方互換)。 */
-const CONDITION_VALUE_LABELS: Partial<
-  Record<SavedViewConditionField, Record<string, string>>
-> = {
+const CONDITION_VALUE_LABELS: Partial<Record<SavedViewConditionField, Record<string, string>>> = {
   visit_date: {
     today: '今日',
     today_to_this_week: '今日〜今週',
@@ -66,8 +65,7 @@ const CONDITION_VALUE_LABELS: Partial<
 /** 条件 → チップ表示「訪問日:今日〜今週」への射影(区切りは全角コロン)。 */
 export function formatConditionChipLabel(condition: SavedViewCondition): string {
   const fieldLabel = CONDITION_FIELD_LABELS[condition.field];
-  const valueLabel =
-    CONDITION_VALUE_LABELS[condition.field]?.[condition.value] ?? condition.value;
+  const valueLabel = CONDITION_VALUE_LABELS[condition.field]?.[condition.value] ?? condition.value;
   return `${fieldLabel}:${valueLabel}`;
 }
 
@@ -80,10 +78,67 @@ export const DEFAULT_SAVED_VIEW_CONDITIONS: SavedViewCondition[] = [
   { field: 'schedule', value: 'include_patient_confirmation' },
 ];
 
+const SCHEDULE_PROPOSALS_HREF = '/schedules/proposals';
+
+function copyDate(value: Date): Date {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+}
+
+function addDays(value: Date, days: number): Date {
+  const next = copyDate(value);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function startOfIsoWeek(value: Date): Date {
+  const day = value.getDay();
+  const distanceFromMonday = day === 0 ? 6 : day - 1;
+  return addDays(value, -distanceFromMonday);
+}
+
+function setDateRange(params: URLSearchParams, from: Date, to: Date, preset: string | null = null) {
+  params.set('date_from', formatDateKey(from));
+  params.set('date_to', formatDateKey(to));
+  if (preset) params.set('preset', preset);
+}
+
+/**
+ * 名前付き保存ビューの条件を、既存の訪問候補一覧クエリへ変換する。
+ * 対応済み条件だけを反映し、未対応条件は無視して後方互換を保つ。
+ */
+export function buildSavedViewApplyHref(
+  conditions: readonly SavedViewCondition[],
+  now: Date = new Date(),
+): string {
+  const params = new URLSearchParams({ workspace: 'dashboard' });
+  const today = copyDate(now);
+
+  for (const condition of conditions) {
+    if (condition.field === 'visit_date') {
+      if (condition.value === 'today') {
+        setDateRange(params, today, today, 'today');
+      } else if (condition.value === 'today_to_this_week') {
+        const weekEnd = addDays(startOfIsoWeek(today), 6);
+        setDateRange(params, today, weekEnd);
+      } else if (condition.value === 'this_week') {
+        const weekStart = startOfIsoWeek(today);
+        setDateRange(params, weekStart, addDays(weekStart, 6));
+      }
+      continue;
+    }
+
+    if (condition.field === 'schedule' && condition.value === 'include_patient_confirmation') {
+      params.set('status', 'patient_contact_pending');
+      params.set('preset', 'contact');
+    }
+  }
+
+  return `${SCHEDULE_PROPOSALS_HREF}?${params.toString()}`;
+}
+
 function isConditionField(value: unknown): value is SavedViewConditionField {
   return (
-    typeof value === 'string' &&
-    (SAVED_VIEW_CONDITION_FIELDS as readonly string[]).includes(value)
+    typeof value === 'string' && (SAVED_VIEW_CONDITION_FIELDS as readonly string[]).includes(value)
   );
 }
 
@@ -144,9 +199,7 @@ export const SAVED_VIEW_SCOPE_LABELS: Record<SavedViewScope, string> = {
 };
 
 export function isSavedViewScope(value: unknown): value is SavedViewScope {
-  return (
-    typeof value === 'string' && (SAVED_VIEW_SCOPES as readonly string[]).includes(value)
-  );
+  return typeof value === 'string' && (SAVED_VIEW_SCOPES as readonly string[]).includes(value);
 }
 
 /** filters/sort の不透明な構造。画面側が解釈するため任意の JSON を許容する。 */
@@ -204,10 +257,7 @@ function toIsoString(value: Date | string): string {
  * SavedView の Prisma 行 → API 応答用の表示射影。
  * 未知 scope はそのまま文字列として返す(後方互換: 画面側が無視できる)。
  */
-export function toSavedViewRecord(
-  row: SavedViewModelRow,
-  currentUserId: string,
-): SavedViewRecord {
+export function toSavedViewRecord(row: SavedViewModelRow, currentUserId: string): SavedViewRecord {
   return {
     id: row.id,
     name: row.name,

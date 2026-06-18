@@ -1,12 +1,8 @@
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { deriveVisitPlaceGroup } from '@/lib/utils/facility';
-import {
-  formatEtaLabel,
-  minutesFromTimestamp,
-  roundDownToSlot,
-  roundUpToSlot,
-} from './calendar-view.helpers';
+import { formatEtaLabel } from '@/lib/visits/route-labels';
+import { minutesFromTimestamp, roundDownToSlot, roundUpToSlot } from './calendar-view.helpers';
 import { timeLabel, toDateKey, type Proposal, type VisitSchedule } from './day-view.shared';
 
 export type WeekProposalStats = {

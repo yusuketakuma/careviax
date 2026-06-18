@@ -35,13 +35,15 @@ import {
   buildNextCheckTaskInput,
   buildShareAudienceCards,
   pickLatestAudienceReplyRequest,
-  SHARE_AUDIENCES,
-  shareAudienceLabel,
   type CareTeamMemberSummary,
   type ContactPartySummary,
-  type ShareAudienceKey,
   type ShareCommunicationRequest,
 } from '@/app/(dashboard)/reports/[id]/share/interprofessional-share.helpers';
+import {
+  SHARE_AUDIENCES,
+  shareAudienceLabel,
+  type ShareAudienceKey,
+} from '@/lib/communications/share-audience';
 import { buildPatientShareSections, type PatientShareSnapshot } from './patient-share.helpers';
 
 /**
@@ -254,11 +256,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
   const audienceLabel = shareAudienceLabel(audience);
 
   const audienceCards = useMemo(
-    () =>
-      buildShareAudienceCards(
-        careTeamQuery.data?.data ?? [],
-        contactsQuery.data?.data ?? [],
-      ),
+    () => buildShareAudienceCards(careTeamQuery.data?.data ?? [], contactsQuery.data?.data ?? []),
     [careTeamQuery.data?.data, contactsQuery.data?.data],
   );
 

@@ -16,8 +16,7 @@ export type AdvancedFilterState = {
   cycleStatus: CycleStatusOption | null;
   /** 注意ポイント。処方カード検索では /api/prescription-intakes?care_tags= に接続する。 */
   careTags: CareTag[];
-  /** 予定の状態(VisitProposalStatus サブセット)。将来接続扱い。
-   * 接続先: /api/visit-schedule-proposals?status= */
+  /** 予定の状態(VisitProposalStatus サブセット)。接続可 (/api/visit-schedule-proposals?status=)。 */
   proposalStatus: ProposalStatusOption | null;
   /** 薬切れ期間(日)。接続可 (/api/dashboard/medication-deadlines?within_days=)。 */
   medicationDeadlineWithinDays: MedicationDeadlineDays | null;
@@ -131,6 +130,6 @@ export const ADVANCED_FILTER_CONNECTABLE: Record<keyof AdvancedFilterState, bool
   assigneeId: true,
   cycleStatus: true,
   careTags: true,
-  proposalStatus: false, // 将来接続 (/api/visit-schedule-proposals?status=)
+  proposalStatus: true,
   medicationDeadlineWithinDays: true,
 };

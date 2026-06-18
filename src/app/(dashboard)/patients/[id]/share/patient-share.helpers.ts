@@ -1,9 +1,9 @@
 import {
   SHARE_SECTION_EMPTY_BODY,
-  type ShareAudienceKey,
   type ShareSection,
   type ShareSectionKey,
 } from '@/app/(dashboard)/reports/[id]/share/interprofessional-share.helpers';
+import type { ShareAudienceKey } from '@/lib/communications/share-audience';
 
 /**
  * p1_05「他職種向け共有ページ」(患者文脈 /patients/[id]/share)の表示射影(純関数)。
@@ -71,9 +71,7 @@ function formatShareDate(value: string): string | null {
 }
 
 function joinLines(parts: Array<string | null | undefined>): string | null {
-  const filled = parts
-    .map((part) => part?.trim())
-    .filter((part): part is string => Boolean(part));
+  const filled = parts.map((part) => part?.trim()).filter((part): part is string => Boolean(part));
   return filled.length > 0 ? filled.join('\n') : null;
 }
 

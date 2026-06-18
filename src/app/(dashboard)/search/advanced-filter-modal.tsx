@@ -202,7 +202,7 @@ export function AdvancedFilterModal({
             </div>
           </div>
 
-          {/* 5. 予定の状態 — 将来接続(接続先: /api/visit-schedule-proposals?status=) */}
+          {/* 5. 予定の状態 — /api/visit-schedule-proposals?status= に接続 */}
           <div className="flex items-center gap-4">
             <span className="w-28 shrink-0 text-sm font-medium text-foreground">予定の状態</span>
             <div className="flex-1">

@@ -6,15 +6,21 @@ import { setupDomTestEnv } from '@/test/dom-test-utils';
 
 setupDomTestEnv();
 
-const { fetchMock } = vi.hoisted(() => ({
+const { fetchMock, routerPushMock } = vi.hoisted(() => ({
   fetchMock: vi.fn(),
+  routerPushMock: vi.fn(),
 }));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
 }));
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: routerPushMock }),
+}));
+
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { SavedViewRecord } from '@/lib/views/saved-filter-views';
 import { SavedViewsContent } from './saved-views-content';
 
 function renderPage() {
@@ -28,8 +34,16 @@ function renderPage() {
   );
 }
 
-function mockPreferences(value: Record<string, unknown>) {
-  fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
+function mockPreferences(value: Record<string, unknown>, savedViews: SavedViewRecord[] = []) {
+  fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+    const target = String(url);
+    if (target.startsWith('/api/saved-views')) {
+      if (init?.method === 'POST' || init?.method === 'PATCH' || init?.method === 'DELETE') {
+        return { ok: true, json: async () => ({ data: null }) };
+      }
+      return { ok: true, json: async () => ({ data: savedViews }) };
+    }
+
     if (init?.method === 'PATCH') {
       const body = JSON.parse(String(init.body)) as Record<string, unknown>;
       return { ok: true, json: async () => ({ data: { ...value, ...body } }) };
@@ -53,9 +67,7 @@ describe('SavedViewsContent', () => {
     renderPage();
 
     expect(screen.getByRole('heading', { name: 'よく使う絞り込み' })).toBeTruthy();
-    expect(
-      screen.getByText('朝の確認・施設別・自分の担当などをすぐ呼び出します。'),
-    ).toBeTruthy();
+    expect(screen.getByText('朝の確認・施設別・自分の担当などをすぐ呼び出します。')).toBeTruthy();
 
     expect(screen.getByText('朝の確認')).toBeTruthy();
     expect(screen.getByText('セット担当')).toBeTruthy();
@@ -80,9 +92,7 @@ describe('SavedViewsContent', () => {
     await waitFor(() => {
       expect(screen.getAllByTestId('current-filter-chip')).toHaveLength(5);
     });
-    expect(
-      screen.getAllByTestId('current-filter-chip').map((chip) => chip.textContent),
-    ).toEqual([
+    expect(screen.getAllByTestId('current-filter-chip').map((chip) => chip.textContent)).toEqual([
       '訪問日:今日〜今週',
       '担当:自分',
       '薬切れ:3日以内',
@@ -141,5 +151,40 @@ describe('SavedViewsContent', () => {
     await waitFor(() => {
       expect(screen.getByTestId('current-filter-saved-badge')).toBeTruthy();
     });
+  });
+
+  it('applies a named saved view by navigating to the schedule proposals list', async () => {
+    mockPreferences({ work_mode: 'pharmacist' }, [
+      {
+        id: 'view_1',
+        name: '患者確認待ち',
+        scope: 'schedules',
+        filters: {
+          conditions: [
+            { field: 'visit_date', value: 'today_to_this_week' },
+            { field: 'schedule', value: 'include_patient_confirmation' },
+          ],
+        },
+        sort: null,
+        isShared: false,
+        sortOrder: 0,
+        isOwner: true,
+        createdAt: '2026-06-13T09:30:00+09:00',
+        updatedAt: '2026-06-13T09:30:00+09:00',
+      },
+    ]);
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: '患者確認待ち' }));
+
+    await waitFor(() => {
+      expect(routerPushMock).toHaveBeenCalledTimes(1);
+    });
+    const href = String(routerPushMock.mock.calls[0][0]);
+    const url = new URL(href, 'http://localhost');
+    expect(url.pathname).toBe('/schedules/proposals');
+    expect(url.searchParams.get('workspace')).toBe('dashboard');
+    expect(url.searchParams.get('status')).toBe('patient_contact_pending');
+    expect(url.searchParams.get('preset')).toBe('contact');
   });
 });

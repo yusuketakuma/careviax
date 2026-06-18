@@ -1,11 +1,4 @@
-import type {
-  BlockedReason,
-  NextActionPanelProps,
-} from '@/components/features/workspace/action-rail';
-import type {
-  CockpitAuditQueueItem,
-  DashboardCockpitResponse,
-} from '@/types/dashboard-cockpit';
+import type { CockpitAuditQueueItem, DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 
 /**
  * design/images/new の右レール「次にやること / 止まっている理由」共通ビルダー。
@@ -38,10 +31,7 @@ export function familyNameOf(fullName: string): string {
   return trimmed.split(/[\s　]+/)[0] ?? trimmed;
 }
 
-function describeTopAudit(
-  topAudit: CockpitAuditQueueItem,
-  data: DashboardCockpitResponse,
-): string {
+function describeTopAudit(topAudit: CockpitAuditQueueItem, data: DashboardCockpitResponse): string {
   const visit = data.today_visits.find(
     (candidate) => candidate.patient_name === topAudit.patient_name && candidate.time_start,
   );
@@ -57,6 +47,22 @@ export type DailyOpsNextActionFallback = {
   description: string;
 };
 
+export type DailyOpsNextAction = {
+  description?: string;
+  actionLabel: string;
+  actionHref?: string;
+};
+
+export type DailyOpsBlockedReason = {
+  id: string;
+  label: string;
+  severity: 'critical' | 'warning';
+  categoryLabel?: string;
+  ageLabel?: string;
+  actionLabel?: string;
+  actionHref?: string;
+};
+
 /**
  * 右レール「次にやること」(主操作はこの 1 つだけ青)。
  * 監査キュー先頭(麻薬優先)があれば「(麻薬)監査を開始 — HH:mm期限」、
@@ -65,7 +71,7 @@ export type DailyOpsNextActionFallback = {
 export function buildDailyOpsNextAction(
   data: DashboardCockpitResponse | null,
   fallback: DailyOpsNextActionFallback,
-): NextActionPanelProps {
+): DailyOpsNextAction {
   const topAudit = data?.audit_queue[0] ?? null;
   if (topAudit && data) {
     const auditLabel = topAudit.has_narcotic ? '麻薬監査' : '監査';
@@ -87,7 +93,7 @@ export function buildDailyOpsNextAction(
 /** 右レール「止まっている理由」(カテゴリ色チップ+経過時間+個別アクション)。 */
 export function buildDailyOpsBlockedReasons(
   data: DashboardCockpitResponse | null,
-): BlockedReason[] {
+): DailyOpsBlockedReason[] {
   return (data?.blocked_reasons ?? []).map((reason) => ({
     id: reason.id,
     label: reason.label,

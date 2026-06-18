@@ -1185,6 +1185,21 @@ describe('ScheduleProposalsContent', () => {
     expect(screen.getByText('未架電・連絡対応の候補を表示中です。')).toBeTruthy();
   });
 
+  it('passes the contact preset status to the proposals API query state', () => {
+    render(
+      <ScheduleProposalsContent initialPreset="contact" initialStatus="patient_contact_pending" />,
+    );
+
+    expect(
+      useRealtimeQueryMock.mock.calls.some(([arg]) => {
+        const queryKey = (arg as { queryKey: unknown[] }).queryKey;
+        if (queryKey[0] !== 'schedule-proposals-dashboard') return false;
+        const params = new URLSearchParams(String(queryKey[2] ?? ''));
+        return params.get('status') === 'patient_contact_pending';
+      }),
+    ).toBe(true);
+  });
+
   it('confirms proposal bulk approval before submitting selected proposals', async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ data: {} }));
     vi.stubGlobal('fetch', fetchMock);

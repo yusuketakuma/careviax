@@ -85,7 +85,11 @@ const REQUESTS = [
     subject: 'ケアマネへの服薬状況報告(共有)',
     requested_at: '2026-06-10T06:30:00.000Z',
     responses: [
-      { id: 'res_1', responder_name: '中島 桜(ケアマネ)', responded_at: '2026-06-12T07:40:00.000Z' },
+      {
+        id: 'res_1',
+        responder_name: '中島 桜(ケアマネ)',
+        responded_at: '2026-06-12T07:40:00.000Z',
+      },
     ],
   },
 ];
@@ -102,13 +106,16 @@ const REQUEST_DETAIL = {
   ],
 };
 
-function stubFetch() {
+function stubFetch(options: { failCareTeam?: boolean } = {}) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.includes('/api/care-reports/rep_1')) {
       return new Response(JSON.stringify({ data: REPORT }), { status: 200 });
     }
     if (url.includes('/api/patients/pt_1/care-team')) {
+      if (options.failCareTeam) {
+        return new Response('server error', { status: 500 });
+      }
       return new Response(JSON.stringify({ data: CARE_TEAM }), { status: 200 });
     }
     if (url.includes('/api/patients/pt_1/contacts')) {
@@ -211,6 +218,30 @@ describe('InterprofessionalShareContent', () => {
     expect(button.disabled).toBe(true);
   });
 
+  it('報告書取得失敗時は見つからない扱いにせず再読み込み可能なエラー状態を表示する', async () => {
+    const fetchMock = vi.fn(async () => new Response('server error', { status: 500 }));
+    vi.stubGlobal('fetch', fetchMock);
+    renderShare();
+
+    await waitFor(() => {
+      expect(screen.getByText('報告書を取得できませんでした')).toBeTruthy();
+    });
+    expect(screen.getByRole('button', { name: '再読み込み' })).toBeTruthy();
+    expect(screen.queryByText('報告書が見つかりません')).toBeNull();
+  });
+
+  it('補助情報の部分失敗は共有ページを落とさず警告として表示する', async () => {
+    stubFetch({ failCareTeam: true });
+    renderShare();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('share-supporting-data-warning')).toBeTruthy();
+    });
+    expect(screen.getByText('一部の共有情報を取得できませんでした')).toBeTruthy();
+    expect(screen.getByText(/ケアチームを取得できないため/)).toBeTruthy();
+    expect(screen.getByTestId('share-preview-column')).toBeTruthy();
+  });
+
   it('「次回タスクにする」で POST /api/tasks に重複防止キーつきで起票する', async () => {
     const fetchMock = stubFetch();
     renderShare();
@@ -239,8 +270,6 @@ describe('InterprofessionalShareContent', () => {
     expect(body.title).toContain('ケアマネからの返信');
 
     // 起票済みの返信では再実行できない
-    expect((screen.getByTestId('share-next-task-button') as HTMLButtonElement).disabled).toBe(
-      true,
-    );
+    expect((screen.getByTestId('share-next-task-button') as HTMLButtonElement).disabled).toBe(true);
   });
 });

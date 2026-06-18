@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { CheckCircle2, ListTodo, MessageCircle, Share2 } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ListTodo, MessageCircle, Share2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { WorkflowPageIntro } from '@/components/features/workflow/workflow-page-intro';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -145,6 +145,12 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
   });
   const latestReply = replyDetailQuery.data?.data.responses[0] ?? null;
   const taskCreated = Boolean(latestReply && createdResponseIds.includes(latestReply.id));
+  const supportingDataErrors = [
+    careTeamQuery.isError ? 'ケアチーム' : null,
+    contactsQuery.isError ? '患者連絡先' : null,
+    requestsQuery.isError ? '返信状況' : null,
+    replyDetailQuery.isError ? '返信内容' : null,
+  ].filter((label): label is string => Boolean(label));
 
   const createTaskMutation = useMutation({
     mutationFn: async () => {
@@ -185,6 +191,31 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
     return (
       <PageScaffold>
         <Loading />
+      </PageScaffold>
+    );
+  }
+
+  if (reportQuery.error) {
+    return (
+      <PageScaffold>
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-950">
+          <h1 className="flex items-center gap-2 text-base font-semibold">
+            <AlertTriangle className="size-4 text-amber-700" aria-hidden="true" />
+            報告書を取得できませんでした
+          </h1>
+          <p className="mt-1 text-sm text-amber-900">
+            通信状態または権限を確認して、再読み込みしてください。
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="mt-3 min-h-[44px] bg-background sm:min-h-0"
+            onClick={() => void reportQuery.refetch()}
+          >
+            再読み込み
+          </Button>
+        </div>
       </PageScaffold>
     );
   }
@@ -231,6 +262,40 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
             ) : null
           }
         />
+
+        {supportingDataErrors.length > 0 ? (
+          <div
+            className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-950"
+            data-testid="share-supporting-data-warning"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="flex items-center gap-2 text-sm font-semibold">
+                  <AlertTriangle className="size-4 text-amber-700" aria-hidden="true" />
+                  一部の共有情報を取得できませんでした
+                </h2>
+                <p className="mt-1 text-sm text-amber-900">
+                  {supportingDataErrors.join('、')}
+                  を取得できないため、登録済み相手や返信の表示が一部欠けています。
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="min-h-[44px] bg-background sm:min-h-0"
+                onClick={() => {
+                  void careTeamQuery.refetch();
+                  void contactsQuery.refetch();
+                  void requestsQuery.refetch();
+                  void replyDetailQuery.refetch();
+                }}
+              >
+                再取得
+              </Button>
+            </div>
+          </div>
+        ) : null}
 
         <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.3fr)_minmax(0,1fr)]">
           {/* 左: 共有する相手 */}

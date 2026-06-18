@@ -80,9 +80,9 @@ describe('SharedViewerContent self report', () => {
 
     await screen.findByText('患者・ご家族からの連絡');
 
-    fireEvent.change(screen.getByLabelText('報告者氏名'), { target: { value: '家族A' } });
-    fireEvent.change(screen.getByLabelText('件名'), { target: { value: '飲み忘れ' } });
-    fireEvent.change(screen.getByLabelText('内容'), { target: { value: '夕食後を飲み忘れ' } });
+    fireEvent.change(screen.getByLabelText(/報告者氏名/), { target: { value: '家族A' } });
+    fireEvent.change(screen.getByLabelText(/件名/), { target: { value: '飲み忘れ' } });
+    fireEvent.change(screen.getByLabelText(/内容/), { target: { value: '夕食後を飲み忘れ' } });
     fireEvent.click(screen.getByRole('button', { name: '薬局へ送信' }));
 
     await waitFor(() => expect(toastSuccessMock).toHaveBeenCalledWith('自己申告を受け付けました'));
@@ -106,5 +106,29 @@ describe('SharedViewerContent self report', () => {
     });
     expect(body).not.toHaveProperty('otp');
     expect(body).not.toHaveProperty('idempotency_key');
+  });
+
+  it('shows inline required errors and does not post an empty self report', async () => {
+    renderSharedViewerContent();
+
+    fireEvent.change(screen.getByLabelText('OTP'), { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: /閲覧する/ }));
+
+    await screen.findByText('患者・ご家族からの連絡');
+
+    fireEvent.click(screen.getByRole('button', { name: '薬局へ送信' }));
+
+    expect(screen.getByText('報告者氏名を入力してください')).toBeTruthy();
+    expect(screen.getByText('件名を入力してください')).toBeTruthy();
+    expect(screen.getByText('内容を入力してください')).toBeTruthy();
+    expect(screen.getByLabelText(/報告者氏名/).getAttribute('aria-invalid')).toBe('true');
+    expect(toastErrorMock).toHaveBeenCalledWith('必須項目を確認してください');
+
+    const postCalls = vi
+      .mocked(fetch)
+      .mock.calls.filter(
+        ([input, init]) => String(input).endsWith('/self-report') && init?.method === 'POST',
+      );
+    expect(postCalls).toHaveLength(0);
   });
 });

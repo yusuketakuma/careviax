@@ -1,6 +1,5 @@
-import { format, parseISO } from 'date-fns';
+import { parseISO } from 'date-fns';
 import { fetchVisitSchedulesWindow } from './visit-schedule-fetch.helpers';
-import { timeLabel } from './day-view.shared';
 
 export type ScheduleStatus =
   | 'planned'
@@ -39,7 +38,9 @@ function timeSortValue(value: string | null | undefined) {
   return '99:99';
 }
 
-export function formatCalendarTimeRange(schedule: Pick<CalendarVisitSchedule, 'time_window_start' | 'time_window_end'>) {
+export function formatCalendarTimeRange(
+  schedule: Pick<CalendarVisitSchedule, 'time_window_start' | 'time_window_end'>,
+) {
   const start = schedule.time_window_start ? timeSortValue(schedule.time_window_start) : null;
   const end = schedule.time_window_end ? timeSortValue(schedule.time_window_end) : null;
   if (!start && !end) return null;
@@ -135,39 +136,4 @@ export function buildOrderedFacilityScheduleIds(
       });
     })
     .map((patient) => patient.scheduleId);
-}
-
-export function formatMinutesLabel(value: number) {
-  const hours = Math.floor(value / 60);
-  const minutes = value % 60;
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
-}
-
-export function formatDistanceLabel(value: number | null) {
-  if (value == null) return '距離未取得';
-  if (value >= 1000) return `${(value / 1000).toFixed(1)}km`;
-  return `${value}m`;
-}
-
-export function formatDurationLabel(value: number | null) {
-  if (value == null) return '時間未取得';
-  const hours = Math.floor(value / 3600);
-  const minutes = Math.round((value % 3600) / 60);
-  if (hours > 0) return `${hours}時間${minutes}分`;
-  return `${minutes}分`;
-}
-
-export function formatEtaLabel(
-  baseDate: string,
-  departureTime: string | null,
-  offsetSeconds: number | null,
-  fallbackTime: string | null,
-) {
-  if (offsetSeconds == null) return fallbackTime ? timeLabel(fallbackTime, null) : null;
-  const normalizedDepartureTime = departureTime
-    ? format(parseISO(departureTime), 'HH:mm:ss')
-    : '09:00:00';
-  const base = parseISO(`${baseDate}T${normalizedDepartureTime}`);
-  const shifted = new Date(base.getTime() + offsetSeconds * 1000);
-  return format(shifted, 'HH:mm');
 }

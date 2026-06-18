@@ -1,18 +1,20 @@
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import type { HomeVisit2026BillingBlocker } from '@/lib/visits/home-visit-2026-evidence';
+import type { VisitPriority, VisitType } from '@/lib/validations/visit-schedule';
+import {
+  formatNullableTimeOfDayLabel,
+  formatNullableTimeWindowLabel,
+  formatTimeWindowLabel,
+} from '@/lib/visits/route-labels';
+import {
+  CONTACT_STATUS_LABELS as SHARED_CONTACT_STATUS_LABELS,
+  PROPOSAL_STATUS_LABELS as SHARED_PROPOSAL_STATUS_LABELS,
+} from '@/lib/visits/visit-schedule-status-labels';
 import type { HomeCareFeatureState } from '@/types/home-care';
 import type { VisitBrief } from '@/types/visit-brief';
 
-export type VisitPriority = 'normal' | 'urgent' | 'emergency';
-export type VisitType =
-  | 'initial'
-  | 'regular'
-  | 'temporary'
-  | 'revisit'
-  | 'delivery_only'
-  | 'emergency'
-  | 'physician_co_visit';
+export type { VisitPriority, VisitType };
 export type ProposalStatus =
   | 'proposed'
   | 'patient_contact_pending'
@@ -488,24 +490,10 @@ export const PRIORITY_LABELS: Record<VisitPriority, string> = {
   emergency: '緊急',
 };
 
-export const PROPOSAL_STATUS_LABELS: Record<ProposalStatus, string> = {
-  proposed: '提案中',
-  patient_contact_pending: '架電待ち',
-  confirmed: '確定済み',
-  rejected: '却下',
-  superseded: '差替済み',
-  expired: '期限切れ',
-  reschedule_pending: '再調整中',
-};
+export const PROPOSAL_STATUS_LABELS: Record<ProposalStatus, string> = SHARED_PROPOSAL_STATUS_LABELS;
 
-export const CONTACT_STATUS_LABELS: Record<PatientContactStatus, string> = {
-  pending: '未架電',
-  attempted: '架電済み',
-  confirmed: '患者確認済み',
-  declined: '辞退',
-  change_requested: '変更希望',
-  unreachable: '不通',
-};
+export const CONTACT_STATUS_LABELS: Record<PatientContactStatus, string> =
+  SHARED_CONTACT_STATUS_LABELS;
 
 export const SCHEDULE_STATUS_LABELS: Record<ScheduleStatus, string> = {
   planned: '計画',
@@ -548,25 +536,18 @@ export function toDateKey(value: string) {
 }
 
 export function timeLabel(start: string | null, end: string | null) {
-  const left = start ? format(parseISO(start), 'HH:mm') : '時間未定';
-  const right = end ? format(parseISO(end), 'HH:mm') : null;
-  return right ? `${left} - ${right}` : left;
+  return formatTimeWindowLabel(start, end);
 }
 
 export function formatNullableTimeOfDay(value: string | null | undefined) {
-  if (!value) return null;
-  return format(parseISO(value), 'HH:mm');
+  return formatNullableTimeOfDayLabel(value);
 }
 
 export function formatNullableTimeRange(
   start: string | null | undefined,
   end: string | null | undefined,
 ) {
-  const normalizedStart = formatNullableTimeOfDay(start);
-  const normalizedEnd = formatNullableTimeOfDay(end);
-  if (!normalizedStart && !normalizedEnd) return null;
-  if (normalizedStart && normalizedEnd) return `${normalizedStart} - ${normalizedEnd}`;
-  return normalizedStart ?? normalizedEnd;
+  return formatNullableTimeWindowLabel(start, end);
 }
 
 export function formatNullableDateLabel(value: string | null | undefined, emptyLabel = '未設定') {

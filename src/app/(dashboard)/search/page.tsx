@@ -11,7 +11,9 @@ export const metadata: Metadata = {
 
 const VALID_CATEGORIES: SearchCategory[] = [
   'patient',
+  'proposal',
   'prescription',
+  'medicationDeadline',
   'drug',
   'facility',
   'report',

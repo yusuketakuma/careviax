@@ -347,7 +347,16 @@ export function BillingCandidatesContent({
   const billingMonthStr = format(currentMonth, 'yyyy-MM-dd');
   const billingMonthLabel = format(currentMonth, 'yyyy年M月', { locale: ja });
 
-  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ['billing-candidates', orgId, billingMonthStr, patientIdFilter, billingDomain],
     queryFn: async ({ pageParam }) => {
       const params = new URLSearchParams({
@@ -1088,6 +1097,14 @@ export function BillingCandidatesContent({
             },
           ],
         }}
+        errorMessage={
+          isError
+            ? error instanceof Error
+              ? error.message
+              : '請求候補の取得に失敗しました'
+            : undefined
+        }
+        onRetry={() => void refetch()}
         renderExpandedRow={(row) => {
           const candidate = row.original;
           const workflow = candidateWorkflow(candidate);

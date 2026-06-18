@@ -3,6 +3,7 @@ import {
   DEFAULT_SAVED_VIEW_CONDITIONS,
   SAVED_VIEW_CONDITION_FIELDS,
   SAVED_VIEW_PRESETS,
+  buildSavedViewApplyHref,
   formatConditionChipLabel,
   parseSavedView,
 } from './saved-filter-views';
@@ -105,6 +106,40 @@ describe('saved-filter-views', () => {
       expect(parseSavedView({})).toBeNull();
       expect(parseSavedView({ conditions: [] })).toBeNull();
       expect(parseSavedView({ conditions: [{ field: 'nope', value: 'x' }] })).toBeNull();
+    });
+  });
+
+  describe('buildSavedViewApplyHref', () => {
+    const now = new Date(2026, 5, 16);
+
+    it('maps the default schedule saved view to the existing proposals query contract', () => {
+      const href = buildSavedViewApplyHref(DEFAULT_SAVED_VIEW_CONDITIONS, now);
+      const url = new URL(href, 'http://localhost');
+
+      expect(url.pathname).toBe('/schedules/proposals');
+      expect(url.searchParams.get('workspace')).toBe('dashboard');
+      expect(url.searchParams.get('date_from')).toBe('2026-06-16');
+      expect(url.searchParams.get('date_to')).toBe('2026-06-21');
+      expect(url.searchParams.get('status')).toBe('patient_contact_pending');
+      expect(url.searchParams.get('preset')).toBe('contact');
+    });
+
+    it('maps today and this_week date filters without unsupported params', () => {
+      expect(
+        new URL(
+          buildSavedViewApplyHref([{ field: 'visit_date', value: 'today' }], now),
+          'http://localhost',
+        ).searchParams.get('date_to'),
+      ).toBe('2026-06-16');
+
+      const weekUrl = new URL(
+        buildSavedViewApplyHref([{ field: 'visit_date', value: 'this_week' }], now),
+        'http://localhost',
+      );
+      expect(weekUrl.searchParams.get('date_from')).toBe('2026-06-15');
+      expect(weekUrl.searchParams.get('date_to')).toBe('2026-06-21');
+      expect(weekUrl.searchParams.has('assignee')).toBe(false);
+      expect(weekUrl.searchParams.has('supply_runout')).toBe(false);
     });
   });
 

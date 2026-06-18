@@ -183,6 +183,10 @@ describe('ReportDetailPage send safety dialog', () => {
 
     expect(screen.getByRole('dialog', { name: '報告書を送付' })).toBeTruthy();
     expect(screen.getByText('送付前確認')).toBeTruthy();
+    expect((screen.getByLabelText(/送付先連絡先/) as HTMLInputElement).required).toBe(true);
+    expect(
+      screen.getByText('メール送信ではメールアドレス、FAX送信ではFAX番号を入力してください。'),
+    ).toBeTruthy();
     expect(screen.getByText('佐藤 花子')).toBeTruthy();
     expect(screen.getByText('サトウ ハナコ')).toBeTruthy();
     expect(screen.getByText('1940/01/01')).toBeTruthy();
@@ -313,6 +317,29 @@ describe('ReportDetailPage send safety dialog', () => {
     expect(screen.queryByRole('button', { name: '送付' })).toBeNull();
     expect(screen.queryByRole('button', { name: '共有を作成' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'PDFを開く' })).toBeNull();
+  });
+
+  it('shows a retryable error state when the report detail query fails', () => {
+    const refetch = vi.fn();
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return { data: { data: [] }, isLoading: false };
+      }
+      return {
+        data: undefined,
+        isLoading: false,
+        error: new Error('報告書の取得に失敗しました'),
+        refetch,
+      };
+    });
+
+    render(<ReportDetailPage />);
+
+    expect(screen.getByText('報告書を取得できませんでした')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('報告書が見つかりません')).toBeNull();
   });
 
   it('waits for share target suggestions before opening the auto-selected composer', () => {
