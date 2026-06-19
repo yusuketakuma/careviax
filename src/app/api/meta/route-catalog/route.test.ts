@@ -288,6 +288,12 @@ describe('/api/meta/route-catalog GET', () => {
           area: 'billing',
         }),
         expect.objectContaining({
+          path: '/api/pharmacy-invoices/:id',
+          methods: ['PATCH'],
+          permission: 'canManageBilling',
+          area: 'billing',
+        }),
+        expect.objectContaining({
           path: '/api/pharmacy-invoices/:id/pdf',
           methods: ['GET'],
           permission: 'canManageBilling',

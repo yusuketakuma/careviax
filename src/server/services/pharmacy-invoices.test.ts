@@ -1,7 +1,11 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { Prisma } from '@prisma/client';
 import { parseStrictBillingMonth } from '@/app/api/billing-candidates/billing-month';
-import { createPharmacyInvoiceDraft, PharmacyInvoiceDraftError } from './pharmacy-invoices';
+import {
+  createPharmacyInvoiceDraft,
+  PharmacyInvoiceDraftError,
+  transitionPharmacyInvoice,
+} from './pharmacy-invoices';
 
 const ctx = {
   orgId: 'org_1',
@@ -325,5 +329,166 @@ describe('createPharmacyInvoiceDraft', () => {
     } satisfies Partial<PharmacyInvoiceDraftError>);
     expect(pharmacyInvoiceCreateMock).not.toHaveBeenCalled();
     expect(visitBillingCandidateUpdateManyMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('transitionPharmacyInvoice', () => {
+  const pharmacyInvoiceFindFirstMock = vi.fn();
+  const pharmacyInvoiceUpdateManyMock = vi.fn();
+  const pharmacyInvoiceFindFirstOrThrowMock = vi.fn();
+  const auditLogCreateMock = vi.fn();
+
+  function tx() {
+    return {
+      pharmacyInvoice: {
+        findFirst: pharmacyInvoiceFindFirstMock,
+        updateMany: pharmacyInvoiceUpdateManyMock,
+        findFirstOrThrow: pharmacyInvoiceFindFirstOrThrowMock,
+      },
+      auditLog: {
+        create: auditLogCreateMock,
+      },
+    } as unknown as Prisma.TransactionClient;
+  }
+
+  function invoiceRow(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'invoice_1',
+      contract_id: 'contract_1',
+      document_kind: 'invoice',
+      invoice_no: null,
+      billing_month: billingMonth.start,
+      subtotal: 5500,
+      tax_amount: 550,
+      total: 6050,
+      status: 'draft',
+      issued_at: null,
+      sent_at: null,
+      received_at: null,
+      paid_at: null,
+      snapshot: { snapshot_version: 'pharmacy_invoice_draft_v1' },
+      updated_at: now,
+      _count: { items: 1 },
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    pharmacyInvoiceFindFirstMock.mockResolvedValue(invoiceRow());
+    pharmacyInvoiceUpdateManyMock.mockResolvedValue({ count: 1 });
+    pharmacyInvoiceFindFirstOrThrowMock.mockResolvedValue(
+      invoiceRow({
+        invoice_no: 'INV-202606-INVOICE1',
+        status: 'issued',
+        issued_at: now,
+      }),
+    );
+    auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
+  });
+
+  it('issues a draft invoice with a stable number and minimized audit metadata', async () => {
+    const result = await transitionPharmacyInvoice(tx(), ctx, 'invoice_1', {
+      action: 'issue',
+      occurredAt: now,
+    });
+
+    expect(result).toMatchObject({
+      id: 'invoice_1',
+      status: 'issued',
+      invoice_no: 'INV-202606-INVOICE1',
+      item_count: 1,
+    });
+    expect(pharmacyInvoiceUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'invoice_1', org_id: 'org_1', status: 'draft' },
+        data: expect.objectContaining({
+          status: 'issued',
+          issued_at: now,
+          invoice_no: expect.stringMatching(/^INV-202606-/),
+          snapshot: expect.objectContaining({
+            lifecycle: expect.objectContaining({
+              previous_status: 'draft',
+              current_status: 'issued',
+              last_action: 'issue',
+            }),
+          }),
+        }),
+      }),
+    );
+    expect(auditLogCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'pharmacy_invoice_issued',
+          target_type: 'PharmacyInvoice',
+          target_id: 'invoice_1',
+          changes: expect.objectContaining({
+            previous_status: 'draft',
+            status: 'issued',
+            invoice_no_assigned: true,
+            has_issued_at: true,
+          }),
+        }),
+      }),
+    );
+    expect(JSON.stringify(auditLogCreateMock.mock.calls)).not.toContain('snapshot_version');
+  });
+
+  it('records payment scheduling in the lifecycle snapshot without changing money snapshots', async () => {
+    const scheduledFor = new Date('2026-07-31T00:00:00.000Z');
+    pharmacyInvoiceFindFirstMock.mockResolvedValue(
+      invoiceRow({ status: 'received', invoice_no: 'INV-202606-0001' }),
+    );
+    pharmacyInvoiceFindFirstOrThrowMock.mockResolvedValue(
+      invoiceRow({
+        status: 'payment_scheduled',
+        invoice_no: 'INV-202606-0001',
+      }),
+    );
+
+    await transitionPharmacyInvoice(tx(), ctx, 'invoice_1', {
+      action: 'schedule_payment',
+      paymentScheduledFor: scheduledFor,
+    });
+
+    expect(pharmacyInvoiceUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'payment_scheduled',
+          snapshot: expect.objectContaining({
+            lifecycle: expect.objectContaining({
+              payment_scheduled_for: '2026-07-31',
+              last_action: 'schedule_payment',
+            }),
+          }),
+        }),
+      }),
+    );
+    expect(JSON.stringify(pharmacyInvoiceUpdateManyMock.mock.calls)).not.toContain('患者 太郎');
+    expect(auditLogCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'pharmacy_invoice_payment_scheduled',
+          changes: expect.objectContaining({
+            payment_scheduled_for: '2026-07-31',
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('rejects invalid lifecycle transitions before update or audit writes', async () => {
+    pharmacyInvoiceFindFirstMock.mockResolvedValue(invoiceRow({ status: 'paid' }));
+
+    await expect(
+      transitionPharmacyInvoice(tx(), ctx, 'invoice_1', {
+        action: 'cancel',
+        reason: '誤発行',
+      }),
+    ).rejects.toMatchObject({
+      code: 'INVALID_TRANSITION',
+    });
+    expect(pharmacyInvoiceUpdateManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 });

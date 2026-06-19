@@ -1,4 +1,9 @@
-import { Prisma, type PharmacyInvoiceDocumentKind, type PharmacyTaxCategory } from '@prisma/client';
+import {
+  Prisma,
+  type PharmacyInvoiceDocumentKind,
+  type PharmacyInvoiceStatus,
+  type PharmacyTaxCategory,
+} from '@prisma/client';
 import type { AuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
@@ -83,6 +88,26 @@ export type PharmacyInvoiceDraftErrorCode =
   | 'INVALID_CANDIDATE_AMOUNT'
   | 'STALE_CANDIDATES';
 
+export type PharmacyInvoiceTransitionAction =
+  | 'issue'
+  | 'mark_sent'
+  | 'mark_received'
+  | 'schedule_payment'
+  | 'record_payment'
+  | 'cancel'
+  | 'reissue';
+
+export type PharmacyInvoiceTransitionInput =
+  | { action: 'issue'; occurredAt: Date }
+  | { action: 'mark_sent'; occurredAt: Date }
+  | { action: 'mark_received'; occurredAt: Date }
+  | { action: 'schedule_payment'; paymentScheduledFor: Date }
+  | { action: 'record_payment'; occurredAt: Date }
+  | { action: 'cancel'; reason?: string }
+  | { action: 'reissue'; reason?: string };
+
+export type PharmacyInvoiceTransitionErrorCode = 'NOT_FOUND' | 'INVALID_TRANSITION' | 'STALE';
+
 export class PharmacyInvoiceDraftError extends Error {
   constructor(
     readonly code: PharmacyInvoiceDraftErrorCode,
@@ -94,8 +119,68 @@ export class PharmacyInvoiceDraftError extends Error {
   }
 }
 
+export class PharmacyInvoiceTransitionError extends Error {
+  constructor(
+    readonly code: PharmacyInvoiceTransitionErrorCode,
+    message: string,
+    readonly details?: Record<string, unknown>,
+  ) {
+    super(message);
+    this.name = 'PharmacyInvoiceTransitionError';
+  }
+}
+
+const INVOICE_TRANSITION_RULES = {
+  issue: {
+    from: ['draft'],
+    to: 'issued',
+    auditAction: 'pharmacy_invoice_issued',
+  },
+  mark_sent: {
+    from: ['issued'],
+    to: 'sent',
+    auditAction: 'pharmacy_invoice_sent',
+  },
+  mark_received: {
+    from: ['sent'],
+    to: 'received',
+    auditAction: 'pharmacy_invoice_received',
+  },
+  schedule_payment: {
+    from: ['issued', 'sent', 'received'],
+    to: 'payment_scheduled',
+    auditAction: 'pharmacy_invoice_payment_scheduled',
+  },
+  record_payment: {
+    from: ['issued', 'sent', 'received', 'payment_scheduled'],
+    to: 'paid',
+    auditAction: 'pharmacy_invoice_payment_recorded',
+  },
+  cancel: {
+    from: ['issued', 'sent', 'received', 'payment_scheduled'],
+    to: 'cancelled',
+    auditAction: 'pharmacy_invoice_cancelled',
+  },
+  reissue: {
+    from: ['issued', 'sent', 'received', 'payment_scheduled', 'paid'],
+    to: null,
+    auditAction: 'pharmacy_invoice_reissued',
+  },
+} as const satisfies Record<
+  PharmacyInvoiceTransitionAction,
+  {
+    from: readonly PharmacyInvoiceStatus[];
+    to: PharmacyInvoiceStatus | null;
+    auditAction: string;
+  }
+>;
+
 function toDateKey(value: Date | null) {
   return value ? value.toISOString().slice(0, 10) : null;
+}
+
+function toBillingMonthCode(value: Date) {
+  return `${value.getUTCFullYear()}${String(value.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
 function toUtcDateOnly(value: Date) {
@@ -133,6 +218,139 @@ function readCandidateAmountSnapshot(value: unknown) {
 
 function documentKindForBillingModel(billingModel: string | null): PharmacyInvoiceDocumentKind {
   return billingModel === 'free' ? 'free_cooperation_report' : 'invoice';
+}
+
+function documentNumberPrefix(documentKind: PharmacyInvoiceDocumentKind) {
+  return documentKind === 'free_cooperation_report' ? 'PCR' : 'INV';
+}
+
+function generateInvoiceNo(invoice: {
+  id: string;
+  document_kind: PharmacyInvoiceDocumentKind;
+  billing_month: Date;
+}) {
+  const suffix = invoice.id
+    .replace(/[^a-z0-9]/gi, '')
+    .slice(-8)
+    .toUpperCase();
+  return `${documentNumberPrefix(invoice.document_kind)}-${toBillingMonthCode(invoice.billing_month)}-${suffix}`;
+}
+
+function buildLifecycleSnapshotPatch(
+  invoice: {
+    snapshot: unknown;
+    status: PharmacyInvoiceStatus;
+  },
+  input: PharmacyInvoiceTransitionInput,
+  nextStatus: PharmacyInvoiceStatus,
+  actorId: string,
+) {
+  const source = readJsonObject(invoice.snapshot) ?? {};
+  const lifecycleSource = readJsonObject(source.lifecycle) ?? {};
+  const now = new Date().toISOString();
+  const lifecycle = {
+    ...lifecycleSource,
+    previous_status: invoice.status,
+    current_status: nextStatus,
+    last_action: input.action,
+    last_action_at: now,
+    last_action_by: actorId,
+  };
+
+  if (input.action === 'schedule_payment') {
+    Object.assign(lifecycle, {
+      payment_scheduled_for: toDateKey(input.paymentScheduledFor),
+    });
+  }
+  if (input.action === 'reissue') {
+    const reissueCount =
+      typeof lifecycleSource.reissue_count === 'number' &&
+      Number.isFinite(lifecycleSource.reissue_count)
+        ? lifecycleSource.reissue_count + 1
+        : 1;
+    Object.assign(lifecycle, {
+      reissue_count: reissueCount,
+      reissue_reason_length: input.reason?.length ?? 0,
+    });
+  }
+  if (input.action === 'cancel') {
+    Object.assign(lifecycle, {
+      cancel_reason_length: input.reason?.length ?? 0,
+    });
+  }
+
+  return toPrismaJsonInput({
+    ...source,
+    lifecycle,
+  });
+}
+
+function buildTransitionData(
+  invoice: {
+    id: string;
+    document_kind: PharmacyInvoiceDocumentKind;
+    billing_month: Date;
+    invoice_no: string | null;
+    status: PharmacyInvoiceStatus;
+    snapshot: unknown;
+  },
+  input: PharmacyInvoiceTransitionInput,
+  nextStatus: PharmacyInvoiceStatus,
+  actorId: string,
+): Prisma.PharmacyInvoiceUpdateManyMutationInput {
+  const data: Prisma.PharmacyInvoiceUpdateManyMutationInput = {
+    status: nextStatus,
+    snapshot: buildLifecycleSnapshotPatch(invoice, input, nextStatus, actorId),
+  };
+
+  if (input.action === 'issue') {
+    data.issued_at = input.occurredAt;
+    data.invoice_no = invoice.invoice_no ?? generateInvoiceNo(invoice);
+  } else if (input.action === 'mark_sent') {
+    data.sent_at = input.occurredAt;
+  } else if (input.action === 'mark_received') {
+    data.received_at = input.occurredAt;
+  } else if (input.action === 'record_payment') {
+    data.paid_at = input.occurredAt;
+  }
+
+  return data;
+}
+
+function toSafeInvoiceTransitionResult(invoice: {
+  id: string;
+  contract_id: string;
+  document_kind: PharmacyInvoiceDocumentKind;
+  invoice_no: string | null;
+  billing_month: Date;
+  subtotal: number;
+  tax_amount: number;
+  total: number;
+  status: PharmacyInvoiceStatus;
+  issued_at: Date | null;
+  sent_at: Date | null;
+  received_at: Date | null;
+  paid_at: Date | null;
+  updated_at: Date;
+  _count: { items: number };
+}) {
+  return {
+    id: invoice.id,
+    contract_id: invoice.contract_id,
+    document_kind: invoice.document_kind,
+    invoice_no: invoice.invoice_no,
+    billing_month: toDateKey(invoice.billing_month),
+    subtotal: invoice.subtotal,
+    tax_amount: invoice.tax_amount,
+    total: invoice.total,
+    status: invoice.status,
+    issued_at: invoice.issued_at,
+    sent_at: invoice.sent_at,
+    received_at: invoice.received_at,
+    paid_at: invoice.paid_at,
+    updated_at: invoice.updated_at,
+    item_count: invoice._count.items,
+  };
 }
 
 function calculateTaxAmount(
@@ -461,4 +679,125 @@ export async function createPharmacyInvoiceDraft(
     reused: false,
     candidate_count: candidateIds.length,
   };
+}
+
+export async function transitionPharmacyInvoice(
+  tx: Prisma.TransactionClient,
+  ctx: Pick<
+    AuthContext,
+    'orgId' | 'userId' | 'actorPharmacyId' | 'actorSiteId' | 'ipAddress' | 'userAgent'
+  >,
+  invoiceId: string,
+  input: PharmacyInvoiceTransitionInput,
+) {
+  const invoice = await tx.pharmacyInvoice.findFirst({
+    where: { id: invoiceId, org_id: ctx.orgId },
+    select: {
+      id: true,
+      contract_id: true,
+      document_kind: true,
+      invoice_no: true,
+      billing_month: true,
+      subtotal: true,
+      tax_amount: true,
+      total: true,
+      status: true,
+      issued_at: true,
+      sent_at: true,
+      received_at: true,
+      paid_at: true,
+      snapshot: true,
+      updated_at: true,
+      _count: { select: { items: true } },
+    },
+  });
+
+  if (!invoice) {
+    throw new PharmacyInvoiceTransitionError('NOT_FOUND', '薬局間請求書が見つかりません');
+  }
+
+  const rule = INVOICE_TRANSITION_RULES[input.action];
+  if (!(rule.from as readonly PharmacyInvoiceStatus[]).includes(invoice.status)) {
+    throw new PharmacyInvoiceTransitionError(
+      'INVALID_TRANSITION',
+      '現在の状態ではこの請求書操作を実行できません',
+      {
+        action: input.action,
+        current_status: invoice.status,
+        allowed_statuses: [...rule.from],
+      },
+    );
+  }
+
+  const nextStatus = rule.to ?? invoice.status;
+  const updateResult = await tx.pharmacyInvoice.updateMany({
+    where: {
+      id: invoice.id,
+      org_id: ctx.orgId,
+      status: invoice.status,
+    },
+    data: buildTransitionData(invoice, input, nextStatus, ctx.userId),
+  });
+
+  if (updateResult.count !== 1) {
+    throw new PharmacyInvoiceTransitionError(
+      'STALE',
+      '請求書の状態が更新されているため操作を完了できませんでした',
+      {
+        action: input.action,
+        previous_status: invoice.status,
+      },
+    );
+  }
+
+  const updated = await tx.pharmacyInvoice.findFirstOrThrow({
+    where: { id: invoice.id, org_id: ctx.orgId },
+    select: {
+      id: true,
+      contract_id: true,
+      document_kind: true,
+      invoice_no: true,
+      billing_month: true,
+      subtotal: true,
+      tax_amount: true,
+      total: true,
+      status: true,
+      issued_at: true,
+      sent_at: true,
+      received_at: true,
+      paid_at: true,
+      updated_at: true,
+      _count: { select: { items: true } },
+    },
+  });
+
+  const auditChanges: Prisma.InputJsonObject = {
+    action: input.action,
+    previous_status: invoice.status,
+    status: updated.status,
+    document_kind: updated.document_kind,
+    billing_month: toDateKey(updated.billing_month),
+    contract_id: updated.contract_id,
+    item_count: updated._count.items,
+    invoice_no_assigned: !invoice.invoice_no && Boolean(updated.invoice_no),
+    has_issued_at: Boolean(updated.issued_at),
+    has_sent_at: Boolean(updated.sent_at),
+    has_received_at: Boolean(updated.received_at),
+    has_paid_at: Boolean(updated.paid_at),
+    ...(input.action === 'schedule_payment'
+      ? { payment_scheduled_for: toDateKey(input.paymentScheduledFor) }
+      : {}),
+    ...(input.action === 'cancel' || input.action === 'reissue'
+      ? { reason_length: input.reason?.length ?? 0 }
+      : {}),
+  };
+
+  await createAuditLogEntry(tx, ctx, {
+    action: rule.auditAction,
+    targetType: 'PharmacyInvoice',
+    targetId: invoice.id,
+    changes: auditChanges,
+  });
+
+  return toSafeInvoiceTransitionResult(updated);
 }

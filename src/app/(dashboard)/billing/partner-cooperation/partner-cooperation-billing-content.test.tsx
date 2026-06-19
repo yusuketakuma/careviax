@@ -147,6 +147,7 @@ describe('PartnerCooperationBillingContent', () => {
                   status: 'draft',
                   issued_at: null,
                   sent_at: null,
+                  received_at: null,
                   paid_at: null,
                   item_count: 1,
                   partnership: {
@@ -194,6 +195,27 @@ describe('PartnerCooperationBillingContent', () => {
               items: [],
             }),
             { status: 201 },
+          );
+        }
+        if (url === '/api/pharmacy-invoices/invoice_existing' && init?.method === 'PATCH') {
+          return new Response(
+            JSON.stringify({
+              id: 'invoice_existing',
+              contract_id: 'contract_1',
+              document_kind: 'invoice',
+              invoice_no: 'INV-001',
+              billing_month: '2026-06-01',
+              subtotal: 5500,
+              tax_amount: 550,
+              total: 6050,
+              status: 'issued',
+              issued_at: '2026-06-19T00:00:00.000Z',
+              sent_at: null,
+              received_at: null,
+              paid_at: null,
+              item_count: 1,
+            }),
+            { status: 200 },
           );
         }
 
@@ -269,6 +291,29 @@ describe('PartnerCooperationBillingContent', () => {
       billing_month: '2026-06-01',
       contract_id: 'contract_1',
       document_kind: 'invoice',
+    });
+  });
+
+  it('updates invoice lifecycle state from the history table', async () => {
+    renderContent();
+
+    const invoicesTable = await screen.findByRole('table', {
+      name: '薬局間月次ドキュメント一覧',
+    });
+    fireEvent.click(within(invoicesTable).getByRole('button', { name: /invoice_existing 発行/ }));
+
+    await waitFor(() => {
+      const patchCall = vi
+        .mocked(fetch)
+        .mock.calls.find(
+          ([input, init]) =>
+            String(input) === '/api/pharmacy-invoices/invoice_existing' && init?.method === 'PATCH',
+        );
+      expect(patchCall).toBeTruthy();
+      expect(JSON.parse(String(patchCall?.[1]?.body))).toEqual({
+        action: 'issue',
+        occurred_at: '2026-06-19',
+      });
     });
   });
 });

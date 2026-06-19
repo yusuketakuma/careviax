@@ -2,7 +2,16 @@
 
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download, FileText, Receipt, RefreshCw } from 'lucide-react';
+import {
+  CalendarClock,
+  CheckCircle2,
+  Download,
+  FileText,
+  Receipt,
+  RefreshCw,
+  Send,
+  XCircle,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -81,6 +90,7 @@ type PharmacyInvoiceRow = {
   status: string;
   issued_at: string | null;
   sent_at: string | null;
+  received_at: string | null;
   paid_at: string | null;
   item_count: number;
   partnership: {
@@ -112,11 +122,27 @@ type CandidateGenerationResult = {
   skipped_locked_count: number;
 };
 
+type InvoiceTransitionAction =
+  | 'issue'
+  | 'mark_sent'
+  | 'mark_received'
+  | 'schedule_payment'
+  | 'record_payment'
+  | 'cancel'
+  | 'reissue';
+
 const EMPTY_CONTRACTS: PharmacyContractRow[] = [];
 
 function currentMonthInputValue() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function todayDateInputValue() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+    now.getDate(),
+  ).padStart(2, '0')}`;
 }
 
 function canonicalBillingMonth(monthInput: string) {
@@ -208,6 +234,18 @@ async function fetchInvoices(orgId: string, billingMonth: string) {
   );
   const json = await readApiJson<{ data: PharmacyInvoiceRow[] }>(response);
   return json.data;
+}
+
+async function patchInvoiceStatus(orgId: string, invoiceId: string, body: Record<string, unknown>) {
+  const response = await fetch(`/api/pharmacy-invoices/${invoiceId}`, {
+    method: 'PATCH',
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': orgId,
+    },
+    body: JSON.stringify(body),
+  });
+  return readApiJson<PharmacyInvoiceRow>(response);
 }
 
 function KpiBox({
@@ -406,7 +444,52 @@ function documentKindLabel(kind: PharmacyInvoiceRow['document_kind']) {
   return kind === 'free_cooperation_report' ? '無償実績報告書' : '請求書';
 }
 
-function InvoiceHistoryTable({ invoices }: { invoices: PharmacyInvoiceRow[] }) {
+function invoiceActions(status: string): InvoiceTransitionAction[] {
+  if (status === 'draft') return ['issue'];
+  if (status === 'issued') return ['mark_sent', 'schedule_payment', 'cancel', 'reissue'];
+  if (status === 'sent') return ['mark_received', 'schedule_payment', 'cancel', 'reissue'];
+  if (status === 'received') return ['schedule_payment', 'record_payment', 'cancel', 'reissue'];
+  if (status === 'payment_scheduled') return ['record_payment', 'cancel', 'reissue'];
+  if (status === 'paid') return ['reissue'];
+  return [];
+}
+
+function invoiceActionLabel(action: InvoiceTransitionAction) {
+  const labels: Record<InvoiceTransitionAction, string> = {
+    issue: '発行',
+    mark_sent: '送付',
+    mark_received: '受領',
+    schedule_payment: '支払予定',
+    record_payment: '入金',
+    cancel: '取消',
+    reissue: '再発行',
+  };
+  return labels[action];
+}
+
+function invoiceActionIcon(action: InvoiceTransitionAction) {
+  if (action === 'mark_sent') return <Send className="size-4" aria-hidden="true" />;
+  if (action === 'schedule_payment') return <CalendarClock className="size-4" aria-hidden="true" />;
+  if (action === 'record_payment' || action === 'issue' || action === 'mark_received') {
+    return <CheckCircle2 className="size-4" aria-hidden="true" />;
+  }
+  if (action === 'cancel') return <XCircle className="size-4" aria-hidden="true" />;
+  return <RefreshCw className="size-4" aria-hidden="true" />;
+}
+
+function InvoiceHistoryTable({
+  invoices,
+  scheduledDates,
+  onScheduledDateChange,
+  onTransition,
+  pendingInvoiceId,
+}: {
+  invoices: PharmacyInvoiceRow[];
+  scheduledDates: Record<string, string>;
+  onScheduledDateChange: (invoiceId: string, value: string) => void;
+  onTransition: (invoice: PharmacyInvoiceRow, action: InvoiceTransitionAction) => void;
+  pendingInvoiceId: string | null;
+}) {
   if (invoices.length === 0) {
     return <EmptyState title="対象月の薬局間月次ドキュメントはまだありません" />;
   }
@@ -434,11 +517,16 @@ function InvoiceHistoryTable({ invoices }: { invoices: PharmacyInvoiceRow[] }) {
             <th scope="col" className="px-3 py-2 text-right font-medium">
               出力
             </th>
+            <th scope="col" className="px-3 py-2 text-left font-medium">
+              操作
+            </th>
           </tr>
         </thead>
         <tbody>
           {invoices.map((invoice) => {
             const purpose = encodeURIComponent(`${invoice.billing_month} 薬局間月次出力`);
+            const actions = invoiceActions(invoice.status);
+            const isPending = pendingInvoiceId === invoice.id;
             return (
               <tr key={invoice.id} className="border-t border-border/70">
                 <td className="px-3 py-2">
@@ -466,6 +554,33 @@ function InvoiceHistoryTable({ invoices }: { invoices: PharmacyInvoiceRow[] }) {
                     PDF
                   </a>
                 </td>
+                <td className="min-w-72 px-3 py-2">
+                  {actions.includes('schedule_payment') ? (
+                    <Input
+                      type="date"
+                      className="mb-2 h-8 w-40"
+                      value={scheduledDates[invoice.id] ?? todayDateInputValue()}
+                      onChange={(event) => onScheduledDateChange(invoice.id, event.target.value)}
+                      aria-label={`支払予定日 ${invoice.id}`}
+                    />
+                  ) : null}
+                  <div className="flex flex-wrap gap-1.5">
+                    {actions.map((action) => (
+                      <Button
+                        key={action}
+                        type="button"
+                        size="sm"
+                        variant={action === 'cancel' ? 'destructive' : 'outline'}
+                        disabled={isPending}
+                        onClick={() => onTransition(invoice, action)}
+                        aria-label={`${documentKindLabel(invoice.document_kind)} ${invoice.id} ${invoiceActionLabel(action)}`}
+                      >
+                        {invoiceActionIcon(action)}
+                        {invoiceActionLabel(action)}
+                      </Button>
+                    ))}
+                  </div>
+                </td>
               </tr>
             );
           })}
@@ -481,6 +596,7 @@ export function PartnerCooperationBillingContent() {
   const [monthInput, setMonthInput] = useState(currentMonthInputValue);
   const [selectedContractId, setSelectedContractId] = useState('');
   const [lastDraft, setLastDraft] = useState<InvoiceDraftResult | null>(null);
+  const [scheduledDates, setScheduledDates] = useState<Record<string, string>>({});
   const isMonthInputValid = isValidMonthInput(monthInput);
   const billingMonth = useMemo(
     () => (isMonthInputValid ? canonicalBillingMonth(monthInput) : ''),
@@ -582,7 +698,46 @@ export function PartnerCooperationBillingContent() {
     },
   });
 
-  const isBusy = generateCandidatesMutation.isPending || createInvoiceDraftMutation.isPending;
+  const transitionInvoiceMutation = useMutation({
+    mutationFn: async ({
+      invoice,
+      action,
+    }: {
+      invoice: PharmacyInvoiceRow;
+      action: InvoiceTransitionAction;
+    }) => {
+      const today = todayDateInputValue();
+      const scheduledFor = scheduledDates[invoice.id] ?? today;
+      const body: Record<string, unknown> = { action };
+      if (
+        action === 'issue' ||
+        action === 'mark_sent' ||
+        action === 'mark_received' ||
+        action === 'record_payment'
+      ) {
+        body.occurred_at = today;
+      }
+      if (action === 'schedule_payment') {
+        body.payment_scheduled_for = scheduledFor;
+      }
+      return patchInvoiceStatus(orgId, invoice.id, body);
+    },
+    onSuccess: async (invoice) => {
+      toast.success(`${documentKindLabel(invoice.document_kind)}を更新しました`);
+      setLastDraft(null);
+      await invalidateMonth();
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : '薬局間月次ドキュメントの更新に失敗しました',
+      );
+    },
+  });
+
+  const isBusy =
+    generateCandidatesMutation.isPending ||
+    createInvoiceDraftMutation.isPending ||
+    transitionInvoiceMutation.isPending;
   const summary = summaryQuery.data ?? null;
 
   return (
@@ -773,7 +928,21 @@ export function PartnerCooperationBillingContent() {
             action={{ label: '再試行', onClick: () => void invoicesQuery.refetch() }}
           />
         ) : (
-          <InvoiceHistoryTable invoices={invoicesQuery.data ?? []} />
+          <InvoiceHistoryTable
+            invoices={invoicesQuery.data ?? []}
+            scheduledDates={scheduledDates}
+            onScheduledDateChange={(invoiceId, value) =>
+              setScheduledDates((current) => ({ ...current, [invoiceId]: value }))
+            }
+            onTransition={(invoice, action) =>
+              transitionInvoiceMutation.mutate({ invoice, action })
+            }
+            pendingInvoiceId={
+              transitionInvoiceMutation.isPending
+                ? (transitionInvoiceMutation.variables?.invoice.id ?? null)
+                : null
+            }
+          />
         )}
       </section>
     </div>

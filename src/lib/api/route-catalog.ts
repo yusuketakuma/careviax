@@ -428,6 +428,13 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'billing',
   },
   {
+    path: '/api/pharmacy-invoices/:id',
+    methods: ['PATCH'],
+    permission: 'canManageBilling',
+    description: '薬局間請求書・無償実績報告書の発行・送付・入金・取消状態更新',
+    area: 'billing',
+  },
+  {
     path: '/api/pharmacy-invoices/:id/pdf',
     methods: ['GET'],
     permission: 'canManageBilling',

@@ -43,6 +43,7 @@ describe('routeCatalog', () => {
       '/api/visit-billing-candidates',
       '/api/visit-billing-candidates/summary',
       '/api/pharmacy-invoices',
+      '/api/pharmacy-invoices/:id',
       '/api/pharmacy-invoices/:id/pdf',
       '/api/care-reports/:id',
       '/api/care-reports/:id/pdf',
