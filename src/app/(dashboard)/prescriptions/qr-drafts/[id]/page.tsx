@@ -686,7 +686,10 @@ export default function QrDraftReviewPage() {
                   }))
                 }
               >
-                <SelectTrigger className={mobileDenseInputClassName}>
+                <SelectTrigger
+                  aria-label="QR下書きのケース選択"
+                  className={mobileDenseInputClassName}
+                >
                   <SelectValue placeholder="ケースを選択してください" />
                 </SelectTrigger>
                 <SelectContent>
