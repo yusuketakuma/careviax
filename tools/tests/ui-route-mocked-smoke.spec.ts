@@ -61,6 +61,8 @@ const PHARMACY_COOP_PARTNER_RECORD_ID = 'pharmacy_coop_route_partner_record';
 const PHARMACY_COOP_REPORT_ID = 'pharmacy_coop_route_report';
 const PHARMACY_COOP_BILLING_CANDIDATE_ID = 'pharmacy_coop_route_candidate';
 const PHARMACY_COOP_INVOICE_ID = 'pharmacy_coop_route_invoice';
+const PHARMACY_COOP_SHARE_MESSAGE_THREAD_ID = 'pharmacy_coop_route_share_message_thread';
+const PHARMACY_COOP_VISIT_MESSAGE_THREAD_ID = 'pharmacy_coop_route_visit_message_thread';
 const PHARMACY_COOP_BILLING_MONTH = '2026-06-01';
 
 test.use({ serviceWorkers: 'block' });
@@ -1220,6 +1222,39 @@ function buildPharmacyCoopInvoice(created: boolean) {
   };
 }
 
+function buildPharmacyCoopMessageThread(args: {
+  visitRequestId: string | null;
+  messages: string[];
+}) {
+  if (args.messages.length === 0) return null;
+
+  const threadId = args.visitRequestId
+    ? PHARMACY_COOP_VISIT_MESSAGE_THREAD_ID
+    : PHARMACY_COOP_SHARE_MESSAGE_THREAD_ID;
+  return {
+    id: threadId,
+    org_id: 'org_route_mock',
+    share_case_id: PHARMACY_COOP_SHARE_CASE_ID,
+    visit_request_id: args.visitRequestId,
+    context_type: args.visitRequestId ? 'visit_request' : 'patient_share_case',
+    status: 'open',
+    created_by: 'route_base_user',
+    last_message_at: '2026-06-20T04:00:00.000Z',
+    created_at: '2026-06-20T03:30:00.000Z',
+    updated_at: '2026-06-20T04:00:00.000Z',
+    messages: args.messages.map((body, index) => ({
+      id: `${threadId}_message_${index + 1}`,
+      org_id: 'org_route_mock',
+      thread_id: threadId,
+      sender_user_id: 'route_base_user',
+      sender_side: 'base_pharmacy',
+      body,
+      created_at: `2026-06-20T04:0${index}:00.000Z`,
+      updated_at: `2026-06-20T04:0${index}:00.000Z`,
+    })),
+  };
+}
+
 async function installPharmacyCooperationRouteMocks(page: Page) {
   const requests = {
     patientShareCases: [] as CapturedRouteRequest[],
@@ -1234,6 +1269,7 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
     reportDrafts: [] as CapturedRouteRequest[],
     billingCandidates: [] as CapturedRouteRequest[],
     pharmacyInvoices: [] as CapturedRouteRequest[],
+    messageThreads: [] as CapturedRouteRequest[],
   };
   const state = {
     shareCaseCreated: true,
@@ -1247,6 +1283,8 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
     partnerRecordStatus: 'draft',
     billingCandidateGenerated: false,
     invoiceCreated: false,
+    shareCaseMessages: [] as string[],
+    visitRequestMessages: [] as string[],
   };
 
   await installDashboardShellRouteMocks(page);
@@ -1418,6 +1456,40 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
       status: state.visitRequestStatus,
     });
     await fulfillJson(route, { data: visitRequest ? [visitRequest] : [] });
+  });
+
+  await page.route(apiPathPattern('/api/pharmacy-cooperation-message-threads'), async (route) => {
+    const request = captureRouteRequest(route);
+    requests.messageThreads.push(request);
+    const body = request.body as {
+      share_case_id?: string;
+      visit_request_id?: string;
+      body?: string;
+    } | null;
+
+    if (request.method === 'POST') {
+      const messageBody = body?.body?.trim() ?? '';
+      if (body?.visit_request_id) {
+        state.visitRequestMessages.push(messageBody);
+      } else {
+        state.shareCaseMessages.push(messageBody);
+      }
+
+      const thread = buildPharmacyCoopMessageThread({
+        visitRequestId: body?.visit_request_id ?? null,
+        messages: body?.visit_request_id ? state.visitRequestMessages : state.shareCaseMessages,
+      });
+      await fulfillJson(route, { thread, notification_count: 1 }, 201);
+      return;
+    }
+
+    const url = new URL(request.url);
+    const visitRequestId = url.searchParams.get('visit_request_id');
+    const thread = buildPharmacyCoopMessageThread({
+      visitRequestId,
+      messages: visitRequestId ? state.visitRequestMessages : state.shareCaseMessages,
+    });
+    await fulfillJson(route, { data: thread ? [thread] : [], hasMore: false });
   });
 
   await page.route(
@@ -3014,6 +3086,28 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
       .toBe(1);
     await expect(shareCaseRow.getByText('共有中')).toBeVisible({ timeout: 10_000 });
 
+    await expect(page.getByLabel('薬局間連携メッセージ本文')).toBeVisible({ timeout: 10_000 });
+    await page.getByLabel('薬局間連携メッセージ本文').fill('共有ケースの確認事項です');
+    await page.getByRole('button', { name: /メッセージ送信/ }).click();
+    await expect
+      .poll(
+        () =>
+          requests.messageThreads.some((request) => {
+            const body = request.body as {
+              share_case_id?: string;
+              visit_request_id?: string;
+            } | null;
+            return (
+              request.method === 'POST' &&
+              body?.share_case_id === PHARMACY_COOP_SHARE_CASE_ID &&
+              body.visit_request_id === undefined
+            );
+          }),
+        { message: 'workflow should post a share-case scoped cooperation message' },
+      )
+      .toBe(true);
+    await expect(page.getByText('共有ケースの確認事項です')).toBeVisible({ timeout: 10_000 });
+
     await page.getByLabel('訪問依頼の希望開始').fill('2026-06-20T10:30');
     await page.getByLabel('訪問依頼の希望終了').fill('2026-06-20T11:30');
     await page.getByLabel('訪問依頼の依頼理由').fill('退院直後の服薬確認が必要です');
@@ -3048,6 +3142,32 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
     await expect(
       visitRequestsTable.getByRole('row').filter({ hasText: PHARMACY_COOP_VISIT_REQUEST_ID }),
     ).toBeVisible({ timeout: 10_000 });
+    const messageTargetSelect = page.getByLabel('メッセージの対象');
+    await expect(
+      messageTargetSelect.locator('option', { hasText: PHARMACY_COOP_VISIT_REQUEST_ID }),
+    ).toHaveCount(1);
+    await messageTargetSelect.selectOption(PHARMACY_COOP_VISIT_REQUEST_ID);
+    await page.getByLabel('薬局間連携メッセージ本文').fill('訪問依頼の確認事項です');
+    await page.getByRole('button', { name: /メッセージ送信/ }).click();
+    await expect
+      .poll(
+        () =>
+          requests.messageThreads.some((request) => {
+            const body = request.body as {
+              share_case_id?: string;
+              visit_request_id?: string;
+            } | null;
+            return (
+              request.method === 'POST' &&
+              body?.share_case_id === PHARMACY_COOP_SHARE_CASE_ID &&
+              body.visit_request_id === PHARMACY_COOP_VISIT_REQUEST_ID
+            );
+          }),
+        { message: 'workflow should post a visit-request scoped cooperation message' },
+      )
+      .toBe(true);
+    await expect(page.getByText('訪問依頼の確認事項です')).toBeVisible({ timeout: 10_000 });
+
     await visitRequestsTable.getByRole('button', { name: /^受諾$/ }).click();
     await expect
       .poll(
