@@ -1,5 +1,33 @@
 # CODEX Goal Progress
 
+## Current Goal - 2026-06-20 JST Repo-wide Maintainability / Type Safety / Testability Loop
+
+Objective: preserve existing external behavior while maximizing maintainability, readability, responsibility separation, type safety, and testability across the repository. Continue beyond one improvement or one green test until at least two full loops and two consecutive zero-actionable re-audits are complete.
+
+### Stop Gate
+
+- Minimum two loops completed.
+- Short-, mid-, and long-term candidates inventoried.
+- All in-session actionable candidates implemented unless blocked by external approval, credentials, destructive DB changes, product/legal/design decision, active file lock, or environment limitation.
+- Two consecutive re-audits report zero new actionable candidates.
+- Available validation is run and classified as passed, existing failure, environment blocked, or intentionally skipped with reason.
+
+### Coordination and Locks
+
+- Claude has approved D2 backend bulkification after `/api/tasks/bulk` route-catalog registration.
+- Claude currently owns Slice B and has locked `src/lib/auth/context.ts`, `src/lib/api/response.ts`, and `src/lib/api/performance.ts`; Codex will not edit those files while the lock is active.
+- The worktree is intentionally dirty from concurrent Claude/Codex slices. Preserve unrelated changes and do not revert user/Claude edits.
+
+### Loop 0 - Baseline Start
+
+- Required context read: `AGENTS.md`, `.codex/config.toml`, `.codex/hooks.json`, `.codex/rules/default.rules`, `README.md`, `CLAUDE.md`, `package.json`, `.github/workflows/ci.yml`, `docs/testing/README.md`, `docs/testing/TESTING.md`, existing `CODEX_GOAL_PROGRESS.md`, and `.codex/ralph-state.md`.
+- Missing context files: `AGENTS.override.md` and `CONTRIBUTING.md` are not present in this checkout.
+- Repository shape observed: Next.js App Router under `src/app`, route handlers under `src/app/api`, server services/jobs under `src/server`, shared utilities under `src/lib`, UI components under `src/components`, Playwright under `tools/tests`, split Prisma schema under `prisma/schema/*.prisma`.
+- CI gates observed: `pnpm audit --audit-level moderate`, `pnpm lint`, `pnpm format:check`, `pnpm date-slices:check`, `pnpm eventbridge-schedules:check`, `pnpm typecheck`, `pnpm test:coverage`, `pnpm phos:deploy-template:validate:artifact`, `pnpm build`, migration/RLS gates, and medical UI E2E gate.
+- Required read-only agents launched: Architecture Agent, Duplication Agent, Type & Contract Agent, Behavior/Test Agent, Dead Code Agent, and Review Agent.
+- Initial validation: pending.
+- Next loop: wait for required Agent reports, record baseline validation, then choose the highest-value non-conflicting refactor slice.
+
 ## Current Goal - 2026-06-19 JST Adjacent Feature and Consistency Loop
 
 Objective: investigate the current CareViaX implementation, add/improve nearby features that naturally extend existing product flows, remove duplication/inconsistency/unfinished behavior, and continue until actionable in-session candidates are exhausted.
@@ -4517,6 +4545,586 @@ Implemented:
 
 - Document-delivery rule edit action names are addressed. Commit this group, then continue scanning remaining admin action candidates if no blocker appears.
 
+## 20260620-0540 JST - Document Delivery Rule Edit Test Hardening
+
+### Summary
+
+- Strengthened the document-delivery edit-action regression after verifier feedback.
+- Added a second delivery-rule fixture and now click the second named edit action to prove the selected row, not just the only row, loads into the form.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 3 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx'`: passed.
+- `git diff --check -- 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `pnpm lint`: passed.
+
+### Remaining / Next Loop
+
+- The document-delivery edit-action regression now covers multiple rows. Continue scanning remaining admin action candidates.
+
+## 20260620-0544 JST - Pharmacist Credential Row Action Names
+
+### Summary
+
+- Added target-specific accessible names to pharmacist credential edit and expiry actions.
+- Extended the credentials DataTable mock to render action cells and added a focused regression for edit-form loading and expiry confirmation.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx`
+- `src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx' --reporter=dot --testTimeout=30000`: initially failed on accessible-name spacing and dialog role/title punctuation, then passed, 1 file / 3 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx'`: passed.
+- `git diff --check -- 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `pnpm lint`: passed.
+
+### Remaining / Next Loop
+
+- Pharmacist credential edit/expiry action names are addressed. Continue scanning remaining admin action candidates.
+
+## 20260620-0550 JST - Shift and Business-Holiday Action Names
+
+### Summary
+
+- Added target-specific accessible names to repeated shift-management row actions for member edit/invite resend/reactivate/suspend/retire, shift-template edit, and holiday edit.
+- Added a regression that opens the named member edit/action dialogs and verifies the named shift-template and holiday edit actions target the selected row.
+- Added target-specific accessible names to business-holiday edit buttons using the existing holiday summary, matching the already-targeted delete action.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/shifts/shifts-content.tsx`
+- `src/app/(dashboard)/admin/shifts/shifts-content.test.tsx`
+- `src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx`
+- `src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/shifts/shifts-content.tsx' 'src/app/(dashboard)/admin/shifts/shifts-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/shifts/shifts-content.test.tsx' --reporter=dot --testTimeout=30000`: initially failed on ambiguous `閉じる` and `休日名` queries, then passed, 1 file / 4 tests.
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/shifts/shifts-content.test.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 2 files / 5 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/shifts/shifts-content.tsx' 'src/app/(dashboard)/admin/shifts/shifts-content.test.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx'`: passed.
+- `git diff --check -- 'src/app/(dashboard)/admin/shifts/shifts-content.tsx' 'src/app/(dashboard)/admin/shifts/shifts-content.test.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed.
+
+### Remaining / Next Loop
+
+- Admin repeated action names were re-scanned after this slice; the next actionable repeated-action candidate moved to patient insurance actions, where PHI minimization is required.
+
+## 20260620-0556 JST - Patient Insurance PHI-Safe Action Names
+
+### Summary
+
+- Added PHI-minimized accessible names for repeated patient-insurance edit, expiry, and delete actions using only section title, 1-based row index, and insurance type.
+- Kept patient name, insurance/card numbers, public subsidy code, insurer number, notes, care level, copay, and effective dates out of action labels.
+- Expanded the focused regression to cover active rows, inactive history delete rows, and a shared PHI non-disclosure assertion across all row action labels after verifier feedback.
+
+### Files Changed
+
+- `src/app/(dashboard)/patients/[id]/patient-insurance-card.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-insurance-card.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- Privacy reviewer: recommended section + index + insurance type only; explicitly exclude patient name, card number, symbol/branch, insurer number, public code, dates, notes, care level, and copay.
+- Verifier: first pass found missing delete-action coverage and too-narrow PHI assertions; both gaps were fixed.
+- `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-insurance-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-insurance-card.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-insurance-card.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 2 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/patient-insurance-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-insurance-card.test.tsx'`: passed.
+- `git diff --check -- 'src/app/(dashboard)/patients/[id]/patient-insurance-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-insurance-card.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-insurance-card.test.tsx' 'src/app/(dashboard)/admin/shifts/shifts-content.test.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx' 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx' --reporter=dot --testTimeout=30000`: passed, 5 files / 13 tests.
+- `pnpm lint`: passed.
+
+### Current Validation Caveat
+
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check` no longer represents only this slice because an unrelated untracked `docs/plans-archive.md` is present and fails Prettier. `.codex/ralph-state.md` is being formatted in this slice; external `Plans.md`/archive changes are preserved.
+
+### Remaining / Next Loop
+
+- Patient insurance repeated action names are target-specific and PHI-minimized. Continue dashboard-wide repeated-action scan outside admin, prioritizing files with existing focused tests and patient-safety/privacy review.
+
+## 20260620-0614 JST - Dashboard Repeated-Action Name Sweep
+
+### Summary
+
+- Added target-specific accessible names to saved-view rename/delete actions.
+- Added PHI-minimized action names to patient detail repeated actions: allergy delete, contact delete, care-team quick-create/delete, management-plan draft edit, and medication-issue edit.
+- Added target-specific names to conference participant delete, facility-packet edit, prescription-intake facility batch delete, and browser notification enable/stop actions.
+- Repaired validation-blocking state-token migration gaps exposed during this sweep: unsafe comments/import gaps in status labels, patients board, billing candidates, PCA pumps, schedule conflicts, and conferences.
+
+### Files Changed
+
+- `src/app/(dashboard)/views/saved-views-content.tsx`
+- `src/app/(dashboard)/views/saved-views-content.test.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-master-card.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-master-card.test.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-care-team-panel.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx`
+- `src/app/(dashboard)/patients/[id]/management-plan-panel.tsx`
+- `src/app/(dashboard)/patients/[id]/management-plan-panel.test.tsx`
+- `src/app/(dashboard)/patients/[id]/medications/medications-content.tsx`
+- `src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx`
+- `src/app/(dashboard)/conferences/conferences-content.tsx`
+- `src/app/(dashboard)/conferences/conferences-content.test.tsx`
+- `src/app/(dashboard)/visits/[id]/facility-packet/facility-packet-content.tsx`
+- `src/app/(dashboard)/prescriptions/new/prescription-intake-form.tsx`
+- `src/app/(dashboard)/prescriptions/new/prescription-intake-form.contract.test.ts`
+- `src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx`
+- `src/lib/constants/status-labels.ts`
+- `src/app/(dashboard)/patients/patients-board.tsx`
+- `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`
+- `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx`
+- `src/app/(dashboard)/schedules/conflicts/conflict-resolution-content.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- Dashboard generic action scan with `rg -n -U -P '<Button...>|<button...>' 'src/app/(dashboard)'`: passed, no remaining matches for the scanned generic labels.
+- `git diff --check`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: initially exposed adjacent state-token migration import/comment gaps, then passed after minimal repair.
+- `pnpm exec vitest run 'src/app/(dashboard)/conferences/conferences-content.test.tsx' 'src/app/(dashboard)/prescriptions/new/prescription-intake-form.contract.test.ts' 'src/app/(dashboard)/patients/[id]/management-plan-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/medications/medications-content.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-master-card.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx' 'src/app/(dashboard)/views/saved-views-content.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-insurance-card.test.tsx' 'src/app/(dashboard)/admin/shifts/shifts-content.test.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx' 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx' --reporter=dot --testTimeout=30000`: passed, 13 files / 47 tests.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: initially failed on a stale `StateBadge` import gap in conferences, then passed on rerun.
+- Targeted Prettier write/check for the files in this sweep: passed.
+
+### Current Validation Caveat
+
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm format:check` fails only on unrelated dirty files outside this slice: auth lockout/MFA/password pages, several admin/billing/handoff/patient/schedule/visit files, and untracked docs archive/state-color files. Targeted formatting/checking passed for the files touched in this sweep.
+
+### Remaining / Next Loop
+
+- Generic repeated dashboard action labels covered by this scan are now target-specific or PHI-minimized. Continue with the next UI/UX scan class: non-button accessible-name gaps, responsive table density, or browser/a11y proof for larger patient/report flows.
+
+## 20260620-0627 JST - Data Explorer PHI-Safe Row Actions
+
+### Summary
+
+- Added PHI-safe accessible names for Data Explorer row selection buttons using only table name and 1-based row position.
+- Kept the visible row summary unchanged for scanning, but prevented patient names, drug names, emails, recipient names, row IDs, and free text from becoming the button's accessible name.
+- Added fixed, PHI-free disabled reasons for the JSON editor when no row is selected or a table is read-only, and connected the reason to the textarea, save button, and reset button with `aria-describedby`.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/data-explorer/data-explorer-content.tsx`
+- `src/app/(dashboard)/admin/data-explorer/data-explorer-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- Privacy reviewer: confirmed the direction and required table+row-index-only action names; disabled reasons must remain fixed strings and exclude patient names, drug names, emails, row IDs, and free text.
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/data-explorer/data-explorer-content.tsx' 'src/app/(dashboard)/admin/data-explorer/data-explorer-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/data-explorer/data-explorer-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 4 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/data-explorer/data-explorer-content.tsx' 'src/app/(dashboard)/admin/data-explorer/data-explorer-content.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec prettier --check 'src/app/(dashboard)/admin/data-explorer/data-explorer-content.tsx' 'src/app/(dashboard)/admin/data-explorer/data-explorer-content.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+
+### Current Validation Caveat
+
+- Full `format:check` remains failing on unrelated dirty/untracked files outside this Data Explorer slice, as recorded in the prior iteration. The two touched Data Explorer files pass targeted Prettier check.
+
+### Remaining / Next Loop
+
+- Data Explorer row action names and editor disabled reasons are PHI-safe for this slice. Continue with the next UI/UX candidate, likely schedule create/edit disabled reasons or patient document disabled-reason associations.
+
+## 20260620-0632 JST - Schedule Drawer Save Blocker Reasons
+
+### Summary
+
+- Added a PHI-free save blocker for the schedule create/edit drawer when patient, candidate date, or assigned pharmacist is missing.
+- Connected the same reason to both `下書き保存` and `確認待ちにする` via `aria-describedby`.
+- Locked the helper contract so blocker copy uses field labels only and does not include patient names, schedule times/dates, pharmacist names, IDs, addresses, or free text.
+
+### Files Changed
+
+- `src/app/(dashboard)/schedules/schedule-create-edit-drawer.tsx`
+- `src/app/(dashboard)/schedules/schedule-create-edit-drawer.test.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- Medical safety reviewer: confirmed field-label-only blocker direction and requested exact full/partial wording plus value non-disclosure tests.
+- `pnpm exec prettier --write 'src/app/(dashboard)/schedules/schedule-create-edit-drawer.tsx' 'src/app/(dashboard)/schedules/schedule-create-edit-drawer.test.ts'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/schedules/schedule-create-edit-drawer.test.ts' --reporter=dot --testTimeout=30000`: passed, 1 file / 3 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/schedules/schedule-create-edit-drawer.tsx' 'src/app/(dashboard)/schedules/schedule-create-edit-drawer.test.ts'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+
+### Current Validation Caveat
+
+- Full `format:check` remains failing on unrelated dirty/untracked files outside this schedule-drawer slice. The touched schedule drawer files pass targeted Prettier write.
+
+### Remaining / Next Loop
+
+- Schedule drawer save disabled states now show and expose a PHI-free reason. Continue with patient document disabled-reason associations or another high-value UI/UX candidate.
+
+## 20260620-0638 JST - Patient Document Save Blockers
+
+### Summary
+
+- Added a PHI-free save blocker for first-visit document history updates when signed document URL, delivery target, or replacement/invalidation reason is missing.
+- Connected the blocker to the save button with `aria-describedby`.
+- Added a direct `submit` guard so a blocked form cannot bypass the disabled button and send incomplete document audit fields.
+- Kept blocker text to fixed field labels only: `文書URL`, `交付先`, and `理由`.
+
+### Files Changed
+
+- `src/app/(dashboard)/patients/[id]/patient-documents-panel.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-documents-panel.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- Privacy reviewer: required fixed field-label-only wording, blocked direct-submit guard, and tests for URL-only, URL+reason, delivery-target, and invalidation-reason blockers without sensitive values.
+- `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-documents-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-documents-panel.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-documents-panel.test.tsx' --reporter=dot --testTimeout=30000`: initially failed on a stale empty-state expectation, then passed, 1 file / 4 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/patient-documents-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-documents-panel.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+
+### Current Validation Caveat
+
+- Full `format:check` remains failing on unrelated dirty/untracked files outside this patient-document slice. The touched patient document files pass targeted Prettier write.
+
+### Remaining / Next Loop
+
+- First-visit document save disabled reasons and blocked direct submit are addressed. Continue with single-row delete disabled reasons in patient contacts/conditions or another accessible disabled-action association.
+
+## 20260620-0646 JST - Patient Contact and Condition Delete Reasons
+
+### Summary
+
+- Added visible fixed disabled reasons when the last remaining patient contact or condition row cannot be deleted.
+- Connected those reasons to the disabled delete buttons with `aria-describedby`.
+- Kept the messages free of contact names, phone numbers, relationships, condition names, notes, patient IDs, and clinical free text.
+- Added multi-row regressions proving the reason disappears and delete actions become available when removal is safe.
+
+### Files Changed
+
+- `src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-conditions-card.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- Privacy reviewer: approved fixed, non-value-bearing disabled reasons and requested multi-row enabled-state coverage.
+- `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-conditions-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx' --reporter=dot --testTimeout=30000`: passed, 2 files / 5 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-conditions-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+
+### Current Validation Caveat
+
+- Full `format:check` remains failing on unrelated dirty/untracked files outside this contacts/conditions slice. The touched contacts and conditions files pass targeted Prettier write.
+
+### Remaining / Next Loop
+
+- Contact and condition single-row delete disabled reasons are addressed. Separate follow-up: if the product/API requires at least one persisted contact/condition, guard saving a single empty row so blank-row filtering cannot persist zero records.
+
+## 20260620-0651 JST - Patient Contact and Condition Blank-Save Guard
+
+### Summary
+
+- Added save blockers when every contact or condition row has a blank name and the UI would otherwise submit an empty replacement payload.
+- Connected those blockers to the save buttons with `aria-describedby`.
+- Preserved the API contract: the contacts/conditions replacement endpoints still accept empty arrays for callers that intentionally replace with zero records.
+- Kept blocker text fixed and free of patient IDs, contact names, phone numbers, relationships, condition names, notes, and clinical free text.
+
+### Files Changed
+
+- `src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-conditions-card.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-conditions-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx' --reporter=dot --testTimeout=30000`: passed, 2 files / 7 tests.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec eslint 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-conditions-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+
+### Current Validation Caveat
+
+- Full `format:check` remains failing on unrelated dirty/untracked files outside this contacts/conditions slice. The touched contacts and conditions files pass targeted Prettier write.
+
+### Remaining / Next Loop
+
+- The contacts/conditions cards now prevent this UI from replacing all persisted rows via a single blank visible row. Continue with the next UI/UX candidate.
+
+## 20260620-0656 JST - Billing Operation Disabled Reasons
+
+### Summary
+
+- Added fixed disabled reasons for billing candidate monthly close when the view is patient-filtered, has no close-ready candidates, or has close blockers.
+- Added fixed disabled reasons for CSV export while the export preview is loading or no confirmed/exported candidates can be exported.
+- Connected those reasons to the monthly close and CSV export buttons with `aria-describedby`.
+- Kept reason text free of patient IDs, patient names, candidate IDs, billing target IDs, billing names, and free text.
+
+### Files Changed
+
+- `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`
+- `src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec prettier --write 'src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx' 'src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 5 tests.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec eslint 'src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx' 'src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+
+### Current Validation Caveat
+
+- Full `format:check` remains failing on unrelated dirty/untracked files outside this billing-operation slice. The touched billing candidates files pass targeted Prettier write.
+
+### Remaining / Next Loop
+
+- Billing monthly close and CSV export disabled states now expose fixed reasons through their buttons. Continue with the next UI/UX candidate.
+
+## 20260620-0659 JST - Incident Memo Empty-State Disabled Reason
+
+### Summary
+
+- Added a fixed disabled reason when the incident memo form has no incident record to edit.
+- Connected that reason to the text inputs, process Select trigger, and save button with `aria-describedby`.
+- Added a direct submit guard so an empty-list form submit returns before the mutation path.
+- Covered the empty-list behavior with a new focused jsdom regression.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/incidents/incidents-content.tsx`
+- `src/app/(dashboard)/admin/incidents/incidents-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec prettier --write 'src/app/(dashboard)/admin/incidents/incidents-content.tsx' 'src/app/(dashboard)/admin/incidents/incidents-content.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/admin/incidents/incidents-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 1 test.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec eslint 'src/app/(dashboard)/admin/incidents/incidents-content.tsx' 'src/app/(dashboard)/admin/incidents/incidents-content.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+
+### Current Validation Caveat
+
+- Full `format:check` remains failing on unrelated dirty/untracked files outside this incidents slice. The touched incidents files pass targeted Prettier write.
+
+### Remaining / Next Loop
+
+- Incident memo disabled controls now expose a fixed empty-list reason and direct blocked submits do not reach the PATCH path. Continue with the next UI/UX candidate.
+
+## 20260620-0702 JST - Offline Sync Disabled Reasons
+
+### Summary
+
+- Added fixed disabled reasons for the offline sync all-retry action when the queue is empty.
+- Added fixed disabled reasons for local overwrite when a conflict has no server snapshot to overwrite.
+- Connected those reasons to the affected buttons with `aria-describedby`.
+- Kept reason text free of patient names, patient IDs, schedule IDs, visit record IDs, SOAP text, outcomes, dates, and free text.
+
+### Files Changed
+
+- `src/app/(dashboard)/offline-sync/offline-sync-content.tsx`
+- `src/app/(dashboard)/offline-sync/offline-sync.shared.ts`
+- `src/app/(dashboard)/offline-sync/offline-sync.shared.test.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec prettier --write 'src/app/(dashboard)/offline-sync/offline-sync-content.tsx' 'src/app/(dashboard)/offline-sync/offline-sync.shared.ts' 'src/app/(dashboard)/offline-sync/offline-sync.shared.test.ts'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/offline-sync/offline-sync.shared.test.ts' --reporter=dot --testTimeout=30000`: passed, 1 file / 9 tests.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec eslint 'src/app/(dashboard)/offline-sync/offline-sync-content.tsx' 'src/app/(dashboard)/offline-sync/offline-sync.shared.ts' 'src/app/(dashboard)/offline-sync/offline-sync.shared.test.ts'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+
+### Current Validation Caveat
+
+- Full `format:check` remains failing on unrelated dirty/untracked files outside this offline-sync slice. The touched offline-sync files pass targeted Prettier write.
+
+### Remaining / Next Loop
+
+- Offline sync retry/overwrite disabled states now expose fixed reasons through their buttons. Continue with the next UI/UX candidate.
+
+## 20260620-0706 JST - Medication Calendar Structural Labels
+
+### Summary
+
+- Added month-specific table caption/name for the patient medication calendar.
+- Added scoped weekday header labels and hidden full-date labels inside each day cell.
+- Added time-slot group labels for rendered medication slots.
+- Added month-specific accessible names for the PDF and print actions.
+- Kept structural labels free of patient IDs, patient names, drug names, doses, frequencies, and free text.
+
+### Files Changed
+
+- `src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.tsx`
+- `src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.test.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.tsx' 'src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.test.ts'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.test.ts' --reporter=dot --testTimeout=30000`: passed, 1 file / 2 tests.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec eslint 'src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.tsx' 'src/app/(dashboard)/patients/[id]/medication-calendar/medication-calendar-content.test.ts'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+
+### Current Validation Caveat
+
+- Full `format:check` remains failing on unrelated dirty/untracked files outside this medication-calendar slice. The touched medication-calendar files pass targeted Prettier write.
+
+### Remaining / Next Loop
+
+- Medication calendar structural labels are addressed. Continue with the next UI/UX candidate or rescan remaining disabled/action accessible-name gaps.
+
+## 20260620-0710 JST - Print Hub Disabled Print Reason
+
+### Summary
+
+- Derived a durable disabled reason for the print submit button from first-visit document readiness and visit-report print-audit readiness.
+- Connected the reason to the print button with `aria-describedby`.
+- Added regression coverage for a blocked first-visit print with no documents.
+- Kept the connected reason free of patient IDs, patient names, document IDs, report IDs, URLs, and free text.
+
+### Files Changed
+
+- `src/app/(dashboard)/reports/print/print-hub-content.tsx`
+- `src/app/(dashboard)/reports/print/print-hub-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec prettier --write 'src/app/(dashboard)/reports/print/print-hub-content.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' --reporter=dot --testTimeout=30000`: initially failed on async readiness timing, then passed, 1 file / 4 tests.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec eslint 'src/app/(dashboard)/reports/print/print-hub-content.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+
+### Current Validation Caveat
+
+- Full `format:check` remains failing on unrelated dirty/untracked files outside this print-hub slice. The touched print-hub files pass targeted Prettier write.
+
+### Remaining / Next Loop
+
+- Print-hub blocked print states now expose readiness/audit reasons through the print button. Continue with another high-value disabled/action gap or run a tighter re-scan.
+
+## 20260620-0718 JST - Schedule Offline Action Disabled Reasons
+
+### Summary
+
+- Added a fixed disabled reason for manual sync while a sync mutation is pending.
+- Connected conflict overwrite/discard/re-edit disabled states to fixed reasons for pending conflict resolution and missing conflict IDs.
+- Added focused regression coverage for `aria-describedby` wiring and value non-disclosure.
+
+### Files Changed
+
+- `src/app/(dashboard)/schedules/schedule-day-offline-panel.tsx`
+- `src/app/(dashboard)/schedules/schedule-day-offline-panel.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec prettier --write 'src/app/(dashboard)/schedules/schedule-day-offline-panel.tsx' 'src/app/(dashboard)/schedules/schedule-day-offline-panel.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/schedules/schedule-day-offline-panel.test.tsx' --reporter=dot --testTimeout=30000`: initially failed because this test file does not install jest-dom's `toHaveAttribute` matcher, then passed after switching assertions to `getAttribute`; final run passed, 1 file / 9 tests.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec eslint 'src/app/(dashboard)/schedules/schedule-day-offline-panel.tsx' 'src/app/(dashboard)/schedules/schedule-day-offline-panel.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+
+### Current Validation Caveat
+
+- Full `format:check` remains failing on unrelated dirty/untracked files outside this schedule-offline slice. The touched schedule-offline files pass targeted Prettier write.
+- `src/app/(dashboard)/schedules/schedule-day-offline-panel.tsx` already had unrelated state-token migration changes in the worktree; they were preserved.
+
+### Remaining / Next Loop
+
+- Schedule-day offline manual sync and conflict actions now expose fixed disabled reasons through their controls. Continue with another high-value disabled/action gap or run a tighter re-scan.
+
+## 20260620-0712 JST - Report Delivery Reminder Disabled Reason
+
+### Summary
+
+- Added a fixed disabled reason for the report delivery reminder action while delivery analytics are loading.
+- Connected the reason to the reminder-task button with `aria-describedby`.
+- Added focused regression coverage for loading disabled state and value non-disclosure.
+
+### Files Changed
+
+- `src/app/(dashboard)/reports/report-delivery-dashboard.tsx`
+- `src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec prettier --write 'src/app/(dashboard)/reports/report-delivery-dashboard.tsx' 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 3 tests.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec eslint 'src/app/(dashboard)/reports/report-delivery-dashboard.tsx' 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+
+### Current Validation Caveat
+
+- Full `format:check` remains failing on unrelated dirty/untracked files outside this report-delivery slice. The touched report-delivery files pass targeted Prettier write.
+
+### Remaining / Next Loop
+
+- Report delivery reminder loading disabled state now exposes a fixed reason through the action button. Continue with another high-value disabled/action gap or run a tighter re-scan.
+
 ## 20260620-0525 JST - Job Rerun Action Names
 
 ### Summary
@@ -6728,3 +7336,195 @@ Implemented:
 ### Remaining / Next Loop
 
 - UI/UX remediation remains active. Remaining candidates include pharmacy-cooperation responsive table density, select accessible-name gaps outside fixed/verified screens, raw table/DataTable convergence, and expanded browser/a11y proof.
+
+---
+
+# === PERFORMANCE/RELIABILITY GOAL TRACK (claude / Opus 4.8) ===
+
+## Loop 0 — Baseline (20260620 JST)
+
+### Goal
+
+リポジトリ全体を対象に既存仕様維持で、速度/レスポンス/リソース効率/例外耐性/非同期安全性/安定性を最大化。Actionable が0件になるまで Loop 継続。codex と相談しながら進行。
+
+### Repo facts
+
+- Next.js 16 (App Router, Turbopack dev / webpack build), React 19, Prisma 7 + PostgreSQL RLS, TanStack Query 5, Zustand 5, Dexie 4 (offline), Serwist PWA.
+- src TS/TSX file count: 2601.
+- Validation commands: `pnpm typecheck` (next typegen + tsc x2), `pnpm lint` (eslint), `pnpm test` (vitest run), `pnpm test:e2e` (playwright), `pnpm format:check`.
+
+### Baseline validation
+
+- `pnpm typecheck`: **PASS (exit 0, clean)** — next typegen + tsc --noEmit + tsc -p tsconfig.sw.json all clean.
+- `pnpm test`: baseline run started (results recorded below once complete).
+
+### Audit fan-out (read-only subagents launched)
+
+- Performance Agent (dup request/N+1/heavy compute/over-fetch/re-render)
+- Async Safety Agent (race/cleanup leak/unhandled rejection/timeout-cancel)
+- Reliability Agent (external API/AWS SDK failure, null boundaries, error swallowing)
+- Duplication + Backend/Data Agent (fetcher/db-helper/error-handler dup, query count, over-fetch, transaction)
+
+### Next
+
+Collect agent findings → triage by [evidence + low-risk + spec-preserving] → implement Loop 1 (重複I/O) first.
+
+### Codex hotspot map (received via agmsg, read-only grounding)
+
+1. offline sync/IndexedDB: src/lib/stores/sync-engine.ts:219,320,337,368, offline-store.ts, app/(dashboard)/offline-sync/\*, visit-record-form.tsx:642. Focus: all refreshSyncCount calls, processSyncQueue concurrency, deleteSyncedQueueItem/idempotency, 409 conflict overwrite, IndexedDB crypto/key read dup.
+2. realtime collab: src/lib/hooks/use-yjs-collaboration-room.ts:33, use-collaborative-form.ts. Focus: room token refresh, unmount cleanup, sub dup on orgId/roomId change, reconnect storm, query invalidation excess.
+3. heavy read-model/BFF: src/server/services/patient-detail.ts:833, api/patients/[id]/route.ts:1533 (buildPatientTimelineEvents merged). Many findMany/count Promise.all. visit-brief.ts, home-care-ops.ts query dense. Focus: N+1, over-include, double-fetch.
+4. today-workspace billing: api/care-reports/today-workspace/route.ts. billing candidate oversample, source_snapshot readBillingValidationLayers/collectBillingValidationMessages CPU/JSON parse.
+5. Data Explorer: src/server/services/data-explorer.ts:488 count+rows Promise.all, deferredRowSearch. Focus: pagination/debounce preserve, row summary/JSON stringify over-compute, count frequency.
+6. export/print: src/server/services/export-audit.ts:66 recordCareReportPrintAudit, safe-csv. Focus: avoid double audit, reuse lib/csv/safe-csv.ts.
+7. Constraint: worktree has unrelated dirty (.codex/ralph-state.md, ledger, UI/a11y). Do NOT touch those; read-only fan-out first.
+
+### Audit result: Performance Agent
+
+- [High] card-workspace.tsx (4545行, useMemo/useCallback=0, 17 query/mutation): 派生値memo化+子panel React.memo。最頻画面の再レンダ削減。
+- [Med] workflow-dashboard-queries.ts:375 conferenceNote.action_items 全件JSON取得→件数のみ使用。where/count化。
+- [Med] tasks-content.tsx:282 一括完了が1件1PATCH → POST /api/tasks/bulk (updateMany) 化。pharmacist-shifts/bulk パターン流用。
+- [Med] patient-documents-panel.tsx:406 初回訪問書類一括作成が1件1POST → batch化。
+- [Low] pca-pumps.ts:50 rental毎個別tx → org単位集約。dispense-results.ts:468 line単位upsert(影響限定)。
+- 補足: patient-overview queryKey共有はTanStack dedupe済みで問題なし。compare-board/patients-boardは最適化済み。
+
+### Baseline test result
+
+- `pnpm test`: **PASS** — Test Files 1070 passed | 1 skipped, Tests 8333 passed | 1 skipped, 0 failed. Duration ~119s.
+- Baseline summary: typecheck clean + 8333 tests green. 既存失敗 = 0件（環境/Blockedなし）。回帰判定はこの基準で行う。
+
+### Audit result: Async Safety Agent
+
+- [High] qr-scan/page.tsx:249 ZXing reader 停止漏れ → controls保持しstopCameraでstop/reset。デコードループ+callbackリーク。
+- [High] qr-scan/page.tsx:230,356 startCamera unmount race → capture-content.tsx の cancelled ガード移植。後発MediaStreamリーク+unmount後setState。
+- [Med] qr-scan/page.tsx:275 ObjectURL リーク(decode throw時 revoke漏れ) → try/finally。
+- [Med] patient-form.tsx:385,457 重複チェック stale response → AbortController(既存catch{}がAbortError吸収)。
+- [Med] mfa/setup/page.tsx:194 コピータイマー未クリア → ref保持+unmount clear。
+- [Low] search-content.tsx:98 pharmacistプリフェッチ fire-and-forget(unmount後setState)。sync-engine.ts:573 setupAutoSync 多重購読の可能性(中期)。
+- 良好: shared-event-stream.ts, notifications/stream route teardown, search main effect, use-speech-recognition, capture-content cancelled flag, autosave系。
+- 着手集中: qr-scan/page.tsx 3件は同一ファイル、まとめて修正可能。Loop1最有力。
+
+### Audit result: Reliability Agent
+
+全体: AWS SDK は withAwsClientTimeout+retry、fetch は createFetchTimeout、job runner retry、JSON.parse は guard済みで防御的。残gap:
+
+- [High] #1 Route handler トップレベル try/catch 無し → 想定外throwがNext汎用500になり {code,message} エンベロープ不一致。withAuthContext/performance.ts:253。toApiError導入。#6/#8の根因。
+- [Med] #2 SES送信 failure_reason が定数 → transient/permanent判別不能。email.ts:47, care-reports/[id]/send:1066。エラー名/statusを記録。
+- [Med] #3 file-storage.ts:1296 S3先書き、bulk-export の asset upsert失敗がwarn握り → orphan孤立。
+- [Med] #4 notifications/stream/route.ts:297 SSE poll が catch{}全握り → DB障害が無音の空ストリーム。rate-limited warn + degradedイベント。
+- [Low] #5/#6 client queryFn が res.ok前に json.data/res.json() 直読み(patients-board/compare-board, patient-insurance-card:580他) → HTML500でSyntaxError。res.ok guard。
+- [Low] #7 cleanupExpiredGeneratedFiles errors[] 無検査。#8 cognito-admin send() raw error。
+- Top低リスク: #1(最高レバレッジ), #4(observability), #2短期, #6(res.ok guard), #7。
+- 良好: client-timeout, fetch timeouts, outbound-webhook SSRF+retry, job runner, JSON.parse guards.
+
+### Self-verified (read qr-scan/page.tsx)
+
+- stopCamera(:106) は streamRef のtrack停止のみ、readerRef(:247) を停止していない。decodeFromVideoElement(:249) は @zxing/browser 0.1.x で Promise<IScannerControls> を返す → await して controls.stop() が必要。
+- startCamera(:230) に cancelled ガード無し、cleanup(:358) は stopCamera のみ。
+- handleFileUpload(:284) revokeObjectURL は成功経路のみ、throw時(:286 catch)漏れ。→ try/finally。
+
+### Audit result: Duplication + Backend/Data Agent
+
+- [High] #1 client fetch+error整形が161ファイル重複(共通fetcher不在) → lib/api/client-fetch.ts に apiFetch/apiMutate 新設、ApiError形解釈。段階移行。
+- [High] #2 withOrgContext経由しない直prisma.$transaction(RLS二重防御欠落): pharmacy-drug-stocks/route:389他7ルート → withOrgContext移行。admin/organizationsはクロステナントで意図的除外。
+- [High] #3 formatAgeLabel(minutes) byte同一コピー10箇所 → lib/ui/relative-time.ts に formatElapsedLabel 一本化。機械置換・低リスク。
+- [Med] #4 formatTimeOfDay HH:mm手書き4箇所 → date-format.ts formatTimeLabel。 #5 familyNameOf 姓抽出6箇所 → lib/utils/person-name.ts。
+- [Med] #6 handoff/reports helpers 文言ブロック完全一致(daily-ops-rail.tsへ集約, 型差ありMed)。 #7 mutation版message抽出重複(#1に統合)。
+- [Low] #8 cursor/limit schema重複→validation.tsヘルパ。 #9 patients/[id]/route labRows直列→主Promise.all同梱。 #10 Intl直書き散在。
+- Top低リスク: #3 formatAgeLabel, #5 familyNameOf, #4 formatTimeOfDay, #1+7 apiFetch, #2 withOrgContext移行。
+
+---
+
+## Loop 1 — 着手 (mutual impl/review体制)
+
+- 運用合意: Claude/Codex 相互実装・相互レビュー(ルール1-7)。高リスク面は相互レビュー必須、同一ファイルlock宣言、無関係dirty尊重。
+- [Slice A] Claude実装/Codexレビュー — qr-scan async安全性3件 (LOCK: src/app/(dashboard)/qr-scan/page.tsx)
+- [Slice B] Codex実装/Claudeレビュー — Reliability#1 統一エラーエンベロープ (CodexがLOCK宣言予定: context.ts/response.ts/performance.ts)
+
+### Slice A 完了 (Claude実装) — qr-scan async安全性
+
+- Files: src/app/(dashboard)/qr-scan/page.tsx, page.contract.test.ts
+- 実装:
+  (1) controlsRef 追加、startCamera で `const controls = await reader.decodeFromVideoElement(...)` を保持、stopCamera で controls.stop()。継続デコードループ+callbackリーク解消。
+  (2) startCamera(isCancelled?) cancelled ガード、effect で `let cancelled=false` → `startCamera(()=>cancelled)`、cleanup で cancelled=true。後発MediaStreamリーク+unmount後setState解消。リトライボタンは `onClick={()=>startCamera()}` に修正(MouseEvent誤渡し防止)。
+  (3) handleFileUpload を try/finally 化、decode失敗時も URL.revokeObjectURL。ObjectURL leak解消。
+- Validation: prettier unchanged, eslint exit0, vitest 7 tests pass, `pnpm typecheck` PASS(exit0)。
+- Review: Codex に依頼(医療intake/カメラlifecycle=相互レビュー対象)。
+
+### Slice A レビュー対応 (Codex指摘 medium)
+
+- 指摘: ZXing callback が isCancelled未確認。decodeFromVideoElementはcontrols返却前にscan()開始しうる→cancelled後もcallback発火し得る race残存。
+- 修正: callback冒頭に `if (isCancelled?.()) return;` 追加。contract test に decodeFromVideoElement内の guard 正規表現アサーション追加。
+- 補足: @zxing/browser 実バージョンは 0.2.0(CLAUDE.mdピン0.1.5は古い)。Promise<IScannerControls>/stop():void はd.ts確認済み、stop()はidempotent。
+- Validation: eslint0, vitest 8 pass。再レビュー依頼済み。
+
+### Slice C 完了 (Claude実装) — patient-form stale response + mfa/setup timer
+
+- Files: src/components/features/patients/patient-form.tsx, src/app/(auth)/mfa/setup/page.tsx
+- 実装:
+  (1) [Async Med] patient-form checkDuplicate に signal?:AbortSignal、effectで AbortController生成→signal渡し、cleanupで controller.abort()。debounce連続入力時の stale response上書き防止(既存catch{}がAbortError吸収)。
+  (2) [Async Med] mfa/setup copyTimerRef 追加、再コピー時 clearTimeout、unmount effectでclear。unmount後 setCopied 防止。
+- Validation: eslint0, typecheck0, patient-form 既存テスト5 pass(重複フロー回帰なし)。mfaはauth高リスク→Codexレビュー依頼。
+
+### Slice D 完了 (Claude実装) — client read 堅牢化
+
+- [Async Low] search-content.tsx:96 pharmacistプリフェッチ effect に AbortController(signal+cleanup abort)。unmount/orgId変更後の setState と stale上書き防止。
+- [Reliability #6 検証→no-op] patient-insurance-card:580 / patient-packaging-card:85 / visit-constraints-card:149 は **既に res.ok guard 実装済み**。監査時点と乖離(already-fixed)、推測編集せず検証して確認、変更不要と確定。
+- Validation: eslint0, search-content.test 14 pass。
+- [DELEGATE D2 → Codex] backend perf: tasks bulk API化(tasks-content:282), conferenceNote over-fetch(workflow-dashboard-queries:375)。
+
+### Slice E 完了 (Claude実装) — card-workspace 再レンダリング最適化 [Perf High]
+
+- File: src/app/(dashboard)/patients/[id]/card-workspace.tsx
+- 根拠: 最頻アクセス画面。本体に useMemo/useCallback=0、usePresenceHeartbeat の周期state更新 + 17クエリ/mutationのたびに本体+全パネル再描画。
+- 検証した props 安定性: patient/workspace/homeOperations はいずれも react-query の data 直参照(安定)、mutation.mutate は安定参照、`isPending?variables:null` は idle時 null の primitive。→ shallow比較で等価。
+- 実装: 7パネルを memo()別名でラップ(PatientFoundation/Profile/HomeOperations/ShareCaseCreate/CardDocuments/VisitPreparation/CardToday)。JSX使用13箇所(desktop+mobile)を Memo別名へ差替。ブレース照合事故回避のため定義はそのまま、module末尾で memo(fn) 別名化。
+- 効果: presence heartbeat / 無関係クエリ更新時にこれらパネル(QuickForms内包の重いHomeOperations含む)が再描画されない。表示内容不変。
+- Validation: typecheck0, eslint0, card-workspace.test 25 pass。
+- Review: 患者/医療画面=相互レビュー対象。Codexに依頼。
+
+### レビュー往復ログ
+
+- Slice A: Codex再レビュー → APPROVED (Findings none)。callback guard対応済み。
+- D1 (Codex実装): Claudeレビュー → APPROVE。familyNameOf空白系の微セマンティクス変化はlow/informational・実害なし、新挙動の方が正しい。テスト境界網羅十分、127 tests/typecheck/eslint/prettier pass。card-workspace formatAgeLabel除外・dispense別丸め復元の判断も正しい。
+
+### Slice C レビュー対応 (Codex指摘 medium) + Slice E承認
+
+- Slice E: Codexレビュー → APPROVED (Findings none)。card-workspace memo化 確定。
+- Slice C 指摘: patient-form で abort が fetch解決後/json parse中に起きると setDuplicates が stale で走り得る(残存race)。
+- 修正: `await res.json()` 後・setDuplicates 前に `if (signal?.aborted) return;` 追加。
+- テスト追加: patient-form.test に stale-race 回帰テスト(1本目checkを保留→デバウンス発火→入力変更でabort確認(signal.aborted false→true)→stale解決→banner非表示 を assert)。guard除去時はbanner表示でfailする判別性あり。
+- mfa部分はCodex承認済み。
+- Validation: eslint0, typecheck0, patient-form.test 6 pass。再レビュー依頼。
+
+### Slice F 完了 (Claude実装) — SSE poll 無音障害の観測化 [Reliability #4]
+
+- File: src/app/api/notifications/stream/route.ts, route.test.ts
+- 根拠: poll の catch{} が DB エラーを全握り → DB障害時にストリームは生きているが通知ゼロの「無音障害」が観測不能。
+- 実装: consecutivePollFailures カウンタ導入。catch で +1 し、初回と12回毎(≈60s)のみ logger.warn(event/consecutive_failures/error_name)。成功時に >0 なら logger.info(recovered)してリセット。**クライアントへのイベント契約は不変**(新イベント型を追加しない=仕様維持)。PIIは記録しない(org/user_idを出さず、失敗回数とエラー名のみ)。
+- テスト追加: poll失敗で warn 初回1回発火、連続失敗2回目では warn 増えない(氾濫防止)、findMany 2回目も発火=ストリーム継続、を assert。
+- Validation: eslint0, typecheck0, stream route.test 18 pass(既存17+新1)。
+- Review: realtime/SSE=高リスク→Codex相互レビュー依頼。
+
+### 累積フルテスト検証 (Loop1 統合)
+
+- `pnpm test` 全体: 1 failed / 8347 passed。失敗= src/lib/api/rate-limit.test.ts(route template catalog 整合)。
+- 原因: D2 の新規 /api/tasks/bulk が rate-limit.ts API_ROUTE_TEMPLATES 未登録。Codexのtargeted検証外で見落とし→累積フルテストで捕捉。
+- 私のスライス(A/C/D/E/F)由来の失敗は **なし**(全て個別+統合で緑)。
+
+### レビュー往復ログ(続き)
+
+- Slice C: Codex再レビュー → APPROVED (Findings none)。stale-race guard+テスト確定。
+- D2: Claudeレビュー → REQUEST CHANGES。blocking= rate-limit catalog に /api/tasks/bulk 未登録(フルテスト赤)。low= 逐次 writable チェック(N回, 任意最適化)。他(auth/RLS/部分失敗/client移行/guard抽出)は良好。Codexが catalog 登録→再検証で APPROVE 予定。
+
+### Reliability #5 検証 → no-op
+
+- compare-board.tsx fetchPatientOverview は既に `if (!res.ok) throw` 実装済み。patients-board も同様。監査時点と乖離(already-fixed)。変更不要。
+
+### Loop1 現況サマリ
+
+- Claude実装(全完了): A(qr-scan, APPROVED), C(patient-form/mfa, APPROVED), D(search-content abort), E(card-workspace memo, APPROVED), F(SSE観測化, レビュー中)。
+- Codex実装: D1(pure-fn dedup, Claude APPROVE), D2(tasks bulk, Claude REQUEST CHANGES=rate-limit catalog登録待ち), Slice B(error envelope, 担当判断待ち)。
+- 累積フルテスト: 私のスライス由来失敗0。残失敗1はD2のcatalog未登録(Codex修正待ち)。
+- 監査由来の非競合ソロ項目は出尽くし(#5/#6 already-fixed確認)。残りは backend(Codex), 大型apiFetch(#1,要調整), offline sync-engine(高リスク,要調整), formatTimeOfDay(#4,D1ファイル重複回避)。
+- 次: Codex の D2修正/F レビュー/Slice B 判断を待ち、揃ったら Loop2 再監査へ。
