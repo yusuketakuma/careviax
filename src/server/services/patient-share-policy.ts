@@ -121,6 +121,15 @@ export function canExportSharedData(args: {
   return resolvePatientShareDataOutputPolicy(args).allowed;
 }
 
+export function allowedPatientShareDataOutputActions(args: {
+  shareCaseStatus: PatientShareCaseLifecycleStatus;
+  shareScope: unknown;
+}) {
+  return PATIENT_SHARE_DATA_OUTPUT_ACTIONS.filter((action) =>
+    canExportSharedData({ ...args, action }),
+  );
+}
+
 export function resolvePatientShareCorrectionRequestPolicy(args: {
   shareCaseStatus: PatientShareCaseLifecycleStatus;
   targetType: PatientShareCorrectionTargetType;

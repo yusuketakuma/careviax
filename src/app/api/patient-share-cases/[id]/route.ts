@@ -13,6 +13,7 @@ import {
   normalizePatientShareScope,
   patientShareScopeCovers,
 } from '@/server/services/patient-share-scope';
+import { allowedPatientShareDataOutputActions } from '@/server/services/patient-share-policy';
 
 const updatePatientShareCaseSchema = z
   .object({
@@ -114,6 +115,10 @@ export const PATCH = withAuthContext<{ id: string }>(
 
       const previousScopeKeys = enabledPatientShareScopeKeys(shareCase.share_scope).sort();
       const nextScopeKeys = enabledPatientShareScopeKeys(parsed.data.share_scope).sort();
+      const previousOutputActions = allowedPatientShareDataOutputActions({
+        shareCaseStatus: shareCase.status,
+        shareScope: shareCase.share_scope,
+      });
       const updated = await tx.patientShareCase.update({
         where: { id_org_id: { id, org_id: ctx.orgId } },
         data: {
@@ -137,6 +142,11 @@ export const PATCH = withAuthContext<{ id: string }>(
           status: updated.status,
           previous_scope_keys: previousScopeKeys,
           share_scope_keys: nextScopeKeys,
+          previous_output_actions: previousOutputActions,
+          output_actions: allowedPatientShareDataOutputActions({
+            shareCaseStatus: updated.status,
+            shareScope: updated.share_scope,
+          }),
           enabled_scope_count: nextScopeKeys.length,
           disabled_scope_count: PATIENT_SHARE_SCOPE_KEYS.length - nextScopeKeys.length,
         },
@@ -155,6 +165,10 @@ export const PATCH = withAuthContext<{ id: string }>(
         status: result.shareCase.status,
         updated_at: result.shareCase.updated_at,
         scope_keys: enabledPatientShareScopeKeys(result.shareCase.share_scope),
+        output_actions: allowedPatientShareDataOutputActions({
+          shareCaseStatus: result.shareCase.status,
+          shareScope: result.shareCase.share_scope,
+        }),
       }),
     );
   },

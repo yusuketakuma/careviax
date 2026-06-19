@@ -150,12 +150,25 @@ describe('/api/patient-share-cases/[id] PATCH', () => {
             'pdf_output',
             'prescription_history',
           ],
+          previous_output_actions: [],
+          output_actions: [],
           enabled_scope_count: 5,
           disabled_scope_count: 2,
         },
       }),
     );
-    const bodyText = JSON.stringify(await response.json());
+    const body = await response.json();
+    expect(body).toMatchObject({
+      scope_keys: [
+        'prescription_history',
+        'medication_profile',
+        'care_reports',
+        'attachments',
+        'pdf_output',
+      ],
+      output_actions: [],
+    });
+    const bodyText = JSON.stringify(body);
     expect(bodyText).not.toContain('share_scope');
     expect(bodyText).not.toContain('memo');
     expect(bodyText).not.toContain('山田 花子');
@@ -240,6 +253,20 @@ describe('/api/patient-share-cases/[id] PATCH', () => {
         },
       ],
     });
+    patientShareCaseUpdateMock.mockResolvedValueOnce({
+      id: 'share_case_1',
+      status: 'active',
+      updated_at: new Date('2026-06-19T00:00:00.000Z'),
+      share_scope: {
+        prescription_history: true,
+        medication_profile: true,
+        care_reports: true,
+        attachments: false,
+        print: false,
+        pdf_output: true,
+        download: false,
+      },
+    });
 
     const response = await rawPATCH(
       createPatchRequest({
@@ -256,6 +283,9 @@ describe('/api/patient-share-cases/[id] PATCH', () => {
     expect(response.status).toBe(200);
     expect(patientShareCaseUpdateMock).toHaveBeenCalled();
     expect(createAuditLogEntryMock).toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      output_actions: ['pdf_output'],
+    });
   });
 
   it('rejects terminal share cases before update or audit side effects', async () => {

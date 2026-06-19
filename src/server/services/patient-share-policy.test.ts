@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  allowedPatientShareDataOutputActions,
   canEditOwnedResource,
   canExportSharedData,
   canRequestCorrection,
@@ -154,5 +155,37 @@ describe('patient share policy', () => {
         action: 'download_pdf',
       }),
     ).toBe(false);
+  });
+
+  it('derives allowed output actions from active share status and scope', () => {
+    expect(
+      allowedPatientShareDataOutputActions({
+        shareCaseStatus: 'active',
+        shareScope: {
+          attachments: true,
+          print: true,
+          pdf_output: true,
+          download: true,
+        },
+      }),
+    ).toEqual([
+      'view_attachment',
+      'download_attachment',
+      'print',
+      'pdf_output',
+      'download_pdf',
+      'download_data',
+    ]);
+    expect(
+      allowedPatientShareDataOutputActions({
+        shareCaseStatus: 'draft',
+        shareScope: {
+          attachments: true,
+          print: true,
+          pdf_output: true,
+          download: true,
+        },
+      }),
+    ).toEqual([]);
   });
 });

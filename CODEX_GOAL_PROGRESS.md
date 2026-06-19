@@ -4186,3 +4186,35 @@ Implemented:
 ### Remaining / Next Loop
 
 - UI/UX remediation remains active. Remaining candidates include broader admin destructive-action consistency, pharmacy-cooperation responsive table density, select accessible-name gaps outside fixed/verified screens, raw table/DataTable convergence, and expanded browser/a11y proof.
+
+## 20260620-0021 JST - Patient Share Output Actions in Scope API
+
+### Summary
+
+- Wired the shared patient-share output policy into `PATCH /api/patient-share-cases/[id]`.
+- Added allowed `output_actions` to the share-scope update response.
+- Added previous/current `output_actions` to the scope-update audit metadata without exposing raw `share_scope`.
+- Added route and policy regressions proving draft cases fail closed and active cases with `pdf_output` scope expose only `pdf_output`.
+
+### Files Changed
+
+- `src/server/services/patient-share-policy.ts`
+- `src/server/services/patient-share-policy.test.ts`
+- `src/app/api/patient-share-cases/[id]/route.ts`
+- `src/app/api/patient-share-cases/[id]/route.test.ts`
+- `Plans.md`
+- `docs/pharmacy-cooperation-v0.2-completion-audit.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write src/server/services/patient-share-policy.ts src/server/services/patient-share-policy.test.ts 'src/app/api/patient-share-cases/[id]/route.ts' 'src/app/api/patient-share-cases/[id]/route.test.ts'`: passed.
+- `pnpm exec vitest run src/server/services/patient-share-policy.test.ts 'src/app/api/patient-share-cases/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, 2 files / 14 tests.
+- Targeted ESLint over touched route and policy files: passed.
+- `pnpm typecheck`: passed.
+
+### Remaining / Next Loop
+
+- Direct DB-backed proof and migration application remain explicit-approval blocked.
+- Concrete attachment/PDF/download routes can adopt the same output-action policy where they receive explicit share-case context.

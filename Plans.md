@@ -29,7 +29,7 @@
 - [x] 患者共有ケース状態管理: `PatientShareCaseStatus` を v0.2 仕様の `consent_pending` / `partner_confirmation_pending` / `declined` へ追随し、旧 `pending_partner` は migration で rename。作成→同意→協力確認→有効化の順序を API/UI/browser proof で固定
 - [x] 患者一覧の共有状態算出: 患者マスターに共有フラグを持たせず、`PatientShareCase` の active/有効同意から `pharmacy_share` を算出し、件数・協力薬局数・共有範囲キーだけを患者一覧レスポンスへ返す
 - [x] 患者共有ポリシー共通化: 修正/追記依頼の対象所有者、相手薬局所有データへの直接編集不可、active 共有ケース限定の依頼可否を `patient-share-policy.ts` に集約
-- [x] 患者共有データ出力ポリシー共通化: 添付閲覧、添付ダウンロード、印刷、PDF 出力、PDF ダウンロード、データダウンロードに必要な `share_scope` を `patient-share-policy.ts` で fail-closed 判定
+- [x] 患者共有データ出力ポリシー共通化: 添付閲覧、添付ダウンロード、印刷、PDF 出力、PDF ダウンロード、データダウンロードに必要な `share_scope` を `patient-share-policy.ts` で fail-closed 判定し、共有範囲更新 API の audit/response に許可出力アクションを接続
 - [x] 訪問依頼状態管理: `PharmacyVisitRequestStatus` を v0.2 仕様の `requested`→`accepted`→`recording`→`submitted`→`confirmed`→`physician_report_created`→`claim_checked` へ追随し、旧 `cancelled` / `expired` は migration で `declined` へ集約
 - [x] 患者共有/訪問/記録/契約/請求ステータス遷移共通化: `pharmacy-partnerships.ts` に患者共有ケース、訪問依頼、協力訪問記録、契約/契約版の明示的な遷移・有効化ルールを追加し、同意登録、患者リンク承認/辞退、有効化、受諾/辞退、記録提出、基幹確認/差戻し、医師報告下書き、請求候補化、契約/契約版 active 化の status 更新を共通ヘルパー経由に統一。月次請求は `transitionPharmacyInvoice` で発行/送付/受領/支払予定/入金/取消/再発行を共有遷移化済み
 - [x] 月次請求状態管理: `PharmacyInvoice` の発行/送付/受領/支払予定/入金/取消/再発行を `PATCH /api/pharmacy-invoices/:id` と月次請求 UI から実行し、`payment_scheduled_for` date-only カラムと `pharmacy_invoice_*` 監査検索語彙まで接続
