@@ -2964,3 +2964,57 @@ Blocked: C11 (diverged user-visible label strings — product/UX sign-off), C12 
 - Migration was generated and validated but not applied to any database, per repository DB mutation rules.
 - Visit request lifecycle statuses still need a separate migration-aware v0.2 alignment slice.
 - Direct authenticated browser proof remains blocked until v0.2 migrations are approved/applied to the local e2e DB.
+
+## 20260619-2050 JST - Pharmacy Visit Request Status Alignment
+
+### Completed
+
+- Re-read the v0.2 visit-request lifecycle requirement and treated it as the higher-version SSOT over the older `cancelled` / `expired` / direct-`completed` flow.
+- Updated `PharmacyVisitRequestStatus` to `draft`, `requested`, `accepted`, `declined`, `scheduled`, `visited`, `recording`, `submitted`, `base_reviewing`, `returned`, `confirmed`, `physician_report_created`, `claim_checked`, and `completed`.
+- Added a migration that maps existing `cancelled` / `expired` visit requests to `declined` while recreating the enum; the migration was generated and validated but not applied to any database.
+- Advanced visit requests through the v0.2 operational states: partner draft save moves `accepted` / `returned` to `recording`, partner submit moves to `submitted`, base review confirm moves to `confirmed`, base return moves to `returned`, physician report draft moves `confirmed` to `physician_report_created`, and billing candidate generation moves confirmed/report-created requests to `claim_checked`.
+- Tightened billing candidate eligibility so candidate creation requires base-confirmed-or-later request status, satisfying the v0.2 rule that billing candidates must not be made before base pharmacy confirmation.
+- Updated workflow UI labels, focused API/service/UI tests, and the route-mocked browser proof to reflect the full v0.2 status progression.
+
+### Files Changed
+
+- `prisma/schema/pharmacy-partnership.prisma`
+- `prisma/migrations/20260619204000_align_pharmacy_visit_request_statuses/migration.sql`
+- `src/server/services/pharmacy-partnerships.ts`
+- `src/server/services/pharmacy-partnerships.test.ts`
+- `src/server/services/partner-visit-report-drafts.ts`
+- `src/server/services/partner-visit-report-drafts.test.ts`
+- `src/app/api/pharmacy-visit-requests/route.ts`
+- `src/app/api/pharmacy-visit-requests/route.test.ts`
+- `src/app/api/partner-visit-records/route.ts`
+- `src/app/api/partner-visit-records/route.test.ts`
+- `src/app/api/partner-visit-records/[id]/submit/route.ts`
+- `src/app/api/partner-visit-records/[id]/submit/route.test.ts`
+- `src/app/api/partner-visit-records/[id]/review/route.ts`
+- `src/app/api/partner-visit-records/[id]/review/route.test.ts`
+- `src/app/api/visit-billing-candidates/route.ts`
+- `src/app/api/visit-billing-candidates/route.test.ts`
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`
+- `tools/tests/ui-route-mocked-smoke.spec.ts`
+- `Plans.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prisma format --schema=prisma/schema/`: passed.
+- `pnpm exec prisma validate --schema=prisma/schema/`: passed.
+- `pnpm db:generate`: passed.
+- Focused `pnpm vitest run` over pharmacy partnership policy, partner visit report drafts, pharmacy visit requests, partner visit record create/submit/review, physician report draft, visit billing candidates, and pharmacy cooperation workflow UI: passed, 10 files / 45 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed.
+- `pnpm format:check`: initially failed on `src/app/api/partner-visit-records/[id]/review/route.ts`; after targeted Prettier, rerun passed.
+- `git diff --check`: passed.
+- `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-route-mocked-smoke.spec.ts --project=chromium -g "pharmacy cooperation route-mocked browser workflow smoke"`: passed, 1 Chromium test.
+
+### Remaining / Next Loop
+
+- Migration was generated and validated but not applied to any database, per repository DB mutation rules.
+- Direct authenticated browser proof remains blocked until v0.2 migrations are approved/applied to the local e2e DB.
+- Remaining v0.2 gaps should be re-audited against the attached specification now that contract, share-case, and visit-request lifecycle enums are aligned.
