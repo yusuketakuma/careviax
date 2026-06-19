@@ -47,9 +47,16 @@ const ROOT_ROUTES = [
 const DEMO_IDS = {
   patient: 'ui_demo_patient_1',
   residence: 'ui_demo_residence_1',
+  schedulePreference: 'ui_demo_schedule_preference_1',
+  labObservation: 'ui_demo_lab_observation_1',
   contact: 'ui_demo_contact_1',
   condition: 'ui_demo_condition_1',
   caseId: 'ui_demo_case_1',
+  medicationCycle: 'ui_demo_medication_cycle_1',
+  prescriptionIntake: 'ui_demo_prescription_intake_1',
+  prescriptionLine: 'ui_demo_prescription_line_1',
+  dispenseTask: 'ui_demo_dispense_task_1',
+  cycleTransitionLog: 'ui_demo_cycle_transition_log_1',
   consent: 'ui_demo_consent_1',
   packaging: 'ui_demo_packaging_1',
   medication: 'ui_demo_medication_1',
@@ -174,6 +181,48 @@ async function ensureUiDemoData() {
 
     await client.query(
       `
+        UPDATE "Patient"
+        SET "allergy_info" = $2::jsonb,
+            "updated_at" = NOW()
+        WHERE "id" = $1
+      `,
+      [DEMO_IDS.patient, jsonb([{ drug_name: 'セフェム系', reaction: '発疹', noted_year: 2019 }])],
+    );
+
+    await client.query(
+      `
+        INSERT INTO "PatientSchedulePreference" (
+          "id","org_id","patient_id","swallowing_route","created_at","updated_at"
+        ) VALUES ($1,$2,$3,$4,NOW(),NOW())
+        ON CONFLICT ("patient_id") DO UPDATE
+        SET "org_id" = EXCLUDED."org_id",
+            "swallowing_route" = EXCLUDED."swallowing_route",
+            "updated_at" = NOW()
+      `,
+      [DEMO_IDS.schedulePreference, base.org_id, DEMO_IDS.patient, '錠剤OK・大きい錠は半割'],
+    );
+
+    await client.query(
+      `
+        INSERT INTO "PatientLabObservation" (
+          "id","org_id","patient_id","analyte_code","measured_at","value_numeric","unit","source_type","note","created_at","updated_at"
+        ) VALUES ($1,$2,$3,'egfr',CURRENT_DATE,38,'mL/min/1.73m2','manual',$4,NOW(),NOW())
+        ON CONFLICT ("id") DO UPDATE
+        SET "org_id" = EXCLUDED."org_id",
+            "patient_id" = EXCLUDED."patient_id",
+            "analyte_code" = 'egfr',
+            "measured_at" = CURRENT_DATE,
+            "value_numeric" = 38,
+            "unit" = 'mL/min/1.73m2',
+            "source_type" = 'manual',
+            "note" = EXCLUDED."note",
+            "updated_at" = NOW()
+      `,
+      [DEMO_IDS.labObservation, base.org_id, DEMO_IDS.patient, 'UI E2E safety board seed'],
+    );
+
+    await client.query(
+      `
         UPDATE "Residence"
         SET "is_primary" = false,
             "updated_at" = NOW()
@@ -293,6 +342,117 @@ async function ensureUiDemoData() {
           },
         }),
         'UI検証用の進行ケース',
+      ],
+    );
+
+    await client.query(
+      `
+        INSERT INTO "MedicationCycle" (
+          "id","org_id","case_id","patient_id","overall_status","exception_status","created_at","updated_at"
+        ) VALUES ($1,$2,$3,$4,'dispensed',NULL,NOW(),NOW())
+        ON CONFLICT ("id") DO UPDATE
+        SET "org_id" = EXCLUDED."org_id",
+            "case_id" = EXCLUDED."case_id",
+            "patient_id" = EXCLUDED."patient_id",
+            "overall_status" = 'dispensed',
+            "exception_status" = NULL,
+            "created_at" = NOW(),
+            "updated_at" = NOW()
+      `,
+      [DEMO_IDS.medicationCycle, base.org_id, DEMO_IDS.caseId, DEMO_IDS.patient],
+    );
+
+    await client.query(
+      `
+        INSERT INTO "PrescriptionIntake" (
+          "id","org_id","cycle_id","source_type","external_prescription_id","rx_number","prescribed_date","prescriber_name","prescriber_institution","prescription_category","created_at","updated_at"
+        ) VALUES ($1,$2,$3,'paper',$4,$5,CURRENT_DATE,$6,$7,'regular',NOW(),NOW())
+        ON CONFLICT ("id") DO UPDATE
+        SET "org_id" = EXCLUDED."org_id",
+            "cycle_id" = EXCLUDED."cycle_id",
+            "source_type" = 'paper',
+            "external_prescription_id" = EXCLUDED."external_prescription_id",
+            "rx_number" = EXCLUDED."rx_number",
+            "prescribed_date" = CURRENT_DATE,
+            "prescriber_name" = EXCLUDED."prescriber_name",
+            "prescriber_institution" = EXCLUDED."prescriber_institution",
+            "prescription_category" = 'regular',
+            "created_at" = NOW(),
+            "updated_at" = NOW()
+      `,
+      [
+        DEMO_IDS.prescriptionIntake,
+        base.org_id,
+        DEMO_IDS.medicationCycle,
+        'ui-demo-external-prescription-1',
+        'UI-DEMO-RX-001',
+        '佐藤 医師',
+        '東京内科クリニック',
+      ],
+    );
+
+    await client.query(
+      `
+        INSERT INTO "PrescriptionLine" (
+          "id","org_id","intake_id","line_number","drug_name","drug_code","dose","frequency","days","quantity","unit","dispensing_method","packaging_instruction_tags","start_date","end_date","created_at","updated_at"
+        ) VALUES ($1,$2,$3,1,$4,NULL,'1錠','1日1回 朝食後',30,30,'錠','unit_dose',ARRAY['narcotic','cold_storage','unit_dose']::"PackagingInstructionTag"[],CURRENT_DATE,CURRENT_DATE + INTERVAL '29 days',NOW(),NOW())
+        ON CONFLICT ("id") DO UPDATE
+        SET "org_id" = EXCLUDED."org_id",
+            "intake_id" = EXCLUDED."intake_id",
+            "line_number" = 1,
+            "drug_name" = EXCLUDED."drug_name",
+            "drug_code" = NULL,
+            "dose" = '1錠',
+            "frequency" = '1日1回 朝食後',
+            "days" = 30,
+            "quantity" = 30,
+            "unit" = '錠',
+            "dispensing_method" = 'unit_dose',
+            "packaging_instruction_tags" = ARRAY['narcotic','cold_storage','unit_dose']::"PackagingInstructionTag"[],
+            "start_date" = CURRENT_DATE,
+            "end_date" = CURRENT_DATE + INTERVAL '29 days',
+            "updated_at" = NOW()
+      `,
+      [DEMO_IDS.prescriptionLine, base.org_id, DEMO_IDS.prescriptionIntake, medicationName],
+    );
+
+    await client.query(
+      `
+        INSERT INTO "DispenseTask" (
+          "id","org_id","cycle_id","assigned_to","priority","due_date","status","created_at","updated_at"
+        ) VALUES ($1,$2,$3,$4,'normal',NOW() + INTERVAL '2 hours','completed',NOW(),NOW())
+        ON CONFLICT ("id") DO UPDATE
+        SET "org_id" = EXCLUDED."org_id",
+            "cycle_id" = EXCLUDED."cycle_id",
+            "assigned_to" = EXCLUDED."assigned_to",
+            "priority" = 'normal',
+            "due_date" = NOW() + INTERVAL '2 hours',
+            "status" = 'completed',
+            "updated_at" = NOW()
+      `,
+      [DEMO_IDS.dispenseTask, base.org_id, DEMO_IDS.medicationCycle, base.user_id],
+    );
+
+    await client.query(
+      `
+        INSERT INTO "CycleTransitionLog" (
+          "id","org_id","cycle_id","from_status","to_status","actor_id","note","created_at"
+        ) VALUES ($1,$2,$3,'dispensing','dispensed',$4,$5,NOW())
+        ON CONFLICT ("id") DO UPDATE
+        SET "org_id" = EXCLUDED."org_id",
+            "cycle_id" = EXCLUDED."cycle_id",
+            "from_status" = 'dispensing',
+            "to_status" = 'dispensed',
+            "actor_id" = EXCLUDED."actor_id",
+            "note" = EXCLUDED."note",
+            "created_at" = NOW()
+      `,
+      [
+        DEMO_IDS.cycleTransitionLog,
+        base.org_id,
+        DEMO_IDS.medicationCycle,
+        base.user_id,
+        'UI E2E representative patient detail seed',
       ],
     );
 
