@@ -20,6 +20,12 @@ vi.mock('sonner', () => ({
 
 setupDomTestEnv();
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function isoDateAfterDays(days: number) {
+  return new Date(Date.now() + days * DAY_MS).toISOString();
+}
+
 function createWrapper() {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -117,7 +123,7 @@ describe('PharmacyCooperationSetupContent', () => {
                   id: 'contract_1',
                   status: 'active',
                   effective_from: '2026-06-01T00:00:00.000Z',
-                  effective_to: null,
+                  effective_to: isoDateAfterDays(30),
                   partnership: {
                     id: 'partnership_active',
                     status: 'active',
@@ -295,6 +301,20 @@ describe('PharmacyCooperationSetupContent', () => {
     expect(screen.getByLabelText('薬局間契約内検索')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: '列' }).length).toBeGreaterThanOrEqual(3);
     expect(document.body.textContent).not.toContain('山田');
+  });
+
+  it('shows PHI-free contract renewal alerts for contracts ending soon', async () => {
+    renderContent();
+
+    expect(await screen.findByText('契約更新アラート')).toBeTruthy();
+    const alertList = screen.getByRole('list', { name: '契約更新アラート一覧' });
+
+    expect(within(alertList).getByText('contract_1')).toBeTruthy();
+    expect(within(alertList).getByText(/あと\d+日/)).toBeTruthy();
+    expect(alertList.textContent).toContain('協力薬局');
+    expect(alertList.textContent).toContain('有償/定額');
+    expect(alertList.textContent).not.toContain('山田');
+    expect(alertList.textContent).not.toContain('signed-contract.pdf');
   });
 
   it('creates a partner pharmacy and a draft pharmacy partnership', async () => {

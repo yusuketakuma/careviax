@@ -4,8 +4,18 @@ import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Eye, FileText, Handshake, Plus, RefreshCw, Save } from 'lucide-react';
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Eye,
+  FileText,
+  Handshake,
+  Plus,
+  RefreshCw,
+  Save,
+} from 'lucide-react';
 import { toast } from 'sonner';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -105,6 +115,12 @@ type ContractDocumentPreview = {
     };
     articles: Array<{ article_no: number; title: string }>;
   };
+};
+
+type ContractRenewalAlert = {
+  contract: PharmacyContractRow;
+  daysRemaining: number;
+  expiresOn: string;
 };
 
 type PartnerPharmacyForm = {
@@ -290,6 +306,50 @@ function statusVariant(status: string): 'default' | 'secondary' | 'destructive' 
 function formatDate(value: string | null | undefined) {
   if (!value) return '-';
   return value.slice(0, 10);
+}
+
+const CONTRACT_RENEWAL_ALERT_WINDOW_DAYS = 60;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function dateKeyUtcTime(value: string | null | undefined) {
+  const dateKey = formatDate(value);
+  if (dateKey === '-' || !/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return null;
+  const time = Date.parse(`${dateKey}T00:00:00.000Z`);
+  return Number.isNaN(time) ? null : time;
+}
+
+function daysUntilDate(value: string | null | undefined, today: string) {
+  const target = dateKeyUtcTime(value);
+  const base = dateKeyUtcTime(today);
+  if (target === null || base === null) return null;
+  return Math.round((target - base) / DAY_MS);
+}
+
+function shouldShowContractRenewalAlert(status: string) {
+  return [
+    'active',
+    'suspended',
+    'expired',
+    'pending_base_approval',
+    'pending_partner_approval',
+  ].includes(status);
+}
+
+function buildContractRenewalAlerts(contracts: PharmacyContractRow[], today: string) {
+  return contracts
+    .flatMap<ContractRenewalAlert>((contract) => {
+      if (!shouldShowContractRenewalAlert(contract.status)) return [];
+      const daysRemaining = daysUntilDate(contract.effective_to, today);
+      if (daysRemaining === null || daysRemaining > CONTRACT_RENEWAL_ALERT_WINDOW_DAYS) return [];
+      return [
+        {
+          contract,
+          daysRemaining,
+          expiresOn: formatDate(contract.effective_to),
+        },
+      ];
+    })
+    .sort((left, right) => left.daysRemaining - right.daysRemaining);
 }
 
 function formatYen(value: number | null | undefined) {
@@ -683,6 +743,77 @@ function ContractTable({ contracts }: { contracts: PharmacyContractRow[] }) {
   );
 }
 
+function renewalAlertLabel(daysRemaining: number) {
+  if (daysRemaining < 0) return `期限切れ ${Math.abs(daysRemaining)}日超過`;
+  if (daysRemaining === 0) return '本日期限';
+  return `あと${daysRemaining}日`;
+}
+
+function ContractRenewalAlerts({ alerts }: { alerts: ContractRenewalAlert[] }) {
+  if (alerts.length === 0) return null;
+
+  const hasExpiredContract = alerts.some((alert) => alert.daysRemaining < 0);
+
+  return (
+    <SectionShell
+      title="契約更新アラート"
+      description={`終了日が${CONTRACT_RENEWAL_ALERT_WINDOW_DAYS}日以内または期限切れの薬局間契約を確認します。`}
+    >
+      <div className="space-y-3">
+        <Alert variant={hasExpiredContract ? 'destructive' : 'default'}>
+          <AlertTriangle className="size-4" aria-hidden="true" />
+          <AlertTitle>契約期限の確認が必要です</AlertTitle>
+          <AlertDescription>
+            {alerts.length}
+            件の契約が更新確認の対象です。終了日、費用条件、双方の承認記録を確認してください。
+          </AlertDescription>
+        </Alert>
+        <div role="list" aria-label="契約更新アラート一覧" className="grid gap-3 lg:grid-cols-2">
+          {alerts.map(({ contract, daysRemaining, expiresOn }) => (
+            <div
+              key={contract.id}
+              role="listitem"
+              className="rounded-md border border-border/70 bg-background p-3 text-sm"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="font-medium text-foreground">{contract.id}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {contract.partnership.base_site.name} /{' '}
+                    {contract.partnership.partner_pharmacy.name}
+                  </p>
+                </div>
+                <Badge variant={daysRemaining < 0 ? 'destructive' : 'outline'}>
+                  {renewalAlertLabel(daysRemaining)}
+                </Badge>
+              </div>
+              <dl className="mt-3 grid gap-1.5 text-xs text-muted-foreground sm:grid-cols-2">
+                <div className="flex items-center justify-between gap-3">
+                  <dt>終了日</dt>
+                  <dd className="font-medium tabular-nums text-foreground">{expiresOn}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <dt>契約状態</dt>
+                  <dd className="font-medium text-foreground">{statusLabel(contract.status)}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-3 sm:col-span-2">
+                  <dt>費用条件</dt>
+                  <dd className="font-medium text-foreground">
+                    {billingModelLabel(contract.latest_version?.active_fee_rule?.billing_model)}
+                    <span className="ml-2 tabular-nums">
+                      {formatYen(contract.latest_version?.active_fee_rule?.unit_price)}
+                    </span>
+                  </dd>
+                </div>
+              </dl>
+            </div>
+          ))}
+        </div>
+      </div>
+    </SectionShell>
+  );
+}
+
 export function PharmacyCooperationSetupContent() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
@@ -773,6 +904,7 @@ export function PharmacyCooperationSetupContent() {
     staleTime: 30_000,
   });
   const contractDocuments = contractDocumentsQuery.data?.data ?? [];
+  const contractRenewalAlerts = buildContractRenewalAlerts(contracts, today);
   const isLoading =
     sitesQuery.isLoading ||
     partnersQuery.isLoading ||
@@ -1054,6 +1186,8 @@ export function PharmacyCooperationSetupContent() {
           </p>
         </div>
       </div>
+
+      <ContractRenewalAlerts alerts={contractRenewalAlerts} />
 
       <SectionShell title="協力薬局登録" description="連携先薬局の基本情報を登録します。">
         <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr_auto] lg:items-end">
