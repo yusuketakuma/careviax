@@ -4562,6 +4562,98 @@ Implemented:
 
 - The paid DB-backed flow is now covered through PDF/payment. Remaining v0.2 proof gaps include free cooperation report DB-backed proof, share-case message thread DB-backed proof, broader invoice search/audit browser coverage, and the existing stale patient-detail `safety-board` assertion.
 
+## 20260620-0349 JST - Conferences Inline Validation
+
+### Summary
+
+- Replaced toast-only required validation for conference note creation with persistent inline errors for title, conference datetime, and content/structured sections.
+- Replaced toast-only required validation for community activity creation with persistent inline errors for activity type, activity datetime, and title.
+- Added `aria-invalid` / `aria-describedby` wiring plus `role="alert"` error text, following `docs/ui-ux-design-guidelines.md` guidance for explicit dynamic errors.
+- Added regression tests that invalid submits show inline errors and do not call the create mutations.
+
+### Files Changed
+
+- `src/app/(dashboard)/conferences/conferences-content.tsx`
+- `src/app/(dashboard)/conferences/conferences-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec eslint 'src/app/(dashboard)/conferences/conferences-content.tsx' 'src/app/(dashboard)/conferences/conferences-content.test.tsx' 'src/app/(dashboard)/patients/[id]/consent/consent-records-content.tsx' 'src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx' tools/tests/ui-major-screens.spec.ts`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/conferences/conferences-content.test.tsx' 'src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 2 files / 13 tests, with an existing DataTable act warning in the consent focused test.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check`: passed.
+- `pnpm lint`: passed.
+
+### Remaining / Next Loop
+
+- Conference note/activity required-field validation is now visible inline. Browser/a11y proof for the conferences page remains a possible follow-up if this route enters the UI proof queue.
+
+## 20260620-0346 JST - Free Cooperation Report DB-backed Proof
+
+### Summary
+
+- Added a separate UI demo free partner pharmacy, active partnership, active contract, active contract version, and `free` fee rule fixture.
+- Generalized the patient-share cleanup and share-case read helpers so paid and free E2E cases can run against the same patient without deleting each other's partnership/contract records.
+- Added a DB-backed Playwright proof for the free cooperation path: share case, consent, patient link approval/acceptance, activation, visit request, partner visit record, base confirmation, visit billing candidate, `free_cooperation_report` draft/issue, PDF generation, and workflow table visibility.
+- Confirmed the existing paid DB-backed flow still passes after the helper changes.
+
+### Files Changed
+
+- `tools/tests/ui-major-screens.spec.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prisma validate --schema=prisma/schema/`: passed.
+- `pnpm exec prettier --write tools/tests/ui-major-screens.spec.ts`: passed.
+- `pnpm exec eslint tools/tests/ui-major-screens.spec.ts`: passed.
+- `pnpm typecheck`: initially failed because `readUiDemoPatientShareCase` inferred a literal default partnership type, then passed after annotating the parameter as `string`.
+- `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-major-screens.spec.ts --grep "patient share flow produces a DB-backed free cooperation report"`: passed, 2 projects / 2 tests.
+- `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-major-screens.spec.ts --grep "patient card drives a DB-backed share|patient share flow produces a DB-backed free cooperation report" --project=chromium`: passed, 2 tests.
+- `pnpm format:check`: passed.
+- `git diff --check`: passed.
+- `pnpm lint`: passed.
+
+### Remaining / Next Loop
+
+- Free cooperation report output is now DB-backed through issued report PDF. Remaining v0.2 proof gaps include share-case message thread DB-backed proof, broader invoice search/audit browser coverage, and the stale patient-detail `safety-board` expectation.
+- The E2E server emitted an existing `pg@9` deprecation warning about concurrent `client.query()` use during local Playwright; it did not fail the run but should be tracked separately if it recurs in focused DB helper work.
+
+## 20260620-0344 JST - Consent Record Inline Validation
+
+### Summary
+
+- Replaced toast-only validation in the consent-record create dialog with persistent inline errors for missing consent type and obtained date.
+- Added `aria-invalid` / `aria-describedby` wiring for the required consent-type Select trigger and obtained-date input.
+- Kept toast as secondary feedback and `noValidate` on the form so the custom inline validation runs before any create mutation.
+- Extended regression coverage to prove invalid submits do not `POST /api/consent-records`, while existing document-file create/update behavior remains unchanged.
+
+### Files Changed
+
+- `src/app/(dashboard)/patients/[id]/consent/consent-records-content.tsx`
+- `src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/consent/consent-records-content.tsx' 'src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx'`: passed.
+- `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/consent/consent-records-content.tsx' 'src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 6 tests, with an existing DataTable act warning in this focused test environment.
+- `git diff --check -- 'src/app/(dashboard)/patients/[id]/consent/consent-records-content.tsx' 'src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- `pnpm lint`: passed.
+- Verifier subagent reported no blocking findings for the consent-record inline-validation slice.
+
+### Remaining / Next Loop
+
+- Consent-record create validation is now visible inline for the required fields. Broader UI/UX remediation remains active for remaining toast-only form validation, browser/a11y proof expansion, and any unrelated dirty E2E spec work preserved in the worktree.
+
 ## 20260620-0224 JST - Admin Analytics Monthly Trend DataTable
 
 ### Summary
