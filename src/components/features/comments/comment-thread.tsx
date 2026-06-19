@@ -179,7 +179,7 @@ export function CommentThread({ entityType, entityId, variant = 'card' }: Commen
   }
 
   return (
-    <Card className="border-slate-200 shadow-sm">
+    <Card className="border-border shadow-sm">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
           <MessageSquare className="size-4" aria-hidden="true" />

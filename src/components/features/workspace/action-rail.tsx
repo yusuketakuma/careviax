@@ -173,7 +173,7 @@ export function BlockedReasonsPanel({ reasons, emptyLabel, className }: BlockedR
                   key={reason.id}
                   className={cn(
                     'flex items-start gap-2 text-sm leading-5',
-                    reason.severity === 'critical' ? 'text-destructive' : 'text-amber-600',
+                    reason.severity === 'critical' ? 'text-destructive' : 'text-state-confirm',
                   )}
                 >
                   {reason.severity === 'critical' ? (

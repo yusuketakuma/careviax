@@ -1,8 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { StateBadge } from '@/components/ui/state-badge';
+import { ISSUE_STATUS_ROLE } from '@/lib/constants/status-labels';
+import { STATUS_TOKENS, type StatusRole } from '@/lib/constants/status-tokens';
 import { cn } from '@/lib/utils';
 import type { CareTrend } from '@/types/visit-brief';
 
@@ -10,54 +12,41 @@ type IssueItem = CareTrend['issue_timeline'][number];
 
 const MAX_VISIBLE = 5;
 
-const STATUS_CONFIG: Record<
-  string,
-  { label: string; className: string; dotClass: string }
-> = {
-  open: {
-    label: '未解決',
-    className: 'border-blue-200 bg-blue-50 text-blue-700',
-    dotClass: 'bg-blue-500',
-  },
-  in_progress: {
-    label: '対応中',
-    className: 'border-green-200 bg-green-50 text-green-700',
-    dotClass: 'bg-green-500',
-  },
-  resolved: {
-    label: '解決済',
-    className: 'border-slate-200 bg-slate-50 text-slate-600',
-    dotClass: 'bg-slate-400',
-  },
+const STATUS_LABELS: Record<string, string> = {
+  open: '未解決',
+  in_progress: '対応中',
+  resolved: '解決済',
 };
 
-function getStatusConfig(status: string) {
-  return (
-    STATUS_CONFIG[status] ?? {
-      label: status,
-      className: 'border-slate-200 bg-slate-50 text-slate-600',
-      dotClass: 'bg-slate-400',
-    }
-  );
+function resolveIssueRole(status: string): StatusRole {
+  const role = ISSUE_STATUS_ROLE[status];
+  return role && role !== 'neutral' ? role : 'readonly';
 }
 
 function IssueNode({ issue }: { issue: IssueItem }) {
-  const config = getStatusConfig(issue.current_status);
+  const role = resolveIssueRole(issue.current_status);
+  const label = STATUS_LABELS[issue.current_status] ?? issue.current_status;
 
   return (
     <li className="relative flex gap-3 pb-4 last:pb-0">
       {/* vertical line */}
-      <div className="absolute left-[7px] top-4 h-full w-px bg-border last:hidden" aria-hidden="true" />
+      <div
+        className="absolute left-[7px] top-4 h-full w-px bg-border last:hidden"
+        aria-hidden="true"
+      />
       {/* dot */}
-      <div className={cn('mt-1 size-3.5 shrink-0 rounded-full ring-2 ring-background', config.dotClass)} />
+      <div
+        className={cn(
+          'mt-1 size-3.5 shrink-0 rounded-full ring-2 ring-background',
+          STATUS_TOKENS[role].dotClassName,
+        )}
+        aria-hidden="true"
+      />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <Badge
-            variant="outline"
-            className={cn('text-[10px] font-medium py-0', config.className)}
-          >
-            {config.label}
-          </Badge>
+          <StateBadge role={role} className="py-0 text-[10px] font-medium">
+            {label}
+          </StateBadge>
           <span className="text-[11px] text-muted-foreground">
             {issue.identified_at.slice(0, 10)}
             {issue.resolved_at ? ` → ${issue.resolved_at.slice(0, 10)}` : ''}

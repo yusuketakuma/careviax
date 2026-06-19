@@ -25,7 +25,12 @@ type FormValues = {
  * Must be used inside a react-hook-form <FormProvider>.
  */
 export function ResidualMedicationForm() {
-  const { register, watch, setValue, formState: { errors } } = useFormContext<FormValues>();
+  const {
+    register,
+    watch,
+    setValue,
+    formState: { errors },
+  } = useFormContext<FormValues>();
   const { fields, append, remove } = useFieldArray<FormValues>({
     name: 'residual_medications',
   });
@@ -65,9 +70,7 @@ export function ResidualMedicationForm() {
       </div>
 
       {fields.length === 0 && (
-        <p className="py-4 text-center text-sm text-muted-foreground">
-          薬剤を追加してください
-        </p>
+        <p className="py-4 text-center text-sm text-muted-foreground">薬剤を追加してください</p>
       )}
 
       <div className="space-y-3">
@@ -77,7 +80,7 @@ export function ResidualMedicationForm() {
           const dailyDose = Number(med?.prescribed_daily_dose ?? 0);
           const excessDays = calcExcessDays(remaining, dailyDose);
           const isProhibited = med?.is_prohibited_reduction ?? false;
-          const hasError = !!(errors.residual_medications?.[index]);
+          const hasError = !!errors.residual_medications?.[index];
 
           return (
             <div
@@ -86,9 +89,7 @@ export function ResidualMedicationForm() {
             >
               {/* Header row */}
               <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs font-medium text-muted-foreground">
-                  薬剤 {index + 1}
-                </span>
+                <span className="text-xs font-medium text-muted-foreground">薬剤 {index + 1}</span>
                 <div className="flex items-center gap-2">
                   {isProhibited && (
                     <Badge variant="destructive" className="gap-1 text-xs">
@@ -97,7 +98,10 @@ export function ResidualMedicationForm() {
                     </Badge>
                   )}
                   {excessDays !== null && excessDays > 7 && !isProhibited && (
-                    <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">
+                    <Badge
+                      variant="outline"
+                      className="border-transparent bg-state-confirm/10 text-xs text-state-confirm"
+                    >
                       余剰 {excessDays}日分
                     </Badge>
                   )}
@@ -123,7 +127,10 @@ export function ResidualMedicationForm() {
                 {/* Drug name */}
                 <div className="col-span-2 space-y-1">
                   <Label htmlFor={`med-name-${index}`} className="text-xs">
-                    薬剤名 <span className="text-destructive" aria-label="必須">*</span>
+                    薬剤名{' '}
+                    <span className="text-destructive" aria-label="必須">
+                      *
+                    </span>
                   </Label>
                   <Input
                     id={`med-name-${index}`}
@@ -160,7 +167,10 @@ export function ResidualMedicationForm() {
                 {/* Remaining quantity */}
                 <div className="space-y-1">
                   <Label htmlFor={`med-remaining-${index}`} className="text-xs">
-                    残数 <span className="text-destructive" aria-label="必須">*</span>
+                    残数{' '}
+                    <span className="text-destructive" aria-label="必須">
+                      *
+                    </span>
                   </Label>
                   <Input
                     id={`med-remaining-${index}`}
@@ -209,7 +219,7 @@ export function ResidualMedicationForm() {
                     onChange={(e) => {
                       setValue(
                         `residual_medications.${index}.is_prohibited_reduction`,
-                        e.target.checked
+                        e.target.checked,
                       );
                     }}
                   />

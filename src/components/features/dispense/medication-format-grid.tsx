@@ -37,12 +37,10 @@ function LineBadges({ line }: { line: MedicationFormatLine }) {
         <span
           key={label}
           className={cn(
-            'inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold',
-            label === '麻薬' || label === '粉砕不可'
-              ? 'border-red-200 bg-red-50 text-red-800'
-              : label === '冷所'
-                ? 'border-cyan-200 bg-cyan-50 text-cyan-800'
-                : 'border-amber-200 bg-amber-50 text-amber-800',
+            'inline-flex items-center rounded-full border border-transparent px-2 py-0.5 text-xs font-semibold',
+            label === '麻薬' || label === '粉砕不可' || label === '冷所'
+              ? 'bg-tag-hazard/10 text-tag-hazard'
+              : 'bg-tag-info/10 text-tag-info',
           )}
         >
           {label}
@@ -65,9 +63,9 @@ function SlotValue({
   return (
     <span
       className={cn(
-        'inline-flex min-h-8 min-w-12 items-center justify-center rounded-md border px-1.5 text-sm font-semibold tabular-nums',
-        slot.status === 'scheduled' && 'border-emerald-200 bg-emerald-50 text-emerald-800',
-        slot.status === 'needs_check' && 'border-amber-200 bg-amber-50 text-amber-800',
+        'inline-flex min-h-8 min-w-12 items-center justify-center rounded-md border border-transparent px-1.5 text-sm font-semibold tabular-nums',
+        slot.status === 'scheduled' && 'bg-state-done/10 text-state-done',
+        slot.status === 'needs_check' && 'bg-state-confirm/10 text-state-confirm',
         slot.status === 'none' && 'border-border/60 bg-muted/40 text-muted-foreground',
         className,
       )}
@@ -163,10 +161,10 @@ function DesktopGroupTable({ group }: { group: MedicationFormatGroup }) {
                     className={cn(
                       'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold',
                       line.statusLabel === '数量未確定'
-                        ? 'bg-red-50 text-red-700'
+                        ? 'bg-state-blocked/10 text-state-blocked'
                         : line.statusLabel === '調剤済'
-                          ? 'bg-emerald-50 text-emerald-700'
-                          : 'bg-slate-100 text-slate-600',
+                          ? 'bg-state-done/10 text-state-done'
+                          : 'bg-muted text-muted-foreground',
                     )}
                   >
                     {line.statusLabel}

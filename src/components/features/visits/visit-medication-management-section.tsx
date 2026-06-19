@@ -336,7 +336,7 @@ function PreviousStructuredReusePanel({
           {reuse.carry_forward_items.slice(0, 6).map((item) => (
             <span
               key={item}
-              className="inline-flex min-h-7 items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-950"
+              className="inline-flex min-h-7 items-center rounded-full border border-transparent bg-state-confirm/10 px-2.5 py-1 text-xs font-medium text-state-confirm"
             >
               {item}
             </span>
@@ -923,7 +923,7 @@ export function VisitMedicationManagementSection({
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-1">
             <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-              <ClipboardCheck className="size-4 text-emerald-700" aria-hidden="true" />
+              <ClipboardCheck className="size-4 text-state-done" aria-hidden="true" />
               本日の訪問薬剤管理
             </h3>
             <p className="text-xs leading-5 text-muted-foreground">
@@ -938,8 +938,8 @@ export function VisitMedicationManagementSection({
           className={cn(
             'rounded-lg border px-3 py-2 text-sm',
             isReady
-              ? 'border-emerald-200 bg-emerald-50/70 text-emerald-900'
-              : 'border-amber-200 bg-amber-50/80 text-amber-950',
+              ? 'border-state-done/40 bg-state-done/10 text-state-done'
+              : 'border-state-confirm/40 bg-state-confirm/10 text-state-confirm',
           )}
           role="status"
           aria-live="polite"
@@ -970,7 +970,7 @@ export function VisitMedicationManagementSection({
                   className={cn(
                     'inline-flex min-h-7 items-center rounded-full border px-2.5 py-1 text-xs font-medium',
                     item.severity === 'urgent' || item.severity === 'high'
-                      ? 'border-amber-200 bg-amber-50 text-amber-950'
+                      ? 'border-transparent bg-state-confirm/10 text-state-confirm'
                       : 'border-border/70 bg-background text-foreground',
                   )}
                 >

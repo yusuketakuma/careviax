@@ -1,8 +1,8 @@
 'use client';
 
 import { AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { StateBadge } from '@/components/ui/state-badge';
 import type { CareManagerReportContent } from '@/types/care-report-content';
 import { formatReportDate } from './report-date-format';
 
@@ -22,11 +22,11 @@ function ImpactCard({ label, value }: { label: string; value: string }) {
   return (
     <div
       className={`rounded-md border p-3 ${
-        hasIssue ? 'border-amber-300 bg-amber-50' : 'border-border bg-muted/20'
+        hasIssue ? 'border-state-confirm/30 bg-state-confirm/10' : 'border-border bg-muted/20'
       }`}
     >
       <p className="mb-1 text-xs font-medium text-muted-foreground">{label}</p>
-      <p className={`text-sm font-medium ${hasIssue ? 'text-amber-800' : 'text-foreground'}`}>
+      <p className={`text-sm font-medium ${hasIssue ? 'text-state-confirm' : 'text-foreground'}`}>
         {value || '問題なし'}
       </p>
     </div>
@@ -37,7 +37,7 @@ function BoolItem({ label, value }: { label: string; value: boolean }) {
   return (
     <div className="flex items-center gap-2 text-sm">
       {value ? (
-        <CheckCircle2 className="size-4 shrink-0 text-green-600" aria-hidden="true" />
+        <CheckCircle2 className="size-4 shrink-0 text-state-done" aria-hidden="true" />
       ) : (
         <XCircle className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
       )}
@@ -51,16 +51,16 @@ export function CareManagerReportView({ content }: { content: CareManagerReportC
     <div className="space-y-4">
       {/* Warnings */}
       {content.warnings.length > 0 && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
-          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-amber-800">
+        <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 p-3">
+          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-state-confirm">
             <AlertTriangle className="size-3.5" aria-hidden="true" />
             算定要件の未充足項目
           </p>
           <div className="flex flex-wrap gap-1.5">
             {content.warnings.map((w, i) => (
-              <Badge key={i} className="bg-amber-100 text-amber-800 hover:bg-amber-100">
+              <StateBadge key={i} role="confirm">
                 {w}
-              </Badge>
+              </StateBadge>
             ))}
           </div>
         </div>
@@ -164,7 +164,7 @@ export function CareManagerReportView({ content }: { content: CareManagerReportC
                 {content.residual_status.reduction_proposals.map((proposal, i) => (
                   <li key={i} className="flex items-start gap-1.5 text-sm">
                     <span
-                      className="mt-1 size-1.5 shrink-0 rounded-full bg-amber-500"
+                      className="mt-1 size-1.5 shrink-0 rounded-full bg-state-confirm"
                       aria-hidden="true"
                     />
                     {proposal}

@@ -69,7 +69,7 @@ function SidebarNavItem({
         <span
           className={cn(
             'inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold leading-none text-white',
-            item.badgeTone === 'caution' ? 'bg-amber-500' : 'bg-red-500',
+            item.badgeTone === 'caution' ? 'bg-state-confirm' : 'bg-state-blocked',
           )}
           data-testid={`sidebar-nav-badge-${item.href.replace(/\//g, '-')}`}
         >

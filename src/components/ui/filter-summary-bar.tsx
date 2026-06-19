@@ -27,7 +27,7 @@ export function FilterSummaryBar({ items, className, actions }: FilterSummaryBar
           <Badge
             key={item.label}
             variant={item.tone === 'danger' ? 'destructive' : 'outline'}
-            className={cn(item.tone === 'warning' && 'border-amber-300 text-amber-800')}
+            className={cn(item.tone === 'warning' && 'border-state-confirm/40 text-state-confirm')}
           >
             {item.label} {item.value}
           </Badge>

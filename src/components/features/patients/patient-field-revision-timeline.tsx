@@ -31,8 +31,8 @@ function FilterChip({
       className={cn(
         'rounded-full border px-2.5 py-1 text-xs transition-colors',
         active
-          ? 'border-sky-300 bg-sky-50 text-sky-700'
-          : 'border-border/70 bg-background text-muted-foreground hover:bg-muted'
+          ? 'border-tag-info/40 bg-tag-info/10 text-tag-info'
+          : 'border-border/70 bg-background text-muted-foreground hover:bg-muted',
       )}
     >
       {children}
@@ -49,9 +49,12 @@ export function PatientFieldRevisionTimeline({ patientId }: { patientId: string 
     queryFn: async () => {
       const params = new URLSearchParams();
       if (category) params.set('category', category);
-      const response = await fetch(`/api/patients/${patientId}/field-revisions?${params.toString()}`, {
-        headers: { 'x-org-id': orgId },
-      });
+      const response = await fetch(
+        `/api/patients/${patientId}/field-revisions?${params.toString()}`,
+        {
+          headers: { 'x-org-id': orgId },
+        },
+      );
       if (!response.ok) {
         throw new Error('変更履歴の取得に失敗しました');
       }

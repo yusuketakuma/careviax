@@ -46,7 +46,7 @@ describe('ProcessChips', () => {
     ]);
 
     const doneChip = within(list).getByText('調剤');
-    expect(doneChip.className).toContain('border-emerald-300');
+    expect(doneChip.className).toContain('text-state-done');
     expect(doneChip.querySelector('svg')).toBeTruthy();
 
     const currentChip = within(list).getByText('監査');

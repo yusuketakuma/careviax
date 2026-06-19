@@ -61,17 +61,17 @@ export function PatientMcsSummarySection({
   if (isLoading) return <Loading />;
   if (error) {
     return shell(
-      <div className="flex items-start gap-2 rounded-lg border border-amber-300/60 bg-amber-50/80 p-3 text-sm text-amber-800">
+      <div className="flex items-start gap-2 rounded-lg border border-state-confirm/30 bg-state-confirm/10 p-3 text-sm text-state-confirm">
         <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
         <p>MCS 要約を取得できませんでした。患者詳細の MCS 連携画面で再同期してください。</p>
-      </div>
+      </div>,
     );
   }
   if (data === null) {
     return shell(
       <p className="text-sm text-muted-foreground">
         このロールでは MCS 要点を表示しません。必要時は権限のある担当者から確認してください。
-      </p>
+      </p>,
     );
   }
   if (!data) {
@@ -81,7 +81,8 @@ export function PatientMcsSummarySection({
     return shell(
       <div className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          MCS の要点サマリーはまだありません。患者詳細の MCS 連携ページで同期するとここに表示されます。
+          MCS の要点サマリーはまだありません。患者詳細の MCS
+          連携ページで同期するとここに表示されます。
         </p>
         <Link
           href={`/patients/${patientId}/mcs`}
@@ -90,14 +91,14 @@ export function PatientMcsSummarySection({
           <Link2 className="mr-1.5 size-4" aria-hidden="true" />
           MCS 連携ページ
         </Link>
-      </div>
+      </div>,
     );
   }
 
   return (
     <div className="space-y-2">
       {data.link?.lastSyncError ? (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-300/60 bg-amber-50/80 p-3 text-sm text-amber-800">
+        <div className="flex items-start gap-2 rounded-lg border border-state-confirm/30 bg-state-confirm/10 p-3 text-sm text-state-confirm">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <p>同期エラー中のため、以下は前回成功時点の MCS 要約です。</p>
         </div>

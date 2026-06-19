@@ -30,7 +30,7 @@ export function OfflineDraftIndicator({
     return (
       <Link
         href="/offline-sync"
-        className="flex items-center gap-1 rounded-md px-1 py-0.5 text-xs text-green-700 hover:bg-green-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex items-center gap-1 rounded-md px-1 py-0.5 text-xs text-state-done hover:bg-state-done/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         role="status"
         aria-live="polite"
         aria-label="同期済み — 同期状況を開く"
@@ -45,14 +45,14 @@ export function OfflineDraftIndicator({
     <div className="flex items-center gap-2" role="status" aria-live="polite">
       <Link
         href="/offline-sync"
-        className="flex items-center gap-1 rounded-md px-1 py-0.5 text-xs text-orange-700 hover:bg-orange-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex items-center gap-1 rounded-md px-1 py-0.5 text-xs text-state-confirm hover:bg-state-confirm/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         aria-label="同期待ち — 同期状況を開く"
       >
         <CloudOff className="size-3.5" aria-hidden="true" />
         <span>同期待ち</span>
         {pendingCount > 0 && (
           <Badge
-            className="h-4 min-w-[1.25rem] px-1 text-[10px] bg-orange-600 hover:bg-orange-600"
+            className="h-4 min-w-[1.25rem] px-1 text-[10px] bg-state-confirm hover:bg-state-confirm"
             aria-label={`${pendingCount}件の同期待ちがあります`}
           >
             {pendingCount}
@@ -64,7 +64,7 @@ export function OfflineDraftIndicator({
         <Button
           size="sm"
           variant="ghost"
-          className="h-6 px-2 text-xs text-orange-700 hover:bg-orange-50"
+          className="h-6 px-2 text-xs text-state-confirm hover:bg-state-confirm/10"
           onClick={onSync}
           disabled={isSyncing}
           aria-label="今すぐ同期"

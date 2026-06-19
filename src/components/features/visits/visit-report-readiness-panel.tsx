@@ -112,8 +112,8 @@ export function VisitReportReadinessPanel({
           className={cn(
             'rounded-xl border px-3 py-2 text-sm',
             ready
-              ? 'border-emerald-200 bg-emerald-50/70 text-emerald-900'
-              : 'border-amber-200 bg-amber-50/80 text-amber-950',
+              ? 'border-state-done/40 bg-state-done/10 text-state-done'
+              : 'border-state-confirm/40 bg-state-confirm/10 text-state-confirm',
           )}
           role="status"
           aria-live="polite"
@@ -137,20 +137,23 @@ export function VisitReportReadinessPanel({
                 className={cn(
                   'rounded-xl border px-2.5 py-2.5 sm:px-3 sm:py-3',
                   item.done
-                    ? 'border-emerald-200 bg-emerald-50/70'
+                    ? 'border-state-done/40 bg-state-done/10'
                     : required
-                      ? 'border-amber-200 bg-amber-50/70'
+                      ? 'border-state-confirm/40 bg-state-confirm/10'
                       : 'border-border/70 bg-muted/15',
                 )}
               >
                 <div className="flex items-start gap-2">
                   {item.done ? (
-                    <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-700" aria-hidden="true" />
+                    <CheckCircle2
+                      className="mt-0.5 size-4 shrink-0 text-state-done"
+                      aria-hidden="true"
+                    />
                   ) : (
                     <CircleAlert
                       className={cn(
                         'mt-0.5 size-4 shrink-0',
-                        required ? 'text-amber-700' : 'text-muted-foreground',
+                        required ? 'text-state-confirm' : 'text-muted-foreground',
                       )}
                       aria-hidden="true"
                     />

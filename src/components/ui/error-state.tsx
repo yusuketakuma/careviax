@@ -46,20 +46,20 @@ const VARIANT_META = {
     title: 'ネットワークに接続できません',
     description:
       '接続を確認してから再読み込みしてください。オフライン中は一部の画面のみ利用できます。',
-    iconClassName: 'bg-amber-100 text-amber-700',
+    iconClassName: 'bg-state-confirm/10 text-state-confirm',
   },
   forbidden: {
     icon: Ban,
     title: 'この画面へのアクセス権限がありません',
     description:
       '組織またはロールの権限設定を確認してください。RLS 制約により表示できない場合があります。',
-    iconClassName: 'bg-amber-100 text-amber-700',
+    iconClassName: 'bg-state-confirm/10 text-state-confirm',
   },
   unauthorized: {
     icon: LockKeyhole,
     title: 'ログインが必要です',
     description: 'セッションが切れているか、認証が完了していません。再度ログインしてください。',
-    iconClassName: 'bg-blue-100 text-blue-700',
+    iconClassName: 'bg-tag-info/10 text-tag-info',
   },
 } satisfies Record<
   ErrorStateVariant,

@@ -130,7 +130,7 @@ export function VisitProposalDiagnosticsCard({
             <Badge
               key={label}
               variant="outline"
-              className="border-amber-200 bg-amber-50 text-amber-800"
+              className="border-transparent bg-state-confirm/10 text-state-confirm"
             >
               {label} {count}
             </Badge>
@@ -152,57 +152,57 @@ export function VisitProposalDiagnosticsCard({
                 return (
                   <div
                     key={`${item.pharmacist_id}-${item.proposed_date}-${item.route_order}`}
-                    className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm"
+                    className="space-y-3 rounded-xl border border-state-done/30 bg-state-done/5 px-3 py-3 text-sm"
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
-                        <p className="font-medium text-emerald-950">
+                        <p className="font-medium text-foreground">
                           {item.pharmacist_name} / {item.proposed_date}
                         </p>
-                        <p className="mt-1 text-xs text-emerald-900">
+                        <p className="mt-1 text-xs text-muted-foreground">
                           順路 {item.route_order} / スコア {item.score.toFixed(1)} /{' '}
                           {item.travel_summary}
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-1">
                         {item.assignment_mode ? (
-                          <Badge variant="outline" className="border-emerald-300 bg-white/80">
+                          <Badge variant="outline" className="border-state-done/30 bg-background">
                             {item.assignment_mode === 'fallback' ? '代替担当' : '主担当'}
                           </Badge>
                         ) : null}
                         {item.care_relationship ? (
-                          <Badge variant="outline" className="border-emerald-300 bg-white/80">
+                          <Badge variant="outline" className="border-state-done/30 bg-background">
                             {item.care_relationship}
                           </Badge>
                         ) : null}
                         {item.vehicle_resource_label ? (
-                          <Badge variant="outline" className="border-emerald-300 bg-white/80">
+                          <Badge variant="outline" className="border-state-done/30 bg-background">
                             車両 {item.vehicle_resource_label}
                           </Badge>
                         ) : null}
                       </div>
                     </div>
                     {item.time_window_start || item.time_window_end ? (
-                      <p className="text-xs text-emerald-900">
+                      <p className="text-xs text-muted-foreground">
                         候補時間 {formatTimeValue(item.time_window_start) ?? '未定'} -{' '}
                         {formatTimeValue(item.time_window_end) ?? '未定'}
                       </p>
                     ) : null}
                     {item.vehicle_resource_label || item.vehicle_load != null ? (
-                      <p className="text-xs text-emerald-900">
+                      <p className="text-xs text-muted-foreground">
                         社用車 {item.vehicle_resource_label ?? '自動割当'} / 当日同車両{' '}
                         {item.vehicle_load ?? '未計算'} 件目
                       </p>
                     ) : null}
                     {scoreBreakdown.length > 0 ? (
                       <>
-                        <Separator className="bg-emerald-200/80" />
+                        <Separator className="bg-state-done/20" />
                         <div className="flex flex-wrap gap-2">
                           {scoreBreakdown.map(([key, value]) => (
                             <Badge
                               key={key}
                               variant="outline"
-                              className="border-emerald-300 bg-white/80 text-emerald-950"
+                              className="border-state-done/30 bg-background text-foreground"
                             >
                               {SCORE_BREAKDOWN_LABELS[key] ?? key} {formatSignedNumber(value)}
                             </Badge>
@@ -226,17 +226,20 @@ export function VisitProposalDiagnosticsCard({
               diagnostics.rejected.slice(0, maxRejectedItems).map((item) => (
                 <div
                   key={`${item.pharmacist_id}-${item.proposed_date}-${item.reason_code ?? item.reason_label}`}
-                  className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm"
+                  className="rounded-xl border border-state-confirm/30 bg-state-confirm/5 px-3 py-3 text-sm"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="font-medium text-amber-950">
+                    <p className="font-medium text-foreground">
                       {item.pharmacist_name} / {item.proposed_date}
                     </p>
-                    <Badge variant="outline" className="border-amber-300 bg-white/80">
+                    <Badge
+                      variant="outline"
+                      className="border-transparent bg-state-confirm/10 text-state-confirm"
+                    >
                       {item.reason_label}
                     </Badge>
                   </div>
-                  <p className="mt-2 text-xs leading-5 text-amber-900">{item.detail}</p>
+                  <p className="mt-2 text-xs leading-5 text-muted-foreground">{item.detail}</p>
                 </div>
               ))
             )}

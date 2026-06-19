@@ -690,15 +690,15 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
                   variant="default"
                   className={
                     serviceAreaWarning.level === 'covered'
-                      ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
-                      : 'border-amber-300 bg-amber-50 text-amber-900'
+                      ? 'border-state-done/40 bg-state-done/5 text-state-done'
+                      : 'border-state-confirm/40 bg-state-confirm/5 text-state-confirm'
                   }
                 >
                   <AlertTriangle
                     className={
                       serviceAreaWarning.level === 'covered'
-                        ? 'h-4 w-4 text-emerald-600'
-                        : 'h-4 w-4 text-amber-600'
+                        ? 'h-4 w-4 text-state-done'
+                        : 'h-4 w-4 text-state-confirm'
                     }
                   />
                   <AlertDescription>{serviceAreaWarning.message}</AlertDescription>
@@ -749,7 +749,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
                   {selectedFacilityId &&
                     !facilityUnitsQuery.isLoading &&
                     (facilityUnitsQuery.data?.length ?? 0) === 0 && (
-                      <p className="text-xs text-amber-700" role="status">
+                      <p className="text-xs text-state-confirm" role="status">
                         この施設には登録済みユニットがありません。施設管理から先にユニットを追加してください。
                       </p>
                     )}
@@ -2226,9 +2226,9 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
       {activeDuplicates.length > 0 && !duplicateConfirmed && (
         <Alert
           variant="default"
-          className="border-amber-400 bg-amber-50 text-amber-900 dark:border-amber-600 dark:bg-amber-950 dark:text-amber-200"
+          className="border-state-confirm/40 bg-state-confirm/5 text-state-confirm"
         >
-          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+          <AlertTriangle className="h-4 w-4 text-state-confirm" />
           <AlertDescription className="space-y-2">
             <p className="font-medium">同名の患者が存在します:</p>
             <ul className="list-disc pl-5 text-sm">
@@ -2248,7 +2248,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
               type="button"
               variant="outline"
               size="sm"
-              className="mt-2 border-amber-500 text-amber-800 hover:bg-amber-100 dark:border-amber-500 dark:text-amber-200 dark:hover:bg-amber-900"
+              className="mt-2 border-state-confirm/50 text-state-confirm hover:bg-state-confirm/10"
               onClick={() => setDuplicateConfirmedKey(duplicateLookupKey)}
             >
               それでも登録する

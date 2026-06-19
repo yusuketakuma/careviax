@@ -33,10 +33,10 @@ function StructuredCareRow({ item, label }: { item: PatientStructuredCareItem; l
         <Badge
           variant="outline"
           className={cn(
-            'shrink-0 text-xs',
+            'shrink-0 border-transparent text-xs',
             item.is_active
-              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-              : 'border-slate-200 bg-slate-50 text-slate-600',
+              ? 'bg-state-done/10 text-state-done'
+              : 'bg-state-readonly/10 text-state-readonly',
           )}
         >
           {item.is_active ? '実施中' : '終了'}
@@ -84,7 +84,7 @@ export function PatientStructuredCarePanel({ patientId }: { patientId: string })
   if (error) {
     return (
       <section
-        className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-950"
+        className="rounded-lg border border-state-confirm/40 bg-state-confirm/5 p-4 text-state-confirm"
         aria-label="在宅医療処置・麻薬"
         data-testid="patient-structured-care-panel-error"
       >

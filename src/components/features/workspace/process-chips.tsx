@@ -50,7 +50,7 @@ export function ProcessChips({ currentStep, className }: ProcessChipsProps) {
               data-state={state}
               className={cn(
                 'inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-medium',
-                state === 'done' && 'border-emerald-300 bg-emerald-50 text-emerald-700',
+                state === 'done' && 'border-state-done/40 bg-state-done/10 text-state-done',
                 state === 'current' &&
                   'border-primary bg-primary font-semibold text-primary-foreground',
                 state === 'upcoming' && 'border-border bg-background text-muted-foreground',
@@ -63,7 +63,7 @@ export function ProcessChips({ currentStep, className }: ProcessChipsProps) {
               <span
                 className={cn(
                   'h-px w-2.5 sm:w-3.5',
-                  state === 'done' ? 'bg-emerald-300' : 'bg-border',
+                  state === 'done' ? 'bg-state-done/40' : 'bg-border',
                 )}
                 aria-hidden="true"
               />
@@ -104,7 +104,7 @@ export function ProcessProgressDots({ currentStep, className }: ProcessProgressD
               data-state={state}
               className={cn(
                 'rounded-full',
-                state === 'done' && 'size-1.5 bg-emerald-500',
+                state === 'done' && 'size-1.5 bg-state-done',
                 state === 'current' && 'size-2.5 bg-primary',
                 state === 'upcoming' && 'size-1.5 bg-muted-foreground/25',
               )}

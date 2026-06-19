@@ -198,7 +198,7 @@ export function SessionTimeoutModal() {
       <DialogContent showCloseButton={false} className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Clock className="h-5 w-5 text-amber-500" aria-hidden="true" />
+            <Clock className="h-5 w-5 text-state-confirm" aria-hidden="true" />
             セッションタイムアウト
           </DialogTitle>
           <DialogDescription>
@@ -208,11 +208,11 @@ export function SessionTimeoutModal() {
 
         <div className="flex flex-col gap-4">
           {/* Countdown */}
-          <div className="flex items-center justify-center rounded-lg bg-amber-50 border border-amber-200 p-4">
+          <div className="flex items-center justify-center rounded-lg bg-state-confirm/5 border border-state-confirm/40 p-4">
             <div className="text-center">
-              <p className="text-sm text-amber-700 mb-1">セッション残り時間</p>
+              <p className="text-sm text-state-confirm mb-1">セッション残り時間</p>
               <p
-                className="text-3xl font-bold font-mono text-amber-800 tabular-nums"
+                className="text-3xl font-bold font-mono text-state-confirm tabular-nums"
                 aria-live="polite"
                 aria-atomic="true"
               >
@@ -247,7 +247,7 @@ export function SessionTimeoutModal() {
             <Button
               type="submit"
               size="lg"
-              className="w-full bg-blue-600 hover:bg-blue-700"
+              className="w-full"
               disabled={!password || isLoading || !session?.user?.email}
               aria-busy={isLoading}
             >

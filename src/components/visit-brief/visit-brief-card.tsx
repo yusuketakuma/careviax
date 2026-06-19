@@ -24,27 +24,34 @@ import type {
   VisitBriefSeverity,
 } from '@/types/visit-brief';
 
+// 重要度バッジの状態色写像(PRIORITY 軸: urgent→blocked/high→confirm/normal→info/low→readonly)
 function severityClass(severity: VisitBriefSeverity) {
   switch (severity) {
     case 'urgent':
-      return 'border-rose-200 bg-rose-50 text-rose-700';
+      return 'border-state-blocked/30 bg-state-blocked/10 text-state-blocked';
     case 'high':
-      return 'border-amber-200 bg-amber-50 text-amber-700';
+      return 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm';
     case 'low':
-      return 'border-slate-200 bg-slate-50 text-slate-600';
+      return 'border-state-readonly/30 bg-state-readonly/10 text-state-readonly';
     default:
-      return 'border-sky-200 bg-sky-50 text-sky-700';
+      return 'border-tag-info/30 bg-tag-info/10 text-tag-info';
   }
 }
 
-// 前回訪問差分のバッジ(色のみ依存せずラベル併用)
+// 前回訪問差分のバッジ(色のみ依存せずラベル併用。変更=要確認、追加/解除は情報タグ)
 const PATIENT_CHANGE_TYPE_META: Record<
   VisitBriefPatientChangeType,
   { label: string; className: string }
 > = {
-  added: { label: '追加', className: 'border-sky-200 bg-sky-50 text-sky-700' },
-  removed: { label: '解除', className: 'border-slate-200 bg-slate-50 text-slate-600' },
-  changed: { label: '変更', className: 'border-amber-200 bg-amber-50 text-amber-700' },
+  added: { label: '追加', className: 'border-tag-info/30 bg-tag-info/10 text-tag-info' },
+  removed: {
+    label: '解除',
+    className: 'border-state-readonly/30 bg-state-readonly/10 text-state-readonly',
+  },
+  changed: {
+    label: '変更',
+    className: 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm',
+  },
 };
 
 export function VisitBriefCard({
@@ -118,12 +125,12 @@ export function VisitBriefCard({
   });
 
   return (
-    <Card className="border-slate-200 shadow-sm">
+    <Card className="border-border shadow-sm">
       <CardHeader className="pb-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Sparkles className="size-4 text-sky-600" aria-hidden="true" />
+              <Sparkles className="size-4 text-tag-info" aria-hidden="true" />
               {title}
             </CardTitle>
             <CardDescription className="mt-1">{description}</CardDescription>
@@ -237,13 +244,13 @@ export function VisitBriefCard({
         )}
 
         {brief.conference_summary ? (
-          <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4">
+          <div className="rounded-xl border border-border bg-muted/50 p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
                   Conference Context
                 </p>
-                <p className="mt-1 text-sm font-semibold text-slate-950">
+                <p className="mt-1 text-sm font-semibold text-foreground">
                   {brief.conference_summary.last_conference_type ?? '最近の会議'}
                 </p>
               </div>
@@ -261,7 +268,7 @@ export function VisitBriefCard({
               </div>
             </div>
             {brief.conference_summary.summary ? (
-              <p className="mt-3 text-sm leading-6 text-slate-900">
+              <p className="mt-3 text-sm leading-6 text-foreground">
                 {brief.conference_summary.summary}
               </p>
             ) : null}
@@ -336,10 +343,7 @@ export function VisitBriefCard({
                     >
                       <div className="flex items-center justify-between gap-2">
                         <p className="font-medium text-foreground">{item.field_label}</p>
-                        <Badge
-                          variant="outline"
-                          className={cn('shrink-0 text-xs', meta.className)}
-                        >
+                        <Badge variant="outline" className={cn('shrink-0 text-xs', meta.className)}>
                           {meta.label}
                         </Badge>
                       </div>
@@ -410,7 +414,9 @@ export function VisitBriefCard({
                     </div>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.reason}</p>
                     {item.caution ? (
-                      <p className="mt-1 text-[11px] leading-5 text-amber-700">{item.caution}</p>
+                      <p className="mt-1 text-[11px] leading-5 text-state-confirm">
+                        {item.caution}
+                      </p>
                     ) : null}
                   </li>
                 ))}
@@ -546,7 +552,7 @@ function SummaryPanel({
     <div
       className={cn(
         'rounded-xl border p-4',
-        kind === 'ai' ? 'border-sky-200 bg-sky-50/70' : 'border-slate-200 bg-slate-50/80',
+        kind === 'ai' ? 'border-tag-info/30 bg-tag-info/5' : 'border-border bg-muted/50',
       )}
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -554,31 +560,31 @@ function SummaryPanel({
           <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
             {heading}
           </p>
-          <p className="mt-1 text-sm font-semibold text-slate-950">{headline}</p>
+          <p className="mt-1 text-sm font-semibold text-foreground">{headline}</p>
         </div>
         <Badge variant={kind === 'ai' ? 'default' : 'outline'}>
           {kind === 'ai' ? 'AI' : 'RULE'}
         </Badge>
       </div>
       {bullets.length > 0 ? (
-        <ul className="mt-3 space-y-1 text-sm text-slate-900">
+        <ul className="mt-3 space-y-1 text-sm text-foreground">
           {bullets.map((item) => (
             <li key={item}>- {item}</li>
           ))}
         </ul>
       ) : null}
       {sourceRefs.length > 0 ? (
-        <p className="mt-3 text-xs text-slate-700/80">根拠: {sourceRefs.join(' / ')}</p>
+        <p className="mt-3 text-xs text-muted-foreground">根拠: {sourceRefs.join(' / ')}</p>
       ) : null}
-      <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-800/80">
+      <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
         {metadata.filter(Boolean).map((item) => (
-          <Badge key={item} variant="secondary" className="bg-white/80 text-slate-900">
+          <Badge key={item} variant="secondary">
             {item}
           </Badge>
         ))}
       </div>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[11px] text-slate-700/80">
+        <p className="text-[11px] text-muted-foreground">
           生成 {generatedAt.slice(0, 16).replace('T', ' ')}
         </p>
         <div className="flex flex-wrap gap-2">

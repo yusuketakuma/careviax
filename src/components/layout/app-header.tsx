@@ -62,7 +62,7 @@ function useHydrated() {
   );
 }
 
-/** 「同期済み HH:MM」(緑) / オフライン時は「オフライン」(橙)。 */
+/** 「同期済み HH:MM」(done=緑) / オフライン時は「オフライン」(blocked=赤・通信なし)。 */
 function HeaderSyncStatus() {
   const online = useNetworkOnline();
   const lastSyncedAt = useOfflineStore((state) => state.lastSyncedAt);
@@ -74,7 +74,7 @@ function HeaderSyncStatus() {
     return (
       <Link
         href="/offline-sync"
-        className="hidden shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-amber-600 hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex"
+        className="hidden shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-state-blocked hover:bg-state-blocked/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex"
         data-testid="app-header-sync-status"
         aria-label="オフライン — 同期状況を開く"
       >
@@ -89,7 +89,7 @@ function HeaderSyncStatus() {
   return (
     <Link
       href="/offline-sync"
-      className="hidden shrink-0 rounded-md px-1.5 py-0.5 text-xs font-medium text-emerald-700 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:inline"
+      className="hidden shrink-0 rounded-md px-1.5 py-0.5 text-xs font-medium text-state-done hover:bg-state-done/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:inline"
       data-testid="app-header-sync-status"
       aria-label="同期状況を開く"
     >

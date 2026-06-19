@@ -30,10 +30,10 @@ import { formatDateKey } from '@/lib/date-key';
 import type { SoapVoiceField } from '@/lib/voice-recognition';
 
 const STEPS = [
-  { key: 'S', label: '主観', icon: MessageSquare, color: 'text-blue-500' },
-  { key: 'O', label: '客観', icon: Eye, color: 'text-green-500' },
-  { key: 'A', label: '評価', icon: Brain, color: 'text-purple-500' },
-  { key: 'P', label: '計画', icon: ClipboardList, color: 'text-orange-500' },
+  { key: 'S', label: '主観', icon: MessageSquare, color: 'text-chart-1' },
+  { key: 'O', label: '客観', icon: Eye, color: 'text-chart-2' },
+  { key: 'A', label: '評価', icon: Brain, color: 'text-chart-5' },
+  { key: 'P', label: '計画', icon: ClipboardList, color: 'text-chart-3' },
 ] as const;
 
 const relationOptions = [
@@ -125,9 +125,9 @@ export function SoapStepWizard({
               <div
                 className={`flex size-8 items-center justify-center rounded-full text-xs font-bold transition-all ${
                   index === currentStep
-                    ? 'bg-blue-600 text-white ring-2 ring-blue-600/30'
+                    ? 'bg-tag-info text-white ring-2 ring-tag-info/30'
                     : index < currentStep
-                      ? 'bg-blue-100 text-blue-700'
+                      ? 'bg-state-done/15 text-state-done'
                       : 'bg-muted text-muted-foreground'
                 }`}
                 aria-label={`${step.key} ${step.label}${

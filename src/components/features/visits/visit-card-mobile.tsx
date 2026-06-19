@@ -5,6 +5,9 @@ import { useRef, type TouchEvent } from 'react';
 import { MapPin, Clock, Navigation, Play } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
+import { StateBadge } from '@/components/ui/state-badge';
+import { SCHEDULE_STATUS_ROLE } from '@/lib/constants/status-labels';
+import type { StatusRole } from '@/lib/constants/status-tokens';
 import { cn } from '@/lib/utils';
 
 export type VisitStatus =
@@ -39,21 +42,23 @@ export interface VisitCardMobileProps {
   className?: string;
 }
 
-const STATUS_CONFIG: Record<
-  VisitStatus,
-  { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }
-> = {
-  planned: { label: '予定', variant: 'outline' },
-  in_preparation: { label: '準備中', variant: 'secondary' },
-  ready: { label: '準備完了', variant: 'default' },
-  departed: { label: '出発', variant: 'default' },
-  in_progress: { label: '訪問中', variant: 'default' },
-  completed: { label: '完了', variant: 'secondary' },
-  cancelled: { label: 'キャンセル', variant: 'destructive' },
-  postponed: { label: '延期', variant: 'outline' },
-  rescheduled: { label: '再調整', variant: 'outline' },
-  no_show: { label: '不在', variant: 'destructive' },
+const STATUS_LABELS: Record<VisitStatus, string> = {
+  planned: '予定',
+  in_preparation: '準備中',
+  ready: '準備完了',
+  departed: '出発',
+  in_progress: '訪問中',
+  completed: '完了',
+  cancelled: 'キャンセル',
+  postponed: '延期',
+  rescheduled: '再調整',
+  no_show: '不在',
 };
+
+function resolveStatusRole(status: VisitStatus): StatusRole {
+  const role = SCHEDULE_STATUS_ROLE[status];
+  return role && role !== 'neutral' ? role : 'info';
+}
 
 function buildMapsUrl(address: string, lat?: number, lng?: number): string {
   if (lat != null && lng != null) {
@@ -82,7 +87,8 @@ export function VisitCardMobile({
   className,
 }: VisitCardMobileProps) {
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
-  const config = STATUS_CONFIG[status] ?? { label: status, variant: 'outline' as const };
+  const statusLabel = STATUS_LABELS[status] ?? status;
+  const statusRole = resolveStatusRole(status);
   const isActionable = status === 'ready' || status === 'departed';
   const isCompleted = status === 'completed' || status === 'cancelled';
   const mapsUrl = buildMapsUrl(address, lat, lng);
@@ -184,9 +190,9 @@ export function VisitCardMobile({
             {patientName}
           </h3>
         )}
-        <Badge variant={config.variant} className="shrink-0">
-          {config.label}
-        </Badge>
+        <StateBadge role={statusRole} className="shrink-0">
+          {statusLabel}
+        </StateBadge>
       </div>
 
       {/* Address */}
@@ -224,7 +230,8 @@ export function VisitCardMobile({
               variant="outline"
               className={cn(
                 'max-w-full truncate',
-                visitBriefStatus !== 'available' && 'border-amber-200 bg-amber-50 text-amber-700',
+                visitBriefStatus !== 'available' &&
+                  'border-transparent bg-state-confirm/10 text-state-confirm',
               )}
             >
               {visitBriefLabel}
@@ -269,7 +276,7 @@ export function VisitCardMobile({
         {!showStartAction && showCompleteAction && (
           <Button
             size="sm"
-            className="min-h-[44px] flex-1 bg-emerald-600 hover:bg-emerald-700"
+            className="min-h-[44px] flex-1 bg-state-done text-white hover:bg-state-done/90"
             onClick={() => onCompleteVisit(id)}
             aria-label={`${patientName}の訪問を完了`}
           >

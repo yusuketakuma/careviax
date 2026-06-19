@@ -27,21 +27,21 @@ export function SegmentedProgressBar({
   filledClassName = 'bg-primary',
   emptyClassName = 'bg-transparent',
   markerValue,
-  markerClassName = 'bg-orange-500',
+  markerClassName = 'bg-state-confirm',
 }: SegmentedProgressBarProps) {
   const safeMax = max > 0 ? max : 1;
   const normalizedValue = clamp(value, 0, safeMax);
   const filledSegments = clamp(
     Math.round((normalizedValue / safeMax) * SEGMENT_COUNT),
     0,
-    SEGMENT_COUNT
+    SEGMENT_COUNT,
   );
   const markerIndex =
     markerValue != null && max > 0
       ? clamp(
           Math.round((clamp(markerValue, 0, safeMax) / safeMax) * SEGMENT_COUNT) - 1,
           0,
-          SEGMENT_COUNT - 1
+          SEGMENT_COUNT - 1,
         )
       : null;
 
@@ -49,7 +49,7 @@ export function SegmentedProgressBar({
     <div
       className={cn(
         'grid grid-cols-[repeat(100,minmax(0,1fr))] overflow-hidden rounded-full bg-muted',
-        className
+        className,
       )}
       role="progressbar"
       aria-valuenow={Math.round(normalizedValue)}
@@ -68,7 +68,7 @@ export function SegmentedProgressBar({
               'block h-full min-w-0',
               isFilled ? filledClassName : emptyClassName,
               isMarker && markerClassName,
-              segmentClassName
+              segmentClassName,
             )}
           />
         );

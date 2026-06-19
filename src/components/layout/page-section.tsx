@@ -18,7 +18,7 @@ type PageSectionProps = React.ComponentPropsWithoutRef<'section'> & {
 const toneClassName = {
   default: 'border-border/70 bg-card/95',
   subtle: 'border-border/70 bg-card/80',
-  warning: 'border-amber-200/80 bg-amber-50/80',
+  warning: 'border-state-confirm/30 bg-state-confirm/10',
   danger: 'border-destructive/30 bg-destructive/5',
 } as const;
 

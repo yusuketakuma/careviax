@@ -197,19 +197,19 @@ export function DrugSuggest({
                     {drug.is_generic && (
                       <Badge
                         variant="outline"
-                        className="h-4 px-1 text-[9px] text-blue-600 border-blue-300"
+                        className="h-4 border-transparent bg-tag-info/10 px-1 text-[9px] text-tag-info"
                       >
                         後発
                       </Badge>
                     )}
                     {drug.is_narcotic && (
-                      <span className="flex items-center gap-0.5 text-[9px] font-medium text-red-600">
+                      <span className="flex items-center gap-0.5 text-[9px] font-medium text-tag-hazard">
                         <AlertTriangle className="size-2.5" aria-hidden="true" />
                         麻薬
                       </span>
                     )}
                     {drug.is_psychotropic && (
-                      <span className="flex items-center gap-0.5 text-[9px] font-medium text-orange-600">
+                      <span className="flex items-center gap-0.5 text-[9px] font-medium text-tag-hazard">
                         <Shield className="size-2.5" aria-hidden="true" />
                         向精神
                       </span>

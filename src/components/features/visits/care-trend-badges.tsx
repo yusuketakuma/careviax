@@ -9,17 +9,17 @@ const TREND_CONFIG = {
   increasing: {
     icon: TrendingUp,
     label: '残薬 増加傾向',
-    className: 'border-amber-200 bg-amber-50 text-amber-700',
+    className: 'bg-state-confirm/10 text-state-confirm',
   },
   stable: {
     icon: Minus,
     label: '残薬 安定',
-    className: 'border-green-200 bg-green-50 text-green-700',
+    className: 'bg-state-done/10 text-state-done',
   },
   decreasing: {
     icon: TrendingDown,
     label: '残薬 減少傾向',
-    className: 'border-blue-200 bg-blue-50 text-blue-700',
+    className: 'bg-tag-info/10 text-tag-info',
   },
 } as const;
 

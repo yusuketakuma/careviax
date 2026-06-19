@@ -52,7 +52,10 @@ export function FacilityPatientSwipeRail({
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <Building2 className="size-4 text-sky-700" aria-hidden="true" />
-            <h3 id="facility-patient-swipe-rail-heading" className="text-sm font-semibold text-sky-950">
+            <h3
+              id="facility-patient-swipe-rail-heading"
+              className="text-sm font-semibold text-sky-950"
+            >
               同一訪問先の患者をスワイプで切替
             </h3>
           </div>
@@ -124,13 +127,15 @@ export function FacilityPatientSwipeRail({
                 </div>
 
                 <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                  <Badge variant="outline">準備 {group.preparedCount}/{group.patients.length}</Badge>
+                  <Badge variant="outline">
+                    準備 {group.preparedCount}/{group.patients.length}
+                  </Badge>
                   <Badge
                     variant="outline"
                     className={
                       group.carryPendingCount > 0
-                        ? 'border-amber-200 bg-amber-50 text-amber-700'
-                        : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                        ? 'border-transparent bg-state-confirm/10 text-state-confirm'
+                        : 'border-transparent bg-state-done/10 text-state-done'
                     }
                   >
                     持参未確認 {group.carryPendingCount}

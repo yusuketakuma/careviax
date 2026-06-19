@@ -134,7 +134,7 @@ describe('AppHeader', () => {
 
     const sync = screen.getByTestId('app-header-sync-status');
     expect(sync.textContent).toBe('同期済み 09:42');
-    expect(sync.className).toContain('emerald');
+    expect(sync.className).toContain('text-state-done');
 
     const communication = screen.getByTestId('app-header-communication');
     expect(communication.getAttribute('href')).toBe(
@@ -278,13 +278,13 @@ describe('AppHeader', () => {
     expect(mockRouterPush).not.toHaveBeenCalled();
   });
 
-  it('shows オフライン (amber) instead of the sync time when offline', () => {
+  it('shows オフライン (blocked) instead of the sync time when offline', () => {
     mockOnline = false;
     render(<AppHeader />);
 
     const sync = screen.getByTestId('app-header-sync-status');
     expect(sync.textContent).toContain('オフライン');
-    expect(sync.className).toContain('amber');
+    expect(sync.className).toContain('text-state-blocked');
   });
 
   it('renders 同期済み without a time when no sync timestamp exists yet', () => {
