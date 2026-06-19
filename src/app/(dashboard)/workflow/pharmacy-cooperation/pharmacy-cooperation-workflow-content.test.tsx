@@ -760,7 +760,9 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(activationReadyRow).toBeTruthy();
 
     fireEvent.click(
-      within(activationReadyRow as HTMLTableRowElement).getByRole('button', { name: /共有開始/ }),
+      within(activationReadyRow as HTMLTableRowElement).getByRole('button', {
+        name: 'share_case_activation_ready 協力薬局 を共有開始',
+      }),
     );
     expect(
       findFetchCall(
@@ -784,12 +786,25 @@ describe('PharmacyCooperationWorkflowContent', () => {
       ).toBe(true);
     });
 
-    await waitFor(() => {
-      expect((screen.getByRole('button', { name: /^受諾$/ }) as HTMLButtonElement).disabled).toBe(
-        false,
-      );
+    const visitRequestsTable = await screen.findByRole('table', {
+      name: '協力薬局訪問依頼一覧',
     });
-    fireEvent.click(screen.getByRole('button', { name: /^受諾$/ }));
+    const requestedVisitRow = within(visitRequestsTable).getByText('visit_request_1').closest('tr');
+    expect(requestedVisitRow).toBeTruthy();
+    await waitFor(() => {
+      expect(
+        (
+          within(requestedVisitRow as HTMLTableRowElement).getByRole('button', {
+            name: 'visit_request_1 協力薬局 の訪問依頼を受諾',
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false);
+    });
+    fireEvent.click(
+      within(requestedVisitRow as HTMLTableRowElement).getByRole('button', {
+        name: 'visit_request_1 協力薬局 の訪問依頼を受諾',
+      }),
+    );
     expect(
       findFetchCall(
         (input, init) =>
@@ -823,9 +838,16 @@ describe('PharmacyCooperationWorkflowContent', () => {
       .closest('tr');
     expect(baseRow).toBeTruthy();
     expect(acceptReadyRow).toBeTruthy();
+    expect(
+      within(baseRow as HTMLTableRowElement).getByRole('button', {
+        name: 'share_case_1 協力薬局 の修正依頼対象にする',
+      }),
+    ).toBeTruthy();
 
     fireEvent.click(
-      within(baseRow as HTMLTableRowElement).getByRole('button', { name: /基幹承認/ }),
+      within(baseRow as HTMLTableRowElement).getByRole('button', {
+        name: 'share_case_1 協力薬局 の患者リンクを基幹承認',
+      }),
     );
     expect(
       findFetchCall(
@@ -851,7 +873,11 @@ describe('PharmacyCooperationWorkflowContent', () => {
     fireEvent.change(screen.getByLabelText('share_case_1 の患者リンク辞退理由'), {
       target: { value: '同一患者として扱えません' },
     });
-    fireEvent.click(within(baseRow as HTMLTableRowElement).getByRole('button', { name: /^辞退$/ }));
+    fireEvent.click(
+      within(baseRow as HTMLTableRowElement).getByRole('button', {
+        name: 'share_case_1 協力薬局 の患者リンクを辞退',
+      }),
+    );
     expect(
       findFetchCall(
         (input, init) =>
@@ -887,7 +913,9 @@ describe('PharmacyCooperationWorkflowContent', () => {
       target: { value: '1940-01-02' },
     });
     fireEvent.click(
-      within(acceptReadyRow as HTMLTableRowElement).getByRole('button', { name: /協力受諾/ }),
+      within(acceptReadyRow as HTMLTableRowElement).getByRole('button', {
+        name: 'share_case_accept_ready 協力薬局 の患者リンクを協力受諾',
+      }),
     );
     expect(
       findFetchCall(
@@ -936,7 +964,9 @@ describe('PharmacyCooperationWorkflowContent', () => {
       },
     );
     fireEvent.click(
-      within(requestedRow as HTMLTableRowElement).getByRole('button', { name: /^辞退$/ }),
+      within(requestedRow as HTMLTableRowElement).getByRole('button', {
+        name: 'visit_request_1 協力薬局 の訪問依頼を辞退',
+      }),
     );
     expect(
       findFetchCall(
@@ -1172,7 +1202,11 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(draftRow).toBeTruthy();
     expect(submittedRow).toBeTruthy();
 
-    fireEvent.click(within(draftRow as HTMLTableRowElement).getByRole('button', { name: /提出/ }));
+    fireEvent.click(
+      within(draftRow as HTMLTableRowElement).getByRole('button', {
+        name: 'partner_record_draft 協力薬局 の協力訪問記録を提出',
+      }),
+    );
     expect(
       findFetchCall(
         (input, init) =>
@@ -1196,7 +1230,9 @@ describe('PharmacyCooperationWorkflowContent', () => {
     });
 
     fireEvent.click(
-      within(submittedRow as HTMLTableRowElement).getByRole('button', { name: /^確認$/ }),
+      within(submittedRow as HTMLTableRowElement).getByRole('button', {
+        name: 'partner_record_submitted 協力薬局 の協力訪問記録を確認',
+      }),
     );
     const reviewCallsBeforeConfirm = vi
       .mocked(fetch)
@@ -1231,7 +1267,9 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(submittedRow).toBeTruthy();
 
     fireEvent.click(
-      within(submittedRow as HTMLTableRowElement).getByRole('button', { name: /確認\+報告/ }),
+      within(submittedRow as HTMLTableRowElement).getByRole('button', {
+        name: 'partner_record_submitted 協力薬局 の協力訪問記録を確認して報告書ドラフトを作成',
+      }),
     );
     expect(
       findFetchCall(
@@ -1265,10 +1303,23 @@ describe('PharmacyCooperationWorkflowContent', () => {
     renderContent();
 
     const recordsTable = await screen.findByRole('table', { name: '協力訪問記録一覧' });
-    fireEvent.change(within(recordsTable).getByLabelText('partner_record_submitted の差戻し理由'), {
-      target: { value: '記録の確認が必要です' },
-    });
-    fireEvent.click(within(recordsTable).getByRole('button', { name: /差戻し/ }));
+    const submittedRow = within(recordsTable).getByText('partner_record_submitted').closest('tr');
+    const confirmedRow = within(recordsTable).getByText('partner_record_confirmed').closest('tr');
+    expect(submittedRow).toBeTruthy();
+    expect(confirmedRow).toBeTruthy();
+    fireEvent.change(
+      within(submittedRow as HTMLTableRowElement).getByLabelText(
+        'partner_record_submitted の差戻し理由',
+      ),
+      {
+        target: { value: '記録の確認が必要です' },
+      },
+    );
+    fireEvent.click(
+      within(submittedRow as HTMLTableRowElement).getByRole('button', {
+        name: 'partner_record_submitted 協力薬局 の協力訪問記録を差戻し',
+      }),
+    );
     expect(
       findFetchCall(
         (input, init) =>
@@ -1294,7 +1345,11 @@ describe('PharmacyCooperationWorkflowContent', () => {
       });
     });
 
-    fireEvent.click(within(recordsTable).getByRole('button', { name: /報告書ドラフト/ }));
+    fireEvent.click(
+      within(confirmedRow as HTMLTableRowElement).getByRole('button', {
+        name: 'partner_record_confirmed 協力薬局 の報告書ドラフトを作成',
+      }),
+    );
     expect(
       findFetchCall(
         (input, init) =>

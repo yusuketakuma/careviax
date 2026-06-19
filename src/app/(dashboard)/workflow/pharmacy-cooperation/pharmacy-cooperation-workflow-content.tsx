@@ -927,6 +927,7 @@ function ShareCasesTable({
           const acceptForm = linkAcceptForms[row.id] ?? EMPTY_LINK_ACCEPT_FORM;
           const declineReason = linkDeclineReasons[row.id] ?? '';
           const link = row.patient_link;
+          const partnerPharmacyName = row.partnership.partner_pharmacy.name;
           const isPendingLink = link?.match_status === 'pending';
           const baseApproved = Boolean(link?.approved_by_base);
           const partnerAccepted = link?.match_status === 'accepted';
@@ -946,7 +947,7 @@ function ShareCasesTable({
                   {statusLabel(row.status)}
                 </Badge>
               </td>
-              <td className="px-3 py-2">{row.partnership.partner_pharmacy.name}</td>
+              <td className="px-3 py-2">{partnerPharmacyName}</td>
               <td className="px-3 py-2">
                 <div>{statusLabel(link?.match_status ?? 'pending')}</div>
                 <TinyMeta>
@@ -966,6 +967,7 @@ function ShareCasesTable({
                       variant="outline"
                       disabled={isBusy || !canActivate}
                       onClick={() => onActivate(row)}
+                      aria-label={`${row.id} ${partnerPharmacyName} を共有開始`}
                     >
                       <CheckCircle2 className="size-4" aria-hidden="true" />
                       共有開始
@@ -976,6 +978,7 @@ function ShareCasesTable({
                       variant="secondary"
                       disabled={isBusy || !isPendingLink || baseApproved}
                       onClick={() => onBaseApprove(row)}
+                      aria-label={`${row.id} ${partnerPharmacyName} の患者リンクを基幹承認`}
                     >
                       <Link2 className="size-4" aria-hidden="true" />
                       基幹承認
@@ -986,6 +989,7 @@ function ShareCasesTable({
                       variant="outline"
                       disabled={isBusy}
                       onClick={() => onSelectCorrectionCase(row.id)}
+                      aria-label={`${row.id} ${partnerPharmacyName} の修正依頼対象にする`}
                     >
                       <PencilLine className="size-4" aria-hidden="true" />
                       修正依頼
@@ -1069,6 +1073,7 @@ function ShareCasesTable({
                           size="sm"
                           disabled={isBusy || !canAccept}
                           onClick={() => onAcceptLink(row, acceptForm)}
+                          aria-label={`${row.id} ${partnerPharmacyName} の患者リンクを協力受諾`}
                         >
                           <CheckCircle2 className="size-4" aria-hidden="true" />
                           協力受諾
@@ -1091,6 +1096,7 @@ function ShareCasesTable({
                           variant="outline"
                           disabled={isBusy || declineReason.trim().length === 0}
                           onClick={() => onDeclineLink(row, declineReason)}
+                          aria-label={`${row.id} ${partnerPharmacyName} の患者リンクを辞退`}
                         >
                           <XCircle className="size-4" aria-hidden="true" />
                           辞退
@@ -1405,6 +1411,7 @@ function VisitRequestsTable({
       <tbody>
         {rows.map((row) => {
           const declineReason = declineReasons[row.id] ?? '';
+          const partnerPharmacyName = row.partner_pharmacy.name;
           return (
             <tr key={row.id} className="border-t border-border/70">
               <td className="px-3 py-2">
@@ -1414,7 +1421,7 @@ function VisitRequestsTable({
                   <TinyMeta>{row.urgency}</TinyMeta>
                 </div>
               </td>
-              <td className="px-3 py-2">{row.partner_pharmacy.name}</td>
+              <td className="px-3 py-2">{partnerPharmacyName}</td>
               <td className="px-3 py-2 tabular-nums">
                 {formatDateTime(row.desired_start_at)}
                 {row.desired_end_at ? ` - ${formatDateTime(row.desired_end_at)}` : ''}
@@ -1451,6 +1458,7 @@ function VisitRequestsTable({
                         size="sm"
                         disabled={isBusy}
                         onClick={() => onAccept(row)}
+                        aria-label={`${row.id} ${partnerPharmacyName} の訪問依頼を受諾`}
                       >
                         <CheckCircle2 className="size-4" aria-hidden="true" />
                         受諾
@@ -1461,6 +1469,7 @@ function VisitRequestsTable({
                         variant="outline"
                         disabled={isBusy || declineReason.trim().length === 0}
                         onClick={() => onDecline(row, declineReason)}
+                        aria-label={`${row.id} ${partnerPharmacyName} の訪問依頼を辞退`}
                       >
                         <XCircle className="size-4" aria-hidden="true" />
                         辞退
@@ -1880,6 +1889,7 @@ function PartnerVisitRecordsTable({
       <tbody>
         {rows.map((row) => {
           const returnReason = returnReasons[row.id] ?? '';
+          const ownerPartnerPharmacyName = row.owner_partner_pharmacy.name;
           return (
             <tr key={row.id} className="border-t border-border/70">
               <td className="px-3 py-2">
@@ -1889,7 +1899,7 @@ function PartnerVisitRecordsTable({
                   <TinyMeta>rev.{row.revision_no}</TinyMeta>
                 </div>
               </td>
-              <td className="px-3 py-2">{row.owner_partner_pharmacy.name}</td>
+              <td className="px-3 py-2">{ownerPartnerPharmacyName}</td>
               <td className="px-3 py-2 tabular-nums">{formatDateTime(row.visit_at)}</td>
               <td className="px-3 py-2">
                 {row.claim_note ? (
@@ -1903,7 +1913,13 @@ function PartnerVisitRecordsTable({
               </td>
               <td className="min-w-[24rem] px-3 py-2">
                 {row.status === 'draft' || row.status === 'returned' ? (
-                  <Button type="button" size="sm" disabled={isBusy} onClick={() => onSubmit(row)}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={isBusy}
+                    onClick={() => onSubmit(row)}
+                    aria-label={`${row.id} ${ownerPartnerPharmacyName} の協力訪問記録を提出`}
+                  >
                     <Send className="size-4" aria-hidden="true" />
                     提出
                   </Button>
@@ -1915,6 +1931,7 @@ function PartnerVisitRecordsTable({
                         size="sm"
                         disabled={isBusy}
                         onClick={() => onConfirm(row, false)}
+                        aria-label={`${row.id} ${ownerPartnerPharmacyName} の協力訪問記録を確認`}
                       >
                         <CheckCircle2 className="size-4" aria-hidden="true" />
                         確認
@@ -1925,6 +1942,7 @@ function PartnerVisitRecordsTable({
                         variant="secondary"
                         disabled={isBusy}
                         onClick={() => onConfirm(row, true)}
+                        aria-label={`${row.id} ${ownerPartnerPharmacyName} の協力訪問記録を確認して報告書ドラフトを作成`}
                       >
                         <FileText className="size-4" aria-hidden="true" />
                         確認+報告
@@ -1935,6 +1953,7 @@ function PartnerVisitRecordsTable({
                         variant="outline"
                         disabled={isBusy || returnReason.trim().length === 0}
                         onClick={() => onReturn(row, returnReason)}
+                        aria-label={`${row.id} ${ownerPartnerPharmacyName} の協力訪問記録を差戻し`}
                       >
                         <RotateCcw className="size-4" aria-hidden="true" />
                         差戻し
@@ -1959,6 +1978,7 @@ function PartnerVisitRecordsTable({
                     variant="outline"
                     disabled={isBusy}
                     onClick={() => onCreateReport(row)}
+                    aria-label={`${row.id} ${ownerPartnerPharmacyName} の報告書ドラフトを作成`}
                   >
                     <FileText className="size-4" aria-hidden="true" />
                     報告書ドラフト

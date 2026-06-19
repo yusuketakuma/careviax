@@ -3199,7 +3199,11 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
       .toBe(true);
     await expect(page.getByText('訪問依頼の確認事項です')).toBeVisible({ timeout: 10_000 });
 
-    await visitRequestsTable.getByRole('button', { name: /^受諾$/ }).click();
+    await visitRequestsTable
+      .getByRole('button', {
+        name: `${PHARMACY_COOP_VISIT_REQUEST_ID} RouteMock協力薬局 の訪問依頼を受諾`,
+      })
+      .click();
     await expect(page.getByRole('heading', { name: '訪問依頼を受諾します' })).toBeVisible();
     await page.getByRole('button', { name: '受諾する' }).click();
     await expect
@@ -3257,7 +3261,11 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
       hasText: PHARMACY_COOP_PARTNER_RECORD_ID,
     });
     await expect(partnerRecordRow).toBeVisible({ timeout: 10_000 });
-    await partnerRecordRow.getByRole('button', { name: /提出/ }).click();
+    await partnerRecordRow
+      .getByRole('button', {
+        name: `${PHARMACY_COOP_PARTNER_RECORD_ID} RouteMock協力薬局 の協力訪問記録を提出`,
+      })
+      .click();
     await expect(page.getByRole('heading', { name: '協力訪問記録を提出します' })).toBeVisible();
     await page.getByRole('button', { name: '提出する' }).click();
     await expect
@@ -3265,7 +3273,11 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
         message: 'workflow should submit the partner visit record',
       })
       .toBe(1);
-    await partnerRecordRow.getByRole('button', { name: /確認\+報告/ }).click();
+    await partnerRecordRow
+      .getByRole('button', {
+        name: `${PHARMACY_COOP_PARTNER_RECORD_ID} RouteMock協力薬局 の協力訪問記録を確認して報告書ドラフトを作成`,
+      })
+      .click();
     await expect(
       page.getByRole('heading', {
         name: '協力訪問記録を確認し報告書ドラフトを作成します',
@@ -3287,7 +3299,11 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
       )
       .toBe(true);
 
-    await partnerRecordRow.getByRole('button', { name: /報告書ドラフト/ }).click();
+    await partnerRecordRow
+      .getByRole('button', {
+        name: `${PHARMACY_COOP_PARTNER_RECORD_ID} RouteMock協力薬局 の報告書ドラフトを作成`,
+      })
+      .click();
     await expect(
       page.getByRole('heading', { name: '医師向け報告書ドラフトを作成します' }),
     ).toBeVisible();
