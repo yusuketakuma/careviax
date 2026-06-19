@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
@@ -95,6 +95,14 @@ describe('ConferencesContent', () => {
     expect(screen.getByRole('button', { name: 'カレンダー' }).getAttribute('aria-pressed')).toBe(
       'false',
     );
+
+    fireEvent.click(screen.getByRole('button', { name: '新規記録' }));
+
+    expect(screen.getByLabelText('登録済み他職種')).toBeTruthy();
+    expect(screen.getByLabelText('氏名')).toBeTruthy();
+    expect(screen.getByLabelText('役割・所属')).toBeTruthy();
+    expect(screen.getByLabelText('メール')).toBeTruthy();
+    expect(screen.getByLabelText('FAX')).toBeTruthy();
   });
 
   it('shows patient-detail context and refreshes patient home operations after creating a note', () => {
@@ -106,14 +114,16 @@ describe('ConferencesContent', () => {
       screen.getByText('患者詳細からこの患者のカンファレンス記録にフォーカスして開いています。'),
     ).toBeTruthy();
 
-    mutationConfigs[0]?.onSuccess?.({
-      data: {
-        id: 'note_1',
-        title: '退院前カンファ',
-        case_id: 'case_1',
-        patient_id: 'patient_1',
-      },
-      sync: {},
+    act(() => {
+      mutationConfigs[0]?.onSuccess?.({
+        data: {
+          id: 'note_1',
+          title: '退院前カンファ',
+          case_id: 'case_1',
+          patient_id: 'patient_1',
+        },
+        sync: {},
+      });
     });
 
     expect(invalidateQueriesMock).toHaveBeenCalledWith({
@@ -249,5 +259,9 @@ describe('ConferencesContent', () => {
     expect(screen.getByRole('link', { name: 'ドラフト1' }).getAttribute('href')).toBe(
       '/reports/report_1',
     );
+
+    fireEvent.click(screen.getByRole('button', { name: '報告書を生成' }));
+
+    expect(screen.getByLabelText('報告書種別')).toBeTruthy();
   });
 });

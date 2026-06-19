@@ -1650,7 +1650,9 @@ export function ConferencesContent({
                   <div key={`participant-${index}`} className="rounded-lg border p-3">
                     <div className="grid gap-3 md:grid-cols-2">
                       <div className="space-y-1.5">
-                        <Label>登録済み他職種</Label>
+                        <Label htmlFor={`conference-participant-${index}-external-professional`}>
+                          登録済み他職種
+                        </Label>
                         <Select
                           value={participant.external_professional_id ?? 'manual'}
                           onValueChange={(value) =>
@@ -1660,7 +1662,9 @@ export function ConferencesContent({
                             )
                           }
                         >
-                          <SelectTrigger>
+                          <SelectTrigger
+                            id={`conference-participant-${index}-external-professional`}
+                          >
                             <SelectValue placeholder="手入力または登録済みから選択" />
                           </SelectTrigger>
                           <SelectContent>
@@ -1674,8 +1678,9 @@ export function ConferencesContent({
                         </Select>
                       </div>
                       <div className="space-y-1.5">
-                        <Label>氏名</Label>
+                        <Label htmlFor={`conference-participant-${index}-name`}>氏名</Label>
                         <Input
+                          id={`conference-participant-${index}-name`}
                           list={`conference-participant-suggestions-${index}`}
                           value={participant.name}
                           onChange={(event) => {
@@ -1709,8 +1714,9 @@ export function ConferencesContent({
                         </datalist>
                       </div>
                       <div className="space-y-1.5">
-                        <Label>役割・所属</Label>
+                        <Label htmlFor={`conference-participant-${index}-role`}>役割・所属</Label>
                         <Input
+                          id={`conference-participant-${index}-role`}
                           value={participant.role}
                           onChange={(event) =>
                             updateParticipantAt(index, (draft) => ({
@@ -1722,8 +1728,9 @@ export function ConferencesContent({
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <Label>メール</Label>
+                        <Label htmlFor={`conference-participant-${index}-email`}>メール</Label>
                         <Input
+                          id={`conference-participant-${index}-email`}
                           value={participant.email ?? ''}
                           onChange={(event) =>
                             updateParticipantAt(index, (draft) => ({
@@ -1735,8 +1742,9 @@ export function ConferencesContent({
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <Label>FAX</Label>
+                        <Label htmlFor={`conference-participant-${index}-fax`}>FAX</Label>
                         <Input
+                          id={`conference-participant-${index}-fax`}
                           value={participant.fax ?? ''}
                           onChange={(event) =>
                             updateParticipantAt(index, (draft) => ({
@@ -1976,12 +1984,12 @@ export function ConferencesContent({
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
-              <Label>報告書種別</Label>
+              <Label htmlFor="conference-report-type">報告書種別</Label>
               <Select
                 value={reportTypeDraft}
                 onValueChange={(value) => setReportTypeDraft(value ?? reportTypeDraft)}
               >
-                <SelectTrigger>
+                <SelectTrigger id="conference-report-type">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
