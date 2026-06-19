@@ -26,6 +26,8 @@
 - [x] 最小オペレーター UI: 薬局間連携ワークフロー、管理セットアップ、月次請求、患者カードからの共有ケース作成、訪問依頼作成、共有範囲更新
 - [x] 監査補完: 共有ケース/同意/訂正/ファイル/同意文書/audit-log 検索の最小監査、`AuditLog.actor_pharmacy_id` / `actor_site_id` / `patient_id`
 - [ ] ブラウザ実証: 患者カード作成 → 同意/リンク/有効化 → 訪問依頼 → 訪問記録 → 請求 → 報告下書き
+  - [x] Route-mocked browser proof: draft 共有ケースを前提に、同意登録、患者リンク基幹承認/協力受諾、共有有効化、訪問依頼、協力訪問記録、基幹確認、医師報告下書き、請求候補生成、請求書 PDF リンクまでを検証
+  - [ ] 患者カード作成の browser 直踏み: local e2e DB に v0.2 migrations (`AuditLog.actor_pharmacy_id`, `ConsentRecord.document_file_id`) が未適用のため、患者詳細 SSR が Prisma P2022 で停止。患者カード作成自体は unit で継続カバー。
 - [x] ConsentRecord の document download context 強化と expiry/document update UI
 - [ ] 新規マイグレーションの実DB適用確認
 

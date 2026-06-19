@@ -2790,3 +2790,36 @@ Blocked: C11 (diverged user-visible label strings — product/UX sign-off), C12 
 
 - Browser-level workflow proof across patient card creation, consent/link/activation, visit request, partner record, billing, and report draft paths remains pending.
 - The v0.2 migrations, including `20260619193000_add_consent_record_document_file_id`, were generated and schema/build validated but not applied to a live database in this turn.
+
+## 20260619-1951 JST - Pharmacy Cooperation Route-Mocked Browser Proof
+
+### Completed
+
+- Re-read the full higher-version v0.2 pharmacy-cooperation specification, including monthly billing, contract-document, refactoring, testing, and completion criteria sections.
+- Added a route-mocked Playwright proof for the pharmacy cooperation operator path from an existing draft share case through consent registration, base/partner patient-link decisions, share activation, pharmacy visit request creation, partner visit record draft/submission/base confirmation, physician report draft creation, billing candidate generation, and invoice PDF link exposure.
+- Kept the browser proof PHI-minimized: patient name/address/request-reason text is asserted absent from the workflow and billing list views, while request payload assertions still verify the protected API receives the intended clinical details.
+- Reused the existing patient-card unit coverage for draft share-case creation because direct `/patients/[id]` browser rendering currently requires unapplied local e2e DB migrations.
+
+### Files Changed
+
+- `tools/tests/ui-route-mocked-smoke.spec.ts`
+- `Plans.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write tools/tests/ui-route-mocked-smoke.spec.ts`: passed.
+- `pnpm exec eslint tools/tests/ui-route-mocked-smoke.spec.ts`: passed.
+- `git diff --check`: passed.
+- `pnpm format:check`: passed.
+- `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-route-mocked-smoke.spec.ts --project=chromium -g "pharmacy cooperation route-mocked browser workflow smoke"`: passed, 1 Chromium test.
+- `pnpm typecheck`: passed.
+- `pnpm test -- 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx'`: passed. Vitest executed the full suite, 1039 files passed / 1 skipped; 8145 tests passed / 1 skipped.
+- `pnpm lint`: passed.
+
+### Blocked / Not Applied
+
+- A direct patient-card browser step was attempted, but `/patients/pharmacy_coop_route_patient` hit Prisma P2022 because the local e2e DB is missing `ConsentRecord.document_file_id`; the earlier accidental broader E2E run also exposed missing `AuditLog.actor_pharmacy_id`. Migration application was not run because repo instructions require prior approval for migration apply or other DB mutation operations.
+- The first `pnpm test:e2e:local -- ...` invocation passed an extra `--` through the package script and began unrelated tests; it was interrupted. The failures observed there were from existing PCA/billing tests against the same stale e2e DB schema, not from the new route-mocked pharmacy-cooperation test.
+- New v0.2 migrations still need approved application against the local/live target DB before authenticated real-data browser evidence can cover patient-card SSR directly.
