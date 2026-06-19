@@ -131,6 +131,44 @@ describe('/api/patient-share-cases/[id]/consents', () => {
     expect(text).toContain('has_file_asset');
     expect(text).not.toContain('山田花子');
     expect(text).not.toContain('consent_person');
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      expect.objectContaining({
+        action: 'patient_share_consents_viewed',
+        targetType: 'PatientShareConsent',
+        targetId: 'share_case_1',
+        changes: expect.objectContaining({
+          target_screen: 'patient_share_case_consents',
+          share_case_id: 'share_case_1',
+          viewed_count: 1,
+          consent_ids: ['share_consent_1'],
+          consent_record_count: 1,
+          file_asset_count: 1,
+          revoked_count: 0,
+          has_cursor: false,
+          has_more: false,
+        }),
+      }),
+    );
+    expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('山田花子');
+    expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('consent_person');
+  });
+
+  it('fails closed when patient share consent list audit cannot be recorded', async () => {
+    createAuditLogEntryMock.mockRejectedValueOnce(new Error('audit unavailable'));
+
+    await expect(rawGET(createGetRequest(), routeContext)).rejects.toThrow('audit unavailable');
+  });
+
+  it('does not audit missing patient share consent lists', async () => {
+    patientShareCaseFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await rawGET(createGetRequest(), routeContext);
+
+    expect(response.status).toBe(404);
+    expect(patientShareConsentFindManyMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
   it('creates a consent after validating linked consent record and file asset without raw audit text', async () => {

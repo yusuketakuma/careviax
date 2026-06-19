@@ -598,7 +598,7 @@ export function ConsentRecordsContent() {
   const { data, isLoading } = useQuery<ConsentListResponse>({
     queryKey: ['consent-records', patientId],
     queryFn: async () => {
-      const res = await fetch(`/api/consent-records?patient_id=${patientId}&is_active=false`, {
+      const res = await fetch(`/api/consent-records?patient_id=${patientId}`, {
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('同意記録の取得に失敗しました');

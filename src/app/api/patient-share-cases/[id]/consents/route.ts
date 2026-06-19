@@ -86,7 +86,7 @@ export const GET = withAuthContext<{ id: string }>(
       });
       if (!shareCase) return null;
 
-      return tx.patientShareConsent.findMany({
+      const consentRows = await tx.patientShareConsent.findMany({
         where: { org_id: ctx.orgId, share_case_id: id },
         select: {
           id: true,
@@ -107,6 +107,28 @@ export const GET = withAuthContext<{ id: string }>(
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
         orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       });
+      const pageRows = consentRows.slice(0, limit);
+
+      await createAuditLogEntry(tx, ctx, {
+        action: 'patient_share_consents_viewed',
+        targetType: 'PatientShareConsent',
+        targetId: id,
+        changes: {
+          target_screen: 'patient_share_case_consents',
+          viewer_role: ctx.role,
+          share_case_id: id,
+          viewed_count: pageRows.length,
+          consent_ids: pageRows.map((row) => row.id),
+          consent_record_count: pageRows.filter((row) => row.consent_record_id).length,
+          file_asset_count: pageRows.filter((row) => row.file_asset_id).length,
+          revoked_count: pageRows.filter((row) => row.revoked_at).length,
+          has_cursor: Boolean(cursor),
+          has_more: consentRows.length > limit,
+          limit,
+        },
+      });
+
+      return consentRows;
     });
 
     if (!rows) return withSensitiveNoStore(notFound('患者共有ケースが見つかりません'));

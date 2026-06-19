@@ -79,10 +79,36 @@ function stubFetch() {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     void init;
     const url = String(input);
-    if (url === '/api/consent-records?patient_id=patient_1&is_active=false') {
-      return new Response(JSON.stringify({ data: [], hasMore: false, totalCount: 0 }), {
-        status: 200,
-      });
+    if (url === '/api/consent-records?patient_id=patient_1') {
+      return new Response(
+        JSON.stringify({
+          data: [
+            {
+              id: 'consent_1',
+              patient_id: 'patient_1',
+              template_id: null,
+              template_version: null,
+              template: null,
+              consent_type: 'external_sharing',
+              method: 'paper_scan',
+              obtained_date: '2026-06-19T00:00:00.000Z',
+              expiry_date: null,
+              revoked_date: null,
+              document_url: null,
+              has_document_url: false,
+              document_url_redacted: false,
+              is_active: true,
+              access_restricted: false,
+              created_at: '2026-06-19T00:00:00.000Z',
+            },
+          ],
+          hasMore: false,
+          totalCount: 1,
+        }),
+        {
+          status: 200,
+        },
+      );
     }
     if (url === '/api/templates?template_type=consent_form') {
       return new Response(JSON.stringify({ data: [] }), { status: 200 });
@@ -191,5 +217,19 @@ describe('ConsentRecordsContent', () => {
       document_file_id: 'file_1',
     });
     expect(createBody).not.toHaveProperty('document_url');
+  });
+
+  it('loads active consent records by default', async () => {
+    const fetchMock = stubFetch();
+    renderContent();
+
+    expect((await screen.findAllByText('外部共有')).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('有効')).length).toBeGreaterThan(0);
+    expect(fetchMock).toHaveBeenCalledWith('/api/consent-records?patient_id=patient_1', {
+      headers: { 'x-org-id': 'org_1' },
+    });
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('is_active=false'))).toBe(
+      false,
+    );
   });
 });
