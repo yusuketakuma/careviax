@@ -4421,6 +4421,35 @@ Implemented:
 
 - Refill proposal action naming is addressed. PHI-bearing raw tables remain intentionally not converted to searchable DataTables; future fixes should use search-disabled tables or targeted accessible-name updates.
 
+## 20260620-0235 JST - Pharmacy Workflow Correction Request DataTable
+
+### Summary
+
+- Replaced the pharmacy-cooperation workflow correction-request raw table with the shared `DataTable`.
+- Kept raw reason and proposed-value content out of the list/search surface; the table uses request ID, target type, field path, status, and update time only.
+- Added focused regression coverage for the DataTable search/column controls and adjusted duplicate-safe assertions for desktop/mobile DataTable rendering.
+
+### Files Changed
+
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`: passed.
+- `pnpm exec eslint 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`: initially exposed a duplicate text assertion after DataTable mobile/desktop rendering, then passed with 1 file / 12 tests.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+- Static scan for `TableFrame label="修正依頼一覧"`: passed with no matches.
+
+### Remaining / Next Loop
+
+- Correction request table convergence is addressed without exposing reason/proposed-value free text. Remaining pharmacy-cooperation raw tables include PHI-bearing share-case, consent, visit-request, and partner-record tables; future DataTable work must either keep search disabled or use targeted non-PHI labels.
+
 ## 20260620-0057 JST - QR Draft Case Selector Label
 
 ### Summary
