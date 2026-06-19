@@ -2868,3 +2868,46 @@ Blocked: C11 (diverged user-visible label strings — product/UX sign-off), C12 
 - The route persists document metadata and can attach a signed PDF `FileAsset`, but a first-party binary PDF generator/storage step for contract documents remains to be added if required before full v0.2 close.
 - Existing contract status enums still use older `ended` / `archived` states in some places and should be aligned to the higher-version spec states (`expired` / `terminated`) in a separate migration-aware slice.
 - Direct authenticated browser proof remains blocked until v0.2 migrations are approved/applied to the local e2e DB.
+
+## 20260619-2011 JST - Pharmacy Contract Status Alignment
+
+### Completed
+
+- Re-read the v0.2 contract-state requirement and treated its status list as the higher-version SSOT for `PharmacyContractStatus`.
+- Updated `prisma/schema/pharmacy-partnership.prisma` so contract statuses are `draft`, `pending_base_approval`, `pending_partner_approval`, `active`, `expired`, `terminated`, and `suspended`.
+- Added a migration that renames existing enum values from `ended` to `terminated` and from `archived` to `expired` without applying it to a database.
+- Updated contract list filtering and contract-version creation guards to use `expired` / `terminated`.
+- Updated the pharmacy cooperation admin status labels/variants so contract terminal states display as v0.2 `期限切れ` / `終了` while leaving non-contract `archived` and partnership `ended` labels intact.
+- Added tests that reject legacy `ended` status filters, accept the v0.2 `terminated` filter, and block version creation for both `expired` and `terminated` contracts.
+
+### Files Changed
+
+- `prisma/schema/pharmacy-partnership.prisma`
+- `prisma/migrations/20260619200600_align_pharmacy_contract_statuses/migration.sql`
+- `src/app/api/pharmacy-contracts/route.ts`
+- `src/app/api/pharmacy-contracts/route.test.ts`
+- `src/app/api/pharmacy-contracts/[id]/versions/route.ts`
+- `src/app/api/pharmacy-contracts/[id]/versions/route.test.ts`
+- `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx`
+- `Plans.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prisma format --schema=prisma/schema/`: passed.
+- `pnpm vitest run src/app/api/pharmacy-contracts/route.test.ts 'src/app/api/pharmacy-contracts/[id]/versions/route.test.ts' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx'`: passed, 3 files / 15 tests.
+- `pnpm exec prettier --write ...` over `.sql` / `.prisma` initially failed because no parser is configured for those file types; rerun over TS/TSX files passed.
+- `pnpm exec prisma validate --schema=prisma/schema/`: passed.
+- `pnpm db:generate`: passed.
+- `pnpm typecheck`: passed.
+- Targeted `pnpm exec eslint` over touched TS/TSX files: passed.
+- `pnpm format:check`: passed.
+- `git diff --check`: passed.
+- `pnpm lint`: passed.
+
+### Remaining / Next Loop
+
+- Migration was generated and validated but not applied to any database, per repository DB mutation rules.
+- Broader v0.2 lifecycle statuses for patient share cases and visit requests still differ from the full specification and should be reviewed in separate migration-aware slices.
+- Direct authenticated browser proof remains blocked until v0.2 migrations are approved/applied to the local e2e DB.
