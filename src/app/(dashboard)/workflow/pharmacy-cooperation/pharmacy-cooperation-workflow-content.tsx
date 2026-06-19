@@ -311,9 +311,12 @@ async function readApiJson<T>(response: Response): Promise<T> {
 }
 
 async function fetchShareCases(orgId: string) {
-  const response = await fetch('/api/patient-share-cases?limit=8', {
-    headers: { 'x-org-id': orgId },
-  });
+  const response = await fetch(
+    '/api/patient-share-cases?limit=8&view_context=pharmacy_cooperation_workflow',
+    {
+      headers: { 'x-org-id': orgId },
+    },
+  );
   return readApiJson<CursorPage<PatientShareCaseRow>>(response);
 }
 

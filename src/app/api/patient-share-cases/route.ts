@@ -27,6 +27,9 @@ const shareCaseStatusSchema = z.enum([
   'revoked',
   'ended',
 ]);
+const viewContextSchema = z
+  .enum(['pharmacy_cooperation_workflow', 'patient_share_cases_api'])
+  .default('patient_share_cases_api');
 const dateOnlySchema = dateKeySchema('日付形式が不正です（YYYY-MM-DD）');
 
 const createPatientShareCaseSchema = z
@@ -136,9 +139,16 @@ export const GET = withAuthContext(
 
     const partnershipId = optionalSearchParam(searchParams.get('partnership_id'));
     const basePatientId = optionalSearchParam(searchParams.get('base_patient_id'));
+    const rawViewContext = optionalSearchParam(searchParams.get('view_context'));
+    const viewContext = viewContextSchema.safeParse(rawViewContext ?? undefined);
+    if (!viewContext.success) {
+      return validationError('検索条件が不正です', {
+        view_context: ['対応していない閲覧画面です'],
+      });
+    }
 
-    const rows = await withOrgContext(ctx.orgId, (tx) =>
-      tx.patientShareCase.findMany({
+    const rows = await withOrgContext(ctx.orgId, async (tx) => {
+      const result = await tx.patientShareCase.findMany({
         where: {
           org_id: ctx.orgId,
           ...(status ? { status: status.data } : {}),
@@ -153,6 +163,7 @@ export const GET = withAuthContext(
             select: {
               id: true,
               status: true,
+              base_site_id: true,
               partner_pharmacy: { select: { id: true, name: true, status: true } },
             },
           },
@@ -168,8 +179,35 @@ export const GET = withAuthContext(
             },
           },
         },
-      }),
-    );
+      });
+
+      await createAuditLogEntry(tx, ctx, {
+        action: 'patient_share_cases_viewed',
+        targetType: 'PatientShareCase',
+        targetId: result[0]?.id ?? 'patient_share_cases',
+        changes: {
+          target_screen: viewContext.data,
+          viewer_role: ctx.role,
+          viewed_count: Math.min(result.length, limit),
+          share_case_ids: result.slice(0, limit).map((row) => row.id),
+          base_patient_ids: result.slice(0, limit).map((row) => row.base_patient_id),
+          base_site_ids: [
+            ...new Set(result.slice(0, limit).map((row) => row.partnership.base_site_id)),
+          ],
+          partner_pharmacy_ids: [
+            ...new Set(result.slice(0, limit).map((row) => row.partnership.partner_pharmacy.id)),
+          ],
+          filters: {
+            status: status?.data ?? null,
+            has_partnership_id: Boolean(partnershipId),
+            has_base_patient_id: Boolean(basePatientId),
+            limit,
+          },
+        },
+      });
+
+      return result;
+    });
 
     const page = buildCursorPage(rows, limit, (row) => row.id);
     return success({

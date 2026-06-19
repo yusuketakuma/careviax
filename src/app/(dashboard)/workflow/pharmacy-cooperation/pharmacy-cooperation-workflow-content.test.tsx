@@ -48,7 +48,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
-        if (url === '/api/patient-share-cases?limit=8') {
+        if (url === '/api/patient-share-cases?limit=8&view_context=pharmacy_cooperation_workflow') {
           return new Response(
             JSON.stringify({
               data: [

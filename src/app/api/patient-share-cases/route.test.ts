@@ -48,14 +48,6 @@ const emptyRouteContext = { params: Promise.resolve({}) };
 const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
-function createRequest(body?: unknown) {
-  return new NextRequest('http://localhost/api/patient-share-cases', {
-    method: body === undefined ? 'GET' : 'POST',
-    headers: body === undefined ? undefined : { 'content-type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-}
-
 function createPostRequest(body: unknown) {
   return new NextRequest('http://localhost/api/patient-share-cases', {
     method: 'POST',
@@ -99,6 +91,11 @@ describe('/api/patient-share-cases POST', () => {
       {
         id: 'share_case_1',
         status: 'draft',
+        base_patient_id: 'patient_1',
+        partnership: {
+          base_site_id: 'site_1',
+          partner_pharmacy: { id: 'partner_pharmacy_1' },
+        },
         patient_link: {
           id: 'patient_link_1',
           match_status: 'pending',
@@ -134,12 +131,24 @@ describe('/api/patient-share-cases POST', () => {
   });
 
   it('lists share cases without returning patient-link snapshots or decline reasons', async () => {
-    const response = await GET(createRequest());
+    const response = await GET(
+      new NextRequest(
+        'http://localhost/api/patient-share-cases?view_context=pharmacy_cooperation_workflow',
+      ),
+    );
 
     expect(response.status).toBe(200);
     expect(patientShareCaseFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         include: expect.objectContaining({
+          partnership: {
+            select: {
+              id: true,
+              status: true,
+              base_site_id: true,
+              partner_pharmacy: { select: { id: true, name: true, status: true } },
+            },
+          },
           patient_link: {
             select: {
               id: true,
@@ -161,6 +170,26 @@ describe('/api/patient-share-cases POST', () => {
     expect(bodyText).not.toContain('山田 花子');
     expect(bodyText).not.toContain('東京都港区1-2-3');
     expect(bodyText).toContain('has_partner_patient_id');
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      expect.objectContaining({
+        action: 'patient_share_cases_viewed',
+        targetType: 'PatientShareCase',
+        targetId: 'share_case_1',
+        changes: expect.objectContaining({
+          target_screen: 'pharmacy_cooperation_workflow',
+          viewer_role: 'pharmacist',
+          viewed_count: 1,
+          share_case_ids: ['share_case_1'],
+          base_patient_ids: ['patient_1'],
+          base_site_ids: ['site_1'],
+          partner_pharmacy_ids: ['partner_pharmacy_1'],
+        }),
+      }),
+    );
+    expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('山田 花子');
+    expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('東京都港区1-2-3');
   });
 
   it('creates a draft share case with a pending patient link and patient snapshot', async () => {
