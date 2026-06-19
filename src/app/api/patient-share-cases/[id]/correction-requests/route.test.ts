@@ -250,4 +250,29 @@ describe('/api/patient-share-cases/[id]/correction-requests POST', () => {
     expect(correctionRequestCreateMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
+
+  it('rejects correction requests for inactive share cases before target lookup', async () => {
+    patientShareCaseFindFirstMock.mockResolvedValue({
+      id: 'share_case_1',
+      status: 'revoked',
+      base_patient_id: 'patient_1',
+      base_case_id: 'case_1',
+      shared_management_plan_id: 'plan_1',
+    });
+
+    const response = await rawPOST(
+      createRequest({
+        target_type: 'partner_visit_record',
+        target_id: 'partner_visit_record_1',
+        field_path: 'record_content',
+        reason: '記録の修正依頼',
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(409);
+    expect(partnerVisitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(correctionRequestCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
 });

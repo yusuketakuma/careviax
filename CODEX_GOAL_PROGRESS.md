@@ -3927,6 +3927,36 @@ Implemented:
 
 - DB-backed proof for the broader v0.2 goal remains blocked until migration application is explicitly approved.
 
+## 20260620-0004 JST - Patient Share Correction Policy
+
+### Summary
+
+- Added a shared patient-share policy service for correction/addition request ownership and direct-edit checks.
+- Routed patient-share correction request creation through the shared policy instead of route-local target-owner maps.
+- Added regression coverage proving inactive/revoked share cases stop before target lookup, create, or audit side effects.
+
+### Files Changed
+
+- `src/server/services/patient-share-policy.ts`
+- `src/server/services/patient-share-policy.test.ts`
+- `src/app/api/patient-share-cases/[id]/correction-requests/route.ts`
+- `src/app/api/patient-share-cases/[id]/correction-requests/route.test.ts`
+- `Plans.md`
+- `docs/pharmacy-cooperation-v0.2-completion-audit.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write src/server/services/patient-share-policy.ts src/server/services/patient-share-policy.test.ts 'src/app/api/patient-share-cases/[id]/correction-requests/route.ts' 'src/app/api/patient-share-cases/[id]/correction-requests/route.test.ts'`: passed.
+- `pnpm exec vitest run src/server/services/patient-share-policy.test.ts 'src/app/api/patient-share-cases/[id]/correction-requests/route.test.ts' --reporter=dot --testTimeout=30000`: passed, 2 files / 9 tests.
+- Targeted ESLint over touched policy/correction-request files: passed.
+- `pnpm typecheck`: passed.
+
+### Remaining / Next Loop
+
+- R2 is stronger for correction/addition requests. Direct DB-backed proof and migration application remain blocked until explicit approval.
+
 ## 20260619-2356 JST - Dialog Viewport Safety
 
 ### Summary

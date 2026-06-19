@@ -7,18 +7,13 @@ import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
+import {
+  PATIENT_SHARE_CORRECTION_TARGET_TYPES,
+  resolvePatientShareCorrectionRequestPolicy,
+} from '@/server/services/patient-share-policy';
 
-type PharmacyOwner = 'base_pharmacy' | 'partner_pharmacy';
 const correctionStatusSchema = z.enum(['open', 'responded', 'resolved', 'cancelled']);
-const correctionTargetTypeSchema = z.enum([
-  'patient_profile',
-  'care_case',
-  'management_plan',
-  'visit_request',
-  'partner_visit_record',
-  'claim_note',
-  'billing_candidate',
-]);
+const correctionTargetTypeSchema = z.enum(PATIENT_SHARE_CORRECTION_TARGET_TYPES);
 const correctionRequestTypeSchema = z.enum(['correction', 'addition']);
 const fieldPathSchema = z
   .string()
@@ -76,19 +71,6 @@ const ALLOWED_FIELD_PATHS_BY_TARGET_TYPE: Record<
   billing_candidate: new Set(['billing_status', 'exclusion_reason', 'amount_snapshot']),
 };
 
-const REQUIRED_OWNER_BY_TARGET_TYPE: Record<
-  z.infer<typeof correctionTargetTypeSchema>,
-  PharmacyOwner
-> = {
-  patient_profile: 'base_pharmacy',
-  care_case: 'base_pharmacy',
-  management_plan: 'base_pharmacy',
-  visit_request: 'base_pharmacy',
-  partner_visit_record: 'partner_pharmacy',
-  claim_note: 'base_pharmacy',
-  billing_candidate: 'base_pharmacy',
-};
-
 const createCorrectionRequestSchema = z
   .object({
     target_type: correctionTargetTypeSchema,
@@ -110,10 +92,6 @@ const createCorrectionRequestSchema = z
       });
     }
   });
-
-function oppositeOwner(owner: PharmacyOwner) {
-  return owner === 'base_pharmacy' ? 'partner_pharmacy' : 'base_pharmacy';
-}
 
 function optionalSearchParam(value: string | null) {
   const trimmed = value?.trim() ?? '';
@@ -269,12 +247,15 @@ export const POST = withAuthContext<{ id: string }>(
       });
 
       if (!shareCase) return { response: notFound('患者共有ケースが見つかりません') };
-      if (shareCase.status !== 'active') {
+      const correctionPolicy = resolvePatientShareCorrectionRequestPolicy({
+        shareCaseStatus: shareCase.status,
+        targetType: parsed.data.target_type,
+      });
+      if (!correctionPolicy.allowed) {
         return { response: conflict('共有中の患者共有ケースにのみ修正依頼を作成できます') };
       }
 
-      const targetOwner = REQUIRED_OWNER_BY_TARGET_TYPE[parsed.data.target_type];
-      const requesterOwner = oppositeOwner(targetOwner);
+      const { requesterOwner, targetOwner } = correctionPolicy;
       const targetId = parsed.data.target_id;
       const targetValid =
         parsed.data.target_type === 'patient_profile'
