@@ -5152,15 +5152,46 @@ Implemented:
 - `pnpm exec prettier --write 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' tools/tests/ui-route-mocked-smoke.spec.ts`: passed, unchanged.
 - `pnpm exec vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 12 tests.
 - `pnpm exec eslint 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' tools/tests/ui-route-mocked-smoke.spec.ts`: passed.
-- `PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-route-mocked-smoke.spec.ts --project chromium --grep "pharmacy cooperation route-mocked browser workflow smoke"`: passed, 1 Chromium test in 7.5s.
+- `nc -z localhost 3012`: passed.
+- `nc -z localhost 5433`: passed.
+- `PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-route-mocked-smoke.spec.ts --project chromium --grep "pharmacy cooperation route-mocked browser workflow smoke"`: passed, 1 Chromium test in 6.4s.
 - `pnpm typecheck`: passed.
 - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
 - `git diff --check`: passed.
 - Focused `rg` scan for row-action `aria-label` coverage: confirmed patient-share-case, visit-request, and partner-visit-record row actions now include record ID plus partner pharmacy context.
+- Verifier subagent reran focused ESLint and Vitest, confirmed the labels are target-specific, and confirmed PHI was not added to accessible names.
 
 ### Remaining / Next Loop
 
 - Pharmacy-cooperation workflow row action naming is addressed for the inspected tables. UI/UX remediation remains active for any remaining patient-link acceptance context, responsive table density, broader select/input label scans, and browser/a11y proof expansion outside this focused slice.
+
+## 20260620-0207 JST - Admin Pharmacy Cooperation Activation Action Name
+
+### Summary
+
+- Added a target-specific accessible name to the repeated partnership `有効化` action in the admin pharmacy-cooperation setup table.
+- Included non-PHI partnership ID plus partner pharmacy context, while excluding patient names, addresses, clinical details, contract body text, filenames, signed URLs, and storage keys.
+- Updated the setup regression test to click the exact row-scoped action name.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx`
+- `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx'`: passed, unchanged.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 5 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Admin pharmacy-cooperation partnership activation naming is addressed. Raw setup tables still remain and should be converted or browser/a11y-proved in a separate DataTable/responsive-density slice if prioritized.
 
 ## 20260620-0036 JST - Billing Rule Row Action Names
 
