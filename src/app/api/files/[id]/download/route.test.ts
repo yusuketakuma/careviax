@@ -2,9 +2,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { PHOS_DISABLE_LEGACY_FILE_API_ENV } from '@/lib/api/legacy-file-api-boundary';
 
-const { requireAuthContextMock, createPresignedDownloadMock } = vi.hoisted(() => ({
+const {
+  requireAuthContextMock,
+  createPresignedDownloadMock,
+  recordFileDownloadAuditMock,
+  resolveFileDownloadAuditContextMock,
+  prismaMock,
+} = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   createPresignedDownloadMock: vi.fn(),
+  recordFileDownloadAuditMock: vi.fn(),
+  resolveFileDownloadAuditContextMock: vi.fn(),
+  prismaMock: {},
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -24,6 +33,15 @@ vi.mock('@/server/services/file-storage', () => ({
   createPresignedDownload: createPresignedDownloadMock,
 }));
 
+vi.mock('@/lib/db/client', () => ({
+  prisma: prismaMock,
+}));
+
+vi.mock('@/server/services/file-download-audit', () => ({
+  recordFileDownloadAudit: recordFileDownloadAuditMock,
+  resolveFileDownloadAuditContext: resolveFileDownloadAuditContextMock,
+}));
+
 import { GET } from './route';
 
 const originalDisableLegacyFileApi = process.env[PHOS_DISABLE_LEGACY_FILE_API_ENV];
@@ -39,15 +57,32 @@ function createRequest() {
 describe('/api/files/[id]/download GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    delete process.env[PHOS_DISABLE_LEGACY_FILE_API_ENV];
     requireAuthContextMock.mockResolvedValue({
       ctx: {
         userId: 'user_1',
         orgId: 'org_1',
         role: 'admin',
+        ipAddress: '203.0.113.10',
+        userAgent: 'TestBrowser/1.0',
       },
     });
     createPresignedDownloadMock.mockResolvedValue({
+      id: 'file_1',
+      fileName: '山田花子-report.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+      purpose: 'report',
       downloadUrl: 'https://example.com/archive.zip',
+      expiresIn: 900,
+    });
+    recordFileDownloadAuditMock.mockResolvedValue(undefined);
+    resolveFileDownloadAuditContextMock.mockResolvedValue({
+      patientShareConsentId: 'share_consent_1',
+      shareCaseId: 'share_case_1',
+      hasConsentRecord: true,
+      hasValidUntil: false,
+      consentRevoked: false,
     });
   });
 
@@ -75,6 +110,8 @@ describe('/api/files/[id]/download GET', () => {
     });
     expect(requireAuthContextMock).not.toHaveBeenCalled();
     expect(createPresignedDownloadMock).not.toHaveBeenCalled();
+    expect(resolveFileDownloadAuditContextMock).not.toHaveBeenCalled();
+    expect(recordFileDownloadAuditMock).not.toHaveBeenCalled();
   });
 
   it('redirects to the signed download url', async () => {
@@ -87,6 +124,7 @@ describe('/api/files/[id]/download GET', () => {
     }
     expect(response.status).toBe(307);
     expect(response.headers.get('location')).toBe('https://example.com/archive.zip');
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(createPresignedDownloadMock).toHaveBeenCalledWith({
       orgId: 'org_1',
       fileId: 'file_1',
@@ -95,6 +133,30 @@ describe('/api/files/[id]/download GET', () => {
         role: 'admin',
       },
     });
+    expect(recordFileDownloadAuditMock).toHaveBeenCalledWith(prismaMock, {
+      orgId: 'org_1',
+      actorId: 'user_1',
+      fileId: 'file_1',
+      purpose: 'report',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+      expiresIn: 900,
+      surface: 'files_download',
+      responseMode: 'redirect',
+      consentAttachmentContext: {
+        patientShareConsentId: 'share_consent_1',
+        shareCaseId: 'share_case_1',
+        hasConsentRecord: true,
+        hasValidUntil: false,
+        consentRevoked: false,
+      },
+      ipAddress: '203.0.113.10',
+      userAgent: 'TestBrowser/1.0',
+    });
+    expect(JSON.stringify(recordFileDownloadAuditMock.mock.calls)).not.toContain(
+      'https://example.com/archive.zip',
+    );
+    expect(JSON.stringify(recordFileDownloadAuditMock.mock.calls)).not.toContain('山田花子');
   });
 
   it('normalizes padded file ids before signing the download redirect', async () => {
@@ -114,6 +176,7 @@ describe('/api/files/[id]/download GET', () => {
         role: 'admin',
       },
     });
+    expect(recordFileDownloadAuditMock).toHaveBeenCalledOnce();
   });
 
   it('rejects blank file ids before signing a download redirect', async () => {
@@ -126,5 +189,43 @@ describe('/api/files/[id]/download GET', () => {
     }
     expect(response.status).toBe(400);
     expect(createPresignedDownloadMock).not.toHaveBeenCalled();
+    expect(resolveFileDownloadAuditContextMock).not.toHaveBeenCalled();
+    expect(recordFileDownloadAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed without returning a redirect when download audit cannot be recorded', async () => {
+    recordFileDownloadAuditMock.mockRejectedValueOnce(new Error('audit unavailable'));
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'file_1' }),
+    });
+
+    if (!response) {
+      throw new Error('Expected a response from file download GET');
+    }
+    expect(response.status).toBe(500);
+    expect(response.headers.get('location')).toBeNull();
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'FILE_DOWNLOAD_AUDIT_FAILED',
+    });
+  });
+
+  it('does not audit when presigned download creation fails', async () => {
+    const { FileStorageError } = await import('@/server/services/file-storage');
+    createPresignedDownloadMock.mockRejectedValueOnce(
+      new FileStorageError('FILE_METADATA_NOT_FOUND', 'ファイルが見つかりません', 404),
+    );
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'file_1' }),
+    });
+
+    if (!response) {
+      throw new Error('Expected a response from file download GET');
+    }
+    expect(response.status).toBe(404);
+    expect(resolveFileDownloadAuditContextMock).not.toHaveBeenCalled();
+    expect(recordFileDownloadAuditMock).not.toHaveBeenCalled();
   });
 });

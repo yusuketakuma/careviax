@@ -238,6 +238,7 @@ model PatientShareConsent {
   @@index([org_id])
   @@index([org_id, share_case_id])
   @@index([org_id, consent_record_id])
+  @@index([org_id, file_asset_id])
   @@index([revoked_at])
 }
 

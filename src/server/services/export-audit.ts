@@ -25,19 +25,20 @@ export async function recordDataExportAudit(
     actorId: string;
     targetType: string;
     targetId?: string;
-    format: 'csv' | 'json' | 'zip' | 'pdf' | 'print' | 'claims-xml';
+    format: 'csv' | 'json' | 'zip' | 'pdf' | 'print' | 'claims-xml' | 'file';
     recordCount?: number;
     filters?: Record<string, unknown>;
     metadata?: Record<string, unknown>;
     ipAddress?: string;
     userAgent?: string;
+    action?: string;
   },
 ) {
   await db.auditLog.create({
     data: {
       org_id: args.orgId,
       actor_id: args.actorId,
-      action: 'export',
+      action: args.action ?? 'export',
       target_type: args.targetType,
       target_id: args.targetId ?? 'bulk',
       changes:

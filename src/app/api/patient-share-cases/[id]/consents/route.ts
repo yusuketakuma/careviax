@@ -175,7 +175,7 @@ export const POST = withAuthContext<{ id: string }>(
           where: {
             id: parsed.data.file_asset_id,
             org_id: ctx.orgId,
-            status: 'completed',
+            status: 'uploaded',
             OR: [{ patient_id: null }, { patient_id: shareCase.base_patient_id }],
           },
           select: { id: true },

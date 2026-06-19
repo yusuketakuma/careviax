@@ -171,6 +171,61 @@ describe('recordDataExportAudit', () => {
     });
   });
 
+  it('records file downloads without reusing PDF or ZIP export formats', async () => {
+    auditLogCreateMock.mockResolvedValue({});
+
+    await recordDataExportAudit(db, {
+      orgId: 'org-1',
+      actorId: 'user-1',
+      targetType: 'file_asset',
+      targetId: 'file-1',
+      format: 'file',
+      recordCount: 1,
+      metadata: {
+        file_purpose: 'report',
+        mime_type: 'application/pdf',
+        size_bytes: 1024,
+      },
+    });
+
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'export',
+        target_type: 'file_asset',
+        target_id: 'file-1',
+        changes: expect.objectContaining({
+          format: 'file',
+          record_count: 1,
+          metadata: {
+            file_purpose: 'report',
+            mime_type: 'application/pdf',
+            size_bytes: 1024,
+          },
+        }),
+      }),
+    });
+  });
+
+  it('supports an explicit action for download-specific audit search', async () => {
+    auditLogCreateMock.mockResolvedValue({});
+
+    await recordDataExportAudit(db, {
+      orgId: 'org-1',
+      actorId: 'user-1',
+      targetType: 'file_asset',
+      targetId: 'file-1',
+      format: 'file',
+      action: 'file_download',
+    });
+
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'file_download',
+        target_type: 'file_asset',
+      }),
+    });
+  });
+
   it('propagates db errors', async () => {
     auditLogCreateMock.mockRejectedValue(new Error('DB down'));
 

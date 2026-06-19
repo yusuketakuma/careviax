@@ -162,7 +162,7 @@ describe('/api/patient-share-cases/[id]/consents', () => {
       where: {
         id: 'file_1',
         org_id: 'org_1',
-        status: 'completed',
+        status: 'uploaded',
         OR: [{ patient_id: null }, { patient_id: 'patient_1' }],
       },
       select: { id: true },
@@ -193,7 +193,7 @@ describe('/api/patient-share-cases/[id]/consents', () => {
     expect(JSON.stringify(await response.json())).not.toContain('山田花子');
   });
 
-  it('rejects file assets that are not completed and org-scoped to the patient share case', async () => {
+  it('rejects file assets that are not uploaded and org-scoped to the patient share case', async () => {
     fileAssetFindFirstMock.mockResolvedValue(null);
 
     const response = await rawPOST(
