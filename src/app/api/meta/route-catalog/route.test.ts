@@ -312,6 +312,18 @@ describe('/api/meta/route-catalog GET', () => {
           area: 'masters',
         }),
         expect.objectContaining({
+          path: '/api/pharmacy-contracts/:id/documents',
+          methods: ['GET'],
+          permission: 'canVisit',
+          area: 'masters',
+        }),
+        expect.objectContaining({
+          path: '/api/pharmacy-contracts/:id/documents',
+          methods: ['POST'],
+          permission: 'canManagePatientSharing',
+          area: 'masters',
+        }),
+        expect.objectContaining({
           path: '/api/audit-logs/export',
           methods: ['GET'],
           permission: 'canAdmin',

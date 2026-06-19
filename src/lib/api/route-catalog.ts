@@ -610,6 +610,20 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'masters',
   },
   {
+    path: '/api/pharmacy-contracts/:id/documents',
+    methods: ['GET'],
+    permission: 'canVisit',
+    description: '薬局間契約書の生成済み文書一覧取得',
+    area: 'masters',
+  },
+  {
+    path: '/api/pharmacy-contracts/:id/documents',
+    methods: ['POST'],
+    permission: 'canManagePatientSharing',
+    description: '薬局間契約書テンプレートのプレビューと文書保存',
+    area: 'masters',
+  },
+  {
     path: '/api/files/presigned-upload',
     methods: ['POST'],
     permission: 'authenticated',
