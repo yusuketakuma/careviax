@@ -651,6 +651,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/patient-self-reports',
   '/api/patient-self-reports/:id',
   '/api/patient-share-cases',
+  '/api/patient-share-cases/:id',
   '/api/patient-share-cases/:id/activate',
   '/api/patient-share-cases/:id/consents',
   '/api/patient-share-cases/:id/consents/:id/revoke',

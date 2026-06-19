@@ -190,6 +190,9 @@ describe('rate-limit', () => {
     expect(canonicalizeRateLimitPath('/api/external-access/token_1/self-report')).toBe(
       '/api/external-access/:token/self-report',
     );
+    expect(canonicalizeRateLimitPath('/api/patient-share-cases/share_case_1')).toBe(
+      '/api/patient-share-cases/:id',
+    );
     expect(canonicalizeRateLimitPath('/api/patient-share-cases/share_case_1/activate')).toBe(
       '/api/patient-share-cases/:id/activate',
     );

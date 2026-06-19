@@ -64,6 +64,13 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'patients',
   },
   {
+    path: '/api/patient-share-cases/:id',
+    methods: ['PATCH'],
+    permission: 'canManagePatientSharing',
+    description: '患者共有ケースの共有範囲更新',
+    area: 'patients',
+  },
+  {
     path: '/api/patient-share-cases/:id/activate',
     methods: ['POST'],
     permission: 'canManagePatientSharing',

@@ -9,29 +9,10 @@ import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { dateKeySchema } from '@/lib/validations/date-key';
 import { utcDateFromLocalKey } from '@/lib/utils/date-boundary';
-
-const PATIENT_SHARE_SCOPE_KEYS = [
-  'prescription_history',
-  'medication_profile',
-  'care_reports',
-  'attachments',
-  'print',
-  'pdf_output',
-  'download',
-] as const;
-
-type PatientShareScopeKey = (typeof PATIENT_SHARE_SCOPE_KEYS)[number];
-type PatientShareScope = Record<PatientShareScopeKey, boolean>;
-
-const DEFAULT_SHARE_SCOPE: PatientShareScope = {
-  prescription_history: true,
-  medication_profile: true,
-  care_reports: true,
-  attachments: false,
-  print: false,
-  pdf_output: false,
-  download: false,
-};
+import {
+  enabledPatientShareScopeKeys,
+  normalizePatientShareScope,
+} from '@/server/services/patient-share-scope';
 
 const shareCaseStatusSchema = z.enum([
   'draft',
@@ -54,7 +35,7 @@ const createPatientShareCaseSchema = z
     share_scope: z
       .record(z.string(), z.unknown())
       .optional()
-      .transform((value) => normalizeShareScope(value)),
+      .transform((value) => normalizePatientShareScope(value)),
     starts_at: dateOnlySchema.optional().nullable(),
     ends_at: dateOnlySchema.optional().nullable(),
     shared_management_plan_id: z.string().trim().min(1).optional(),
@@ -91,29 +72,6 @@ function optionalSearchParam(value: string | null) {
 
 function optionalDate(value: string | null | undefined) {
   return value ? utcDateFromLocalKey(value) : null;
-}
-
-function normalizeShareScope(value: Record<string, unknown> | undefined): PatientShareScope {
-  const normalized: PatientShareScope = { ...DEFAULT_SHARE_SCOPE };
-  if (!value) return normalized;
-
-  for (const key of PATIENT_SHARE_SCOPE_KEYS) {
-    const rawValue = value[key];
-    if (typeof rawValue === 'boolean') {
-      normalized[key] = rawValue;
-    }
-  }
-
-  return normalized;
-}
-
-function enabledShareScopeKeys(value: unknown) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return [];
-  }
-
-  const scope = value as Record<string, unknown>;
-  return PATIENT_SHARE_SCOPE_KEYS.filter((key) => scope[key] === true);
 }
 
 function dateKeyFromDate(date: Date) {
@@ -173,7 +131,7 @@ function toSafePatientShareCase<T extends object>(row: T) {
   const { share_scope: shareScope, patient_link: patientLink, ...safe } = source;
   return {
     ...safe,
-    scope_keys: enabledShareScopeKeys(shareScope),
+    scope_keys: enabledPatientShareScopeKeys(shareScope),
     patient_link: toSafePatientLink(patientLink ?? null),
   };
 }
@@ -412,7 +370,7 @@ export const POST = withAuthContext(
           base_patient_id: parsed.data.base_patient_id,
           base_case_id: parsed.data.base_case_id ?? null,
           status: shareCase.status,
-          share_scope_keys: enabledShareScopeKeys(parsed.data.share_scope).sort(),
+          share_scope_keys: enabledPatientShareScopeKeys(parsed.data.share_scope).sort(),
           starts_at: parsed.data.starts_at ?? null,
           ends_at: parsed.data.ends_at ?? null,
         },

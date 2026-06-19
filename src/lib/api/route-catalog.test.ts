@@ -53,6 +53,7 @@ describe('routeCatalog', () => {
       '/api/external-access/:token/self-report',
       '/api/partner-pharmacies',
       '/api/patient-share-cases',
+      '/api/patient-share-cases/:id',
       '/api/patient-share-cases/:id/activate',
       '/api/patient-share-cases/:id/consents',
       '/api/patient-share-cases/:id/consents/:id/revoke',
