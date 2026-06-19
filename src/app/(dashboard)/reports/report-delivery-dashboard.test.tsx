@@ -49,10 +49,50 @@ describe('ReportDeliveryDashboard', () => {
             overdue_waiting_count: 1,
             overdue_threshold_days: 7,
           },
-          monthly_trend: [],
-          physician_breakdown: [],
-          channel_breakdown: [],
-          overdue_waiting: [],
+          monthly_trend: [
+            {
+              month: '2026-04',
+              attempted_count: 3,
+              success_count: 2,
+              failed_count: 1,
+              confirmed_count: 1,
+              response_waiting_count: 1,
+              success_rate: 67,
+              confirmed_rate: 33,
+            },
+          ],
+          physician_breakdown: [
+            {
+              recipient_name: '田中医師',
+              total_count: 3,
+              success_count: 2,
+              confirmed_count: 1,
+              success_rate: 67,
+            },
+          ],
+          channel_breakdown: [
+            {
+              channel: 'fax',
+              total_count: 3,
+              success_count: 2,
+              failed_count: 1,
+              success_rate: 67,
+            },
+          ],
+          overdue_waiting: [
+            {
+              id: 'delivery_1',
+              report_id: 'report_1',
+              patient_id: 'patient_1',
+              patient_name: '患者A',
+              report_type: 'visit_report',
+              recipient_name: '田中医師',
+              recipient_contact: '03-0000-0000',
+              channel: 'fax',
+              sent_at: '2026-04-08T10:00:00.000Z',
+              days_waiting: 8,
+            },
+          ],
         },
       },
       isLoading: false,
@@ -66,6 +106,12 @@ describe('ReportDeliveryDashboard', () => {
         '一覧で対象報告を確認したあとに、送達傾向や返信待ちの滞留をまとめて見返すセクションです。',
       ),
     ).toBeTruthy();
+    expect(screen.getByText('67%')).toBeTruthy();
+    expect(screen.getByText('2026-04')).toBeTruthy();
+    expect(screen.getByText('田中医師')).toBeTruthy();
+    expect(screen.getByText('患者A')).toBeTruthy();
+    expect(screen.getByText('8日経過')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'リマインドタスク起票' })).toBeTruthy();
     expect(screen.queryByRole('link', { name: '送達分析ページを開く' })).toBeNull();
   });
 
