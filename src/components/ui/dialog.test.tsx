@@ -18,6 +18,7 @@ describe('DialogDescription', () => {
     expect(
       screen.getByRole('dialog', { name: 'タイトル', description: '説明本文です。' }),
     ).toBeTruthy();
+    expect(screen.getByRole('button', { name: '閉じる' })).toBeTruthy();
     expect(screen.queryByRole('tooltip')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'ダイアログ説明を表示' }));
     expect(screen.getByRole('tooltip').textContent).toContain('説明本文です。');

@@ -16,6 +16,7 @@ describe('SheetDescription', () => {
     );
 
     expect(screen.queryByText('シート本文です。')).toBeNull();
+    expect(screen.getByRole('button', { name: '閉じる' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'シート説明を表示' }));
     expect(screen.getByText('シート本文です。')).toBeTruthy();
   });
