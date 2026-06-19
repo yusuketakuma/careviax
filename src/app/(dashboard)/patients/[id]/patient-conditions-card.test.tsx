@@ -41,6 +41,12 @@ describe('PatientConditionsCard', () => {
     expect(screen.getByRole('heading', { level: 2, name: '病名・課題リスト' }).tagName).toBe('H2');
     expect(screen.getByText('疾患: 心不全')).toBeTruthy();
     expect(screen.getByLabelText('病名・課題1件目の区分')).toBeTruthy();
+    expect(screen.getByLabelText('病名・課題1件目の名称')).toBeTruthy();
+    expect(screen.getByLabelText('病名・課題1件目の把握日')).toBeTruthy();
+    expect(screen.getByLabelText('病名・課題1件目のメモ')).toBeTruthy();
+    expect(screen.getByLabelText('病名・課題1件目を主要課題にする')).toBeTruthy();
+    expect(screen.getByLabelText('病名・課題1件目を有効にする')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '病名・課題1件目を削除' })).toBeTruthy();
     expect(screen.getByRole('button', { name: /行追加/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
   });

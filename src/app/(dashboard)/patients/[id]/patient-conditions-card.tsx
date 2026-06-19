@@ -159,6 +159,7 @@ export function PatientConditionsCard({
                 <div className="space-y-1.5">
                   <Label>名称</Label>
                   <Input
+                    aria-label={`病名・課題${index + 1}件目の名称`}
                     value={condition.name}
                     onChange={(event) =>
                       setConditions((current) =>
@@ -172,6 +173,7 @@ export function PatientConditionsCard({
                 <div className="space-y-1.5">
                   <Label>把握日</Label>
                   <Input
+                    aria-label={`病名・課題${index + 1}件目の把握日`}
                     type="date"
                     value={condition.noted_at}
                     onChange={(event) =>
@@ -186,6 +188,7 @@ export function PatientConditionsCard({
                 <div className="space-y-1.5">
                   <Label>メモ</Label>
                   <Textarea
+                    aria-label={`病名・課題${index + 1}件目のメモ`}
                     rows={2}
                     value={condition.notes}
                     onChange={(event) =>
@@ -203,6 +206,7 @@ export function PatientConditionsCard({
                 <div className="flex flex-wrap items-center gap-4 text-sm">
                   <label className="flex items-center gap-2">
                     <Checkbox
+                      aria-label={`病名・課題${index + 1}件目を主要課題にする`}
                       checked={condition.is_primary}
                       onCheckedChange={(checked) =>
                         setConditions((current) =>
@@ -216,6 +220,7 @@ export function PatientConditionsCard({
                   </label>
                   <label className="flex items-center gap-2">
                     <Checkbox
+                      aria-label={`病名・課題${index + 1}件目を有効にする`}
                       checked={condition.is_active}
                       onCheckedChange={(checked) =>
                         setConditions((current) =>
@@ -230,6 +235,7 @@ export function PatientConditionsCard({
                 </div>
 
                 <Button
+                  aria-label={`病名・課題${index + 1}件目を削除`}
                   type="button"
                   variant="ghost"
                   size="sm"
