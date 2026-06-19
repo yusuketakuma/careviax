@@ -275,43 +275,41 @@ export const POST = withAuthContext(
     }
 
     const result = await withOrgContext(ctx.orgId, async (tx) => {
-      const [partnership, patient, careCase] = await Promise.all([
-        tx.pharmacyPartnership.findFirst({
-          where: { id: parsed.data.partnership_id, org_id: ctx.orgId },
-          select: {
-            id: true,
-            status: true,
-            partner_pharmacy: { select: { status: true } },
-          },
-        }),
-        tx.patient.findFirst({
-          where: { id: parsed.data.base_patient_id, org_id: ctx.orgId, archived_at: null },
-          select: {
-            id: true,
-            name: true,
-            name_kana: true,
-            birth_date: true,
-            gender: true,
-            residences: {
-              where: { is_primary: true },
-              orderBy: { updated_at: 'desc' },
-              take: 1,
-              select: {
-                address: true,
-                facility_id: true,
-                facility_unit_id: true,
-                unit_name: true,
-              },
+      const partnership = await tx.pharmacyPartnership.findFirst({
+        where: { id: parsed.data.partnership_id, org_id: ctx.orgId },
+        select: {
+          id: true,
+          status: true,
+          partner_pharmacy: { select: { status: true } },
+        },
+      });
+      const patient = await tx.patient.findFirst({
+        where: { id: parsed.data.base_patient_id, org_id: ctx.orgId, archived_at: null },
+        select: {
+          id: true,
+          name: true,
+          name_kana: true,
+          birth_date: true,
+          gender: true,
+          residences: {
+            where: { is_primary: true },
+            orderBy: { updated_at: 'desc' },
+            take: 1,
+            select: {
+              address: true,
+              facility_id: true,
+              facility_unit_id: true,
+              unit_name: true,
             },
           },
-        }),
-        parsed.data.base_case_id
-          ? tx.careCase.findFirst({
-              where: { id: parsed.data.base_case_id, org_id: ctx.orgId },
-              select: { id: true, patient_id: true },
-            })
-          : Promise.resolve(null),
-      ]);
+        },
+      });
+      const careCase = parsed.data.base_case_id
+        ? await tx.careCase.findFirst({
+            where: { id: parsed.data.base_case_id, org_id: ctx.orgId },
+            select: { id: true, patient_id: true },
+          })
+        : null;
 
       if (!partnership) return { response: notFound('薬局間連携が見つかりません') };
       if (partnership.status !== 'active') {

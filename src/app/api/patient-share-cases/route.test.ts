@@ -358,6 +358,64 @@ describe('/api/patient-share-cases POST', () => {
     expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('東京都港区1-2-3');
   });
 
+  it('serializes transaction lookups before creating a share case', async () => {
+    const events: string[] = [];
+    let activeLookups = 0;
+    let maxActiveLookups = 0;
+    const serializedLookup = <T>(label: string, value: T) => {
+      events.push(`${label}:start`);
+      activeLookups += 1;
+      maxActiveLookups = Math.max(maxActiveLookups, activeLookups);
+      return new Promise<T>((resolve) => {
+        setTimeout(() => {
+          activeLookups -= 1;
+          events.push(`${label}:finish`);
+          resolve(value);
+        }, 0);
+      });
+    };
+
+    pharmacyPartnershipFindFirstMock.mockImplementation(() =>
+      serializedLookup('partnership', {
+        id: 'partnership_1',
+        status: 'active',
+        partner_pharmacy: { status: 'active' },
+      }),
+    );
+    patientFindFirstMock.mockImplementation(() =>
+      serializedLookup('patient', {
+        id: 'patient_1',
+        name: '山田 花子',
+        name_kana: 'ヤマダ ハナコ',
+        birth_date: new Date('1950-01-02T00:00:00.000Z'),
+        gender: 'female',
+        residences: [],
+      }),
+    );
+    careCaseFindFirstMock.mockImplementation(() =>
+      serializedLookup('careCase', { id: 'case_1', patient_id: 'patient_1' }),
+    );
+
+    const response = await POST(
+      createPostRequest({
+        partnership_id: 'partnership_1',
+        base_patient_id: 'patient_1',
+        base_case_id: 'case_1',
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(maxActiveLookups).toBe(1);
+    expect(events).toEqual([
+      'partnership:start',
+      'partnership:finish',
+      'patient:start',
+      'patient:finish',
+      'careCase:start',
+      'careCase:finish',
+    ]);
+  });
+
   it('creates a consent-pending share case without a care case lookup when base_case_id is omitted', async () => {
     const response = await POST(
       createPostRequest({

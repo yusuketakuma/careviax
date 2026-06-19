@@ -2,6 +2,7 @@ import { withAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObject } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
@@ -35,7 +36,7 @@ export const POST = withAuthContext<{ id: string }>(
   async (_req, ctx, { params }) => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
-    if (!id) return validationError('患者共有ケースIDが不正です');
+    if (!id) return withSensitiveNoStore(validationError('患者共有ケースIDが不正です'));
 
     const now = new Date();
     const today = utcDateFromLocalKey(localDateKey(now));
@@ -51,10 +52,11 @@ export const POST = withAuthContext<{ id: string }>(
           partner_pharmacy_approved_by: true,
           partnership: {
             select: {
+              id: true,
               status: true,
               effective_from: true,
               effective_to: true,
-              partner_pharmacy: { select: { status: true } },
+              partner_pharmacy: { select: { id: true, name: true, status: true } },
             },
           },
           consents: {
@@ -67,10 +69,13 @@ export const POST = withAuthContext<{ id: string }>(
           },
           patient_link: {
             select: {
+              id: true,
               match_status: true,
               approved_by_base: true,
               approved_by_partner: true,
               accepted_at: true,
+              declined_at: true,
+              partner_patient_id: true,
               partner_patient_snapshot: true,
             },
           },
@@ -113,7 +118,8 @@ export const POST = withAuthContext<{ id: string }>(
           }),
         };
       }
-      if (!hasAcceptedIdentityProof(shareCase.patient_link.partner_patient_snapshot)) {
+      const patientLink = shareCase.patient_link;
+      if (!hasAcceptedIdentityProof(patientLink.partner_patient_snapshot)) {
         return {
           response: conflict('協力薬局側の患者確認情報が不足しています', {
             blocker: 'patient_link_identity_proof_missing',
@@ -141,10 +147,9 @@ export const POST = withAuthContext<{ id: string }>(
         action: 'activate',
         hasActiveConsent: Boolean(activation.consent),
         patientLinkAccepted:
-          shareCase.patient_link.match_status === 'accepted' &&
-          Boolean(shareCase.patient_link.accepted_at),
-        hasBaseApproval: Boolean(shareCase.patient_link.approved_by_base),
-        hasPartnerApproval: Boolean(shareCase.patient_link.approved_by_partner),
+          patientLink.match_status === 'accepted' && Boolean(patientLink.accepted_at),
+        hasBaseApproval: Boolean(patientLink.approved_by_base),
+        hasPartnerApproval: Boolean(patientLink.approved_by_partner),
       });
       if (!activationTransition.allowed) {
         return {
@@ -162,15 +167,12 @@ export const POST = withAuthContext<{ id: string }>(
           activated_at: now,
           updated_by: ctx.userId,
         },
-        include: {
-          patient_link: true,
-          partnership: {
-            select: {
-              id: true,
-              status: true,
-              partner_pharmacy: { select: { id: true, name: true, status: true } },
-            },
-          },
+        select: {
+          id: true,
+          status: true,
+          consent_verified_at: true,
+          activated_at: true,
+          updated_at: true,
         },
       });
 
@@ -184,12 +186,30 @@ export const POST = withAuthContext<{ id: string }>(
         },
       });
 
-      return { shareCase: activated };
+      return {
+        shareCase: {
+          ...activated,
+          patient_link: {
+            id: patientLink.id,
+            match_status: patientLink.match_status,
+            approved_by_base: patientLink.approved_by_base,
+            approved_by_partner: patientLink.approved_by_partner,
+            accepted_at: patientLink.accepted_at,
+            declined_at: patientLink.declined_at,
+            has_partner_patient_id: Boolean(patientLink.partner_patient_id),
+          },
+          partnership: {
+            id: shareCase.partnership.id,
+            status: shareCase.partnership.status,
+            partner_pharmacy: shareCase.partnership.partner_pharmacy,
+          },
+        },
+      };
     });
 
     if ('response' in result)
-      return result.response ?? validationError('患者共有ケースIDが不正です');
-    return success(result.shareCase);
+      return withSensitiveNoStore(result.response ?? validationError('患者共有ケースIDが不正です'));
+    return withSensitiveNoStore(success(result.shareCase));
   },
   {
     permission: 'canManagePatientSharing',

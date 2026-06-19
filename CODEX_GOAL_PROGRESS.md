@@ -4306,6 +4306,42 @@ Implemented:
 
 - UI/UX remediation remains active. Remaining candidates include pharmacy-cooperation responsive table density, select accessible-name gaps outside fixed/verified screens, raw table/DataTable convergence, and expanded browser/a11y proof.
 
+## 20260620-0446 JST - Patient Share Transaction Query Serialization
+
+### Summary
+
+- Serialized the `POST /api/patient-share-cases` validation lookups inside `withOrgContext` instead of issuing same-transaction Prisma reads with `Promise.all`.
+- Removed the nested relation `include` from `POST /api/patient-share-cases/:id/activate` update output, because Prisma expanded it into concurrent `PgTransaction` queries and triggered the pg@9 deprecation warning.
+- Returned a no-store, minimized activation response that preserves safe status/link/partnership fields without exposing full patient-link snapshots or identity proof JSON.
+- Added regression coverage for serialized create-route lookups and activation response minimization.
+
+### Files Changed
+
+- `src/app/api/patient-share-cases/route.ts`
+- `src/app/api/patient-share-cases/route.test.ts`
+- `src/app/api/patient-share-cases/[id]/activate/route.ts`
+- `src/app/api/patient-share-cases/[id]/activate/route.test.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- Read `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md` before editing Route Handler code.
+- `pnpm exec prettier --write 'src/app/api/patient-share-cases/route.ts' 'src/app/api/patient-share-cases/route.test.ts'`: passed.
+- `pnpm exec eslint 'src/app/api/patient-share-cases/route.ts' 'src/app/api/patient-share-cases/route.test.ts' && pnpm exec vitest run 'src/app/api/patient-share-cases/route.test.ts' --reporter=dot --testTimeout=30000`: passed, 1 file / 18 tests.
+- Trace repro before the activation fix: `NODE_OPTIONS='--max-old-space-size=12288 --trace-deprecation' DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT=1 AUTH_SECRET=ph-os-local-auth-secret NEXTAUTH_SECRET=ph-os-local-auth-secret NEXTAUTH_URL=http://localhost:3012 NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM=1 NEXT_PUBLIC_WORKBENCH_USE_REAL_DATA=1 NEXT_FONT_GOOGLE_MOCKED_RESPONSES=$PWD/tools/tests/helpers/next-font-google-mocked-responses.cjs ./node_modules/.bin/next dev --webpack --port 3012` plus the focused patient-share Playwright flow passed but logged `Calling client.query() when the client is already executing a query`; stack pointed to `PgTransaction` relation-query expansion.
+- `pnpm exec prettier --write 'src/app/api/patient-share-cases/[id]/activate/route.ts' 'src/app/api/patient-share-cases/[id]/activate/route.test.ts' 'src/app/api/patient-share-cases/route.ts' 'src/app/api/patient-share-cases/route.test.ts'`: passed.
+- `pnpm exec eslint 'src/app/api/patient-share-cases/[id]/activate/route.ts' 'src/app/api/patient-share-cases/[id]/activate/route.test.ts' 'src/app/api/patient-share-cases/route.ts' 'src/app/api/patient-share-cases/route.test.ts' && pnpm exec vitest run 'src/app/api/patient-share-cases/route.test.ts' 'src/app/api/patient-share-cases/[id]/activate/route.test.ts' --reporter=dot --testTimeout=30000`: passed, 2 files / 25 tests.
+- `pnpm typecheck`: passed.
+- Focused Playwright rerun on trace server: `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-major-screens.spec.ts --project=chromium --grep "patient card drives a DB-backed share, visit, report, and billing flow"`: passed, 1 Chromium test, and the post-fix server log had no `Calling client.query()` deprecation warning.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `pnpm lint`: passed.
+
+### Remaining / Next Loop
+
+- The pg@9 same-client query warning is fixed for the DB-backed patient-share activation flow and covered by unit plus browser/log evidence.
+- Remaining pharmacy-cooperation proof work should continue with any still-unverified message-thread browser/readback gaps or the next UI/UX hardening candidate.
+
 ## 20260620-0443 JST - Admin User Visit Constraint Guidance
 
 ### Summary

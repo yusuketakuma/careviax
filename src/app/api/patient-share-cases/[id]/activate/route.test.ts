@@ -72,10 +72,11 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
       base_pharmacy_approved_by: 'base_user',
       partner_pharmacy_approved_by: 'partner_user',
       partnership: {
+        id: 'partnership_1',
         status: 'active',
         effective_from: new Date('2026-06-01T00:00:00.000Z'),
         effective_to: new Date('2026-06-19T00:00:00.000Z'),
-        partner_pharmacy: { status: 'active' },
+        partner_pharmacy: { id: 'partner_pharmacy_1', name: '協力薬局', status: 'active' },
       },
       consents: [
         {
@@ -85,10 +86,13 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
         },
       ],
       patient_link: {
+        id: 'patient_link_1',
         match_status: 'accepted',
         approved_by_base: 'base_user',
         approved_by_partner: 'partner_user',
         accepted_at: new Date('2026-06-10T00:00:00.000Z'),
+        declined_at: null,
+        partner_patient_id: 'partner_patient_1',
         partner_patient_snapshot: {
           identity_proof: {
             checked_at: '2026-06-10T00:00:00.000Z',
@@ -102,7 +106,9 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
     patientShareCaseUpdateMock.mockResolvedValue({
       id: 'share_case_1',
       status: 'active',
-      patient_link: { id: 'patient_link_1' },
+      consent_verified_at: new Date('2026-06-19T00:00:00.000Z'),
+      activated_at: new Date('2026-06-19T00:00:00.000Z'),
+      updated_at: new Date('2026-06-19T00:00:00.000Z'),
     });
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
@@ -306,10 +312,11 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
       base_pharmacy_approved_by: 'base_user',
       partner_pharmacy_approved_by: 'partner_user',
       partnership: {
+        id: 'partnership_1',
         status: 'active',
         effective_from: new Date('2026-06-20T00:00:00.000Z'),
         effective_to: new Date('2026-06-20T00:00:00.000Z'),
-        partner_pharmacy: { status: 'active' },
+        partner_pharmacy: { id: 'partner_pharmacy_1', name: '協力薬局', status: 'active' },
       },
       consents: [
         {
@@ -319,10 +326,13 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
         },
       ],
       patient_link: {
+        id: 'patient_link_1',
         match_status: 'accepted',
         approved_by_base: 'base_user',
         approved_by_partner: 'partner_user',
         accepted_at: new Date('2026-06-20T00:00:00.000Z'),
+        declined_at: null,
+        partner_patient_id: 'partner_patient_1',
         partner_patient_snapshot: {
           identity_proof: {
             checked_at: '2026-06-20T00:00:00.000Z',
@@ -356,7 +366,13 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
         activated_at: new Date('2026-06-19T00:00:00.000Z'),
         updated_by: 'user_1',
       },
-      include: expect.any(Object),
+      select: {
+        id: true,
+        status: true,
+        consent_verified_at: true,
+        activated_at: true,
+        updated_at: true,
+      },
     });
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.anything(),
@@ -371,5 +387,10 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
         },
       },
     );
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    const bodyText = JSON.stringify(await response.json());
+    expect(bodyText).toContain('has_partner_patient_id');
+    expect(bodyText).not.toContain('partner_patient_snapshot');
+    expect(bodyText).not.toContain('identity_proof');
   });
 });
