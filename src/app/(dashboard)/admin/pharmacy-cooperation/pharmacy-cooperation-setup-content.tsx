@@ -946,6 +946,7 @@ export function PharmacyCooperationSetupContent() {
                             activatePartnershipMutation.isPending || partnership.status === 'active'
                           }
                           onClick={() => activatePartnershipMutation.mutate(partnership.id)}
+                          aria-label={`${partnership.id} ${partnership.partner_pharmacy.name} の薬局間連携を有効化`}
                         >
                           <CheckCircle2 className="size-4" aria-hidden="true" />
                           有効化

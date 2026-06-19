@@ -344,7 +344,11 @@ describe('PharmacyCooperationSetupContent', () => {
     fireEvent.change(within(partnershipsTable).getByLabelText('partnership_1 の協力承認者'), {
       target: { value: 'partner_manager' },
     });
-    fireEvent.click(within(partnershipsTable).getAllByRole('button', { name: /有効化/ })[0]);
+    fireEvent.click(
+      within(partnershipsTable).getByRole('button', {
+        name: 'partnership_1 協力薬局 の薬局間連携を有効化',
+      }),
+    );
 
     fireEvent.change(screen.getByLabelText('契約の基幹承認者'), {
       target: { value: 'base_manager' },
