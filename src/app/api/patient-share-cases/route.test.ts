@@ -85,13 +85,41 @@ describe('/api/patient-share-cases POST', () => {
       status: 'draft',
       partnership_id: 'partnership_1',
       base_patient_id: 'patient_1',
-      patient_link: { id: 'patient_link_1', match_status: 'pending' },
+      share_scope: {
+        prescription_history: true,
+        medication_profile: true,
+        care_reports: true,
+        attachments: false,
+        print: false,
+        pdf_output: true,
+        download: false,
+        memo: '患者名 山田 花子',
+      },
+      patient_link: {
+        id: 'patient_link_1',
+        match_status: 'pending',
+        approved_by_base: null,
+        approved_by_partner: null,
+        accepted_at: null,
+        declined_at: null,
+        partner_patient_id: null,
+      },
     });
     patientShareCaseFindManyMock.mockResolvedValue([
       {
         id: 'share_case_1',
         status: 'draft',
         base_patient_id: 'patient_1',
+        share_scope: {
+          prescription_history: true,
+          medication_profile: true,
+          care_reports: true,
+          attachments: false,
+          print: false,
+          pdf_output: false,
+          download: false,
+          memo: '患者名 山田 花子',
+        },
         partnership: {
           base_site_id: 'site_1',
           partner_pharmacy: { id: 'partner_pharmacy_1' },
@@ -138,6 +166,7 @@ describe('/api/patient-share-cases POST', () => {
     );
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(patientShareCaseFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         include: expect.objectContaining({
@@ -169,7 +198,10 @@ describe('/api/patient-share-cases POST', () => {
     expect(bodyText).not.toContain('別人でした');
     expect(bodyText).not.toContain('山田 花子');
     expect(bodyText).not.toContain('東京都港区1-2-3');
+    expect(bodyText).not.toContain('share_scope');
+    expect(bodyText).not.toContain('memo');
     expect(bodyText).toContain('has_partner_patient_id');
+    expect(bodyText).toContain('scope_keys');
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
@@ -199,15 +231,21 @@ describe('/api/patient-share-cases POST', () => {
         base_patient_id: ' patient_1 ',
         base_case_id: ' case_1 ',
         starts_at: '2026-06-01',
+        ends_at: '2026-12-31',
+        shared_management_plan_id: 'plan_1',
+        shared_management_plan_version: 2,
         share_scope: {
           medication_profile: true,
           care_reports: true,
+          pdf_output: true,
+          memo: '患者名 山田 花子',
           download: false,
         },
       }),
     );
 
     expect(response.status).toBe(201);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(patientShareCaseCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
@@ -216,7 +254,18 @@ describe('/api/patient-share-cases POST', () => {
         base_case_id: 'case_1',
         status: 'draft',
         starts_at: new Date('2026-06-01T00:00:00.000Z'),
-        ends_at: null,
+        ends_at: new Date('2026-12-31T00:00:00.000Z'),
+        shared_management_plan_id: 'plan_1',
+        shared_management_plan_version: 2,
+        share_scope: {
+          prescription_history: true,
+          medication_profile: true,
+          care_reports: true,
+          attachments: false,
+          print: false,
+          pdf_output: true,
+          download: false,
+        },
         created_by: 'user_1',
         updated_by: 'user_1',
         patient_link: {
@@ -244,10 +293,103 @@ describe('/api/patient-share-cases POST', () => {
         action: 'patient_share_case_created',
         targetType: 'PatientShareCase',
         targetId: 'share_case_1',
+        changes: {
+          partnership_id: 'partnership_1',
+          base_patient_id: 'patient_1',
+          base_case_id: 'case_1',
+          status: 'draft',
+          share_scope_keys: [
+            'care_reports',
+            'medication_profile',
+            'pdf_output',
+            'prescription_history',
+          ],
+          starts_at: '2026-06-01',
+          ends_at: '2026-12-31',
+        },
       }),
     );
+    const bodyText = JSON.stringify(await response.json());
+    expect(bodyText).not.toContain('base_patient_snapshot');
+    expect(bodyText).not.toContain('partner_patient_snapshot');
+    expect(bodyText).not.toContain('share_scope');
+    expect(bodyText).not.toContain('memo');
+    expect(bodyText).not.toContain('山田 花子');
+    expect(bodyText).not.toContain('東京都港区1-2-3');
+    expect(bodyText).toContain('scope_keys');
     expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('山田 花子');
     expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('東京都港区1-2-3');
+  });
+
+  it('creates a draft share case without a care case lookup when base_case_id is omitted', async () => {
+    const response = await POST(
+      createPostRequest({
+        partnership_id: 'partnership_1',
+        base_patient_id: 'patient_1',
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(patientShareCaseCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          base_case_id: undefined,
+          share_scope: {
+            prescription_history: true,
+            medication_profile: true,
+            care_reports: true,
+            attachments: false,
+            print: false,
+            pdf_output: false,
+            download: false,
+          },
+        }),
+      }),
+    );
+  });
+
+  it('rejects invalid date windows before transaction side effects', async () => {
+    const response = await POST(
+      createPostRequest({
+        partnership_id: 'partnership_1',
+        base_patient_id: 'patient_1',
+        starts_at: '2026-06-10',
+        ends_at: '2026-06-09',
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientShareCaseCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['draft partnership', { status: 'draft', partnerStatus: 'active' }],
+    ['suspended partnership', { status: 'suspended', partnerStatus: 'active' }],
+    ['ended partnership', { status: 'ended', partnerStatus: 'active' }],
+    ['inactive partner pharmacy', { status: 'active', partnerStatus: 'inactive' }],
+    ['archived partner pharmacy', { status: 'active', partnerStatus: 'archived' }],
+  ])('rejects %s before create or audit side effects', async (_label, setup) => {
+    pharmacyPartnershipFindFirstMock.mockResolvedValue({
+      id: 'partnership_1',
+      status: setup.status,
+      partner_pharmacy: { status: setup.partnerStatus },
+    });
+
+    const response = await POST(
+      createPostRequest({
+        partnership_id: 'partnership_1',
+        base_patient_id: 'patient_1',
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(patientShareCaseCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
   it('rejects a care case that belongs to another patient before create or audit side effects', async () => {
@@ -262,6 +404,7 @@ describe('/api/patient-share-cases POST', () => {
     );
 
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(patientShareCaseCreateMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });

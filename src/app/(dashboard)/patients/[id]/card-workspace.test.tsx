@@ -263,10 +263,36 @@ function mockPatientQuery(
       | 'billing'
       | 'billingProfile'
       | 'conference'
-      | 'mcsCheckLog',
+      | 'mcsCheckLog'
+      | 'patientShareCase',
       boolean
     >
   > = {},
+  options: {
+    patientOverrides?: Partial<PatientOverview>;
+    partnerships?: {
+      data: Array<{
+        id: string;
+        status: string;
+        effective_from: string | null;
+        effective_to: string | null;
+        base_site: { id: string; name: string };
+        partner_pharmacy: { id: string; name: string; status: string };
+      }>;
+    };
+    managementPlans?: {
+      data: Array<{
+        id: string;
+        case_id: string;
+        title: string;
+        version: number;
+        status: 'draft' | 'approved' | 'superseded' | 'archived';
+        effective_from: string | null;
+        updated_at: string;
+      }>;
+    };
+    executePatientShareCaseMutation?: boolean;
+  } = {},
 ) {
   const faxMutate = vi.fn();
   const prescriptionDocumentMutate = vi.fn();
@@ -275,9 +301,11 @@ function mockPatientQuery(
   const billingProfileMutate = vi.fn();
   const conferenceMutate = vi.fn();
   const mcsCheckLogMutate = vi.fn();
+  const patientShareCaseMutate = vi.fn();
+  const invalidateQueries = vi.fn();
   useOrgIdMock.mockReturnValue('org_1');
   useRouterMock.mockReturnValue({ push: vi.fn(), replace: vi.fn() });
-  useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+  useQueryClientMock.mockReturnValue({ invalidateQueries });
   const mutationResults = [
     {
       mutate: faxMutate,
@@ -314,13 +342,42 @@ function mockPatientQuery(
       isPending: Boolean(pending.mcsCheckLog),
       variables: pending.mcsCheckLog ? { patientId: 'patient_1' } : null,
     },
+    {
+      mutate: patientShareCaseMutate,
+      isPending: Boolean(pending.patientShareCase),
+      variables: null,
+    },
   ];
   let mutationCallIndex = 0;
-  useMutationMock.mockImplementation(() => {
-    const result = mutationResults[mutationCallIndex % mutationResults.length];
-    mutationCallIndex += 1;
-    return result;
-  });
+  useMutationMock.mockImplementation(
+    (mutationOptions?: {
+      mutationFn?: (input: unknown) => Promise<unknown>;
+      onSuccess?: () => Promise<void> | void;
+      onError?: (error: Error) => void;
+    }) => {
+      if (
+        options.executePatientShareCaseMutation &&
+        String(mutationOptions?.mutationFn).includes('/api/patient-share-cases')
+      ) {
+        return {
+          mutate: async (input: unknown) => {
+            patientShareCaseMutate(input);
+            try {
+              await mutationOptions?.mutationFn?.(input);
+              await mutationOptions?.onSuccess?.();
+            } catch (error) {
+              mutationOptions?.onError?.(error as Error);
+            }
+          },
+          isPending: Boolean(pending.patientShareCase),
+          variables: null,
+        };
+      }
+      const result = mutationResults[mutationCallIndex % mutationResults.length];
+      mutationCallIndex += 1;
+      return result;
+    },
+  );
   const patientData = {
     id: 'patient_1',
     name: '田中 一郎',
@@ -457,6 +514,7 @@ function mockPatientQuery(
       address_fields_masked: false,
       can_view_detail: true,
     },
+    ...options.patientOverrides,
   };
   const documentsData: PatientDocumentsSnapshot = {
     patient: {
@@ -538,6 +596,39 @@ function mockPatientQuery(
   };
 
   useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+    if (queryKey[0] === 'pharmacy-partnerships') {
+      return {
+        data:
+          options.partnerships ??
+          ({
+            data: [
+              {
+                id: 'partnership_1',
+                status: 'active',
+                effective_from: '2026-06-01T00:00:00.000Z',
+                effective_to: null,
+                base_site: { id: 'site_1', name: '基幹薬局' },
+                partner_pharmacy: {
+                  id: 'partner_pharmacy_1',
+                  name: '協力薬局',
+                  status: 'active',
+                },
+              },
+            ],
+          } as const),
+        isLoading: false,
+        isError: false,
+        error: null,
+      };
+    }
+    if (queryKey[0] === 'management-plans') {
+      return {
+        data: options.managementPlans ?? { data: [] },
+        isLoading: false,
+        isError: false,
+        error: null,
+      };
+    }
     if (queryKey[0] === 'patient-home-operations') {
       return {
         data: homeOperations ?? undefined,
@@ -567,6 +658,8 @@ function mockPatientQuery(
     billingProfileMutate,
     conferenceMutate,
     mcsCheckLogMutate,
+    patientShareCaseMutate,
+    invalidateQueries,
   };
 }
 
@@ -821,7 +914,18 @@ describe('CardWorkspace', () => {
         .getAllByRole('link', { name: /文書状態へ/ })
         .some((link) => link.getAttribute('href') === '/patients/patient_1#patient-documents'),
     ).toBe(true);
+    const sharePanel = screen.getByTestId('patient-share-case-create-panel');
+    expect(within(sharePanel).getByRole('heading', { name: '薬局間共有ケース' })).toBeTruthy();
+    expect(
+      Boolean(homeOps.compareDocumentPosition(sharePanel) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
+    expect(sharePanel.textContent).not.toMatch(/田中 一郎|090-0000-0000/);
     const documentsPanel = screen.getByTestId('patient-card-documents-panel');
+    expect(
+      Boolean(
+        sharePanel.compareDocumentPosition(documentsPanel) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
+    ).toBe(true);
     expect(
       within(documentsPanel).getByRole('heading', { name: '初回訪問文書・交付記録' }),
     ).toBeTruthy();
@@ -922,6 +1026,177 @@ describe('CardWorkspace', () => {
     expect(screen.getByTestId('patient-profile-summary')).toBeTruthy();
     expect(screen.getByTestId('patient-home-operations-panel')).toBeTruthy();
     expect(screen.queryByTestId('card-prescription-section')).toBeNull();
+  });
+
+  it('creates a draft patient share case from the patient master without sending patient PHI', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      void _init;
+      const url = String(input);
+      if (url === '/api/patient-share-cases') {
+        return {
+          ok: true,
+          json: async () => ({ id: 'share_case_created', status: 'draft' }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({ data: [] }),
+      };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { patientShareCaseMutate, invalidateQueries } = mockPatientQuery(
+      buildWorkspace(),
+      null,
+      {},
+      {
+        executePatientShareCaseMutation: true,
+        patientOverrides: {
+          cases: [
+            {
+              id: 'case_1',
+              status: 'active',
+              primary_pharmacist_id: null,
+              backup_pharmacist_id: null,
+              referral_source: null,
+              referral_date: null,
+              start_date: '2026-06-01',
+              end_date: null,
+              end_reason: null,
+              notes: null,
+              created_at: '2026-06-01T00:00:00.000Z',
+              updated_at: '2026-06-01T00:00:00.000Z',
+              required_visit_support: null,
+              care_team_links: [],
+            },
+          ],
+        },
+        managementPlans: {
+          data: [
+            {
+              id: 'plan_approved',
+              case_id: 'case_1',
+              title: '田中 一郎 様 管理計画',
+              version: 3,
+              status: 'approved',
+              effective_from: '2026-06-01T00:00:00.000Z',
+              updated_at: '2026-06-18T00:00:00.000Z',
+            },
+            {
+              id: 'plan_draft',
+              case_id: 'case_1',
+              title: '下書き計画',
+              version: 4,
+              status: 'draft',
+              effective_from: null,
+              updated_at: '2026-06-18T00:00:00.000Z',
+            },
+          ],
+        },
+      },
+    );
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    const panel = screen.getByTestId('patient-share-case-create-panel');
+    expect(panel.textContent).not.toMatch(/田中 一郎|090-0000-0000|東京都/);
+    expect(panel.textContent).not.toContain('田中 一郎 様 管理計画');
+    fireEvent.change(within(panel).getByLabelText('共有ケース作成の共有開始日'), {
+      target: { value: '2026-06-20' },
+    });
+    fireEvent.change(within(panel).getByLabelText('共有ケース作成の共有終了日'), {
+      target: { value: '2026-12-31' },
+    });
+    fireEvent.change(within(panel).getByLabelText('共有ケース作成の管理計画版'), {
+      target: { value: 'plan_approved' },
+    });
+    fireEvent.click(within(panel).getByLabelText('共有範囲 添付閲覧'));
+    fireEvent.click(within(panel).getByLabelText('共有範囲 PDF出力'));
+    fireEvent.click(within(panel).getByRole('button', { name: '共有ケースを作成' }));
+
+    await waitFor(() => expect(patientShareCaseMutate).toHaveBeenCalledTimes(1));
+    const expectedPayload = {
+      partnership_id: 'partnership_1',
+      base_patient_id: 'patient_1',
+      base_case_id: 'case_1',
+      starts_at: '2026-06-20',
+      ends_at: '2026-12-31',
+      shared_management_plan_id: 'plan_approved',
+      shared_management_plan_version: 3,
+      share_scope: {
+        prescription_history: true,
+        medication_profile: true,
+        care_reports: true,
+        attachments: true,
+        print: false,
+        pdf_output: true,
+        download: false,
+      },
+    };
+    expect(patientShareCaseMutate).toHaveBeenCalledWith(expectedPayload);
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/patient-share-cases', expect.any(Object)),
+    );
+    const postCall = fetchMock.mock.calls.find(([url]) => url === '/api/patient-share-cases');
+    expect(postCall).toBeDefined();
+    const init = postCall?.[1] as RequestInit;
+    expect(init.method).toBe('POST');
+    expect(init.headers).toEqual({
+      'Content-Type': 'application/json',
+      'x-org-id': 'org_1',
+    });
+    expect(JSON.parse(String(init.body))).toEqual(expectedPayload);
+    expect(String(init.body)).not.toMatch(/田中 一郎|090-0000-0000|東京都/);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/activate'))).toBe(false);
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['pharmacy-cooperation-share-cases', 'org_1'],
+    });
+    vi.unstubAllGlobals();
+  });
+
+  it('blocks draft patient share case creation when the requested share window is invalid', () => {
+    const { patientShareCaseMutate } = mockPatientQuery(
+      buildWorkspace(),
+      null,
+      {},
+      {
+        patientOverrides: {
+          cases: [
+            {
+              id: 'case_1',
+              status: 'active',
+              primary_pharmacist_id: null,
+              backup_pharmacist_id: null,
+              referral_source: null,
+              referral_date: null,
+              start_date: '2026-06-01',
+              end_date: null,
+              end_reason: null,
+              notes: null,
+              created_at: '2026-06-01T00:00:00.000Z',
+              updated_at: '2026-06-01T00:00:00.000Z',
+              required_visit_support: null,
+              care_team_links: [],
+            },
+          ],
+        },
+      },
+    );
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    const panel = screen.getByTestId('patient-share-case-create-panel');
+    fireEvent.change(within(panel).getByLabelText('共有ケース作成の共有開始日'), {
+      target: { value: '2026-12-31' },
+    });
+    fireEvent.change(within(panel).getByLabelText('共有ケース作成の共有終了日'), {
+      target: { value: '2026-06-20' },
+    });
+    const button = within(panel).getByRole('button', { name: '共有ケースを作成' });
+
+    expect(within(panel).getByText('終了日は開始日以降を指定してください。')).toBeTruthy();
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(button);
+    expect(patientShareCaseMutate).not.toHaveBeenCalled();
   });
 
   it('keeps the server-rendered overview fresh during initial hydration', () => {

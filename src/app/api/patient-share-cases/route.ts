@@ -4,12 +4,26 @@ import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { notFound, success, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { dateKeySchema } from '@/lib/validations/date-key';
 import { utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 
-const DEFAULT_SHARE_SCOPE: Record<string, boolean> = {
+const PATIENT_SHARE_SCOPE_KEYS = [
+  'prescription_history',
+  'medication_profile',
+  'care_reports',
+  'attachments',
+  'print',
+  'pdf_output',
+  'download',
+] as const;
+
+type PatientShareScopeKey = (typeof PATIENT_SHARE_SCOPE_KEYS)[number];
+type PatientShareScope = Record<PatientShareScopeKey, boolean>;
+
+const DEFAULT_SHARE_SCOPE: PatientShareScope = {
   prescription_history: true,
   medication_profile: true,
   care_reports: true,
@@ -37,7 +51,10 @@ const createPatientShareCaseSchema = z
     partnership_id: z.string().trim().min(1, '薬局間連携IDは必須です'),
     base_patient_id: z.string().trim().min(1, '患者IDは必須です'),
     base_case_id: z.string().trim().min(1).optional(),
-    share_scope: z.record(z.string(), z.unknown()).default(DEFAULT_SHARE_SCOPE),
+    share_scope: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .transform((value) => normalizeShareScope(value)),
     starts_at: dateOnlySchema.optional().nullable(),
     ends_at: dateOnlySchema.optional().nullable(),
     shared_management_plan_id: z.string().trim().min(1).optional(),
@@ -74,6 +91,29 @@ function optionalSearchParam(value: string | null) {
 
 function optionalDate(value: string | null | undefined) {
   return value ? utcDateFromLocalKey(value) : null;
+}
+
+function normalizeShareScope(value: Record<string, unknown> | undefined): PatientShareScope {
+  const normalized: PatientShareScope = { ...DEFAULT_SHARE_SCOPE };
+  if (!value) return normalized;
+
+  for (const key of PATIENT_SHARE_SCOPE_KEYS) {
+    const rawValue = value[key];
+    if (typeof rawValue === 'boolean') {
+      normalized[key] = rawValue;
+    }
+  }
+
+  return normalized;
+}
+
+function enabledShareScopeKeys(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return [];
+  }
+
+  const scope = value as Record<string, unknown>;
+  return PATIENT_SHARE_SCOPE_KEYS.filter((key) => scope[key] === true);
 }
 
 function dateKeyFromDate(date: Date) {
@@ -125,6 +165,19 @@ function toSafePatientLink(
   };
 }
 
+function toSafePatientShareCase<T extends object>(row: T) {
+  const source = row as T & {
+    share_scope?: unknown;
+    patient_link?: Parameters<typeof toSafePatientLink>[0];
+  };
+  const { share_scope: shareScope, patient_link: patientLink, ...safe } = source;
+  return {
+    ...safe,
+    scope_keys: enabledShareScopeKeys(shareScope),
+    patient_link: toSafePatientLink(patientLink ?? null),
+  };
+}
+
 export const GET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
@@ -132,9 +185,11 @@ export const GET = withAuthContext(
     const rawStatus = optionalSearchParam(searchParams.get('status'));
     const status = rawStatus ? shareCaseStatusSchema.safeParse(rawStatus) : null;
     if (status && !status.success) {
-      return validationError('検索条件が不正です', {
-        status: ['対応していないステータスです'],
-      });
+      return withSensitiveNoStore(
+        validationError('検索条件が不正です', {
+          status: ['対応していないステータスです'],
+        }),
+      );
     }
 
     const partnershipId = optionalSearchParam(searchParams.get('partnership_id'));
@@ -142,9 +197,11 @@ export const GET = withAuthContext(
     const rawViewContext = optionalSearchParam(searchParams.get('view_context'));
     const viewContext = viewContextSchema.safeParse(rawViewContext ?? undefined);
     if (!viewContext.success) {
-      return validationError('検索条件が不正です', {
-        view_context: ['対応していない閲覧画面です'],
-      });
+      return withSensitiveNoStore(
+        validationError('検索条件が不正です', {
+          view_context: ['対応していない閲覧画面です'],
+        }),
+      );
     }
 
     const rows = await withOrgContext(ctx.orgId, async (tx) => {
@@ -210,13 +267,12 @@ export const GET = withAuthContext(
     });
 
     const page = buildCursorPage(rows, limit, (row) => row.id);
-    return success({
-      ...page,
-      data: page.data.map((row) => ({
-        ...row,
-        patient_link: toSafePatientLink(row.patient_link),
-      })),
-    });
+    return withSensitiveNoStore(
+      success({
+        ...page,
+        data: page.data.map(toSafePatientShareCase),
+      }),
+    );
   },
   {
     permission: 'canVisit',
@@ -227,11 +283,13 @@ export const GET = withAuthContext(
 export const POST = withAuthContext(
   async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
-    if (!payload) return validationError('リクエストボディが不正です');
+    if (!payload) return withSensitiveNoStore(validationError('リクエストボディが不正です'));
 
     const parsed = createPatientShareCaseSchema.safeParse(payload);
     if (!parsed.success) {
-      return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+      return withSensitiveNoStore(
+        validationError('入力値が不正です', parsed.error.flatten().fieldErrors),
+      );
     }
 
     const result = await withOrgContext(ctx.orgId, async (tx) => {
@@ -274,17 +332,17 @@ export const POST = withAuthContext(
       ]);
 
       if (!partnership) return { response: notFound('薬局間連携が見つかりません') };
-      if (partnership.status === 'ended') {
+      if (partnership.status !== 'active') {
         return {
           response: validationError('入力値が不正です', {
-            partnership_id: ['終了済みの薬局間連携には共有ケースを作成できません'],
+            partnership_id: ['有効な薬局間連携にのみ共有ケースを作成できます'],
           }),
         };
       }
-      if (partnership.partner_pharmacy.status === 'archived') {
+      if (partnership.partner_pharmacy.status !== 'active') {
         return {
           response: validationError('入力値が不正です', {
-            partnership_id: ['アーカイブ済み協力薬局との連携には共有ケースを作成できません'],
+            partnership_id: ['有効な協力薬局との連携にのみ共有ケースを作成できます'],
           }),
         };
       }
@@ -354,7 +412,7 @@ export const POST = withAuthContext(
           base_patient_id: parsed.data.base_patient_id,
           base_case_id: parsed.data.base_case_id ?? null,
           status: shareCase.status,
-          share_scope_keys: Object.keys(parsed.data.share_scope).sort(),
+          share_scope_keys: enabledShareScopeKeys(parsed.data.share_scope).sort(),
           starts_at: parsed.data.starts_at ?? null,
           ends_at: parsed.data.ends_at ?? null,
         },
@@ -363,14 +421,10 @@ export const POST = withAuthContext(
       return { shareCase };
     });
 
-    if ('response' in result) return result.response ?? validationError('入力値が不正です');
-    return success(
-      {
-        ...result.shareCase,
-        patient_link: toSafePatientLink(result.shareCase.patient_link),
-      },
-      201,
-    );
+    if ('response' in result) {
+      return withSensitiveNoStore(result.response ?? validationError('入力値が不正です'));
+    }
+    return withSensitiveNoStore(success(toSafePatientShareCase(result.shareCase), 201));
   },
   {
     permission: 'canManagePatientSharing',

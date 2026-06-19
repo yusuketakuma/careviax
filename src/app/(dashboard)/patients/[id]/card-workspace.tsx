@@ -62,6 +62,7 @@ import { formatPrescriptionCardNumber } from '@/lib/prescription/rx-number';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { usePresenceHeartbeat } from '@/lib/hooks/use-presence-heartbeat';
 import { cn } from '@/lib/utils';
+import { CASE_STATUS_LABELS } from '@/lib/constants/status-labels';
 import {
   asepticPreparationNeedLabels,
   emergencyResponseLabels,
@@ -147,6 +148,121 @@ const UNRESOLVED_CATEGORY_LABELS: Record<VisitBriefUnresolvedItem['source_type']
 
 const SSR_PATIENT_OVERVIEW_STALE_TIME_MS = 30_000;
 
+type PharmacyPartnershipOption = {
+  id: string;
+  status: string;
+  effective_from: string | null;
+  effective_to: string | null;
+  base_site: { id: string; name: string };
+  partner_pharmacy: { id: string; name: string; status: string };
+};
+
+type PharmacyPartnershipListResponse = {
+  data: PharmacyPartnershipOption[];
+};
+
+type PatientShareScopeKey =
+  | 'prescription_history'
+  | 'medication_profile'
+  | 'care_reports'
+  | 'attachments'
+  | 'print'
+  | 'pdf_output'
+  | 'download';
+
+type PatientShareScopeForm = Record<PatientShareScopeKey, boolean>;
+
+type PatientShareCaseCreateForm = {
+  partnershipId: string;
+  caseId: string;
+  startsAt: string;
+  endsAt: string;
+  managementPlanId: string;
+  shareScope: PatientShareScopeForm;
+};
+
+type PatientShareCaseCreateInput = {
+  partnership_id: string;
+  base_patient_id: string;
+  base_case_id?: string;
+  starts_at?: string;
+  ends_at?: string;
+  shared_management_plan_id?: string;
+  shared_management_plan_version?: number;
+  share_scope: PatientShareScopeForm;
+};
+
+type PatientShareCaseCreateResponse = {
+  id: string;
+  status: string;
+};
+
+type ManagementPlanOption = {
+  id: string;
+  case_id: string;
+  title: string;
+  version: number;
+  status: 'draft' | 'approved' | 'superseded' | 'archived';
+  effective_from: string | null;
+  updated_at: string;
+};
+
+type ManagementPlanListResponse = {
+  data: ManagementPlanOption[];
+};
+
+const PATIENT_SHARE_SCOPE_OPTIONS: Array<{
+  key: PatientShareScopeKey;
+  label: string;
+  description: string;
+}> = [
+  {
+    key: 'prescription_history',
+    label: '処方歴',
+    description: '処方・服薬履歴の閲覧を許可',
+  },
+  {
+    key: 'medication_profile',
+    label: '薬歴',
+    description: '服薬状況・薬学的管理情報の閲覧を許可',
+  },
+  {
+    key: 'care_reports',
+    label: '報告書',
+    description: '服薬指導報告書の閲覧を許可',
+  },
+  {
+    key: 'attachments',
+    label: '添付閲覧',
+    description: '同意添付などの閲覧を許可',
+  },
+  {
+    key: 'print',
+    label: '印刷',
+    description: '共有情報の印刷を許可',
+  },
+  {
+    key: 'pdf_output',
+    label: 'PDF出力',
+    description: 'PDF出力を許可',
+  },
+  {
+    key: 'download',
+    label: 'ダウンロード',
+    description: 'ファイルダウンロードを許可',
+  },
+];
+
+const DEFAULT_PATIENT_SHARE_SCOPE_FORM: PatientShareScopeForm = {
+  prescription_history: true,
+  medication_profile: true,
+  care_reports: true,
+  attachments: false,
+  print: false,
+  pdf_output: false,
+  download: false,
+};
+
 /** 当日は HH:mm、それ以外は M/d 表示(06_card 直近の動きの時刻表記) */
 function formatActivityTime(value: string): string {
   const date = parseISO(value);
@@ -220,6 +336,46 @@ function getPrimaryHomeVisitIntake(patient: PatientOverview) {
 function formatVisitDate(value: string | null | undefined) {
   if (!value) return '未設定';
   return formatOptionalDate(value.slice(0, 10));
+}
+
+function formatPatientShareCaseOption(careCase: PatientOverview['cases'][number]) {
+  const suffix = careCase.id.slice(-6).toUpperCase();
+  const status = CASE_STATUS_LABELS[careCase.status] ?? careCase.status;
+  return `ケース #${suffix} / ${status}`;
+}
+
+async function readPatientShareApiJson<T>(response: Response, fallbackMessage: string) {
+  const payload = (await response.json().catch(() => null)) as
+    | (T & { message?: string })
+    | { message?: string }
+    | null;
+  if (!response.ok) {
+    throw new Error(payload?.message ?? fallbackMessage);
+  }
+  return payload as T;
+}
+
+function buildPatientShareCaseCreateInput(args: {
+  patientId: string;
+  form: PatientShareCaseCreateForm;
+  partnershipId: string;
+  caseId: string;
+  selectedPlan: ManagementPlanOption | null;
+}): PatientShareCaseCreateInput {
+  return {
+    partnership_id: args.partnershipId,
+    base_patient_id: args.patientId,
+    ...(args.caseId ? { base_case_id: args.caseId } : {}),
+    ...(args.form.startsAt ? { starts_at: args.form.startsAt } : {}),
+    ...(args.form.endsAt ? { ends_at: args.form.endsAt } : {}),
+    ...(args.selectedPlan
+      ? {
+          shared_management_plan_id: args.selectedPlan.id,
+          shared_management_plan_version: args.selectedPlan.version,
+        }
+      : {}),
+    share_scope: args.form.shareScope,
+  };
 }
 
 function buildVisitScheduleLabel(patient: PatientOverview) {
@@ -750,6 +906,341 @@ function PatientHomeOperationsPanel({
           );
         })}
       </div>
+    </SectionCard>
+  );
+}
+
+function PatientShareCaseCreatePanel({
+  patient,
+  orgId,
+}: {
+  patient: PatientOverview;
+  orgId: string;
+}) {
+  const queryClient = useQueryClient();
+  const initialCaseId =
+    patient.cases.find((careCase) => careCase.status === 'active')?.id ??
+    patient.cases[0]?.id ??
+    '';
+  const [form, setForm] = useState<PatientShareCaseCreateForm>(() => ({
+    partnershipId: '',
+    caseId: initialCaseId,
+    startsAt: '',
+    endsAt: '',
+    managementPlanId: '',
+    shareScope: { ...DEFAULT_PATIENT_SHARE_SCOPE_FORM },
+  }));
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const partnershipsQuery = useQuery<PharmacyPartnershipListResponse>({
+    queryKey: ['pharmacy-partnerships', 'active', orgId],
+    queryFn: async () => {
+      const response = await fetch('/api/pharmacy-partnerships?status=active&limit=20', {
+        headers: { 'x-org-id': orgId },
+      });
+      return readPatientShareApiJson<PharmacyPartnershipListResponse>(
+        response,
+        '薬局間連携を取得できませんでした',
+      );
+    },
+    enabled: Boolean(orgId),
+    staleTime: 30_000,
+  });
+
+  const partnerships = partnershipsQuery.data?.data ?? [];
+  const effectivePartnershipId = partnerships.some((row) => row.id === form.partnershipId)
+    ? form.partnershipId
+    : (partnerships[0]?.id ?? '');
+  const selectedPartnership = partnerships.find((row) => row.id === effectivePartnershipId) ?? null;
+  const effectiveCaseId = patient.cases.some((careCase) => careCase.id === form.caseId)
+    ? form.caseId
+    : initialCaseId;
+
+  const managementPlansQuery = useQuery<ManagementPlanListResponse>({
+    queryKey: ['management-plans', effectiveCaseId, orgId],
+    queryFn: async () => {
+      const params = new URLSearchParams({ case_id: effectiveCaseId });
+      const response = await fetch(`/api/management-plans?${params.toString()}`, {
+        headers: { 'x-org-id': orgId },
+      });
+      return readPatientShareApiJson<ManagementPlanListResponse>(
+        response,
+        '管理計画書を取得できませんでした',
+      );
+    },
+    enabled: Boolean(orgId && effectiveCaseId),
+    staleTime: 30_000,
+  });
+
+  const approvedPlans = (managementPlansQuery.data?.data ?? []).filter(
+    (plan) => plan.status === 'approved',
+  );
+  const selectedPlan = approvedPlans.find((plan) => plan.id === form.managementPlanId) ?? null;
+  const hasInvalidDateWindow =
+    form.startsAt.length > 0 && form.endsAt.length > 0 && form.endsAt < form.startsAt;
+  const isArchived = Boolean(patient.archived_at);
+
+  const createMutation = useMutation({
+    mutationFn: async (input: PatientShareCaseCreateInput) => {
+      const response = await fetch('/api/patient-share-cases', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify(input),
+      });
+      return readPatientShareApiJson<PatientShareCaseCreateResponse>(
+        response,
+        '患者共有ケースの作成に失敗しました',
+      );
+    },
+    onSuccess: async () => {
+      toast.success('患者共有ケースを下書き作成しました');
+      setCreateError(null);
+      setForm((current) => ({
+        ...current,
+        startsAt: '',
+        endsAt: '',
+        managementPlanId: '',
+        shareScope: { ...DEFAULT_PATIENT_SHARE_SCOPE_FORM },
+      }));
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['patient-overview', patient.id, orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['pharmacy-cooperation-share-cases', orgId] }),
+        queryClient.invalidateQueries({ queryKey: ['patient-share-cases', patient.id, orgId] }),
+      ]);
+    },
+    onError: (error: Error) => {
+      const message = error.message || '患者共有ケースの作成に失敗しました';
+      setCreateError(message);
+      toast.error(message);
+    },
+  });
+
+  const canCreate =
+    Boolean(effectivePartnershipId) &&
+    !hasInvalidDateWindow &&
+    !isArchived &&
+    !partnershipsQuery.isLoading &&
+    !createMutation.isPending;
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!canCreate || !effectivePartnershipId) return;
+    setCreateError(null);
+    createMutation.mutate(
+      buildPatientShareCaseCreateInput({
+        patientId: patient.id,
+        form,
+        partnershipId: effectivePartnershipId,
+        caseId: effectiveCaseId,
+        selectedPlan,
+      }),
+    );
+  }
+
+  return (
+    <SectionCard aria-label="薬局間共有ケース" data-testid="patient-share-case-create-panel">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-base font-semibold text-foreground">薬局間共有ケース</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            この患者を協力薬局へ共有する下書きを作成します。共有開始は同意と患者リンク確認後に行います。
+          </p>
+        </div>
+        <Link
+          href="/workflow/pharmacy-cooperation"
+          className={buttonVariants({ variant: 'outline', size: 'sm' })}
+        >
+          共有ワークフローへ
+        </Link>
+      </div>
+
+      <form className="mt-4 grid gap-4" onSubmit={handleSubmit}>
+        <div className="grid gap-3 rounded-md border border-border/60 bg-muted/30 p-3 lg:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="patient-share-partnership">共有先の協力薬局</Label>
+            <select
+              id="patient-share-partnership"
+              value={effectivePartnershipId}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, partnershipId: event.target.value }))
+              }
+              disabled={partnershipsQuery.isLoading || partnerships.length === 0 || isArchived}
+              aria-label="共有ケース作成の連携先"
+              className="min-h-11 w-full rounded-lg border border-input bg-background px-3 text-sm"
+            >
+              {partnerships.length === 0 ? <option value="">有効な連携なし</option> : null}
+              {partnerships.map((partnership) => (
+                <option key={partnership.id} value={partnership.id}>
+                  {partnership.base_site.name} / {partnership.partner_pharmacy.name}
+                </option>
+              ))}
+            </select>
+            {selectedPartnership ? (
+              <p className="text-xs text-muted-foreground">
+                連携 {selectedPartnership.id} / 状態 {selectedPartnership.status}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="patient-share-case">対象ケース（任意）</Label>
+            <select
+              id="patient-share-case"
+              value={effectiveCaseId}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  caseId: event.target.value,
+                  managementPlanId: '',
+                }))
+              }
+              disabled={patient.cases.length === 0 || isArchived}
+              aria-label="共有ケース作成の対象ケース"
+              className="min-h-11 w-full rounded-lg border border-input bg-background px-3 text-sm"
+            >
+              {patient.cases.length === 0 ? <option value="">ケースなし</option> : null}
+              {patient.cases.map((careCase) => (
+                <option key={careCase.id} value={careCase.id}>
+                  {formatPatientShareCaseOption(careCase)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="patient-share-start">共有開始日</Label>
+            <Input
+              id="patient-share-start"
+              type="date"
+              value={form.startsAt}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, startsAt: event.target.value }))
+              }
+              disabled={isArchived}
+              aria-label="共有ケース作成の共有開始日"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="patient-share-end">共有終了日</Label>
+            <Input
+              id="patient-share-end"
+              type="date"
+              value={form.endsAt}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, endsAt: event.target.value }))
+              }
+              disabled={isArchived}
+              aria-label="共有ケース作成の共有終了日"
+              aria-invalid={hasInvalidDateWindow ? true : undefined}
+            />
+            {hasInvalidDateWindow ? (
+              <p className="text-xs text-destructive">終了日は開始日以降を指定してください。</p>
+            ) : null}
+          </div>
+
+          <div className="space-y-1.5 lg:col-span-2">
+            <Label htmlFor="patient-share-management-plan">対象の管理計画版（任意）</Label>
+            <select
+              id="patient-share-management-plan"
+              value={selectedPlan?.id ?? ''}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, managementPlanId: event.target.value }))
+              }
+              disabled={
+                !effectiveCaseId ||
+                approvedPlans.length === 0 ||
+                managementPlansQuery.isLoading ||
+                isArchived
+              }
+              aria-label="共有ケース作成の管理計画版"
+              className="min-h-11 w-full rounded-lg border border-input bg-background px-3 text-sm"
+            >
+              <option value="">
+                {managementPlansQuery.isLoading
+                  ? '管理計画を取得中'
+                  : approvedPlans.length === 0
+                    ? '承認済み計画なし'
+                    : '選択しない'}
+              </option>
+              {approvedPlans.map((plan) => (
+                <option key={plan.id} value={plan.id}>
+                  計画 {plan.id} / v{plan.version}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <fieldset className="rounded-md border border-border/60 bg-background p-3">
+          <legend className="px-1 text-sm font-medium text-foreground">共有範囲</legend>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {PATIENT_SHARE_SCOPE_OPTIONS.map((option) => (
+              <label
+                key={option.key}
+                className="flex min-h-11 items-start gap-2 rounded-md border border-border/60 bg-muted/20 p-2 text-sm"
+              >
+                <input
+                  type="checkbox"
+                  checked={form.shareScope[option.key]}
+                  disabled={isArchived}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      shareScope: {
+                        ...current.shareScope,
+                        [option.key]: event.target.checked,
+                      },
+                    }))
+                  }
+                  aria-label={`共有範囲 ${option.label}`}
+                  className="mt-1 size-4"
+                />
+                <span>
+                  <span className="block font-medium text-foreground">{option.label}</span>
+                  <span className="block text-xs leading-5 text-muted-foreground">
+                    {option.description}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        {partnershipsQuery.isError ? (
+          <p role="alert" className="text-sm text-destructive">
+            有効な薬局間連携を取得できませんでした。
+          </p>
+        ) : null}
+        {partnerships.length === 0 && !partnershipsQuery.isLoading ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+            有効な薬局間連携がありません。協力薬局設定で連携を有効化してから作成してください。
+          </div>
+        ) : null}
+        {isArchived ? (
+          <p role="alert" className="text-sm text-destructive">
+            アーカイブ中の患者では共有ケースを作成できません。
+          </p>
+        ) : null}
+        {createError ? (
+          <p role="alert" className="text-sm text-destructive">
+            {createError}
+          </p>
+        ) : null}
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="submit" disabled={!canCreate} className="min-h-11">
+            <Link2 className="size-4" aria-hidden="true" />
+            {createMutation.isPending ? '作成中...' : '共有ケースを作成'}
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            作成後は共有ワークフローで同意、患者リンク、共有開始を順に確認します。
+          </p>
+        </div>
+      </form>
     </SectionCard>
   );
 }
@@ -3750,6 +4241,7 @@ export function CardWorkspace({
           onRecordConferenceNote={recordConferenceNoteMutation.mutate}
           onRecordMcsCheckLog={recordMcsCheckLogMutation.mutate}
         />
+        <PatientShareCaseCreatePanel patient={patient} orgId={orgId} />
         <PatientCardDocumentsPanel patient={patient} orgId={orgId} />
         <PatientVisitPreparationPanel patient={patient} />
         <EmptyState
@@ -3909,6 +4401,7 @@ export function CardWorkspace({
             onRecordConferenceNote={recordConferenceNoteMutation.mutate}
             onRecordMcsCheckLog={recordMcsCheckLogMutation.mutate}
           />
+          <PatientShareCaseCreatePanel patient={patient} orgId={orgId} />
           <PatientCardDocumentsPanel patient={patient} orgId={orgId} />
           <PatientVisitPreparationPanel patient={patient} />
 
