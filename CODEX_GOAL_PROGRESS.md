@@ -4562,6 +4562,125 @@ Implemented:
 
 - The paid DB-backed flow is now covered through PDF/payment. Remaining v0.2 proof gaps include free cooperation report DB-backed proof, share-case message thread DB-backed proof, broader invoice search/audit browser coverage, and the existing stale patient-detail `safety-board` assertion.
 
+## 20260620-0406 JST - Schedule Proposal Blocking Error Feedback
+
+### Summary
+
+- Added persistent inline feedback when weekly schedule proposal generation is blocked because no case is selected.
+- Wired both the weekly grid action and the cell inspector action to the same blocking reason with `aria-describedby`.
+- Added regression coverage through the weekly optimizer test mock so the disabled reason remains visible until a case is selected.
+
+### Files Changed
+
+- `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx`
+- `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx`
+- `src/app/(dashboard)/schedules/proposals/weekly-cell-inspector.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx' 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx' 'src/app/(dashboard)/schedules/proposals/weekly-cell-inspector.tsx'`: passed, unchanged.
+- `pnpm exec eslint 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx' 'src/app/(dashboard)/schedules/proposals/weekly-cell-inspector.tsx' 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx' 'src/app/(dashboard)/schedules/proposals/weekly-cell-inspector.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx' 'src/app/(dashboard)/schedules/proposals/weekly-cell-inspector.test.tsx' --reporter=dot --testTimeout=30000`: passed, 2 files / 5 tests.
+- `pnpm typecheck`: passed.
+- `git diff --check -- 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx' 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx' 'src/app/(dashboard)/schedules/proposals/weekly-cell-inspector.tsx'`: passed.
+
+### Remaining / Next Loop
+
+- Weekly proposal generation now exposes the missing-case blocker in the grid and cell inspector. Browser/a11y proof remains optional if schedule proposal enters the UI proof queue.
+
+## 20260620-0402 JST - Report Composer Blocking Error Feedback
+
+### Summary
+
+- Added persistent inline errors for report composer states that block bulk send: no selected share target and incomplete pre-send checks.
+- Connected the disabled bulk-send button to the active error text with `aria-describedby`, so the blocking reason is visible and announced instead of only implied by disabled state.
+- Added regression coverage for both the initial incomplete-check state and the zero-recipient state.
+
+### Files Changed
+
+- `src/app/(dashboard)/reports/[id]/page.tsx`
+- `src/app/(dashboard)/reports/[id]/page.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/reports/[id]/page.tsx' 'src/app/(dashboard)/reports/[id]/page.test.tsx'`: passed, unchanged.
+- `pnpm exec eslint 'src/app/(dashboard)/reports/[id]/page.tsx' 'src/app/(dashboard)/reports/[id]/page.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/reports/[id]/page.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 15 tests.
+- `pnpm typecheck`: passed.
+- `git diff --check -- 'src/app/(dashboard)/reports/[id]/page.tsx' 'src/app/(dashboard)/reports/[id]/page.test.tsx'`: passed.
+- `pnpm format:check`: passed.
+- `pnpm lint`: passed.
+
+### Remaining / Next Loop
+
+- Report composer blocking states now have visible inline feedback and ARIA linkage. Browser/a11y proof for the report detail composer remains optional if this route enters the UI proof queue.
+
+## 20260620-0357 JST - Pharmacy Cooperation Message DB-backed Proof
+
+### Summary
+
+- Extended the paid DB-backed pharmacy cooperation Playwright proof to cover both patient-share-case-level and visit-request-level message threads.
+- Added DB readback for `PharmacyCooperationMessageThread`, `PharmacyCooperationMessage`, and `AuditLog` so the proof verifies context type, message count, latest sender side/body, `last_message_at`, and create/view audit records.
+- Confirmed the existing route unit coverage for PHI-safe audit/notification behavior still passes.
+
+### Files Changed
+
+- `tools/tests/ui-major-screens.spec.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write tools/tests/ui-major-screens.spec.ts`: passed.
+- `pnpm exec eslint tools/tests/ui-major-screens.spec.ts`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm exec vitest run src/app/api/pharmacy-cooperation-message-threads/route.test.ts --reporter=dot --testTimeout=30000`: passed, 1 file / 4 tests.
+- `pnpm exec eslint tools/tests/ui-major-screens.spec.ts src/app/api/pharmacy-cooperation-message-threads/route.ts src/app/api/pharmacy-cooperation-message-threads/route.test.ts`: passed.
+- `pnpm exec prisma validate --schema=prisma/schema/`: passed.
+- `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-major-screens.spec.ts --project=chromium --grep "patient card drives a DB-backed share, visit, report, and billing flow"`: passed, 1 Chromium test.
+- `pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Patient-level and visit-request-level pharmacy cooperation messages are now DB-backed in the paid flow, including audit-log proof. Remaining v0.2 proof gaps include broader invoice search/audit browser coverage and the stale patient-detail `safety-board` expectation.
+- The local E2E server again emitted the existing `pg@9` deprecation warning about concurrent `client.query()` use. It did not fail validation, but the recurrence makes it a concrete follow-up for DB helper/runtime cleanup.
+
+## 20260620-0357 JST - Management Plan Inline Validation
+
+### Summary
+
+- Replaced toast-only management-plan editor validation with persistent inline errors for missing title and invalid JSON body.
+- Added `aria-invalid` / `aria-describedby` wiring plus `role="alert"` error text for the title and JSON body controls.
+- Kept toast as secondary feedback and preserved the existing valid submit path through the save mutation.
+- Added regression coverage that invalid values do not call the create/update mutation and valid values still flow through the existing mutation path.
+
+### Files Changed
+
+- `src/app/(dashboard)/patients/[id]/management-plan-panel.tsx`
+- `src/app/(dashboard)/patients/[id]/management-plan-panel.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/management-plan-panel.tsx' 'src/app/(dashboard)/patients/[id]/management-plan-panel.test.tsx'`: passed.
+- `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/management-plan-panel.tsx' 'src/app/(dashboard)/patients/[id]/management-plan-panel.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/management-plan-panel.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 4 tests.
+- `git diff --check -- 'src/app/(dashboard)/patients/[id]/management-plan-panel.tsx' 'src/app/(dashboard)/patients/[id]/management-plan-panel.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `pnpm lint`: passed.
+- Verifier subagent reported no major or medium regressions; its low valid-submit test gap was closed before final validation.
+
+### Remaining / Next Loop
+
+- Management-plan editor validation is now visible inline. Browser/a11y proof for the patient detail management-plan panel remains a possible follow-up if this route enters the UI proof queue.
+
 ## 20260620-0349 JST - Conferences Inline Validation
 
 ### Summary
@@ -4570,6 +4689,7 @@ Implemented:
 - Replaced toast-only required validation for community activity creation with persistent inline errors for activity type, activity datetime, and title.
 - Added `aria-invalid` / `aria-describedby` wiring plus `role="alert"` error text, following `docs/ui-ux-design-guidelines.md` guidance for explicit dynamic errors.
 - Added regression tests that invalid submits show inline errors and do not call the create mutations.
+- Addressed verifier follow-up by tying structured-section textareas to the shared content/structured error and resetting community-activity inline errors when the dialog closes through the close affordance.
 
 ### Files Changed
 
@@ -4586,6 +4706,7 @@ Implemented:
 - `pnpm format:check`: passed.
 - `git diff --check`: passed.
 - `pnpm lint`: passed.
+- Verifier subagent initially found two low-severity follow-ups: structured-section controls were not tied to the content/structured error, and community-activity inline errors could stay stale after closing via the dialog close affordance. Both were fixed and revalidated with targeted Prettier, targeted ESLint, focused Vitest, `pnpm typecheck`, `pnpm format:check`, `git diff --check`, and `pnpm lint`.
 
 ### Remaining / Next Loop
 
