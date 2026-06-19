@@ -209,6 +209,7 @@ const EMPTY_PUMP_FORM: PumpFormState = {
 };
 
 const RENTAL_SAVE_BLOCKER_ID = 'rental-save-blocker';
+const RETURN_INSPECTION_SAVE_BLOCKER_ID = 'return-inspection-save-blocker';
 const PLAIN_INTEGER_PATTERN = /^\d+$/;
 
 function todayDateKey() {
@@ -248,6 +249,29 @@ export function getPcaReturnInspectionMissingNoteLabels(checklist: PcaPumpAccess
     }
     return [];
   });
+}
+
+function getReturnInspectionItemStatusError(status: PcaPumpAccessoryStatus) {
+  return status === 'unchecked' ? '検品状態を選択してください。' : null;
+}
+
+function getReturnInspectionItemNoteError(item: PcaPumpAccessoryChecklistItem) {
+  return (item.status === 'missing' || item.status === 'damaged') && !item.notes.trim()
+    ? '不足・破損の詳細メモを入力してください。'
+    : null;
+}
+
+function getReturnInspectionSaveBlocker(form: ReturnInspectionFormState) {
+  if (!form.rental) return '検品対象のPCAポンプレンタルが選択されていません';
+  const uncheckedLabels = getPcaReturnInspectionUncheckedLabels(form.checklist);
+  if (uncheckedLabels.length > 0) {
+    return `未確認の検品項目があります: ${uncheckedLabels.join('、')}`;
+  }
+  const missingNoteLabels = getPcaReturnInspectionMissingNoteLabels(form.checklist);
+  if (missingNoteLabels.length > 0) {
+    return `不足・破損の詳細メモを入力してください: ${missingNoteLabels.join('、')}`;
+  }
+  return null;
 }
 
 export function buildPcaReturnInspectionPayload(form: {
@@ -391,6 +415,12 @@ function getRentalSaveBlocker(errors: RentalFormErrors) {
   );
 }
 
+function getReturnInspectionActionLabel(rental: PcaPumpRental) {
+  return `検品 ${rental.pump.asset_code} ${rental.institution.name} 返却日 ${formatDate(
+    rental.returned_at,
+  )}`;
+}
+
 function yen(value: number | null) {
   return formatYen(value);
 }
@@ -495,6 +525,7 @@ export function PcaPumpsContent() {
   );
   const rentalFormErrors = getRentalFormErrors(rentalForm);
   const rentalSaveBlocker = getRentalSaveBlocker(rentalFormErrors);
+  const returnInspectionSaveBlocker = getReturnInspectionSaveBlocker(inspectionForm);
 
   async function invalidateAll() {
     await Promise.all([
@@ -650,16 +681,10 @@ export function PcaPumpsContent() {
 
   const completeReturnInspectionMutation = useMutation({
     mutationFn: async () => {
+      const blocker = getReturnInspectionSaveBlocker(inspectionForm);
+      if (blocker) throw new Error(blocker);
       if (!inspectionForm.rental)
         throw new Error('検品対象のPCAポンプレンタルが選択されていません');
-      const missingNoteLabels = getPcaReturnInspectionMissingNoteLabels(inspectionForm.checklist);
-      const uncheckedLabels = getPcaReturnInspectionUncheckedLabels(inspectionForm.checklist);
-      if (uncheckedLabels.length > 0) {
-        throw new Error(`未確認の検品項目があります: ${uncheckedLabels.join('、')}`);
-      }
-      if (missingNoteLabels.length > 0) {
-        throw new Error(`不足・破損の詳細メモを入力してください: ${missingNoteLabels.join('、')}`);
-      }
       const response = await fetch(`/api/pca-pump-rentals/${inspectionForm.rental.id}`, {
         method: 'PATCH',
         headers: {
@@ -970,6 +995,7 @@ export function PcaPumpsContent() {
                       <Button
                         variant="outline"
                         onClick={() => openReturnInspection(rental)}
+                        aria-label={getReturnInspectionActionLabel(rental)}
                         disabled={completeReturnInspectionMutation.isPending}
                       >
                         検品
@@ -1380,41 +1406,67 @@ export function PcaPumpsContent() {
             <div className="space-y-3">
               {PCA_RETURN_INSPECTION_ITEMS.map((item) => {
                 const value = inspectionForm.checklist[item.key];
+                const statusError = getReturnInspectionItemStatusError(value.status);
+                const noteError = getReturnInspectionItemNoteError(value);
+                const statusErrorId = `inspection-${item.key}-status-error`;
+                const noteErrorId = `inspection-${item.key}-note-error`;
                 return (
                   <div
                     key={item.key}
                     className="grid gap-3 rounded-md border border-border/70 p-3 md:grid-cols-[160px_180px_1fr] md:items-center"
                   >
                     <Label htmlFor={`inspection-${item.key}`}>{item.label}</Label>
-                    <Select
-                      value={value.status}
-                      onValueChange={(status) =>
-                        updateInspectionItem(item.key, { status: status as PcaPumpAccessoryStatus })
-                      }
-                    >
-                      <SelectTrigger id={`inspection-${item.key}`}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.entries(ACCESSORY_STATUS_LABELS).map(([status, label]) => (
-                          <SelectItem key={status} value={status}>
-                            {label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Input
-                      value={value.notes}
-                      onChange={(event) =>
-                        updateInspectionItem(item.key, { notes: event.target.value })
-                      }
-                      placeholder={
-                        value.status === 'missing' || value.status === 'damaged'
-                          ? '不足・破損の詳細'
-                          : 'メモ'
-                      }
-                      aria-label={`${item.label}の検品メモ`}
-                    />
+                    <div className="space-y-1.5">
+                      <Select
+                        value={value.status}
+                        onValueChange={(status) =>
+                          updateInspectionItem(item.key, {
+                            status: status as PcaPumpAccessoryStatus,
+                          })
+                        }
+                      >
+                        <SelectTrigger
+                          id={`inspection-${item.key}`}
+                          aria-invalid={Boolean(statusError)}
+                          aria-describedby={statusError ? statusErrorId : undefined}
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(ACCESSORY_STATUS_LABELS).map(([status, label]) => (
+                            <SelectItem key={status} value={status}>
+                              {label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {statusError ? (
+                        <p id={statusErrorId} className="text-xs text-destructive" role="alert">
+                          {statusError}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="space-y-1.5">
+                      <Input
+                        value={value.notes}
+                        onChange={(event) =>
+                          updateInspectionItem(item.key, { notes: event.target.value })
+                        }
+                        placeholder={
+                          value.status === 'missing' || value.status === 'damaged'
+                            ? '不足・破損の詳細'
+                            : 'メモ'
+                        }
+                        aria-label={`${item.label}の検品メモ`}
+                        aria-invalid={Boolean(noteError)}
+                        aria-describedby={noteError ? noteErrorId : undefined}
+                      />
+                      {noteError ? (
+                        <p id={noteErrorId} className="text-xs text-destructive" role="alert">
+                          {noteError}
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
                 );
               })}
@@ -1434,12 +1486,21 @@ export function PcaPumpsContent() {
               <Button variant="outline" onClick={() => setInspectionSheetOpen(false)}>
                 キャンセル
               </Button>
+              {returnInspectionSaveBlocker ? (
+                <p
+                  id={RETURN_INSPECTION_SAVE_BLOCKER_ID}
+                  className="self-center text-xs text-destructive"
+                >
+                  {returnInspectionSaveBlocker}
+                </p>
+              ) : null}
               <Button
                 onClick={() => completeReturnInspectionMutation.mutate()}
                 disabled={
-                  completeReturnInspectionMutation.isPending ||
-                  getPcaReturnInspectionMissingNoteLabels(inspectionForm.checklist).length > 0 ||
-                  getPcaReturnInspectionUncheckedLabels(inspectionForm.checklist).length > 0
+                  completeReturnInspectionMutation.isPending || Boolean(returnInspectionSaveBlocker)
+                }
+                aria-describedby={
+                  returnInspectionSaveBlocker ? RETURN_INSPECTION_SAVE_BLOCKER_ID : undefined
                 }
               >
                 {completeReturnInspectionMutation.isPending ? '保存中...' : '検品完了'}

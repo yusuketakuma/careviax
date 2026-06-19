@@ -4335,6 +4335,35 @@ Implemented:
 
 - PCA rental creation now matches the inspected API schema at the form boundary. Next candidates include PCA return-inspection disabled reasons and DB-backed browser proof now that DB access is allowed.
 
+## 20260620-0505 JST - PCA Return Inspection Blocker Explanations
+
+### Summary
+
+- Added target-specific accessible names for pending PCA return-inspection actions.
+- Added item-level error states for unchecked inspection statuses and missing damage/loss notes.
+- Added a disabled save reason connected to the return-inspection save button.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx`
+- `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx' 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx'`: passed.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx' 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 7 tests.
+- `git diff --check`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `pnpm lint`: passed.
+
+### Remaining / Next Loop
+
+- PCA return-inspection disabled reasons and target-specific action names are addressed for the inspected screen. DB-backed browser proof remains a follow-up candidate now that DB access is allowed.
+
 ## 20260620-0451 JST - Pharmacist Credential Inline Validation
 
 ### Summary

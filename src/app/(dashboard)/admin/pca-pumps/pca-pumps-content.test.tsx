@@ -289,7 +289,11 @@ describe('PcaPumpsContent', () => {
     expect(screen.getByText('PCA-SEED-001')).toBeTruthy();
     expect(screen.getAllByText('PCA-SEED-002').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/PCA-RETURNED/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: '検品' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', {
+        name: /検品 PCA-RETURNED サンプル在宅クリニック 返却日 2026\/6\/8/,
+      }),
+    ).toBeTruthy();
   });
 
   it('surfaces rental required fields and date/fee blockers inline before mutation', () => {
@@ -334,6 +338,48 @@ describe('PcaPumpsContent', () => {
 
     fireEvent.click(saveButton!);
     expect(mutationMutateMock).not.toHaveBeenCalled();
+  });
+
+  it('explains return inspection blockers and item errors before mutation', () => {
+    render(<PcaPumpsContent />);
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: /検品 PCA-RETURNED サンプル在宅クリニック 返却日 2026\/6\/8/,
+      }),
+    );
+
+    const saveButton = screen.getByRole('button', { name: '検品完了' }) as HTMLButtonElement;
+    const pumpBodySelect = screen.getByLabelText('ポンプ本体') as HTMLSelectElement;
+    const pumpBodyNote = screen.getByLabelText('ポンプ本体の検品メモ') as HTMLInputElement;
+
+    expect(saveButton.disabled).toBe(true);
+    expect(saveButton.getAttribute('aria-describedby')).toBe('return-inspection-save-blocker');
+    expect(screen.getByText(/未確認の検品項目があります: ポンプ本体/)).toBeTruthy();
+    expect(pumpBodySelect.getAttribute('aria-invalid')).toBe('true');
+    expect(pumpBodySelect.getAttribute('aria-describedby')).toBe(
+      'inspection-pump_body-status-error',
+    );
+    expect(screen.getAllByText('検品状態を選択してください。').length).toBeGreaterThanOrEqual(1);
+
+    fireEvent.change(pumpBodySelect, { target: { value: 'missing' } });
+
+    expect(pumpBodyNote.placeholder).toBe('不足・破損の詳細');
+    expect(pumpBodyNote.getAttribute('aria-invalid')).toBe('true');
+    expect(pumpBodyNote.getAttribute('aria-describedby')).toBe('inspection-pump_body-note-error');
+    expect(screen.getByText('不足・破損の詳細メモを入力してください。')).toBeTruthy();
+
+    fireEvent.click(saveButton);
+    expect(mutationMutateMock).not.toHaveBeenCalled();
+
+    for (const item of PCA_RETURN_INSPECTION_ITEMS) {
+      fireEvent.change(screen.getByLabelText(item.label), { target: { value: 'ok' } });
+    }
+
+    expect(saveButton.disabled).toBe(false);
+    expect(saveButton.getAttribute('aria-describedby')).toBeNull();
+    fireEvent.click(saveButton);
+    expect(mutationMutateMock).toHaveBeenCalledTimes(1);
   });
 
   it('starts return inspection items as unchecked', () => {
