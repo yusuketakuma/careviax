@@ -31,6 +31,7 @@ import { PROCESS_STEPS_9 } from '@/lib/prescription/cycle-workspace';
 import { STATUS_TOKENS, type StatusRole } from '@/lib/constants/status-tokens';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
+import { formatElapsedLabel } from '@/lib/ui/relative-time';
 import { cn } from '@/lib/utils';
 import type {
   PatientAttentionKey,
@@ -199,12 +200,7 @@ function formatTimeOfDay(iso: string): string {
 }
 
 /** 経過分 → 「30分」「2時間」「1日」(止まっている理由の経過時間)。 */
-function formatAgeLabel(minutes: number): string {
-  const safeMinutes = Math.max(minutes, 0);
-  if (safeMinutes < 60) return `${safeMinutes}分`;
-  if (safeMinutes < 24 * 60) return `${Math.floor(safeMinutes / 60)}時間`;
-  return `${Math.floor(safeMinutes / (24 * 60))}日`;
-}
+const formatAgeLabel = formatElapsedLabel;
 
 function normalizeSearchText(value: string | null | undefined): string {
   return (value ?? '').trim().toLocaleLowerCase('ja-JP');

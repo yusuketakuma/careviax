@@ -5,6 +5,7 @@ import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObject, readJsonObjectString } from '@/lib/db/json';
 import { dateKeySchema } from '@/lib/validations/date-key';
+import { familyNameOf } from '@/lib/utils/person-name';
 import {
   BILLING_VALIDATION_LAYER_KEYS,
   readBillingValidationLayers,
@@ -74,11 +75,6 @@ const DELIVERY_CHANNEL_LABELS: Record<string, string> = {
   postal: '郵送',
   ph_os_share: 'PH-OS共有',
 };
-
-/** 「山本 健」→「山本」。空白を含まない名前はそのまま。 */
-function familyNameOf(fullName: string): string {
-  return fullName.split(/[\s　]+/)[0] ?? fullName;
-}
 
 type CareTeamLinkRow = {
   role: string;

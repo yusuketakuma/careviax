@@ -19,6 +19,8 @@ import {
 } from '@/components/features/workspace/action-rail';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildWorkRequestHref } from '@/lib/tasks/work-request-navigation';
+import { formatElapsedLabel } from '@/lib/ui/relative-time';
+import { familyNameOf } from '@/lib/utils/person-name';
 import { cn } from '@/lib/utils';
 import type { ScheduleStatus } from '@/lib/validations/visit-schedule';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
@@ -156,15 +158,10 @@ async function patchVisitSchedule({
 }
 
 /** 経過分 → 「30分」「2時間」「1日」(止まっている理由の経過時間)。 */
-function formatAgeLabel(minutes: number): string {
-  const safeMinutes = Math.max(minutes, 0);
-  if (safeMinutes < 60) return `${safeMinutes}分`;
-  if (safeMinutes < 24 * 60) return `${Math.floor(safeMinutes / 60)}時間`;
-  return `${Math.floor(safeMinutes / (24 * 60))}日`;
-}
+const formatAgeLabel = formatElapsedLabel;
 
 function familyName(name: string): string {
-  return name.split(/[\s　]+/)[0] || name;
+  return familyNameOf(name) || name;
 }
 
 // ---------------------------------------------------------------------------

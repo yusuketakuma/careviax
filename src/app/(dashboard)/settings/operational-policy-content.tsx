@@ -25,6 +25,7 @@ import {
   type NextActionPanelProps,
 } from '@/components/features/workspace/action-rail';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { formatElapsedLabel } from '@/lib/ui/relative-time';
 import { cn } from '@/lib/utils';
 import {
   groupSystemSettingCandidates,
@@ -101,12 +102,7 @@ function formatTimeOfDay(iso: string): string {
   return `${`${date.getHours()}`.padStart(2, '0')}:${`${date.getMinutes()}`.padStart(2, '0')}`;
 }
 
-function formatAgeLabel(minutes: number): string {
-  const safeMinutes = Math.max(minutes, 0);
-  if (safeMinutes < 60) return `${safeMinutes}分`;
-  if (safeMinutes < 24 * 60) return `${Math.floor(safeMinutes / 60)}時間`;
-  return `${Math.floor(safeMinutes / (24 * 60))}日`;
-}
+const formatAgeLabel = formatElapsedLabel;
 
 // ---------------------------------------------------------------------------
 // 行コントロール(ロックピル / 低・標準・高 / ON-OFF ピル)

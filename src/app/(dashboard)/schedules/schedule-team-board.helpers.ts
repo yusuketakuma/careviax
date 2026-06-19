@@ -1,5 +1,6 @@
 import type { CockpitAuditQueueItem } from '@/types/dashboard-cockpit';
 import type { DayBoardStaff, DayBoardVisit } from '@/types/schedule-day-board';
+import { familyNameOf } from '@/lib/utils/person-name';
 
 /**
  * new_03_schedule(今日のスケジュール — 全員)の表示計算ヘルパー。
@@ -78,7 +79,7 @@ function clampToBoard(minutes: number): number {
 
 /** 姓のみ(スペース区切りの先頭)+職種サフィックス。例: 山田(薬)。 */
 export function staffRowLabel(staff: Pick<DayBoardStaff, 'name' | 'role_kind'>): string {
-  const familyName = staff.name.split(/[\s　]+/)[0] || staff.name;
+  const familyName = familyNameOf(staff.name) || staff.name;
   return `${familyName}(${staff.role_kind === 'clerk' ? '事務' : '薬'})`;
 }
 

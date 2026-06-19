@@ -5,6 +5,8 @@
  * 「今すぐ見るべきこと」(ルール導出)に変換する。
  */
 
+import { familyNameOf } from '@/lib/utils/person-name';
+
 // シフト未登録時の既定勤務枠(cockpit buildTeamCapacity と同じ 9:00-18:00)
 const DEFAULT_WORK_START_MINUTES = 9 * 60;
 const DEFAULT_WORK_END_MINUTES = 18 * 60;
@@ -132,9 +134,7 @@ export function buildDispenseSetSummary(args: {
   dispenseCompletedTodayCount: number;
   setPlans: SetPlanInput[];
 }): SlotSummary {
-  const setCompleted = args.setPlans.filter(
-    (plan) => plan.latestAuditResult === 'approved',
-  ).length;
+  const setCompleted = args.setPlans.filter((plan) => plan.latestAuditResult === 'approved').length;
   return {
     completed: args.dispenseCompletedTodayCount + setCompleted,
     total: args.dispenseOpenCount + args.dispenseCompletedTodayCount + args.setPlans.length,
@@ -187,9 +187,7 @@ export type StaffCapacitySummary = {
 };
 
 /** 姓のみ(スペース区切りの先頭)。cockpit のハンドオフ提案と同じ規約。 */
-function familyName(name: string): string {
-  return name.split(/[\s　]+/)[0] ?? name;
-}
+const familyName = familyNameOf;
 
 /**
  * チームの余白(cockpit buildTeamCapacity)と同じ近似で
@@ -359,7 +357,10 @@ export function buildAttentionItems(args: {
   }
 
   // 4) 緊急余力の低下(スタッフ不在の 0 件は対象外)
-  if (args.workingStaffCount > 0 && args.emergencyCapacityCount < EMERGENCY_CAPACITY_ALERT_THRESHOLD) {
+  if (
+    args.workingStaffCount > 0 &&
+    args.emergencyCapacityCount < EMERGENCY_CAPACITY_ALERT_THRESHOLD
+  ) {
     items.push(`緊急対応余力が${EMERGENCY_CAPACITY_ALERT_THRESHOLD - 1}件を下回りそう`);
   }
 

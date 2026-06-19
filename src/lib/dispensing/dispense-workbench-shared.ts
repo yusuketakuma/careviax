@@ -1,6 +1,9 @@
 import { differenceInMinutes, format, parseISO } from 'date-fns';
 import type { MedicationCycleStatus } from '@prisma/client';
 import { generatePackagingGroups, parseFrequencyToSlots } from '@/lib/dispensing/packaging-group';
+import { familyNameOf as familyName } from '@/lib/utils/person-name';
+
+export { familyName };
 
 /**
  * design/images/new 07_dispense / 08_audit ワークベンチ共通の純関数・型。
@@ -173,10 +176,6 @@ export type MedicationFormatGroup = {
 // ── ラベル合成 ──
 
 /** 姓のみ(例 '佐藤 花子' → '佐藤')。空白区切りがなければそのまま。 */
-export function familyName(name: string): string {
-  return name.trim().split(/\s+/)[0] ?? name;
-}
-
 /** 期限 HH:mm(例 '12:00')。 */
 export function formatDueTime(dueIso: string | null): string | null {
   if (!dueIso) return null;

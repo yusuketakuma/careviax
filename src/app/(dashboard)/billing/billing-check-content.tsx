@@ -13,6 +13,7 @@ import {
   type EvidenceItem,
 } from '@/components/features/workspace/action-rail';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { formatElapsedLabel } from '@/lib/ui/relative-time';
 import { cn } from '@/lib/utils';
 import type {
   BillingCheckMonth,
@@ -46,11 +47,7 @@ const MONTH_OPTIONS: Array<{ value: BillingCheckMonth; label: string }> = [
 ];
 
 /** 経過時間ラベル(「1日」「30分」)。 */
-export function formatAgeLabel(minutes: number): string {
-  if (minutes < 60) return `${Math.max(minutes, 0)}分`;
-  if (minutes < 24 * 60) return `${Math.floor(minutes / 60)}時間`;
-  return `${Math.floor(minutes / (24 * 60))}日`;
-}
+export const formatAgeLabel = formatElapsedLabel;
 
 // ---------------------------------------------------------------------------
 // 上部 KPI ストリップ
