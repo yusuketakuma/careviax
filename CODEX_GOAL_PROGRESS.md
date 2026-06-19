@@ -5129,6 +5129,39 @@ Implemented:
 
 - Partner billing DataTable now has route-mocked browser/a11y proof. UI/UX remediation remains active; next candidates are patient-link acceptance context and repeated workflow/admin row action names.
 
+## 20260620-0203 JST - Pharmacy Cooperation Workflow Row Action Names
+
+### Summary
+
+- Added target-specific accessible names for pharmacy-cooperation workflow row actions across patient share cases, visit requests, and partner visit records.
+- Included non-PHI record IDs plus partner pharmacy context in action names, while excluding patient names, dates of birth, addresses, request reasons, clinical notes, and medication content.
+- Updated focused workflow tests to use row-scoped exact accessible names instead of generic button text or broad regexes.
+- Updated the route-mocked workflow smoke to drive the new target-specific accessible names for visit-request and partner-record actions.
+- Added a regression assertion for the share-case correction target action name.
+
+### Files Changed
+
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`
+- `tools/tests/ui-route-mocked-smoke.spec.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' tools/tests/ui-route-mocked-smoke.spec.ts`: passed, unchanged.
+- `pnpm exec vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 12 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' tools/tests/ui-route-mocked-smoke.spec.ts`: passed.
+- `PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-route-mocked-smoke.spec.ts --project chromium --grep "pharmacy cooperation route-mocked browser workflow smoke"`: passed, 1 Chromium test in 7.5s.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+- Focused `rg` scan for row-action `aria-label` coverage: confirmed patient-share-case, visit-request, and partner-visit-record row actions now include record ID plus partner pharmacy context.
+
+### Remaining / Next Loop
+
+- Pharmacy-cooperation workflow row action naming is addressed for the inspected tables. UI/UX remediation remains active for any remaining patient-link acceptance context, responsive table density, broader select/input label scans, and browser/a11y proof expansion outside this focused slice.
+
 ## 20260620-0036 JST - Billing Rule Row Action Names
 
 ### Summary
