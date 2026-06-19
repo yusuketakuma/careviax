@@ -115,6 +115,11 @@ type ShareReplyDetail = {
   }>;
 };
 
+type ShareFormErrors = {
+  grantedToName?: string;
+  scope?: string;
+};
+
 // --- Constants ---
 
 const SCOPE_ITEMS: ScopeItem[] = [
@@ -142,6 +147,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
   const [selectedScope, setSelectedScope] = useState<Set<string>>(new Set(['medication_list']));
   const [generated, setGenerated] = useState<GeneratedGrant | null>(null);
   const [createdResponseIds, setCreatedResponseIds] = useState<readonly string[]>([]);
+  const [shareFormErrors, setShareFormErrors] = useState<ShareFormErrors>({});
 
   const overviewQuery = useQuery<ExternalShareOverview>({
     queryKey: ['external-share-overview', patientId, orgId],
@@ -358,6 +364,7 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
       }
       return next;
     });
+    setShareFormErrors((prev) => ({ ...prev, scope: undefined }));
   }
 
   function handleCopyUrl() {
@@ -385,14 +392,23 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
   }
 
   function handleGenerate() {
+    const nextErrors: ShareFormErrors = {};
+
     if (!grantedToName.trim()) {
-      toast.error('共有先氏名は必須です');
-      return;
+      nextErrors.grantedToName = '共有先氏名は必須です';
     }
     if (selectedScope.size === 0) {
-      toast.error('共有する情報を1つ以上選択してください');
+      nextErrors.scope = '共有する情報を1つ以上選択してください';
+    }
+
+    setShareFormErrors(nextErrors);
+
+    const firstError = nextErrors.grantedToName ?? nextErrors.scope;
+    if (firstError) {
+      toast.error(firstError);
       return;
     }
+
     generateMutation.mutate();
   }
 
@@ -473,9 +489,23 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
                   <Input
                     id="granted-to-name"
                     value={grantedToName}
-                    onChange={(e) => setGrantedToName(e.target.value)}
+                    onChange={(e) => {
+                      setGrantedToName(e.target.value);
+                      if (e.target.value.trim()) {
+                        setShareFormErrors((prev) => ({ ...prev, grantedToName: undefined }));
+                      }
+                    }}
                     placeholder="例: 田中ケアマネジャー"
+                    aria-invalid={Boolean(shareFormErrors.grantedToName)}
+                    aria-describedby={
+                      shareFormErrors.grantedToName ? 'granted-to-name-error' : undefined
+                    }
                   />
+                  {shareFormErrors.grantedToName ? (
+                    <p id="granted-to-name-error" role="alert" className="text-xs text-destructive">
+                      {shareFormErrors.grantedToName}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="granted-to-contact">共有先連絡先（任意）</Label>
@@ -487,8 +517,13 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label>共有する情報</Label>
+                <div
+                  role="group"
+                  aria-labelledby="share-scope-label"
+                  aria-describedby={shareFormErrors.scope ? 'share-scope-error' : undefined}
+                  className="space-y-2"
+                >
+                  <Label id="share-scope-label">共有する情報</Label>
                   {SCOPE_ITEMS.map((item) => (
                     <div key={item.key} className="flex items-start gap-2">
                       <Checkbox
@@ -502,6 +537,11 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
                       </label>
                     </div>
                   ))}
+                  {shareFormErrors.scope ? (
+                    <p id="share-scope-error" role="alert" className="text-xs text-destructive">
+                      {shareFormErrors.scope}
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="space-y-1.5">
