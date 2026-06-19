@@ -53,6 +53,26 @@ type FileDownloadContextClient = {
       revoked_date: Date | null;
     } | null>;
   };
+  contractDocument: {
+    findFirst: (args: {
+      where: {
+        org_id: string;
+        file_id: string;
+      };
+      select: {
+        id: true;
+        contract_id: true;
+        version_id: true;
+        document_type: true;
+      };
+      orderBy: { created_at: 'desc' };
+    }) => Promise<{
+      id: string;
+      contract_id: string;
+      version_id: string | null;
+      document_type: string;
+    } | null>;
+  };
 };
 
 export type FileDownloadAuditResponseMode = 'json' | 'redirect';
@@ -68,10 +88,17 @@ export type FileDownloadConsentRecordDocumentContext = {
   hasExpiryDate: boolean;
   consentRevoked: boolean;
 };
+export type FileDownloadContractDocumentContext = {
+  contractDocumentId: string;
+  contractId: string;
+  versionId: string | null;
+  documentType: string;
+};
 export type ResolvedFileDownloadAuditContext = {
   patientId?: string;
   consentAttachmentContext?: FileDownloadConsentAttachmentContext;
   consentRecordDocumentContext?: FileDownloadConsentRecordDocumentContext;
+  contractDocumentContext?: FileDownloadContractDocumentContext;
 };
 
 export async function resolveFileDownloadAuditContext(
@@ -126,7 +153,32 @@ export async function resolveFileDownloadAuditContext(
         orderBy: { updated_at: 'desc' },
       }));
 
-    if (!consentRecord) return undefined;
+    if (!consentRecord) {
+      const contractDocument = await db.contractDocument.findFirst({
+        where: {
+          org_id: args.orgId,
+          file_id: args.fileId,
+        },
+        select: {
+          id: true,
+          contract_id: true,
+          version_id: true,
+          document_type: true,
+        },
+        orderBy: { created_at: 'desc' },
+      });
+
+      if (!contractDocument) return undefined;
+      return {
+        contractDocumentContext: {
+          contractDocumentId: contractDocument.id,
+          contractId: contractDocument.contract_id,
+          versionId: contractDocument.version_id,
+          documentType: contractDocument.document_type,
+        },
+      };
+    }
+
     return {
       patientId: consentRecord.patient_id,
       consentRecordDocumentContext: {
@@ -166,6 +218,7 @@ export async function recordFileDownloadAudit(
     responseMode: FileDownloadAuditResponseMode;
     consentAttachmentContext?: FileDownloadConsentAttachmentContext;
     consentRecordDocumentContext?: FileDownloadConsentRecordDocumentContext;
+    contractDocumentContext?: FileDownloadContractDocumentContext;
     ipAddress?: string;
     userAgent?: string;
   },
@@ -204,7 +257,17 @@ export async function recordFileDownloadAudit(
               has_expiry_date: args.consentRecordDocumentContext.hasExpiryDate,
               consent_revoked: args.consentRecordDocumentContext.consentRevoked,
             }
-          : {}),
+          : args.contractDocumentContext
+            ? {
+                context_type: 'contract_document',
+                contract_document_id: args.contractDocumentContext.contractDocumentId,
+                contract_id: args.contractDocumentContext.contractId,
+                ...(args.contractDocumentContext.versionId
+                  ? { version_id: args.contractDocumentContext.versionId }
+                  : {}),
+                document_type: args.contractDocumentContext.documentType,
+              }
+            : {}),
     },
     ipAddress: args.ipAddress,
     userAgent: args.userAgent,

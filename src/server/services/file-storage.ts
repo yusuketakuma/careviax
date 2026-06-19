@@ -25,6 +25,7 @@ const PRESCRIPTION_OBJECT_LOCK_YEARS = 5;
 const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 const DOCUMENT_MAX_BYTES = 50 * 1024 * 1024;
 const DEFAULT_BULK_EXPORT_RETENTION_HOURS = 72;
+const DEFAULT_CONTRACT_DOCUMENT_RETENTION_YEARS = 7;
 const MAX_BULK_EXPORT_CLEANUP_BATCH_SIZE = 100;
 const DEFAULT_BULK_EXPORT_CLEANUP_MAX_PAGES = 10;
 
@@ -37,8 +38,9 @@ export type FilePurpose =
   | 'visit-photo'
   | 'report'
   | 'set-photo'
-  | 'consent-document';
-type GeneratedFilePurpose = 'bulk-export';
+  | 'consent-document'
+  | 'contract-document';
+type GeneratedFilePurpose = 'bulk-export' | 'contract-document';
 type AnyFilePurpose = FilePurpose | GeneratedFilePurpose;
 type StoredFileStatus = 'pending_upload' | 'uploaded';
 type DownloadDisposition = 'inline' | 'attachment';
@@ -51,7 +53,8 @@ function isAnyFilePurpose(value: unknown): value is AnyFilePurpose {
     value === 'report' ||
     value === 'set-photo' ||
     value === 'consent-document' ||
-    value === 'bulk-export'
+    value === 'bulk-export' ||
+    value === 'contract-document'
   );
 }
 
@@ -183,6 +186,7 @@ export class FileStorageError extends Error {
       | 'FILE_UPLOAD_REFERENCE_MISSING'
       | 'FILE_UPLOAD_INVALID_MIME'
       | 'FILE_UPLOAD_TOO_LARGE'
+      | 'FILE_METADATA_WRITE_FAILED'
       | 'FILE_COMPLETE_FORBIDDEN'
       | 'FILE_DOWNLOAD_FORBIDDEN'
       | 'FILE_DELETE_FORBIDDEN'
@@ -247,11 +251,25 @@ function resolveBulkExportExpiresAt(base: Date) {
   return new Date(base.getTime() + resolveBulkExportRetentionHours() * 60 * 60 * 1000);
 }
 
+function resolveContractDocumentRetentionYears() {
+  const configured = Number.parseInt(process.env.CONTRACT_DOCUMENT_FILE_RETENTION_YEARS ?? '', 10);
+  if (Number.isSafeInteger(configured) && configured >= 1 && configured <= 30) {
+    return configured;
+  }
+  return DEFAULT_CONTRACT_DOCUMENT_RETENTION_YEARS;
+}
+
+function resolveContractDocumentExpiresAt(base: Date) {
+  const expiresAt = new Date(base);
+  expiresAt.setFullYear(expiresAt.getFullYear() + resolveContractDocumentRetentionYears());
+  return expiresAt;
+}
+
 function resolveKmsKeyId(purpose: AnyFilePurpose) {
   const explicitPurposeKey =
     purpose === 'bulk-export'
       ? process.env.S3_KMS_KEY_ID_EXPORT
-      : purpose === 'report'
+      : purpose === 'report' || purpose === 'contract-document'
         ? process.env.S3_KMS_KEY_ID_REPORT
         : undefined;
 
@@ -346,9 +364,11 @@ function buildPrescriptionObjectLockRetention(purpose: FilePurpose) {
 
 function assertAllowedUpload(args: { purpose: FilePurpose; mimeType: string; sizeBytes: number }) {
   const allowedMimeTypes =
-    args.purpose === 'visit-photo' || args.purpose === 'set-photo'
-      ? VISIT_ATTACHMENT_MIME_TYPES
-      : DOCUMENT_MIME_TYPES;
+    args.purpose === 'contract-document'
+      ? new Set(['application/pdf'])
+      : args.purpose === 'visit-photo' || args.purpose === 'set-photo'
+        ? VISIT_ATTACHMENT_MIME_TYPES
+        : DOCUMENT_MIME_TYPES;
 
   if (!allowedMimeTypes.has(args.mimeType)) {
     throw new FileStorageError('FILE_UPLOAD_INVALID_MIME', '許可されていない MIME タイプです', 400);
@@ -409,11 +429,17 @@ function buildStorageKey(args: {
     case 'visit-photo':
       return `visit-photos/${args.orgId}/${args.visitRecordId}/${args.fileId}-${safeName}`;
     case 'report':
-      return `reports/${args.orgId}/${args.reportId}/${args.fileId}-${safeName}`;
+      return args.reportId
+        ? `reports/${args.orgId}/${args.reportId}/${args.fileId}-${safeName}`
+        : `reports/${args.orgId}/generated/${args.jobId}/${args.fileId}-${safeName}`;
     case 'set-photo':
       return `set-audits/${args.orgId}/${args.fileId}-${safeName}`;
     case 'bulk-export':
       return `bulk-exports/${args.orgId}/${args.jobId}/${args.fileId}-${safeName}`;
+    case 'contract-document':
+      return args.jobId
+        ? `contract-documents/${args.orgId}/generated/${args.jobId}/${args.fileId}-${safeName}`
+        : `contract-documents/${args.orgId}/uploaded/${args.fileId}-${safeName}`;
   }
 }
 
@@ -543,6 +569,17 @@ function isStoredFileReferenceConsistent(record: {
           `bulk-exports/${record.orgId}/${record.jobId}/`,
         )
       );
+    case 'contract-document':
+      if (record.jobId) {
+        return hasExpectedStorageKeyPrefix(
+          record.storageKey,
+          `contract-documents/${record.orgId}/generated/${record.jobId}/`,
+        );
+      }
+      return hasExpectedStorageKeyPrefix(
+        record.storageKey,
+        `contract-documents/${record.orgId}/uploaded/`,
+      );
   }
 }
 
@@ -610,12 +647,14 @@ function resolveStoredFileExpiresAt(
   record: StoredFileRecord,
   opts?: { includeLegacyFallback?: boolean },
 ) {
-  if (record.purpose !== 'bulk-export') return null;
+  if (record.purpose !== 'bulk-export' && record.purpose !== 'contract-document') return null;
 
   const explicitExpiry = record.expiresAt ? new Date(record.expiresAt) : null;
   if (explicitExpiry && Number.isFinite(explicitExpiry.getTime())) {
     return explicitExpiry;
   }
+
+  if (record.purpose === 'contract-document') return null;
 
   if (!opts?.includeLegacyFallback) return null;
 
@@ -626,7 +665,16 @@ function resolveStoredFileExpiresAt(
 
 async function upsertFileAssetRecord(record: StoredFileRecord) {
   const store = getFileAssetStore();
-  if (!store) return;
+  if (!store) {
+    if (record.purpose === 'contract-document') {
+      throw new FileStorageError(
+        'FILE_METADATA_WRITE_FAILED',
+        '契約書ファイルメタデータを保存できません',
+        502,
+      );
+    }
+    return;
+  }
 
   const fileAssetData = storedRecordToFileAssetData(record);
   try {
@@ -647,6 +695,13 @@ async function upsertFileAssetRecord(record: StoredFileRecord) {
       filePurpose: record.purpose,
       code: error instanceof Error ? error.name : 'UNKNOWN_ERROR',
     });
+    if (record.purpose === 'contract-document') {
+      throw new FileStorageError(
+        'FILE_METADATA_WRITE_FAILED',
+        '契約書ファイルメタデータを保存できません',
+        502,
+      );
+    }
   }
 }
 
@@ -770,6 +825,13 @@ function assertRoleAuthorizedForStoredFile(
   if (record.purpose === 'report') {
     if (!hasPermission(accessContext.role, 'canSendCareReport')) {
       throwFileAccessForbidden(mode, '報告書ファイルへのアクセス権限がありません');
+    }
+    return;
+  }
+
+  if (record.purpose === 'contract-document') {
+    if (!hasPermission(accessContext.role, 'canManagePatientSharing')) {
+      throwFileAccessForbidden(mode, '薬局間契約書ファイルへのアクセス権限がありません');
     }
     return;
   }
@@ -1077,6 +1139,21 @@ async function assertStoredFileAccess(args: {
         throwFileAccessForbidden(args.mode, 'この一括出力ファイルへのアクセス権限がありません');
       }
       return;
+    case 'contract-document': {
+      if (args.mode === 'complete') return;
+
+      const linkedDocument = await prisma.contractDocument.findFirst({
+        where: {
+          org_id: args.orgId,
+          file_id: args.record.id,
+        },
+        select: { id: true },
+      });
+      if (!linkedDocument) {
+        throwFileMetadataNotFound('ファイルに紐づく薬局間契約書が見つかりません');
+      }
+      return;
+    }
   }
 }
 
@@ -1160,7 +1237,11 @@ export async function createPresignedUpload(args: CreatePresignedUploadArgs) {
     createdAt: now,
     updatedAt: now,
     completedAt: null,
-    downloadDisposition: 'inline',
+    expiresAt:
+      args.purpose === 'contract-document'
+        ? resolveContractDocumentExpiresAt(new Date(now)).toISOString()
+        : null,
+    downloadDisposition: args.purpose === 'contract-document' ? 'attachment' : 'inline',
   };
 
   await persistStoredFileRecord(record);
@@ -1244,33 +1325,28 @@ export async function storeGeneratedFile(args: StoreGeneratedFileArgs) {
     expiresAt:
       args.purpose === 'bulk-export'
         ? resolveBulkExportExpiresAt(new Date(now)).toISOString()
-        : null,
+        : args.purpose === 'contract-document'
+          ? resolveContractDocumentExpiresAt(new Date(now)).toISOString()
+          : null,
     downloadDisposition: args.downloadDisposition ?? 'inline',
   };
 
   try {
     await persistStoredFileRecord(record);
   } catch (error) {
-    await getClient()
-      .send(
-        new DeleteObjectCommand({
-          Bucket: bucketName,
-          Key: storageKey,
-        }),
-      )
-      .catch((cleanupError) => {
-        logger.error(
-          {
-            event: 'file_storage.generated_cleanup_failed',
-            orgId: args.orgId,
-            entityType: 'file',
-            entityId: fileId,
-            filePurpose: args.purpose,
-            code: 'GENERATED_METADATA_CLEANUP_FAILED',
-          },
-          cleanupError,
-        );
-      });
+    await deleteGeneratedFile(record).catch((cleanupError) => {
+      logger.error(
+        {
+          event: 'file_storage.generated_cleanup_failed',
+          orgId: args.orgId,
+          entityType: 'file',
+          entityId: fileId,
+          filePurpose: args.purpose,
+          code: 'GENERATED_METADATA_CLEANUP_FAILED',
+        },
+        cleanupError,
+      );
+    });
     throw error;
   }
 
@@ -1278,12 +1354,29 @@ export async function storeGeneratedFile(args: StoreGeneratedFileArgs) {
 }
 
 export async function deleteGeneratedFile(record: StoredFileRecord) {
-  if (record.purpose !== 'bulk-export') {
+  if (record.purpose !== 'bulk-export' && record.purpose !== 'contract-document') {
     throw new FileStorageError(
       'FILE_DELETE_FORBIDDEN',
-      '一括出力ファイル以外はこの削除処理の対象外です',
+      '生成ファイル以外はこの削除処理の対象外です',
       403,
     );
+  }
+
+  if (record.purpose === 'contract-document') {
+    const linkedDocument = await prisma.contractDocument.findFirst({
+      where: {
+        org_id: record.orgId,
+        file_id: record.id,
+      },
+      select: { id: true },
+    });
+    if (linkedDocument) {
+      throw new FileStorageError(
+        'FILE_DELETE_FORBIDDEN',
+        'リンク済み薬局間契約書ファイルはこの削除処理の対象外です',
+        403,
+      );
+    }
   }
 
   const { bucketName } = getRequiredStorageConfig();

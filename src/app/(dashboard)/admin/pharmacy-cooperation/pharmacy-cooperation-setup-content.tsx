@@ -7,6 +7,7 @@ import { CheckCircle2, Eye, FileText, Handshake, Plus, RefreshCw, Save } from 'l
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
@@ -135,8 +136,23 @@ type ContractDocumentForm = {
   contract_id: string;
   template_id: string;
   document_type: string;
-  signed_file_id: string;
+  signed_file: File | null;
   signed_at: string;
+  generate_pdf: boolean;
+};
+
+type PresignedUploadResponse = {
+  data: {
+    id: string;
+    uploadUrl: string;
+    headers?: Record<string, string>;
+  };
+};
+
+type CompleteUploadResponse = {
+  data: {
+    id: string;
+  };
 };
 
 function todayDateKey() {
@@ -193,6 +209,50 @@ async function fetchContractDocuments(orgId: string, contractId: string) {
     headers: { 'x-org-id': orgId },
   });
   return readApiJson<CursorPage<ContractDocumentRow>>(response);
+}
+
+async function uploadContractDocumentPdf(orgId: string, file: File) {
+  if (file.type !== 'application/pdf') {
+    throw new Error('署名済み契約書PDFを選択してください');
+  }
+
+  const presignResponse = await fetch('/api/files/presigned-upload', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': orgId,
+    },
+    body: JSON.stringify({
+      purpose: 'contract-document',
+      file_name: file.name,
+      mime_type: 'application/pdf',
+      size_bytes: file.size,
+    }),
+  });
+  const presigned = await readApiJson<PresignedUploadResponse>(presignResponse);
+
+  const uploadResponse = await fetch(presigned.data.uploadUrl, {
+    method: 'PUT',
+    headers: presigned.data.headers ?? { 'Content-Type': 'application/pdf' },
+    body: file,
+  });
+  if (!uploadResponse.ok) {
+    throw new Error('署名済み契約書PDFのアップロードに失敗しました');
+  }
+
+  const completeResponse = await fetch('/api/files/complete', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-org-id': orgId,
+    },
+    body: JSON.stringify({
+      file_id: presigned.data.id,
+      etag: uploadResponse.headers.get('etag') ?? undefined,
+    }),
+  });
+  const completed = await readApiJson<CompleteUploadResponse>(completeResponse);
+  return completed.data.id;
 }
 
 function statusLabel(status: string) {
@@ -347,8 +407,9 @@ export function PharmacyCooperationSetupContent() {
     contract_id: '',
     template_id: '',
     document_type: 'basic_contract',
-    signed_file_id: '',
+    signed_file: null,
     signed_at: '',
+    generate_pdf: true,
   });
   const [contractDocumentPreview, setContractDocumentPreview] =
     useState<ContractDocumentPreview | null>(null);
@@ -596,8 +657,10 @@ export function PharmacyCooperationSetupContent() {
     mutationFn: async () => {
       if (!effectiveDocumentContractId) throw new Error('契約を選択してください');
       if (!effectiveDocumentTemplateId) throw new Error('契約書テンプレートを選択してください');
-      const signedFileId = documentForm.signed_file_id.trim();
+      const signedFile = documentForm.signed_file;
       const signedAt = documentForm.signed_at.trim();
+      const shouldGeneratePdf = documentForm.generate_pdf && !signedFile;
+      const signedFileId = signedFile ? await uploadContractDocumentPdf(orgId, signedFile) : '';
       const response = await fetch(
         `/api/pharmacy-contracts/${effectiveDocumentContractId}/documents`,
         {
@@ -612,6 +675,7 @@ export function PharmacyCooperationSetupContent() {
             document_type: documentForm.document_type,
             ...(signedFileId ? { signed_file_id: signedFileId } : {}),
             ...(signedAt ? { signed_at: signedAt } : {}),
+            ...(shouldGeneratePdf ? { generate_pdf: true } : {}),
           }),
         },
       );
@@ -999,7 +1063,7 @@ export function PharmacyCooperationSetupContent() {
         title="契約書作成"
         description="契約テンプレートから契約書と費用条件表を生成します。"
       >
-        <div className="grid gap-3 xl:grid-cols-[1.2fr_1.2fr_10rem_1fr_10rem_auto_auto] xl:items-end">
+        <div className="grid gap-3 xl:grid-cols-[1.2fr_1.2fr_10rem_1fr_10rem_11rem_auto_auto] xl:items-end">
           <NativeSelect
             label="契約"
             value={effectiveDocumentContractId}
@@ -1045,17 +1109,18 @@ export function PharmacyCooperationSetupContent() {
             />
           </label>
           <label className="grid gap-1.5">
-            <FieldLabel>署名済みPDF FileAsset ID</FieldLabel>
+            <FieldLabel>署名済みPDF</FieldLabel>
             <Input
-              value={documentForm.signed_file_id}
+              type="file"
+              accept="application/pdf"
               onChange={(event) =>
                 setDocumentForm((current) => ({
                   ...current,
-                  signed_file_id: event.target.value,
+                  signed_file: event.target.files?.[0] ?? null,
+                  generate_pdf: event.target.files?.[0] ? false : current.generate_pdf,
                 }))
               }
-              aria-label="署名済みPDF FileAsset ID"
-              placeholder="file_..."
+              aria-label="署名済み契約書PDF"
             />
           </label>
           <label className="grid gap-1.5">
@@ -1068,6 +1133,20 @@ export function PharmacyCooperationSetupContent() {
               }
               aria-label="契約書署名日"
             />
+          </label>
+          <label className="flex min-h-10 items-center gap-2 rounded-md border border-border/70 px-3 py-2">
+            <Checkbox
+              checked={documentForm.generate_pdf && !documentForm.signed_file}
+              onCheckedChange={(checked) =>
+                setDocumentForm((current) => ({
+                  ...current,
+                  generate_pdf: Boolean(checked),
+                }))
+              }
+              disabled={Boolean(documentForm.signed_file)}
+              aria-label="PDFを生成して保存"
+            />
+            <span className="text-sm font-medium text-foreground">PDF生成</span>
           </label>
           <Button
             type="button"

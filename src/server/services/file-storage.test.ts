@@ -13,6 +13,12 @@ const {
   visitRecordFindFirstMock,
   careReportFindFirstMock,
   careReportUpdateManyMock,
+  contractDocumentFindFirstMock,
+  fileAssetFindFirstMock,
+  fileAssetFindManyMock,
+  fileAssetUpsertMock,
+  fileAssetUpdateMock,
+  fileAssetDeleteManyMock,
   randomUuidMock,
   s3ClientMock,
   s3SendMock,
@@ -29,6 +35,12 @@ const {
   visitRecordFindFirstMock: vi.fn(),
   careReportFindFirstMock: vi.fn(),
   careReportUpdateManyMock: vi.fn(),
+  contractDocumentFindFirstMock: vi.fn(),
+  fileAssetFindFirstMock: vi.fn(),
+  fileAssetFindManyMock: vi.fn(),
+  fileAssetUpsertMock: vi.fn(),
+  fileAssetUpdateMock: vi.fn(),
+  fileAssetDeleteManyMock: vi.fn(),
   randomUuidMock: vi.fn(),
   s3ClientMock: vi.fn(),
   s3SendMock: vi.fn(),
@@ -106,6 +118,16 @@ vi.mock('@/lib/db/client', () => ({
     careReport: {
       findFirst: careReportFindFirstMock,
       updateMany: careReportUpdateManyMock,
+    },
+    contractDocument: {
+      findFirst: contractDocumentFindFirstMock,
+    },
+    fileAsset: {
+      findFirst: fileAssetFindFirstMock,
+      findMany: fileAssetFindManyMock,
+      upsert: fileAssetUpsertMock,
+      update: fileAssetUpdateMock,
+      deleteMany: fileAssetDeleteManyMock,
     },
   },
 }));
@@ -292,6 +314,12 @@ describe('file-storage', () => {
     mockVisitRecordAssignment('user_1');
     mockReportLinkedToVisitRecord();
     careReportUpdateManyMock.mockResolvedValue({ count: 1 });
+    contractDocumentFindFirstMock.mockResolvedValue(null);
+    fileAssetFindFirstMock.mockResolvedValue(null);
+    fileAssetFindManyMock.mockResolvedValue([]);
+    fileAssetUpsertMock.mockResolvedValue({});
+    fileAssetUpdateMock.mockResolvedValue({});
+    fileAssetDeleteManyMock.mockResolvedValue({ count: 1 });
     s3SendMock.mockResolvedValue({
       ETag: '"etag-123"',
       ContentLength: 2048,
@@ -517,6 +545,82 @@ describe('file-storage', () => {
     expect(result.storageKey).toBe('bulk-exports/org_1/job_1/file-uuid-1-medication-history.zip');
   });
 
+  it('stores generated contract document PDFs under the contract document path with retention expiry', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-28T00:00:00.000Z'));
+    let result!: Awaited<ReturnType<typeof storeGeneratedFile>>;
+    try {
+      result = await storeGeneratedFile({
+        orgId: 'org_1',
+        purpose: 'contract-document',
+        fileName: 'contract-v1.pdf',
+        mimeType: 'application/pdf',
+        buffer: Buffer.from('pdf-bytes'),
+        uploadedBy: 'user_1',
+        jobId: 'contract-document-contract_1',
+        downloadDisposition: 'attachment',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(s3SendMock).toHaveBeenCalledOnce();
+    const putObjectCommand = s3SendMock.mock.calls[0]?.[0] as {
+      input: Record<string, unknown>;
+    };
+    expect(putObjectCommand.input).toMatchObject({
+      Bucket: 'ph-os-files',
+      Key: 'contract-documents/org_1/generated/contract-document-contract_1/file-uuid-1-contract-v1.pdf',
+      ContentType: 'application/pdf',
+      ServerSideEncryption: 'AES256',
+    });
+
+    expect(settingUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          value: expect.objectContaining({
+            purpose: 'contract-document',
+            status: 'uploaded',
+            jobId: 'contract-document-contract_1',
+            uploadedBy: 'user_1',
+            expiresAt: '2033-03-28T00:00:00.000Z',
+            downloadDisposition: 'attachment',
+          }),
+        }),
+      }),
+    );
+    expect(result.storageKey).toBe(
+      'contract-documents/org_1/generated/contract-document-contract_1/file-uuid-1-contract-v1.pdf',
+    );
+  });
+
+  it('cleans up generated contract document PDFs when canonical FileAsset metadata cannot be written', async () => {
+    fileAssetUpsertMock.mockRejectedValueOnce(new Error('file asset unavailable'));
+
+    await expect(
+      storeGeneratedFile({
+        orgId: 'org_1',
+        purpose: 'contract-document',
+        fileName: 'contract-v1.pdf',
+        mimeType: 'application/pdf',
+        buffer: Buffer.from('pdf-bytes'),
+        uploadedBy: 'user_1',
+        jobId: 'contract-document-contract_1',
+        downloadDisposition: 'attachment',
+      }),
+    ).rejects.toMatchObject({
+      code: 'FILE_METADATA_WRITE_FAILED',
+      status: 502,
+    });
+
+    expect(s3SendMock).toHaveBeenCalledTimes(2);
+    expect((s3SendMock.mock.calls[1]?.[0] as { input: Record<string, unknown> }).input).toEqual({
+      Bucket: 'ph-os-files',
+      Key: 'contract-documents/org_1/generated/contract-document-contract_1/file-uuid-1-contract-v1.pdf',
+    });
+    expect(settingUpsertMock).not.toHaveBeenCalled();
+  });
+
   it('falls back to the default bulk export retention when the configured value is unsafe', async () => {
     process.env.BULK_EXPORT_FILE_RETENTION_HOURS =
       '999999999999999999999999999999999999999999999999999999999999';
@@ -598,6 +702,34 @@ describe('file-storage', () => {
     await expect(deleteGeneratedFile(buildStoredFileRecord())).rejects.toMatchObject({
       code: 'FILE_DELETE_FORBIDDEN',
       status: 403,
+    });
+    expect(s3SendMock).not.toHaveBeenCalled();
+    expect(settingDeleteManyMock).not.toHaveBeenCalled();
+  });
+
+  it('does not delete linked contract document files through the generated cleanup path', async () => {
+    contractDocumentFindFirstMock.mockResolvedValue({ id: 'contract_document_1' });
+
+    await expect(
+      deleteGeneratedFile(
+        buildStoredFileRecord({
+          purpose: 'contract-document',
+          storageKey:
+            'contract-documents/org_1/generated/contract-document-contract_1/file_1-contract-v1.pdf',
+          jobId: 'contract-document-contract_1',
+          downloadDisposition: 'attachment',
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'FILE_DELETE_FORBIDDEN',
+      status: 403,
+    });
+    expect(contractDocumentFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        file_id: 'file_1',
+      },
+      select: { id: true },
     });
     expect(s3SendMock).not.toHaveBeenCalled();
     expect(settingDeleteManyMock).not.toHaveBeenCalled();
@@ -954,6 +1086,70 @@ describe('file-storage', () => {
     });
   });
 
+  it('signs contract document PDF uploads under the uploaded contract document path', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-28T00:00:00.000Z'));
+    let result!: Awaited<ReturnType<typeof createPresignedUpload>>;
+    try {
+      result = await createPresignedUpload({
+        orgId: 'org_1',
+        purpose: 'contract-document',
+        fileName: 'signed-contract.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 2048,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const putObjectCommand = getSignedUrlMock.mock.calls[0]?.[1] as {
+      input: Record<string, unknown>;
+    };
+    expect(putObjectCommand.input).toMatchObject({
+      Bucket: 'ph-os-files',
+      Key: 'contract-documents/org_1/uploaded/file-uuid-1-signed-contract.pdf',
+      ContentType: 'application/pdf',
+      ServerSideEncryption: 'AES256',
+    });
+    expect(settingUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          value: expect.objectContaining({
+            purpose: 'contract-document',
+            status: 'pending_upload',
+            patientId: null,
+            reportId: null,
+            jobId: null,
+            expiresAt: '2033-03-28T00:00:00.000Z',
+            downloadDisposition: 'attachment',
+          }),
+        }),
+      }),
+    );
+    expect(result.objectKey).toBe(
+      'contract-documents/org_1/uploaded/file-uuid-1-signed-contract.pdf',
+    );
+  });
+
+  it('rejects non-PDF contract document uploads', async () => {
+    await expect(
+      createPresignedUpload({
+        orgId: 'org_1',
+        purpose: 'contract-document',
+        fileName: 'signed-contract.png',
+        mimeType: 'image/png',
+        sizeBytes: 2048,
+      }),
+    ).rejects.toMatchObject({
+      code: 'FILE_UPLOAD_INVALID_MIME',
+      status: 400,
+    });
+
+    expect(getSignedUrlMock).not.toHaveBeenCalled();
+    expect(settingUpsertMock).not.toHaveBeenCalled();
+    expect(fileAssetUpsertMock).not.toHaveBeenCalled();
+  });
+
   it('signs generated zip downloads as attachments', async () => {
     settingFindFirstMock.mockResolvedValue({
       id: 'setting_1',
@@ -1164,6 +1360,96 @@ describe('file-storage', () => {
     });
     expect(getSignedUrlMock).not.toHaveBeenCalled();
     expect(careReportFindFirstMock).not.toHaveBeenCalled();
+  });
+
+  it('signs linked contract document PDF downloads for patient-sharing managers', async () => {
+    settingFindFirstMock.mockResolvedValue({
+      id: 'setting_1',
+      value: {
+        version: 1,
+        id: 'contract_file_1',
+        orgId: 'org_1',
+        purpose: 'contract-document',
+        storageKey:
+          'contract-documents/org_1/generated/contract-document-contract_1/contract_file_1-contract.pdf',
+        originalName: 'contract.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        status: 'uploaded',
+        jobId: 'contract-document-contract_1',
+        uploadedBy: 'user_1',
+        createdAt: '2026-03-28T00:00:00.000Z',
+        updatedAt: '2026-03-28T00:00:00.000Z',
+        completedAt: '2026-03-28T00:00:00.000Z',
+        downloadDisposition: 'attachment',
+      },
+    });
+    contractDocumentFindFirstMock.mockResolvedValue({ id: 'contract_document_1' });
+
+    const result = await createPresignedDownload({
+      orgId: 'org_1',
+      fileId: 'contract_file_1',
+      accessContext: {
+        userId: 'user_1',
+        role: 'pharmacist',
+      },
+    });
+
+    expect(result.downloadUrl).toBe('https://example.com/upload');
+    expect(contractDocumentFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        file_id: 'contract_file_1',
+      },
+      select: { id: true },
+    });
+    const getObjectCommand = getSignedUrlMock.mock.calls[0]?.[1] as {
+      input: Record<string, unknown>;
+    };
+    expect(getObjectCommand.input).toMatchObject({
+      Key: 'contract-documents/org_1/generated/contract-document-contract_1/contract_file_1-contract.pdf',
+      ResponseContentDisposition: 'attachment; filename="contract.pdf"',
+    });
+  });
+
+  it('rejects unlinked contract document PDF downloads before signing a URL', async () => {
+    settingFindFirstMock.mockResolvedValue({
+      id: 'setting_1',
+      value: {
+        version: 1,
+        id: 'contract_file_1',
+        orgId: 'org_1',
+        purpose: 'contract-document',
+        storageKey:
+          'contract-documents/org_1/generated/contract-document-contract_1/contract_file_1-contract.pdf',
+        originalName: 'contract.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        status: 'uploaded',
+        jobId: 'contract-document-contract_1',
+        uploadedBy: 'user_1',
+        createdAt: '2026-03-28T00:00:00.000Z',
+        updatedAt: '2026-03-28T00:00:00.000Z',
+        completedAt: '2026-03-28T00:00:00.000Z',
+        downloadDisposition: 'attachment',
+      },
+    });
+    contractDocumentFindFirstMock.mockResolvedValue(null);
+
+    await expect(
+      createPresignedDownload({
+        orgId: 'org_1',
+        fileId: 'contract_file_1',
+        accessContext: {
+          userId: 'user_1',
+          role: 'pharmacist',
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: 'FILE_METADATA_NOT_FOUND',
+      status: 404,
+    });
+    expect(getSignedUrlMock).not.toHaveBeenCalled();
   });
 
   it.each(fileAccessCases)(

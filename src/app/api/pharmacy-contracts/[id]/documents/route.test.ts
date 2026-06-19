@@ -8,7 +8,11 @@ const {
   fileAssetFindFirstMock,
   contractDocumentCreateMock,
   contractDocumentFindManyMock,
+  contractDocumentFindFirstMock,
   createAuditLogEntryMock,
+  renderContractDocumentPdfMock,
+  storeGeneratedFileMock,
+  deleteGeneratedFileMock,
 } = vi.hoisted(() => ({
   withOrgContextMock: vi.fn(),
   pharmacyContractFindFirstMock: vi.fn(),
@@ -16,7 +20,11 @@ const {
   fileAssetFindFirstMock: vi.fn(),
   contractDocumentCreateMock: vi.fn(),
   contractDocumentFindManyMock: vi.fn(),
+  contractDocumentFindFirstMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
+  renderContractDocumentPdfMock: vi.fn(),
+  storeGeneratedFileMock: vi.fn(),
+  deleteGeneratedFileMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -41,6 +49,28 @@ vi.mock('@/lib/db/rls', () => ({
 vi.mock('@/lib/audit/audit-entry', () => ({
   createAuditLogEntry: createAuditLogEntryMock,
 }));
+
+vi.mock('@/server/services/pdf-pharmacy-contract-document', () => ({
+  renderPharmacyContractDocumentPdf: renderContractDocumentPdfMock,
+}));
+
+vi.mock('@/server/services/file-storage', () => {
+  class FileStorageError extends Error {
+    constructor(
+      readonly code: string,
+      message: string,
+      readonly status: number,
+    ) {
+      super(message);
+    }
+  }
+
+  return {
+    deleteGeneratedFile: deleteGeneratedFileMock,
+    FileStorageError,
+    storeGeneratedFile: storeGeneratedFileMock,
+  };
+});
 
 import { GET as rawGET, POST as rawPOST } from './route';
 
@@ -128,6 +158,7 @@ describe('/api/pharmacy-contracts/[id]/documents', () => {
     pharmacyContractFindFirstMock.mockResolvedValue(buildContract());
     templateFindFirstMock.mockResolvedValue(buildTemplate());
     fileAssetFindFirstMock.mockResolvedValue({ id: 'file_1' });
+    contractDocumentFindFirstMock.mockResolvedValue(null);
     contractDocumentCreateMock.mockResolvedValue({
       id: 'contract_document_1',
       contract_id: 'contract_1',
@@ -157,6 +188,34 @@ describe('/api/pharmacy-contracts/[id]/documents', () => {
       },
     ]);
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
+    renderContractDocumentPdfMock.mockResolvedValue({
+      buffer: Buffer.from('pdf'),
+      fileName: 'contract_1_contract_v1.pdf',
+    });
+    storeGeneratedFileMock.mockResolvedValue({
+      version: 1,
+      id: 'generated_file_1',
+      orgId: 'org_1',
+      purpose: 'contract-document',
+      storageKey:
+        'contract-documents/org_1/contract-document-contract_1/generated_file_1-contract.pdf',
+      originalName: 'contract_1_contract_v1.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 3,
+      status: 'uploaded',
+      patientId: null,
+      visitRecordId: null,
+      reportId: null,
+      jobId: 'contract-document-contract_1',
+      uploadedBy: 'user_1',
+      etag: null,
+      createdAt: '2026-06-19T00:00:00.000Z',
+      updatedAt: '2026-06-19T00:00:00.000Z',
+      completedAt: '2026-06-19T00:00:00.000Z',
+      expiresAt: null,
+      downloadDisposition: 'attachment',
+    });
+    deleteGeneratedFileMock.mockResolvedValue(undefined);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         pharmacyContract: { findFirst: pharmacyContractFindFirstMock },
@@ -164,6 +223,7 @@ describe('/api/pharmacy-contracts/[id]/documents', () => {
         fileAsset: { findFirst: fileAssetFindFirstMock },
         contractDocument: {
           create: contractDocumentCreateMock,
+          findFirst: contractDocumentFindFirstMock,
           findMany: contractDocumentFindManyMock,
         },
       }),
@@ -203,6 +263,26 @@ describe('/api/pharmacy-contracts/[id]/documents', () => {
           tax_category: 'taxable',
         },
       },
+    });
+  });
+
+  it('does not render or store a PDF during preview even when generate_pdf is requested', async () => {
+    const response = await POST(
+      createPostRequest({
+        mode: 'preview',
+        document_type: 'basic_contract',
+        generate_pdf: true,
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(renderContractDocumentPdfMock).not.toHaveBeenCalled();
+    expect(storeGeneratedFileMock).not.toHaveBeenCalled();
+    expect(contractDocumentCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      mode: 'preview',
+      document_type: 'basic_contract',
     });
   });
 
@@ -247,7 +327,21 @@ describe('/api/pharmacy-contracts/[id]/documents', () => {
       select: expect.any(Object),
     });
     expect(fileAssetFindFirstMock).toHaveBeenCalledWith({
-      where: { id: 'file_1', org_id: 'org_1', status: 'completed' },
+      where: {
+        id: 'file_1',
+        org_id: 'org_1',
+        status: 'uploaded',
+        purpose: 'contract-document',
+        mime_type: 'application/pdf',
+        patient_id: null,
+        visit_record_id: null,
+        report_id: null,
+        job_id: null,
+      },
+      select: { id: true },
+    });
+    expect(contractDocumentFindFirstMock).toHaveBeenCalledWith({
+      where: { org_id: 'org_1', file_id: 'file_1' },
       select: { id: true },
     });
     expect(contractDocumentCreateMock).toHaveBeenCalledWith({
@@ -277,8 +371,9 @@ describe('/api/pharmacy-contracts/[id]/documents', () => {
           template_id: 'template_1',
           document_type: 'signed_contract',
           signed_file_attached: true,
+          generated_pdf_stored: false,
+          has_signed_at: true,
           article_count: 23,
-          billing_model: 'fixed_per_visit',
         }),
       }),
     );
@@ -296,6 +391,132 @@ describe('/api/pharmacy-contracts/[id]/documents', () => {
             }),
           ]),
         },
+      },
+    });
+  });
+
+  it('renders and stores a generated contract PDF when requested', async () => {
+    contractDocumentCreateMock.mockResolvedValue({
+      id: 'contract_document_2',
+      contract_id: 'contract_1',
+      version_id: 'version_1',
+      template_id: 'template_1',
+      file_id: 'generated_file_1',
+      document_type: 'basic_contract',
+      hash_value: 'hash_from_route',
+      signed_at: null,
+      created_by: 'user_1',
+      created_at: new Date('2026-06-20T00:00:00.000Z'),
+      updated_at: new Date('2026-06-20T00:00:00.000Z'),
+    });
+
+    const response = await POST(
+      createPostRequest({
+        mode: 'save',
+        version_id: 'version_1',
+        template_id: 'template_1',
+        document_type: 'basic_contract',
+        generate_pdf: true,
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(renderContractDocumentPdfMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        document_type: 'basic_contract',
+        snapshot: expect.objectContaining({
+          contract: expect.objectContaining({ id: 'contract_1' }),
+          template: expect.objectContaining({ id: 'template_1' }),
+          version: expect.objectContaining({ id: 'version_1' }),
+        }),
+      }),
+    );
+    expect(storeGeneratedFileMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      purpose: 'contract-document',
+      fileName: 'contract_1_contract_v1.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from('pdf'),
+      uploadedBy: 'user_1',
+      jobId: 'contract-document-contract_1',
+      downloadDisposition: 'attachment',
+    });
+    expect(contractDocumentCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        file_id: 'generated_file_1',
+        document_type: 'basic_contract',
+        signed_at: null,
+      }),
+      select: expect.any(Object),
+    });
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      expect.objectContaining({
+        changes: expect.objectContaining({
+          signed_file_attached: false,
+          generated_pdf_stored: true,
+          has_signed_at: false,
+          article_count: 23,
+        }),
+      }),
+    );
+    expect(deleteGeneratedFileMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      id: 'contract_document_2',
+      file_id: 'generated_file_1',
+      preview: {
+        snapshot: {
+          contract: { id: 'contract_1' },
+        },
+      },
+    });
+  });
+
+  it('cleans up a generated contract PDF when document metadata persistence fails', async () => {
+    contractDocumentCreateMock.mockRejectedValueOnce(new Error('db unavailable'));
+
+    await expect(
+      POST(
+        createPostRequest({
+          mode: 'save',
+          version_id: 'version_1',
+          template_id: 'template_1',
+          document_type: 'basic_contract',
+          generate_pdf: true,
+        }),
+      ),
+    ).rejects.toThrow('db unavailable');
+
+    expect(renderContractDocumentPdfMock).toHaveBeenCalledOnce();
+    expect(storeGeneratedFileMock).toHaveBeenCalledOnce();
+    expect(deleteGeneratedFileMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'generated_file_1',
+        purpose: 'contract-document',
+      }),
+    );
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects simultaneous generated PDF storage and signed PDF attachment', async () => {
+    const response = await POST(
+      createPostRequest({
+        mode: 'save',
+        signed_file_id: 'file_1',
+        generate_pdf: true,
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(renderContractDocumentPdfMock).not.toHaveBeenCalled();
+    expect(storeGeneratedFileMock).not.toHaveBeenCalled();
+    expect(contractDocumentCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        generate_pdf: ['PDF自動生成と署名済みPDF添付は同時に指定できません'],
       },
     });
   });
@@ -334,6 +555,26 @@ describe('/api/pharmacy-contracts/[id]/documents', () => {
     expect(response.status).toBe(400);
     expect(contractDocumentCreateMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects signed files that are already linked to another contract document', async () => {
+    contractDocumentFindFirstMock.mockResolvedValue({ id: 'contract_document_existing' });
+
+    const response = await POST(
+      createPostRequest({
+        signed_file_id: 'file_1',
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(contractDocumentCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        signed_file_id: ['未使用の契約書PDFファイルを指定してください'],
+      },
+    });
   });
 
   it('lists generated contract documents under the contract org scope', async () => {

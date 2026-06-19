@@ -34,7 +34,14 @@ const optionalTrimmedStringSchema = z.preprocess(
 const presignedUploadSchema = z
   .object({
     // 'set-photo' はセット監査(p0_15)の写真確認で使用。エンティティ参照を必要としない画像専用用途。
-    purpose: z.enum(['prescription', 'visit-photo', 'report', 'set-photo', 'consent-document']),
+    purpose: z.enum([
+      'prescription',
+      'visit-photo',
+      'report',
+      'set-photo',
+      'consent-document',
+      'contract-document',
+    ]),
     file_name: z
       .string()
       .trim()
@@ -261,6 +268,13 @@ export async function POST(req: NextRequest) {
 
   if (parsed.data.purpose === 'report' && !hasPermission(ctx.role, 'canSendCareReport')) {
     return forbiddenResponse('報告書ファイルのアップロード権限がありません');
+  }
+
+  if (
+    parsed.data.purpose === 'contract-document' &&
+    !hasPermission(ctx.role, 'canManagePatientSharing')
+  ) {
+    return forbiddenResponse('薬局間契約書ファイルのアップロード権限がありません');
   }
 
   try {

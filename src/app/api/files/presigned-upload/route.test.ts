@@ -437,6 +437,70 @@ describe('/api/files/presigned-upload POST', () => {
     expect(createPresignedUploadMock).not.toHaveBeenCalled();
   });
 
+  it('rejects contract document upload presigns when the caller lacks patient-sharing management permission', async () => {
+    requireAuthContextMock.mockResolvedValue({
+      ctx: {
+        userId: 'trainee_1',
+        orgId: 'org_1',
+        role: 'pharmacist_trainee',
+      },
+    });
+
+    const response = await POST(
+      createRequest({
+        purpose: 'contract-document',
+        file_name: 'signed-contract.pdf',
+        mime_type: 'application/pdf',
+        size_bytes: 1024,
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expect(assertFileUploadConstraintsMock).not.toHaveBeenCalled();
+    expect(createPresignedUploadMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a presigned upload url for contract document PDFs without patient references', async () => {
+    requireAuthContextMock.mockResolvedValue({
+      ctx: {
+        userId: 'user_1',
+        orgId: 'org_1',
+        role: 'pharmacist',
+      },
+    });
+
+    const response = await POST(
+      createRequest({
+        purpose: 'contract-document',
+        file_name: 'signed-contract.pdf',
+        mime_type: 'application/pdf',
+        size_bytes: 1024,
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(assertFileUploadConstraintsMock).toHaveBeenCalledWith({
+      purpose: 'contract-document',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+    });
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(visitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(createPresignedUploadMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      purpose: 'contract-document',
+      fileName: 'signed-contract.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+      patientId: undefined,
+      visitRecordId: undefined,
+      reportId: undefined,
+    });
+  });
+
   it('returns 400 when the referenced report does not exist', async () => {
     careReportFindFirstMock.mockResolvedValue(null);
 

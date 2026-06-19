@@ -58,6 +58,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         ...(auditContext?.consentRecordDocumentContext
           ? { consentRecordDocumentContext: auditContext.consentRecordDocumentContext }
           : {}),
+        ...(auditContext?.contractDocumentContext
+          ? { contractDocumentContext: auditContext.contractDocumentContext }
+          : {}),
         ipAddress: authResult.ctx.ipAddress,
         userAgent: authResult.ctx.userAgent,
       });

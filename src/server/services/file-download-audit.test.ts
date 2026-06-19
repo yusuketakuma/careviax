@@ -136,6 +136,44 @@ describe('recordFileDownloadAudit', () => {
     expect(JSON.stringify(recordDataExportAuditMock.mock.calls)).not.toContain('山田');
   });
 
+  it('adds contract document context without filenames, storage keys, or hashes', async () => {
+    const db = { auditLog: { create: vi.fn() } };
+
+    await recordFileDownloadAudit(db, {
+      orgId: 'org_1',
+      actorId: 'user_1',
+      fileId: 'contract_file_1',
+      purpose: 'contract-document',
+      mimeType: 'application/pdf',
+      sizeBytes: 2048,
+      expiresIn: 900,
+      surface: 'files_presigned_download',
+      responseMode: 'json',
+      contractDocumentContext: {
+        contractDocumentId: 'contract_document_1',
+        contractId: 'contract_1',
+        versionId: 'version_1',
+        documentType: 'basic_contract',
+      },
+    });
+
+    expect(recordDataExportAuditMock).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          context_type: 'contract_document',
+          contract_document_id: 'contract_document_1',
+          contract_id: 'contract_1',
+          version_id: 'version_1',
+          document_type: 'basic_contract',
+        }),
+      }),
+    );
+    expect(JSON.stringify(recordDataExportAuditMock.mock.calls)).not.toContain('storageKey');
+    expect(JSON.stringify(recordDataExportAuditMock.mock.calls)).not.toContain('contract.pdf');
+    expect(JSON.stringify(recordDataExportAuditMock.mock.calls)).not.toContain('hash_');
+  });
+
   it('resolves consent attachment context from file asset id without selecting PHI fields', async () => {
     const patientShareConsentFindFirst = vi.fn().mockResolvedValue({
       id: 'share_consent_1',
@@ -146,11 +184,13 @@ describe('recordFileDownloadAudit', () => {
       share_case: { base_patient_id: 'patient_1' },
     });
     const consentRecordFindFirst = vi.fn();
+    const contractDocumentFindFirst = vi.fn();
 
     const context = await resolveFileDownloadAuditContext(
       {
         patientShareConsent: { findFirst: patientShareConsentFindFirst },
         consentRecord: { findFirst: consentRecordFindFirst },
+        contractDocument: { findFirst: contractDocumentFindFirst },
       },
       { orgId: 'org_1', fileId: 'file_1' },
     );
@@ -178,6 +218,7 @@ describe('recordFileDownloadAudit', () => {
       },
     });
     expect(consentRecordFindFirst).not.toHaveBeenCalled();
+    expect(contractDocumentFindFirst).not.toHaveBeenCalled();
   });
 
   it('falls back to ConsentRecord document_file_id context for consent documents', async () => {
@@ -193,6 +234,7 @@ describe('recordFileDownloadAudit', () => {
       {
         patientShareConsent: { findFirst: patientShareConsentFindFirst },
         consentRecord: { findFirst: consentRecordFindFirst },
+        contractDocument: { findFirst: vi.fn() },
       },
       { orgId: 'org_1', fileId: 'file_1' },
     );
@@ -233,6 +275,7 @@ describe('recordFileDownloadAudit', () => {
       {
         patientShareConsent: { findFirst: patientShareConsentFindFirst },
         consentRecord: { findFirst: consentRecordFindFirst },
+        contractDocument: { findFirst: vi.fn() },
       },
       { orgId: 'org_1', fileId: 'file_1' },
     );
@@ -267,6 +310,48 @@ describe('recordFileDownloadAudit', () => {
         consentRecordId: 'consent_legacy_url',
         hasExpiryDate: false,
         consentRevoked: true,
+      },
+    });
+  });
+
+  it('falls back to ContractDocument context for contract document files', async () => {
+    const patientShareConsentFindFirst = vi.fn().mockResolvedValue(null);
+    const consentRecordFindFirst = vi.fn().mockResolvedValue(null);
+    const contractDocumentFindFirst = vi.fn().mockResolvedValue({
+      id: 'contract_document_1',
+      contract_id: 'contract_1',
+      version_id: 'version_1',
+      document_type: 'signed_contract',
+    });
+
+    const context = await resolveFileDownloadAuditContext(
+      {
+        patientShareConsent: { findFirst: patientShareConsentFindFirst },
+        consentRecord: { findFirst: consentRecordFindFirst },
+        contractDocument: { findFirst: contractDocumentFindFirst },
+      },
+      { orgId: 'org_1', fileId: 'contract_file_1' },
+    );
+
+    expect(contractDocumentFindFirst).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        file_id: 'contract_file_1',
+      },
+      select: {
+        id: true,
+        contract_id: true,
+        version_id: true,
+        document_type: true,
+      },
+      orderBy: { created_at: 'desc' },
+    });
+    expect(context).toEqual({
+      contractDocumentContext: {
+        contractDocumentId: 'contract_document_1',
+        contractId: 'contract_1',
+        versionId: 'version_1',
+        documentType: 'signed_contract',
       },
     });
   });

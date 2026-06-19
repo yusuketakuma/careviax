@@ -237,7 +237,7 @@ describe('PharmacyCooperationSetupContent', () => {
               contract_id: 'contract_1',
               version_id: 'contract_version_1',
               template_id: 'template_contract_1',
-              file_id: body.signed_file_id ?? null,
+              file_id: body.signed_file_id ?? (body.generate_pdf ? 'generated_file_1' : null),
               document_type: 'basic_contract',
               hash_value: 'hash_saved',
               signed_at: body.signed_at ?? null,
@@ -246,6 +246,35 @@ describe('PharmacyCooperationSetupContent', () => {
               preview,
             }),
             { status: 201 },
+          );
+        }
+        if (url === '/api/files/presigned-upload' && init?.method === 'POST') {
+          return new Response(
+            JSON.stringify({
+              data: {
+                id: 'file_signed_pdf_1',
+                uploadUrl: 'https://uploads.example.test/signed-contract.pdf',
+                headers: { 'Content-Type': 'application/pdf' },
+              },
+            }),
+            { status: 201 },
+          );
+        }
+        if (url === 'https://uploads.example.test/signed-contract.pdf' && init?.method === 'PUT') {
+          return new Response(null, {
+            status: 200,
+            headers: { etag: '"etag-signed-contract"' },
+          });
+        }
+        if (url === '/api/files/complete' && init?.method === 'POST') {
+          const body = JSON.parse(String(init.body));
+          return new Response(
+            JSON.stringify({
+              data: {
+                id: body.file_id,
+              },
+            }),
+            { status: 200 },
           );
         }
 
@@ -359,8 +388,11 @@ describe('PharmacyCooperationSetupContent', () => {
     await screen.findByText('契約書作成');
     expect(screen.getByText('contract_document_1')).toBeTruthy();
 
-    fireEvent.change(screen.getByLabelText('署名済みPDF FileAsset ID'), {
-      target: { value: 'file_signed_pdf_1' },
+    const signedPdf = new File(['signed'], 'signed-contract.pdf', {
+      type: 'application/pdf',
+    });
+    fireEvent.change(screen.getByLabelText('署名済み契約書PDF'), {
+      target: { files: [signedPdf] },
     });
     fireEvent.change(screen.getByLabelText('契約書署名日'), {
       target: { value: '2026-06-19' },
@@ -402,6 +434,70 @@ describe('PharmacyCooperationSetupContent', () => {
         signed_file_id: 'file_signed_pdf_1',
         signed_at: '2026-06-19',
       });
+      expect(JSON.parse(String(saveCall?.[1]?.body))).not.toHaveProperty('generate_pdf');
+
+      const presignCall = vi
+        .mocked(fetch)
+        .mock.calls.find(
+          ([input, init]) =>
+            String(input) === '/api/files/presigned-upload' && init?.method === 'POST',
+        );
+      expect(presignCall).toBeTruthy();
+      expect(JSON.parse(String(presignCall?.[1]?.body))).toEqual({
+        purpose: 'contract-document',
+        file_name: 'signed-contract.pdf',
+        mime_type: 'application/pdf',
+        size_bytes: signedPdf.size,
+      });
+
+      const uploadCall = vi
+        .mocked(fetch)
+        .mock.calls.find(
+          ([input, init]) =>
+            String(input) === 'https://uploads.example.test/signed-contract.pdf' &&
+            init?.method === 'PUT',
+        );
+      expect(uploadCall).toBeTruthy();
+
+      const completeCall = vi
+        .mocked(fetch)
+        .mock.calls.find(
+          ([input, init]) => String(input) === '/api/files/complete' && init?.method === 'POST',
+        );
+      expect(completeCall).toBeTruthy();
+      expect(JSON.parse(String(completeCall?.[1]?.body))).toEqual({
+        file_id: 'file_signed_pdf_1',
+        etag: '"etag-signed-contract"',
+      });
+    });
+  });
+
+  it('saves a generated contract PDF from the setup screen when no signed PDF is attached', async () => {
+    renderContent();
+
+    await screen.findByText('契約書作成');
+    const generatePdfCheckbox = screen.getByLabelText('PDFを生成して保存');
+    expect(generatePdfCheckbox.getAttribute('aria-checked')).toBe('true');
+
+    fireEvent.click(screen.getByRole('button', { name: /契約書保存/ }));
+
+    await waitFor(() => {
+      const saveCall = vi
+        .mocked(fetch)
+        .mock.calls.find(
+          ([input, init]) =>
+            String(input) === '/api/pharmacy-contracts/contract_1/documents' &&
+            init?.method === 'POST' &&
+            JSON.parse(String(init.body)).mode === 'save',
+        );
+      expect(saveCall).toBeTruthy();
+      expect(JSON.parse(String(saveCall?.[1]?.body))).toMatchObject({
+        mode: 'save',
+        template_id: 'template_contract_1',
+        document_type: 'basic_contract',
+        generate_pdf: true,
+      });
+      expect(JSON.parse(String(saveCall?.[1]?.body))).not.toHaveProperty('signed_file_id');
     });
   });
 });
