@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { ReportDeliveryDashboard } from './report-delivery-dashboard';
@@ -61,7 +61,38 @@ describe('ReportDeliveryDashboard', () => {
     render(<ReportDeliveryDashboard />);
 
     expect(screen.getByRole('heading', { name: '送達分析・未確認フォロー' })).toBeTruthy();
-    expect(screen.getByText('一覧で対象報告を確認したあとに、送達傾向や返信待ちの滞留をまとめて見返すセクションです。')).toBeTruthy();
+    expect(
+      screen.getByText(
+        '一覧で対象報告を確認したあとに、送達傾向や返信待ちの滞留をまとめて見返すセクションです。',
+      ),
+    ).toBeTruthy();
     expect(screen.queryByRole('link', { name: '送達分析ページを開く' })).toBeNull();
+  });
+
+  it('shows an error state instead of empty analytics when delivery analytics fail to load', () => {
+    const refetch = vi.fn();
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+    });
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      refetch,
+    });
+
+    render(<ReportDeliveryDashboard />);
+
+    expect(screen.getByRole('heading', { name: '送達分析を表示できません' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '再試行' })).toBeTruthy();
+    expect(screen.queryByText('送達データがありません')).toBeNull();
+    expect(screen.queryByText('7日超の未確認報告はありません。')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'リマインドタスク起票' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
   });
 });
