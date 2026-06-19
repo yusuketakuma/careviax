@@ -85,6 +85,13 @@ type StaffWorkload = {
   }>;
 };
 
+type BulkCompleteTasksResult = {
+  total: number;
+  completed: number;
+  failed: number;
+  failures?: Array<{ id: string | null; code: string; message: string }>;
+};
+
 // --- Constants ---
 
 const STATUS_OPTIONS = [
@@ -281,24 +288,32 @@ export function TasksContent({
 
   const bulkCompleteMutation = useMutation({
     mutationFn: async (ids: string[]) => {
-      const results = await Promise.allSettled(
-        ids.map(async (id) => {
-          const res = await fetch(`/api/tasks/${id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
-            body: JSON.stringify({ status: 'completed' }),
-          });
-          if (!res.ok) throw new Error('タスク更新に失敗しました');
-        }),
-      );
-      const failed = results.filter((r) => r.status === 'rejected').length;
-      return { total: ids.length, failed };
+      const res = await fetch('/api/tasks/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        body: JSON.stringify({ ids }),
+      });
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(
+          typeof payload?.message === 'string' ? payload.message : 'タスク更新に失敗しました',
+        );
+      }
+
+      const result = (payload?.data ?? payload) as Partial<BulkCompleteTasksResult> | null;
+      const completed = result?.completed ?? Math.max(ids.length - (result?.failed ?? 0), 0);
+      const total = result?.total ?? ids.length;
+      return {
+        total,
+        completed,
+        failed: result?.failed ?? Math.max(total - completed, 0),
+      };
     },
-    onSuccess: ({ total, failed }) => {
+    onSuccess: ({ total, completed, failed }) => {
       if (failed === 0) {
         toast.success(`${total}件のタスクを完了しました`);
       } else {
-        toast.warning(`${total - failed}件完了、${failed}件失敗しました`);
+        toast.warning(`${completed}件完了、${failed}件失敗しました`);
       }
       setSelectedTasks([]);
       void queryClient.invalidateQueries({ queryKey: ['tasks', orgId] });

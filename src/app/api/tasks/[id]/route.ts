@@ -11,29 +11,7 @@ import {
   buildDashboardTaskAssignmentWhere,
   resolveDashboardAssignmentScope,
 } from '@/server/services/dashboard-assignment-scope';
-import { requireWritablePatient } from '@/server/services/patient-write-guard';
-
-async function requireWritableTaskPatient(
-  ctx: Parameters<typeof requireWritablePatient>[1],
-  task: { related_entity_type: string | null; related_entity_id: string | null },
-) {
-  if (task.related_entity_type === 'patient' && task.related_entity_id) {
-    return requireWritablePatient(prisma, ctx, task.related_entity_id);
-  }
-
-  if (task.related_entity_type !== 'case' || !task.related_entity_id) return null;
-
-  const careCase = await prisma.careCase.findFirst({
-    where: {
-      id: task.related_entity_id,
-      org_id: ctx.orgId,
-    },
-    select: { patient_id: true },
-  });
-  if (!careCase) return null;
-
-  return requireWritablePatient(prisma, ctx, careCase.patient_id);
-}
+import { requireWritableTaskPatient } from '@/server/services/task-write-guard';
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
@@ -75,7 +53,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
   }
 
-  const writable = await requireWritableTaskPatient(ctx, existing);
+  const writable = await requireWritableTaskPatient(prisma, ctx, existing);
   if (writable && 'response' in writable) return writable.response;
 
   if (
