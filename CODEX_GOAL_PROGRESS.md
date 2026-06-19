@@ -4863,6 +4863,72 @@ Implemented:
 
 - In-home cooperation goal remains active. Patient-detail label hardening now also includes condition/problem rows. Next candidates remain pharmacy-cooperation workflow/admin/billing forms, raw table/DataTable convergence, and browser/a11y proof.
 
+## 20260620-0127 JST - Report and Search Input Label Associations
+
+### Summary
+
+- Added an accessible name to the report delivery overdue-days input.
+- Added an accessible name to the global search keyword input and shifted the search test helper to label-based lookup.
+- Verified the report/search files no longer contain unlabeled Input/Textarea controls.
+- Re-ran a conservative dashboard-wide Input/Textarea scan and kept the remaining broader candidates open instead of treating the scan as clean.
+
+### Files Changed
+
+- `src/app/(dashboard)/reports/report-delivery-dashboard.tsx`
+- `src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx`
+- `src/app/(dashboard)/search/search-content.tsx`
+- `src/app/(dashboard)/search/search-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- Targeted Prettier over report/search UI and test files: passed, unchanged.
+- `pnpm exec vitest run 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx' 'src/app/(dashboard)/search/search-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 2 files / 16 tests.
+- Report/search file-local Input/Textarea scan: passed, 0 unlabeled controls.
+- `pnpm exec eslint 'src/app/(dashboard)/reports/report-delivery-dashboard.tsx' 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx' 'src/app/(dashboard)/search/search-content.tsx' 'src/app/(dashboard)/search/search-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- Conservative dashboard-wide Input/Textarea static scan: still reports additional candidates outside report/search, including pharmacy-cooperation workflow/admin, partner billing, saved views, schedule optimizer, patient board, admin settings JSON draft, document template body editor, PCA pump, and drug-master fields.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Continue with a bounded pharmacy-cooperation or partner-billing label slice first because those screens are closest to the in-home cooperation spec.
+
+## 20260620-0131 JST - Final Dashboard Input/Textarea Label Sweep
+
+### Summary
+
+- Added an accessible name to the schedule optimizer preferred-time end input.
+- Added a stable id to the drug-master reorder-point input so the existing wrapped label is easier to audit.
+- Added an accessible name to the admin settings JSON editor textarea.
+- Re-ran the dashboard-wide Input/Textarea scan and brought it to zero unlabeled controls under `src/app/(dashboard)`.
+
+### Files Changed
+
+- `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx`
+- `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx`
+- `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`
+- `src/app/(dashboard)/admin/settings/settings-content.tsx`
+- `src/app/(dashboard)/admin/settings/settings-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- Targeted Prettier over schedule optimizer, drug master, and settings files: passed, unchanged.
+- Initial settings JSON-mode interaction coverage failed because the Base UI Select interaction did not enter JSON mode reliably in jsdom; that brittle assertion was replaced with static source coverage for the hidden JSON editor label.
+- `pnpm exec vitest run 'src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.test.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' 'src/app/(dashboard)/admin/settings/settings-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 3 files / 14 tests.
+- Improved dashboard-wide Input/Textarea static scan: passed, `NO_MISSING_INPUT_TEXTAREA_NAMES`.
+- Targeted ESLint over the same files: passed.
+- `pnpm typecheck`: passed.
+- Markdown Prettier over `.codex/ralph-state.md`: failed due Node heap OOM even with an 8GB heap; ledger whitespace was checked with `git diff --check` instead.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. This closes the current dashboard Input/Textarea static scan. Next pass should scan SelectTrigger/action names/table density and then run browser/a11y proof for the highest-risk flows.
+
 ## 20260620-0036 JST - Billing Rule Row Action Names
 
 ### Summary
