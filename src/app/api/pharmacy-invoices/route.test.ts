@@ -84,6 +84,7 @@ describe('/api/pharmacy-invoices GET', () => {
         issued_at: null,
         sent_at: null,
         received_at: null,
+        payment_scheduled_for: null,
         paid_at: null,
         created_at: new Date('2026-06-20T00:00:00.000Z'),
         updated_at: new Date('2026-06-20T00:00:00.000Z'),

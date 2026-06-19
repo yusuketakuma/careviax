@@ -135,6 +135,7 @@ function invoiceFromCreateArgs(args: {
     issued_at: null,
     sent_at: null,
     received_at: null,
+    payment_scheduled_for: null,
     paid_at: null,
     snapshot: args.data.snapshot,
     created_by: args.data.created_by,
@@ -365,6 +366,7 @@ describe('transitionPharmacyInvoice', () => {
       issued_at: null,
       sent_at: null,
       received_at: null,
+      payment_scheduled_for: null,
       paid_at: null,
       snapshot: { snapshot_version: 'pharmacy_invoice_draft_v1' },
       updated_at: now,
@@ -455,6 +457,7 @@ describe('transitionPharmacyInvoice', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           status: 'payment_scheduled',
+          payment_scheduled_for: scheduledFor,
           snapshot: expect.objectContaining({
             lifecycle: expect.objectContaining({
               payment_scheduled_for: '2026-07-31',

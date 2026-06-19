@@ -75,6 +75,7 @@ describe('/api/pharmacy-invoices/[id] PATCH', () => {
       issued_at: new Date('2026-06-19T00:00:00.000Z'),
       sent_at: null,
       received_at: null,
+      payment_scheduled_for: null,
       paid_at: null,
       item_count: 1,
     });

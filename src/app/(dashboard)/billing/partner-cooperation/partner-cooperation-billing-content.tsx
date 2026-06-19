@@ -91,6 +91,7 @@ type PharmacyInvoiceRow = {
   issued_at: string | null;
   sent_at: string | null;
   received_at: string | null;
+  payment_scheduled_for: string | null;
   paid_at: string | null;
   item_count: number;
   partnership: {
@@ -544,6 +545,11 @@ function InvoiceHistoryTable({
                   <Badge variant={invoice.status === 'voided' ? 'destructive' : 'outline'}>
                     {statusLabel(invoice.status)}
                   </Badge>
+                  {invoice.payment_scheduled_for ? (
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      支払予定 {formatDate(invoice.payment_scheduled_for)}
+                    </div>
+                  ) : null}
                 </td>
                 <td className="px-3 py-2 text-right">
                   <a

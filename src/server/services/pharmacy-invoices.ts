@@ -310,6 +310,8 @@ function buildTransitionData(
     data.sent_at = input.occurredAt;
   } else if (input.action === 'mark_received') {
     data.received_at = input.occurredAt;
+  } else if (input.action === 'schedule_payment') {
+    data.payment_scheduled_for = input.paymentScheduledFor;
   } else if (input.action === 'record_payment') {
     data.paid_at = input.occurredAt;
   }
@@ -330,6 +332,7 @@ function toSafeInvoiceTransitionResult(invoice: {
   issued_at: Date | null;
   sent_at: Date | null;
   received_at: Date | null;
+  payment_scheduled_for: Date | null;
   paid_at: Date | null;
   updated_at: Date;
   _count: { items: number };
@@ -347,6 +350,7 @@ function toSafeInvoiceTransitionResult(invoice: {
     issued_at: invoice.issued_at,
     sent_at: invoice.sent_at,
     received_at: invoice.received_at,
+    payment_scheduled_for: toDateKey(invoice.payment_scheduled_for),
     paid_at: invoice.paid_at,
     updated_at: invoice.updated_at,
     item_count: invoice._count.items,
@@ -705,6 +709,7 @@ export async function transitionPharmacyInvoice(
       issued_at: true,
       sent_at: true,
       received_at: true,
+      payment_scheduled_for: true,
       paid_at: true,
       snapshot: true,
       updated_at: true,
@@ -765,6 +770,7 @@ export async function transitionPharmacyInvoice(
       issued_at: true,
       sent_at: true,
       received_at: true,
+      payment_scheduled_for: true,
       paid_at: true,
       updated_at: true,
       _count: { select: { items: true } },

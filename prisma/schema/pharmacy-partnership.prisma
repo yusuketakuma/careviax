@@ -535,29 +535,30 @@ model VisitBillingCandidate {
 }
 
 model PharmacyInvoice {
-  id                 String                      @id @default(cuid())
-  org_id             String
-  org                Organization                @relation(fields: [org_id], references: [id])
-  contract_id        String
-  contract           PharmacyContract            @relation(fields: [contract_id, org_id], references: [id, org_id])
-  document_kind      PharmacyInvoiceDocumentKind @default(invoice)
-  invoice_no         String?
-  billing_month      DateTime                    @db.Date
-  issuer_snapshot    Json                        @default("{}")
-  recipient_snapshot Json                        @default("{}")
-  subtotal           Int                         @default(0)
-  tax_amount         Int                         @default(0)
-  total              Int                         @default(0)
-  status             PharmacyInvoiceStatus       @default(draft)
-  pdf_file_id        String?
-  issued_at          DateTime?
-  sent_at            DateTime?
-  received_at        DateTime?
-  paid_at            DateTime?
-  snapshot           Json                        @default("{}")
-  created_by         String
-  created_at         DateTime                    @default(now())
-  updated_at         DateTime                    @updatedAt
+  id                    String                      @id @default(cuid())
+  org_id                String
+  org                   Organization                @relation(fields: [org_id], references: [id])
+  contract_id           String
+  contract              PharmacyContract            @relation(fields: [contract_id, org_id], references: [id, org_id])
+  document_kind         PharmacyInvoiceDocumentKind @default(invoice)
+  invoice_no            String?
+  billing_month         DateTime                    @db.Date
+  issuer_snapshot       Json                        @default("{}")
+  recipient_snapshot    Json                        @default("{}")
+  subtotal              Int                         @default(0)
+  tax_amount            Int                         @default(0)
+  total                 Int                         @default(0)
+  status                PharmacyInvoiceStatus       @default(draft)
+  pdf_file_id           String?
+  issued_at             DateTime?
+  sent_at               DateTime?
+  received_at           DateTime?
+  payment_scheduled_for DateTime?                   @db.Date
+  paid_at               DateTime?
+  snapshot              Json                        @default("{}")
+  created_by            String
+  created_at            DateTime                    @default(now())
+  updated_at            DateTime                    @updatedAt
 
   items PharmacyInvoiceItem[]
 
@@ -566,6 +567,7 @@ model PharmacyInvoice {
   @@index([org_id])
   @@index([org_id, contract_id])
   @@index([org_id, billing_month])
+  @@index([org_id, payment_scheduled_for])
   @@index([status])
 }
 
