@@ -562,7 +562,7 @@ export function ManagementPlanPanel({
           ) : null}
 
           {!isLoading && !error
-            ? plans.map((plan) => (
+            ? plans.map((plan, index) => (
                 <article key={plan.id} className="rounded-xl border bg-card p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="space-y-2">
@@ -612,6 +612,7 @@ export function ManagementPlanPanel({
                             type="button"
                             variant="outline"
                             size="sm"
+                            aria-label={`管理計画書${index + 1}件目を編集`}
                             onClick={() => setEditor({ open: true, plan })}
                           >
                             <PencilLine className="size-4" aria-hidden="true" />

@@ -124,7 +124,7 @@ function QueueRow({
       </TableCell>
       <TableCell className="w-20 whitespace-nowrap">
         {row.auto_read_percent != null ? (
-          <span className="text-sm font-bold text-emerald-700">{row.auto_read_percent}%</span>
+          <span className="text-sm font-bold text-state-done">{row.auto_read_percent}%</span>
         ) : (
           <span className="text-sm text-muted-foreground">—</span>
         )}
@@ -177,7 +177,7 @@ function ProcessStrip() {
               className={cn(
                 'inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold',
                 index === 0
-                  ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                  ? 'border-transparent bg-state-done/10 text-state-done'
                   : 'border-border bg-background text-muted-foreground',
               )}
             >
@@ -377,7 +377,7 @@ export function IntakeTriageContent() {
               {duplicateNotices.length > 0 ? (
                 <div
                   role="alert"
-                  className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900"
+                  className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm leading-6 text-state-confirm"
                   data-testid="intake-duplicate-banner"
                 >
                   <strong className="font-bold">重複検知 {duplicateNotices.length}件:</strong>{' '}

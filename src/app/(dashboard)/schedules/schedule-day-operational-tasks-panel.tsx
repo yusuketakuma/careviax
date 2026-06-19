@@ -4,6 +4,7 @@ import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import type { ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
+import { StateBadge } from '@/components/ui/state-badge';
 import { Button } from '@/components/ui/button';
 import { ActionRail } from '@/components/ui/action-rail';
 import { PageSection } from '@/components/layout/page-section';
@@ -70,7 +71,7 @@ export function ScheduleDayOperationalTasksPanel({
         <TaskLoadingState label="再架電タスクを読み込んでいます..." />
       ) : callbackTasks.length > 0 ? (
         <div className="space-y-3">
-          <div className="rounded-xl border border-sky-200 bg-sky-50/60 px-3 py-2 text-xs text-sky-900">
+          <div className="rounded-xl border border-tag-info/30 bg-tag-info/10 px-3 py-2 text-xs text-tag-info">
             架電結果の再記録や折返し対応が必要な候補です。
           </div>
           <ul aria-label="再架電タスク" className="space-y-3">
@@ -158,16 +159,11 @@ function CallbackTaskItem({
         task={task}
         pharmacistNameById={pharmacistNameById}
         trailingBadge={
-          <Badge
-            variant="outline"
-            className={
-              task.status === 'in_progress'
-                ? 'border-sky-200 bg-sky-50 text-sky-700'
-                : 'border-amber-200 bg-amber-50 text-amber-700'
-            }
-          >
-            {task.status === 'in_progress' ? '対応中' : '未着手'}
-          </Badge>
+          task.status === 'in_progress' ? (
+            <StateBadge role="info">対応中</StateBadge>
+          ) : (
+            <StateBadge role="confirm">未着手</StateBadge>
+          )
         }
       />
 
@@ -250,7 +246,7 @@ function SchedulingTaskItem({
       {task.task_type === 'visit_schedule_override_approval' &&
         task.related_entity_id &&
         !relatedSchedule && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-xs text-state-confirm">
             対象予定をこの週の予定一覧で確認してから変更承認してください。
           </div>
         )}

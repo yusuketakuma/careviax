@@ -247,9 +247,9 @@ export function ContactProfilesContent() {
                   <p className="font-medium text-muted-foreground">表示中</p>
                   <p className="mt-1 text-base font-semibold text-foreground">{rows.length}件</p>
                 </div>
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-                  <p className="font-medium text-amber-700">未完了</p>
-                  <p className="mt-1 text-base font-semibold text-amber-800">
+                <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-3 py-2">
+                  <p className="font-medium text-state-confirm">未完了</p>
+                  <p className="mt-1 text-base font-semibold text-state-confirm">
                     {pendingRowsCount}件
                   </p>
                 </div>

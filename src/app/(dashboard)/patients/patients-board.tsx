@@ -28,6 +28,7 @@ import {
 } from '@/components/features/workspace/safety-board';
 import { ProcessProgressDots } from '@/components/features/workspace/process-chips';
 import { PROCESS_STEPS_9 } from '@/lib/prescription/cycle-workspace';
+import { STATUS_TOKENS, type StatusRole } from '@/lib/constants/status-tokens';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { cn } from '@/lib/utils';
@@ -85,77 +86,90 @@ type AttentionPresentation = {
   badgeClass: string;
 };
 
-const ATTENTION_PRESENTATIONS: Record<PatientAttentionKey, AttentionPresentation> = {
-  urgent_now: {
-    label: '今すぐ対応',
-    accentClass: 'bg-red-500',
-    badgeClass: 'bg-red-100 text-red-700',
-  },
-  wait_release: {
-    label: '待ち解除',
-    accentClass: 'bg-emerald-500',
-    badgeClass: 'bg-emerald-100 text-emerald-700',
-  },
-  acceptance: {
-    label: '受入判断',
-    accentClass: 'bg-amber-500',
-    badgeClass: 'bg-amber-100 text-amber-800',
-  },
-  visit_today: {
-    label: '本日訪問',
-    accentClass: 'bg-blue-500',
-    badgeClass: 'bg-blue-100 text-blue-700',
-  },
-  external_wait: {
-    label: '外部待ち',
-    accentClass: 'bg-violet-500',
-    badgeClass: 'bg-violet-100 text-violet-700',
-  },
-  checking: {
-    label: '確認中',
-    accentClass: 'bg-amber-500',
-    badgeClass: 'bg-amber-100 text-amber-800',
-  },
-  reply_wait: {
-    label: '返信待ち',
-    accentClass: 'bg-violet-500',
-    badgeClass: 'bg-violet-100 text-violet-700',
-  },
-  steady: {
-    label: '順調',
-    accentClass: 'bg-slate-300',
-    badgeClass: 'bg-muted text-muted-foreground',
-  },
-  paused: {
-    label: '休止中',
-    accentClass: 'bg-slate-300',
-    badgeClass: 'bg-muted text-muted-foreground',
-  },
+/**
+ * 「いま必要な対応」(attention) → 6 軸セマンティックロール。
+ * 今すぐ対応=blocked(止まっている/緊急, 赤) / 待ち解除=done(再開可, 緑) /
+ * 受入判断・確認中=confirm(要確認, 橙) / 本日訪問=info(予定, 青) /
+ * 外部待ち・返信待ち=waiting(他者待ち, 紫) / 順調・休止中=neutral(状態色なし)。
+ * accent/badge は globals.css の state/tag 系中央トークンから導出する。
+ */
+const ATTENTION_ROLES: Record<PatientAttentionKey, StatusRole | 'neutral'> = {
+  urgent_now: 'blocked',
+  wait_release: 'done',
+  acceptance: 'confirm',
+  visit_today: 'info',
+  external_wait: 'waiting',
+  checking: 'confirm',
+  reply_wait: 'waiting',
+  steady: 'neutral',
+  paused: 'neutral',
 };
 
+const ATTENTION_LABELS: Record<PatientAttentionKey, string> = {
+  urgent_now: '今すぐ対応',
+  wait_release: '待ち解除',
+  acceptance: '受入判断',
+  visit_today: '本日訪問',
+  external_wait: '外部待ち',
+  checking: '確認中',
+  reply_wait: '返信待ち',
+  steady: '順調',
+  paused: '休止中',
+};
+
+function buildAttentionPresentation(key: PatientAttentionKey): AttentionPresentation {
+  const role = ATTENTION_ROLES[key];
+  const label = ATTENTION_LABELS[key];
+  if (role === 'neutral') {
+    return {
+      label,
+      accentClass: 'bg-muted-foreground/30',
+      badgeClass: 'bg-muted text-muted-foreground',
+    };
+  }
+  const spec = STATUS_TOKENS[role];
+  return { label, accentClass: spec.dotClassName, badgeClass: spec.badgeClassName };
+}
+
+const ATTENTION_PRESENTATIONS: Record<PatientAttentionKey, AttentionPresentation> = {
+  urgent_now: buildAttentionPresentation('urgent_now'),
+  wait_release: buildAttentionPresentation('wait_release'),
+  acceptance: buildAttentionPresentation('acceptance'),
+  visit_today: buildAttentionPresentation('visit_today'),
+  external_wait: buildAttentionPresentation('external_wait'),
+  checking: buildAttentionPresentation('checking'),
+  reply_wait: buildAttentionPresentation('reply_wait'),
+  steady: buildAttentionPresentation('steady'),
+  paused: buildAttentionPresentation('paused'),
+};
+
+/** status_text の文字色 → 6 軸トークン(critical=blocked / positive=done / caution=confirm /
+ * info=info タグ / external=waiting / neutral=状態色なし)。 */
 const STATUS_TONE_CLASSES: Record<PatientStatusTone, string> = {
-  critical: 'font-bold text-destructive',
-  positive: 'font-semibold text-emerald-700',
-  caution: 'font-semibold text-amber-700',
-  info: 'text-blue-700',
-  external: 'font-semibold text-violet-700',
+  critical: 'font-bold text-state-blocked',
+  positive: 'font-semibold text-state-done',
+  caution: 'font-semibold text-state-confirm',
+  info: 'text-tag-info',
+  external: 'font-semibold text-state-waiting',
   neutral: 'text-muted-foreground',
 };
 
-/** 患者属性タグ(腎機能/嚥下/アレルギー)。取扱タグは SafetyBoard の配色を再利用。 */
+/** 患者属性タグ(腎機能/嚥下/アレルギー)。要注意の患者属性 → confirm トークン(橙)。 */
+const PATIENT_SAFETY_TAG_CLASS = 'border-state-confirm/40 bg-state-confirm/10 text-state-confirm';
 const PATIENT_SAFETY_TAGS: Record<string, { label: string; className: string }> = {
-  renal: { label: '腎機能', className: 'border-amber-400 bg-amber-50 text-amber-700' },
-  swallowing: { label: '嚥下', className: 'border-amber-400 bg-amber-50 text-amber-700' },
-  allergy: { label: 'アレルギー', className: 'border-amber-400 bg-amber-50 text-amber-700' },
+  renal: { label: '腎機能', className: PATIENT_SAFETY_TAG_CLASS },
+  swallowing: { label: '嚥下', className: PATIENT_SAFETY_TAG_CLASS },
+  allergy: { label: 'アレルギー', className: PATIENT_SAFETY_TAG_CLASS },
 };
 
+/** 情報基盤の整備状況コールアウト → ready=done(緑) / needs_confirmation=confirm(橙) / missing=blocked(赤)。 */
 const FOUNDATION_STATUS_CLASSES: Record<
   NonNullable<PatientBoardCard['foundation_summary']>['status'],
   string
 > = {
-  ready: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-  needs_confirmation: 'border-amber-200 bg-amber-50 text-amber-900',
-  missing: 'border-red-200 bg-red-50 text-red-800',
+  ready: 'border-state-done/30 bg-state-done/10 text-state-done',
+  needs_confirmation: 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm',
+  missing: 'border-state-blocked/30 bg-state-blocked/10 text-state-blocked',
 };
 
 const SAFETY_TAG_DISPLAY_LIMIT = 3;
@@ -259,7 +273,7 @@ function buildSummaryTiles(data: PatientBoardResponse, todayKey: string): Summar
           : '期限超過の患者はいません',
       chip: 'priority',
       icon: AlertTriangle,
-      className: 'border-red-200 bg-red-50 text-red-700',
+      className: 'border-state-blocked/30 bg-state-blocked/10 text-state-blocked',
     },
     {
       key: 'release',
@@ -268,7 +282,7 @@ function buildSummaryTiles(data: PatientBoardResponse, todayKey: string): Summar
       description: waitReleaseCount > 0 ? '照会回答などで工程を戻せます' : '待ち解除はありません',
       chip: 'priority',
       icon: MessageSquareWarning,
-      className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+      className: 'border-state-done/30 bg-state-done/10 text-state-done',
     },
     {
       key: 'visit',
@@ -281,7 +295,7 @@ function buildSummaryTiles(data: PatientBoardResponse, todayKey: string): Summar
         todayVisitCount > 0 ? '出発前チェックとセット確認' : '今日の個別訪問はありません',
       chip: 'visit_today',
       icon: CalendarDays,
-      className: 'border-blue-200 bg-blue-50 text-blue-700',
+      className: 'border-tag-info/30 bg-tag-info/10 text-tag-info',
     },
     {
       key: 'hold',
@@ -293,7 +307,7 @@ function buildSummaryTiles(data: PatientBoardResponse, todayKey: string): Summar
           : '外部待ち・休止はありません',
       chip: externalCount > 0 ? 'external' : 'paused',
       icon: PauseCircle,
-      className: 'border-violet-200 bg-violet-50 text-violet-700',
+      className: 'border-state-waiting/30 bg-state-waiting/10 text-state-waiting',
     },
   ];
 }
@@ -633,7 +647,7 @@ export function PatientsBoard() {
               </p>
               {isRefreshing ? (
                 <span
-                  className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700"
+                  className="inline-flex items-center rounded-full border border-tag-info/30 bg-tag-info/10 px-2 py-0.5 text-xs font-medium text-tag-info"
                   role="status"
                   aria-live="polite"
                 >

@@ -47,6 +47,7 @@ import {
  * 右「出力設定」(チェック 4 つ + 印刷する)の 3 カラム。
  * 印刷時はプレビューの帳票のみを出力する(他カラムとカード枠は print:hidden)。
  */
+const PRINT_DISABLED_REASON_ID = 'print-submit-disabled-reason';
 
 // ─── データ取得 ──────────────────────────────────────────────────────────────
 
@@ -627,9 +628,9 @@ function FirstVisitPrintReadinessPanel({ summary }: { summary: FirstVisitPrintRe
   const badgeVariant = summary.status === 'blocked' ? 'destructive' : 'outline';
   const badgeClassName =
     summary.status === 'ready'
-      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+      ? 'border-transparent bg-state-done/10 text-state-done'
       : summary.status === 'warning'
-        ? 'border-amber-200 bg-amber-50 text-amber-800'
+        ? 'border-transparent bg-state-confirm/10 text-state-confirm'
         : undefined;
   const detailLabels =
     summary.status === 'blocked' ? summary.missingRequiredLabels : summary.warningLabels;
@@ -640,10 +641,10 @@ function FirstVisitPrintReadinessPanel({ summary }: { summary: FirstVisitPrintRe
       className={cn(
         'rounded-lg border p-3 text-xs leading-5',
         summary.status === 'blocked'
-          ? 'border-destructive/30 bg-destructive/5'
+          ? 'border-state-blocked/30 bg-state-blocked/5'
           : summary.status === 'warning'
-            ? 'border-amber-200 bg-amber-50/60'
-            : 'border-emerald-200 bg-emerald-50/60',
+            ? 'border-state-confirm/30 bg-state-confirm/10'
+            : 'border-state-done/30 bg-state-done/10',
       )}
     >
       <div className="flex items-center justify-between gap-2">
@@ -656,10 +657,10 @@ function FirstVisitPrintReadinessPanel({ summary }: { summary: FirstVisitPrintRe
         className={cn(
           'mt-2',
           summary.status === 'blocked'
-            ? 'text-destructive'
+            ? 'text-state-blocked'
             : summary.status === 'warning'
-              ? 'text-amber-900'
-              : 'text-emerald-900',
+              ? 'text-state-confirm'
+              : 'text-state-done',
         )}
       >
         {summary.message}
@@ -894,12 +895,6 @@ export function PrintHubContent() {
   const shouldConfirmFirstVisitPrint = isFirstVisitPrint && firstVisitDocuments.length > 0;
   const awaitingFirstVisitPrintConfirmation =
     firstVisitPrintConfirmationKey === currentFirstVisitPrintConfirmationKey;
-  const printDisabled =
-    firstVisitPrintHistoryMutation.isPending ||
-    (documentType === 'visit_report' &&
-      Boolean(visitReportSource) &&
-      (auditedVisitReportQuery.isPending || auditedVisitReportQuery.isError)) ||
-    (isFirstVisitPrint && Boolean(firstVisitPrintBlockMessage));
   const outputIsLoading =
     isLoading ||
     (documentType === 'visit_report' &&
@@ -910,6 +905,15 @@ export function PrintHubContent() {
     (documentType === 'visit_report' &&
       Boolean(visitReportSource) &&
       auditedVisitReportQuery.isError);
+  const printDisabledReason =
+    documentType === 'visit_report' && visitReportSource && auditedVisitReportQuery.isPending
+      ? '報告書の印刷監査を確認しています。'
+      : documentType === 'visit_report' && visitReportSource && auditedVisitReportQuery.isError
+        ? '報告書の印刷監査が完了していません。再読み込みしてください。'
+        : isFirstVisitPrint
+          ? firstVisitPrintBlockMessage
+          : null;
+  const printDisabled = firstVisitPrintHistoryMutation.isPending || Boolean(printDisabledReason);
 
   return (
     <div
@@ -1003,13 +1007,22 @@ export function PrintHubContent() {
             className="min-h-11 w-full"
             data-testid="print-submit-button"
             onClick={() => void handlePrint()}
+            aria-describedby={printDisabledReason ? PRINT_DISABLED_REASON_ID : undefined}
             disabled={printDisabled}
           >
             {awaitingFirstVisitPrintConfirmation ? 'もう一度印刷する' : '印刷する'}
           </Button>
+          {printDisabledReason ? (
+            <p
+              id={PRINT_DISABLED_REASON_ID}
+              className="mt-2 text-xs leading-5 text-muted-foreground"
+            >
+              {printDisabledReason}
+            </p>
+          ) : null}
           {shouldConfirmFirstVisitPrint && awaitingFirstVisitPrintConfirmation ? (
-            <div className="mt-3 space-y-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
-              <p className="text-xs leading-5 text-amber-900">
+            <div className="mt-3 space-y-3 rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-3 py-3">
+              <p className="text-xs leading-5 text-state-confirm">
                 紙またはPDFの出力が完了してから、印刷履歴を記録してください。
               </p>
               <Button

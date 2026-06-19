@@ -68,8 +68,84 @@ describe('PatientContactsPanel', () => {
     expect(screen.getByLabelText('連絡先1件目のFAX')).toBeTruthy();
     expect(screen.getByLabelText('連絡先1件目の住所')).toBeTruthy();
     expect(screen.getByLabelText('連絡先1件目のメモ')).toBeTruthy();
+    const deleteButton = screen.getByRole('button', { name: '連絡先1件目を削除' });
+    const deleteReason = screen.getByText('連絡先は最低1件必要です。');
+    expect(deleteButton).toHaveProperty('disabled', true);
+    expect(deleteButton.getAttribute('aria-describedby')).toBe(deleteReason.id);
+    expect(deleteButton.getAttribute('aria-label')).not.toMatch(/山田|090-0000-0000|family/);
+    expect(deleteReason.textContent).not.toMatch(/山田|090-0000-0000|family/);
     expect(screen.getByRole('button', { name: /行追加/ })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
+    const saveButton = screen.getByRole('button', { name: '保存' });
+    expect(saveButton).toHaveProperty('disabled', false);
+    expect(saveButton.getAttribute('aria-describedby')).toBeNull();
+  });
+
+  it('does not show the minimum-contact delete reason when multiple rows exist', () => {
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+
+    render(
+      <PatientContactsPanel
+        patientId="patient_1"
+        orgId="org_1"
+        initialContacts={[
+          {
+            id: 'contact_1',
+            relation: 'child',
+            name: '山田太郎',
+            phone: '090-0000-0000',
+            email: null,
+            fax: null,
+            organization_name: null,
+            department: null,
+            address: null,
+            is_primary: true,
+            is_emergency_contact: true,
+            notes: null,
+          },
+          {
+            id: 'contact_2',
+            relation: 'care_manager',
+            name: '佐藤花子',
+            phone: '080-0000-0000',
+            email: null,
+            fax: null,
+            organization_name: null,
+            department: null,
+            address: null,
+            is_primary: false,
+            is_emergency_contact: false,
+            notes: null,
+          },
+        ]}
+      />,
+    );
+
+    const firstDelete = screen.getByRole('button', { name: '連絡先1件目を削除' });
+
+    expect(screen.queryByText('連絡先は最低1件必要です。')).toBeNull();
+    expect(firstDelete).toHaveProperty('disabled', false);
+    expect(firstDelete.getAttribute('aria-describedby')).toBeNull();
+  });
+
+  it('blocks saving when blank contact rows would persist zero contacts', () => {
+    const mutate = vi.fn();
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ mutate, isPending: false });
+
+    render(<PatientContactsPanel patientId="patient_1" orgId="org_1" initialContacts={[]} />);
+
+    const saveButton = screen.getByRole('button', { name: '保存' });
+    const saveReason = screen.getByText('保存するには連絡先の氏名を入力してください。');
+
+    expect(saveButton).toHaveProperty('disabled', true);
+    expect(saveButton.getAttribute('aria-describedby')).toBe(saveReason.id);
+    expect(saveReason.textContent).not.toMatch(/patient_1|090|山田|family/);
+
+    fireEvent.click(saveButton);
+
+    expect(mutate).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
   });
 
   it('shows reliability warnings returned by the contacts save API', () => {

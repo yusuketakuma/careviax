@@ -394,7 +394,7 @@ export function TasksContent({
             due && row.original.status !== 'completed' ? new Date(due) < new Date() : false;
           return (
             <span
-              className={`text-xs tabular-nums ${isOverdue ? 'font-semibold text-red-600' : 'text-muted-foreground'}`}
+              className={`text-xs tabular-nums ${isOverdue ? 'font-semibold text-state-blocked' : 'text-muted-foreground'}`}
             >
               {label}
             </span>
@@ -409,9 +409,12 @@ export function TasksContent({
   return (
     <div className="space-y-6">
       {contextSummary ? (
-        <Alert className="border-sky-200 bg-sky-50 text-sky-900" data-testid="tasks-context-banner">
-          <Filter className="size-4 text-sky-700" aria-hidden="true" />
-          <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
+        <Alert
+          className="border-tag-info/30 bg-tag-info/10 text-tag-info"
+          data-testid="tasks-context-banner"
+        >
+          <Filter className="size-4 text-tag-info" aria-hidden="true" />
+          <AlertDescription className="text-tag-info">{contextSummary}</AlertDescription>
         </Alert>
       ) : null}
       <PageSection
@@ -770,7 +773,7 @@ export function TasksContent({
                 <p className="text-sm font-medium">{task.title}</p>
                 <div className="flex items-center justify-between">
                   <span
-                    className={`text-xs ${isOverdue ? 'font-semibold text-red-600' : 'text-muted-foreground'}`}
+                    className={`text-xs ${isOverdue ? 'font-semibold text-state-blocked' : 'text-muted-foreground'}`}
                   >
                     期限: {formatDateLabel(due, { pattern: 'MM/dd' })}
                   </span>

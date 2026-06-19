@@ -229,7 +229,7 @@ function QrDraftList() {
               className={`inline-flex size-5 items-center justify-center rounded-full text-[11px] font-semibold ${
                 filterMode === 'unmatched'
                   ? 'bg-primary-foreground text-primary'
-                  : 'bg-amber-100 text-amber-800'
+                  : 'bg-state-confirm/10 text-state-confirm'
               }`}
             >
               {unmatchedCount}

@@ -38,6 +38,8 @@ const MEMO_TEXT_FIELDS = [
   { key: 'immediateAction', label: 'すぐ行った対応' },
   { key: 'preventionPlan', label: '次から変えること' },
 ] as const;
+const INCIDENT_MEMO_DISABLED_REASON_ID = 'incident-memo-disabled-reason';
+const INCIDENT_MEMO_DISABLED_REASON = '記録一覧に記録がないため入力できません。';
 
 function formatIncidentDate(value: string | null): string {
   if (!value) return '日時未設定';
@@ -196,7 +198,7 @@ export function IncidentsContent() {
             保存前に「何が起きたか」「なぜ起きたか」「次から変えること」を揃えます。
           </p>
           {completion.isComplete ? (
-            <p className="mt-2 text-sm text-emerald-700">必要項目は埋まっています。</p>
+            <p className="mt-2 text-sm text-state-done">必要項目は埋まっています。</p>
           ) : (
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
               未入力: {completion.missingLabels.join('、')}
@@ -208,9 +210,15 @@ export function IncidentsContent() {
           className="mt-5 space-y-5"
           onSubmit={(event) => {
             event.preventDefault();
+            if (!selected) return;
             saveMutation.mutate();
           }}
         >
+          {!selected ? (
+            <p id={INCIDENT_MEMO_DISABLED_REASON_ID} className="text-sm text-muted-foreground">
+              {INCIDENT_MEMO_DISABLED_REASON}
+            </p>
+          ) : null}
           {MEMO_TEXT_FIELDS.map((field) => (
             <div
               key={field.key}
@@ -226,6 +234,7 @@ export function IncidentsContent() {
                 onChange={(event) =>
                   setForm((prev) => ({ ...prev, [field.key]: event.target.value }))
                 }
+                aria-describedby={!selected ? INCIDENT_MEMO_DISABLED_REASON_ID : undefined}
                 disabled={!selected}
                 className="sm:h-10"
               />
@@ -245,6 +254,7 @@ export function IncidentsContent() {
             >
               <SelectTrigger
                 aria-labelledby="incident-related-process-label"
+                aria-describedby={!selected ? INCIDENT_MEMO_DISABLED_REASON_ID : undefined}
                 data-testid="incident-related-process"
                 className="w-full sm:h-10"
               >
@@ -263,6 +273,7 @@ export function IncidentsContent() {
           <Button
             type="submit"
             className="mt-8 h-11 w-[220px]"
+            aria-describedby={!selected ? INCIDENT_MEMO_DISABLED_REASON_ID : undefined}
             disabled={!selected || saveMutation.isPending}
           >
             {saveMutation.isPending

@@ -140,6 +140,45 @@ describe('PrintHubContent', () => {
     );
   });
 
+  it('describes blocked first-visit printing without leaking patient values', async () => {
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/patients/patient_1/documents') {
+        return new Response(
+          JSON.stringify({
+            patient: { id: 'patient_1', name: '山田 太郎', name_kana: 'ヤマダ タロウ' },
+            print_readiness: {
+              overall_status: 'ready',
+              missing_required_count: 0,
+              warning_count: 0,
+              template_versions: [],
+              checks: [],
+            },
+            first_visit_documents: [],
+          }),
+          { status: 200 },
+        );
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    renderPrintHubContent();
+
+    const printReason = await screen.findByText(
+      '印刷対象の契約・同意文書がありません。患者詳細で文書を作成してから印刷してください。',
+    );
+    const printButton = screen.getByTestId('print-submit-button');
+
+    expect(printButton).toHaveProperty('disabled', true);
+    expect(printButton.getAttribute('aria-describedby')).toBe(printReason.id);
+    expect(printReason.textContent).not.toMatch(/patient_1|山田|太郎|doc_/);
+
+    fireEvent.click(printButton);
+
+    expect(window.print).not.toHaveBeenCalled();
+  });
+
   it('hides save-copy controls for print types without persisted copy support', async () => {
     useSearchParamsMock.mockReturnValue(new URLSearchParams('type=visit_report'));
     vi.mocked(fetch).mockImplementationOnce(async (input: RequestInfo | URL) => {

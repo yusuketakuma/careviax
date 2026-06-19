@@ -84,4 +84,11 @@ describe('PrescriptionIntakeForm previous prescription safety contract', () => {
       'facility_label: selectedCase?.patient?.residences?.[0]?.address ?? null',
     );
   });
+
+  it('names facility batch removal actions by row without duplicating patient or drug labels', () => {
+    expect(SOURCE).toContain('aria-label={`施設一括登録${index + 1}件目を削除`}');
+    expect(SOURCE).not.toContain('aria-label={`${entry.patient_name}');
+    expect(SOURCE).not.toContain('aria-label={`${entry.lines');
+    expect(SOURCE).not.toContain('aria-label={`${entry.case_id');
+  });
 });

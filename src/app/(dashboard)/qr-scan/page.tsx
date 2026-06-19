@@ -710,7 +710,7 @@ export default function QRScanPage() {
                 </dl>
                 {parseResult?.warnings.length ? (
                   <div
-                    className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"
+                    className="mt-2 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-xs text-state-confirm"
                     role="alert"
                     aria-live="assertive"
                   >
@@ -831,7 +831,7 @@ export default function QRScanPage() {
                   role="alert"
                   aria-live="polite"
                 >
-                  <AlertTriangle className="h-8 w-8 text-amber-500" aria-hidden="true" />
+                  <AlertTriangle className="h-8 w-8 text-state-confirm" aria-hidden="true" />
                   <p className="text-sm text-muted-foreground">
                     該当する患者が見つかりませんでした。
                   </p>
@@ -878,7 +878,7 @@ export default function QRScanPage() {
                 role="status"
                 aria-live="polite"
               >
-                <CheckCircle className="h-10 w-10 text-green-600" aria-hidden="true" />
+                <CheckCircle className="h-10 w-10 text-state-done" aria-hidden="true" />
                 <div>
                   <p className="text-base font-semibold">PCに送信しました</p>
                   <p className="mt-1 text-sm text-muted-foreground">PCで確認・確定してください</p>
@@ -889,7 +889,7 @@ export default function QRScanPage() {
                   <div className="w-full space-y-2 rounded-md border p-3 text-left">
                     {/* 成功薬剤 */}
                     {parseResult.success && mergedQRData.medications.length > 0 && (
-                      <div className="flex items-center gap-2 text-sm text-green-700">
+                      <div className="flex items-center gap-2 text-sm text-state-done">
                         <CircleCheck className="h-4 w-4 shrink-0" />
                         <span>薬剤 {mergedQRData.medications.length}件 を読取</span>
                       </div>
@@ -899,7 +899,10 @@ export default function QRScanPage() {
                     {parseResult.warnings.length > 0 && (
                       <div className="space-y-1" role="alert" aria-live="assertive">
                         {parseResult.warnings.map((w, i) => (
-                          <div key={i} className="flex items-start gap-2 text-sm text-amber-700">
+                          <div
+                            key={i}
+                            className="flex items-start gap-2 text-sm text-state-confirm"
+                          >
                             <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
                             <span>{w.message}</span>
                           </div>

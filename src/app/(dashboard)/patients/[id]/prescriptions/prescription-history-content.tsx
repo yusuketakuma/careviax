@@ -27,6 +27,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { StateBadge } from '@/components/ui/state-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import {
@@ -525,7 +526,7 @@ function DrugLineRow({
         changeType === 'dose_changed' || changeType === 'frequency_changed'
           ? 'bg-orange-50/40'
           : '',
-        hasOverlap ? 'ring-1 ring-inset ring-red-300' : '',
+        hasOverlap ? 'ring-1 ring-inset ring-state-blocked/40' : '',
       ].join(' ')}
     >
       {/* Drug info */}
@@ -631,25 +632,25 @@ function DrugLineRow({
           )}
 
           {unitDoseWarn && (
-            <span className="flex items-center gap-0.5 text-red-600 font-medium" role="alert">
+            <span className="flex items-center gap-0.5 text-state-blocked font-medium" role="alert">
               <Ban className="size-3" aria-hidden="true" />
               一包化不適
             </span>
           )}
           {crushedWarn && (
-            <span className="flex items-center gap-0.5 text-red-600 font-medium" role="alert">
+            <span className="flex items-center gap-0.5 text-state-blocked font-medium" role="alert">
               <Ban className="size-3" aria-hidden="true" />
               粉砕不可
             </span>
           )}
           {hasOverlap && (
-            <span className="flex items-center gap-0.5 text-red-600 font-medium" role="alert">
+            <span className="flex items-center gap-0.5 text-state-blocked font-medium" role="alert">
               <AlertTriangle className="size-3" aria-hidden="true" />
               期間重複
             </span>
           )}
           {line.notes && (
-            <span className="flex items-center gap-0.5 text-amber-600">
+            <span className="flex items-center gap-0.5 text-state-confirm">
               <AlertTriangle className="size-3" aria-hidden="true" />
               {line.notes}
             </span>
@@ -907,8 +908,8 @@ function PrescriptionIntakeCard({
         <CardContent className="p-0">
           {/* Removed drugs alert */}
           {removedDrugs.length > 0 && (
-            <div className="border-t bg-red-50/50 px-4 py-2">
-              <div className="flex items-start gap-2 text-xs text-red-700">
+            <div className="border-t bg-state-blocked/10 px-4 py-2">
+              <div className="flex items-start gap-2 text-xs text-state-blocked">
                 <Minus className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
                 <div>
                   <span className="font-semibold">前回から中止:</span>
@@ -1453,9 +1454,7 @@ export function PrescriptionHistoryContent() {
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-medium text-foreground">{item.drugName}</p>
                         <Badge variant="outline">{item.routeLabel}</Badge>
-                        {item.hasWarning ? (
-                          <Badge className="bg-red-100 text-red-800 hover:bg-red-100">要確認</Badge>
-                        ) : null}
+                        {item.hasWarning ? <StateBadge role="confirm">要確認</StateBadge> : null}
                       </div>
                       <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.note}</p>
                     </div>

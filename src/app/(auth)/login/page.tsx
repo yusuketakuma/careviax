@@ -116,9 +116,9 @@ function LoginForm() {
         </CardHeader>
         <CardContent>
           {notice && (
-            <Alert className="mb-4 border-blue-200 bg-blue-50 text-blue-900">
-              <ShieldCheck className="h-4 w-4 text-blue-600" />
-              <AlertDescription>{notice}</AlertDescription>
+            <Alert className="mb-4 border-tag-info/30 bg-tag-info/10 text-tag-info">
+              <ShieldCheck className="h-4 w-4 text-tag-info" />
+              <AlertDescription className="text-tag-info">{notice}</AlertDescription>
             </Alert>
           )}
           {error && (
@@ -161,7 +161,7 @@ function LoginForm() {
             <Button
               type="submit"
               size="lg"
-              className="mt-2 w-full bg-blue-600 hover:bg-blue-700"
+              className="mt-2 w-full"
               disabled={isLoading}
               aria-busy={isLoading}
             >
@@ -172,14 +172,14 @@ function LoginForm() {
           <div className="mt-4 text-center">
             <Link
               href="/password/reset"
-              className="text-sm text-blue-600 hover:text-blue-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+              className="text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
             >
               パスワードを忘れた方
             </Link>
           </div>
 
           {/* デザイン p0_01: MFA 確認コードの事前案内(初回・端末変更時の戸惑い防止) */}
-          <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50/70 p-3.5">
+          <div className="mt-4 rounded-lg border border-tag-info/30 bg-tag-info/10 p-3.5">
             <p className="text-sm font-semibold text-foreground">確認コードが必要な場合</p>
             <p className="mt-1 text-sm leading-5 text-muted-foreground">
               スマホまたはメールに届いた6桁のコードを入力してください。初回だけでなく、端末が変わった時にも確認します。
@@ -196,7 +196,7 @@ export default function LoginPage() {
     <Suspense
       fallback={
         <div className="w-full max-w-md">
-          <div className="h-72 animate-pulse rounded-xl bg-slate-100" />
+          <div className="h-72 animate-pulse rounded-xl bg-muted" />
         </div>
       }
     >

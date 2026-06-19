@@ -31,14 +31,16 @@ function StatusItem({
     <div
       className={cn(
         'rounded-xl border px-3 py-3',
-        done ? 'border-emerald-200 bg-emerald-50/70' : 'border-amber-200 bg-amber-50/70',
+        done
+          ? 'border-state-done/30 bg-state-done/10'
+          : 'border-state-confirm/30 bg-state-confirm/10',
       )}
     >
       <div className="flex items-start gap-2">
         {done ? (
-          <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-700" aria-hidden="true" />
+          <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-state-done" aria-hidden="true" />
         ) : (
-          <CircleAlert className="mt-0.5 size-4 shrink-0 text-amber-700" aria-hidden="true" />
+          <CircleAlert className="mt-0.5 size-4 shrink-0 text-state-confirm" aria-hidden="true" />
         )}
         <div className="space-y-1">
           <p className="text-sm font-medium text-foreground">{label}</p>

@@ -13,6 +13,8 @@ import {
 } from '@/lib/browser-notifications';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { StateBadge } from '@/components/ui/state-badge';
+import type { StatusRole } from '@/lib/constants/status-tokens';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -132,18 +134,19 @@ const EVENT_CONFIGS: EventConfig[] = [
   },
 ];
 
-const BADGE_VARIANTS: Record<EventConfig['badge'], { label: string; className: string }> = {
+// 通知イベント分類: 緊急=blocked(赤) / 業務=info(青, 情報タグ) / リマインド=confirm(橙, 要対応)
+const BADGE_VARIANTS: Record<EventConfig['badge'], { label: string; role: StatusRole }> = {
   urgent: {
     label: '緊急',
-    className: 'border-red-200 bg-red-50 text-red-700',
+    role: 'blocked',
   },
   business: {
     label: '業務',
-    className: 'border-blue-200 bg-blue-50 text-blue-700',
+    role: 'info',
   },
   reminder: {
     label: 'リマインド',
-    className: 'border-amber-200 bg-amber-50 text-amber-700',
+    role: 'confirm',
   },
 };
 
@@ -627,6 +630,7 @@ export function NotificationSettingsContent() {
         <CardFooter className="gap-2">
           <Button
             type="button"
+            aria-label="ブラウザ通知を許可して有効化"
             onClick={() => void enableBrowserNotifications()}
             disabled={permission === 'unsupported'}
           >
@@ -635,6 +639,7 @@ export function NotificationSettingsContent() {
           <Button
             type="button"
             variant="outline"
+            aria-label="ブラウザ通知を停止"
             onClick={disableBrowserNotifications}
             disabled={!browserNotificationsEnabled}
           >
@@ -672,9 +677,7 @@ export function NotificationSettingsContent() {
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-medium text-foreground">{config.title}</p>
-                      <Badge variant="outline" className={badge.className}>
-                        {badge.label}
-                      </Badge>
+                      <StateBadge role={badge.role}>{badge.label}</StateBadge>
                     </div>
                     <p className="text-sm text-muted-foreground">{config.description}</p>
                     <p className="font-mono text-xs text-muted-foreground/70">{config.eventType}</p>

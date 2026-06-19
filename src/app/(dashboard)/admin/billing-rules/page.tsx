@@ -437,7 +437,7 @@ export default function BillingRulesPage() {
       header: 'SSOT',
       cell: ({ row }) =>
         row.original.billing_scope === 'home_care_ssot' ? (
-          <Badge variant="secondary" className="gap-1 text-emerald-700">
+          <Badge variant="secondary" className="gap-1 text-state-done">
             <ShieldCheck className="h-3 w-3" />
             公式
           </Badge>
@@ -489,7 +489,7 @@ export default function BillingRulesPage() {
       header: '状態',
       cell: ({ row }) =>
         row.original.is_active ? (
-          <Badge variant="secondary" className="text-green-700">
+          <Badge variant="secondary" className="text-state-done">
             有効
           </Badge>
         ) : (

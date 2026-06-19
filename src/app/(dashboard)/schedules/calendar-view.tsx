@@ -35,15 +35,18 @@ import {
 
 // ---- Constants ------------------------------------------------------------
 
+// 状態色は 6 軸セマンティックトークンに統一(SCHEDULE_STATUS_ROLE 写像)。
+// 進行中の線形フロー=info(青)、completed=done(緑)、cancelled=blocked(赤)、postponed=confirm(橙)。
+// カレンダーセルは高密度のため StateBadge ではなくトークン class を当てた compact span を維持する。
 const STATUS_CONFIG: Record<ScheduleStatus, { label: string; className: string }> = {
-  planned: { label: '予定', className: 'bg-blue-100 text-blue-800' },
-  in_preparation: { label: '準備中', className: 'bg-blue-100 text-blue-800' },
-  ready: { label: '準備完了', className: 'bg-green-100 text-green-800' },
-  departed: { label: '出発', className: 'bg-green-200 text-green-900' },
-  in_progress: { label: '訪問中', className: 'bg-yellow-100 text-yellow-800' },
-  completed: { label: '完了', className: 'bg-gray-100 text-gray-600' },
-  cancelled: { label: 'キャンセル', className: 'bg-red-100 text-red-800' },
-  postponed: { label: '延期', className: 'bg-orange-100 text-orange-800' },
+  planned: { label: '予定', className: 'bg-tag-info/10 text-tag-info' },
+  in_preparation: { label: '準備中', className: 'bg-tag-info/10 text-tag-info' },
+  ready: { label: '準備完了', className: 'bg-tag-info/10 text-tag-info' },
+  departed: { label: '出発', className: 'bg-tag-info/10 text-tag-info' },
+  in_progress: { label: '訪問中', className: 'bg-tag-info/10 text-tag-info' },
+  completed: { label: '完了', className: 'bg-state-done/10 text-state-done' },
+  cancelled: { label: 'キャンセル', className: 'bg-state-blocked/10 text-state-blocked' },
+  postponed: { label: '延期', className: 'bg-state-confirm/10 text-state-confirm' },
 };
 
 const WEEKDAY_LABELS = ['月', '火', '水', '木', '金', '土', '日'];
@@ -83,7 +86,7 @@ function ScheduleBadge({ schedule }: { schedule: CalendarVisitSchedule }) {
   const rawStatus = schedule.schedule_status;
   const config = isScheduleStatus(rawStatus)
     ? STATUS_CONFIG[rawStatus]
-    : { label: rawStatus, className: 'bg-gray-100 text-gray-600' };
+    : { label: rawStatus, className: 'bg-state-readonly/10 text-state-readonly' };
   const timeLabel = formatCalendarTimeRange(schedule);
   return (
     <span
@@ -362,12 +365,12 @@ export function CalendarView() {
                     {(hasCadenceWarning || hasNextBillable) && (
                       <div className="mb-0.5 flex flex-wrap gap-1">
                         {hasCadenceWarning ? (
-                          <span className="rounded bg-amber-100 px-1 py-0.5 text-[9px] font-medium text-amber-800">
+                          <span className="rounded bg-state-confirm/10 px-1 py-0.5 text-[9px] font-medium text-state-confirm">
                             算定注意
                           </span>
                         ) : null}
                         {hasNextBillable ? (
-                          <span className="rounded bg-emerald-100 px-1 py-0.5 text-[9px] font-medium text-emerald-800">
+                          <span className="rounded bg-state-done/10 px-1 py-0.5 text-[9px] font-medium text-state-done">
                             次回算定可
                           </span>
                         ) : null}

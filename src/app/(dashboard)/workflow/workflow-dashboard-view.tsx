@@ -28,6 +28,12 @@ import { WorkflowIntegrationMap } from '@/components/features/workflow/workflow-
 import { MainWorkflowRoute } from '@/components/features/workflow/main-workflow-route';
 import { StagnationIndicator } from '@/components/features/workflow/stagnation-indicator';
 import { cn } from '@/lib/utils';
+import { STATUS_TOKENS, type StatusRole } from '@/lib/constants/status-tokens';
+import {
+  MEDICATION_CYCLE_STATUS_ROLE,
+  PRIORITY_ROLE,
+  type StatusRoleOrNeutral,
+} from '@/lib/constants/status-labels';
 import type { HomeLinkContext, WorkflowFocus } from '@/lib/dashboard/home-link-builders';
 import type {
   InquiryEditState,
@@ -35,63 +41,45 @@ import type {
   WorkflowData,
 } from './workflow-dashboard.types';
 
-const CYCLE_STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  intake_received: { label: '応需受付', color: 'bg-blue-100 text-blue-800' },
-  structuring: { label: '構造化中', color: 'bg-blue-100 text-blue-800' },
-  inquiry_pending: {
-    label: '疑義照会中',
-    color: 'bg-orange-100 text-orange-800',
-  },
-  inquiry_resolved: {
-    label: '照会解決済',
-    color: 'bg-green-100 text-green-800',
-  },
-  ready_to_dispense: {
-    label: '調剤待ち',
-    color: 'bg-blue-100 text-blue-800',
-  },
-  dispensing: { label: '調剤中', color: 'bg-green-100 text-green-800' },
-  dispensed: { label: '調剤完了', color: 'bg-green-100 text-green-800' },
-  audit_pending: {
-    label: '監査待ち',
-    color: 'bg-orange-100 text-orange-800',
-  },
-  audited: { label: '監査済み', color: 'bg-green-100 text-green-800' },
-  setting: { label: 'セット監査待ち', color: 'bg-blue-100 text-blue-800' },
-  set_audited: {
-    label: 'セット監査済み',
-    color: 'bg-green-100 text-green-800',
-  },
-  visit_ready: { label: '訪問準備完了', color: 'bg-green-100 text-green-800' },
-  visit_completed: {
-    label: '訪問完了',
-    color: 'bg-green-100 text-green-800',
-  },
-  on_hold: { label: '保留', color: 'bg-gray-100 text-gray-600' },
+// 工程ラベルのみ保持。色は MEDICATION_CYCLE_STATUS_ROLE(6軸セマンティックの正本)から導出する。
+const CYCLE_STATUS_LABELS: Record<string, string> = {
+  intake_received: '応需受付',
+  structuring: '構造化中',
+  inquiry_pending: '疑義照会中',
+  inquiry_resolved: '照会解決済',
+  ready_to_dispense: '調剤待ち',
+  dispensing: '調剤中',
+  dispensed: '調剤完了',
+  audit_pending: '監査待ち',
+  audited: '監査済み',
+  setting: 'セット監査待ち',
+  set_audited: 'セット監査済み',
+  visit_ready: '訪問準備完了',
+  visit_completed: '訪問完了',
+  on_hold: '保留',
 };
 
-const PRIORITY_CLASS: Record<string, string> = {
-  urgent: 'border-rose-200 bg-rose-50 text-rose-700',
-  high: 'border-amber-200 bg-amber-50 text-amber-700',
-  normal: 'border-sky-200 bg-sky-50 text-sky-700',
-  low: 'border-slate-200 bg-slate-50 text-slate-600',
-};
+/** ロール → トークンのバッジ配色。neutral / 不明は中立(muted)。 */
+function roleBadgeClass(role: StatusRoleOrNeutral | undefined): string {
+  if (!role || role === 'neutral') return 'bg-muted text-muted-foreground';
+  return STATUS_TOKENS[role as StatusRole].badgeClassName;
+}
 
-const SEVERITY_CLASS: Record<string, string> = {
-  urgent: 'border-rose-200 bg-rose-50 text-rose-700',
-  critical: 'border-rose-200 bg-rose-50 text-rose-700',
-  high: 'border-amber-200 bg-amber-50 text-amber-700',
-  warning: 'border-amber-200 bg-amber-50 text-amber-700',
+// 重大度キー(rose/amber 系)→ 6軸ロール。urgent/critical=止まる, high/warning=要確認。
+const SEVERITY_ROLE: Record<string, StatusRole> = {
+  urgent: 'blocked',
+  critical: 'blocked',
+  high: 'confirm',
+  warning: 'confirm',
 };
-
-const DEFAULT_PRIORITY_CLASS = 'border-sky-200 bg-sky-50 text-sky-700';
 
 function priorityClass(priority: string) {
-  return PRIORITY_CLASS[priority] ?? DEFAULT_PRIORITY_CLASS;
+  const role = PRIORITY_ROLE[priority];
+  return roleBadgeClass(role ?? 'info');
 }
 
 function severityClass(severity: string) {
-  return SEVERITY_CLASS[severity] ?? DEFAULT_PRIORITY_CLASS;
+  return roleBadgeClass(SEVERITY_ROLE[severity] ?? 'info');
 }
 
 function WorkflowSection({
@@ -220,11 +208,11 @@ export function WorkflowDashboardView({
     <div className="space-y-8">
       {contextSummary ? (
         <Alert
-          className="border-sky-200 bg-sky-50 text-sky-900"
+          className="border-tag-info/30 bg-tag-info/10 text-tag-info"
           data-testid="workflow-context-banner"
         >
-          <AlertTriangle className="size-4 text-sky-700" aria-hidden="true" />
-          <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
+          <AlertTriangle className="size-4 text-tag-info" aria-hidden="true" />
+          <AlertDescription className="text-tag-info">{contextSummary}</AlertDescription>
         </Alert>
       ) : null}
 
@@ -793,7 +781,7 @@ export function WorkflowDashboardView({
                       )}
                     </div>
                     {!item.can_create && item.item_type === 'issue' ? (
-                      <p className="text-xs text-amber-700">
+                      <p className="text-xs text-state-confirm">
                         起票に必要な有効サイクルが見つからないため、患者詳細から確認してください。
                       </p>
                     ) : null}
@@ -1238,15 +1226,13 @@ export function WorkflowDashboardView({
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
             {cycleStatusEntries.map(([status, count]) => {
-              const config = CYCLE_STATUS_LABELS[status] ?? {
-                label: status,
-                color: 'bg-gray-100 text-gray-600',
-              };
+              const label = CYCLE_STATUS_LABELS[status] ?? status;
+              const badgeClass = roleBadgeClass(MEDICATION_CYCLE_STATUS_ROLE[status]);
               return (
                 <Card key={status} size="sm">
                   <CardHeader>
                     <CardTitle className="text-sm font-medium text-muted-foreground">
-                      {config.label}
+                      {label}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -1255,7 +1241,7 @@ export function WorkflowDashboardView({
                         {count}
                       </span>
                       <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${config.color}`}
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${badgeClass}`}
                       >
                         件
                       </span>
@@ -1455,7 +1441,9 @@ function QueueCard({ label, count }: { label: string; count: number }) {
         <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
       </CardHeader>
       <CardContent>
-        <span className={`text-3xl font-bold tabular-nums ${count > 0 ? 'text-orange-600' : ''}`}>
+        <span
+          className={`text-3xl font-bold tabular-nums ${count > 0 ? 'text-state-confirm' : ''}`}
+        >
           {count}
         </span>
       </CardContent>

@@ -62,6 +62,27 @@ describe('MedicationsContent', () => {
           isLoading: false,
         };
       }
+      if (queryKey[0] === 'medication-issues') {
+        return {
+          data: {
+            data: [
+              {
+                id: 'issue_1',
+                patient_id: 'patient_1',
+                case_id: 'case_1',
+                title: 'アムロジピン飲み忘れ',
+                description: '夕食後薬を2日続けて飲み忘れています。',
+                status: 'open',
+                priority: 'high',
+                category: 'adherence',
+                identified_at: '2026-06-10T09:00:00.000Z',
+                resolved_at: null,
+              },
+            ],
+          },
+          isLoading: false,
+        };
+      }
       return {
         data: { data: [] },
         isLoading: false,
@@ -82,6 +103,8 @@ describe('MedicationsContent', () => {
     expect(screen.getByRole('heading', { level: 2, name: '服薬中薬剤' }).tagName).toBe('H2');
     expect(screen.getByRole('heading', { level: 3, name: '見やすい薬剤一覧' }).tagName).toBe('H3');
     expect(screen.getByRole('heading', { level: 2, name: '薬学的課題と照会' }).tagName).toBe('H2');
+    const issueEdit = screen.getByRole('button', { name: '薬学的課題1件目を編集' });
+    expect(issueEdit.getAttribute('aria-label')).not.toMatch(/山田|アムロジピン|飲み忘れ|夕食後/);
     expect(screen.getByRole('heading', { level: 2, name: 'アレルギー・副作用歴' }).tagName).toBe(
       'H2',
     );
@@ -94,5 +117,8 @@ describe('MedicationsContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '薬剤追加' }));
     expect(screen.getByRole('button', { name: 'キャンセル' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '登録' })).toBeTruthy();
+
+    fireEvent.click(issueEdit);
+    expect(screen.getByRole('dialog', { name: '薬学的課題を更新' })).toBeTruthy();
   }, 15_000);
 });

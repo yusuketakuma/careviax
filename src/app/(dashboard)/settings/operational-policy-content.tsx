@@ -199,7 +199,7 @@ function OnOffPill({
       className={cn(
         'inline-flex min-h-8 shrink-0 items-center rounded-full border px-3 py-1 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60',
         on
-          ? 'border-emerald-300 bg-emerald-100 text-emerald-700'
+          ? 'border-state-done/30 bg-state-done/10 text-state-done'
           : 'border-border bg-muted text-muted-foreground',
       )}
     >
@@ -307,7 +307,7 @@ function ConfirmSummary({
           ))}
         </ul>
       </div>
-      <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-700">
+      <p className="rounded-md border border-border/70 bg-muted/40 px-3 py-2 text-xs leading-5 text-muted-foreground">
         ロック項目({lockedItemLabels.join('・')})はこの変更では動きません。
       </p>
     </div>
@@ -565,7 +565,7 @@ export function OperationalPolicyContent() {
                   title="WIP目安"
                   description="工程ごとの仕掛かり上限(超過で赤表示)。変更はチーム全員のダッシュボードに影響します"
                   meta={
-                    <span className="text-xs font-semibold text-amber-700">
+                    <span className="text-xs font-semibold text-state-confirm">
                       {data.wip_revision_label}
                     </span>
                   }
@@ -679,7 +679,7 @@ export function OperationalPolicyContent() {
               </PolicyCard>
 
               <p
-                className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm leading-6 text-amber-900"
+                className="rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2.5 text-sm leading-6 text-state-confirm"
                 data-testid="policy-impact-banner"
               >
                 設定の変更は保存前に<strong className="font-bold">影響範囲</strong>

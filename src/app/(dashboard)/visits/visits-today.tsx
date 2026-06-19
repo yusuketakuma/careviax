@@ -46,27 +46,30 @@ export async function fetchVisitPreparationBoard(
 }
 
 const ACCENT_CLASSES: Record<VisitPreparationCard['accent'], { bar: string; meter: string }> = {
-  ready: { bar: 'bg-emerald-500', meter: 'bg-emerald-500' },
-  caution: { bar: 'bg-amber-500', meter: 'bg-amber-500' },
-  progress: { bar: 'bg-blue-500', meter: 'bg-blue-500' },
+  ready: { bar: 'bg-state-done', meter: 'bg-state-done' },
+  caution: { bar: 'bg-state-confirm', meter: 'bg-state-confirm' },
+  progress: { bar: 'bg-tag-info', meter: 'bg-tag-info' },
 };
 
 const CHECK_STATE_CLASSES: Record<VisitPrepCheck['state'], string> = {
-  done: 'border-emerald-300 bg-emerald-50 text-emerald-700',
-  alert: 'border-amber-400 bg-amber-50 font-semibold text-amber-800',
-  progress: 'border-blue-300 bg-blue-50 text-blue-700',
+  done: 'border-state-done/30 bg-state-done/10 text-state-done',
+  alert: 'border-state-confirm/30 bg-state-confirm/10 font-semibold text-state-confirm',
+  progress: 'border-tag-info/30 bg-tag-info/10 text-tag-info',
   pending: 'border-border bg-background text-muted-foreground',
 };
 
 const NOTE_TONE_CLASSES = {
-  warning: 'border-amber-200 bg-amber-50 text-amber-800',
-  info: 'border-blue-200 bg-blue-50/70 text-blue-900',
+  warning: 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm',
+  info: 'border-tag-info/30 bg-tag-info/10 text-tag-info',
 } as const;
 
 /** 患者属性タグ(アレルギー/嚥下)。取扱タグは SafetyBoard の配色を再利用。 */
 const PATIENT_SAFETY_TAGS: Record<string, { label: string; className: string }> = {
-  allergy: { label: 'アレルギー', className: 'border-amber-400 bg-amber-50 text-amber-700' },
-  swallowing: { label: '嚥下', className: 'border-amber-400 bg-amber-50 text-amber-700' },
+  allergy: {
+    label: 'アレルギー',
+    className: 'border-tag-hazard/30 bg-tag-hazard/10 text-tag-hazard',
+  },
+  swallowing: { label: '嚥下', className: 'border-tag-hazard/30 bg-tag-hazard/10 text-tag-hazard' },
 };
 
 function formatTimeOfDay(iso: string): string {
@@ -366,7 +369,7 @@ export function VisitsToday() {
               </section>
 
               <p
-                className="rounded-md border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-sm leading-5 text-emerald-900"
+                className="rounded-md border border-state-done/30 bg-state-done/10 px-3 py-2 text-sm leading-5 text-state-done"
                 data-testid="visits-today-offline-note"
               >
                 訪問モードはオフラインでも全機能が動きます。記録は端末に保存され、電波が戻ると自動同期されます。

@@ -11,17 +11,17 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 
 type MetricsData = {
   prescription_concentration_rate: number; // 処方箋集中率 (%)
-  generic_dispensing_rate: number;          // 後発品調剤割合 (%)
-  prescriptions_per_pharmacist: number;     // 薬剤師1人あたり処方箋枚数
-  home_visit_count_ytd: number;             // 在宅訪問実績回数（年累計）
-  monthly_prescription_count: number;       // 処方箋月次受付枚数
+  generic_dispensing_rate: number; // 後発品調剤割合 (%)
+  prescriptions_per_pharmacist: number; // 薬剤師1人あたり処方箋枚数
+  home_visit_count_ytd: number; // 在宅訪問実績回数（年累計）
+  monthly_prescription_count: number; // 処方箋月次受付枚数
 };
 
 // --- Constants ---
 
-const GENERIC_TARGET = 70;         // 後発品調剤割合目標 (%)
-const PRESCRIPTIONS_LIMIT = 40;    // 薬剤師1人あたり上限（1日）
-const HOME_VISIT_TARGET_YTD = 48;  // 年間訪問目標回数
+const GENERIC_TARGET = 70; // 後発品調剤割合目標 (%)
+const PRESCRIPTIONS_LIMIT = 40; // 薬剤師1人あたり上限（1日）
+const HOME_VISIT_TARGET_YTD = 48; // 年間訪問目標回数
 
 // --- Placeholder data (API not yet available) ---
 
@@ -53,7 +53,7 @@ function ProgressBar({
       markerValue={targetLine}
       className="h-3"
       filledClassName={colorClass}
-      markerClassName="bg-orange-500"
+      markerClassName="bg-foreground/40"
     />
   );
 }
@@ -96,18 +96,21 @@ function MetricCard({
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="flex items-baseline gap-1">
-          <span className="text-3xl font-bold tabular-nums text-foreground">{value.toLocaleString()}</span>
+          <span className="text-3xl font-bold tabular-nums text-foreground">
+            {value.toLocaleString()}
+          </span>
           <span className="text-sm text-muted-foreground">{unit}</span>
         </div>
         <ProgressBar value={value} max={max} targetLine={targetLine} colorClass={colorClass} />
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>0</span>
           {target && <span className="font-medium text-foreground">{target}</span>}
-          <span>{max.toLocaleString()}{unit}</span>
+          <span>
+            {max.toLocaleString()}
+            {unit}
+          </span>
         </div>
-        {alertText && (
-          <p className="text-xs text-orange-700">{alertText}</p>
-        )}
+        {alertText && <p className="text-xs text-state-confirm">{alertText}</p>}
       </CardContent>
     </Card>
   );
@@ -152,7 +155,7 @@ export function MetricsDashboardContent() {
         unit="%"
         max={100}
         icon={TrendingUp}
-        colorClass="bg-blue-500"
+        colorClass="bg-chart-1"
         target="基準: 70%以下"
       />
       <MetricCard
@@ -164,7 +167,9 @@ export function MetricsDashboardContent() {
         targetLine={GENERIC_TARGET}
         target={`目標: ${GENERIC_TARGET}%以上`}
         icon={Activity}
-        colorClass={metrics.generic_dispensing_rate >= GENERIC_TARGET ? 'bg-green-500' : 'bg-orange-400'}
+        colorClass={
+          metrics.generic_dispensing_rate >= GENERIC_TARGET ? 'bg-state-done' : 'bg-state-confirm'
+        }
         alertText={genericAlert}
       />
       <MetricCard
@@ -176,7 +181,11 @@ export function MetricsDashboardContent() {
         targetLine={PRESCRIPTIONS_LIMIT}
         target={`基準: ${PRESCRIPTIONS_LIMIT}枚/日`}
         icon={Users}
-        colorClass={metrics.prescriptions_per_pharmacist > PRESCRIPTIONS_LIMIT ? 'bg-red-500' : 'bg-blue-500'}
+        colorClass={
+          metrics.prescriptions_per_pharmacist > PRESCRIPTIONS_LIMIT
+            ? 'bg-state-blocked'
+            : 'bg-chart-1'
+        }
         alertText={prescriptionsAlert}
       />
       <MetricCard
@@ -188,7 +197,9 @@ export function MetricsDashboardContent() {
         targetLine={HOME_VISIT_TARGET_YTD}
         target={`目標: ${HOME_VISIT_TARGET_YTD}回/年`}
         icon={Home}
-        colorClass={metrics.home_visit_count_ytd >= HOME_VISIT_TARGET_YTD ? 'bg-green-500' : 'bg-blue-500'}
+        colorClass={
+          metrics.home_visit_count_ytd >= HOME_VISIT_TARGET_YTD ? 'bg-state-done' : 'bg-chart-1'
+        }
       />
       <MetricCard
         title="処方箋月次受付枚数"
@@ -197,7 +208,7 @@ export function MetricsDashboardContent() {
         unit="枚"
         max={2000}
         icon={FileText}
-        colorClass="bg-blue-500"
+        colorClass="bg-chart-1"
       />
     </div>
   );

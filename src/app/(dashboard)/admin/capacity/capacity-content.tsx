@@ -27,18 +27,18 @@ type CapacitySummary = {
   attention_items: string[];
 };
 
-// 行程バーの色(target: 入力=赤 / 確認=橙 / 調剤=青 / セット=紫 / 訪問=緑 / 報告=水色)
+// 行程バーの系列色。状態色ではなくデータ可視化の系列なので --chart-* トークンを使う。
 const PROCESS_COLORS: Record<CapacityProcessKey, string> = {
-  input: 'bg-red-400',
-  confirm: 'bg-amber-500',
-  dispense: 'bg-blue-500',
-  set: 'bg-violet-500',
-  visit: 'bg-emerald-500',
-  report: 'bg-sky-500',
+  input: 'bg-chart-1',
+  confirm: 'bg-chart-3',
+  dispense: 'bg-chart-1',
+  set: 'bg-chart-5',
+  visit: 'bg-chart-2',
+  report: 'bg-chart-4',
 };
 
-// スタッフバーの色(target: 青 / 緑 / 橙 / 紫 / 水色 の繰り返し)
-const STAFF_COLORS = ['bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-violet-500', 'bg-sky-500'];
+// スタッフバーの系列色(--chart-* トークンを繰り返し使用)。
+const STAFF_COLORS = ['bg-chart-1', 'bg-chart-2', 'bg-chart-3', 'bg-chart-5', 'bg-chart-4'];
 
 /** 緊急余力バーのフルスケール(10件で満タン表示) */
 const EMERGENCY_BAR_FULL_SCALE = 10;
@@ -181,29 +181,29 @@ export function CapacityContent() {
           label="訪問枠"
           value={`${kpis.visit_slots.completed} / ${kpis.visit_slots.total}件`}
           percent={ratioPercent(kpis.visit_slots.completed, kpis.visit_slots.total)}
-          textClass="text-blue-600"
-          barClass="bg-blue-600"
+          textClass="text-chart-1"
+          barClass="bg-chart-1"
         />
         <KpiCard
           label="調剤・セット"
           value={`${kpis.dispense_set.completed} / ${kpis.dispense_set.total}件`}
           percent={ratioPercent(kpis.dispense_set.completed, kpis.dispense_set.total)}
-          textClass="text-emerald-600"
-          barClass="bg-emerald-500"
+          textClass="text-chart-2"
+          barClass="bg-chart-2"
         />
         <KpiCard
           label="スタッフ稼働"
           value={`${kpis.staff_utilization_percent}%`}
           percent={kpis.staff_utilization_percent}
-          textClass="text-blue-600"
-          barClass="bg-blue-600"
+          textClass="text-chart-1"
+          barClass="bg-chart-1"
         />
         <KpiCard
           label="緊急余力"
           value={`${kpis.emergency_capacity_count.toFixed(1)}件`}
           percent={(kpis.emergency_capacity_count / EMERGENCY_BAR_FULL_SCALE) * 100}
-          textClass="text-amber-600"
-          barClass="bg-amber-500"
+          textClass="text-chart-3"
+          barClass="bg-chart-3"
         />
       </div>
 

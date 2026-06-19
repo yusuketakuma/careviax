@@ -152,7 +152,7 @@ export default function MfaPage() {
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-blue-600" aria-hidden="true" />
+            <ShieldCheck className="h-5 w-5 text-primary" aria-hidden="true" />
             <CardTitle>二要素認証</CardTitle>
           </div>
           <CardDescription>認証アプリに表示された6桁のコードを入力してください</CardDescription>
@@ -213,9 +213,9 @@ export default function MfaPage() {
               </div>
             ) : (
               <div className="space-y-3">
-                <Alert className="border-amber-200 bg-amber-50 text-amber-900">
-                  <KeyRound className="h-4 w-4 text-amber-600" />
-                  <AlertDescription>
+                <Alert className="border-state-confirm/30 bg-state-confirm/10 text-state-confirm">
+                  <KeyRound className="h-4 w-4 text-state-confirm" />
+                  <AlertDescription className="text-state-confirm">
                     リカバリーコードを使うと現在のMFA設定を一時解除します。再ログイン後に再設定してください。
                   </AlertDescription>
                 </Alert>
@@ -235,7 +235,7 @@ export default function MfaPage() {
             <Button
               type="submit"
               size="lg"
-              className="w-full bg-blue-600 hover:bg-blue-700"
+              className="w-full"
               disabled={
                 isLoading ||
                 (mode === 'totp' ? digits.join('').length !== 6 : recoveryCode.trim().length === 0)
@@ -257,7 +257,7 @@ export default function MfaPage() {
               variant="ghost"
               size="sm"
               onClick={() => router.push('/login')}
-              className="text-slate-500"
+              className="text-muted-foreground"
             >
               <ArrowLeft className="mr-1 h-4 w-4" />
               ログインに戻る

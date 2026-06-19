@@ -147,7 +147,9 @@ export function FacilityPacketContent({ scheduleId }: { scheduleId: string }) {
         orgId={orgId}
         notes={context.common_notes}
         orderedScheduleIds={patients.map((patient) => patient.schedule_id)}
-        onSaved={() => void queryClient.invalidateQueries({ queryKey: ['visit-preparation-facility-packet'] })}
+        onSaved={() =>
+          void queryClient.invalidateQueries({ queryKey: ['visit-preparation-facility-packet'] })
+        }
       />
 
       <aside
@@ -234,6 +236,7 @@ function FacilityPacketMemoSection({
             variant="outline"
             size="sm"
             className="min-h-9"
+            aria-label="施設訪問パケットを編集"
             onClick={() => {
               setDraft(savedMemo);
               setEditing(true);

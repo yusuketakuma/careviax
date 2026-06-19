@@ -187,4 +187,49 @@ describe('SavedViewsContent', () => {
     expect(url.searchParams.get('status')).toBe('patient_contact_pending');
     expect(url.searchParams.get('preset')).toBe('contact');
   });
+
+  it('names saved-view row actions by view name before mutation', async () => {
+    mockPreferences({ work_mode: 'pharmacist' }, [
+      {
+        id: 'view_1',
+        name: '患者確認待ち',
+        scope: 'schedules',
+        filters: {
+          conditions: [{ field: 'schedule', value: 'include_patient_confirmation' }],
+        },
+        sort: null,
+        isShared: false,
+        sortOrder: 0,
+        isOwner: true,
+        createdAt: '2026-06-13T09:30:00+09:00',
+        updatedAt: '2026-06-13T09:30:00+09:00',
+      },
+    ]);
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: '患者確認待ちの名前を変更' }));
+
+    expect(screen.getByTestId('named-view-name-input')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    fireEvent.click(screen.getByRole('button', { name: '患者確認待ちを削除' }));
+
+    expect(screen.getByRole('alertdialog', { name: '保存ビューを削除' })).toBeTruthy();
+    expect(
+      screen.getByText('「患者確認待ち」を削除します。この操作は取り消せません。'),
+    ).toBeTruthy();
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, init]) => String(url) === '/api/saved-views/view_1' && init?.method === 'DELETE',
+      ),
+    ).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/saved-views/view_1',
+        expect.objectContaining({ method: 'DELETE' }),
+      );
+    });
+  });
 });

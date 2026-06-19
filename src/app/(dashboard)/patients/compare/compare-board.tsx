@@ -36,8 +36,8 @@ async function fetchPatientOverview(orgId: string, patientId: string): Promise<P
 
 /** 止まっている理由の重大度ドット(色だけに依存しないよう sr-only で重大/注意を併記)。 */
 const SEVERITY_DOT_CLASSES: Record<'critical' | 'warning', string> = {
-  critical: 'bg-red-500',
-  warning: 'bg-amber-500',
+  critical: 'bg-state-blocked',
+  warning: 'bg-state-confirm',
 };
 
 const SEVERITY_TEXT_LABELS: Record<'critical' | 'warning', string> = {
@@ -59,14 +59,12 @@ function PreviewBox({
     <section
       className={cn(
         'rounded-lg p-4',
-        tone === 'next' ? 'bg-blue-50/80' : 'border border-border/70 bg-card',
+        tone === 'next' ? 'bg-tag-info/10' : 'border border-border/70 bg-card',
       )}
       aria-label={title}
     >
       <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-      <div className="mt-2 space-y-1 text-sm leading-relaxed text-muted-foreground">
-        {children}
-      </div>
+      <div className="mt-2 space-y-1 text-sm leading-relaxed text-muted-foreground">{children}</div>
     </section>
   );
 }
@@ -122,7 +120,10 @@ function ComparePreviewCard({
               <p className="text-foreground">{view.nextAction.description}</p>
               <p>
                 主操作: {view.nextAction.actionLabel}(
-                <Link href={view.nextAction.actionHref} className="text-primary underline-offset-2 hover:underline">
+                <Link
+                  href={view.nextAction.actionHref}
+                  className="text-primary underline-offset-2 hover:underline"
+                >
                   作業画面を開く
                 </Link>
                 )
@@ -186,9 +187,7 @@ export function CompareBoard({ requestedPatientIds }: { requestedPatientIds: str
     })),
   });
 
-  const heading = (
-    <h1 className="text-2xl font-bold text-foreground">複数カードを並べて確認</h1>
-  );
+  const heading = <h1 className="text-2xl font-bold text-foreground">複数カードを並べて確認</h1>;
 
   const waitingForDefaults = requestedPatientIds.length === 0 && !boardQuery.data;
   if (!orgId || waitingForDefaults) {

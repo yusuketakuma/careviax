@@ -295,7 +295,7 @@ export function SharedViewerContent({ token }: { token: string }) {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <div className="rounded-lg border border-tag-info/30 bg-tag-info/10 px-4 py-3 text-sm text-tag-info">
             共有情報の閲覧には OTP が必要です。入力内容は患者支援のために薬局内で記録されます。
           </div>
 
@@ -317,7 +317,7 @@ export function SharedViewerContent({ token }: { token: string }) {
           </div>
 
           {viewerQuery.error instanceof Error ? (
-            <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
               {viewerQuery.error.message}
             </div>
           ) : null}

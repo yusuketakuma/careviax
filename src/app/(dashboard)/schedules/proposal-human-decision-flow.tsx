@@ -7,10 +7,11 @@ import type { Proposal } from './day-view.shared';
 
 type HumanDecisionStepState = 'done' | 'current' | 'blocked' | 'stopped';
 
+// 工程の状態色は 6 軸トークンへ: done=完了(緑) / current=現在地(info 青) / stopped=止まる(blocked 赤) / 既定=中立(灰)。
 function humanDecisionStepClass(state: HumanDecisionStepState) {
-  if (state === 'done') return 'border-emerald-200 bg-emerald-50 text-emerald-900';
-  if (state === 'current') return 'border-sky-200 bg-sky-50 text-sky-900';
-  if (state === 'stopped') return 'border-rose-200 bg-rose-50 text-rose-900';
+  if (state === 'done') return 'border-state-done/30 bg-state-done/10 text-state-done';
+  if (state === 'current') return 'border-tag-info/30 bg-tag-info/10 text-tag-info';
+  if (state === 'stopped') return 'border-state-blocked/30 bg-state-blocked/10 text-state-blocked';
   return 'border-border/70 bg-muted/30 text-muted-foreground';
 }
 
@@ -22,9 +23,9 @@ function humanDecisionStepBadge(state: HumanDecisionStepState) {
 }
 
 function humanDecisionStepIconClass(state: HumanDecisionStepState) {
-  if (state === 'done') return 'bg-emerald-600 text-white';
-  if (state === 'current') return 'bg-sky-600 text-white';
-  if (state === 'stopped') return 'bg-rose-600 text-white';
+  if (state === 'done') return 'bg-state-done text-white';
+  if (state === 'current') return 'bg-tag-info text-white';
+  if (state === 'stopped') return 'bg-state-blocked text-white';
   return 'bg-muted text-muted-foreground';
 }
 
@@ -248,8 +249,8 @@ export function ProposalHumanDecisionFlow({
           variant="outline"
           className={
             proposal.assignment_mode === 'fallback'
-              ? 'border-orange-200 bg-orange-50 text-orange-700'
-              : 'border-sky-200 bg-sky-50 text-sky-700'
+              ? 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm'
+              : 'border-tag-info/30 bg-tag-info/10 text-tag-info'
           }
         >
           {proposal.assignment_mode === 'fallback'
@@ -259,14 +260,14 @@ export function ProposalHumanDecisionFlow({
       </div>
 
       {currentStep ? (
-        <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5 text-sky-950">
+        <div className="rounded-xl border border-tag-info/30 bg-tag-info/10 px-3 py-2.5 text-tag-info">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline" className="border-sky-300 bg-white/80 text-sky-800">
+            <Badge variant="outline" className="border-tag-info/40 bg-background/80 text-tag-info">
               今やること
             </Badge>
             <p className="text-sm font-semibold">{currentStep.label}</p>
           </div>
-          <p className="mt-1 text-xs leading-5 text-sky-900/80">{currentStep.description}</p>
+          <p className="mt-1 text-xs leading-5 text-tag-info/80">{currentStep.description}</p>
         </div>
       ) : null}
 

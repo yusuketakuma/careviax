@@ -99,36 +99,36 @@ export function RouteBoardSummary({
     <PageSection
       title="週間ルート運用"
       description="服薬最終日より前の訪問候補を生成し、患者住所と既存訪問順からルート効率を加味して提案します"
-      className="overflow-hidden bg-[linear-gradient(135deg,rgba(245,248,255,1),rgba(248,250,252,1))] ring-1 ring-slate-200"
+      className="overflow-hidden bg-muted/30 ring-1 ring-border"
       contentClassName="grid gap-5 lg:grid-cols-[1.2fr_0.8fr]"
       headingLevel={headingLevel}
     >
       <div className="space-y-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
           Weekly Route Board
         </p>
-        <p className="max-w-2xl text-sm leading-6 text-slate-600">
+        <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
           電話合意が取れた候補だけを確定し、確定後の変更は専用のリスケジュール操作で扱います。
         </p>
       </div>
-      <div className="grid gap-2 rounded-2xl border border-white/70 bg-white/70 p-4 shadow-sm backdrop-blur">
+      <div className="grid gap-2 rounded-2xl border border-border bg-card/70 p-4 shadow-sm backdrop-blur">
         <div className="flex items-center justify-between text-sm">
-          <span className="text-slate-500">対象週</span>
-          <span className="font-medium text-slate-900">
+          <span className="text-muted-foreground">対象週</span>
+          <span className="font-medium text-foreground">
             {format(weekStart, 'M/d', { locale: ja })} - {format(weekEnd, 'M/d', { locale: ja })}
           </span>
         </div>
         <div className="flex items-center justify-between text-sm">
-          <span className="text-slate-500">選択日</span>
-          <span className="font-medium text-slate-900">
+          <span className="text-muted-foreground">選択日</span>
+          <span className="font-medium text-foreground">
             {format(selectedDay, 'yyyy年M月d日(E)', { locale: ja })}
           </span>
         </div>
         <div className="flex items-center justify-between text-sm">
-          <span className="text-slate-500">担当薬剤師</span>
-          <span className="font-medium text-slate-900">{pharmacistName ?? '未設定'}</span>
+          <span className="text-muted-foreground">担当薬剤師</span>
+          <span className="font-medium text-foreground">{pharmacistName ?? '未設定'}</span>
         </div>
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        <div className="rounded-xl border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-xs text-state-confirm">
           電話で患者合意が取れた候補のみ確定できます。確定後の変更は リスケジュール操作で行います。
         </div>
       </div>
@@ -218,8 +218,8 @@ export function WeeklyScheduleControls({
               className={[
                 'min-w-[92px] rounded-xl border px-3 py-2 text-left transition',
                 isSelected
-                  ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
-                  : 'border-border bg-background hover:border-slate-400',
+                  ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                  : 'border-border bg-background hover:border-primary/40',
               ].join(' ')}
             >
               <div className="text-xs">{format(day, 'M/d(E)', { locale: ja })}</div>
@@ -229,17 +229,19 @@ export function WeeklyScheduleControls({
               {(isBillableHistoryDate || isNextBillableDate) && (
                 <div className="mt-1 flex flex-wrap gap-1 text-[10px]">
                   {isBillableHistoryDate && (
-                    <span className="rounded bg-slate-200/70 px-1.5 py-0.5 text-slate-700">
+                    <span className="rounded bg-muted px-1.5 py-0.5 text-muted-foreground">
                       算定済
                     </span>
                   )}
                   {isNextBillableDate && (
-                    <span className="rounded bg-emerald-200/80 px-1.5 py-0.5 text-emerald-900">
+                    <span className="rounded bg-state-done/10 px-1.5 py-0.5 text-state-done">
                       次回算定可
                     </span>
                   )}
                   {!isNextBillableDate && isSuggestedBillableDate && (
-                    <span className="rounded bg-sky-200/80 px-1.5 py-0.5 text-sky-900">候補日</span>
+                    <span className="rounded bg-tag-info/10 px-1.5 py-0.5 text-tag-info">
+                      候補日
+                    </span>
                   )}
                 </div>
               )}

@@ -7,6 +7,7 @@ import {
   type ProposalGenerationDiagnosticsCardData,
 } from '@/components/features/visits/visit-proposal-diagnostics-card';
 import { Badge } from '@/components/ui/badge';
+import { StateBadge } from '@/components/ui/state-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -18,6 +19,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { VisitRoutePlan, VisitRouteTravelMode } from '@/types/visit-route';
+import { VISIT_PROPOSAL_STATUS_ROLE } from '@/lib/constants/status-labels';
+import type { StatusRole } from '@/lib/constants/status-tokens';
 import {
   PROPOSAL_STATUS_LABELS,
   timeLabel,
@@ -25,6 +28,12 @@ import {
   type VisitSchedule,
 } from '../day-view.shared';
 import { buildOptimizerDiagnosticActions } from './schedule-proposal-diagnostic-actions';
+
+/** 提案ステータス → 6 軸ロール。neutral は候補カードでは情報(info)として扱う。 */
+function resolveProposalStatusRole(status: string): StatusRole {
+  const role = VISIT_PROPOSAL_STATUS_ROLE[status];
+  return role && role !== 'neutral' ? role : 'info';
+}
 
 type WeeklyCellInspectorProps = {
   title: string;
@@ -264,20 +273,20 @@ export function WeeklyCellInspector({
               proposals.map((proposal) => (
                 <div
                   key={proposal.id}
-                  className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3"
+                  className="rounded-xl border border-state-confirm/30 bg-state-confirm/10 px-3 py-3"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-medium text-amber-950">
+                      <p className="text-sm font-medium text-foreground">
                         {proposal.case_.patient.name}
                       </p>
-                      <p className="mt-1 text-xs text-amber-900">
+                      <p className="mt-1 text-xs text-muted-foreground">
                         {timeLabel(proposal.time_window_start, proposal.time_window_end)}
                       </p>
                     </div>
-                    <Badge variant="outline">
+                    <StateBadge role={resolveProposalStatusRole(proposal.proposal_status)}>
                       {PROPOSAL_STATUS_LABELS[proposal.proposal_status]}
-                    </Badge>
+                    </StateBadge>
                   </div>
                 </div>
               ))

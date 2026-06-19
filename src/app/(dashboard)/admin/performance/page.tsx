@@ -129,11 +129,12 @@ type RuntimePerformanceSnapshot = {
   }>;
 };
 
+// KPI 健全度: 目標達成=done(緑) / 未達=confirm(橙, 要対応)
 function kpiToneClass(value: number, target: number, reverse = false) {
   const good = reverse ? value <= target : value >= target;
   return good
-    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-    : 'border-amber-200 bg-amber-50 text-amber-700';
+    ? 'border-state-done/30 bg-state-done/10 text-state-done'
+    : 'border-state-confirm/30 bg-state-confirm/10 text-state-confirm';
 }
 
 function KpiCard({
@@ -303,33 +304,33 @@ export default function PerformancePage() {
         description="訪問制御、変更負荷、ルート確定率、API 遅延の主要運用指標を継続監視します。"
         shortcuts={getAdminPerformanceShortcutLinks()}
       />
-      <Card className="overflow-hidden border-none bg-[linear-gradient(135deg,rgba(248,250,252,1),rgba(236,253,245,1))] ring-1 ring-slate-200">
+      <Card className="overflow-hidden border-none bg-muted/40 ring-1 ring-border">
         <CardContent className="grid gap-5 px-5 py-5 lg:grid-cols-[1.1fr_0.9fr]">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               Operational Performance
             </p>
-            <h2 className="mt-2 text-xl font-semibold text-slate-900">
+            <h2 className="mt-2 text-xl font-semibold text-foreground">
               ルート確定率と変更負荷をそのまま業務指標にする
             </h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
               訪問ロック、変更承認待ち、緊急影響、電話確認率を同じ画面で追い、
               現場の詰まりがどこにあるかを可視化します。
             </p>
           </div>
-          <div className="grid gap-2 rounded-2xl border border-white/70 bg-white/70 p-4 shadow-sm backdrop-blur">
+          <div className="grid gap-2 rounded-2xl border border-border bg-background p-4 shadow-sm">
             <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-500">対象期間</span>
-              <span className="font-medium text-slate-900">
+              <span className="text-muted-foreground">対象期間</span>
+              <span className="font-medium text-foreground">
                 {format(weekStart, 'M/d', { locale: ja })} -{' '}
                 {format(weekEnd, 'M/d', { locale: ja })}
               </span>
             </div>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-500">計測更新</span>
-              <span className="font-medium text-slate-900">30秒ごと</span>
+              <span className="text-muted-foreground">計測更新</span>
+              <span className="font-medium text-foreground">30秒ごと</span>
             </div>
-            <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800">
+            <div className="rounded-xl border border-tag-info/30 bg-tag-info/10 px-3 py-2 text-xs text-tag-info">
               業務KPIに加えて、auth 配下 API の current-process latency snapshot
               も並べて確認します。
             </div>
@@ -438,17 +439,17 @@ export default function PerformancePage() {
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             {performance.pendingOverrides > 0 && (
-              <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
+              <p className="rounded-xl border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-state-confirm">
                 確定済み予定の変更承認が {performance.pendingOverrides} 件あります。
               </p>
             )}
             {performance.emergencyItems > 0 && (
-              <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-rose-800">
+              <p className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-destructive">
                 緊急訪問・割込対応の影響が {performance.emergencyItems} 件あります。
               </p>
             )}
             {performance.avgRouteScore > 0 && (
-              <p className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sky-800">
+              <p className="rounded-xl border border-tag-info/30 bg-tag-info/10 px-3 py-2 text-tag-info">
                 平均移動スコアは {performance.avgRouteScore.toFixed(1)} です。
               </p>
             )}
@@ -530,7 +531,7 @@ export default function PerformancePage() {
                       .map((part) => (
                         <span
                           key={part}
-                          className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-700"
+                          className="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground"
                         >
                           {part}
                         </span>
@@ -619,7 +620,7 @@ export default function PerformancePage() {
               </div>
             </div>
             {(runtime?.summary.total_requests ?? 0) === 0 ? (
-              <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800">
+              <p className="rounded-xl border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-state-confirm">
                 まだ API サンプルがありません。通常画面を操作すると current-process
                 の計測が蓄積されます。
               </p>

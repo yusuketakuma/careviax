@@ -42,6 +42,22 @@ const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   other: 'その他',
 };
 
+const FIRST_VISIT_DOCUMENT_SAVE_BLOCKER_ID_PREFIX = 'first-visit-document-save-blocker';
+
+function getFirstVisitDocumentSaveBlocker(args: {
+  missingRequiredDocumentUrl: boolean;
+  missingRequiredDeliveryTarget: boolean;
+  missingRequiredReason: boolean;
+}): string | null {
+  const missingFields: string[] = [];
+  if (args.missingRequiredDocumentUrl) missingFields.push('文書URL');
+  if (args.missingRequiredDeliveryTarget) missingFields.push('交付先');
+  if (args.missingRequiredReason) missingFields.push('理由');
+
+  if (missingFields.length === 0) return null;
+  return `保存するには、${missingFields.join('、')}を入力してください。`;
+}
+
 const DOCUMENT_STORAGE_LABELS: Record<string, string> = {
   store: '店舗',
   headquarters: '本部',
@@ -318,7 +334,9 @@ export function FirstVisitDocumentsPanel({
                               </span>
                             ) : null}
                             {history.reason ? (
-                              <span className="block text-amber-800">理由: {history.reason}</span>
+                              <span className="block text-state-confirm">
+                                理由: {history.reason}
+                              </span>
                             ) : null}
                             {history.note ? (
                               <span className="block">備考: {history.note}</span>
@@ -426,11 +444,11 @@ function MissingFirstVisitDocumentsCreatePanel({
   const labels = statuses.map((status) => status.label).join('、');
 
   return (
-    <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50/70 p-3">
+    <div className="mb-4 rounded-lg border border-state-confirm/30 bg-state-confirm/10 p-3">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <p className="text-sm font-semibold text-amber-950">未作成書類を起票できます</p>
-          <p className="mt-1 text-xs leading-5 text-amber-900">
+          <p className="text-sm font-semibold text-state-confirm">未作成書類を起票できます</p>
+          <p className="mt-1 text-xs leading-5 text-state-confirm">
             既定テンプレートから {labels} の作成履歴を登録します。
           </p>
         </div>
@@ -457,10 +475,10 @@ function PrintReadinessSummary({ readiness }: { readiness: FirstVisitPrintReadin
         : '不足あり';
   const statusClass =
     readiness.overall_status === 'ready'
-      ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+      ? 'border-transparent bg-state-done/10 text-state-done'
       : readiness.overall_status === 'warning'
-        ? 'border-amber-200 bg-amber-50 text-amber-950'
-        : 'border-red-200 bg-red-50 text-red-950';
+        ? 'border-transparent bg-state-confirm/10 text-state-confirm'
+        : 'border-transparent bg-destructive/10 text-destructive';
 
   return (
     <div
@@ -625,7 +643,7 @@ function DocumentStatusSummary({ statuses }: { statuses: FirstVisitDocumentStatu
               </div>
             </dl>
             {status.alerts.length > 0 ? (
-              <ul className="mt-2 space-y-1 text-xs text-amber-800">
+              <ul className="mt-2 space-y-1 text-xs text-state-confirm">
                 {status.alerts.slice(0, 2).map((alert) => (
                   <li key={alert}>{alert}</li>
                 ))}
@@ -673,8 +691,13 @@ function FirstVisitDocumentStatusForm({
   const missingRequiredDocumentUrl = requiresDocumentUrl && !documentUrl.trim();
   const requiresRecoveredDelivery = documentAction === 'recovered';
   const missingRequiredDeliveryTarget = requiresRecoveredDelivery && !deliveredTo.trim();
-  const cannotSubmit =
-    missingRequiredReason || missingRequiredDocumentUrl || missingRequiredDeliveryTarget;
+  const saveBlocker = getFirstVisitDocumentSaveBlocker({
+    missingRequiredDocumentUrl,
+    missingRequiredDeliveryTarget,
+    missingRequiredReason,
+  });
+  const saveBlockerId = `${FIRST_VISIT_DOCUMENT_SAVE_BLOCKER_ID_PREFIX}-${document.id}`;
+  const cannotSubmit = Boolean(saveBlocker);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -731,6 +754,7 @@ function FirstVisitDocumentStatusForm({
       className="mt-4 rounded-lg border border-border/60 bg-background p-3"
       onSubmit={(event) => {
         event.preventDefault();
+        if (cannotSubmit) return;
         mutation.mutate();
       }}
     >
@@ -1001,7 +1025,17 @@ function FirstVisitDocumentStatusForm({
         ) : null}
       </div>
       <div className="mt-3 flex justify-end">
-        <Button type="submit" size="sm" disabled={mutation.isPending || cannotSubmit}>
+        {saveBlocker ? (
+          <p id={saveBlockerId} className="mr-auto self-center text-xs text-destructive">
+            {saveBlocker}
+          </p>
+        ) : null}
+        <Button
+          type="submit"
+          size="sm"
+          disabled={mutation.isPending || cannotSubmit}
+          aria-describedby={saveBlocker ? saveBlockerId : undefined}
+        >
           <Save className="size-4" aria-hidden="true" />
           {mutation.isPending ? '保存中...' : '保存'}
         </Button>

@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { StateBadge } from '@/components/ui/state-badge';
 import {
   Select,
   SelectContent,
@@ -136,9 +137,9 @@ export function PatientPackagingCard({ patientId, orgId }: { patientId: string; 
           {isError ? (
             <Badge variant="destructive">取得できません</Badge>
           ) : data?.data.packaging_profile?.default_packaging_method ? (
-            <Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">
+            <StateBadge role="info" showIcon={false}>
               {PACKAGING_METHOD_LABELS[data.data.packaging_profile.default_packaging_method]}
-            </Badge>
+            </StateBadge>
           ) : (
             <span className="text-sm text-muted-foreground">既定の配薬方法は未設定です</span>
           )}

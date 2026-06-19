@@ -24,6 +24,7 @@ import {
   UserCheck,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { StateBadge } from '@/components/ui/state-badge';
 import { buttonVariants } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import type { PatientCard as PatientCardType, PatientStatusIcon } from '@/types/dashboard-home';
@@ -180,19 +181,19 @@ export function PatientCardItem({ patient }: { patient: PatientCardType }) {
           patient.readiness_flags.missing_first_visit_doc) && (
           <div className="flex flex-wrap gap-1">
             {patient.readiness_flags.missing_emergency_contact ? (
-              <Badge variant="outline" className="text-[10px] text-amber-700">
+              <StateBadge role="confirm" showIcon={false} className="text-[10px]">
                 緊急連絡先不足
-              </Badge>
+              </StateBadge>
             ) : null}
             {patient.readiness_flags.missing_primary_physician ? (
-              <Badge variant="outline" className="text-[10px] text-amber-700">
+              <StateBadge role="confirm" showIcon={false} className="text-[10px]">
                 主治医未登録
-              </Badge>
+              </StateBadge>
             ) : null}
             {patient.readiness_flags.missing_first_visit_doc ? (
-              <Badge variant="outline" className="text-[10px] text-amber-700">
+              <StateBadge role="confirm" showIcon={false} className="text-[10px]">
                 初回文書未交付
-              </Badge>
+              </StateBadge>
             ) : null}
           </div>
         )}

@@ -116,6 +116,10 @@ describe('ConferencesContent', () => {
     expect(screen.getByLabelText('役割・所属')).toBeTruthy();
     expect(screen.getByLabelText('メール')).toBeTruthy();
     expect(screen.getByLabelText('FAX')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '参加者を追加' }));
+    const deleteButton = screen.getByRole('button', { name: '参加者2件目を削除' });
+    expect(deleteButton.getAttribute('aria-label')).not.toMatch(/佐藤|山田|patient/);
   });
 
   it('keeps conference note required validation visible inline', () => {

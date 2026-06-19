@@ -45,23 +45,26 @@ type AuditLog = {
 
 // --- Helpers ---
 
+// 監査操作の種別を 6 軸セマンティックトークンへ写像する。
+// 削除/取消=blocked(赤) / 作成=done(緑) / 承認=info(青) / 差戻し・訂正=confirm(橙) /
+// 出力=info(青) / その他=readonly(灰)。色だけに頼らずラベル(actionLabel)を併記する。
 function actionBadgeClass(action: string): string {
   if (action.includes('delete') || action.includes('revoked')) {
-    return 'bg-red-100 text-red-800 border-red-200';
+    return 'bg-state-blocked/10 text-state-blocked border-transparent';
   }
   if (action.includes('create') || action.includes('created') || action.includes('registered')) {
-    return 'bg-green-100 text-green-800 border-green-200';
+    return 'bg-state-done/10 text-state-done border-transparent';
   }
   if (action.includes('approve') || action.includes('activated')) {
-    return 'bg-blue-100 text-blue-800 border-blue-200';
+    return 'bg-tag-info/10 text-tag-info border-transparent';
   }
   if (action.includes('reject') || action.includes('correction')) {
-    return 'bg-orange-100 text-orange-800 border-orange-200';
+    return 'bg-state-confirm/10 text-state-confirm border-transparent';
   }
   if (action.includes('export') || action.includes('download')) {
-    return 'bg-purple-100 text-purple-800 border-purple-200';
+    return 'bg-tag-info/10 text-tag-info border-transparent';
   }
-  return 'bg-gray-100 text-gray-700 border-gray-200';
+  return 'bg-state-readonly/10 text-state-readonly border-transparent';
 }
 
 function actionLabel(action: string): string {

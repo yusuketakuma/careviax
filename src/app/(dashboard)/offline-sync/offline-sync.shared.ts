@@ -109,6 +109,30 @@ export type OfflineSyncConflictView = {
   canOverwrite: boolean;
 };
 
+export function getOfflineSyncRetryAllDisabledReason({
+  isPending,
+  rowCount,
+}: {
+  isPending: boolean;
+  rowCount: number;
+}) {
+  if (isPending) return null;
+  if (rowCount === 0) return '未同期のデータはありません。';
+  return null;
+}
+
+export function getOfflineSyncLocalOverwriteDisabledReason({
+  canOverwrite,
+  isPending,
+}: {
+  canOverwrite: boolean;
+  isPending: boolean;
+}) {
+  if (isPending) return null;
+  if (!canOverwrite) return 'サーバー側の記録を取得できないため上書きできません。';
+  return null;
+}
+
 export function buildOfflineSyncConflictView(
   item: SyncQueueItemSummary,
   patientNameByScheduleId: ReadonlyMap<string, string>,

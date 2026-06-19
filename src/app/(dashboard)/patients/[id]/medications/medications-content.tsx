@@ -925,7 +925,7 @@ export function MedicationsContent({
           <div className="space-y-6">
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               {medicationStats.map((item) => (
-                <Card key={item.label} className="border-slate-200 shadow-sm">
+                <Card key={item.label} className="border-border shadow-sm">
                   <CardHeader className="pb-2">
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-medium text-muted-foreground">{item.label}</p>
@@ -937,7 +937,7 @@ export function MedicationsContent({
               ))}
             </div>
 
-            <Card className="border-slate-200 shadow-sm">
+            <Card className="border-border shadow-sm">
               <CardHeader>
                 <h3 className="font-heading text-base leading-snug font-medium">
                   見やすい薬剤一覧
@@ -952,7 +952,7 @@ export function MedicationsContent({
                   return (
                     <article
                       key={item.id}
-                      className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+                      className="rounded-xl border border-border bg-card p-4 shadow-sm"
                     >
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="space-y-1">
@@ -1023,7 +1023,7 @@ export function MedicationsContent({
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-        <Card className="border-slate-200 shadow-sm">
+        <Card className="border-border shadow-sm">
           <CardHeader className="flex flex-row items-start justify-between gap-4">
             <div>
               <h2 className="font-heading text-base leading-snug font-medium">薬学的課題と照会</h2>
@@ -1055,7 +1055,7 @@ export function MedicationsContent({
                   課題はまだ登録されていません。服薬アドヒアランス、副作用、重複投与などを登録できます。
                 </div>
               ) : (
-                issues.map((issue) => (
+                issues.map((issue, index) => (
                   <div
                     key={issue.id}
                     className="rounded-xl border border-border/70 bg-background p-4"
@@ -1082,6 +1082,7 @@ export function MedicationsContent({
                           type="button"
                           variant="outline"
                           size="sm"
+                          aria-label={`薬学的課題${index + 1}件目を編集`}
                           onClick={() => handleEditIssue(issue)}
                         >
                           <Edit3 className="size-3.5" aria-hidden="true" />
@@ -1177,7 +1178,8 @@ export function MedicationsContent({
                       </div>
                       <p className="mt-2 text-sm font-medium text-foreground">{item.reason}</p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {item.inquiry_to_physician} / 照会日時 {formatDateTimeLabel(item.inquired_at)}
+                        {item.inquiry_to_physician} / 照会日時{' '}
+                        {formatDateTimeLabel(item.inquired_at)}
                       </p>
                       {item.change_detail ? (
                         <p className="mt-2 text-xs text-muted-foreground">{item.change_detail}</p>
@@ -1191,7 +1193,7 @@ export function MedicationsContent({
         </Card>
 
         <div className="space-y-4">
-          <Card className="border-slate-200 shadow-sm">
+          <Card className="border-border shadow-sm">
             <CardHeader>
               <h2 className="font-heading text-base leading-snug font-medium">
                 アレルギー・副作用歴
@@ -1244,7 +1246,7 @@ export function MedicationsContent({
             </CardContent>
           </Card>
 
-          <Card className="border-slate-200 shadow-sm">
+          <Card className="border-border shadow-sm">
             <CardHeader>
               <h2 className="font-heading text-base leading-snug font-medium">
                 残薬管理と次回提案
@@ -1303,7 +1305,7 @@ export function MedicationsContent({
             </CardContent>
           </Card>
 
-          <Card className="border-slate-200 shadow-sm">
+          <Card className="border-border shadow-sm">
             <CardHeader>
               <h2 className="font-heading text-base leading-snug font-medium">お薬手帳QR発行</h2>
               <CardDescription>

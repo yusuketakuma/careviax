@@ -31,7 +31,7 @@ export function OnboardingWarningBadges({ readiness }: { readiness: OnboardingRe
             variant={warning.variant}
             className={
               warning.variant === 'outline'
-                ? 'border-orange-500 text-xs text-orange-600'
+                ? 'border-state-confirm text-xs text-state-confirm'
                 : 'text-xs'
             }
           >

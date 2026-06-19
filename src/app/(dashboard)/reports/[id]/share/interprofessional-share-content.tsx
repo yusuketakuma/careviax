@@ -212,12 +212,12 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
   if (reportQuery.error) {
     return (
       <PageScaffold>
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-950">
+        <div className="rounded-lg border border-transparent bg-state-confirm/10 p-4 text-state-confirm">
           <h1 className="flex items-center gap-2 text-base font-semibold">
-            <AlertTriangle className="size-4 text-amber-700" aria-hidden="true" />
+            <AlertTriangle className="size-4 text-state-confirm" aria-hidden="true" />
             報告書を取得できませんでした
           </h1>
-          <p className="mt-1 text-sm text-amber-900">
+          <p className="mt-1 text-sm text-state-confirm">
             通信状態または権限を確認して、再読み込みしてください。
           </p>
           <Button
@@ -282,14 +282,14 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
             actions={externalShareAction}
           />
           <div
-            className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-950"
+            className="rounded-lg border border-transparent bg-state-confirm/10 p-4 text-state-confirm"
             data-testid="share-permission-warning"
           >
             <h2 className="flex items-center gap-2 text-sm font-semibold">
-              <AlertTriangle className="size-4 text-amber-700" aria-hidden="true" />
+              <AlertTriangle className="size-4 text-state-confirm" aria-hidden="true" />
               共有内容を表示できません
             </h2>
-            <p className="mt-1 text-sm text-amber-900">{shareBlockedMessage}</p>
+            <p className="mt-1 text-sm text-state-confirm">{shareBlockedMessage}</p>
           </div>
         </div>
       </PageScaffold>
@@ -314,16 +314,16 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
 
         {supportingDataErrors.length > 0 ? (
           <div
-            className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-950"
+            className="rounded-lg border border-transparent bg-state-confirm/10 p-4 text-state-confirm"
             data-testid="share-supporting-data-warning"
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="flex items-center gap-2 text-sm font-semibold">
-                  <AlertTriangle className="size-4 text-amber-700" aria-hidden="true" />
+                  <AlertTriangle className="size-4 text-state-confirm" aria-hidden="true" />
                   一部の共有情報を取得できませんでした
                 </h2>
-                <p className="mt-1 text-sm text-amber-900">
+                <p className="mt-1 text-sm text-state-confirm">
                   {supportingDataErrors.join('、')}
                   を取得できないため、登録済み相手や返信の表示が一部欠けています。
                 </p>

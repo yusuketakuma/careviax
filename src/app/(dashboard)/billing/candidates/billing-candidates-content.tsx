@@ -19,6 +19,7 @@ import {
 import { toast } from 'sonner';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
+import { StateBadge } from '@/components/ui/state-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { PageSection } from '@/components/layout/page-section';
@@ -32,6 +33,7 @@ import {
   summarizeBillingValidationLayers,
   type BillingValidationLayerSnapshot,
 } from '@/lib/billing/validation-layers';
+import type { StatusRoleOrNeutral } from '@/lib/constants/status-labels';
 
 // --- Types ---
 
@@ -155,36 +157,49 @@ type BillingCandidatesContentProps = {
 
 // --- Constants ---
 
-const STATUS_CONFIG: Record<string, { label: string; icon: React.ElementType; className: string }> =
-  {
-    candidate: {
-      label: '候補',
-      icon: AlertTriangle,
-      className: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-    },
-    confirmed: {
-      label: '確定',
-      icon: CheckCircle2,
-      className: 'bg-green-100 text-green-800 border-green-200',
-    },
-    excluded: {
-      label: '除外',
-      icon: XCircle,
-      className: 'bg-gray-100 text-gray-600 border-gray-200',
-    },
-    exported: {
-      label: '締め済み',
-      icon: CheckCircle2,
-      className: 'bg-blue-100 text-blue-800 border-blue-200',
-    },
-  };
+// VisitBillingStatus 写像: candidate=neutral(状態色なし), confirmed/exported(締め済)=done, excluded=readonly。
+const STATUS_CONFIG: Record<string, { label: string; role: StatusRoleOrNeutral }> = {
+  candidate: { label: '候補', role: 'neutral' },
+  confirmed: { label: '確定', role: 'done' },
+  excluded: { label: '除外', role: 'readonly' },
+  exported: { label: '締め済み', role: 'done' },
+};
 
 const VALIDATION_OK = ['confirmed', 'exported'];
 const VALIDATION_NG = ['excluded'];
+const BILLING_CLOSE_DISABLED_REASON_ID = 'billing-candidates-close-disabled-reason';
+const BILLING_CSV_EXPORT_DISABLED_REASON_ID = 'billing-candidates-csv-export-disabled-reason';
 const BILLING_DOMAIN_OPTIONS: Array<{ value: BillingDomain; label: string; shortLabel: string }> = [
   { value: 'home_care', label: '医療・介護請求', shortLabel: '医療・介護' },
   { value: 'pca_rental', label: 'PCAレンタル請求', shortLabel: 'PCAレンタル' },
 ];
+
+export function getBillingCloseDisabledReason({
+  closeBlocked,
+  closeReady,
+  patientIdFilter,
+}: {
+  closeBlocked: number;
+  closeReady: number;
+  patientIdFilter: string | null;
+}) {
+  if (patientIdFilter) return '患者で絞り込み中は月次締めを実行できません。';
+  if (closeReady === 0) return '月次締めできる候補がありません。';
+  if (closeBlocked > 0) return 'レビュー待ちまたは根拠不足の候補があります。';
+  return null;
+}
+
+export function getBillingCsvExportDisabledReason({
+  exportableCount,
+  isPreviewLoading,
+}: {
+  exportableCount: number;
+  isPreviewLoading: boolean;
+}) {
+  if (isPreviewLoading) return '出力前確認を読み込んでいます。';
+  if (exportableCount <= 0) return 'CSV出力できる確定または締め済み候補がありません。';
+  return null;
+}
 
 function ValidationBadge({
   status,
@@ -197,14 +212,17 @@ function ValidationBadge({
 
   if (validationSummary.state === 'blocked') {
     return (
-      <span className="flex items-center gap-1 text-xs text-red-700" aria-label="バリデーションNG">
+      <span
+        className="flex items-center gap-1 text-xs text-state-blocked"
+        aria-label="バリデーションNG"
+      >
         <XCircle className="size-3.5" aria-hidden="true" /> NG
       </span>
     );
   }
   if (validationSummary.state === 'manual_review') {
     return (
-      <span className="flex items-center gap-1 text-xs text-yellow-700" aria-label="要確認">
+      <span className="flex items-center gap-1 text-xs text-state-confirm" aria-label="要確認">
         <AlertTriangle className="size-3.5" aria-hidden="true" /> 要確認
       </span>
     );
@@ -212,7 +230,7 @@ function ValidationBadge({
   if (VALIDATION_OK.includes(status)) {
     return (
       <span
-        className="flex items-center gap-1 text-xs text-green-700"
+        className="flex items-center gap-1 text-xs text-state-done"
         aria-label="バリデーションOK"
       >
         <CheckCircle2 className="size-3.5" aria-hidden="true" /> OK
@@ -221,13 +239,16 @@ function ValidationBadge({
   }
   if (VALIDATION_NG.includes(status)) {
     return (
-      <span className="flex items-center gap-1 text-xs text-red-700" aria-label="バリデーションNG">
+      <span
+        className="flex items-center gap-1 text-xs text-state-blocked"
+        aria-label="バリデーションNG"
+      >
         <XCircle className="size-3.5" aria-hidden="true" /> NG
       </span>
     );
   }
   return (
-    <span className="flex items-center gap-1 text-xs text-yellow-700" aria-label="要確認">
+    <span className="flex items-center gap-1 text-xs text-state-confirm" aria-label="要確認">
       <AlertTriangle className="size-3.5" aria-hidden="true" /> 要確認
     </span>
   );
@@ -595,15 +616,17 @@ export function BillingCandidatesContent({
           const cfg = STATUS_CONFIG[row.original.status];
           if (!cfg)
             return <span className="text-xs text-muted-foreground">{row.original.status}</span>;
-          const Icon = cfg.icon;
+          if (cfg.role === 'neutral') {
+            return (
+              <Badge variant="outline" className="w-fit text-xs">
+                {cfg.label}
+              </Badge>
+            );
+          }
           return (
-            <Badge
-              variant="outline"
-              className={`flex w-fit items-center gap-1 text-xs ${cfg.className}`}
-            >
-              <Icon className="size-3" aria-hidden="true" />
+            <StateBadge role={cfg.role} className="w-fit text-xs">
               {cfg.label}
-            </Badge>
+            </StateBadge>
           );
         },
       },
@@ -785,7 +808,16 @@ export function BillingCandidatesContent({
   const exportableCount =
     exportPreview?.exportable_count ??
     candidates.filter((c) => VALIDATION_OK.includes(c.status)).length;
-  const canExportCsv = exportableCount > 0 && !isExporting && !exportPreviewQuery.isLoading;
+  const closeDisabledReason = getBillingCloseDisabledReason({
+    closeBlocked,
+    closeReady,
+    patientIdFilter,
+  });
+  const csvExportDisabledReason = getBillingCsvExportDisabledReason({
+    exportableCount,
+    isPreviewLoading: exportPreviewQuery.isLoading,
+  });
+  const canExportCsv = !isExporting && !csvExportDisabledReason;
 
   return (
     <div className="space-y-4">
@@ -811,21 +843,21 @@ export function BillingCandidatesContent({
       {targetCandidateId ? (
         <div
           id="billing-target-candidate"
-          className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+          className="rounded-md border border-tag-info/30 bg-tag-info/10 px-4 py-3 text-sm text-tag-info"
           data-testid="billing-target-candidate"
         >
           <p className="font-medium">{targetCandidate ? '対象候補を選択中' : '対象候補を検索中'}</p>
           {targetCandidate ? (
             <div className="mt-2 grid gap-2 text-xs sm:grid-cols-3">
               <p>
-                <span className="text-emerald-800">候補ID:</span>{' '}
+                <span className="text-tag-info/80">候補ID:</span>{' '}
                 <span className="font-mono">{targetCandidate.id}</span>
               </p>
               <p>
-                <span className="text-emerald-800">算定:</span> {targetCandidate.billing_name}
+                <span className="text-tag-info/80">算定:</span> {targetCandidate.billing_name}
               </p>
               <p>
-                <span className="text-emerald-800">請求先:</span>{' '}
+                <span className="text-tag-info/80">請求先:</span>{' '}
                 {candidateBillingTargetLabel(targetCandidate)}
               </p>
             </div>
@@ -839,7 +871,7 @@ export function BillingCandidatesContent({
       ) : null}
 
       {patientIdFilter ? (
-        <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+        <div className="rounded-md border border-tag-info/30 bg-tag-info/10 px-4 py-3 text-sm text-tag-info">
           <p className="font-medium">患者で絞り込み中</p>
           <p className="mt-1 text-xs">
             患者ID {patientIdFilter} の候補だけを表示しています。月次締めは全体確認が必要なため、
@@ -890,7 +922,7 @@ export function BillingCandidatesContent({
       </div>
 
       {summary?.blocker_reasons?.length ? (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <div className="rounded-md border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm">
           <p className="font-medium">締めを止めている主因</p>
           <ul className="mt-1 space-y-1 text-xs">
             {summary.blocker_reasons.map((item) => (
@@ -961,9 +993,8 @@ export function BillingCandidatesContent({
             size="sm"
             variant="outline"
             onClick={() => closeMutation.mutate()}
-            disabled={
-              closeMutation.isPending || closeBlocked > 0 || closeReady === 0 || !!patientIdFilter
-            }
+            aria-describedby={closeDisabledReason ? BILLING_CLOSE_DISABLED_REASON_ID : undefined}
+            disabled={closeMutation.isPending || Boolean(closeDisabledReason)}
           >
             {closeMutation.isPending
               ? '締め処理中...'
@@ -973,11 +1004,30 @@ export function BillingCandidatesContent({
             size="sm"
             variant="outline"
             onClick={() => void handleExport()}
+            aria-describedby={
+              csvExportDisabledReason ? BILLING_CSV_EXPORT_DISABLED_REASON_ID : undefined
+            }
             disabled={!canExportCsv}
           >
             <Download className="mr-1.5 size-3.5" aria-hidden="true" />
             {isExporting ? '出力中...' : 'CSV出力'}
           </Button>
+          {closeDisabledReason ? (
+            <p
+              id={BILLING_CLOSE_DISABLED_REASON_ID}
+              className="basis-full text-xs text-muted-foreground"
+            >
+              {closeDisabledReason}
+            </p>
+          ) : null}
+          {csvExportDisabledReason ? (
+            <p
+              id={BILLING_CSV_EXPORT_DISABLED_REASON_ID}
+              className="basis-full text-xs text-muted-foreground"
+            >
+              {csvExportDisabledReason}
+            </p>
+          ) : null}
         </ActionRail>
 
         <div
@@ -994,7 +1044,7 @@ export function BillingCandidatesContent({
             <Badge variant="outline">{exportPreviewQuery.isFetching ? '確認中' : 'CSV対象'}</Badge>
           </div>
           {exportPreviewQuery.isError ? (
-            <p className="mt-2 text-xs text-red-700">出力前確認を取得できませんでした。</p>
+            <p className="mt-2 text-xs text-destructive">出力前確認を取得できませんでした。</p>
           ) : (
             <div className="mt-3 grid gap-2 text-sm sm:grid-cols-4">
               <div>

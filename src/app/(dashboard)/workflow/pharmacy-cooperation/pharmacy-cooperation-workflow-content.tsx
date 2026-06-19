@@ -3055,13 +3055,13 @@ export function PharmacyCooperationWorkflowContent() {
 
       {lastReportDraft ? (
         <div
-          className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+          className="rounded-lg border border-state-done/30 bg-state-done/10 px-4 py-3 text-sm text-state-done"
           data-testid="pharmacy-cooperation-report-result"
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="font-semibold">報告書ドラフト: {lastReportDraft.report.id}</p>
-              <p className="mt-1 text-emerald-900">
+              <p className="mt-1 text-state-done">
                 {lastReportDraft.reused_existing_draft ? '既存ドラフトを再利用' : '新規作成'} /{' '}
                 {statusLabel(lastReportDraft.report.status)}
               </p>

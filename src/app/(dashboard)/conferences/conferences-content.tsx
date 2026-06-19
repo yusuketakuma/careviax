@@ -31,6 +31,7 @@ import {
 import { toast } from 'sonner';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { StateBadge } from '@/components/ui/state-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -221,9 +222,9 @@ function NoteCard({
         <div className="flex items-start justify-between gap-2">
           <CardTitle className="text-base">{note.title}</CardTitle>
           {hasPending ? (
-            <Badge className="shrink-0 bg-amber-100 text-amber-900 hover:bg-amber-100">
+            <StateBadge role="confirm" className="shrink-0">
               未処理 {pendingActionCount}件
-            </Badge>
+            </StateBadge>
           ) : note.action_items && note.action_items.length > 0 ? (
             <Badge variant="outline" className="shrink-0 text-xs text-muted-foreground">
               完了
@@ -278,7 +279,7 @@ function NoteCard({
                     size="sm"
                     variant="ghost"
                     disabled={Boolean(item.converted_task_id)}
-                    className="h-6 shrink-0 px-2 text-xs text-blue-700 hover:bg-blue-50"
+                    className="h-6 shrink-0 px-2 text-xs text-tag-info hover:bg-tag-info/10"
                     onClick={() => onConvertToTask(note, item)}
                   >
                     <ArrowRight className="mr-1 size-3" aria-hidden="true" />
@@ -296,8 +297,8 @@ function NoteCard({
         note.note_type === 'care_team' ? (
           <div className="space-y-3">
             {note.sync_summary || note.generated_report_id ? (
-              <div className="rounded-md border border-sky-200 bg-sky-50/50 p-3">
-                <p className="text-xs font-medium text-sky-900">保存後アクション</p>
+              <div className="rounded-md border border-tag-info/30 bg-tag-info/5 p-3">
+                <p className="text-xs font-medium text-tag-info">保存後アクション</p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   <Badge variant="outline">報告書ドラフト {reportDraftIds.length}件</Badge>
                   <Badge variant="outline">
@@ -320,7 +321,7 @@ function NoteCard({
                     <Link
                       key={reportId}
                       href={`/reports/${reportId}`}
-                      className="inline-flex min-h-[44px] items-center rounded-lg border border-sky-200 bg-background px-3 py-1.5 text-xs font-medium text-sky-900 hover:bg-sky-50 sm:min-h-0"
+                      className="inline-flex min-h-[44px] items-center rounded-lg border border-tag-info/30 bg-background px-3 py-1.5 text-xs font-medium text-tag-info hover:bg-tag-info/10 sm:min-h-0"
                     >
                       ドラフト{index + 1}
                     </Link>
@@ -465,7 +466,7 @@ function ActivityCard({ activity }: { activity: CommunityActivity }) {
             </p>
           </div>
           {activity.follow_up_required ? (
-            <Badge className="bg-amber-100 text-amber-900 hover:bg-amber-100">要フォロー</Badge>
+            <StateBadge role="confirm">要フォロー</StateBadge>
           ) : (
             <Badge variant="outline">完了</Badge>
           )}
@@ -1156,11 +1157,11 @@ export function ConferencesContent({
     <div className="space-y-6">
       {contextSummary ? (
         <Alert
-          className="border-sky-200 bg-sky-50 text-sky-900"
+          className="border-tag-info/30 bg-tag-info/10 text-tag-info"
           data-testid="conferences-context-banner"
         >
-          <Users className="size-4 text-sky-700" aria-hidden="true" />
-          <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
+          <Users className="size-4 text-tag-info" aria-hidden="true" />
+          <AlertDescription className="text-tag-info">{contextSummary}</AlertDescription>
         </Alert>
       ) : null}
       <SectionIntro
@@ -1168,7 +1169,7 @@ export function ConferencesContent({
         description="カンファレンス記録と地域活動の件数を先に確認し、どちらに着手するかを最初に判断します。"
       />
       <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-        <Card className="border-slate-200">
+        <Card className="border-border">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">多職種カンファレンス</CardTitle>
           </CardHeader>
@@ -1186,7 +1187,7 @@ export function ConferencesContent({
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200">
+        <Card className="border-border">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">地域活動</CardTitle>
           </CardHeader>
@@ -1315,7 +1316,7 @@ export function ConferencesContent({
                         generating={generateReportMutation.isPending}
                       />
                     ) : selectedNoteDetailQuery.isError ? (
-                      <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                      <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
                         カンファレンス詳細を取得できませんでした
                       </div>
                     ) : (
@@ -1420,7 +1421,7 @@ export function ConferencesContent({
                         {visibleNotes.map((note) => (
                           <div
                             key={note.id}
-                            className="truncate rounded bg-sky-50 px-1.5 py-1 text-[11px] text-sky-900"
+                            className="truncate rounded bg-tag-info/10 px-1.5 py-1 text-[11px] text-tag-info"
                           >
                             {format(parseISO(note.conference_date), 'HH:mm')} {note.title}
                           </div>
@@ -1528,12 +1529,12 @@ export function ConferencesContent({
             title="保存後アクション"
             description="会議保存に連動して生成された報告書、タスク、候補導線を確認します。"
           />
-          <Card className="border-sky-200 bg-sky-50/60">
+          <Card className="border-tag-info/30 bg-tag-info/5">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">保存後アクション</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <p className="text-sm text-slate-700">
+              <p className="text-sm text-muted-foreground">
                 「{lastSyncSummary.title}」の保存に連動して、必要な後続処理を作成しました。
               </p>
               <div className="flex flex-wrap gap-2">
@@ -1558,7 +1559,7 @@ export function ConferencesContent({
                     <Link
                       key={reportId}
                       href={`/reports/${reportId}`}
-                      className="inline-flex rounded-lg border border-sky-200 bg-background px-3 py-2 text-sm font-medium text-sky-900 hover:bg-sky-50"
+                      className="inline-flex rounded-lg border border-tag-info/30 bg-background px-3 py-2 text-sm font-medium text-tag-info hover:bg-tag-info/10"
                     >
                       ドラフト{index + 1}
                     </Link>
@@ -1689,11 +1690,11 @@ export function ConferencesContent({
                 </Button>
               </div>
               {prescriberInstitutionSuggestion ? (
-                <div className="rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-3 text-sm">
-                  <p className="font-medium text-sky-900">
+                <div className="rounded-lg border border-tag-info/30 bg-tag-info/5 px-3 py-3 text-sm">
+                  <p className="font-medium text-tag-info">
                     処方元医療機関候補: {prescriberInstitutionSuggestion.name}
                   </p>
-                  <p className="mt-1 text-xs text-sky-800">
+                  <p className="mt-1 text-xs text-tag-info/80">
                     {prescriberInstitutionSuggestion.prescriber_name
                       ? `主担当: ${prescriberInstitutionSuggestion.prescriber_name}`
                       : '医療機関名を参加者候補として利用できます'}
@@ -1859,6 +1860,7 @@ export function ConferencesContent({
                           type="button"
                           size="sm"
                           variant="ghost"
+                          aria-label={`参加者${index + 1}件目を削除`}
                           onClick={() =>
                             setParticipantDrafts((current) =>
                               current.filter((_, draftIndex) => draftIndex !== index),

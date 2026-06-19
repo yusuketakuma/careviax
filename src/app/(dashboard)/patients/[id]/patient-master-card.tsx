@@ -527,6 +527,7 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
                   type="button"
                   variant="ghost"
                   size="sm"
+                  aria-label={`アレルギー${index + 1}件目を削除`}
                   onClick={() =>
                     setForm((current) => ({
                       ...current,

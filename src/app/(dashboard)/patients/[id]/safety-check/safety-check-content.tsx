@@ -133,14 +133,14 @@ function SafetyStepList({ issues }: { issues: SafetyIssueRecord[] }) {
           data-testid={`safety-step-${step.stepNumber}`}
           className={cn(
             'flex items-center justify-between gap-2 rounded-lg border px-4 py-5',
-            step.done ? 'border-emerald-200 bg-emerald-50' : 'border-border/70 bg-card',
+            step.done ? 'border-state-done/30 bg-state-done/10' : 'border-border/70 bg-card',
           )}
         >
           <p className="text-[15px] font-semibold leading-6 text-foreground">
             {step.stepNumber}. {step.label}
           </p>
           {step.done ? (
-            <span className="flex shrink-0 items-center gap-1 text-emerald-700">
+            <span className="flex shrink-0 items-center gap-1 text-state-done">
               <CircleCheck className="h-4 w-4" aria-hidden="true" />
               <span className="sr-only">済</span>
             </span>

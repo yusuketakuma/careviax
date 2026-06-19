@@ -104,15 +104,17 @@ function KpiStrip({ data }: { data: BillingCheckResponse }) {
         label={`${data.month_short_label} 自動チェック`}
         value={data.passed_count}
         unit="件 合格"
-        bar={{ className: 'bg-emerald-500', percent: passedPercent }}
+        bar={{ className: 'bg-state-done', percent: passedPercent }}
         testId="billing-check-kpi-passed"
       />
       <KpiCard
         label="疑義(人の確認待ち)"
         value={data.review_count}
         unit="件"
-        valueClassName="text-amber-600"
-        bar={data.review_count > 0 ? { className: 'bg-amber-500', percent: reviewPercent } : null}
+        valueClassName="text-state-confirm"
+        bar={
+          data.review_count > 0 ? { className: 'bg-state-confirm', percent: reviewPercent } : null
+        }
         testId="billing-check-kpi-review"
       />
       <KpiCard
@@ -163,7 +165,7 @@ const reviewColumns: ColumnDef<BillingCheckReviewRow>[] = [
     cell: ({ row }) => (
       <a
         href={row.original.evidence_href}
-        className="inline-flex min-h-[44px] items-center whitespace-nowrap rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-primary hover:bg-sky-100 sm:min-h-8"
+        className="inline-flex min-h-[44px] items-center whitespace-nowrap rounded-full border border-tag-info/30 bg-tag-info/10 px-2.5 py-1 text-xs font-medium text-primary hover:bg-tag-info/15 sm:min-h-8"
       >
         {row.original.evidence_label} →
       </a>
@@ -201,7 +203,7 @@ function ReviewTableSection({ data }: { data: BillingCheckResponse }) {
         </p>
       </div>
       {data.review_rows.length === 0 ? (
-        <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800">
+        <p className="mt-3 rounded-md border border-state-done/30 bg-state-done/10 px-3 py-2.5 text-sm text-state-done">
           疑義はありません — 自動チェックをすべて通過しています
         </p>
       ) : (
@@ -331,7 +333,7 @@ export function BillingCheckContent() {
               <KpiStrip data={data} />
               <ReviewTableSection data={data} />
               <p
-                className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2.5 text-sm leading-6 text-sky-900"
+                className="rounded-md border border-tag-info/30 bg-tag-info/10 px-3 py-2.5 text-sm leading-6 text-tag-info"
                 data-testid="billing-check-summary-note"
               >
                 レセプト摘要欄の文言は算定項目から自動生成されます。手で書くのは「確認すること」列の事実確認だけです。

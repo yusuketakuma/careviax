@@ -82,9 +82,7 @@ function ExpiryCell({ date }: { date: string | null }) {
     );
   }
   if (daysLeft === 1) {
-    return (
-      <span className="text-[10px] font-medium text-amber-700">明日</span>
-    );
+    return <span className="text-[10px] font-medium text-state-confirm">明日</span>;
   }
   return null; // 2日以上先は非表示（コンパクト化）
 }
@@ -137,12 +135,24 @@ export function PrescriptionsTable({
       <table className="w-full text-xs" aria-label="処方受付一覧">
         <thead className="sticky top-0 z-10 bg-muted/80 backdrop-blur-sm">
           <tr className="border-b text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            <th scope="col" className="px-2 py-1.5">状態</th>
-            <th scope="col" className="px-2 py-1.5">患者</th>
-            <th scope="col" className="px-2 py-1.5">種別</th>
-            <th scope="col" className="px-2 py-1.5">処方日</th>
-            <th scope="col" className="px-2 py-1.5">処方医</th>
-            <th scope="col" className="px-2 py-1.5 text-right">備考</th>
+            <th scope="col" className="px-2 py-1.5">
+              状態
+            </th>
+            <th scope="col" className="px-2 py-1.5">
+              患者
+            </th>
+            <th scope="col" className="px-2 py-1.5">
+              種別
+            </th>
+            <th scope="col" className="px-2 py-1.5">
+              処方日
+            </th>
+            <th scope="col" className="px-2 py-1.5">
+              処方医
+            </th>
+            <th scope="col" className="px-2 py-1.5 text-right">
+              備考
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -170,9 +180,7 @@ export function PrescriptionsTable({
                   <StatusDot status={item.cycle.overall_status} />
                 </td>
                 <td className="px-2 py-1.5">
-                  <div className="font-medium text-foreground leading-tight">
-                    {patient.name}
-                  </div>
+                  <div className="font-medium text-foreground leading-tight">{patient.name}</div>
                   <div className="text-[10px] text-muted-foreground leading-tight">
                     {patient.name_kana}
                   </div>

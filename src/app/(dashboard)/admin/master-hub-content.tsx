@@ -7,13 +7,14 @@ import { Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
+import { StateBadge } from '@/components/ui/state-badge';
+import type { StatusRole } from '@/lib/constants/status-tokens';
 import {
   WorkspaceActionRail,
   type BlockedReason,
   type EvidenceItem,
 } from '@/components/features/workspace/action-rail';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import { cn } from '@/lib/utils';
 import type { MasterHubCard, MasterHubResponse } from '@/types/master-hub';
 
 /**
@@ -46,10 +47,11 @@ export function formatLastUpdatedLabel(value: string | null, now: Date = new Dat
   return isSameDay(date, now) ? format(date, 'M/d HH:mm') : format(date, 'M/d');
 }
 
-const STATUS_BADGE_CLASSES: Record<MasterHubCard['status'], string> = {
-  healthy: 'bg-emerald-100 text-emerald-700',
-  checking: 'bg-amber-100 text-amber-800',
-  due_soon: 'bg-amber-100 text-amber-800',
+// マスター鮮度の状態: 健全=done(緑) / 確認中・期限接近=confirm(橙, 要確認)
+const STATUS_ROLE: Record<MasterHubCard['status'], StatusRole> = {
+  healthy: 'done',
+  checking: 'confirm',
+  due_soon: 'confirm',
 };
 
 function statusBadgeLabel(card: MasterHubCard): string {
@@ -68,14 +70,9 @@ function MasterCard({ card }: { card: MasterHubCard }) {
     >
       <div className="flex items-start justify-between gap-2">
         <h3 className="text-[15px] font-bold leading-6 text-foreground">{card.title}</h3>
-        <span
-          className={cn(
-            'inline-flex shrink-0 items-center rounded px-2 py-0.5 text-[11px] font-bold',
-            STATUS_BADGE_CLASSES[card.status],
-          )}
-        >
+        <StateBadge role={STATUS_ROLE[card.status]} className="shrink-0">
           {statusBadgeLabel(card)}
-        </span>
+        </StateBadge>
       </div>
       <p className="text-xs leading-5">
         <span className="font-semibold text-foreground">
@@ -249,7 +246,7 @@ export function MasterHubContent() {
                 ))}
               </div>
               <p
-                className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2.5 text-sm leading-6 text-sky-900"
+                className="rounded-md border border-tag-info/30 bg-tag-info/10 px-3 py-2.5 text-sm leading-6 text-tag-info"
                 data-testid="master-hub-freshness-note"
               >
                 <strong className="font-bold">マスターは鮮度の画面:</strong>{' '}

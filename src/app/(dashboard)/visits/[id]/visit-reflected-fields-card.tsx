@@ -43,14 +43,14 @@ export function VisitReflectedFieldsCard({ recordId }: { recordId: string }) {
     return (
       <Card
         data-testid="visit-reflected-fields-card-error"
-        className="border-amber-200 bg-amber-50"
+        className="border-state-confirm/30 bg-state-confirm/10"
       >
         <CardHeader className="pb-2">
-          <h2 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-amber-950">
-            <RefreshCw className="size-4 text-amber-700" aria-hidden="true" />
+          <h2 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-state-confirm">
+            <RefreshCw className="size-4 text-state-confirm" aria-hidden="true" />
             この訪問から患者詳細へ反映した項目
           </h2>
-          <p className="text-xs leading-5 text-amber-900">反映済み項目の取得に失敗しました。</p>
+          <p className="text-xs leading-5 text-state-confirm">反映済み項目の取得に失敗しました。</p>
         </CardHeader>
         <CardContent>
           <Button

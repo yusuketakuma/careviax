@@ -100,6 +100,8 @@ describe('PatientMasterCard', () => {
     expect(screen.getByLabelText('アレルギー1件目の名称')).toBeTruthy();
     expect(screen.getByLabelText('アレルギー1件目の区分')).toBeTruthy();
     expect(screen.getByLabelText('アレルギー1件目の重症度')).toBeTruthy();
+    const allergyDelete = screen.getByRole('button', { name: 'アレルギー1件目を削除' });
+    expect(allergyDelete.getAttribute('aria-label')).not.toMatch(/山田|ペニシリン|123456|987654/);
     expect(screen.getByLabelText('患者メモ')).toBeTruthy();
   });
 });

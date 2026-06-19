@@ -20,7 +20,10 @@ describe('FirstVisitDocumentsPanel', () => {
       'H2',
     );
     expect(screen.getByText('初回訪問文書はまだありません')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '初回訪問文書はまだありませんの説明' })).toBeTruthy();
+    expect(
+      screen.getByText('初回訪問の完了後に、緊急連絡先と交付記録を含む文書が自動作成されます。'),
+    ).toBeTruthy();
+    expect(screen.getByRole('status')).toBeTruthy();
   });
 
   it('renders editable delivery and document URL fields for existing documents', () => {
@@ -205,10 +208,14 @@ describe('FirstVisitDocumentsPanel', () => {
     ).toBeTruthy();
     expect(screen.getByText('差替え・無効化では理由を入力してください。')).toBeTruthy();
     expect(saveButton).toHaveProperty('disabled', true);
+    const reasonBlocker = screen.getByText('保存するには、理由を入力してください。');
+    expect(saveButton.getAttribute('aria-describedby')).toBe(reasonBlocker.id);
+    expect(reasonBlocker.textContent).not.toMatch(/山田|花子|長女|署名者|佐藤薬剤師/);
     fireEvent.change(screen.getByLabelText('理由'), {
       target: { value: '署名者を長女へ訂正' },
     });
     expect(saveButton).not.toHaveProperty('disabled', true);
+    expect(saveButton.getAttribute('aria-describedby')).toBeNull();
     expect(screen.getByText('文書履歴')).toBeTruthy();
     const printPreviewLink = screen.getByRole('link', { name: '印刷プレビュー' });
     expect(printPreviewLink).toHaveProperty(
@@ -226,6 +233,11 @@ describe('FirstVisitDocumentsPanel', () => {
 
   it('requires signed document URL and delivery target for document history actions', () => {
     const queryClient = new QueryClient();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    });
+    vi.stubGlobal('fetch', fetchMock);
 
     render(
       <QueryClientProvider client={queryClient}>
@@ -255,19 +267,51 @@ describe('FirstVisitDocumentsPanel', () => {
     expect(
       screen.getByText('画像保存・差替えでは署名済み書類のURLを入力してください。'),
     ).toBeTruthy();
+    const urlBlocker = screen.getByText('保存するには、文書URLを入力してください。');
     expect(saveButton).toHaveProperty('disabled', true);
+    expect(saveButton.getAttribute('aria-describedby')).toBe(urlBlocker.id);
+    expect(urlBlocker.textContent).not.toMatch(/山田|長女|https|doc_1|patient_1/);
+
+    fireEvent.change(screen.getByLabelText('履歴操作'), { target: { value: 'replaced' } });
+    const replaceBlocker = screen.getByText('保存するには、文書URL、理由を入力してください。');
+    expect(saveButton).toHaveProperty('disabled', true);
+    expect(saveButton.getAttribute('aria-describedby')).toBe(replaceBlocker.id);
+    expect(replaceBlocker.textContent).not.toMatch(/山田|長女|https|doc_1|patient_1/);
+
+    fireEvent.submit(saveButton.closest('form')!);
+    expect(fetchMock).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByLabelText('文書URL'), {
       target: { value: 'https://files.example.test/signed/doc_1.pdf' },
     });
+    const reasonBlocker = screen.getByText('保存するには、理由を入力してください。');
+    expect(saveButton).toHaveProperty('disabled', true);
+    expect(saveButton.getAttribute('aria-describedby')).toBe(reasonBlocker.id);
+    expect(reasonBlocker.textContent).not.toMatch(/山田|長女|https|doc_1|patient_1/);
+
+    fireEvent.change(screen.getByLabelText('理由'), {
+      target: { value: '署名者を長女へ訂正' },
+    });
     expect(saveButton).not.toHaveProperty('disabled', true);
+    expect(saveButton.getAttribute('aria-describedby')).toBeNull();
 
     fireEvent.change(screen.getByLabelText('履歴操作'), { target: { value: 'recovered' } });
     expect(screen.getByText('回収では同意者・交付先を入力してください。')).toBeTruthy();
+    const deliveryBlocker = screen.getByText('保存するには、交付先を入力してください。');
     expect(saveButton).toHaveProperty('disabled', true);
+    expect(saveButton.getAttribute('aria-describedby')).toBe(deliveryBlocker.id);
+    expect(deliveryBlocker.textContent).not.toMatch(/山田|長女|https|doc_1|patient_1/);
 
     fireEvent.change(screen.getByLabelText('交付先'), { target: { value: '長女 山田' } });
     expect(saveButton).not.toHaveProperty('disabled', true);
+    expect(saveButton.getAttribute('aria-describedby')).toBeNull();
+
+    fireEvent.change(screen.getByLabelText('理由'), { target: { value: '' } });
+    fireEvent.change(screen.getByLabelText('履歴操作'), { target: { value: 'invalidated' } });
+    const invalidateBlocker = screen.getByText('保存するには、理由を入力してください。');
+    expect(saveButton).toHaveProperty('disabled', true);
+    expect(saveButton.getAttribute('aria-describedby')).toBe(invalidateBlocker.id);
+    expect(invalidateBlocker.textContent).not.toMatch(/山田|長女|https|doc_1|patient_1|署名者/);
   });
 
   it('creates missing first-visit documents from available default templates', async () => {

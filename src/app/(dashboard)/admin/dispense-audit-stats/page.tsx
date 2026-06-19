@@ -29,13 +29,14 @@ const PERIOD_OPTIONS = [
   { label: '90日', days: 90 },
 ];
 
+// 差戻し理由コード別内訳の系列色。状態色ではなくデータ可視化なので --chart-* トークンを使う。
 const CODE_COLORS: Record<string, string> = {
-  drug_name_mismatch: 'bg-red-500',
-  quantity_error: 'bg-orange-500',
-  packaging_error: 'bg-amber-500',
-  carry_type_error: 'bg-yellow-500',
-  labeling_error: 'bg-blue-500',
-  other: 'bg-gray-400',
+  drug_name_mismatch: 'bg-chart-4',
+  quantity_error: 'bg-chart-3',
+  packaging_error: 'bg-chart-3',
+  carry_type_error: 'bg-chart-3',
+  labeling_error: 'bg-chart-1',
+  other: 'bg-chart-5',
 };
 
 export default function DispenseAuditStatsPage() {
@@ -58,10 +59,7 @@ export default function DispenseAuditStatsPage() {
 
   return (
     <PageScaffold>
-      <AdminPageHeader
-        title="調剤鑑査差戻し分析"
-        description="差戻し理由コード別の集計と傾向"
-      />
+      <AdminPageHeader title="調剤鑑査差戻し分析" description="差戻し理由コード別の集計と傾向" />
 
       <div className="flex items-center gap-2 mb-4">
         {PERIOD_OPTIONS.map((opt) => (

@@ -164,7 +164,7 @@ export function ReportAiDraftReview({
         </ul>
         <Button
           type="button"
-          className="mt-5 min-h-11 w-full bg-emerald-600 text-white hover:bg-emerald-700"
+          className="mt-5 min-h-11 w-full"
           disabled={confirmPending}
           onClick={onConfirm}
         >

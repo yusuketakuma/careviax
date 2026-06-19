@@ -53,14 +53,15 @@ function RouteOrderChart({
     }));
   }, [scheduleIds, count]);
 
+  // 訪問順ノードは状態を意味する: 緊急=blocked(赤) / 確定固定=waiting(紫=他者確認待ち) / その他=info(青)。
   function nodeColor(scheduleId: string) {
-    if (scheduleId === emergencyScheduleId) return '#dc2626'; // rose-600(緊急)
-    if (lockedScheduleIds.has(scheduleId)) return '#7c3aed'; // violet-600(確定/固定)
-    return '#2563eb'; // blue-600(その他)
+    if (scheduleId === emergencyScheduleId) return 'var(--state-blocked)';
+    if (lockedScheduleIds.has(scheduleId)) return 'var(--state-waiting)';
+    return 'var(--tag-info)';
   }
 
   return (
-    <div className="rounded-lg bg-blue-50/80 p-3">
+    <div className="rounded-lg bg-tag-info/5 p-3">
       <svg
         viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
         className="h-auto w-full"
@@ -71,7 +72,7 @@ function RouteOrderChart({
           <polyline
             points={coords.map((coord) => `${coord.x},${coord.y}`).join(' ')}
             fill="none"
-            stroke="#2563eb"
+            stroke="var(--tag-info)"
             strokeWidth={3.5}
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -211,7 +212,10 @@ export function EmergencyRouteContent({ initialDate }: { initialDate?: string })
   const orderedScheduleIds = useMemo(
     () =>
       [...personalVisits]
-        .sort((a, b) => (a.route_order ?? Number.MAX_SAFE_INTEGER) - (b.route_order ?? Number.MAX_SAFE_INTEGER))
+        .sort(
+          (a, b) =>
+            (a.route_order ?? Number.MAX_SAFE_INTEGER) - (b.route_order ?? Number.MAX_SAFE_INTEGER),
+        )
         .map((schedule) => schedule.id),
     [personalVisits],
   );
@@ -371,7 +375,7 @@ export function EmergencyRouteContent({ initialDate }: { initialDate?: string })
             <Badge className={priorityBadgeClass(emergencySchedule.priority)}>
               {PRIORITY_LABELS[emergencySchedule.priority]}
             </Badge>
-            <span className="text-sm font-semibold text-rose-700">本日中にお届け</span>
+            <span className="text-sm font-semibold text-state-blocked">本日中にお届け</span>
           </div>
         </div>
         <p className="text-sm text-muted-foreground">
@@ -406,7 +410,7 @@ export function EmergencyRouteContent({ initialDate }: { initialDate?: string })
             lockedScheduleIds={lockedSet}
           />
         ) : (
-          <div className="flex min-h-[200px] items-center justify-center rounded-lg bg-blue-50/80 p-6 text-center text-sm text-muted-foreground">
+          <div className="flex min-h-[200px] items-center justify-center rounded-lg bg-tag-info/5 p-6 text-center text-sm text-muted-foreground">
             「ルートを再計算」を押すと、確定患者を固定した 2 つの案を表示します。
           </div>
         )}
@@ -417,7 +421,7 @@ export function EmergencyRouteContent({ initialDate }: { initialDate?: string })
             data-testid="emergency-route-scenario-1"
           >
             <h3 className="text-[15px] font-bold text-foreground">案1</h3>
-            <p className="mt-2 text-sm font-semibold text-emerald-700">正式決定患者は変更なし</p>
+            <p className="mt-2 text-sm font-semibold text-state-done">正式決定患者は変更なし</p>
             <p className="mt-2 text-sm text-muted-foreground">
               {recalc ? formatDeltaLabel(recalc.plan1.travelDeltaMinutes) : '移動 —'}
             </p>
@@ -427,7 +431,7 @@ export function EmergencyRouteContent({ initialDate }: { initialDate?: string })
             data-testid="emergency-route-scenario-2"
           >
             <h3 className="text-[15px] font-bold text-foreground">案2</h3>
-            <p className="mt-2 text-sm font-semibold text-amber-700">1件だけ再確認が必要</p>
+            <p className="mt-2 text-sm font-semibold text-state-confirm">1件だけ再確認が必要</p>
             <p className="mt-2 text-sm text-muted-foreground">
               {recalc ? formatDeltaLabel(recalc.plan2.travelDeltaMinutes) : '移動 —'}
             </p>
@@ -444,27 +448,25 @@ export function EmergencyRouteContent({ initialDate }: { initialDate?: string })
         <h2 className="text-[15px] font-bold text-foreground">影響確認</h2>
         <ul className="space-y-3 text-sm text-foreground">
           <li className="flex items-start gap-2">
-            <span aria-hidden className="mt-0.5 text-emerald-600">
+            <span aria-hidden className="mt-0.5 text-state-done">
               ✓
             </span>
             <span>正式決定：変更なし</span>
           </li>
           <li className="flex items-start gap-2">
-            <span aria-hidden className="mt-0.5 text-emerald-600">
+            <span aria-hidden className="mt-0.5 text-state-done">
               ✓
             </span>
-            <span>
-              患者確認待ち：{recalc?.releasedScheduleId ? '1件あり' : '0件'}
-            </span>
+            <span>患者確認待ち：{recalc?.releasedScheduleId ? '1件あり' : '0件'}</span>
           </li>
           <li className="flex items-start gap-2">
-            <span aria-hidden className="mt-0.5 text-emerald-600">
+            <span aria-hidden className="mt-0.5 text-state-done">
               ✓
             </span>
             <span>社用車A：使用可</span>
           </li>
           <li className="flex items-start gap-2">
-            <span aria-hidden className="mt-0.5 text-emerald-600">
+            <span aria-hidden className="mt-0.5 text-state-done">
               ✓
             </span>
             <span>薬剤師負荷：許容範囲</span>

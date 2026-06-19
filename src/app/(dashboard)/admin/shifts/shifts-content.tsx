@@ -16,6 +16,9 @@ import { ja } from 'date-fns/locale';
 import { CalendarPlus2, Check, ChevronLeft, ChevronRight, UserPlus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
+import { StateBadge } from '@/components/ui/state-badge';
+import type { StatusRole } from '@/lib/constants/status-tokens';
+import { USER_ACCOUNT_STATUS_ROLE } from '@/lib/constants/status-labels';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -52,7 +55,6 @@ import {
   formatListInput,
   holidayAppliesToSite,
   parseListInput,
-  pharmacistStatusClass,
   pharmacistStatusLabel,
   toDateKey,
   toOptionalNumber,
@@ -67,6 +69,11 @@ import {
   type ShiftRecord,
   type ShiftTemplate,
 } from './shifts-content.shared';
+
+function pharmacistStatusRole(status: Pharmacist['account_status']): StatusRole {
+  const role = USER_ACCOUNT_STATUS_ROLE[status];
+  return role && role !== 'neutral' ? role : 'readonly';
+}
 
 export function ShiftsContent() {
   const orgId = useOrgId();
@@ -1186,12 +1193,9 @@ export function ShiftsContent() {
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-medium text-foreground">{pharmacist.name}</p>
-                        <Badge
-                          variant="outline"
-                          className={pharmacistStatusClass(pharmacist.account_status)}
-                        >
+                        <StateBadge role={pharmacistStatusRole(pharmacist.account_status)}>
                           {pharmacistStatusLabel(pharmacist.account_status)}
-                        </Badge>
+                        </StateBadge>
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {pharmacist.site_name ?? '所属店舗未設定'} /{' '}
@@ -1255,6 +1259,7 @@ export function ShiftsContent() {
                     <Button
                       size="sm"
                       variant="outline"
+                      aria-label={`${pharmacist.name} のメンバー情報を編集`}
                       onClick={() => openPharmacistEditDialog(pharmacist)}
                     >
                       編集
@@ -1263,6 +1268,7 @@ export function ShiftsContent() {
                       <Button
                         size="sm"
                         variant="outline"
+                        aria-label={`${pharmacist.name} に招待を再送`}
                         onClick={() =>
                           setPharmacistActionTarget({
                             pharmacist,
@@ -1277,6 +1283,7 @@ export function ShiftsContent() {
                       <Button
                         size="sm"
                         variant="outline"
+                        aria-label={`${pharmacist.name} を再開`}
                         onClick={() =>
                           setPharmacistActionTarget({
                             pharmacist,
@@ -1290,6 +1297,7 @@ export function ShiftsContent() {
                       <Button
                         size="sm"
                         variant="outline"
+                        aria-label={`${pharmacist.name} を停止`}
                         onClick={() =>
                           setPharmacistActionTarget({
                             pharmacist,
@@ -1304,6 +1312,7 @@ export function ShiftsContent() {
                       <Button
                         size="sm"
                         variant="outline"
+                        aria-label={`${pharmacist.name} を退職処理`}
                         onClick={() =>
                           setPharmacistActionTarget({
                             pharmacist,
@@ -1567,6 +1576,7 @@ export function ShiftsContent() {
                           <Button
                             size="sm"
                             variant="outline"
+                            aria-label={`${shiftTemplateSummary(template)} の定型シフトを編集`}
                             onClick={() => loadTemplateIntoForm(template)}
                           >
                             編集
@@ -1755,6 +1765,7 @@ export function ShiftsContent() {
                           <Button
                             size="sm"
                             variant="outline"
+                            aria-label={`${holidaySummary(holiday)} の休日設定を編集`}
                             onClick={() => openHolidayEditDialog(holiday)}
                           >
                             編集

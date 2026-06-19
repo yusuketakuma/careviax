@@ -85,8 +85,8 @@ const roleLabel: Record<CareTeamRow['role'], string> = {
 };
 
 const CONTACT_BADGE_TONE_CLASSES: Record<CareTeamContactBadge['tone'], string> = {
-  alert: 'border-red-200 bg-red-50 text-red-700',
-  ok: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  alert: 'border-transparent bg-state-confirm/10 text-state-confirm',
+  ok: 'border-transparent bg-state-done/10 text-state-done',
   muted: 'border-border bg-muted text-muted-foreground',
 };
 
@@ -571,6 +571,7 @@ export function PatientCareTeamPanel({
                     type="button"
                     variant="secondary"
                     size="sm"
+                    aria-label={`多職種連携先${index + 1}件目の他職種マスターを新規登録`}
                     onClick={() => openQuickCreateDialog(index)}
                   >
                     新規登録
@@ -579,6 +580,7 @@ export function PatientCareTeamPanel({
                     type="button"
                     variant="ghost"
                     size="sm"
+                    aria-label={`多職種連携先${index + 1}件目を削除`}
                     onClick={() => updateRows(rows.filter((_, itemIndex) => itemIndex !== index))}
                   >
                     <Trash2 className="mr-1 size-4" />

@@ -78,7 +78,7 @@ export function ProcessTab({ workspace }: { workspace: PatientWorkspace | null }
                 <li
                   key={exception.id}
                   className={
-                    exception.severity === 'critical' ? 'text-destructive' : 'text-amber-600'
+                    exception.severity === 'critical' ? 'text-destructive' : 'text-state-confirm'
                   }
                 >
                   {exception.description}

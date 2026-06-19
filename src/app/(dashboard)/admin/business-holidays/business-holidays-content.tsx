@@ -512,7 +512,12 @@ export function BusinessHolidaysContent() {
                   )}
                 </div>
                 <div className="flex gap-1">
-                  <Button size="sm" variant="outline" onClick={() => openEdit(h)}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    aria-label={`${holidaySummary(h)}を編集`}
+                    onClick={() => openEdit(h)}
+                  >
                     編集
                   </Button>
                   <Button

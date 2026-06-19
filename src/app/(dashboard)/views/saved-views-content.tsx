@@ -135,7 +135,7 @@ function CurrentFilterCard({ orgId }: { orgId: string }) {
         </h2>
         {savedView ? (
           <span
-            className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"
+            className="inline-flex items-center gap-1 rounded-full border border-state-done/30 bg-state-done/10 px-2 py-0.5 text-xs font-medium text-state-done"
             data-testid="current-filter-saved-badge"
           >
             保存済み
@@ -477,6 +477,7 @@ function NamedSavedViewsCard({
                         size="sm"
                         variant="ghost"
                         className="min-h-10"
+                        aria-label={`${view.name}の名前を変更`}
                         onClick={() => {
                           setRenamingId(view.id);
                           setRenameValue(view.name);
@@ -490,6 +491,7 @@ function NamedSavedViewsCard({
                         size="sm"
                         variant="ghost"
                         className="min-h-10 text-destructive hover:text-destructive"
+                        aria-label={`${view.name}を削除`}
                         onClick={() => setDeleteTarget(view)}
                         data-testid="named-view-delete"
                       >

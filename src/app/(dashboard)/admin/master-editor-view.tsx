@@ -3,6 +3,7 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { StateBadge } from '@/components/ui/state-badge';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
 const MASTER_CATEGORIES = ['薬剤', '医療機関', '施設', 'スタッフ', '車両', 'タグ', '帳票'] as const;
@@ -67,7 +68,7 @@ export function MasterEditorView({
                   className="flex min-h-14 w-full items-center justify-between rounded-xl border border-border bg-background px-4 text-left"
                 >
                   <span className="font-bold text-foreground">{name}</span>
-                  <span className="text-sm font-medium text-emerald-600">有効</span>
+                  <StateBadge role="done">有効</StateBadge>
                 </button>
               ))}
             </div>

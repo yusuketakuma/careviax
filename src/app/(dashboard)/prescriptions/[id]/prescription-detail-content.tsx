@@ -230,7 +230,7 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
             <>
               <Separator orientation="vertical" className="h-5" />
               <span
-                className={`text-sm ${daysUntilExpiry != null && daysUntilExpiry < 0 ? 'font-medium text-destructive' : daysUntilExpiry != null && daysUntilExpiry <= 1 ? 'font-medium text-amber-700' : 'text-muted-foreground'}`}
+                className={`text-sm ${daysUntilExpiry != null && daysUntilExpiry < 0 ? 'font-medium text-destructive' : daysUntilExpiry != null && daysUntilExpiry <= 1 ? 'font-medium text-state-confirm' : 'text-muted-foreground'}`}
               >
                 {daysUntilExpiry != null && daysUntilExpiry < 0 ? (
                   <>
@@ -430,7 +430,7 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
                                 </span>
                               )}
                               {line.packaging_instructions && (
-                                <p className="mt-0.5 text-xs text-amber-700">
+                                <p className="mt-0.5 text-xs text-state-confirm">
                                   包装指示: {line.packaging_instructions}
                                 </p>
                               )}
@@ -455,14 +455,14 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
                               {line.is_generic ? (
                                 <Badge
                                   variant="outline"
-                                  className="bg-blue-50 text-blue-700 border-blue-200 text-[11px]"
+                                  className="border-transparent bg-tag-info/10 text-tag-info text-[11px]"
                                 >
                                   後発
                                 </Badge>
                               ) : line.is_generic_name_prescription ? (
                                 <Badge
                                   variant="outline"
-                                  className="bg-green-50 text-green-700 border-green-200 text-[11px]"
+                                  className="border-transparent bg-state-done/10 text-state-done text-[11px]"
                                 >
                                   一般名
                                 </Badge>
@@ -522,7 +522,7 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
                             {inq.proposal_origin === 'pre_issuance' && (
                               <Badge
                                 variant="outline"
-                                className="text-xs border-blue-300 text-blue-700"
+                                className="text-xs border-transparent bg-tag-info/10 text-tag-info"
                               >
                                 事前提案反映
                               </Badge>
@@ -530,7 +530,7 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
                             {inq.residual_adjustment && (
                               <Badge
                                 variant="outline"
-                                className="text-xs border-amber-300 text-amber-700"
+                                className="text-xs border-transparent bg-state-confirm/10 text-state-confirm"
                               >
                                 残薬調整
                               </Badge>
@@ -557,9 +557,9 @@ export function PrescriptionDetailContent({ intakeId }: { intakeId: string }) {
                             <p className="mt-1 whitespace-pre-wrap">{inq.inquiry_content}</p>
                           </div>
                           {inq.change_detail && (
-                            <div className="rounded-md border border-amber-200 bg-amber-50/60 px-3 py-2 text-sm">
-                              <p className="text-xs font-medium text-amber-800">変更内容:</p>
-                              <p className="whitespace-pre-wrap text-amber-900">
+                            <div className="rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-sm">
+                              <p className="text-xs font-medium text-state-confirm">変更内容:</p>
+                              <p className="whitespace-pre-wrap text-state-confirm">
                                 {inq.change_detail}
                               </p>
                             </div>

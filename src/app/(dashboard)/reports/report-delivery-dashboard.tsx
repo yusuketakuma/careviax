@@ -76,6 +76,9 @@ type AnalyticsTableRow = {
   values: string[];
 };
 
+const REPORT_DELIVERY_REMINDER_DISABLED_REASON_ID = 'report-delivery-reminder-disabled-reason';
+const REPORT_DELIVERY_REMINDER_DISABLED_REASON = '送達分析を読み込んでいます。';
+
 export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?: boolean }) {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
@@ -137,6 +140,7 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
   });
 
   const analytics = data?.data;
+  const reminderDisabledReason = !analytics ? REPORT_DELIVERY_REMINDER_DISABLED_REASON : null;
 
   return (
     <div
@@ -226,11 +230,24 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
                   <Button
                     type="button"
                     onClick={() => reminderMutation.mutate()}
-                    disabled={reminderMutation.isPending || !analytics}
+                    aria-describedby={
+                      reminderDisabledReason
+                        ? REPORT_DELIVERY_REMINDER_DISABLED_REASON_ID
+                        : undefined
+                    }
+                    disabled={reminderMutation.isPending || Boolean(reminderDisabledReason)}
                   >
                     リマインドタスク起票
                   </Button>
                 </div>
+                {reminderDisabledReason ? (
+                  <p
+                    id={REPORT_DELIVERY_REMINDER_DISABLED_REASON_ID}
+                    className="text-xs text-muted-foreground"
+                  >
+                    {reminderDisabledReason}
+                  </p>
+                ) : null}
                 <p className="text-sm text-muted-foreground">
                   `response_waiting` が閾値を超えた送達を抽出し、担当者に follow-up
                   タスクを作成します。

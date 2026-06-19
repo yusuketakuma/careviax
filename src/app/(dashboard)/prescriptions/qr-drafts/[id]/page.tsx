@@ -233,7 +233,7 @@ function AutoBadge() {
   return (
     <Badge
       variant="outline"
-      className="border-blue-300 bg-blue-50 text-[10px] text-blue-700 py-0 px-1"
+      className="border-transparent bg-tag-info/10 text-[10px] text-tag-info py-0 px-1"
     >
       自動補完
     </Badge>
@@ -242,7 +242,7 @@ function AutoBadge() {
 
 function RequiredMarker() {
   return (
-    <span className="ml-1 rounded bg-amber-100 px-1 text-[10px] font-medium text-amber-700">
+    <span className="ml-1 rounded bg-state-confirm/10 px-1 text-[10px] font-medium text-state-confirm">
       要入力
     </span>
   );
@@ -490,7 +490,7 @@ export default function QrDraftReviewPage() {
       )}
 
       {pd.parseWarnings?.length ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm">
           <p className="mb-1 font-medium">QR解析時の確認事項</p>
           <ul className="list-disc space-y-0.5 pl-4">
             {pd.parseWarnings.map((warning, index) => (
@@ -713,7 +713,7 @@ export default function QrDraftReviewPage() {
       )}
 
       {!draft.patient_id && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm">
           <p className="font-medium">患者が未紐付けです</p>
           <p className="text-xs mt-1">
             患者IDが解決されていないため確定できません。QRスキャン一覧から患者を紐付けてください。
@@ -729,14 +729,14 @@ export default function QrDraftReviewPage() {
             <span className="inline-flex items-center gap-1 mr-3">
               <Badge
                 variant="outline"
-                className="border-blue-300 bg-blue-50 text-[10px] text-blue-700 py-0 px-1"
+                className="border-transparent bg-tag-info/10 text-[10px] text-tag-info py-0 px-1"
               >
                 自動補完
               </Badge>
               QRから自動入力されたフィールド
             </span>
             <span className="inline-flex items-center gap-1">
-              <span className="rounded bg-amber-100 px-1 text-[10px] font-medium text-amber-700">
+              <span className="rounded bg-state-confirm/10 px-1 text-[10px] font-medium text-state-confirm">
                 要入力
               </span>
               入力が必要なフィールド
@@ -795,7 +795,7 @@ export default function QrDraftReviewPage() {
                           className={cn(
                             mobileDenseInputClassName,
                             isDrugMissing &&
-                              'border-amber-300 bg-amber-50 focus-visible:ring-amber-400',
+                              'border-state-confirm/50 bg-state-confirm/10 focus-visible:ring-state-confirm',
                           )}
                           placeholder="例: アムロジピン錠5mg"
                         />
@@ -831,7 +831,7 @@ export default function QrDraftReviewPage() {
                           className={cn(
                             mobileDenseInputClassName,
                             isDoseMissing &&
-                              'border-amber-300 bg-amber-50 focus-visible:ring-amber-400',
+                              'border-state-confirm/50 bg-state-confirm/10 focus-visible:ring-state-confirm',
                           )}
                           placeholder="例: 1錠"
                         />
@@ -853,7 +853,7 @@ export default function QrDraftReviewPage() {
                           className={cn(
                             mobileDenseInputClassName,
                             isFreqMissing &&
-                              'border-amber-300 bg-amber-50 focus-visible:ring-amber-400',
+                              'border-state-confirm/50 bg-state-confirm/10 focus-visible:ring-state-confirm',
                           )}
                           placeholder="例: 1日1回朝食後"
                         />
@@ -880,7 +880,7 @@ export default function QrDraftReviewPage() {
                           className={cn(
                             mobileDenseInputClassName,
                             isDaysMissing &&
-                              'border-amber-300 bg-amber-50 focus-visible:ring-amber-400',
+                              'border-state-confirm/50 bg-state-confirm/10 focus-visible:ring-state-confirm',
                           )}
                           placeholder="例: 28"
                         />
@@ -1001,7 +1001,7 @@ export default function QrDraftReviewPage() {
 
       {/* Validation summary */}
       {!allRequiredFilled && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm">
           <p className="font-medium">確定するには以下を入力してください</p>
           <ul className="mt-1 list-disc pl-4 text-xs space-y-0.5">
             {!prescribedDate && <li>処方日</li>}

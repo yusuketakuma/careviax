@@ -4,7 +4,8 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
-import { Badge } from '@/components/ui/badge';
+import { StateBadge } from '@/components/ui/state-badge';
+import type { StatusRole } from '@/lib/constants/status-tokens';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable } from '@/components/ui/data-table';
@@ -355,17 +356,23 @@ function formatDate(value: string | null) {
   return new Date(`${dateKey}T00:00:00+09:00`).toLocaleDateString('ja-JP');
 }
 
-function statusBadgeClass(status: PcaPumpStatus | PcaPumpRentalStatus) {
+// ポンプ/貸出の状態セマンティック:
+//   利用可能/返却済=done(緑) / 貸出中・予定=info(進行中) / 延滞・メンテ=confirm(橙, 要対応) /
+//   取消=blocked(赤, 止まった理由) / 退役=readonly(灰, 過去/中立)
+function statusRole(status: PcaPumpStatus | PcaPumpRentalStatus): StatusRole {
   if (status === 'available' || status === 'returned') {
-    return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    return 'done';
   }
   if (status === 'rented' || status === 'active' || status === 'scheduled') {
-    return 'border-sky-200 bg-sky-50 text-sky-700';
+    return 'info';
   }
   if (status === 'overdue' || status === 'maintenance') {
-    return 'border-amber-200 bg-amber-50 text-amber-700';
+    return 'confirm';
   }
-  return 'border-slate-200 bg-slate-100 text-slate-700';
+  if (status === 'cancelled') {
+    return 'blocked';
+  }
+  return 'readonly';
 }
 
 function toNullableString(value: string) {
@@ -777,9 +784,9 @@ export function PcaPumpsContent() {
       accessorKey: 'status',
       header: '状態',
       cell: ({ row }) => (
-        <Badge variant="outline" className={statusBadgeClass(row.original.status)}>
+        <StateBadge role={statusRole(row.original.status)}>
           {PUMP_STATUS_LABELS[row.original.status]}
-        </Badge>
+        </StateBadge>
       ),
     },
     {
@@ -892,9 +899,9 @@ export function PcaPumpsContent() {
       accessorKey: 'status',
       header: '状態',
       cell: ({ row }) => (
-        <Badge variant="outline" className={statusBadgeClass(row.original.status)}>
+        <StateBadge role={statusRole(row.original.status)}>
           {RENTAL_STATUS_LABELS[row.original.status]}
-        </Badge>
+        </StateBadge>
       ),
     },
     {

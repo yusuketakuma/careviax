@@ -1569,18 +1569,18 @@ export function VisitRecordForm({
               ) : null}
 
               {carryItemsWarning && (
-                <Card className="border-rose-200 bg-rose-50">
+                <Card className="border-state-blocked/30 bg-state-blocked/10">
                   <CardHeader className="pb-3">
-                    <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-rose-900">
+                    <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-state-blocked">
                       <AlertTriangle className="h-5 w-5" aria-hidden="true" />
                       {carryItemsWarning.title}
                     </h3>
                   </CardHeader>
-                  <CardContent className="space-y-3 text-sm text-rose-900">
+                  <CardContent className="space-y-3 text-sm text-state-blocked">
                     <p>{carryItemsWarning.description}</p>
                     {requiresCarryItemWarningAcknowledgement && (
                       <div className="space-y-1.5">
-                        <label className="flex min-h-11 items-start gap-3 rounded-lg border border-rose-300 bg-white/70 px-3 py-3">
+                        <label className="flex min-h-11 items-start gap-3 rounded-lg border border-state-blocked/30 bg-background/70 px-3 py-3">
                           <Checkbox
                             checked={Boolean(carryItemWarningAcknowledged)}
                             onCheckedChange={(checked) => {
@@ -1621,9 +1621,9 @@ export function VisitRecordForm({
               )}
 
               {(visitAlertsLoading || visitAlertsError || visitAlerts.length > 0) && (
-                <Card className="border-amber-200 bg-amber-50/40">
+                <Card className="border-state-confirm/30 bg-state-confirm/10">
                   <CardHeader className="pb-3">
-                    <h3 className="font-heading text-sm leading-snug font-medium text-amber-950">
+                    <h3 className="font-heading text-sm leading-snug font-medium text-state-confirm">
                       訪問時チェック
                     </h3>
                   </CardHeader>
@@ -1638,10 +1638,10 @@ export function VisitRecordForm({
               )}
 
               {(locationTrackingEnabled || visitGeoLog) && (
-                <Card className="border-sky-200 bg-sky-50/40">
+                <Card className="border-tag-info/30 bg-tag-info/10">
                   <CardHeader className="pb-3">
-                    <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-sky-950">
-                      <MapPin className="h-4 w-4 text-sky-700" aria-hidden="true" />
+                    <h3 className="flex items-center gap-2 font-heading text-sm leading-snug font-medium text-tag-info">
+                      <MapPin className="h-4 w-4 text-tag-info" aria-hidden="true" />
                       訪問位置情報
                     </h3>
                   </CardHeader>
@@ -1716,7 +1716,7 @@ export function VisitRecordForm({
                       </Button>
                       <a
                         href="/settings"
-                        className="inline-flex h-7 items-center rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                        className="inline-flex h-7 items-center rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
                       >
                         設定で無効化
                       </a>
@@ -1726,7 +1726,7 @@ export function VisitRecordForm({
               )}
 
               {(isOffline || pendingSyncCount > 0) && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <div className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm">
                   <div className="flex items-start gap-2">
                     <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
                     <div className="space-y-1">
@@ -1736,7 +1736,9 @@ export function VisitRecordForm({
                           : '同期待ちの訪問記録があります。'}
                       </p>
                       {pendingSyncCount > 0 ? (
-                        <p className="text-xs text-amber-800/90">同期待ち {pendingSyncCount} 件</p>
+                        <p className="text-xs text-state-confirm/90">
+                          同期待ち {pendingSyncCount} 件
+                        </p>
                       ) : null}
                     </div>
                   </div>
@@ -1874,13 +1876,13 @@ export function VisitRecordForm({
                       className={cn(
                         'flex min-h-12 w-full items-center justify-between gap-2 rounded-lg border px-4 py-3 text-left text-sm font-medium transition-colors',
                         selected
-                          ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+                          ? 'border-state-done/30 bg-state-done/10 text-state-done'
                           : 'border-border bg-card text-foreground hover:bg-muted/40',
                       )}
                     >
                       <span>{choice.label}</span>
                       {selected ? (
-                        <Check className="size-4 shrink-0 text-emerald-700" aria-hidden="true" />
+                        <Check className="size-4 shrink-0 text-state-done" aria-hidden="true" />
                       ) : null}
                     </button>
                   );

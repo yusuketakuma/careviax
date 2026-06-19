@@ -10,6 +10,9 @@ import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminRealtimeShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { StateBadge } from '@/components/ui/state-badge';
+import type { StatusRole } from '@/lib/constants/status-tokens';
+import { PRIORITY_ROLE } from '@/lib/constants/status-labels';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { normalizeNotificationStreamPayload } from '@/lib/notifications/stream-payload';
@@ -49,15 +52,14 @@ type WorkflowSnapshot = {
   }>;
 };
 
-const TYPE_CONFIG: Record<NotificationType, { label: string; badge: string; icon: ElementType }> = {
-  urgent: { label: '緊急', badge: 'border-red-200 bg-red-50 text-red-700', icon: AlertTriangle },
-  business: { label: '業務', badge: 'border-blue-200 bg-blue-50 text-blue-700', icon: BellRing },
-  reminder: { label: '通知', badge: 'border-amber-200 bg-amber-50 text-amber-700', icon: Clock },
-  system: {
-    label: 'システム',
-    badge: 'border-slate-200 bg-slate-50 text-slate-700',
-    icon: Sparkles,
-  },
+const TYPE_CONFIG: Record<
+  NotificationType,
+  { label: string; role: StatusRole; icon: ElementType }
+> = {
+  urgent: { label: '緊急', role: 'blocked', icon: AlertTriangle },
+  business: { label: '業務', role: 'info', icon: BellRing },
+  reminder: { label: '通知', role: 'confirm', icon: Clock },
+  system: { label: 'システム', role: 'readonly', icon: Sparkles },
 };
 
 function mergeNotifications(current: Notification[], incoming: Notification[]) {
@@ -243,9 +245,7 @@ export default function RealtimePage() {
                         </span>
                         <div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <Badge variant="outline" className={config.badge}>
-                              {config.label}
-                            </Badge>
+                            <StateBadge role={config.role}>{config.label}</StateBadge>
                             {!notification.is_read ? <Badge variant="secondary">未読</Badge> : null}
                           </div>
                           <p className="mt-1 font-medium text-foreground">{notification.title}</p>
@@ -294,9 +294,15 @@ export default function RealtimePage() {
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge variant="outline">{item.queue_label}</Badge>
-                        <Badge variant={item.priority === 'urgent' ? 'destructive' : 'secondary'}>
+                        <StateBadge
+                          role={
+                            (PRIORITY_ROLE[item.priority] as StatusRole | 'neutral') === 'neutral'
+                              ? 'info'
+                              : (PRIORITY_ROLE[item.priority] as StatusRole)
+                          }
+                        >
                           {item.priority}
-                        </Badge>
+                        </StateBadge>
                       </div>
                       <p className="mt-2 font-medium text-foreground">{item.title}</p>
                       <p className="mt-1 text-sm text-muted-foreground">{item.summary}</p>

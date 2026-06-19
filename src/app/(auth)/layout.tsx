@@ -1,11 +1,11 @@
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 px-4 py-8">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-muted px-4 py-8">
       <div className="mb-8 text-center">
         <div className="mb-3 flex justify-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-blue-600">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
             <svg
-              className="h-7 w-7 text-white"
+              className="h-7 w-7 text-primary-foreground"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -20,11 +20,11 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
             </svg>
           </div>
         </div>
-        <h1 className="text-xl font-semibold text-slate-800">PH-OS</h1>
-        <p className="mt-1 text-sm text-slate-500">在宅薬局オペレーション</p>
+        <h1 className="text-xl font-semibold text-foreground">PH-OS</h1>
+        <p className="mt-1 text-sm text-muted-foreground">在宅薬局オペレーション</p>
       </div>
       {children}
-      <p className="mt-6 text-center text-xs text-slate-400">
+      <p className="mt-6 text-center text-xs text-muted-foreground">
         3省2ガイドライン準拠 / ISMAP準拠 AWS基盤
       </p>
     </div>

@@ -43,6 +43,7 @@ const TRAVEL_MODE_LABELS: Record<TravelMode, string> = {
 const VISIT_TYPE_OPTIONS = Object.entries(VISIT_TYPE_LABELS) as Array<[VisitType, string]>;
 const PRIORITY_OPTIONS = Object.entries(PRIORITY_LABELS) as Array<[VisitPriority, string]>;
 const TRAVEL_MODE_OPTIONS = Object.entries(TRAVEL_MODE_LABELS) as Array<[TravelMode, string]>;
+const SCHEDULE_DRAWER_SAVE_BLOCKER_ID = 'schedule-drawer-save-blocker';
 
 export type ScheduleCreateEditDrawerForm = {
   case_id: string;
@@ -87,6 +88,19 @@ export function buildScheduleCreateEditDrawerForm(args: {
 
 export function isScheduleCreateEditDrawerFormValid(form: ScheduleCreateEditDrawerForm): boolean {
   return Boolean(form.case_id && form.proposed_date && form.proposed_pharmacist_id);
+}
+
+export function getScheduleCreateEditDrawerSaveBlocker(
+  form: ScheduleCreateEditDrawerForm,
+): string | null {
+  const missingFields = [
+    form.case_id ? null : '患者',
+    form.proposed_date ? null : '候補日',
+    form.proposed_pharmacist_id ? null : '担当薬剤師',
+  ].filter(Boolean);
+
+  if (missingFields.length === 0) return null;
+  return `保存するには ${missingFields.join('、')} を選択してください。`;
 }
 
 export function buildScheduleCreateEditDrawerPayload(args: {
@@ -196,7 +210,9 @@ export function ScheduleCreateEditDrawer({
   });
 
   const formValid = isScheduleCreateEditDrawerFormValid(form);
+  const saveBlocker = getScheduleCreateEditDrawerSaveBlocker(form);
   const disabled = saveMutation.isPending || !formValid;
+  const saveDescriptionId = saveBlocker ? SCHEDULE_DRAWER_SAVE_BLOCKER_ID : undefined;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -351,10 +367,15 @@ export function ScheduleCreateEditDrawer({
 
           <div
             role="note"
-            className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+            className="rounded-lg border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm"
           >
             正式決定前の予定です。患者さんへ確認してから確定してください。
           </div>
+          {saveBlocker ? (
+            <p id={SCHEDULE_DRAWER_SAVE_BLOCKER_ID} className="text-xs text-destructive">
+              {saveBlocker}
+            </p>
+          ) : null}
         </div>
 
         <SheetFooter className="mt-2 flex-row justify-between gap-2">
@@ -362,11 +383,17 @@ export function ScheduleCreateEditDrawer({
             type="button"
             variant="outline"
             disabled={disabled}
+            aria-describedby={saveDescriptionId}
             onClick={() => saveMutation.mutate(false)}
           >
             {saveMutation.isPending ? '保存中...' : '下書き保存'}
           </Button>
-          <Button type="button" disabled={disabled} onClick={() => saveMutation.mutate(true)}>
+          <Button
+            type="button"
+            disabled={disabled}
+            aria-describedby={saveDescriptionId}
+            onClick={() => saveMutation.mutate(true)}
+          >
             {saveMutation.isPending ? '送信中...' : '確認待ちにする'}
           </Button>
         </SheetFooter>

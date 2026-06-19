@@ -422,11 +422,11 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
   return (
     <div className="space-y-4">
       {/* Warning */}
-      <div className="flex items-start gap-3 rounded-md border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-800">
+      <div className="flex items-start gap-3 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-4 py-3 text-sm text-state-confirm">
         <ShieldAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
         <div>
           <p className="font-medium">個人情報の外部共有には十分注意してください</p>
-          <p className="mt-0.5 text-orange-700">
+          <p className="mt-0.5 text-state-confirm">
             相手区分ごとに「相手に見える内容」を確認してから共有してください。発行されたリンクは有効期限内に限り閲覧可能で、共有先連絡先に電話番号を入れると
             OTP を SMS 送信し、それ以外は別経路で手動共有します。
           </p>
@@ -572,9 +572,9 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
 
           {/* Generated result */}
           {generated && (
-            <Card className="border-green-200">
+            <Card className="border-state-done/30">
               <CardHeader>
-                <h2 className="flex items-center gap-2 font-heading text-base leading-snug font-medium text-green-800">
+                <h2 className="flex items-center gap-2 font-heading text-base leading-snug font-medium text-state-done">
                   <CheckCircle2 className="size-5" aria-hidden="true" />
                   共有リンクを発行しました
                 </h2>
@@ -626,13 +626,13 @@ export function ExternalShareContent({ patientId }: { patientId: string }) {
                 </div>
 
                 {generated.otpDelivery === 'sms' ? (
-                  <div className="flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                  <div className="flex items-start gap-2 rounded-md border border-state-done/30 bg-state-done/10 px-3 py-2 text-xs text-state-done">
                     <CheckCircle2 className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
                     OTP を {generated.otpDeliveryDestination ?? '共有先連絡先'} に SMS
                     送信しました。必要に応じて下の控え用 OTP を確認してください。
                   </div>
                 ) : (
-                  <div className="flex items-start gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-xs text-orange-800">
+                  <div className="flex items-start gap-2 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-xs text-state-confirm">
                     <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
                     OTPは電話・SMSなど共有URLとは別の手段で伝達してください。
                   </div>

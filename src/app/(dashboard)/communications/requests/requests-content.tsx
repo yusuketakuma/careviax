@@ -258,11 +258,11 @@ export function CommunicationRequestsContent({
     <div className="space-y-6">
       {contextSummary ? (
         <Alert
-          className="border-sky-200 bg-sky-50 text-sky-900"
+          className="border-tag-info/30 bg-tag-info/10 text-tag-info"
           data-testid="communications-context-banner"
         >
-          <AlertTriangle className="size-4 text-sky-700" aria-hidden="true" />
-          <AlertDescription className="text-sky-800">{contextSummary}</AlertDescription>
+          <AlertTriangle className="size-4 text-tag-info" aria-hidden="true" />
+          <AlertDescription className="text-tag-info">{contextSummary}</AlertDescription>
         </Alert>
       ) : null}
       <PageSection

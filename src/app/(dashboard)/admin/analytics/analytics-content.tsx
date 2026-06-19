@@ -444,14 +444,14 @@ export function AnalyticsContent() {
                     <span>代行 {site.can_delegate ? '可' : '要確認'}</span>
                   </div>
                   {site.holiday_gap_dates.length > 0 ? (
-                    <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                    <div className="mt-3 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-xs text-state-confirm">
                       空白日:{' '}
                       {site.holiday_gap_dates
                         .map((item) => `${item.date.slice(5, 10)} ${item.name}`)
                         .join(' / ')}
                     </div>
                   ) : (
-                    <p className="mt-3 text-xs text-emerald-700">直近の休日空白はありません。</p>
+                    <p className="mt-3 text-xs text-state-done">直近の休日空白はありません。</p>
                   )}
                 </div>
               ))

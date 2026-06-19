@@ -112,11 +112,11 @@ const ACTIVITY_BADGE_CLASSES: Record<PatientWorkspaceActivity['type'], string> =
   intake: 'border-border bg-muted text-muted-foreground',
 };
 
-/** このカードに紐づく今日: トーン → 時刻ピル配色(期限=赤/順序待ち=灰/時刻確定=緑) */
+/** このカードに紐づく今日: トーン → 時刻ピル配色(期限=止まる/順序待ち=中立/時刻確定=完了) */
 const TODAY_TONE_CLASSES: Record<PatientWorkspaceTodayTask['tone'], string> = {
-  deadline: 'border-red-300 bg-red-50 text-red-700',
+  deadline: 'border-transparent bg-state-blocked/10 text-state-blocked',
   waiting: 'border-border bg-muted text-muted-foreground',
-  scheduled: 'border-emerald-300 bg-emerald-50 text-emerald-700',
+  scheduled: 'border-transparent bg-state-done/10 text-state-done',
 };
 
 /** 止まっている理由: WorkflowException type → カテゴリ色チップ(患者/事務/医療機関) */
@@ -413,8 +413,8 @@ function SummaryTile({
     <div
       className={cn(
         'rounded-md border border-border/60 bg-muted/30 p-3',
-        tone === 'warn' && 'border-amber-200 bg-amber-50 text-amber-950',
-        tone === 'risk' && 'border-red-200 bg-red-50 text-red-950',
+        tone === 'warn' && 'border-transparent bg-state-confirm/10 text-state-confirm',
+        tone === 'risk' && 'border-transparent bg-state-blocked/10 text-state-blocked',
       )}
     >
       <dt className="text-xs text-muted-foreground">{label}</dt>
@@ -426,8 +426,8 @@ function SummaryTile({
 type HomeOpsItem = PatientHomeOperationItem & { icon: typeof FileText };
 
 const HOME_OPS_TONE_CLASSES: Record<HomeOpsItem['tone'], string> = {
-  ok: 'border-emerald-200 bg-emerald-50 text-emerald-950',
-  attention: 'border-amber-200 bg-amber-50 text-amber-950',
+  ok: 'border-transparent bg-state-done/10 text-state-done',
+  attention: 'border-transparent bg-state-confirm/10 text-state-confirm',
   neutral: 'border-border/70 bg-muted/20 text-foreground',
 };
 
@@ -435,9 +435,9 @@ const FOUNDATION_STATUS_CLASSES: Record<
   PatientOverview['foundation']['summary']['status'],
   string
 > = {
-  ready: 'border-emerald-200 bg-emerald-50 text-emerald-950',
-  needs_confirmation: 'border-amber-200 bg-amber-50 text-amber-950',
-  missing: 'border-red-200 bg-red-50 text-red-950',
+  ready: 'border-transparent bg-state-done/10 text-state-done',
+  needs_confirmation: 'border-transparent bg-state-confirm/10 text-state-confirm',
+  missing: 'border-transparent bg-state-blocked/10 text-state-blocked',
 };
 
 const FOUNDATION_STATUS_LABELS: Record<PatientOverview['foundation']['summary']['status'], string> =
@@ -664,10 +664,10 @@ function PatientHomeOperationsPanel({
         </div>
         <span
           className={cn(
-            'inline-flex min-h-8 items-center rounded-full border px-3 text-xs font-medium',
+            'inline-flex min-h-8 items-center rounded-full border border-transparent px-3 text-xs font-medium',
             attentionCount > 0
-              ? 'border-amber-200 bg-amber-50 text-amber-800'
-              : 'border-emerald-200 bg-emerald-50 text-emerald-800',
+              ? 'bg-state-confirm/10 text-state-confirm'
+              : 'bg-state-done/10 text-state-done',
           )}
         >
           {attentionCount > 0 ? `要確認 ${attentionCount}件` : '主要項目 確認済み'}
@@ -675,29 +675,28 @@ function PatientHomeOperationsPanel({
       </div>
       {topAlerts.length > 0 ? (
         <div
-          className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3"
+          className="mt-4 rounded-lg border border-state-confirm/30 bg-state-confirm/10 p-3"
           data-testid="patient-home-operation-alerts"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h4 className="text-sm font-semibold text-amber-950">未処理アラート</h4>
-            <span className="text-xs font-medium text-amber-800">
+            <h4 className="text-sm font-semibold text-state-confirm">未処理アラート</h4>
+            <span className="text-xs font-medium text-state-confirm">
               {topAlerts.length}件を上から確認
             </span>
           </div>
-          <ul className="mt-2 divide-y divide-amber-200/70" role="list">
+          <ul className="mt-2 divide-y divide-state-confirm/20" role="list">
             {topAlerts.slice(0, HOME_OPS_ALERT_LIMIT).map((alert) => (
               <li key={alert.id} className="flex flex-wrap items-center gap-2 py-2">
-                <span className="rounded-full border border-amber-300 bg-background/70 px-2 py-0.5 text-xs font-medium text-amber-900">
+                <span className="rounded-full border border-state-confirm/30 bg-background/70 px-2 py-0.5 text-xs font-medium text-state-confirm">
                   {alert.label}
                 </span>
-                <span className="min-w-0 flex-1 text-sm text-amber-950">{alert.message}</span>
+                <span className="min-w-0 flex-1 text-sm text-foreground">{alert.message}</span>
                 <Link
                   href={alert.href}
                   className={buttonVariants({
                     variant: 'outline',
                     size: 'sm',
-                    className:
-                      'min-h-8 shrink-0 border-amber-300 bg-background/80 text-amber-950 hover:bg-amber-100',
+                    className: 'min-h-8 shrink-0 bg-background/80',
                   })}
                 >
                   {alert.action_label}
@@ -752,7 +751,7 @@ function PatientHomeOperationsPanel({
                     </button>
                   ) : null}
                   {item.alerts.length > 0 ? (
-                    <ul className="mt-3 space-y-1 text-xs text-amber-800">
+                    <ul className="mt-3 space-y-1 text-xs text-state-confirm">
                       {item.alerts.slice(0, 2).map((alert) => (
                         <li key={alert}>{alert}</li>
                       ))}
@@ -1216,7 +1215,7 @@ function PatientShareCaseCreatePanel({
           </p>
         ) : null}
         {partnerships.length === 0 && !partnershipsQuery.isLoading ? (
-          <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+          <div className="rounded-md border border-state-confirm/30 bg-state-confirm/10 p-3 text-sm text-state-confirm">
             有効な薬局間連携がありません。協力薬局設定で連携を有効化してから作成してください。
           </div>
         ) : null}
@@ -2529,7 +2528,7 @@ function PrescriptionDocumentQuickForm({
           />
         </div>
         {localError ? (
-          <p id={errorId} role="alert" className="text-xs text-red-700">
+          <p id={errorId} role="alert" className="text-xs text-destructive">
             {localError}
           </p>
         ) : null}
@@ -3385,9 +3384,9 @@ function PatientFoundationPanel({ patient }: { patient: PatientOverview }) {
       data-testid="patient-foundation-panel"
       className={cn(
         'border-l-4',
-        foundation.summary.status === 'ready' && 'border-l-emerald-400',
-        foundation.summary.status === 'needs_confirmation' && 'border-l-amber-400',
-        foundation.summary.status === 'missing' && 'border-l-red-500',
+        foundation.summary.status === 'ready' && 'border-l-state-done',
+        foundation.summary.status === 'needs_confirmation' && 'border-l-state-confirm',
+        foundation.summary.status === 'missing' && 'border-l-state-blocked',
       )}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -3427,7 +3426,7 @@ function PatientFoundationPanel({ patient }: { patient: PatientOverview }) {
       ) : null}
 
       {foundation.archive.archived ? (
-        <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-950">
+        <div className="mt-4 rounded-md border border-state-blocked/30 bg-state-blocked/10 p-3 text-sm text-state-blocked">
           <p className="font-semibold">アーカイブ中の患者です</p>
           <p className="mt-1 text-xs">
             {foundation.archive.archived_at ?? '日時未記録'}
@@ -3524,7 +3523,7 @@ function PatientFoundationPanel({ patient }: { patient: PatientOverview }) {
                     <span className="block text-muted-foreground">{lab.measured_at}</span>
                   </span>
                   {lab.abnormal || lab.stale ? (
-                    <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
+                    <span className="rounded-full border border-transparent bg-state-confirm/10 px-2 py-0.5 text-[11px] font-semibold text-state-confirm">
                       {[lab.abnormal ? '異常' : null, lab.stale ? '古い' : null]
                         .filter(Boolean)
                         .join('・')}
@@ -3553,10 +3552,10 @@ function PatientFoundationPanel({ patient }: { patient: PatientOverview }) {
                     </span>
                     <span
                       className={cn(
-                        'rounded-full border px-2 py-0.5 text-[11px] font-semibold',
+                        'rounded-full border border-transparent px-2 py-0.5 text-[11px] font-semibold',
                         insurance.expires_soon
-                          ? 'border-amber-200 bg-amber-50 text-amber-900'
-                          : 'border-emerald-200 bg-emerald-50 text-emerald-900',
+                          ? 'bg-state-confirm/10 text-state-confirm'
+                          : 'bg-state-done/10 text-state-done',
                       )}
                     >
                       {insurance.status_label}

@@ -289,7 +289,7 @@ export function EvidenceCaptureContent({
                 CAPTURE_TONE_TEXT[option.tone],
                 selected
                   ? CAPTURE_TONE_SELECTED[option.tone]
-                  : 'border-transparent bg-slate-100 hover:bg-slate-200/70',
+                  : 'border-transparent bg-muted hover:bg-muted/70',
               )}
               onClick={() => setSelectedCategory(option.id)}
             >
@@ -339,10 +339,12 @@ export function EvidenceCaptureContent({
       {/* オフライン保存の説明(target どおりの文言) */}
       <section
         aria-label="オフライン保存の説明"
-        className="mt-5 rounded-xl border border-amber-300 bg-amber-50 px-5 py-4"
+        className="mt-5 rounded-xl border border-state-confirm/30 bg-state-confirm/10 px-5 py-4"
         data-testid="capture-offline-note"
       >
-        <h2 className="text-[15px] font-bold leading-6 text-amber-600">通信がなくても保存します</h2>
+        <h2 className="text-[15px] font-bold leading-6 text-state-confirm">
+          通信がなくても保存します
+        </h2>
         <p className="mt-1 text-sm leading-6 text-muted-foreground">戻ったら自動で送信します。</p>
       </section>
 

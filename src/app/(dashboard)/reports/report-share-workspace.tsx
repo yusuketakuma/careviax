@@ -51,9 +51,9 @@ const DRAFT_STATUS_LABELS: Record<string, string> = {
 };
 
 const ISSUE_TONE_CLASSES: Record<ReportOpenIssue['severity'], string> = {
-  critical: 'border-red-200 bg-red-50 text-red-800',
-  warning: 'border-amber-200 bg-amber-50 text-amber-800',
-  info: 'border-sky-200 bg-sky-50 text-sky-800',
+  critical: 'border-transparent bg-state-blocked/10 text-state-blocked',
+  warning: 'border-transparent bg-state-confirm/10 text-state-confirm',
+  info: 'border-transparent bg-tag-info/10 text-tag-info',
 };
 
 const DELIVERY_CHANNEL_LABELS: Record<string, string> = {
@@ -166,7 +166,7 @@ function TodayDraftsCard({
                 <TableCell className="font-medium text-foreground">{row.patient_label}</TableCell>
                 <TableCell className="text-foreground">{row.recipient_label}</TableCell>
                 <TableCell>
-                  <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+                  <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
                     {DRAFT_STATUS_LABELS[row.status] ?? row.status}
                   </span>
                 </TableCell>
@@ -224,7 +224,7 @@ function WaitingReplyRow({ reply }: { reply: ReportWaitingReply }) {
       data-testid="report-waiting-reply"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="inline-flex shrink-0 items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-800">
+        <span className="inline-flex shrink-0 items-center rounded-full bg-state-waiting/10 px-2 py-0.5 text-[11px] font-bold text-state-waiting">
           {waitingBadgeLabel(reply.waiting_days)}
         </span>
         <p className="min-w-0 flex-1 text-sm font-bold leading-5 text-foreground">{reply.title}</p>
@@ -290,11 +290,11 @@ function WaitingBoxesSection({ data }: { data: ReportsTodayWorkspaceResponse }) 
             {data.resolved_today.map((item) => (
               <li
                 key={item.id}
-                className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3"
+                className="rounded-lg border border-state-done/30 bg-state-done/10 p-3"
                 data-testid="report-resolved-row"
               >
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex shrink-0 items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
+                  <span className="inline-flex shrink-0 items-center rounded-full bg-state-done/10 px-2 py-0.5 text-[11px] font-bold text-state-done">
                     回答受領 {formatTimeOfDay(item.received_at)}
                   </span>
                   <p className="min-w-0 flex-1 text-sm font-bold leading-5 text-foreground">
@@ -379,7 +379,7 @@ function CreatedReportStatusCell({ report }: { report: ReportCreatedRow }) {
     const failureReason = displayFailureReason(failedDelivery.failure_reason);
     return (
       <div className="space-y-2">
-        <div className="rounded-md border border-red-200 bg-red-50 p-2 text-red-800">
+        <div className="rounded-md border border-state-blocked/30 bg-state-blocked/10 p-2 text-state-blocked">
           <span className="block text-sm font-semibold">送付失敗</span>
           <span className="block text-xs leading-5">
             {(DELIVERY_CHANNEL_LABELS[failedDelivery.channel] ?? failedDelivery.channel) +
@@ -392,7 +392,7 @@ function CreatedReportStatusCell({ report }: { report: ReportCreatedRow }) {
             href={failedDelivery.action.href}
             className={cn(
               buttonVariants({ variant: 'outline', size: 'sm' }),
-              'mt-2 border-red-200 bg-white text-red-800 hover:bg-red-100',
+              'mt-2 border-state-blocked/30 bg-background text-state-blocked hover:bg-state-blocked/10',
             )}
           >
             {failedDelivery.action.label}
@@ -410,7 +410,7 @@ function CreatedReportStatusCell({ report }: { report: ReportCreatedRow }) {
 
   if (!report.reported_to_professional) {
     return (
-      <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+      <span className="inline-flex rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
         他職種未報告
       </span>
     );
@@ -418,7 +418,7 @@ function CreatedReportStatusCell({ report }: { report: ReportCreatedRow }) {
 
   return (
     <span className="space-y-1">
-      <span className="block text-sm font-semibold text-emerald-700">他職種へ報告済み</span>
+      <span className="block text-sm font-semibold text-state-done">他職種へ報告済み</span>
       <span className="block text-xs text-muted-foreground">
         {report.last_sent_at ? formatDateTime(report.last_sent_at) : '送信日時未記録'}
         {report.last_recipient_label ? ` / ${report.last_recipient_label}` : ''}
@@ -473,7 +473,7 @@ function CreatedReportsSection({ reports }: { reports: ReportCreatedRow[] }) {
                   </span>
                 </TableCell>
                 <TableCell>
-                  <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+                  <span className="inline-flex rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
                     {report.status_label}
                   </span>
                 </TableCell>
@@ -659,7 +659,7 @@ export function ReportShareWorkspace() {
               <CreatedReportsSection reports={data.created_reports} />
               <WaitingBoxesSection data={data} />
               <p
-                className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm leading-6 text-sky-800"
+                className="rounded-lg border border-tag-info/30 bg-tag-info/10 px-4 py-3 text-sm leading-6 text-tag-info"
                 data-testid="report-template-policy-bar"
               >
                 テンプレートは宛先ごとに自動選択されます(医師向け/ケアマネ向け/施設向け)。印象ではなく事実を書く構成です:

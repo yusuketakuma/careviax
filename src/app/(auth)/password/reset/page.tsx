@@ -3,13 +3,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -34,11 +28,11 @@ function evaluatePasswordStrength(password: string): PasswordStrength {
   const capped = Math.min(score, 4) as 0 | 1 | 2 | 3 | 4;
 
   const levels: Record<number, Omit<PasswordStrength, 'score'>> = {
-    0: { label: '非常に弱い', color: 'text-red-600', bgColor: 'bg-red-500' },
-    1: { label: '弱い', color: 'text-red-600', bgColor: 'bg-red-500' },
-    2: { label: '中', color: 'text-amber-600', bgColor: 'bg-amber-500' },
-    3: { label: '強い', color: 'text-blue-600', bgColor: 'bg-blue-500' },
-    4: { label: '非常に強い', color: 'text-green-600', bgColor: 'bg-green-500' },
+    0: { label: '非常に弱い', color: 'text-state-blocked', bgColor: 'bg-state-blocked' },
+    1: { label: '弱い', color: 'text-state-blocked', bgColor: 'bg-state-blocked' },
+    2: { label: '中', color: 'text-state-confirm', bgColor: 'bg-state-confirm' },
+    3: { label: '強い', color: 'text-tag-info', bgColor: 'bg-tag-info' },
+    4: { label: '非常に強い', color: 'text-state-done', bgColor: 'bg-state-done' },
   };
 
   return { score: capped, ...levels[capped] };
@@ -57,9 +51,12 @@ export default function PasswordResetPage() {
   const [success, setSuccess] = useState(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  const setRef = useCallback((index: number) => (el: HTMLInputElement | null) => {
-    inputRefs.current[index] = el;
-  }, []);
+  const setRef = useCallback(
+    (index: number) => (el: HTMLInputElement | null) => {
+      inputRefs.current[index] = el;
+    },
+    [],
+  );
 
   const strength = evaluatePasswordStrength(newPassword);
   const passwordsMatch = newPassword === confirmPassword;
@@ -116,7 +113,11 @@ export default function PasswordResetPage() {
       }
       setStep(2);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'メールの送信に失敗しました。メールアドレスを確認してください。');
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'メールの送信に失敗しました。メールアドレスを確認してください。',
+      );
     } finally {
       setIsLoading(false);
     }
@@ -160,7 +161,7 @@ export default function PasswordResetPage() {
       setError(
         err instanceof Error
           ? err.message
-          : 'パスワードのリセットに失敗しました。確認コードを確認してください。'
+          : 'パスワードのリセットに失敗しました。確認コードを確認してください。',
       );
     } finally {
       setIsLoading(false);
@@ -173,20 +174,16 @@ export default function PasswordResetPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="flex flex-col items-center gap-4 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
-                <Check className="h-6 w-6 text-green-600" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-state-done/15">
+                <Check className="h-6 w-6 text-state-done" />
               </div>
-              <h2 className="text-lg font-semibold text-slate-800">
+              <h2 className="text-lg font-semibold text-foreground">
                 パスワードをリセットしました
               </h2>
-              <p className="text-sm text-slate-500">
+              <p className="text-sm text-muted-foreground">
                 新しいパスワードでログインしてください。
               </p>
-              <Button
-                size="lg"
-                className="w-full bg-blue-600 hover:bg-blue-700"
-                onClick={() => router.push('/login')}
-              >
+              <Button size="lg" className="w-full" onClick={() => router.push('/login')}>
                 ログイン画面へ
               </Button>
             </div>
@@ -235,7 +232,7 @@ export default function PasswordResetPage() {
               <Button
                 type="submit"
                 size="lg"
-                className="mt-2 w-full bg-blue-600 hover:bg-blue-700"
+                className="mt-2 w-full"
                 disabled={!email || isLoading}
                 aria-busy={isLoading}
               >
@@ -246,7 +243,7 @@ export default function PasswordResetPage() {
               <div className="mt-2">
                 <Link
                   href="/login"
-                  className="inline-flex items-center text-sm text-slate-500 hover:text-slate-700"
+                  className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
                 >
                   <ArrowLeft className="mr-1 h-4 w-4" />
                   ログインに戻る
@@ -261,11 +258,7 @@ export default function PasswordResetPage() {
               {/* Verification code */}
               <div className="flex flex-col gap-1.5">
                 <Label>確認コード</Label>
-                <div
-                  className="flex justify-center gap-2"
-                  role="group"
-                  aria-label="確認コード入力"
-                >
+                <div className="flex justify-center gap-2" role="group" aria-label="確認コード入力">
                   {digits.map((digit, index) => (
                     <Input
                       key={index}
@@ -301,15 +294,11 @@ export default function PasswordResetPage() {
                   />
                   <button
                     type="button"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground"
                     onClick={() => setShowNewPassword(!showNewPassword)}
                     aria-label={showNewPassword ? 'パスワードを隠す' : 'パスワードを表示'}
                   >
-                    {showNewPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
+                    {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
 
@@ -320,19 +309,17 @@ export default function PasswordResetPage() {
                         <div
                           key={i}
                           className={`h-1.5 flex-1 rounded-full transition-colors ${
-                            i < strength.score ? strength.bgColor : 'bg-slate-200'
+                            i < strength.score ? strength.bgColor : 'bg-muted'
                           }`}
                         />
                       ))}
                     </div>
-                    <p className={`text-xs ${strength.color}`}>
-                      パスワード強度: {strength.label}
-                    </p>
+                    <p className={`text-xs ${strength.color}`}>パスワード強度: {strength.label}</p>
                   </div>
                 )}
 
                 {newPassword.length > 0 && !isLongEnough && (
-                  <p className="text-xs text-red-600">
+                  <p className="text-xs text-destructive">
                     パスワードは13文字以上で入力してください
                   </p>
                 )}
@@ -340,9 +327,7 @@ export default function PasswordResetPage() {
 
               {/* Confirm password */}
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="reset-confirm-password">
-                  新しいパスワード（確認）
-                </Label>
+                <Label htmlFor="reset-confirm-password">新しいパスワード（確認）</Label>
                 <Input
                   id="reset-confirm-password"
                   type="password"
@@ -353,7 +338,7 @@ export default function PasswordResetPage() {
                   disabled={isLoading}
                 />
                 {confirmPassword.length > 0 && !passwordsMatch && (
-                  <p className="text-xs text-red-600">パスワードが一致しません</p>
+                  <p className="text-xs text-destructive">パスワードが一致しません</p>
                 )}
               </div>
 
@@ -376,12 +361,9 @@ export default function PasswordResetPage() {
                 <Button
                   type="submit"
                   size="lg"
-                  className="flex-1 bg-blue-600 hover:bg-blue-700"
+                  className="flex-1"
                   disabled={
-                    isLoading ||
-                    digits.join('').length !== 6 ||
-                    !isLongEnough ||
-                    !passwordsMatch
+                    isLoading || digits.join('').length !== 6 || !isLongEnough || !passwordsMatch
                   }
                   aria-busy={isLoading}
                 >

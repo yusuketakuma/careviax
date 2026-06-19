@@ -19,7 +19,7 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 
 // --- Types ---
 
-type TimeSlot = 'morning' | 'noon' | 'evening' | 'bedtime';
+export type TimeSlot = 'morning' | 'noon' | 'evening' | 'bedtime';
 
 type DailySchedule = {
   date: string;
@@ -53,6 +53,16 @@ const SLOT_COLORS: Record<TimeSlot, string> = {
 
 const SLOTS: TimeSlot[] = ['morning', 'noon', 'evening', 'bedtime'];
 const EMPTY_PROFILES: MedicationProfile[] = [];
+const DOW_LABELS = ['日', '月', '火', '水', '木', '金', '土'] as const;
+const DOW_LONG_LABELS = [
+  '日曜日',
+  '月曜日',
+  '火曜日',
+  '水曜日',
+  '木曜日',
+  '金曜日',
+  '土曜日',
+] as const;
 
 // --- Helper ---
 
@@ -116,6 +126,20 @@ function buildCalendarSchedule(month: Date, profiles: MedicationProfile[]): Dail
   });
 }
 
+export function medicationCalendarColumnLabel(index: number) {
+  return DOW_LONG_LABELS[index] ?? '曜日';
+}
+
+export function formatMedicationCalendarDayLabel(dateKey: string) {
+  const date = new Date(`${dateKey}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return '日付未設定';
+  return format(date, 'yyyy年M月d日 EEEE', { locale: ja });
+}
+
+export function medicationCalendarSlotLabel(dateKey: string, slot: TimeSlot) {
+  return `${formatMedicationCalendarDayLabel(dateKey)} ${SLOT_LABELS[slot]}の服薬`;
+}
+
 function SlotCell({ drugs }: { drugs?: string[] }) {
   if (!drugs || drugs.length === 0) {
     return <span className="text-[10px] text-muted-foreground/40">—</span>;
@@ -123,7 +147,9 @@ function SlotCell({ drugs }: { drugs?: string[] }) {
   return (
     <ul className="space-y-0.5">
       {drugs.map((d, i) => (
-        <li key={i} className="text-[10px] leading-tight">{d}</li>
+        <li key={i} className="text-[10px] leading-tight">
+          {d}
+        </li>
       ))}
     </ul>
   );
@@ -146,7 +172,7 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
         `/api/medication-profiles?patient_id=${patientId}&is_current=true&limit=200`,
         {
           headers: { 'x-org-id': orgId },
-        }
+        },
       );
 
       if (!response.ok) {
@@ -161,7 +187,7 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
   const profiles = medicationQuery.data?.data ?? EMPTY_PROFILES;
   const schedule = useMemo(
     () => buildCalendarSchedule(currentMonth, profiles),
-    [currentMonth, profiles]
+    [currentMonth, profiles],
   );
 
   const weeks: DailySchedule[][] = [];
@@ -188,8 +214,6 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
     weeks.push(currentWeek);
   }
 
-  const dowLabels = ['日', '月', '火', '水', '木', '金', '土'];
-
   return (
     <div className="space-y-4">
       {/* Controls */}
@@ -203,9 +227,7 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
           >
             <ChevronLeft className="size-4" />
           </Button>
-          <span className="min-w-[120px] text-center text-base font-semibold">
-            {monthLabel}
-          </span>
+          <span className="min-w-[120px] text-center text-base font-semibold">{monthLabel}</span>
           <Button
             size="icon"
             variant="outline"
@@ -220,6 +242,7 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
             href={`/api/patients/${patientId}/medication-calendar/pdf?month=${format(currentMonth, 'yyyy-MM')}`}
             target="_blank"
             rel="noreferrer"
+            aria-label={`${monthLabel}の服薬カレンダーPDFを開く`}
             className={buttonVariants({ variant: 'outline', size: 'sm' })}
           >
             <FileText className="mr-1.5 size-3.5" aria-hidden="true" />
@@ -229,7 +252,7 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
             size="sm"
             variant="outline"
             onClick={() => window.print()}
-            aria-label="印刷"
+            aria-label={`${monthLabel}の服薬カレンダーを印刷`}
           >
             <Printer className="mr-1.5 size-3.5" aria-hidden="true" />
             印刷
@@ -260,7 +283,7 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
           服薬カレンダーを読み込んでいます...
         </div>
       ) : medicationQuery.error instanceof Error ? (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-6 text-sm text-rose-800">
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-6 text-sm text-destructive">
           {medicationQuery.error.message}
         </div>
       ) : profiles.length === 0 ? (
@@ -276,13 +299,16 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
           <table
             className="min-w-full border-collapse text-xs print:text-[9px]"
             role="grid"
-            aria-label="服薬カレンダー"
+            aria-label={`${monthLabel}の服薬カレンダー`}
           >
+            <caption className="sr-only">{monthLabel}の服薬カレンダー</caption>
             <thead>
               <tr>
-                {dowLabels.map((d, i) => (
+                {DOW_LABELS.map((d, i) => (
                   <th
                     key={i}
+                    scope="col"
+                    aria-label={medicationCalendarColumnLabel(i)}
                     className={`border border-border px-1 py-1 text-center font-medium ${
                       i === 0 ? 'text-red-600' : i === 6 ? 'text-blue-600' : 'text-muted-foreground'
                     }`}
@@ -297,7 +323,13 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
                 <tr key={wi}>
                   {week.map((day, di) => {
                     if (!day.date) {
-                      return <td key={di} className="border border-border bg-muted/20 p-1 align-top min-w-[100px] min-h-[80px]" />;
+                      return (
+                        <td
+                          key={di}
+                          aria-label={`${monthLabel}の対象外の日`}
+                          className="border border-border bg-muted/20 p-1 align-top min-w-[100px] min-h-[80px]"
+                        />
+                      );
                     }
                     const dayNum = parseInt(day.date.split('-')[2], 10);
                     const isSun = di === 0;
@@ -312,14 +344,23 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
                             isSun ? 'text-red-600' : isSat ? 'text-blue-600' : 'text-foreground'
                           }`}
                         >
-                          {dayNum}
+                          <time dateTime={day.date}>
+                            <span aria-hidden="true">{dayNum}</span>
+                            <span className="sr-only">
+                              {formatMedicationCalendarDayLabel(day.date)}
+                            </span>
+                          </time>
                         </div>
                         <div className="space-y-0.5">
                           {SLOTS.map((slot) => {
                             const drugs = day.slots[slot];
                             if (!drugs || drugs.length === 0) return null;
                             return (
-                              <div key={slot} className={`rounded px-1 py-0.5 ${SLOT_COLORS[slot]}`}>
+                              <div
+                                key={slot}
+                                aria-label={medicationCalendarSlotLabel(day.date, slot)}
+                                className={`rounded px-1 py-0.5 ${SLOT_COLORS[slot]}`}
+                              >
                                 <span className="font-medium">{SLOT_LABELS[slot]}</span>
                                 <SlotCell drugs={drugs} />
                               </div>
@@ -335,7 +376,6 @@ export function MedicationCalendarContent({ patientId }: { patientId: string }) 
           </table>
         </div>
       ) : null}
-
     </div>
   );
 }
