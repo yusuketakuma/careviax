@@ -32,7 +32,12 @@ const IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const DOCUMENT_MIME_TYPES = new Set([...IMAGE_MIME_TYPES, 'application/pdf']);
 const VISIT_ATTACHMENT_MIME_TYPES = new Set([...DOCUMENT_MIME_TYPES]);
 
-export type FilePurpose = 'prescription' | 'visit-photo' | 'report' | 'set-photo';
+export type FilePurpose =
+  | 'prescription'
+  | 'visit-photo'
+  | 'report'
+  | 'set-photo'
+  | 'consent-document';
 type GeneratedFilePurpose = 'bulk-export';
 type AnyFilePurpose = FilePurpose | GeneratedFilePurpose;
 type StoredFileStatus = 'pending_upload' | 'uploaded';
@@ -45,6 +50,7 @@ function isAnyFilePurpose(value: unknown): value is AnyFilePurpose {
     value === 'visit-photo' ||
     value === 'report' ||
     value === 'set-photo' ||
+    value === 'consent-document' ||
     value === 'bulk-export'
   );
 }
@@ -362,6 +368,7 @@ function assertAllowedUpload(args: { purpose: FilePurpose; mimeType: string; siz
 function assertUploadReferenceIds(args: CreatePresignedUploadArgs) {
   const missingReference =
     (args.purpose === 'prescription' && !args.patientId) ||
+    (args.purpose === 'consent-document' && !args.patientId) ||
     (args.purpose === 'visit-photo' && !args.visitRecordId) ||
     (args.purpose === 'report' && !args.reportId);
 
@@ -397,6 +404,8 @@ function buildStorageKey(args: {
   switch (args.purpose) {
     case 'prescription':
       return `prescriptions/${args.orgId}/${args.patientId}/${args.fileId}-${safeName}`;
+    case 'consent-document':
+      return `consent-documents/${args.orgId}/${args.patientId}/${args.fileId}-${safeName}`;
     case 'visit-photo':
       return `visit-photos/${args.orgId}/${args.visitRecordId}/${args.fileId}-${safeName}`;
     case 'report':
@@ -498,11 +507,14 @@ function isStoredFileReferenceConsistent(record: {
 }) {
   switch (record.purpose) {
     case 'prescription':
+    case 'consent-document':
       return (
         record.patientId !== null &&
         hasExpectedStorageKeyPrefix(
           record.storageKey,
-          `prescriptions/${record.orgId}/${record.patientId}/`,
+          record.purpose === 'prescription'
+            ? `prescriptions/${record.orgId}/${record.patientId}/`
+            : `consent-documents/${record.orgId}/${record.patientId}/`,
         )
       );
     case 'visit-photo':
@@ -1037,6 +1049,7 @@ async function assertStoredFileAccess(args: {
       });
       return;
     case 'prescription':
+    case 'consent-document':
       await assertPatientFileAccess({
         orgId: args.orgId,
         patientId: args.record.patientId,

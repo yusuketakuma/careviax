@@ -403,7 +403,7 @@ describe('/api/files/presigned-upload POST', () => {
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       details: {
-        patient_id: ['patient_id は処方箋アップロードでのみ指定できます'],
+        patient_id: ['patient_id は処方箋または同意書アップロードでのみ指定できます'],
       },
     });
     expect(createPresignedUploadMock).not.toHaveBeenCalled();

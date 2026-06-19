@@ -158,11 +158,11 @@ describe('/api/consent-records/[id]', () => {
     expect(consentRecordUpdateMock).not.toHaveBeenCalled();
   });
 
-  it('updates expiry date and document url', async () => {
+  it('updates expiry date and audited document url', async () => {
     const response = (await PATCH(
       createRequest('PATCH', {
         expiry_date: '2026-12-31',
-        document_url: 'https://example.com/consent.pdf',
+        document_url: '/api/files/file_1/presigned-download?download=1',
       }),
       {
         params: Promise.resolve({ id: 'consent_1' }),
@@ -184,7 +184,7 @@ describe('/api/consent-records/[id]', () => {
       },
       data: {
         expiry_date: new Date('2026-12-31'),
-        document_url: 'https://example.com/consent.pdf',
+        document_url: '/api/files/file_1/presigned-download?download=1',
       },
     });
     expect(consentRecordFindUniqueMock).toHaveBeenCalledWith({
@@ -197,7 +197,7 @@ describe('/api/consent-records/[id]', () => {
 
     const response = (await PATCH(
       createRequest('PATCH', {
-        document_url: 'https://example.com/consent.pdf',
+        expiry_date: '2026-12-31',
       }),
       {
         params: Promise.resolve({ id: 'consent_1' }),
@@ -223,7 +223,7 @@ describe('/api/consent-records/[id]', () => {
 
     const response = (await PATCH(
       createRequest('PATCH', {
-        document_url: 'https://example.com/consent.pdf',
+        expiry_date: '2026-12-31',
       }),
       {
         params: Promise.resolve({ id: 'consent_1' }),
@@ -246,7 +246,7 @@ describe('/api/consent-records/[id]', () => {
 
     const response = (await PATCH(
       createRequest('PATCH', {
-        document_url: 'https://example.com/consent.pdf',
+        expiry_date: '2026-12-31',
       }),
       {
         params: Promise.resolve({ id: 'consent_1' }),
@@ -265,9 +265,31 @@ describe('/api/consent-records/[id]', () => {
         updated_at: new Date('2026-01-01T00:00:00.000Z'),
       },
       data: {
-        document_url: 'https://example.com/consent.pdf',
+        expiry_date: new Date('2026-12-31'),
       },
     });
+    expect(consentRecordFindUniqueMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects external document urls before mutating the consent record', async () => {
+    const response = (await PATCH(
+      createRequest('PATCH', {
+        document_url: 'https://example.com/consent.pdf',
+      }),
+      {
+        params: Promise.resolve({ id: 'consent_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        document_url: ['同意書文書は監査済みファイルURLまたは document_file_id で指定してください'],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(consentRecordUpdateMock).not.toHaveBeenCalled();
     expect(consentRecordFindUniqueMock).not.toHaveBeenCalled();
   });
 

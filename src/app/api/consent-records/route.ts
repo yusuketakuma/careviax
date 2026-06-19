@@ -6,6 +6,19 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { prisma } from '@/lib/db/client';
+import {
+  buildAuditedConsentDocumentUrl,
+  CONSENT_DOCUMENT_MIME_TYPES,
+  normalizeAuditedConsentDocumentUrl,
+  serializeConsentRecordDocumentUrl,
+} from '@/server/services/consent-record-documents';
+
+function optionalTrimmedString(value: unknown) {
+  if (value === null || value === undefined) return value;
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
 
 const createConsentSchema = z.object({
   patient_id: z.string().min(1, '患者IDは必須です'),
@@ -23,8 +36,65 @@ const createConsentSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
-  document_url: z.string().url().optional(),
+  document_url: z.preprocess(optionalTrimmedString, z.string().max(500).optional().nullable()),
+  document_file_id: z.preprocess(optionalTrimmedString, z.string().min(1).optional()),
 });
+
+async function validateConsentDocumentFileAsset(args: {
+  orgId: string;
+  patientId: string;
+  fileId: string;
+}) {
+  return prisma.fileAsset.findFirst({
+    where: {
+      id: args.fileId,
+      org_id: args.orgId,
+      purpose: 'consent-document',
+      status: 'uploaded',
+      mime_type: { in: CONSENT_DOCUMENT_MIME_TYPES },
+      OR: [{ patient_id: null }, { patient_id: args.patientId }],
+    },
+    select: { id: true },
+  });
+}
+
+function resolveConsentDocumentUrlInput(args: {
+  documentUrl?: string | null;
+  documentFileId?: string;
+}) {
+  if (args.documentUrl !== undefined && args.documentFileId) {
+    return {
+      ok: false as const,
+      response: validationError('入力値が不正です', {
+        document_url: ['document_url と document_file_id は同時に指定できません'],
+      }),
+    };
+  }
+
+  if (args.documentFileId) {
+    return { ok: true as const, documentUrl: buildAuditedConsentDocumentUrl(args.documentFileId) };
+  }
+
+  if (args.documentUrl === undefined) {
+    return { ok: true as const, documentUrl: undefined };
+  }
+
+  if (args.documentUrl === null) {
+    return { ok: true as const, documentUrl: null };
+  }
+
+  const normalizedUrl = normalizeAuditedConsentDocumentUrl(args.documentUrl);
+  if (!normalizedUrl) {
+    return {
+      ok: false as const,
+      response: validationError('入力値が不正です', {
+        document_url: ['同意書文書は監査済みファイルURLまたは document_file_id で指定してください'],
+      }),
+    };
+  }
+
+  return { ok: true as const, documentUrl: normalizedUrl };
+}
 
 export const GET = withAuthContext(
   async (req, ctx) => {
@@ -76,7 +146,9 @@ export const GET = withAuthContext(
     ]);
 
     const hasMore = records.length > limit;
-    const data = hasMore ? records.slice(0, limit) : records;
+    const data = (hasMore ? records.slice(0, limit) : records).map(
+      serializeConsentRecordDocumentUrl,
+    );
     const nextCursor = hasMore ? data[data.length - 1].id : undefined;
 
     return success({ data, nextCursor, hasMore, totalCount });
@@ -106,7 +178,14 @@ export const POST = withAuthContext(
       obtained_date,
       expiry_date,
       document_url,
+      document_file_id,
     } = parsed.data;
+
+    const documentInput = resolveConsentDocumentUrlInput({
+      documentUrl: document_url,
+      documentFileId: document_file_id,
+    });
+    if (!documentInput.ok) return documentInput.response;
 
     // Validate patient and optional case belong to this org
     const refResult = await validateOrgReferences(ctx.orgId, {
@@ -114,6 +193,19 @@ export const POST = withAuthContext(
       ...(case_id ? { case_id } : {}),
     });
     if (!refResult.ok) return refResult.response;
+
+    if (document_file_id) {
+      const fileAsset = await validateConsentDocumentFileAsset({
+        orgId: ctx.orgId,
+        patientId: patient_id,
+        fileId: document_file_id,
+      });
+      if (!fileAsset) {
+        return validationError('入力値が不正です', {
+          document_file_id: ['患者に紐づくアップロード済み同意書ファイルではありません'],
+        });
+      }
+    }
 
     // Check for active duplicate
     const duplicate = await prisma.consentRecord.findFirst({
@@ -177,14 +269,14 @@ export const POST = withAuthContext(
           method,
           obtained_date: new Date(obtained_date),
           expiry_date: expiry_date ? new Date(expiry_date) : null,
-          document_url: document_url ?? null,
+          document_url: documentInput.documentUrl ?? null,
           is_active: true,
           access_restricted: false,
         },
       });
     });
 
-    return success(record, 201);
+    return success(serializeConsentRecordDocumentUrl(record), 201);
   },
   {
     permission: 'canVisit',

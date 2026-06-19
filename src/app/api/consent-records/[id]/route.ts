@@ -8,7 +8,20 @@ import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
 import { hasPermission } from '@/lib/auth/permissions';
 import { canAccessCaseScopedPatientResource } from '@/server/services/patient-access';
+import {
+  buildAuditedConsentDocumentUrl,
+  CONSENT_DOCUMENT_MIME_TYPES,
+  normalizeAuditedConsentDocumentUrl,
+  serializeConsentRecordDocumentUrl,
+} from '@/server/services/consent-record-documents';
 import type { ConsentRecord } from '@prisma/client';
+
+function optionalTrimmedString(value: unknown) {
+  if (value === null || value === undefined) return value;
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
 
 const updateConsentSchema = z.object({
   expiry_date: z
@@ -16,7 +29,8 @@ const updateConsentSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional()
     .nullable(),
-  document_url: z.string().url().optional().nullable(),
+  document_url: z.preprocess(optionalTrimmedString, z.string().max(500).optional().nullable()),
+  document_file_id: z.preprocess(optionalTrimmedString, z.string().min(1).optional()),
 });
 
 type ConsentPatchResult =
@@ -24,6 +38,62 @@ type ConsentPatchResult =
   | { error: 'not_found' | 'conflict'; message?: string };
 
 class ConsentPatchConflictError extends Error {}
+
+async function validateConsentDocumentFileAsset(args: {
+  orgId: string;
+  patientId: string;
+  fileId: string;
+}) {
+  return prisma.fileAsset.findFirst({
+    where: {
+      id: args.fileId,
+      org_id: args.orgId,
+      purpose: 'consent-document',
+      status: 'uploaded',
+      mime_type: { in: CONSENT_DOCUMENT_MIME_TYPES },
+      OR: [{ patient_id: null }, { patient_id: args.patientId }],
+    },
+    select: { id: true },
+  });
+}
+
+function resolveConsentDocumentUrlInput(args: {
+  documentUrl?: string | null;
+  documentFileId?: string;
+}) {
+  if (args.documentUrl !== undefined && args.documentFileId) {
+    return {
+      ok: false as const,
+      response: validationError('入力値が不正です', {
+        document_url: ['document_url と document_file_id は同時に指定できません'],
+      }),
+    };
+  }
+
+  if (args.documentFileId) {
+    return { ok: true as const, documentUrl: buildAuditedConsentDocumentUrl(args.documentFileId) };
+  }
+
+  if (args.documentUrl === undefined) {
+    return { ok: true as const, documentUrl: undefined };
+  }
+
+  if (args.documentUrl === null) {
+    return { ok: true as const, documentUrl: null };
+  }
+
+  const normalizedUrl = normalizeAuditedConsentDocumentUrl(args.documentUrl);
+  if (!normalizedUrl) {
+    return {
+      ok: false as const,
+      response: validationError('入力値が不正です', {
+        document_url: ['同意書文書は監査済みファイルURLまたは document_file_id で指定してください'],
+      }),
+    };
+  }
+
+  return { ok: true as const, documentUrl: normalizedUrl };
+}
 
 export const GET = withAuthContext<{ id: string }>(
   async (req: NextRequest, ctx, routeContext: AuthRouteContext<{ id: string }>) => {
@@ -55,7 +125,7 @@ export const GET = withAuthContext<{ id: string }>(
     });
     if (!visibleRecord) return notFound('同意記録が見つかりません');
 
-    return success(visibleRecord);
+    return success(serializeConsentRecordDocumentUrl(visibleRecord));
   },
   { permission: 'canVisit' },
 );
@@ -93,12 +163,33 @@ export const PATCH = withAuthContext<{ id: string }>(
     });
     if (!canAccessConsent) return notFound('同意記録が見つかりません');
 
-    const { expiry_date, document_url } = parsed.data;
+    const { expiry_date, document_url, document_file_id } = parsed.data;
+    const documentInput = resolveConsentDocumentUrlInput({
+      documentUrl: document_url,
+      documentFileId: document_file_id,
+    });
+    if (!documentInput.ok) return documentInput.response;
+
+    if (document_file_id) {
+      const fileAsset = await validateConsentDocumentFileAsset({
+        orgId: ctx.orgId,
+        patientId: existing.patient_id,
+        fileId: document_file_id,
+      });
+      if (!fileAsset) {
+        return validationError('入力値が不正です', {
+          document_file_id: ['患者に紐づくアップロード済み同意書ファイルではありません'],
+        });
+      }
+    }
+
     const updateData = {
       ...(expiry_date !== undefined
         ? { expiry_date: expiry_date ? new Date(expiry_date) : null }
         : {}),
-      ...(document_url !== undefined ? { document_url } : {}),
+      ...(documentInput.documentUrl !== undefined
+        ? { document_url: documentInput.documentUrl }
+        : {}),
     };
 
     const result = await withOrgContext(ctx.orgId, async (tx): Promise<ConsentPatchResult> => {
@@ -144,7 +235,7 @@ export const PATCH = withAuthContext<{ id: string }>(
       return notFound('同意記録が見つかりません');
     }
 
-    return success(result.record);
+    return success(serializeConsentRecordDocumentUrl(result.record));
   },
   { permission: 'canVisit' },
 );

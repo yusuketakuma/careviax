@@ -34,7 +34,7 @@ const optionalTrimmedStringSchema = z.preprocess(
 const presignedUploadSchema = z
   .object({
     // 'set-photo' はセット監査(p0_15)の写真確認で使用。エンティティ参照を必要としない画像専用用途。
-    purpose: z.enum(['prescription', 'visit-photo', 'report', 'set-photo']),
+    purpose: z.enum(['prescription', 'visit-photo', 'report', 'set-photo', 'consent-document']),
     file_name: z
       .string()
       .trim()
@@ -60,6 +60,14 @@ const presignedUploadSchema = z
       });
     }
 
+    if (value.purpose === 'consent-document' && !value.patient_id) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['patient_id'],
+        message: '同意書アップロードには patient_id が必要です',
+      });
+    }
+
     if (value.purpose === 'visit-photo' && !value.visit_record_id) {
       ctx.addIssue({
         code: 'custom',
@@ -76,11 +84,15 @@ const presignedUploadSchema = z
       });
     }
 
-    if (value.purpose !== 'prescription' && value.patient_id) {
+    if (
+      value.purpose !== 'prescription' &&
+      value.purpose !== 'consent-document' &&
+      value.patient_id
+    ) {
       ctx.addIssue({
         code: 'custom',
         path: ['patient_id'],
-        message: 'patient_id は処方箋アップロードでのみ指定できます',
+        message: 'patient_id は処方箋または同意書アップロードでのみ指定できます',
       });
     }
 
@@ -332,6 +344,32 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if (parsed.data.purpose === 'consent-document') {
+    if (!hasPermission(ctx.role, 'canVisit')) {
+      return forbiddenResponse('同意書ファイルのアップロード権限がありません');
+    }
+
+    const patientId = parsed.data.patient_id;
+    if (!patientId) {
+      return validationError('同意書アップロードには patient_id が必要です');
+    }
+
+    const writable = await requireWritablePatient(prisma, ctx, patientId);
+    if ('response' in writable) return writable.response;
+
+    if (
+      !canBypassVisitScheduleAssignmentAccess(ctx) &&
+      !(await canAccessPrescriptionPatient({
+        orgId: ctx.orgId,
+        patientId,
+        userId: ctx.userId,
+        role: ctx.role,
+      }))
+    ) {
+      return forbiddenResponse('この患者への同意書アップロード権限がありません');
+    }
+  }
+
   if (parsed.data.purpose === 'visit-photo') {
     if (!hasPermission(ctx.role, 'canVisit')) {
       return forbiddenResponse('訪問写真ファイルのアップロード権限がありません');
@@ -385,7 +423,10 @@ export async function POST(req: NextRequest) {
       fileName: parsed.data.file_name,
       mimeType: parsed.data.mime_type,
       sizeBytes: parsed.data.size_bytes,
-      patientId: parsed.data.purpose === 'prescription' ? parsed.data.patient_id : undefined,
+      patientId:
+        parsed.data.purpose === 'prescription' || parsed.data.purpose === 'consent-document'
+          ? parsed.data.patient_id
+          : undefined,
       visitRecordId:
         parsed.data.purpose === 'visit-photo' ? parsed.data.visit_record_id : undefined,
       reportId: parsed.data.purpose === 'report' ? parsed.data.report_id : undefined,
