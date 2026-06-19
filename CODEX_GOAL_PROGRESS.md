@@ -3418,3 +3418,68 @@ Implemented:
 - Direct patient-card browser proof remains blocked until the local e2e DB is prepared with the unapplied v0.2 migrations, including `AuditLog.actor_pharmacy_id` and `ConsentRecord.document_file_id`.
 - New migrations were not applied to any database in this slice.
 - Remaining v0.2 close-out work should continue with non-DB-mutating proof or wait for explicit migration-application approval.
+
+## 20260619-2240 JST - Pharmacy Cooperation High-Risk Action Confirmation
+
+### Completed
+
+- Added a shared `ConfirmDialog` review step before pharmacy-cooperation workflow state transitions that previously executed from table row buttons immediately.
+- Covered patient share activation, patient-link base approval, partner acceptance, link decline, visit-request acceptance/decline, partner-visit-record submit/confirm/confirm+report/return, and physician report draft creation.
+- Kept the existing API/mutation contracts intact; the dialog holds a row snapshot and calls the same mutation payloads only after confirmation.
+- Replaced raw workflow query `error.message` detail display with safe retry/support guidance.
+- Added targeted tests proving high-risk actions do not issue fetches before confirmation and that confirmed actions keep their existing payloads, including `doctor_report_required: true` for `確認+報告`.
+
+### Files Changed
+
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`
+- `Plans.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`: passed, unchanged.
+- `pnpm exec vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`: passed, 1 file / 10 tests.
+- `pnpm format:check`: passed.
+- `pnpm exec eslint 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+
+### Remaining / Next Loop
+
+- Current unrelated dirty file preserved: `tools/tests/ui-route-mocked-smoke.spec.ts`.
+- Remaining UI audit candidates still include pharmacy-cooperation responsive table density, false-empty query screens, broader custom table/DataTable consolidation, select accessible-name gaps, and expanded browser/a11y coverage.
+
+## 20260619-2239 JST - Pharmacy Cooperation Workflow Confirmation Gates
+
+### Completed
+
+- Added a shared `ConfirmDialog` gate for high-risk pharmacy cooperation workflow transitions: patient-share activation, patient-link approval/acceptance/decline, visit-request acceptance/decline, partner visit record submit/confirm/return, and physician report draft creation.
+- Added per-action confirmation headings, labels, minimized detail lines, and destructive styling for decline/return operations.
+- Replaced raw workflow query error detail rendering with a generic support-safe message.
+- Updated the workflow UI unit tests and the route-mocked Playwright smoke so state-changing actions are proven to call APIs only after confirmation.
+
+### Files Changed
+
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`
+- `tools/tests/ui-route-mocked-smoke.spec.ts`
+- `Plans.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- Targeted Prettier over touched workflow and Playwright files: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 10 tests.
+- Targeted `pnpm exec eslint` over touched workflow and Playwright files: passed.
+- `pnpm typecheck`: passed.
+- Temporary `pnpm dev:e2e:local` on `localhost:3012`: started and served the targeted smoke.
+- `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-route-mocked-smoke.spec.ts --project=chromium -g "pharmacy cooperation route-mocked browser workflow smoke"`: passed, 1 Chromium test.
+- `pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Local e2e DB remains behind 18 migrations, confirmed read-only by `prisma migrate status`.
+- Direct patient-card browser proof and real migration application confirmation still require explicit approval to apply the pending migrations.
