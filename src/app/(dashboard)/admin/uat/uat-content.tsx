@@ -18,11 +18,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SegmentedProgressBar } from '@/components/ui/segmented-progress-bar';
 import { Separator } from '@/components/ui/separator';
-import {
-  UAT_CHECKLIST,
-  UAT_PRIORITY_OPTIONS,
-  UAT_STATUS_OPTIONS,
-} from '@/lib/constants/uat';
+import { UAT_CHECKLIST, UAT_PRIORITY_OPTIONS, UAT_STATUS_OPTIONS } from '@/lib/constants/uat';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import {
   createUatFeedbackDraft,
@@ -30,6 +26,11 @@ import {
   mergeUatFeedbackDraft,
   type UatFeedbackDraft,
 } from '@/lib/uat-feedback';
+
+const UAT_FEEDBACK_REQUIRED_MESSAGE = 'フィードバック内容を入力してください';
+const UAT_FEEDBACK_HELP_MESSAGE = 'フィードバック内容を入力すると送信できます。';
+const UAT_FEEDBACK_HELP_ID = 'uat-feedback-help';
+const UAT_FEEDBACK_ERROR_ID = 'uat-feedback-error';
 
 type UatFeedbackItem = {
   id: string;
@@ -206,7 +207,7 @@ async function fetchOrgJson<T>(
   orgId: string,
   input: RequestInfo | URL,
   init: RequestInit | undefined,
-  fallbackMessage: string
+  fallbackMessage: string,
 ) {
   const response = await fetch(input, {
     ...init,
@@ -216,9 +217,7 @@ async function fetchOrgJson<T>(
     },
   });
 
-  const payload = (await response.json().catch(() => null)) as
-    | (T & { message?: string })
-    | null;
+  const payload = (await response.json().catch(() => null)) as (T & { message?: string }) | null;
 
   if (!response.ok) {
     throw new Error(payload?.message ?? fallbackMessage);
@@ -236,6 +235,7 @@ export function UatContent() {
   const queryClient = useQueryClient();
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [feedback, setFeedback] = useState('');
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
   const [priority, setPriority] = useState('medium');
   const [feedbackDrafts, setFeedbackDrafts] = useState<Record<string, UatFeedbackDraft>>({});
 
@@ -246,7 +246,7 @@ export function UatContent() {
         orgId,
         '/api/admin/uat-feedback',
         undefined,
-        'UAT フィードバックの取得に失敗しました'
+        'UAT フィードバックの取得に失敗しました',
       ),
     enabled: !!orgId,
   });
@@ -257,7 +257,7 @@ export function UatContent() {
         orgId,
         '/api/admin/pilot-readiness',
         undefined,
-        'pilot readiness の取得に失敗しました'
+        'pilot readiness の取得に失敗しました',
       ),
     enabled: !!orgId,
   });
@@ -268,7 +268,7 @@ export function UatContent() {
         orgId,
         '/api/admin/uat-feedback/summary',
         undefined,
-        'UAT 集計の取得に失敗しました'
+        'UAT 集計の取得に失敗しました',
       ),
     enabled: !!orgId,
   });
@@ -279,7 +279,7 @@ export function UatContent() {
         orgId,
         '/api/pharmacists?include_collaborators=true',
         undefined,
-        '担当候補の取得に失敗しました'
+        '担当候補の取得に失敗しました',
       ),
     enabled: !!orgId,
   });
@@ -290,7 +290,7 @@ export function UatContent() {
         orgId,
         '/api/admin/pilot-org-audit',
         undefined,
-        'pilot org audit の取得に失敗しました'
+        'pilot org audit の取得に失敗しました',
       ),
     enabled: !!orgId,
   });
@@ -301,7 +301,7 @@ export function UatContent() {
         orgId,
         '/api/admin/pilot-launch-dossier',
         undefined,
-        'pilot launch dossier の取得に失敗しました'
+        'pilot launch dossier の取得に失敗しました',
       ),
     enabled: !!orgId,
   });
@@ -324,7 +324,7 @@ export function UatContent() {
             source: 'pilot_pharmacy',
           }),
         },
-        'UAT フィードバックの送信に失敗しました'
+        'UAT フィードバックの送信に失敗しました',
       ),
     onSuccess: async () => {
       toast.success('フィードバックを保存しました');
@@ -337,7 +337,9 @@ export function UatContent() {
       ]);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'UAT フィードバックの送信に失敗しました');
+      toast.error(
+        error instanceof Error ? error.message : 'UAT フィードバックの送信に失敗しました',
+      );
     },
   });
   const updateMutation = useMutation({
@@ -357,7 +359,7 @@ export function UatContent() {
             due_date: draft.due_date ? new Date(draft.due_date).toISOString() : null,
           }),
         },
-        'UAT フィードバックの更新に失敗しました'
+        'UAT フィードバックの更新に失敗しました',
       ),
     onSuccess: async () => {
       toast.success('フィードバックの triage 状態を更新しました');
@@ -369,29 +371,35 @@ export function UatContent() {
       ]);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'UAT フィードバックの更新に失敗しました');
+      toast.error(
+        error instanceof Error ? error.message : 'UAT フィードバックの更新に失敗しました',
+      );
     },
   });
 
-  const totalItems = UAT_CHECKLIST.reduce(
-    (acc, s) => acc + s.items.length,
-    0
-  );
+  const totalItems = UAT_CHECKLIST.reduce((acc, s) => acc + s.items.length, 0);
   const checkedCount = checked.size;
   const readiness = readinessQuery.data?.data;
   const summary = summaryQuery.data?.data;
   const orgAudit = orgAuditQuery.data?.data;
   const dossier = dossierQuery.data?.data;
   const collaborators = dedupeCollaboratorOptions(collaboratorsQuery.data?.data ?? []);
-  const collaboratorError = collaboratorsQuery.error instanceof Error
-    ? collaboratorsQuery.error.message
-    : '担当候補の取得に失敗しました';
+  const collaboratorError =
+    collaboratorsQuery.error instanceof Error
+      ? collaboratorsQuery.error.message
+      : '担当候補の取得に失敗しました';
+  const feedbackIsBlank = !feedback.trim();
+  const feedbackDescriptionId = feedbackError
+    ? UAT_FEEDBACK_ERROR_ID
+    : feedbackIsBlank
+      ? UAT_FEEDBACK_HELP_ID
+      : undefined;
 
   const priorityLabelByValue = new Map<string, string>(
-    UAT_PRIORITY_OPTIONS.map((option) => [option.value, option.label] as const)
+    UAT_PRIORITY_OPTIONS.map((option) => [option.value, option.label] as const),
   );
   const statusLabelByValue = new Map<string, string>(
-    UAT_STATUS_OPTIONS.map((option) => [option.value, option.label] as const)
+    UAT_STATUS_OPTIONS.map((option) => [option.value, option.label] as const),
   );
 
   function getDraft(item: UatFeedbackItem): UatFeedbackDraft {
@@ -429,10 +437,11 @@ export function UatContent() {
   }
 
   async function handleSubmitFeedback() {
-    if (!feedback.trim()) {
-      toast.error('フィードバック内容を入力してください');
+    if (feedbackIsBlank) {
+      setFeedbackError(UAT_FEEDBACK_REQUIRED_MESSAGE);
       return;
     }
+    setFeedbackError(null);
     await submitMutation.mutateAsync();
   }
 
@@ -473,10 +482,12 @@ export function UatContent() {
                 <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
                   <p className="text-xs text-muted-foreground">UAT / カバレッジ</p>
                   <p className="mt-1 text-lg font-semibold text-foreground">
-                    blocker {dossier.uat_summary.blocker_count} / flagged {dossier.org_audit.coverage.flagged_patient_count}
+                    blocker {dossier.uat_summary.blocker_count} / flagged{' '}
+                    {dossier.org_audit.coverage.flagged_patient_count}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    圏外 {dossier.org_audit.coverage.uncovered_count} / 要確認 {dossier.org_audit.coverage.review_required_count}
+                    圏外 {dossier.org_audit.coverage.uncovered_count} / 要確認{' '}
+                    {dossier.org_audit.coverage.review_required_count}
                   </p>
                 </div>
                 <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
@@ -484,9 +495,13 @@ export function UatContent() {
                   <p className="mt-1 text-sm font-semibold text-foreground">
                     PMDA {dossier.external_readiness.pmda.ready_for_import_test ? 'ok' : 'pending'}
                     {' / '}
-                    Backup {dossier.external_readiness.backup.ready_for_live_drill ? 'ready' : 'pending'}
+                    Backup{' '}
+                    {dossier.external_readiness.backup.ready_for_live_drill ? 'ready' : 'pending'}
                     {' / '}
-                    ISMS {dossier.external_readiness.isms.ready_for_quote_request ? 'docs ok' : 'pending'}
+                    ISMS{' '}
+                    {dossier.external_readiness.isms.ready_for_quote_request
+                      ? 'docs ok'
+                      : 'pending'}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     drill 記録 {dossier.external_readiness.backup.recorded_runs.length} 件
@@ -501,7 +516,9 @@ export function UatContent() {
                   </p>
                   <p className="text-xs text-muted-foreground">
                     UAT {dossier.uat_summary.total_feedback} 件
-                    {dossier.org_audit.coverage.flagged_patients_truncated ? ' / flagged preview truncated' : ''}
+                    {dossier.org_audit.coverage.flagged_patients_truncated
+                      ? ' / flagged preview truncated'
+                      : ''}
                   </p>
                 </div>
               </div>
@@ -534,7 +551,8 @@ export function UatContent() {
               <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
                 <p className="text-xs text-muted-foreground">施設患者</p>
                 <p className="mt-1 text-lg font-semibold text-foreground">
-                  {readiness.case_summary.facility_linked_case_count} / {readiness.case_summary.active_case_count}
+                  {readiness.case_summary.facility_linked_case_count} /{' '}
+                  {readiness.case_summary.active_case_count}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   施設数 {readiness.case_summary.facility_count}
@@ -555,7 +573,8 @@ export function UatContent() {
                   {readiness.uat_summary.blocker_count} 件
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  critical {readiness.uat_summary.critical_count} / high {readiness.uat_summary.high_count}
+                  critical {readiness.uat_summary.critical_count} / high{' '}
+                  {readiness.uat_summary.high_count}
                 </p>
               </div>
               <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
@@ -686,7 +705,8 @@ export function UatContent() {
                         className="rounded-md border border-border/70 bg-background px-3 py-2 text-xs"
                       >
                         <p className="font-medium text-foreground">
-                          [{priorityLabelByValue.get(item.priority) ?? item.priority}] {item.feedback}
+                          [{priorityLabelByValue.get(item.priority) ?? item.priority}]{' '}
+                          {item.feedback}
                         </p>
                         <p className="mt-1 text-muted-foreground">
                           状態 {statusLabelByValue.get(item.status) ?? item.status} /{' '}
@@ -722,7 +742,8 @@ export function UatContent() {
                 <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
                   <p className="text-xs text-muted-foreground">店舗構成</p>
                   <p className="mt-1 text-lg font-semibold text-foreground">
-                    {orgAudit.org_structure.site_count} 店舗 / {orgAudit.org_structure.active_member_count} 名
+                    {orgAudit.org_structure.site_count} 店舗 /{' '}
+                    {orgAudit.org_structure.active_member_count} 名
                   </p>
                   <p className="text-xs text-muted-foreground">
                     集計時刻 {new Date(orgAudit.generated_at).toLocaleString('ja-JP')}
@@ -731,16 +752,20 @@ export function UatContent() {
                 <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
                   <p className="text-xs text-muted-foreground">訪問カバレッジ</p>
                   <p className="mt-1 text-lg font-semibold text-foreground">
-                    area {orgAudit.coverage.service_area_covered_count} / 16km {orgAudit.coverage.radius_16km_covered_count}
+                    area {orgAudit.coverage.service_area_covered_count} / 16km{' '}
+                    {orgAudit.coverage.radius_16km_covered_count}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    圏外 {orgAudit.coverage.uncovered_count} / 要確認 {orgAudit.coverage.review_required_count} / flagged {orgAudit.coverage.flagged_patient_count}
+                    圏外 {orgAudit.coverage.uncovered_count} / 要確認{' '}
+                    {orgAudit.coverage.review_required_count} / flagged{' '}
+                    {orgAudit.coverage.flagged_patient_count}
                   </p>
                 </div>
                 <div className="rounded-lg border border-border/70 bg-muted/20 p-3">
                   <p className="text-xs text-muted-foreground">pilot 対象</p>
                   <p className="mt-1 text-lg font-semibold text-foreground">
-                    active {orgAudit.pilot_targets.active_case_count} / facility {orgAudit.pilot_targets.facility_linked_case_count}
+                    active {orgAudit.pilot_targets.active_case_count} / facility{' '}
+                    {orgAudit.pilot_targets.facility_linked_case_count}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     set pilot {orgAudit.pilot_targets.set_pilot_case_count}
@@ -767,7 +792,8 @@ export function UatContent() {
                       key={site.site_id}
                       className="rounded-md border border-border/70 bg-background px-3 py-2 text-xs text-muted-foreground"
                     >
-                      {site.site_name}: active members {site.active_member_count} / service areas {site.service_area_count} / geo {site.has_geo ? 'ok' : 'missing'}
+                      {site.site_name}: active members {site.active_member_count} / service areas{' '}
+                      {site.service_area_count} / geo {site.has_geo ? 'ok' : 'missing'}
                     </li>
                   ))}
                 </ul>
@@ -804,8 +830,12 @@ export function UatContent() {
                         <p className="font-medium text-foreground">{patient.patient_name}</p>
                         <p className="mt-1 text-muted-foreground">
                           {patient.reason} / {patient.address}
-                          {patient.nearest_site_name ? ` / nearest ${patient.nearest_site_name}` : ''}
-                          {patient.nearest_site_distance_km != null ? ` / ${patient.nearest_site_distance_km}km` : ''}
+                          {patient.nearest_site_name
+                            ? ` / nearest ${patient.nearest_site_name}`
+                            : ''}
+                          {patient.nearest_site_distance_km != null
+                            ? ` / ${patient.nearest_site_distance_km}km`
+                            : ''}
                         </p>
                       </li>
                     ))}
@@ -830,9 +860,7 @@ export function UatContent() {
         {UAT_CHECKLIST.map((section) => (
           <Card key={section.title} size="sm">
             <CardHeader>
-              <CardTitle className="text-sm font-semibold">
-                {section.title}
-              </CardTitle>
+              <CardTitle className="text-sm font-semibold">{section.title}</CardTitle>
             </CardHeader>
             <CardContent>
               <ul className="space-y-3">
@@ -859,9 +887,7 @@ export function UatContent() {
                         )}
                         <span
                           className={`text-sm leading-relaxed ${
-                            isChecked
-                              ? 'text-muted-foreground line-through'
-                              : 'text-foreground'
+                            isChecked ? 'text-muted-foreground line-through' : 'text-foreground'
                           }`}
                         >
                           {item.label}
@@ -880,9 +906,7 @@ export function UatContent() {
 
       {/* Feedback form */}
       <div className="space-y-4">
-        <h2 className="text-base font-semibold text-foreground">
-          フィードバック送信
-        </h2>
+        <h2 className="text-base font-semibold text-foreground">フィードバック送信</h2>
 
         <div className="space-y-1">
           <Label htmlFor="feedback_priority">優先度</Label>
@@ -905,16 +929,33 @@ export function UatContent() {
           <Textarea
             id="feedback_text"
             value={feedback}
-            onChange={(e) => setFeedback(e.target.value)}
+            onChange={(e) => {
+              setFeedback(e.target.value);
+              if (feedbackError && e.target.value.trim()) {
+                setFeedbackError(null);
+              }
+            }}
+            aria-invalid={feedbackError ? true : undefined}
+            aria-describedby={feedbackDescriptionId}
             rows={5}
             placeholder="問題の内容・再現手順・改善提案などを記入してください"
             className="resize-none"
           />
+          {feedbackError ? (
+            <p id={UAT_FEEDBACK_ERROR_ID} role="alert" className="text-sm text-destructive">
+              {feedbackError}
+            </p>
+          ) : feedbackIsBlank ? (
+            <p id={UAT_FEEDBACK_HELP_ID} className="text-xs text-muted-foreground">
+              {UAT_FEEDBACK_HELP_MESSAGE}
+            </p>
+          ) : null}
         </div>
 
         <Button
           onClick={handleSubmitFeedback}
-          disabled={submitMutation.isPending || !feedback.trim()}
+          disabled={submitMutation.isPending || feedbackIsBlank}
+          aria-describedby={feedbackDescriptionId}
         >
           <Send className="mr-2 size-4" aria-hidden="true" />
           {submitMutation.isPending ? '送信中...' : 'フィードバックを送信'}
@@ -1019,7 +1060,8 @@ export function UatContent() {
                         id={`feedback-work-item-${item.id}`}
                         value={getDraft(item).linked_work_item}
                         onChange={(event) =>
-                          updateDraft(item, { linked_work_item: event.target.value })}
+                          updateDraft(item, { linked_work_item: event.target.value })
+                        }
                         placeholder="例: CVX-102"
                       />
                     </div>
@@ -1030,8 +1072,7 @@ export function UatContent() {
                         id={`feedback-due-date-${item.id}`}
                         type="date"
                         value={getDraft(item).due_date}
-                        onChange={(event) =>
-                          updateDraft(item, { due_date: event.target.value })}
+                        onChange={(event) => updateDraft(item, { due_date: event.target.value })}
                       />
                     </div>
                   </div>
@@ -1040,8 +1081,9 @@ export function UatContent() {
                     <p className="text-xs text-muted-foreground">
                       {getDraft(item).owner_user_id
                         ? `担当: ${
-                            collaborators.find((collaborator) => collaborator.id === getDraft(item).owner_user_id)?.name ??
-                            '選択済み'
+                            collaborators.find(
+                              (collaborator) => collaborator.id === getDraft(item).owner_user_id,
+                            )?.name ?? '選択済み'
                           }`
                         : '担当未割当'}
                       {' / '}
