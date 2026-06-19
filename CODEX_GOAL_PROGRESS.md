@@ -3143,3 +3143,46 @@ Blocked: C11 (diverged user-visible label strings — product/UX sign-off), C12 
 - Payment scheduled date remains JSON-backed rather than first-class schema because this slice intentionally avoided a migration. If operators need reporting/search by scheduled payment date, add a dedicated nullable `payment_scheduled_for @db.Date` column in a migration-aware slice.
 - Direct authenticated browser proof remains blocked until v0.2 migrations are approved/applied to the local e2e DB.
 - Real DB/S3/browser execution was not run in this slice; behavior is covered by service, route, and component tests.
+
+## 20260619-2148 JST - Pharmacy Invoice Payment Schedule Column
+
+### Completed
+
+- Promoted the v0.2 payment-schedule field from invoice lifecycle JSON to a first-class nullable `PharmacyInvoice.payment_scheduled_for @db.Date` column.
+- Added an expand-only migration, `20260619214500_add_pharmacy_invoice_payment_schedule`, with an org/date index for future payment-schedule search and reporting.
+- Updated invoice lifecycle transitions so `schedule_payment` writes both the queryable date column and the minimized lifecycle snapshot/audit metadata.
+- Updated invoice list responses and partner-cooperation billing UI rows to expose/display the scheduled payment date.
+
+### Files Changed
+
+- `prisma/schema/pharmacy-partnership.prisma`
+- `prisma/migrations/20260619214500_add_pharmacy_invoice_payment_schedule/migration.sql`
+- `src/server/services/pharmacy-invoices.ts`
+- `src/server/services/pharmacy-invoices.test.ts`
+- `src/app/api/pharmacy-invoices/route.ts`
+- `src/app/api/pharmacy-invoices/route.test.ts`
+- `src/app/api/pharmacy-invoices/[id]/route.test.ts`
+- `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx`
+- `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx`
+- `Plans.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prisma format --schema=prisma/schema/`: passed.
+- `pnpm exec prisma validate --schema=prisma/schema/`: passed.
+- `pnpm db:generate`: passed.
+- Targeted Prettier over touched TS/TSX files: passed.
+- `pnpm vitest run src/server/services/pharmacy-invoices.test.ts src/app/api/pharmacy-invoices/route.test.ts 'src/app/api/pharmacy-invoices/[id]/route.test.ts' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 4 files / 20 tests.
+- `pnpm typecheck`: passed.
+- Targeted `pnpm exec eslint` over touched TS/TSX files: passed.
+- `pnpm format:check`: passed.
+- `git diff --check`: passed.
+- `pnpm lint`: passed.
+
+### Remaining / Next Loop
+
+- Migration was generated and validated but not applied to any database.
+- Direct authenticated browser proof remains blocked until v0.2 migrations are approved/applied to the local e2e DB.
+- Remaining v0.2 gap candidates include patient/visit request message-thread integration and notification service reuse for pharmacy-cooperation lifecycle events.
