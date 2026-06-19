@@ -772,6 +772,8 @@ describe('PharmacyCooperationWorkflowContent', () => {
       ),
     ).toBeUndefined();
     expect(screen.getByRole('heading', { name: '患者共有ケースを共有開始します' })).toBeTruthy();
+    expect(screen.getByText('共有ケース: share_case_activation_ready')).toBeTruthy();
+    expect(screen.getByText('協力薬局: 協力薬局')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '共有開始する' }));
 
     await waitFor(() => {
@@ -813,6 +815,8 @@ describe('PharmacyCooperationWorkflowContent', () => {
       ),
     ).toBeUndefined();
     expect(screen.getByRole('heading', { name: '訪問依頼を受諾します' })).toBeTruthy();
+    expect(screen.getByText('訪問依頼: visit_request_1')).toBeTruthy();
+    expect(screen.getByText('協力薬局: 協力薬局')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '受諾する' }));
 
     await waitFor(() => {
@@ -857,6 +861,8 @@ describe('PharmacyCooperationWorkflowContent', () => {
       ),
     ).toBeUndefined();
     expect(screen.getByRole('heading', { name: '患者リンクを基幹承認します' })).toBeTruthy();
+    expect(screen.getByText('共有ケース: share_case_1')).toBeTruthy();
+    expect(screen.getByText('協力薬局: 協力薬局')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '基幹承認する' }));
     await waitFor(() => {
       const baseApprovalCall = vi
@@ -887,6 +893,8 @@ describe('PharmacyCooperationWorkflowContent', () => {
       ),
     ).toBeUndefined();
     expect(screen.getByRole('heading', { name: '患者リンクを辞退します' })).toBeTruthy();
+    expect(screen.getByText('共有ケース: share_case_1')).toBeTruthy();
+    expect(screen.getByText('協力薬局: 協力薬局')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '辞退する' }));
     await waitFor(() => {
       const declineCall = vi
@@ -925,6 +933,8 @@ describe('PharmacyCooperationWorkflowContent', () => {
       ),
     ).toBeUndefined();
     expect(screen.getByRole('heading', { name: '患者リンクを協力受諾します' })).toBeTruthy();
+    expect(screen.getByText('共有ケース: share_case_accept_ready')).toBeTruthy();
+    expect(screen.getByText('協力側ID: partner_patient_1')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '協力受諾する' }));
 
     await waitFor(() => {
@@ -976,6 +986,8 @@ describe('PharmacyCooperationWorkflowContent', () => {
       ),
     ).toBeUndefined();
     expect(screen.getByRole('heading', { name: '訪問依頼を辞退します' })).toBeTruthy();
+    expect(screen.getByText('訪問依頼: visit_request_1')).toBeTruthy();
+    expect(screen.getByText('協力薬局: 協力薬局')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '辞退する' }));
 
     await waitFor(() => {
@@ -1215,6 +1227,8 @@ describe('PharmacyCooperationWorkflowContent', () => {
       ),
     ).toBeUndefined();
     expect(screen.getByRole('heading', { name: '協力訪問記録を提出します' })).toBeTruthy();
+    expect(screen.getByText('訪問記録: partner_record_draft')).toBeTruthy();
+    expect(screen.getByText('版: rev.1')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '提出する' }));
 
     await waitFor(() => {
@@ -1243,6 +1257,8 @@ describe('PharmacyCooperationWorkflowContent', () => {
       );
     expect(reviewCallsBeforeConfirm).toHaveLength(0);
     expect(screen.getByRole('heading', { name: '協力訪問記録を確認します' })).toBeTruthy();
+    expect(screen.getByText('訪問記録: partner_record_submitted')).toBeTruthy();
+    expect(screen.getByText('医師向け報告書ドラフト: 作成しない')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '確認する' }));
 
     await waitFor(() => {
@@ -1283,6 +1299,8 @@ describe('PharmacyCooperationWorkflowContent', () => {
         name: '協力訪問記録を確認し報告書ドラフトを作成します',
       }),
     ).toBeTruthy();
+    expect(screen.getByText('訪問記録: partner_record_submitted')).toBeTruthy();
+    expect(screen.getByText('医師向け報告書ドラフト: 作成する')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '確認+報告する' }));
 
     await waitFor(() => {
@@ -1328,6 +1346,8 @@ describe('PharmacyCooperationWorkflowContent', () => {
       ),
     ).toBeUndefined();
     expect(screen.getByRole('heading', { name: '協力訪問記録を差戻しします' })).toBeTruthy();
+    expect(screen.getByText('訪問記録: partner_record_submitted')).toBeTruthy();
+    expect(screen.getByText('協力薬局: 協力薬局')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '差戻しする' }));
 
     await waitFor(() => {
@@ -1361,6 +1381,8 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(
       screen.getByRole('heading', { name: '医師向け報告書ドラフトを作成します' }),
     ).toBeTruthy();
+    expect(screen.getByText('訪問記録: partner_record_confirmed')).toBeTruthy();
+    expect(screen.getByText('現在の状態: 確認済み')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '報告書ドラフトを作成する' }));
 
     await waitFor(() => {
