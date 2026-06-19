@@ -111,6 +111,7 @@ describe('ReportDeliveryDashboard', () => {
     expect(screen.getByText('田中医師')).toBeTruthy();
     expect(screen.getByText('患者A')).toBeTruthy();
     expect(screen.getByText('8日経過')).toBeTruthy();
+    expect(screen.getByLabelText('未確認報告の超過日数')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'リマインドタスク起票' })).toBeTruthy();
     expect(screen.queryByRole('link', { name: '送達分析ページを開く' })).toBeNull();
   });

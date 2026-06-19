@@ -327,6 +327,7 @@ export function SearchContent({
 
       {/* 検索ボックス */}
       <Input
+        aria-label="全体検索キーワード"
         data-search-input
         autoFocus
         value={query}

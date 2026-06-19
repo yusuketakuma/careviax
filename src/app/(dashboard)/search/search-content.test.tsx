@@ -111,7 +111,7 @@ function setupFetchMocks(overrides: Partial<Record<string, unknown>> = {}) {
 
 /** Trigger debounce and allow all pending promises to resolve. */
 async function triggerSearch(query: string) {
-  const input = screen.getByPlaceholderText(/田中 一郎/);
+  const input = screen.getByLabelText('全体検索キーワード');
   fireEvent.change(input, { target: { value: query } });
   await act(async () => {
     await vi.advanceTimersByTimeAsync(250);
@@ -152,6 +152,7 @@ describe('SearchContent', () => {
     await flushInitialEffects();
 
     expect(screen.getByRole('heading', { name: '全体検索' })).toBeTruthy();
+    expect(screen.getByLabelText('全体検索キーワード')).toBeTruthy();
     expect(screen.getByPlaceholderText(/田中 一郎 アムロジピン/)).toBeTruthy();
 
     for (const chip of [

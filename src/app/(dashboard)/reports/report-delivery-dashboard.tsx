@@ -208,6 +208,7 @@ export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?:
                   <div className="flex-1 space-y-1.5">
                     <p className="text-xs font-medium text-muted-foreground">超過日数</p>
                     <Input
+                      aria-label="未確認報告の超過日数"
                       type="number"
                       min={1}
                       max={90}
