@@ -4835,6 +4835,34 @@ Implemented:
 
 - In-home cooperation goal remains active. UI label hardening has covered current patient-detail surfaces and the workflow inquiry workbench. Next candidates include pharmacy-cooperation workflow/admin/billing forms, raw table/DataTable convergence, and browser/a11y proof.
 
+## 20260620-0124 JST - Patient Condition Row Label Associations
+
+### Summary
+
+- Added row-scoped accessible names to condition name, noted date, and notes fields without embedding condition names.
+- Added row-scoped names to primary/active checkboxes and delete actions so repeated rows are not ambiguous.
+- Extended the patient conditions card test to assert all first-row controls are reachable by label/name.
+
+### Files Changed
+
+- `src/app/(dashboard)/patients/[id]/patient-conditions-card.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-conditions-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx'`: passed, unchanged.
+- `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 1 test.
+- `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/patient-conditions-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- In-home cooperation goal remains active. Patient-detail label hardening now also includes condition/problem rows. Next candidates remain pharmacy-cooperation workflow/admin/billing forms, raw table/DataTable convergence, and browser/a11y proof.
+
 ## 20260620-0036 JST - Billing Rule Row Action Names
 
 ### Summary
