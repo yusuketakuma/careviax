@@ -864,6 +864,19 @@ export default function ReportDetailPage() {
     effectiveSelectedTargetIds.includes(target.id),
   );
   const allPreSendChecksDone = PRE_SEND_CHECK_ITEMS.every((item) => preSendChecks[item.key]);
+  const missingPreSendChecks = PRE_SEND_CHECK_ITEMS.filter((item) => !preSendChecks[item.key]);
+  const composerRecipientError =
+    composerOpen && shareTargets.length > 0 && selectedShareTargets.length === 0
+      ? '共有先を1件以上選択してください'
+      : null;
+  const composerChecksError =
+    composerOpen && missingPreSendChecks.length > 0
+      ? `未確認: ${missingPreSendChecks.map((item) => item.label).join('、')}`
+      : null;
+  const composerSubmitDescriptionIds = [
+    composerRecipientError ? 'report-composer-recipient-error' : null,
+    composerChecksError ? 'report-composer-checks-error' : null,
+  ].filter(Boolean);
   const isConfirmedReport = report.status === 'confirmed';
   const isRetryableReport = report.status === 'failed' || report.status === 'response_waiting';
   const canSendReportStatus = isConfirmedReport || isRetryableReport;
@@ -1056,6 +1069,15 @@ export default function ReportDetailPage() {
                       })}
                     </ul>
                   )}
+                  {composerRecipientError ? (
+                    <p
+                      id="report-composer-recipient-error"
+                      role="alert"
+                      className="text-xs text-destructive"
+                    >
+                      {composerRecipientError}
+                    </p>
+                  ) : null}
                 </section>
 
                 {/* CENTER: 報告内容(既存の報告書セクションを再利用) */}
@@ -1119,10 +1141,24 @@ export default function ReportDetailPage() {
                       4項目すべて確認すると一括送付できます。
                     </p>
                   ) : null}
+                  {composerChecksError ? (
+                    <p
+                      id="report-composer-checks-error"
+                      role="alert"
+                      className="text-xs text-destructive"
+                    >
+                      {composerChecksError}
+                    </p>
+                  ) : null}
                   <Button
                     className="w-full min-h-[44px] sm:min-h-11"
                     onClick={() => handleBulkSend(shareTargets)}
                     disabled={!canBulkSend}
+                    aria-describedby={
+                      composerSubmitDescriptionIds.length > 0
+                        ? composerSubmitDescriptionIds.join(' ')
+                        : undefined
+                    }
                   >
                     <Send className="mr-1.5 size-3.5" aria-hidden="true" />
                     {bulkSendMutation.isPending

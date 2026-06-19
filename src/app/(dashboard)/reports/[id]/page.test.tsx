@@ -337,7 +337,24 @@ describe('ReportDetailPage send safety dialog', () => {
     expect(screen.getByText('共有先')).toBeTruthy();
     expect(screen.getByText('報告内容')).toBeTruthy();
     expect(screen.getByText('送付前チェック')).toBeTruthy();
-    expect(screen.getByText('一括送付（1件）')).toBeTruthy();
+    const submitButton = screen.getByRole('button', { name: '一括送付（1件）' });
+    expect(
+      screen
+        .getByText('未確認: 薬剤師確認済み、宛先が設定済み、添付資料あり、患者情報の出しすぎなし')
+        .getAttribute('role'),
+    ).toBe('alert');
+    expect(submitButton.getAttribute('aria-describedby')).toContain('report-composer-checks-error');
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /鈴木 医師 を共有先に含める/ }));
+
+    const unselectedSubmitButton = screen.getByRole('button', { name: '一括送付（0件）' });
+    expect(screen.getByText('共有先を1件以上選択してください').getAttribute('role')).toBe('alert');
+    expect(unselectedSubmitButton.getAttribute('aria-describedby')).toContain(
+      'report-composer-recipient-error',
+    );
+    expect(unselectedSubmitButton.getAttribute('aria-describedby')).toContain(
+      'report-composer-checks-error',
+    );
   });
 
   it('opens the report composer as a resend workspace for response-waiting reports', () => {
