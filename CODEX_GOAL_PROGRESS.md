@@ -5062,7 +5062,9 @@ Implemented:
 - `pnpm exec vitest run 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 5 tests.
 - `pnpm exec eslint 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx'`: passed.
 - `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
 - `git diff --check`: passed.
+- `rg -n "<table|overflow-x-auto|min-w-\\[" 'src/app/(dashboard)/billing/partner-cooperation' -g '*.tsx'`: found no remaining raw table or `overflow-x-auto`; the only remaining `min-w-[36rem]` is the controls grid, not a table.
 
 ### Remaining / Next Loop
 
