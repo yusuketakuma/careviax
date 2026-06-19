@@ -4359,10 +4359,14 @@ Implemented:
 - `pnpm typecheck`: passed.
 - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
 - `pnpm lint`: passed.
+- `pnpm db:e2e:prepare`: passed; no pending migrations and local E2E DB reseeded.
+- `pnpm medical-ui:e2e:preflight`: passed with app port 3012, DB port 5433, 111 org-scoped RLS tables, and 22 audit triggers.
+- `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/e2e-billing-pca-prescription-guardrails.spec.ts --project=chromium`: passed, 4 Chromium tests.
+- Standalone Playwright browser check for `/admin/pca-pumps`: passed after retrying the command with an async wrapper and absolute URL. It opened the return-inspection sheet, verified `検品 PCA-E2E-mqld1puv サンプル在宅クリニック 返却日 2026/6/20`, confirmed `検品完了` was disabled with `aria-describedby="return-inspection-save-blocker"`, and found the visible blocker listing all unchecked inspection items. No console/page/http errors were captured.
 
 ### Remaining / Next Loop
 
-- PCA return-inspection disabled reasons and target-specific action names are addressed for the inspected screen. DB-backed browser proof remains a follow-up candidate now that DB access is allowed.
+- PCA return-inspection disabled reasons and target-specific action names are addressed for the inspected screen with jsdom, DB-backed API, and browser evidence.
 
 ## 20260620-0451 JST - Pharmacist Credential Inline Validation
 
