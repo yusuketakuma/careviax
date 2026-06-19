@@ -4990,6 +4990,35 @@ Implemented:
 
 - UI/UX remediation remains active. Input/Textarea, SelectTrigger, and icon-sized Button static scans are clean. Next pass should cover table-density and browser/a11y proof for the highest-risk pharmacy-cooperation or workflow surfaces.
 
+## 20260620-0142 JST - Notification PHI Check and Partner Invoice PDF Links
+
+### Summary
+
+- Verified that external SMS/LINE/Web Push notification delivery uses fixed non-PHI content while in-app notifications retain detail behind login.
+- Confirmed pharmacy-cooperation message and partner-visit notification routes pass generic notification messages.
+- Added row-specific accessible names to partner-cooperation invoice PDF links.
+
+### Files Changed
+
+- `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx`
+- `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec vitest run src/server/services/notifications.test.ts 'src/app/api/pharmacy-cooperation-message-threads/route.test.ts' --reporter=dot --testTimeout=30000`: passed, 2 files / 18 tests.
+- Targeted ESLint over notification service and pharmacy-cooperation message route/test: passed.
+- Targeted Prettier over partner-cooperation billing files: passed, unchanged.
+- `pnpm exec vitest run 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 5 tests.
+- Targeted ESLint over partner-cooperation billing files: passed.
+- `pnpm typecheck`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Notification PHI redaction is verified for the inspected paths. UI/UX remediation remains active; next pass should cover table-density/browser-a11y proof or any remaining pharmacy-cooperation action-name findings.
+
 ## 20260620-0036 JST - Billing Rule Row Action Names
 
 ### Summary
