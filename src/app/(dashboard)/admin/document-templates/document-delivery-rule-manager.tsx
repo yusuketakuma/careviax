@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -79,10 +80,25 @@ function normalizeFallbackChannels(input: string, primaryChannel: DeliveryChanne
   );
 }
 
+function documentTypeLabel(value: string) {
+  return DOCUMENT_TYPE_OPTIONS.find((option) => option.value === value)?.label ?? value;
+}
+
+function targetRoleLabel(value: string) {
+  return TARGET_ROLE_OPTIONS.find((option) => option.value === value)?.label ?? value;
+}
+
+function deliveryRuleSummary(rule: DocumentDeliveryRuleRow) {
+  return `${documentTypeLabel(rule.document_type)} / ${targetRoleLabel(rule.target_role)} / ${
+    CHANNEL_LABELS[rule.channel] ?? rule.channel
+  }`;
+}
+
 export function DocumentDeliveryRuleManager() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const [form, setForm] = useState(EMPTY_FORM);
+  const [deleteTarget, setDeleteTarget] = useState<DocumentDeliveryRuleRow | null>(null);
 
   const rulesQuery = useQuery({
     queryKey: ['document-delivery-rules', orgId],
@@ -143,11 +159,12 @@ export function DocumentDeliveryRuleManager() {
         throw new Error('文書送達ルールの削除に失敗しました');
       }
     },
-    onSuccess: async () => {
+    onSuccess: async (_data, ruleId) => {
       toast.success('文書送達ルールを削除しました');
-      if (form.id) {
+      if (form.id === ruleId) {
         setForm(EMPTY_FORM);
       }
+      setDeleteTarget(null);
       await queryClient.invalidateQueries({ queryKey: ['document-delivery-rules', orgId] });
     },
     onError: (error) => {
@@ -249,13 +266,17 @@ export function DocumentDeliveryRuleManager() {
 
           <div className="flex items-center justify-between rounded-lg border px-3 py-2">
             <div>
-              <p className="text-sm font-medium">有効化</p>
-              <p className="text-xs text-muted-foreground">
+              <p id="delivery-rule-active-label" className="text-sm font-medium">
+                有効化
+              </p>
+              <p id="delivery-rule-active-description" className="text-xs text-muted-foreground">
                 無効にするとこの組み合わせでは自動提案しません
               </p>
             </div>
             <Switch
               checked={form.isActive}
+              aria-labelledby="delivery-rule-active-label"
+              aria-describedby="delivery-rule-active-description"
               onCheckedChange={(checked) =>
                 setForm((current) => ({ ...current, isActive: checked }))
               }
@@ -291,13 +312,9 @@ export function DocumentDeliveryRuleManager() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-medium text-foreground">
-                      {DOCUMENT_TYPE_OPTIONS.find((option) => option.value === rule.document_type)
-                        ?.label ?? rule.document_type}
+                      {documentTypeLabel(rule.document_type)}
                     </p>
-                    <Badge variant="outline">
-                      {TARGET_ROLE_OPTIONS.find((option) => option.value === rule.target_role)
-                        ?.label ?? rule.target_role}
-                    </Badge>
+                    <Badge variant="outline">{targetRoleLabel(rule.target_role)}</Badge>
                     <Badge>{CHANNEL_LABELS[rule.channel] ?? rule.channel}</Badge>
                     <Badge variant={rule.is_active ? 'default' : 'outline'}>
                       {rule.is_active ? '有効' : '停止'}
@@ -323,8 +340,9 @@ export function DocumentDeliveryRuleManager() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => deleteMutation.mutate(rule.id)}
+                      onClick={() => setDeleteTarget(rule)}
                       disabled={deleteMutation.isPending}
+                      aria-label={`${deliveryRuleSummary(rule)} の送達ルールを削除`}
                     >
                       削除
                     </Button>
@@ -341,6 +359,32 @@ export function DocumentDeliveryRuleManager() {
           )}
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleteMutation.isPending) {
+            setDeleteTarget(null);
+          }
+        }}
+        title="送達ルールを削除しますか"
+        description={
+          deleteTarget
+            ? `${deliveryRuleSummary(
+                deleteTarget,
+              )} の送達ルールを削除します。この操作は取り消せません。報告書詳細画面の送達候補にも反映されます。`
+            : ''
+        }
+        confirmLabel={deleteMutation.isPending ? '削除中...' : '削除する'}
+        confirmDisabled={deleteMutation.isPending}
+        variant="destructive"
+        closeOnConfirm={false}
+        onConfirm={() => {
+          if (deleteTarget) {
+            deleteMutation.mutate(deleteTarget.id);
+          }
+        }}
+      />
     </div>
   );
 }

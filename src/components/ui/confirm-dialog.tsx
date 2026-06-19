@@ -25,6 +25,7 @@ interface ConfirmDialogProps {
   /** If set, user must type this exact text before confirming */
   requiredConfirmText?: string;
   confirmDisabled?: boolean;
+  closeOnConfirm?: boolean;
   children?: ReactNode;
   onConfirm: () => void;
 }
@@ -39,6 +40,7 @@ export function ConfirmDialog({
   variant = 'default',
   requiredConfirmText,
   confirmDisabled = false,
+  closeOnConfirm = true,
   children,
   onConfirm,
 }: ConfirmDialogProps) {
@@ -56,8 +58,10 @@ export function ConfirmDialog({
   function handleConfirm() {
     if (isConfirmDisabled) return;
     onConfirm();
-    onOpenChange(false);
-    setInputValue('');
+    if (closeOnConfirm) {
+      onOpenChange(false);
+      setInputValue('');
+    }
   }
 
   return (

@@ -3952,3 +3952,35 @@ Implemented:
 ### Remaining / Next Loop
 
 - DB-backed proof for the broader v0.2 goal remains blocked until migration application is explicitly approved.
+
+## 20260620-0000 JST - Document Delivery Rule Destructive Action and Switch A11y
+
+### Summary
+
+- Added an explicit destructive confirmation before deleting document delivery rules from the admin document-template workspace.
+- Gave each delivery-rule delete button a target-specific accessible name, including document type, role, and primary channel.
+- Connected the active-state Switch to the visible "有効化" label and description.
+- Extended `ConfirmDialog` with opt-in `closeOnConfirm={false}` so pending destructive actions can remain open until the caller resolves, while preserving the default close-on-confirm behavior.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.tsx`
+- `src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx`
+- `src/components/ui/confirm-dialog.tsx`
+- `src/components/ui/confirm-dialog.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.tsx' 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx' src/components/ui/confirm-dialog.tsx src/components/ui/confirm-dialog.test.tsx`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx' src/components/ui/confirm-dialog.test.tsx --reporter=dot --testTimeout=30000`: passed, 2 files / 6 tests.
+- Targeted ESLint over touched document-delivery and confirm-dialog files: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Unrelated patient-share correction-policy worktree files were present during this slice and preserved.
+- Continue UI/UX remediation with the next high-value accessibility or destructive-action candidate; broader remaining candidates still include pharmacy-cooperation responsive table density, select accessible-name gaps, and expanded browser/a11y proof.

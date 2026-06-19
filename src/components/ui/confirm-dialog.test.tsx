@@ -85,4 +85,27 @@ describe('ConfirmDialog', () => {
     expect(content?.className).toContain('w-[calc(100%-2rem)]');
     expect(content?.className).toContain('overflow-y-auto');
   });
+
+  it('can keep the dialog open until the parent closes it', () => {
+    const onConfirm = vi.fn();
+    const onOpenChange = vi.fn();
+
+    render(
+      <ConfirmDialog
+        open
+        onOpenChange={onOpenChange}
+        title="送達ルールを削除"
+        description="削除が完了するまで確認を閉じません。"
+        confirmLabel="削除する"
+        closeOnConfirm={false}
+        onConfirm={onConfirm}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
+
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+    expect(screen.getByRole('alertdialog', { name: '送達ルールを削除' })).toBeTruthy();
+  });
 });
