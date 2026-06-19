@@ -324,7 +324,7 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
                   }));
                 }}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="施設">
                   <SelectValue placeholder="自宅または施設を選択" />
                 </SelectTrigger>
                 <SelectContent>
@@ -348,7 +348,7 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
                 }
                 disabled={!selectedFacilityId || facilityUnitsQuery.isLoading}
               >
-                <SelectTrigger>
+                <SelectTrigger aria-label="ユニット">
                   <SelectValue
                     placeholder={
                       !selectedFacilityId
@@ -481,7 +481,7 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
                     })
                   }
                 >
-                  <SelectTrigger className="w-28">
+                  <SelectTrigger className="w-28" aria-label={`アレルギー${index + 1}件目の区分`}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -503,7 +503,7 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
                     })
                   }
                 >
-                  <SelectTrigger className="w-28">
+                  <SelectTrigger className="w-28" aria-label={`アレルギー${index + 1}件目の重症度`}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

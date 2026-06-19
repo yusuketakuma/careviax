@@ -215,6 +215,7 @@ describe('ReportDetailPage send safety dialog', () => {
 
     expect(screen.getByRole('dialog', { name: '報告書を送付' })).toBeTruthy();
     expect(screen.getByText('送付前確認')).toBeTruthy();
+    expect(screen.getByLabelText('送付チャネル')).toBeTruthy();
     expect((screen.getByLabelText(/送付先連絡先/) as HTMLInputElement).required).toBe(true);
     expect(
       screen.getByText('メール送信ではメールアドレス、FAX送信ではFAX番号を入力してください。'),

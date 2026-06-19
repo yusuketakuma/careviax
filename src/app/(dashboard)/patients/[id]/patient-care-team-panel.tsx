@@ -343,7 +343,7 @@ export function PatientCareTeamPanel({
             value={selectedCaseId}
             onValueChange={(value) => setSelectedCaseId(value || defaultCaseId)}
           >
-            <SelectTrigger className="sm:w-[240px]">
+            <SelectTrigger className="sm:w-[240px]" aria-label="多職種連携先のケース">
               <SelectValue placeholder="ケースを選択" />
             </SelectTrigger>
             <SelectContent>
@@ -393,7 +393,7 @@ export function PatientCareTeamPanel({
                       applyExternalProfessional(index, !value || value === 'manual' ? '' : value)
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger aria-label={`多職種連携先${index + 1}件目の他職種マスター`}>
                       <SelectValue placeholder="手入力または登録済みから選択" />
                     </SelectTrigger>
                     <SelectContent>
@@ -417,7 +417,7 @@ export function PatientCareTeamPanel({
                       }))
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger aria-label={`多職種連携先${index + 1}件目の役割`}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>

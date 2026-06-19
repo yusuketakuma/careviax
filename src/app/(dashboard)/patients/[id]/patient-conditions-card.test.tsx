@@ -40,6 +40,7 @@ describe('PatientConditionsCard', () => {
 
     expect(screen.getByRole('heading', { level: 2, name: '病名・課題リスト' }).tagName).toBe('H2');
     expect(screen.getByText('疾患: 心不全')).toBeTruthy();
+    expect(screen.getByLabelText('病名・課題1件目の区分')).toBeTruthy();
     expect(screen.getByRole('button', { name: /行追加/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
   });

@@ -15,10 +15,13 @@ import {
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/loading';
+import { Textarea } from '@/components/ui/textarea';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 
@@ -132,6 +135,11 @@ type InvoiceTransitionAction =
   | 'cancel'
   | 'reissue';
 
+type PendingInvoiceTransition = {
+  invoice: PharmacyInvoiceRow;
+  action: InvoiceTransitionAction;
+};
+
 const EMPTY_CONTRACTS: PharmacyContractRow[] = [];
 
 function currentMonthInputValue() {
@@ -161,6 +169,10 @@ function formatYen(value: number | null | undefined) {
 function formatDate(value: string | null | undefined) {
   if (!value) return '-';
   return value.slice(0, 10);
+}
+
+function safeErrorDetail() {
+  return '再試行しても解消しない場合は管理者へ連絡してください。';
 }
 
 function statusLabel(status: string) {
@@ -445,6 +457,10 @@ function documentKindLabel(kind: PharmacyInvoiceRow['document_kind']) {
   return kind === 'free_cooperation_report' ? '無償実績報告書' : '請求書';
 }
 
+function invoiceNumberLabel(invoice: PharmacyInvoiceRow) {
+  return invoice.invoice_no ?? '未採番';
+}
+
 function invoiceActions(status: string): InvoiceTransitionAction[] {
   if (status === 'draft') return ['issue'];
   if (status === 'issued') return ['mark_sent', 'schedule_payment', 'cancel', 'reissue'];
@@ -476,6 +492,68 @@ function invoiceActionIcon(action: InvoiceTransitionAction) {
   }
   if (action === 'cancel') return <XCircle className="size-4" aria-hidden="true" />;
   return <RefreshCw className="size-4" aria-hidden="true" />;
+}
+
+function invoiceActionRequiresReason(action: InvoiceTransitionAction) {
+  return action === 'cancel' || action === 'reissue';
+}
+
+function invoiceActionReasonLabel(action: InvoiceTransitionAction) {
+  return action === 'cancel' ? '取消理由' : '再発行理由';
+}
+
+function invoiceActionVariant(action: InvoiceTransitionAction) {
+  return action === 'cancel' || action === 'reissue' ? 'destructive' : 'default';
+}
+
+function buildInvoiceTransitionBody({
+  action,
+  scheduledFor,
+  reason,
+}: {
+  action: InvoiceTransitionAction;
+  scheduledFor: string;
+  reason: string;
+}) {
+  const body: Record<string, unknown> = { action };
+  const today = todayDateInputValue();
+  if (
+    action === 'issue' ||
+    action === 'mark_sent' ||
+    action === 'mark_received' ||
+    action === 'record_payment'
+  ) {
+    body.occurred_at = today;
+  }
+  if (action === 'schedule_payment') {
+    body.payment_scheduled_for = scheduledFor;
+  }
+  if (invoiceActionRequiresReason(action)) {
+    body.reason = reason.trim();
+  }
+  return body;
+}
+
+function invoiceTransitionDescription({
+  invoice,
+  action,
+  scheduledFor,
+}: {
+  invoice: PharmacyInvoiceRow;
+  action: InvoiceTransitionAction;
+  scheduledFor: string;
+}) {
+  const actionLabel = invoiceActionLabel(action);
+  const base = `${invoice.partnership.base_site.name} / ${invoice.partnership.partner_pharmacy.name}、${formatDate(
+    invoice.billing_month,
+  )}、${invoiceNumberLabel(invoice)}、合計 ${formatYen(invoice.total)}。`;
+  if (action === 'schedule_payment') {
+    return `${base} 支払予定日を ${formatDate(scheduledFor)} として${actionLabel}に更新します。`;
+  }
+  if (invoiceActionRequiresReason(action)) {
+    return `${base} ${actionLabel}は監査ログに記録されます。理由を入力して確定してください。`;
+  }
+  return `${base} ${documentKindLabel(invoice.document_kind)}を${actionLabel}として更新します。`;
 }
 
 function InvoiceHistoryTable({
@@ -532,9 +610,7 @@ function InvoiceHistoryTable({
               <tr key={invoice.id} className="border-t border-border/70">
                 <td className="px-3 py-2">
                   <div className="font-medium">{documentKindLabel(invoice.document_kind)}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {invoice.invoice_no ?? invoice.id}
-                  </div>
+                  <div className="text-xs text-muted-foreground">{invoiceNumberLabel(invoice)}</div>
                 </td>
                 <td className="px-3 py-2">
                   {invoice.partnership.base_site.name} / {invoice.partnership.partner_pharmacy.name}
@@ -567,7 +643,7 @@ function InvoiceHistoryTable({
                       className="mb-2 h-8 w-40"
                       value={scheduledDates[invoice.id] ?? todayDateInputValue()}
                       onChange={(event) => onScheduledDateChange(invoice.id, event.target.value)}
-                      aria-label={`支払予定日 ${invoice.id}`}
+                      aria-label={`支払予定日 ${invoiceNumberLabel(invoice)}`}
                     />
                   ) : null}
                   <div className="flex flex-wrap gap-1.5">
@@ -579,7 +655,7 @@ function InvoiceHistoryTable({
                         variant={action === 'cancel' ? 'destructive' : 'outline'}
                         disabled={isPending}
                         onClick={() => onTransition(invoice, action)}
-                        aria-label={`${documentKindLabel(invoice.document_kind)} ${invoice.id} ${invoiceActionLabel(action)}`}
+                        aria-label={`${documentKindLabel(invoice.document_kind)} ${invoiceNumberLabel(invoice)} ${invoiceActionLabel(action)}`}
                       >
                         {invoiceActionIcon(action)}
                         {invoiceActionLabel(action)}
@@ -603,6 +679,9 @@ export function PartnerCooperationBillingContent() {
   const [selectedContractId, setSelectedContractId] = useState('');
   const [lastDraft, setLastDraft] = useState<InvoiceDraftResult | null>(null);
   const [scheduledDates, setScheduledDates] = useState<Record<string, string>>({});
+  const [pendingInvoiceTransition, setPendingInvoiceTransition] =
+    useState<PendingInvoiceTransition | null>(null);
+  const [transitionReason, setTransitionReason] = useState('');
   const isMonthInputValid = isValidMonthInput(monthInput);
   const billingMonth = useMemo(
     () => (isMonthInputValid ? canonicalBillingMonth(monthInput) : ''),
@@ -707,25 +786,11 @@ export function PartnerCooperationBillingContent() {
   const transitionInvoiceMutation = useMutation({
     mutationFn: async ({
       invoice,
-      action,
+      body,
     }: {
       invoice: PharmacyInvoiceRow;
-      action: InvoiceTransitionAction;
+      body: Record<string, unknown>;
     }) => {
-      const today = todayDateInputValue();
-      const scheduledFor = scheduledDates[invoice.id] ?? today;
-      const body: Record<string, unknown> = { action };
-      if (
-        action === 'issue' ||
-        action === 'mark_sent' ||
-        action === 'mark_received' ||
-        action === 'record_payment'
-      ) {
-        body.occurred_at = today;
-      }
-      if (action === 'schedule_payment') {
-        body.payment_scheduled_for = scheduledFor;
-      }
       return patchInvoiceStatus(orgId, invoice.id, body);
     },
     onSuccess: async (invoice) => {
@@ -745,6 +810,31 @@ export function PartnerCooperationBillingContent() {
     createInvoiceDraftMutation.isPending ||
     transitionInvoiceMutation.isPending;
   const summary = summaryQuery.data ?? null;
+  const pendingScheduledFor = pendingInvoiceTransition
+    ? (scheduledDates[pendingInvoiceTransition.invoice.id] ?? todayDateInputValue())
+    : todayDateInputValue();
+  const transitionReasonRequired = pendingInvoiceTransition
+    ? invoiceActionRequiresReason(pendingInvoiceTransition.action)
+    : false;
+  const trimmedTransitionReason = transitionReason.trim();
+
+  function closeInvoiceTransitionDialog() {
+    setPendingInvoiceTransition(null);
+    setTransitionReason('');
+  }
+
+  function confirmInvoiceTransition() {
+    if (!pendingInvoiceTransition) return;
+    if (transitionReasonRequired && !trimmedTransitionReason) return;
+    transitionInvoiceMutation.mutate({
+      invoice: pendingInvoiceTransition.invoice,
+      body: buildInvoiceTransitionBody({
+        action: pendingInvoiceTransition.action,
+        scheduledFor: pendingScheduledFor,
+        reason: trimmedTransitionReason,
+      }),
+    });
+  }
 
   return (
     <div className="space-y-6" data-testid="partner-cooperation-billing">
@@ -854,7 +944,7 @@ export function PartnerCooperationBillingContent() {
             variant="server"
             title="薬局間協力の月次集計を表示できません"
             description="対象月の集計取得に失敗しました。再試行してください。"
-            detail={summaryQuery.error instanceof Error ? summaryQuery.error.message : undefined}
+            detail={safeErrorDetail()}
             action={{ label: '再試行', onClick: () => void summaryQuery.refetch() }}
           />
         ) : (
@@ -890,9 +980,7 @@ export function PartnerCooperationBillingContent() {
             variant="server"
             title="薬局間協力の請求候補を表示できません"
             description="候補一覧の取得に失敗しました。再試行してください。"
-            detail={
-              candidatesQuery.error instanceof Error ? candidatesQuery.error.message : undefined
-            }
+            detail={safeErrorDetail()}
             action={{ label: '再試行', onClick: () => void candidatesQuery.refetch() }}
           />
         ) : (
@@ -930,7 +1018,7 @@ export function PartnerCooperationBillingContent() {
             variant="server"
             title="薬局間月次ドキュメントを表示できません"
             description="出力履歴の取得に失敗しました。再試行してください。"
-            detail={invoicesQuery.error instanceof Error ? invoicesQuery.error.message : undefined}
+            detail={safeErrorDetail()}
             action={{ label: '再試行', onClick: () => void invoicesQuery.refetch() }}
           />
         ) : (
@@ -940,9 +1028,7 @@ export function PartnerCooperationBillingContent() {
             onScheduledDateChange={(invoiceId, value) =>
               setScheduledDates((current) => ({ ...current, [invoiceId]: value }))
             }
-            onTransition={(invoice, action) =>
-              transitionInvoiceMutation.mutate({ invoice, action })
-            }
+            onTransition={(invoice, action) => setPendingInvoiceTransition({ invoice, action })}
             pendingInvoiceId={
               transitionInvoiceMutation.isPending
                 ? (transitionInvoiceMutation.variables?.invoice.id ?? null)
@@ -951,6 +1037,63 @@ export function PartnerCooperationBillingContent() {
           />
         )}
       </section>
+
+      <ConfirmDialog
+        open={pendingInvoiceTransition !== null}
+        onOpenChange={(open) => {
+          if (!open) closeInvoiceTransitionDialog();
+        }}
+        title={
+          pendingInvoiceTransition
+            ? `${documentKindLabel(pendingInvoiceTransition.invoice.document_kind)}を${invoiceActionLabel(
+                pendingInvoiceTransition.action,
+              )}します`
+            : '薬局間月次ドキュメントを更新します'
+        }
+        description={
+          pendingInvoiceTransition
+            ? invoiceTransitionDescription({
+                invoice: pendingInvoiceTransition.invoice,
+                action: pendingInvoiceTransition.action,
+                scheduledFor: pendingScheduledFor,
+              })
+            : ''
+        }
+        confirmLabel={
+          pendingInvoiceTransition
+            ? `${invoiceActionLabel(pendingInvoiceTransition.action)}する`
+            : '更新する'
+        }
+        variant={
+          pendingInvoiceTransition
+            ? invoiceActionVariant(pendingInvoiceTransition.action)
+            : 'default'
+        }
+        confirmDisabled={
+          transitionInvoiceMutation.isPending ||
+          (transitionReasonRequired && !trimmedTransitionReason)
+        }
+        onConfirm={confirmInvoiceTransition}
+      >
+        {pendingInvoiceTransition && transitionReasonRequired ? (
+          <div className="space-y-2">
+            <Label htmlFor="invoice-transition-reason">
+              {invoiceActionReasonLabel(pendingInvoiceTransition.action)}
+            </Label>
+            <Textarea
+              id="invoice-transition-reason"
+              value={transitionReason}
+              onChange={(event) => setTransitionReason(event.target.value)}
+              maxLength={1000}
+              rows={3}
+              placeholder={`${invoiceActionReasonLabel(pendingInvoiceTransition.action)}を入力`}
+            />
+            <p className="text-xs text-muted-foreground">
+              理由は監査ログに長さのみ記録され、画面には表示されません。
+            </p>
+          </div>
+        ) : null}
+      </ConfirmDialog>
     </div>
   );
 }

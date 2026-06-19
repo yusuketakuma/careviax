@@ -196,7 +196,7 @@ export function PatientContactsPanel({
                     )
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger aria-label={`連絡先${index + 1}件目の関係`}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

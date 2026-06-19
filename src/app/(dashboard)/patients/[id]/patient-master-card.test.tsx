@@ -84,5 +84,11 @@ describe('PatientMasterCard', () => {
       expect(group.className).toContain('border-border/70');
       expect(group.className).toContain('rounded-2xl');
     }
+
+    expect(screen.getByLabelText('性別')).toBeTruthy();
+    expect(screen.getByLabelText('施設')).toBeTruthy();
+    expect(screen.getByLabelText('ユニット')).toBeTruthy();
+    expect(screen.getByLabelText('アレルギー1件目の区分')).toBeTruthy();
+    expect(screen.getByLabelText('アレルギー1件目の重症度')).toBeTruthy();
   });
 });

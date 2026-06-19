@@ -742,6 +742,7 @@ export function TasksContent({
           enableRowSelection
           onSelectionChange={setSelectedTasks}
           getRowId={(row) => row.id}
+          getRowA11yLabel={(row) => row.title}
         />
 
         <div className="space-y-3 sm:hidden">

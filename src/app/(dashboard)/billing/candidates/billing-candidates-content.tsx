@@ -1060,6 +1060,7 @@ export function BillingCandidatesContent({
         caption="月次請求候補一覧"
         selectedRowIndex={targetCandidateIndex >= 0 ? targetCandidateIndex : undefined}
         enableRowSelection
+        getRowA11yLabel={(candidate) => `${candidate.billing_name}（${candidate.billing_code}）`}
         toolbar={{
           enableGlobalFilter: true,
           globalFilterPlaceholder: '請求コード・算定名称で絞り込み',

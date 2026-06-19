@@ -37,7 +37,60 @@ function renderContent() {
   return render(<PartnerCooperationBillingContent />, { wrapper: createWrapper() });
 }
 
+type InvoiceFixture = {
+  id: string;
+  contract_id: string;
+  document_kind: 'invoice' | 'free_cooperation_report';
+  invoice_no: string | null;
+  billing_month: string;
+  subtotal: number;
+  tax_amount: number;
+  total: number;
+  status: string;
+  issued_at: string | null;
+  sent_at: string | null;
+  received_at: string | null;
+  payment_scheduled_for: string | null;
+  paid_at: string | null;
+  item_count: number;
+  partnership: {
+    base_site: { id: string; name: string };
+    partner_pharmacy: { id: string; name: string; status: string };
+  };
+};
+
+function createInvoiceFixture(overrides: Partial<InvoiceFixture> = {}): InvoiceFixture {
+  const base: InvoiceFixture = {
+    id: 'invoice_existing',
+    contract_id: 'contract_1',
+    document_kind: 'invoice',
+    invoice_no: 'INV-001',
+    billing_month: '2026-06-01',
+    subtotal: 5500,
+    tax_amount: 550,
+    total: 6050,
+    status: 'draft',
+    issued_at: null,
+    sent_at: null,
+    received_at: null,
+    payment_scheduled_for: null,
+    paid_at: null,
+    item_count: 1,
+    partnership: {
+      base_site: { id: 'site_1', name: '基幹薬局' },
+      partner_pharmacy: {
+        id: 'partner_pharmacy_1',
+        name: '協力薬局',
+        status: 'active',
+      },
+    },
+  };
+  return { ...base, ...overrides, partnership: overrides.partnership ?? base.partnership };
+}
+
 describe('PartnerCooperationBillingContent', () => {
+  let invoiceRows: InvoiceFixture[];
+
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
@@ -47,6 +100,7 @@ describe('PartnerCooperationBillingContent', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(new Date('2026-06-19T00:00:00.000Z'));
     vi.clearAllMocks();
+    invoiceRows = [createInvoiceFixture()];
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -134,33 +188,7 @@ describe('PartnerCooperationBillingContent', () => {
         if (url.startsWith('/api/pharmacy-invoices?')) {
           return new Response(
             JSON.stringify({
-              data: [
-                {
-                  id: 'invoice_existing',
-                  contract_id: 'contract_1',
-                  document_kind: 'invoice',
-                  invoice_no: 'INV-001',
-                  billing_month: '2026-06-01',
-                  subtotal: 5500,
-                  tax_amount: 550,
-                  total: 6050,
-                  status: 'draft',
-                  issued_at: null,
-                  sent_at: null,
-                  received_at: null,
-                  payment_scheduled_for: null,
-                  paid_at: null,
-                  item_count: 1,
-                  partnership: {
-                    base_site: { id: 'site_1', name: '基幹薬局' },
-                    partner_pharmacy: {
-                      id: 'partner_pharmacy_1',
-                      name: '協力薬局',
-                      status: 'active',
-                    },
-                  },
-                },
-              ],
+              data: invoiceRows,
             }),
             { status: 200 },
           );
@@ -198,24 +226,21 @@ describe('PartnerCooperationBillingContent', () => {
             { status: 201 },
           );
         }
-        if (url === '/api/pharmacy-invoices/invoice_existing' && init?.method === 'PATCH') {
+        if (url.startsWith('/api/pharmacy-invoices/') && init?.method === 'PATCH') {
+          const invoiceId = url.split('/').at(-1);
+          const invoice = invoiceRows.find((row) => row.id === invoiceId) ?? invoiceRows[0];
+          const body = JSON.parse(String(init.body ?? '{}')) as { action?: string };
+          const nextStatus =
+            body.action === 'cancel' ? 'cancelled' : body.action === 'issue' ? 'issued' : 'sent';
           return new Response(
             JSON.stringify({
-              id: 'invoice_existing',
-              contract_id: 'contract_1',
-              document_kind: 'invoice',
-              invoice_no: 'INV-001',
-              billing_month: '2026-06-01',
-              subtotal: 5500,
-              tax_amount: 550,
-              total: 6050,
-              status: 'issued',
-              issued_at: '2026-06-19T00:00:00.000Z',
+              ...invoice,
+              status: nextStatus,
+              issued_at: body.action === 'issue' ? '2026-06-19T00:00:00.000Z' : invoice.issued_at,
               sent_at: null,
               received_at: null,
               payment_scheduled_for: null,
               paid_at: null,
-              item_count: 1,
             }),
             { status: 200 },
           );
@@ -302,7 +327,19 @@ describe('PartnerCooperationBillingContent', () => {
     const invoicesTable = await screen.findByRole('table', {
       name: '薬局間月次ドキュメント一覧',
     });
-    fireEvent.click(within(invoicesTable).getByRole('button', { name: /invoice_existing 発行/ }));
+    fireEvent.click(within(invoicesTable).getByRole('button', { name: /INV-001 発行/ }));
+
+    expect(screen.getByText(/請求書を発行します/)).toBeTruthy();
+    expect(
+      vi
+        .mocked(fetch)
+        .mock.calls.some(
+          ([input, init]) =>
+            String(input) === '/api/pharmacy-invoices/invoice_existing' && init?.method === 'PATCH',
+        ),
+    ).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: '発行する' }));
 
     await waitFor(() => {
       const patchCall = vi
@@ -315,6 +352,51 @@ describe('PartnerCooperationBillingContent', () => {
       expect(JSON.parse(String(patchCall?.[1]?.body))).toEqual({
         action: 'issue',
         occurred_at: '2026-06-19',
+      });
+    });
+  });
+
+  it('requires a reason before cancelling an issued invoice lifecycle state', async () => {
+    invoiceRows = [
+      createInvoiceFixture({
+        id: 'invoice_issued',
+        invoice_no: 'INV-002',
+        status: 'issued',
+        issued_at: '2026-06-19T00:00:00.000Z',
+      }),
+    ];
+    renderContent();
+
+    const invoicesTable = await screen.findByRole('table', {
+      name: '薬局間月次ドキュメント一覧',
+    });
+    fireEvent.click(within(invoicesTable).getByRole('button', { name: /INV-002 取消/ }));
+
+    expect(screen.getByText(/請求書を取消します/)).toBeTruthy();
+    expect((screen.getByRole('button', { name: '取消する' }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+
+    fireEvent.change(screen.getByLabelText('取消理由'), {
+      target: { value: '重複して発行したため' },
+    });
+    expect((screen.getByRole('button', { name: '取消する' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '取消する' }));
+
+    await waitFor(() => {
+      const patchCall = vi
+        .mocked(fetch)
+        .mock.calls.find(
+          ([input, init]) =>
+            String(input) === '/api/pharmacy-invoices/invoice_issued' && init?.method === 'PATCH',
+        );
+      expect(patchCall).toBeTruthy();
+      expect(JSON.parse(String(patchCall?.[1]?.body))).toEqual({
+        action: 'cancel',
+        reason: '重複して発行したため',
       });
     });
   });

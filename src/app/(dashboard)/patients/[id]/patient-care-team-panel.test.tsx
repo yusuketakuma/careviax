@@ -69,6 +69,9 @@ describe('PatientCareTeamPanel', () => {
     expect(screen.getByRole('heading', { level: 2, name: '多職種連携先' }).tagName).toBe('H2');
     expect(screen.getByDisplayValue('佐藤医師')).toBeTruthy();
     expect(screen.getByDisplayValue('千代田クリニック')).toBeTruthy();
+    expect(screen.getByLabelText('多職種連携先のケース')).toBeTruthy();
+    expect(screen.getByLabelText('多職種連携先1件目の他職種マスター')).toBeTruthy();
+    expect(screen.getByLabelText('多職種連携先1件目の役割')).toBeTruthy();
     expect(screen.getByRole('button', { name: /行追加/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
   });

@@ -1351,7 +1351,7 @@ export default function ReportDetailPage() {
             }
           }}
         >
-          <DialogContent>
+          <DialogContent size="2xl">
             <DialogHeader>
               <DialogTitle>{isRetryableReport ? '報告書を再送' : '報告書を送付'}</DialogTitle>
             </DialogHeader>
@@ -1482,7 +1482,11 @@ export default function ReportDetailPage() {
                     setSendForm((prev) => ({ ...prev, channel: v ?? prev.channel }))
                   }
                 >
-                  <SelectTrigger id="send-channel" className="min-h-[44px] sm:h-8 sm:min-h-0">
+                  <SelectTrigger
+                    id="send-channel"
+                    aria-label="送付チャネル"
+                    className="min-h-[44px] sm:h-8 sm:min-h-0"
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

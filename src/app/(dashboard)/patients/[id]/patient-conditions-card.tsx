@@ -147,7 +147,7 @@ export function PatientConditionsCard({
                       )
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger aria-label={`病名・課題${index + 1}件目の区分`}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
