@@ -41,6 +41,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ErrorState } from '@/components/ui/error-state';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -1836,372 +1837,389 @@ export function ScheduleProposalsContent({
         description="表示タブ、候補件数、選択数を確認し、表示中の候補に対する一括承認・却下を行います。"
         tone="subtle"
         actions={
-          <ActionRail>
-            <Button
-              variant="outline"
-              size="sm"
-              className={PROPOSAL_TOUCH_TARGET_CLASS}
-              onClick={() => setBulkConfirmAction('reject')}
-              disabled={bulkRejectEligibleCount === 0 || bulkActionMutation.isPending}
-              aria-label={bulkRejectButtonLabel}
-            >
-              <XCircle className="mr-1.5 size-4" />
-              {bulkRejectButtonLabel}
-            </Button>
-            <Button
-              size="sm"
-              className={PROPOSAL_TOUCH_TARGET_CLASS}
-              onClick={() => setBulkConfirmAction('approve')}
-              disabled={bulkApproveEligibleCount === 0 || bulkActionMutation.isPending}
-              aria-label={bulkApproveButtonLabel}
-            >
-              <CheckCircle2 className="mr-1.5 size-4" />
-              {bulkApproveButtonLabel}
-            </Button>
-          </ActionRail>
+          proposalsQuery.isError ? null : (
+            <ActionRail>
+              <Button
+                variant="outline"
+                size="sm"
+                className={PROPOSAL_TOUCH_TARGET_CLASS}
+                onClick={() => setBulkConfirmAction('reject')}
+                disabled={bulkRejectEligibleCount === 0 || bulkActionMutation.isPending}
+                aria-label={bulkRejectButtonLabel}
+              >
+                <XCircle className="mr-1.5 size-4" />
+                {bulkRejectButtonLabel}
+              </Button>
+              <Button
+                size="sm"
+                className={PROPOSAL_TOUCH_TARGET_CLASS}
+                onClick={() => setBulkConfirmAction('approve')}
+                disabled={bulkApproveEligibleCount === 0 || bulkActionMutation.isPending}
+                aria-label={bulkApproveButtonLabel}
+              >
+                <CheckCircle2 className="mr-1.5 size-4" />
+                {bulkApproveButtonLabel}
+              </Button>
+            </ActionRail>
+          )
         }
         contentClassName="space-y-4"
       >
-        <Tabs
-          value={activeTab}
-          onValueChange={(value) => {
-            const nextTab = value as DashboardTab;
-            setActiveTab(nextTab);
-            clearSelectedProposals();
-            replaceDashboardUrl({
-              status:
-                nextTab === 'patient_contact_pending'
-                  ? 'patient_contact_pending'
-                  : nextTab === 'confirmed'
-                    ? 'confirmed'
-                    : nextTab === 'rejected'
-                      ? 'rejected'
-                      : 'proposed',
-            });
-          }}
-          className="space-y-4"
-        >
-          <TabsList variant="line" className="flex w-full flex-wrap justify-start gap-2">
-            {(Object.keys(TAB_LABELS) as DashboardTab[]).map((tab) => (
-              <TabsTrigger key={tab} value={tab} className="gap-2">
-                {TAB_LABELS[tab]}
-                <Badge variant="outline">{tabCounts[tab]}</Badge>
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
-
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <label className="flex min-h-[44px] items-center gap-3 text-sm">
-            <Checkbox
-              className={PROPOSAL_CHECKBOX_TOUCH_TARGET_CLASS}
-              checked={allVisibleSelected}
-              onCheckedChange={(checked) => {
-                setBulkActionFailureSummary(null);
-                setSelectedIds(checked ? visibleProposals.map((proposal) => proposal.id) : []);
+        {proposalsQuery.isError ? (
+          <ErrorState
+            variant="server"
+            title="訪問候補を表示できません"
+            description="訪問候補、患者連絡待ち、差替候補の取得に失敗しました。通信状態を確認して再試行してください。"
+            detail="取得失敗時は、候補がないものとして扱わず、承認・却下・日時確定の操作を停止しています。"
+            action={{ label: '再試行', onClick: () => void proposalsQuery.refetch() }}
+            headingLevel={3}
+          />
+        ) : (
+          <>
+            <Tabs
+              value={activeTab}
+              onValueChange={(value) => {
+                const nextTab = value as DashboardTab;
+                setActiveTab(nextTab);
+                clearSelectedProposals();
+                replaceDashboardUrl({
+                  status:
+                    nextTab === 'patient_contact_pending'
+                      ? 'patient_contact_pending'
+                      : nextTab === 'confirmed'
+                        ? 'confirmed'
+                        : nextTab === 'rejected'
+                          ? 'rejected'
+                          : 'proposed',
+                });
               }}
-              aria-label="表示中の候補をすべて選択"
-            />
-            表示中の候補をすべて選択
-          </label>
-          <div className="min-w-0 flex-1">
-            <FilterSummaryBar
-              items={[
-                { label: '表示候補', value: `${visibleProposals.length}件` },
-                { label: '選択中', value: `${selectedProposals.length}件` },
-                { label: '本日候補', value: `${todayFilterCount}件` },
-                {
-                  label: '患者連絡中',
-                  value: `${tabCounts.patient_contact_pending}件`,
-                  tone: tabCounts.patient_contact_pending > 0 ? 'warning' : 'default',
-                },
-                {
-                  label: '差替/期限切れ',
-                  value: `${tabCounts.stale}件`,
-                  tone: tabCounts.stale > 0 ? 'warning' : 'default',
-                },
-              ]}
-            />
-          </div>
-        </div>
-
-        {activeBulkActionFailureSummary ? (
-          <Alert
-            className="border-amber-300 bg-amber-50 text-amber-900"
-            data-testid="proposal-bulk-partial-failure"
-          >
-            <XCircle className="size-4" aria-hidden="true" />
-            <AlertDescription className="space-y-2 text-current">
-              <p className="font-medium">
-                {activeBulkActionFailureSummary.successCount > 0
-                  ? `${activeBulkActionFailureSummary.successCount + activeBulkActionFailureSummary.failureCount}件中${activeBulkActionFailureSummary.successCount}件を処理しました。${activeBulkActionFailureSummary.failureCount}件は未更新です。`
-                  : `${activeBulkActionFailureSummary.failureCount}件を更新できませんでした。`}
-              </p>
-              <ul aria-label="未更新の訪問候補" className="space-y-2">
-                {activeBulkActionFailureSummary.failures.map((failure) => (
-                  <li
-                    key={failure.id}
-                    className="rounded-md border border-amber-200 bg-white/70 p-2"
-                  >
-                    <p className="font-medium">{failure.patientName}</p>
-                    <p className="text-xs leading-5">
-                      {formatNullableDateLabel(failure.proposedDate)}{' '}
-                      {timeLabel(failure.timeWindowStart, failure.timeWindowEnd)} /{' '}
-                      {failure.pharmacistName} / {failure.vehicleLabel} / 候補{' '}
-                      {proposalShortEntityIdentifier(failure.id)}
-                    </p>
-                    <p className="text-xs leading-5">未更新理由: {failure.message}</p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className={cn(
-                        PROPOSAL_TOUCH_TARGET_CLASS,
-                        'mt-2 border-amber-300 bg-white text-amber-950 hover:bg-amber-100',
-                      )}
-                      onClick={() => openDetail(failure.id)}
-                      aria-label={`${failure.patientName} ${formatNullableDateLabel(failure.proposedDate)} ${timeLabel(failure.timeWindowStart, failure.timeWindowEnd)} / 候補 ${proposalShortEntityIdentifier(failure.id)} の未更新候補を詳細で確認`}
-                    >
-                      該当候補を確認
-                      <ChevronRight className="ml-1 size-3.5" aria-hidden="true" />
-                    </Button>
-                  </li>
+              className="space-y-4"
+            >
+              <TabsList variant="line" className="flex w-full flex-wrap justify-start gap-2">
+                {(Object.keys(TAB_LABELS) as DashboardTab[]).map((tab) => (
+                  <TabsTrigger key={tab} value={tab} className="gap-2">
+                    {TAB_LABELS[tab]}
+                    <Badge variant="outline">{tabCounts[tab]}</Badge>
+                  </TabsTrigger>
                 ))}
-              </ul>
-            </AlertDescription>
-          </Alert>
-        ) : null}
+              </TabsList>
+            </Tabs>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <label className="flex min-h-[44px] items-center gap-3 text-sm">
+                <Checkbox
+                  className={PROPOSAL_CHECKBOX_TOUCH_TARGET_CLASS}
+                  checked={allVisibleSelected}
+                  onCheckedChange={(checked) => {
+                    setBulkActionFailureSummary(null);
+                    setSelectedIds(checked ? visibleProposals.map((proposal) => proposal.id) : []);
+                  }}
+                  aria-label="表示中の候補をすべて選択"
+                />
+                表示中の候補をすべて選択
+              </label>
+              <div className="min-w-0 flex-1">
+                <FilterSummaryBar
+                  items={[
+                    { label: '表示候補', value: `${visibleProposals.length}件` },
+                    { label: '選択中', value: `${selectedProposals.length}件` },
+                    { label: '本日候補', value: `${todayFilterCount}件` },
+                    {
+                      label: '患者連絡中',
+                      value: `${tabCounts.patient_contact_pending}件`,
+                      tone: tabCounts.patient_contact_pending > 0 ? 'warning' : 'default',
+                    },
+                    {
+                      label: '差替/期限切れ',
+                      value: `${tabCounts.stale}件`,
+                      tone: tabCounts.stale > 0 ? 'warning' : 'default',
+                    },
+                  ]}
+                />
+              </div>
+            </div>
+
+            {activeBulkActionFailureSummary ? (
+              <Alert
+                className="border-amber-300 bg-amber-50 text-amber-900"
+                data-testid="proposal-bulk-partial-failure"
+              >
+                <XCircle className="size-4" aria-hidden="true" />
+                <AlertDescription className="space-y-2 text-current">
+                  <p className="font-medium">
+                    {activeBulkActionFailureSummary.successCount > 0
+                      ? `${activeBulkActionFailureSummary.successCount + activeBulkActionFailureSummary.failureCount}件中${activeBulkActionFailureSummary.successCount}件を処理しました。${activeBulkActionFailureSummary.failureCount}件は未更新です。`
+                      : `${activeBulkActionFailureSummary.failureCount}件を更新できませんでした。`}
+                  </p>
+                  <ul aria-label="未更新の訪問候補" className="space-y-2">
+                    {activeBulkActionFailureSummary.failures.map((failure) => (
+                      <li
+                        key={failure.id}
+                        className="rounded-md border border-amber-200 bg-white/70 p-2"
+                      >
+                        <p className="font-medium">{failure.patientName}</p>
+                        <p className="text-xs leading-5">
+                          {formatNullableDateLabel(failure.proposedDate)}{' '}
+                          {timeLabel(failure.timeWindowStart, failure.timeWindowEnd)} /{' '}
+                          {failure.pharmacistName} / {failure.vehicleLabel} / 候補{' '}
+                          {proposalShortEntityIdentifier(failure.id)}
+                        </p>
+                        <p className="text-xs leading-5">未更新理由: {failure.message}</p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className={cn(
+                            PROPOSAL_TOUCH_TARGET_CLASS,
+                            'mt-2 border-amber-300 bg-white text-amber-950 hover:bg-amber-100',
+                          )}
+                          onClick={() => openDetail(failure.id)}
+                          aria-label={`${failure.patientName} ${formatNullableDateLabel(failure.proposedDate)} ${timeLabel(failure.timeWindowStart, failure.timeWindowEnd)} / 候補 ${proposalShortEntityIdentifier(failure.id)} の未更新候補を詳細で確認`}
+                        >
+                          該当候補を確認
+                          <ChevronRight className="ml-1 size-3.5" aria-hidden="true" />
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                </AlertDescription>
+              </Alert>
+            ) : null}
+          </>
+        )}
       </PageSection>
 
-      <div className="grid gap-4">
-        {visibleDiagnostics ? (
-          <VisitProposalDiagnosticsCard
-            diagnostics={visibleDiagnostics}
-            actions={buildDashboardDiagnosticActions({
-              diagnostics: visibleDiagnostics,
-              travelMode: routeTravelMode,
-              nextBillableDate: detailPreview?.cadence.next_billable_date ?? null,
-              currentStartDate: reproposalForm.start_date,
-              onSetTravelMode: (value) => {
-                setRouteTravelMode(value);
-                replaceDashboardUrl({ travel_mode: value });
-              },
-              onSetCandidateCount: (value) =>
-                setReproposalFormDraft((current) => ({
-                  ...(current ?? reproposalForm),
-                  candidate_count: value,
-                })),
-              onSetStartDate: (value) =>
-                setReproposalFormDraft((current) => ({
-                  ...(current ?? reproposalForm),
-                  start_date: value,
-                })),
-              onExpandTimeWindow: () =>
-                setReproposalFormDraft((current) => ({
-                  ...(current ?? reproposalForm),
-                  preferred_time_from: '09:00',
-                  preferred_time_to: '18:00',
-                })),
-              onSetPriorityEmergency: () =>
-                setReproposalFormDraft((current) => ({
-                  ...(current ?? reproposalForm),
-                  priority: 'emergency',
-                })),
-              onOpenOptimizer: () =>
-                replaceDashboardUrl({
-                  workspace: 'optimizer',
-                  optimizer_case_id: detail?.case_id ?? null,
-                  optimizer_travel_mode: routeTravelMode,
-                }),
-              onScrollToReproposal: () =>
-                document
-                  .getElementById('schedule-proposal-reproposal')
-                  ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
-            })}
-          />
-        ) : null}
+      {!proposalsQuery.isError ? (
+        <div className="grid gap-4">
+          {visibleDiagnostics ? (
+            <VisitProposalDiagnosticsCard
+              diagnostics={visibleDiagnostics}
+              actions={buildDashboardDiagnosticActions({
+                diagnostics: visibleDiagnostics,
+                travelMode: routeTravelMode,
+                nextBillableDate: detailPreview?.cadence.next_billable_date ?? null,
+                currentStartDate: reproposalForm.start_date,
+                onSetTravelMode: (value) => {
+                  setRouteTravelMode(value);
+                  replaceDashboardUrl({ travel_mode: value });
+                },
+                onSetCandidateCount: (value) =>
+                  setReproposalFormDraft((current) => ({
+                    ...(current ?? reproposalForm),
+                    candidate_count: value,
+                  })),
+                onSetStartDate: (value) =>
+                  setReproposalFormDraft((current) => ({
+                    ...(current ?? reproposalForm),
+                    start_date: value,
+                  })),
+                onExpandTimeWindow: () =>
+                  setReproposalFormDraft((current) => ({
+                    ...(current ?? reproposalForm),
+                    preferred_time_from: '09:00',
+                    preferred_time_to: '18:00',
+                  })),
+                onSetPriorityEmergency: () =>
+                  setReproposalFormDraft((current) => ({
+                    ...(current ?? reproposalForm),
+                    priority: 'emergency',
+                  })),
+                onOpenOptimizer: () =>
+                  replaceDashboardUrl({
+                    workspace: 'optimizer',
+                    optimizer_case_id: detail?.case_id ?? null,
+                    optimizer_travel_mode: routeTravelMode,
+                  }),
+                onScrollToReproposal: () =>
+                  document
+                    .getElementById('schedule-proposal-reproposal')
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+              })}
+            />
+          ) : null}
 
-        {proposalsQuery.isLoading ? (
-          <Card>
-            <CardContent className="py-10 text-sm text-muted-foreground">
-              訪問候補を読み込み中...
-            </CardContent>
-          </Card>
-        ) : visibleProposals.length === 0 ? (
-          <Card>
-            <CardContent className="py-10 text-sm text-muted-foreground">
-              条件に一致する訪問候補はありません。
-            </CardContent>
-          </Card>
-        ) : (
-          visibleProposals.map((proposal) => {
-            const proposalPreview = proposalPreviewMap?.get(proposal.id);
-            const proposalCadence = proposalPreview?.cadence ?? null;
-            const proposalWarningMessages =
-              proposalPreview?.alerts
-                ?.filter((alert) => alert.severity !== 'info')
-                .map((alert) => alert.message) ?? [];
-            const canApprove = ['proposed', 'reschedule_pending'].includes(
-              proposal.proposal_status,
-            );
-            const canConfirm =
-              proposal.proposal_status === 'patient_contact_pending' &&
-              proposal.patient_contact_status === 'confirmed';
-            const impactedCount = readImpactCount(
-              proposal.reschedule_source_schedule?.override_request?.impact_summary,
-            );
-            const impactedNames = readImpactedPatientNames(
-              proposal.reschedule_source_schedule?.override_request?.impact_summary,
-            );
-            const proposalTargetLabel = proposalActionTargetLabel(proposal);
+          {proposalsQuery.isLoading ? (
+            <Card>
+              <CardContent className="py-10 text-sm text-muted-foreground">
+                訪問候補を読み込み中...
+              </CardContent>
+            </Card>
+          ) : visibleProposals.length === 0 ? (
+            <Card>
+              <CardContent className="py-10 text-sm text-muted-foreground">
+                条件に一致する訪問候補はありません。
+              </CardContent>
+            </Card>
+          ) : (
+            visibleProposals.map((proposal) => {
+              const proposalPreview = proposalPreviewMap?.get(proposal.id);
+              const proposalCadence = proposalPreview?.cadence ?? null;
+              const proposalWarningMessages =
+                proposalPreview?.alerts
+                  ?.filter((alert) => alert.severity !== 'info')
+                  .map((alert) => alert.message) ?? [];
+              const canApprove = ['proposed', 'reschedule_pending'].includes(
+                proposal.proposal_status,
+              );
+              const canConfirm =
+                proposal.proposal_status === 'patient_contact_pending' &&
+                proposal.patient_contact_status === 'confirmed';
+              const impactedCount = readImpactCount(
+                proposal.reschedule_source_schedule?.override_request?.impact_summary,
+              );
+              const impactedNames = readImpactedPatientNames(
+                proposal.reschedule_source_schedule?.override_request?.impact_summary,
+              );
+              const proposalTargetLabel = proposalActionTargetLabel(proposal);
 
-            return (
-              <Card
-                key={proposal.id}
-                id={`proposal-${proposal.id}`}
-                data-testid={
-                  activeDetailId === proposal.id ? 'schedule-proposal-active-row' : undefined
-                }
-                className={cn(
-                  'border-border/70 bg-card/95 scroll-mt-28',
-                  activeDetailId === proposal.id ? 'ring-2 ring-primary/30' : null,
-                )}
-              >
-                <CardContent className="space-y-4 p-5">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div className="flex items-start gap-3">
-                      <Checkbox
-                        className={PROPOSAL_CHECKBOX_TOUCH_TARGET_CLASS}
-                        checked={selectedIds.includes(proposal.id)}
-                        onCheckedChange={(checked) => {
-                          setBulkActionFailureSummary(null);
-                          setSelectedIds((current) =>
-                            checked
-                              ? Array.from(new Set([...current, proposal.id]))
-                              : current.filter((id) => id !== proposal.id),
-                          );
-                        }}
-                        aria-label={`${proposalTargetLabel} の候補を選択`}
-                      />
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="text-lg font-semibold text-foreground">
-                            {proposal.case_.patient.name}
-                          </p>
-                          <Badge
-                            variant="outline"
-                            className={statusBadgeClass(proposal.proposal_status)}
-                          >
-                            {PROPOSAL_STATUS_LABELS[proposal.proposal_status]}
-                          </Badge>
-                          <Badge variant="outline">
-                            {CONTACT_STATUS_LABELS[proposal.patient_contact_status]}
-                          </Badge>
-                          <Badge variant="outline">{PRIORITY_LABELS[proposal.priority]}</Badge>
-                          <Badge variant="outline">{proposalSafeIdentifierLabel(proposal)}</Badge>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                          <span className="inline-flex items-center gap-1">
-                            <CalendarClock className="size-4" />
-                            {formatNullableDateLabel(proposal.proposed_date)}{' '}
-                            {timeLabel(proposal.time_window_start, proposal.time_window_end)}
-                          </span>
-                          <span className="inline-flex items-center gap-1">
-                            <UserRound className="size-4" />
-                            {proposal.proposed_pharmacist?.name ?? '担当未解決'}
-                          </span>
-                          <span className="inline-flex items-center gap-1">
-                            <Route className="size-4" />
-                            スコア {formatDistanceScoreLabel(proposal.route_distance_score)}
-                          </span>
-                          {proposal.vehicle_resource ? (
+              return (
+                <Card
+                  key={proposal.id}
+                  id={`proposal-${proposal.id}`}
+                  data-testid={
+                    activeDetailId === proposal.id ? 'schedule-proposal-active-row' : undefined
+                  }
+                  className={cn(
+                    'border-border/70 bg-card/95 scroll-mt-28',
+                    activeDetailId === proposal.id ? 'ring-2 ring-primary/30' : null,
+                  )}
+                >
+                  <CardContent className="space-y-4 p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div className="flex items-start gap-3">
+                        <Checkbox
+                          className={PROPOSAL_CHECKBOX_TOUCH_TARGET_CLASS}
+                          checked={selectedIds.includes(proposal.id)}
+                          onCheckedChange={(checked) => {
+                            setBulkActionFailureSummary(null);
+                            setSelectedIds((current) =>
+                              checked
+                                ? Array.from(new Set([...current, proposal.id]))
+                                : current.filter((id) => id !== proposal.id),
+                            );
+                          }}
+                          aria-label={`${proposalTargetLabel} の候補を選択`}
+                        />
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-lg font-semibold text-foreground">
+                              {proposal.case_.patient.name}
+                            </p>
+                            <Badge
+                              variant="outline"
+                              className={statusBadgeClass(proposal.proposal_status)}
+                            >
+                              {PROPOSAL_STATUS_LABELS[proposal.proposal_status]}
+                            </Badge>
+                            <Badge variant="outline">
+                              {CONTACT_STATUS_LABELS[proposal.patient_contact_status]}
+                            </Badge>
+                            <Badge variant="outline">{PRIORITY_LABELS[proposal.priority]}</Badge>
+                            <Badge variant="outline">{proposalSafeIdentifierLabel(proposal)}</Badge>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                             <span className="inline-flex items-center gap-1">
-                              <Car className="size-4" />
-                              {proposal.vehicle_resource.label}
+                              <CalendarClock className="size-4" />
+                              {formatNullableDateLabel(proposal.proposed_date)}{' '}
+                              {timeLabel(proposal.time_window_start, proposal.time_window_end)}
                             </span>
-                          ) : null}
+                            <span className="inline-flex items-center gap-1">
+                              <UserRound className="size-4" />
+                              {proposal.proposed_pharmacist?.name ?? '担当未解決'}
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <Route className="size-4" />
+                              スコア {formatDistanceScoreLabel(proposal.route_distance_score)}
+                            </span>
+                            {proposal.vehicle_resource ? (
+                              <span className="inline-flex items-center gap-1">
+                                <Car className="size-4" />
+                                {proposal.vehicle_resource.label}
+                              </span>
+                            ) : null}
+                          </div>
+                          <ProposalDecisionBadges proposal={proposal} />
                         </div>
-                        <ProposalDecisionBadges proposal={proposal} />
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className={PROPOSAL_TOUCH_TARGET_CLASS}
+                          onClick={() => openDetail(proposal.id)}
+                          aria-label={`${proposalTargetLabel} の確定フローを開く`}
+                        >
+                          確定フロー
+                        </Button>
+                        {canApprove ? (
+                          <Button
+                            size="sm"
+                            className={PROPOSAL_TOUCH_TARGET_CLASS}
+                            onClick={() => setSingleConfirmAction({ proposal, action: 'approve' })}
+                            disabled={proposalActionMutation.isPending}
+                            aria-label={`${proposalTargetLabel} を承認して患者連絡へ進める`}
+                          >
+                            承認して連絡へ
+                          </Button>
+                        ) : null}
+                        {canConfirm ? (
+                          <Button
+                            size="sm"
+                            className={PROPOSAL_TOUCH_TARGET_CLASS}
+                            onClick={() => setSingleConfirmAction({ proposal, action: 'confirm' })}
+                            disabled={proposalActionMutation.isPending}
+                            aria-label={`${proposalTargetLabel} を日時確定する`}
+                          >
+                            日時確定
+                          </Button>
+                        ) : null}
                       </div>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className={PROPOSAL_TOUCH_TARGET_CLASS}
-                        onClick={() => openDetail(proposal.id)}
-                        aria-label={`${proposalTargetLabel} の確定フローを開く`}
-                      >
-                        確定フロー
-                      </Button>
-                      {canApprove ? (
-                        <Button
-                          size="sm"
-                          className={PROPOSAL_TOUCH_TARGET_CLASS}
-                          onClick={() => setSingleConfirmAction({ proposal, action: 'approve' })}
-                          disabled={proposalActionMutation.isPending}
-                          aria-label={`${proposalTargetLabel} を承認して患者連絡へ進める`}
-                        >
-                          承認して連絡へ
-                        </Button>
-                      ) : null}
-                      {canConfirm ? (
-                        <Button
-                          size="sm"
-                          className={PROPOSAL_TOUCH_TARGET_CLASS}
-                          onClick={() => setSingleConfirmAction({ proposal, action: 'confirm' })}
-                          disabled={proposalActionMutation.isPending}
-                          aria-label={`${proposalTargetLabel} を日時確定する`}
-                        >
-                          日時確定
-                        </Button>
-                      ) : null}
-                    </div>
-                  </div>
 
-                  <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_18rem]">
-                    <div className="space-y-3">
-                      <ProposalHumanDecisionFlow proposal={proposal} compact />
+                    <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_18rem]">
+                      <div className="space-y-3">
+                        <ProposalHumanDecisionFlow proposal={proposal} compact />
 
-                      <ProposalMedicationWorkflowCard proposal={proposal} compact />
-                      <ProposalReasonChips proposal={proposal} />
-                      <p className="text-sm text-muted-foreground">
-                        {proposalListVisitPlaceLabel(proposal)}
-                      </p>
-                      {proposal.escalation_reason ? (
-                        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                          {proposal.escalation_reason}
+                        <ProposalMedicationWorkflowCard proposal={proposal} compact />
+                        <ProposalReasonChips proposal={proposal} />
+                        <p className="text-sm text-muted-foreground">
+                          {proposalListVisitPlaceLabel(proposal)}
                         </p>
-                      ) : null}
-                      {proposalCadence ? (
-                        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-                          <p className="font-medium">算定 cadence</p>
-                          <p className="mt-1">
-                            次回算定可能日: {proposalCadence.next_billable_date ?? '提案不可'} /
-                            残回数 {proposalCadence.remaining_month_count}
+                        {proposal.escalation_reason ? (
+                          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                            {proposal.escalation_reason}
                           </p>
-                          {proposalWarningMessages.length > 0 ? (
-                            <p className="mt-1 text-xs text-amber-800">
-                              {proposalWarningMessages.slice(0, 2).join(' / ')}
+                        ) : null}
+                        {proposalCadence ? (
+                          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                            <p className="font-medium">算定 cadence</p>
+                            <p className="mt-1">
+                              次回算定可能日: {proposalCadence.next_billable_date ?? '提案不可'} /
+                              残回数 {proposalCadence.remaining_month_count}
                             </p>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      {impactedCount ? (
-                        <p className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-800">
-                          リスケ影響 {impactedCount} 件
-                          {impactedNames.length > 0 ? ` / ${impactedNames.join('、')}` : ''}
-                        </p>
-                      ) : null}
+                            {proposalWarningMessages.length > 0 ? (
+                              <p className="mt-1 text-xs text-amber-800">
+                                {proposalWarningMessages.slice(0, 2).join(' / ')}
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        {impactedCount ? (
+                          <p className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-800">
+                            リスケ影響 {impactedCount} 件
+                            {impactedNames.length > 0 ? ` / ${impactedNames.join('、')}` : ''}
+                          </p>
+                        ) : null}
+                      </div>
+                      <ProposalOperationalFacts proposal={proposal} />
                     </div>
-                    <ProposalOperationalFacts proposal={proposal} />
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })
-        )}
-      </div>
+                  </CardContent>
+                </Card>
+              );
+            })
+          )}
+        </div>
+      ) : null}
 
       <AlertDialog
         open={singleConfirmAction !== null}
