@@ -26,7 +26,7 @@
 - [x] 最小オペレーター UI: 薬局間連携ワークフロー、管理セットアップ、月次請求、患者カードからの共有ケース作成、訪問依頼作成、共有範囲更新
 - [x] 監査補完: 共有ケース/同意/訂正/ファイル/同意文書/audit-log 検索の最小監査、`AuditLog.actor_pharmacy_id` / `actor_site_id` / `patient_id`
 - [ ] ブラウザ実証: 患者カード作成 → 同意/リンク/有効化 → 訪問依頼 → 訪問記録 → 請求 → 報告下書き
-- [ ] ConsentRecord の document download context 強化と expiry/document update UI
+- [x] ConsentRecord の document download context 強化と expiry/document update UI
 - [ ] 新規マイグレーションの実DB適用確認
 
 ### 外部システム比較から採る方針

@@ -2742,3 +2742,51 @@ Blocked: C11 (diverged user-visible label strings — product/UX sign-off), C12 
 - Consent document download audit still cannot directly resolve a `ConsentRecord` context because `ConsentRecord` stores only `document_url`.
 - ConsentRecord expiry/document update UI remains absent; only the API PATCH path is covered.
 - The new migration was generated and schema-validated but not applied to a live database in this turn.
+
+## 20260619-1909 JST - ConsentRecord Document File Context and Update UI Slice
+
+### Completed
+
+- Re-read the v0.2 `FR-004`, `FR-019`, `P1-06`, `P1-27`, and `P1-28` requirements against the current `ConsentRecord` UI/API and file-download audit path.
+- Added durable `ConsentRecord.document_file_id` linkage to `FileAsset`, with a migration that backfills only canonical audited URLs whose `FileAsset` exists before adding the FK.
+- Updated consent create/PATCH APIs to persist `document_file_id` alongside the audited URL, and to clear both the URL and file link when the document is cleared.
+- Updated consent serialization and consent-record audit flags so `document_file_id` is the preferred, safe source for audited document access.
+- Extended file-download audit context resolution to attach patient context for both `PatientShareConsent.file_asset_id` and `ConsentRecord.document_file_id`, with legacy fallback limited to the canonical relative audited URL.
+- Updated `/api/files/:id/download` and `/api/files/:id/presigned-download` to pass resolved patient/site/consent context into fail-closed file download audit logging before returning JSON or redirect responses.
+- Added the patient consent UI update dialog for active consent records, letting operators change expiry date and upload a replacement consent document through the existing FileAsset upload/complete flow while sending only `document_file_id` to PATCH.
+- Hid mutation actions for expired/revoked consent records and added UI coverage that legacy redacted document URLs are not rendered as clickable links.
+- Fixed validation drift found by the full test run: v0.2 pharmacy-cooperation models are now classified in the data-explorer coverage catalog, and stale audit-log tests now expect the standard actor pharmacy/site/patient/IP/user-agent fields already written by `createAuditLogEntry`.
+
+### Files Changed
+
+- `prisma/schema/admin.prisma`
+- `prisma/schema/patient.prisma`
+- `prisma/migrations/20260619193000_add_consent_record_document_file_id/migration.sql`
+- `src/server/services/consent-record-documents.ts`
+- `src/server/services/consent-record-audit.ts`
+- `src/server/services/file-download-audit.ts`
+- `src/app/api/consent-records/route.ts`
+- `src/app/api/consent-records/[id]/route.ts`
+- `src/app/api/files/[id]/download/route.ts`
+- `src/app/api/files/[id]/presigned-download/route.ts`
+- `src/app/(dashboard)/patients/[id]/consent/consent-records-content.tsx`
+- `src/lib/admin/data-explorer-catalog.ts`
+- Related unit tests for the files above plus stale audit expectation tests for conference notes, patient self reports, logout-all, and pharmacy stock review.
+
+### Validation
+
+- `pnpm db:generate`: passed.
+- `pnpm exec prisma validate --schema=prisma/schema/`: passed.
+- `pnpm exec vitest run src/server/services/consent-record-documents.test.ts src/server/services/file-download-audit.test.ts src/server/services/consent-record-audit.test.ts src/app/api/consent-records/route.test.ts 'src/app/api/consent-records/[id]/route.test.ts' 'src/app/api/files/[id]/download/route.test.ts' 'src/app/api/files/[id]/presigned-download/route.test.ts' 'src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 8 files / 60 tests.
+- `pnpm exec vitest run src/lib/admin/data-explorer-catalog.test.ts src/app/api/conference-notes/route.test.ts 'src/app/api/conference-notes/[id]/route.test.ts' 'src/app/api/conference-notes/[id]/generate-report/route.test.ts' src/app/api/patient-self-reports/route.test.ts 'src/app/api/patient-self-reports/[id]/route.test.ts' src/app/api/me/logout-all/route.test.ts src/app/api/pharmacy-drug-stocks/review/route.test.ts --reporter=dot --testTimeout=30000`: passed, 8 files / 90 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed.
+- `pnpm format:check`: passed after targeted Prettier.
+- `git diff --check`: passed.
+- `pnpm test -- --reporter=dot --testTimeout=30000`: passed, 1039 files / 8145 tests; 1 file and 1 test skipped.
+- `pnpm build`: passed with Next.js 16.2.9 webpack build.
+
+### Remaining / Next Loop
+
+- Browser-level workflow proof across patient card creation, consent/link/activation, visit request, partner record, billing, and report draft paths remains pending.
+- The v0.2 migrations, including `20260619193000_add_consent_record_document_file_id`, were generated and schema/build validated but not applied to a live database in this turn.
