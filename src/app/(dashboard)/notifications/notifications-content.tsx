@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { BellOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { ErrorState } from '@/components/ui/error-state';
 import { Loading } from '@/components/ui/loading';
 import { FilterChipBar } from '@/components/features/workspace/filter-chip-bar';
 import { ListOpenCard } from '@/components/features/workspace/list-open-card';
@@ -85,7 +86,7 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
     [orgId, queryClient],
   );
 
-  const { data, isLoading } = useRealtimeQuery<{ data: NotificationItem[] }>({
+  const { data, isLoading, isError, refetch } = useRealtimeQuery<{ data: NotificationItem[] }>({
     queryKey: ['notifications', 'inbox', orgId],
     queryFn: async () => {
       const res = await fetch('/api/notifications?limit=50', {
@@ -224,7 +225,18 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
       />
 
       <div className="space-y-3" role="list" aria-label="お知らせ一覧">
-        {showUnsyncedRow && (
+        {isError ? (
+          <ErrorState
+            variant="server"
+            title="お知らせを表示できません"
+            description="急ぎの確認、返信待ち、未読件数の取得に失敗しました。再試行してください。"
+            detail="取得失敗を「お知らせなし」と区別するため、一覧の操作を停止しています。"
+            action={{ label: '再試行', onClick: () => void refetch() }}
+            headingLevel={3}
+          />
+        ) : null}
+
+        {!isError && showUnsyncedRow && (
           <ListOpenCard
             badgeLabel={NOTIFICATION_CATEGORY_LABELS.unsynced}
             badgeClassName={NOTIFICATION_CATEGORY_BADGE_CLASSES.unsynced}
@@ -234,12 +246,12 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
           />
         )}
 
-        {visibleItems.length === 0 && !showUnsyncedRow ? (
+        {!isError && visibleItems.length === 0 && !showUnsyncedRow ? (
           <div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border px-6 text-center text-sm text-muted-foreground">
             <BellOff className="size-7" aria-hidden="true" />
             <p>この分類のお知らせはありません</p>
           </div>
-        ) : (
+        ) : !isError ? (
           visibleItems.map(({ notification, category: itemCategory }) => {
             return (
               <ListOpenCard
@@ -255,7 +267,7 @@ export function NotificationsContent({ initialCategory = 'all' }: NotificationsC
               />
             );
           })
-        )}
+        ) : null}
       </div>
     </div>
   );

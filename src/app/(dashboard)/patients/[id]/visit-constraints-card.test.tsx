@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
@@ -68,5 +68,28 @@ describe('VisitConstraintsCard', () => {
     expect(screen.getAllByText('水').length).toBeGreaterThan(0);
     expect(screen.getByDisplayValue('山田花子')).toBeTruthy();
     expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
+  });
+
+  it('shows an error state instead of an empty editable form when constraints fail to load', () => {
+    const refetch = vi.fn();
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      refetch,
+    });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+
+    render(<VisitConstraintsCard patientId="patient_1" orgId="org_1" />);
+
+    expect(screen.getByText('取得できません')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '訪問条件を表示できません' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '再試行' })).toBeTruthy();
+    expect(screen.queryByText('曜日希望は未設定です')).toBeNull();
+    expect(screen.queryByRole('button', { name: '保存' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
   });
 });

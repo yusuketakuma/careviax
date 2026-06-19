@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -137,7 +138,7 @@ export function VisitConstraintsCard({ patientId, orgId }: { patientId: string; 
   const queryClient = useQueryClient();
   const [draftForm, setDraftForm] = useState<VisitConstraintsFormState | null>(null);
 
-  const { data, isLoading } = useQuery<VisitConstraintsResponse>({
+  const { data, isLoading, isError, refetch } = useQuery<VisitConstraintsResponse>({
     queryKey: ['visit-constraints', orgId, patientId],
     queryFn: async () => {
       const res = await fetch(`/api/patients/${patientId}/visit-constraints`, {
@@ -213,7 +214,9 @@ export function VisitConstraintsCard({ patientId, orgId }: { patientId: string; 
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
-          {selectedWeekdayLabels.length > 0 ? (
+          {isError ? (
+            <Badge variant="destructive">取得できません</Badge>
+          ) : selectedWeekdayLabels.length > 0 ? (
             selectedWeekdayLabels.map((label) => (
               <Badge
                 key={label}
@@ -230,6 +233,15 @@ export function VisitConstraintsCard({ patientId, orgId }: { patientId: string; 
 
         {isLoading ? (
           <div className="h-32 animate-pulse rounded-lg bg-muted" />
+        ) : isError ? (
+          <ErrorState
+            variant="server"
+            title="訪問条件を表示できません"
+            description="訪問希望曜日、連絡可能時間、位置情報の取得に失敗しました。再試行してください。"
+            detail="未設定として保存すると既存の訪問条件を上書きする可能性があるため、取得できるまで編集を停止しています。"
+            action={{ label: '再試行', onClick: () => void refetch() }}
+            headingLevel={3}
+          />
         ) : (
           <>
             <div className="grid gap-4 md:grid-cols-2">

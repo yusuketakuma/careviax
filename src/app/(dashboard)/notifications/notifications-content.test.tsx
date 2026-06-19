@@ -158,6 +158,28 @@ describe('NotificationsContent', () => {
     expect(useQueryMock).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }));
   });
 
+  it('shows an error state instead of an empty inbox when notifications fail to load', () => {
+    const refetch = vi.fn();
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      refetch,
+    });
+
+    render(<NotificationsContent />);
+
+    expect(screen.getByRole('heading', { name: 'お知らせを表示できません' })).toBeTruthy();
+    expect(screen.queryByText('この分類のお知らせはありません')).toBeNull();
+    expect(screen.queryByText('送信できていない記録があります')).toBeNull();
+    expect(
+      (screen.getByRole('button', { name: '全て既読にする' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
   it('merges notification stream items into the inbox cache', () => {
     const setQueryData = vi.fn();
     let realtimeOptions: { onEvent: (event: unknown) => void } | null = null;

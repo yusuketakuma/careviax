@@ -3897,3 +3897,32 @@ Implemented:
 ### Remaining / Next Loop
 
 - R-01 now has a concrete patient-list surface deriving pharmacy-share state from active share cases. Broader patient-detail and cross-app summary projection can still be hardened later, and DB-backed proof remains blocked until migration application is explicitly approved.
+
+## 20260619-2354 JST - Load Failure Safety States
+
+### Summary
+
+- Updated the notifications inbox to show a retryable server error state instead of an empty inbox when notification loading fails.
+- Updated the visit constraints card to show a retryable server error state instead of an editable empty form when visit-constraint loading fails.
+- Kept failed loads distinct from "no data" states so users do not accidentally overwrite existing scheduling constraints or miss pending notification state.
+
+### Files Changed
+
+- `src/app/(dashboard)/notifications/notifications-content.tsx`
+- `src/app/(dashboard)/notifications/notifications-content.test.tsx`
+- `src/app/(dashboard)/patients/[id]/visit-constraints-card.tsx`
+- `src/app/(dashboard)/patients/[id]/visit-constraints-card.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec vitest run 'src/app/(dashboard)/notifications/notifications-content.test.tsx' 'src/app/(dashboard)/patients/[id]/visit-constraints-card.test.tsx' --reporter=dot --testTimeout=30000`: passed, 2 files / 9 tests.
+- Targeted ESLint over touched notification/visit-constraint files: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- DB-backed proof for the broader v0.2 goal remains blocked until migration application is explicitly approved.
