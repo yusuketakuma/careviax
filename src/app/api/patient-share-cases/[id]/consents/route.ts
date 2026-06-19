@@ -82,7 +82,7 @@ export const GET = withAuthContext<{ id: string }>(
     const rows = await withOrgContext(ctx.orgId, async (tx) => {
       const shareCase = await tx.patientShareCase.findFirst({
         where: { id, org_id: ctx.orgId },
-        select: { id: true },
+        select: { id: true, base_patient_id: true },
       });
       if (!shareCase) return null;
 
@@ -113,6 +113,7 @@ export const GET = withAuthContext<{ id: string }>(
         action: 'patient_share_consents_viewed',
         targetType: 'PatientShareConsent',
         targetId: id,
+        patientId: shareCase.base_patient_id,
         changes: {
           target_screen: 'patient_share_case_consents',
           viewer_role: ctx.role,
@@ -235,6 +236,7 @@ export const POST = withAuthContext<{ id: string }>(
         action: 'patient_share_consent_registered',
         targetType: 'PatientShareConsent',
         targetId: consent.id,
+        patientId: shareCase.base_patient_id,
         changes: {
           share_case_id: id,
           consent_date: parsed.data.consent_date,

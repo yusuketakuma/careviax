@@ -29,9 +29,18 @@ type RequireApiKeyOrAuthContextOptions = RequireAuthContextOptions & {
   apiKeyHeader?: string;
 };
 
+type AuthSessionUserWithSite = {
+  defaultSiteId?: unknown;
+  orgId?: unknown;
+};
+
 async function authSession() {
   const { auth } = await import('./config');
   return auth();
+}
+
+function readSessionString(value: unknown) {
+  return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
 }
 
 async function resolveOrgIdFromUserId(userId: string) {
@@ -40,6 +49,40 @@ async function resolveOrgIdFromUserId(userId: string) {
     select: { org_id: true },
   });
   return user?.org_id ?? null;
+}
+
+async function resolveUserAuthMetadata(userId: string) {
+  return prisma.user.findUnique({
+    where: { id: userId },
+    select: { org_id: true, default_site_id: true, session_version: true },
+  });
+}
+
+async function resolveActorSiteId(args: {
+  userId: string;
+  orgId: string;
+  defaultSiteId?: string | null;
+}) {
+  const candidateSiteId = args.defaultSiteId?.trim();
+  if (!candidateSiteId) return undefined;
+
+  const [site, membership] = await Promise.all([
+    prisma.pharmacySite.findFirst({
+      where: { id: candidateSiteId, org_id: args.orgId },
+      select: { id: true },
+    }),
+    prisma.membership.findFirst({
+      where: {
+        user_id: args.userId,
+        org_id: args.orgId,
+        is_active: true,
+        OR: [{ site_id: candidateSiteId }, { site_id: null }],
+      },
+      select: { id: true },
+    }),
+  ]);
+
+  return site && membership ? candidateSiteId : undefined;
 }
 
 function resolveRequestPath(request: NextRequest): string {
@@ -70,22 +113,43 @@ export async function getAuthContext(request: NextRequest): Promise<AuthContext 
   const userId = session?.user?.id ?? resolvedUser?.id;
   if (!userId) return null;
 
-  const orgId = requestedOrgId || resolvedUser?.org_id || (await resolveOrgIdFromUserId(userId));
+  const sessionUser = session?.user as AuthSessionUserWithSite | undefined;
+  const sessionOrgId = readSessionString(sessionUser?.orgId);
+  const userMetadata =
+    !resolvedUser && !requestedOrgId && !sessionOrgId
+      ? await resolveUserAuthMetadata(userId)
+      : null;
+  const orgId = requestedOrgId || resolvedUser?.org_id || sessionOrgId || userMetadata?.org_id;
   if (!orgId) return null;
 
   const membership = await prisma.membership.findFirst({
     where: { user_id: userId, org_id: orgId, is_active: true },
-    select: { role: true },
+    select: { role: true, site_id: true },
   });
   if (!membership) return null;
 
-  return { userId, orgId, role: membership.role };
+  const actorSiteId = await resolveActorSiteId({
+    userId,
+    orgId,
+    defaultSiteId:
+      resolvedUser?.default_site_id ??
+      readSessionString(sessionUser?.defaultSiteId) ??
+      userMetadata?.default_site_id ??
+      membership.site_id,
+  });
+
+  return {
+    userId,
+    orgId,
+    role: membership.role,
+    ...(actorSiteId ? { actorSiteId } : {}),
+  };
 }
 
 export async function getMembership(userId: string, orgId: string) {
   return prisma.membership.findFirst({
     where: { user_id: userId, org_id: orgId, is_active: true },
-    select: { role: true },
+    select: { role: true, site_id: true },
   });
 }
 
@@ -130,11 +194,13 @@ export async function requireAuthContext(
 
   // session_version verification: invalidate tokens issued before logout-all
   const tokenSessionVersion = session?.user?.sessionVersion;
+  const needsUserMetadataForOrg = !requestedOrgId && !resolvedUser?.org_id && !session?.user?.orgId;
+  const userMetadata =
+    !resolvedUser && (tokenSessionVersion !== undefined || needsUserMetadataForOrg)
+      ? await resolveUserAuthMetadata(userId)
+      : null;
   if (tokenSessionVersion !== undefined) {
-    const dbUser = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { session_version: true },
-    });
+    const dbUser = resolvedUser ?? userMetadata;
     if (dbUser && dbUser.session_version !== tokenSessionVersion) {
       logSecurityEvent({
         event_type: 'auth_failure',
@@ -148,11 +214,13 @@ export async function requireAuthContext(
     }
   }
 
-  const sessionOrgId = session?.user?.orgId;
+  const sessionUser = session?.user as AuthSessionUserWithSite | undefined;
+  const sessionOrgId = readSessionString(sessionUser?.orgId);
   const orgId =
     requestedOrgId ||
     resolvedUser?.org_id ||
     sessionOrgId ||
+    userMetadata?.org_id ||
     (await resolveOrgIdFromUserId(userId));
   if (!orgId) {
     logSecurityEvent({
@@ -197,10 +265,21 @@ export async function requireAuthContext(
     };
   }
 
+  const actorSiteId = await resolveActorSiteId({
+    userId,
+    orgId,
+    defaultSiteId:
+      resolvedUser?.default_site_id ??
+      readSessionString(sessionUser?.defaultSiteId) ??
+      userMetadata?.default_site_id ??
+      membership.site_id,
+  });
+
   const ctx: AuthContext = {
     userId,
     orgId,
     role: membership.role,
+    ...(actorSiteId ? { actorSiteId } : {}),
     ipAddress,
     userAgent,
   };

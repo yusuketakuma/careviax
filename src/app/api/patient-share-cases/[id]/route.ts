@@ -74,6 +74,7 @@ export const PATCH = withAuthContext<{ id: string }>(
         where: { id, org_id: ctx.orgId },
         select: {
           id: true,
+          base_patient_id: true,
           status: true,
           share_scope: true,
           consents: {
@@ -127,6 +128,7 @@ export const PATCH = withAuthContext<{ id: string }>(
         action: 'patient_share_case_scope_updated',
         targetType: 'PatientShareCase',
         targetId: updated.id,
+        patientId: shareCase.base_patient_id,
         changes: {
           status: updated.status,
           previous_scope_keys: previousScopeKeys,

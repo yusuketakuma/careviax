@@ -21,6 +21,8 @@ describe('recordDataExportAudit', () => {
     await recordDataExportAudit(db, {
       orgId: 'org-1',
       actorId: 'user-1',
+      actorSiteId: 'site-1',
+      patientId: 'patient-1',
       targetType: 'patients',
       targetId: 'patient-1',
       format: 'csv',
@@ -36,6 +38,9 @@ describe('recordDataExportAudit', () => {
       data: {
         org_id: 'org-1',
         actor_id: 'user-1',
+        actor_pharmacy_id: 'org-1',
+        actor_site_id: 'site-1',
+        patient_id: 'patient-1',
         action: 'export',
         target_type: 'patients',
         target_id: 'patient-1',
@@ -65,6 +70,9 @@ describe('recordDataExportAudit', () => {
       data: {
         org_id: 'org-1',
         actor_id: 'user-1',
+        actor_pharmacy_id: 'org-1',
+        actor_site_id: undefined,
+        patient_id: undefined,
         action: 'export',
         target_type: 'audit_logs',
         target_id: 'bulk',
@@ -86,6 +94,8 @@ describe('recordDataExportAudit', () => {
     await recordCareReportPrintAudit(db, {
       orgId: 'org-1',
       actorId: 'user-1',
+      actorSiteId: 'site-1',
+      patientId: 'patient-1',
       reportId: 'report-1',
       intent: 'print_requested',
       reportUpdatedAt: new Date('2026-06-18T01:02:03.000Z'),
@@ -97,6 +107,9 @@ describe('recordDataExportAudit', () => {
       data: {
         org_id: 'org-1',
         actor_id: 'user-1',
+        actor_pharmacy_id: 'org-1',
+        actor_site_id: 'site-1',
+        patient_id: 'patient-1',
         action: 'care_report_print_requested',
         target_type: 'care_report',
         target_id: 'report-1',
@@ -129,6 +142,9 @@ describe('recordDataExportAudit', () => {
       data: {
         org_id: 'org-1',
         actor_id: 'user-1',
+        actor_pharmacy_id: 'org-1',
+        actor_site_id: undefined,
+        patient_id: undefined,
         action: 'care_report_print_previewed',
         target_type: 'care_report',
         target_id: 'report-1',

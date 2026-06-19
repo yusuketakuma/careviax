@@ -28,6 +28,7 @@ vi.mock('@/lib/auth/context', () => ({
           orgId: 'org_1',
           userId: 'user_1',
           role: 'pharmacist',
+          actorSiteId: 'site_1',
         },
         routeContext,
       );
@@ -204,11 +205,17 @@ describe('/api/patient-share-cases POST', () => {
     expect(bodyText).toContain('scope_keys');
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+        actorSiteId: 'site_1',
+      }),
       expect.objectContaining({
         action: 'patient_share_cases_viewed',
         targetType: 'PatientShareCase',
         targetId: 'share_case_1',
+        patientId: undefined,
         changes: expect.objectContaining({
           target_screen: 'pharmacy_cooperation_workflow',
           viewer_role: 'pharmacist',
@@ -288,11 +295,12 @@ describe('/api/patient-share-cases POST', () => {
     });
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', actorSiteId: 'site_1' }),
       expect.objectContaining({
         action: 'patient_share_case_created',
         targetType: 'PatientShareCase',
         targetId: 'share_case_1',
+        patientId: 'patient_1',
         changes: {
           partnership_id: 'partnership_1',
           base_patient_id: 'patient_1',

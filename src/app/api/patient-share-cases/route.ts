@@ -200,6 +200,7 @@ export const GET = withAuthContext(
         action: 'patient_share_cases_viewed',
         targetType: 'PatientShareCase',
         targetId: result[0]?.id ?? 'patient_share_cases',
+        patientId: basePatientId,
         changes: {
           target_screen: viewContext.data,
           viewer_role: ctx.role,
@@ -365,6 +366,7 @@ export const POST = withAuthContext(
         action: 'patient_share_case_created',
         targetType: 'PatientShareCase',
         targetId: shareCase.id,
+        patientId: parsed.data.base_patient_id,
         changes: {
           partnership_id: parsed.data.partnership_id,
           base_patient_id: parsed.data.base_patient_id,

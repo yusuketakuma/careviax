@@ -9,6 +9,14 @@ const RLS_CONTEXT_SETTINGS = [
   ['app.rls_context_applied', () => 'true'],
   ['app.current_actor_id', (context: AppliedRlsContext) => context.requestContext?.userId],
   ['app.current_member_role', (context: AppliedRlsContext) => context.requestContext?.role],
+  [
+    'app.current_actor_pharmacy_id',
+    (context: AppliedRlsContext) => context.requestContext?.actorPharmacyId ?? context.orgId,
+  ],
+  [
+    'app.current_actor_site_id',
+    (context: AppliedRlsContext) => context.requestContext?.actorSiteId,
+  ],
   ['app.current_ip_address', (context: AppliedRlsContext) => context.requestContext?.ipAddress],
   ['app.current_user_agent', (context: AppliedRlsContext) => context.requestContext?.userAgent],
 ] as const;

@@ -11,6 +11,7 @@ declare module 'next-auth' {
       id?: string;
       cognitoSub?: string;
       orgId?: string;
+      defaultSiteId?: string | null;
       role: MemberRole | null;
       sessionVersion?: number;
     };
@@ -22,6 +23,7 @@ declare module 'next-auth/jwt' {
     userId?: string;
     cognitoSub?: string;
     orgId?: string;
+    defaultSiteId?: string | null;
     cognitoGroups?: unknown;
     accessToken?: string;
     refreshToken?: string;

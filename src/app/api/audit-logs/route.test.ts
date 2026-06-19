@@ -128,14 +128,14 @@ describe('/api/audit-logs GET', () => {
     });
   });
 
-  it('supports UI filter parameter names and inclusive date ranges', async () => {
+  it('supports UI filter parameter names, actor context filters, and inclusive date ranges', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
 
     const response = (await GET(
       createRequest(
         { 'x-org-id': 'org_1' },
-        'actor=user_99&target_type=visit_record&action=export&date_from=2026-03-01&date_to=2026-03-31',
+        'actor=user_99&actor_pharmacy_id=org_1&actor_site_id=site_1&patient_id=patient_1&target_type=visit_record&action=export&date_from=2026-03-01&date_to=2026-03-31',
       ),
       emptyRouteContext,
     )) as Response;
@@ -146,6 +146,9 @@ describe('/api/audit-logs GET', () => {
         where: expect.objectContaining({
           org_id: 'org_1',
           actor_id: 'user_99',
+          actor_pharmacy_id: 'org_1',
+          actor_site_id: 'site_1',
+          patient_id: 'patient_1',
           target_type: 'visit_record',
           action: 'export',
           created_at: {
@@ -170,6 +173,7 @@ describe('/api/audit-logs GET', () => {
     ['PatientShareConsent', 'patient_share_consent_registered'],
     ['PatientShareConsent', 'patient_share_consent_revoked'],
     ['patient_share_consent', 'patient_share_consent.update'],
+    ['PatientShareCorrectionRequest', 'patient_share_correction_requests_viewed'],
     ['PatientLink', 'patient_link_accepted'],
     ['file_asset', 'file_download'],
     ['care_report', 'care_report_print_requested'],

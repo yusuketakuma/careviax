@@ -175,11 +175,11 @@ export const GET = withAuthContext<{ id: string }>(
     const rows = await withOrgContext(ctx.orgId, async (tx) => {
       const shareCase = await tx.patientShareCase.findFirst({
         where: { id, org_id: ctx.orgId },
-        select: { id: true },
+        select: { id: true, base_patient_id: true },
       });
       if (!shareCase) return null;
 
-      return tx.patientShareCorrectionRequest.findMany({
+      const correctionRequests = await tx.patientShareCorrectionRequest.findMany({
         where: {
           org_id: ctx.orgId,
           share_case_id: id,
@@ -205,6 +205,28 @@ export const GET = withAuthContext<{ id: string }>(
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
         orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       });
+      const pageRows = correctionRequests.slice(0, limit);
+
+      await createAuditLogEntry(tx, ctx, {
+        action: 'patient_share_correction_requests_viewed',
+        targetType: 'PatientShareCorrectionRequest',
+        targetId: id,
+        patientId: shareCase.base_patient_id,
+        changes: {
+          target_screen: 'patient_share_case_correction_requests',
+          viewer_role: ctx.role,
+          share_case_id: id,
+          viewed_count: pageRows.length,
+          correction_request_ids: pageRows.map((row) => row.id),
+          statuses: [...new Set(pageRows.map((row) => row.status))].sort(),
+          has_status_filter: Boolean(status),
+          has_cursor: Boolean(cursor),
+          has_more: correctionRequests.length > limit,
+          limit,
+        },
+      });
+
+      return correctionRequests;
     });
 
     if (!rows) return notFound('患者共有ケースが見つかりません');
@@ -337,6 +359,7 @@ export const POST = withAuthContext<{ id: string }>(
         action: 'patient_share_correction_requested',
         targetType: 'PatientShareCorrectionRequest',
         targetId: correctionRequest.id,
+        patientId: shareCase.base_patient_id,
         changes: {
           share_case_id: id,
           requester_owner: requesterOwner,

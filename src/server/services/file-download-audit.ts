@@ -73,6 +73,9 @@ export async function recordFileDownloadAudit(
   args: {
     orgId: string;
     actorId: string;
+    actorPharmacyId?: string;
+    actorSiteId?: string;
+    patientId?: string;
     fileId: string;
     purpose: string;
     mimeType: string;
@@ -88,6 +91,9 @@ export async function recordFileDownloadAudit(
   await writeDataExportAudit(db, {
     orgId: args.orgId,
     actorId: args.actorId,
+    actorPharmacyId: args.actorPharmacyId,
+    actorSiteId: args.actorSiteId,
+    patientId: args.patientId,
     targetType: 'file_asset',
     targetId: args.fileId,
     format: 'file',

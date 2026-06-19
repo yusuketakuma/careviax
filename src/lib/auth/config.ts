@@ -154,6 +154,7 @@ export const authOptions: NextAuthOptions = {
           token.userId = syncedUser.id;
           token.cognitoSub = syncedUser.cognito_sub;
           token.orgId = syncedUser.org_id;
+          token.defaultSiteId = syncedUser.default_site_id;
           token.sessionVersion = syncedUser.session_version;
         }
       }
@@ -194,6 +195,8 @@ export const authOptions: NextAuthOptions = {
         session.user.cognitoSub =
           typeof token.cognitoSub === 'string' ? token.cognitoSub : undefined;
         session.user.orgId = typeof token.orgId === 'string' ? token.orgId : undefined;
+        session.user.defaultSiteId =
+          typeof token.defaultSiteId === 'string' ? token.defaultSiteId : null;
         session.user.role = token.memberRole ?? null;
         session.user.sessionVersion =
           typeof token.sessionVersion === 'number' ? token.sessionVersion : undefined;

@@ -22,6 +22,7 @@ vi.mock('@/lib/auth/context', () => ({
           orgId: 'org_1',
           userId: 'user_1',
           role: 'pharmacist',
+          actorSiteId: 'site_1',
         },
         routeContext,
       );
@@ -55,6 +56,7 @@ describe('/api/patient-share-cases/[id] PATCH', () => {
     vi.clearAllMocks();
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
+      base_patient_id: 'patient_1',
       status: 'draft',
       share_scope: {
         prescription_history: true,
@@ -132,11 +134,12 @@ describe('/api/patient-share-cases/[id] PATCH', () => {
     });
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', actorSiteId: 'site_1' }),
       expect.objectContaining({
         action: 'patient_share_case_scope_updated',
         targetType: 'PatientShareCase',
         targetId: 'share_case_1',
+        patientId: 'patient_1',
         changes: {
           status: 'draft',
           previous_scope_keys: ['care_reports', 'medication_profile', 'prescription_history'],
@@ -163,6 +166,7 @@ describe('/api/patient-share-cases/[id] PATCH', () => {
   it('rejects active share-scope expansion when no active consent covers the requested scope', async () => {
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
+      base_patient_id: 'patient_1',
       status: 'active',
       share_scope: {
         prescription_history: true,
@@ -211,6 +215,7 @@ describe('/api/patient-share-cases/[id] PATCH', () => {
   it('updates an active share case when active consent covers every enabled scope key', async () => {
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
+      base_patient_id: 'patient_1',
       status: 'active',
       share_scope: {
         prescription_history: true,
@@ -256,6 +261,7 @@ describe('/api/patient-share-cases/[id] PATCH', () => {
   it('rejects terminal share cases before update or audit side effects', async () => {
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
+      base_patient_id: 'patient_1',
       status: 'revoked',
       share_scope: {},
       consents: [],

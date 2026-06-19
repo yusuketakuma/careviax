@@ -5,6 +5,8 @@ export type RequestAuthContext = {
   userId: string;
   orgId: string;
   role: MemberRole;
+  actorSiteId?: string;
+  actorPharmacyId?: string;
   ipAddress?: string;
   userAgent?: string;
 };

@@ -9,10 +9,14 @@ type CreateAuditLogEntryInput = {
   action: string;
   targetType: string;
   targetId: string;
+  patientId?: string;
   changes?: Prisma.InputJsonValue;
 };
 
-type AuditActorContext = Pick<AuthContext, 'orgId' | 'userId' | 'ipAddress' | 'userAgent'>;
+type AuditActorContext = Pick<
+  AuthContext,
+  'orgId' | 'userId' | 'actorPharmacyId' | 'actorSiteId' | 'ipAddress' | 'userAgent'
+>;
 
 export function createAuditLogEntry(
   tx: AuditLogWriter,
@@ -23,6 +27,9 @@ export function createAuditLogEntry(
     data: {
       org_id: ctx.orgId,
       actor_id: ctx.userId,
+      actor_pharmacy_id: ctx.actorPharmacyId ?? ctx.orgId,
+      actor_site_id: ctx.actorSiteId,
+      patient_id: input.patientId,
       action: input.action,
       target_type: input.targetType,
       target_id: input.targetId,

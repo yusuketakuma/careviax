@@ -128,12 +128,14 @@ describe('withOrgContext', () => {
           org_id: validCuid,
         }),
       );
-      expect(mockClient.mockExecuteRaw).toHaveBeenCalledTimes(6);
+      expect(mockClient.mockExecuteRaw).toHaveBeenCalledTimes(8);
       expect(mockClient.mockExecuteRaw.mock.calls.map(([query]) => query.values)).toEqual([
         ['app.current_org_id', validCuid],
         ['app.rls_context_applied', 'true'],
         ['app.current_actor_id', ''],
         ['app.current_member_role', ''],
+        ['app.current_actor_pharmacy_id', validCuid],
+        ['app.current_actor_site_id', ''],
         ['app.current_ip_address', ''],
         ['app.current_user_agent', ''],
       ]);
@@ -145,6 +147,7 @@ describe('withOrgContext', () => {
         userId: 'user_1',
         orgId: validCuid,
         role: 'admin',
+        actorSiteId: 'site_1',
         ipAddress: '203.0.113.10',
         userAgent: 'Vitest Browser',
       });
@@ -156,6 +159,8 @@ describe('withOrgContext', () => {
         ['app.rls_context_applied', 'true'],
         ['app.current_actor_id', 'user_1'],
         ['app.current_member_role', 'admin'],
+        ['app.current_actor_pharmacy_id', validCuid],
+        ['app.current_actor_site_id', 'site_1'],
         ['app.current_ip_address', '203.0.113.10'],
         ['app.current_user_agent', 'Vitest Browser'],
       ]);

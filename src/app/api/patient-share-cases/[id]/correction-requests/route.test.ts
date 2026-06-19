@@ -26,6 +26,7 @@ vi.mock('@/lib/auth/context', () => ({
           orgId: 'org_1',
           userId: 'user_1',
           role: 'pharmacist',
+          actorSiteId: 'site_1',
         },
         routeContext,
       );
@@ -87,6 +88,16 @@ describe('/api/patient-share-cases/[id]/correction-requests POST', () => {
         share_case_id: 'share_case_1',
         target_owner: 'partner_pharmacy',
         target_type: 'partner_visit_record',
+        target_id: 'partner_visit_record_1',
+        field_path: 'record_content',
+        request_type: 'correction',
+        status: 'open',
+        requested_by: 'user_1',
+        responded_by: null,
+        resolved_by: null,
+        resolved_at: null,
+        created_at: new Date('2026-06-19T01:00:00.000Z'),
+        updated_at: new Date('2026-06-19T01:00:00.000Z'),
         reason: '患者名 山田花子',
         proposed_value: { address: '東京都港区1-2-3' },
         response_note: '確認済み',
@@ -136,6 +147,28 @@ describe('/api/patient-share-cases/[id]/correction-requests POST', () => {
     expect(bodyText).not.toContain('山田花子');
     expect(bodyText).not.toContain('東京都港区1-2-3');
     expect(bodyText).not.toContain('確認済み');
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+        actorSiteId: 'site_1',
+      }),
+      expect.objectContaining({
+        action: 'patient_share_correction_requests_viewed',
+        targetType: 'PatientShareCorrectionRequest',
+        targetId: 'share_case_1',
+        patientId: 'patient_1',
+        changes: expect.objectContaining({
+          target_screen: 'patient_share_case_correction_requests',
+          share_case_id: 'share_case_1',
+          viewed_count: 1,
+          correction_request_ids: ['correction_1'],
+          statuses: ['open'],
+        }),
+      }),
+    );
   });
 
   it('creates a correction request only for a target that belongs to the share case', async () => {
@@ -168,8 +201,10 @@ describe('/api/patient-share-cases/[id]/correction-requests POST', () => {
     });
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', actorSiteId: 'site_1' }),
       expect.objectContaining({
+        action: 'patient_share_correction_requested',
+        patientId: 'patient_1',
         changes: expect.objectContaining({
           requester_owner: 'base_pharmacy',
           target_owner: 'partner_pharmacy',

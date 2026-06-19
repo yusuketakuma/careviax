@@ -10,6 +10,9 @@ type AuditClient = {
         action: string;
         target_type: string;
         target_id: string;
+        actor_pharmacy_id?: string;
+        actor_site_id?: string;
+        patient_id?: string;
         changes?: Prisma.InputJsonValue;
         ip_address?: string;
         user_agent?: string;
@@ -23,6 +26,9 @@ export async function recordDataExportAudit(
   args: {
     orgId: string;
     actorId: string;
+    actorPharmacyId?: string;
+    actorSiteId?: string;
+    patientId?: string;
     targetType: string;
     targetId?: string;
     format: 'csv' | 'json' | 'zip' | 'pdf' | 'print' | 'claims-xml' | 'file';
@@ -38,6 +44,9 @@ export async function recordDataExportAudit(
     data: {
       org_id: args.orgId,
       actor_id: args.actorId,
+      actor_pharmacy_id: args.actorPharmacyId ?? args.orgId,
+      actor_site_id: args.actorSiteId,
+      patient_id: args.patientId,
       action: args.action ?? 'export',
       target_type: args.targetType,
       target_id: args.targetId ?? 'bulk',
@@ -59,6 +68,9 @@ export async function recordCareReportPrintAudit(
   args: {
     orgId: string;
     actorId: string;
+    actorPharmacyId?: string;
+    actorSiteId?: string;
+    patientId?: string;
     reportId: string;
     intent: 'preview_rendered' | 'print_requested';
     reportUpdatedAt: Date;
@@ -70,6 +82,9 @@ export async function recordCareReportPrintAudit(
     data: {
       org_id: args.orgId,
       actor_id: args.actorId,
+      actor_pharmacy_id: args.actorPharmacyId ?? args.orgId,
+      actor_site_id: args.actorSiteId,
+      patient_id: args.patientId,
       action:
         args.intent === 'preview_rendered'
           ? 'care_report_print_previewed'

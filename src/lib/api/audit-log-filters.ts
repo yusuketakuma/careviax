@@ -3,6 +3,9 @@ type ParsedAuditLogFilters =
   | { error: string }
   | {
       actor?: string;
+      actorPharmacy?: string;
+      actorSite?: string;
+      patient?: string;
       targetType?: string;
       action?: string;
       from?: Date;
@@ -34,8 +37,12 @@ function parseDateInput(value: string | null, boundary: DateBoundary) {
 
 export function parseAuditLogFilters(searchParams: URLSearchParams): ParsedAuditLogFilters {
   const actor = searchParams.get('actor') ?? undefined;
-  const targetType =
-    searchParams.get('target_type') ?? searchParams.get('target') ?? undefined;
+  const actorPharmacy =
+    searchParams.get('actor_pharmacy_id') ?? searchParams.get('actor_pharmacy') ?? undefined;
+  const actorSite =
+    searchParams.get('actor_site_id') ?? searchParams.get('actor_site') ?? undefined;
+  const patient = searchParams.get('patient_id') ?? searchParams.get('patient') ?? undefined;
+  const targetType = searchParams.get('target_type') ?? searchParams.get('target') ?? undefined;
   const action = searchParams.get('action') ?? undefined;
 
   const fromInput = searchParams.get('date_from') ?? searchParams.get('from');
@@ -53,6 +60,9 @@ export function parseAuditLogFilters(searchParams: URLSearchParams): ParsedAudit
 
   return {
     actor,
+    actorPharmacy,
+    actorSite,
+    patient,
     targetType,
     action,
     from: from.date,

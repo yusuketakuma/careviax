@@ -28,6 +28,7 @@ vi.mock('@/lib/auth/context', () => ({
           orgId: 'org_1',
           userId: 'user_1',
           role: 'pharmacist',
+          actorSiteId: 'site_1',
         },
         routeContext,
       );
@@ -133,11 +134,17 @@ describe('/api/patient-share-cases/[id]/consents', () => {
     expect(text).not.toContain('consent_person');
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', role: 'pharmacist' }),
+      expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+        actorSiteId: 'site_1',
+      }),
       expect.objectContaining({
         action: 'patient_share_consents_viewed',
         targetType: 'PatientShareConsent',
         targetId: 'share_case_1',
+        patientId: 'patient_1',
         changes: expect.objectContaining({
           target_screen: 'patient_share_case_consents',
           share_case_id: 'share_case_1',
@@ -219,9 +226,12 @@ describe('/api/patient-share-cases/[id]/consents', () => {
     });
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1', actorSiteId: 'site_1' }),
       expect.objectContaining({
         action: 'patient_share_consent_registered',
+        targetType: 'PatientShareConsent',
+        targetId: 'share_consent_1',
+        patientId: 'patient_1',
         changes: expect.objectContaining({
           consent_person_length: expect.any(Number),
           has_file_asset: true,

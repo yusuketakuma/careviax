@@ -36,6 +36,9 @@ export const GET = withAuthContext(
     const where = {
       org_id: ctx.orgId,
       ...(filters.actor ? { actor_id: filters.actor } : {}),
+      ...(filters.actorPharmacy ? { actor_pharmacy_id: filters.actorPharmacy } : {}),
+      ...(filters.actorSite ? { actor_site_id: filters.actorSite } : {}),
+      ...(filters.patient ? { patient_id: filters.patient } : {}),
       ...(filters.targetType ? { target_type: filters.targetType } : {}),
       ...(filters.action ? { action: filters.action } : {}),
       ...(filters.from || filters.to
