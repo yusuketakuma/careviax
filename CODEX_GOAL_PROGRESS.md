@@ -5193,6 +5193,36 @@ Implemented:
 
 - Admin pharmacy-cooperation partnership activation naming is addressed. Raw setup tables still remain and should be converted or browser/a11y-proved in a separate DataTable/responsive-density slice if prioritized.
 
+## 20260620-0208 JST - Pharmacy Workflow Confirmation Full IDs
+
+### Summary
+
+- Removed workflow confirmation ID shortening for patient share cases, visit requests, and partner visit records.
+- Kept confirmation details PHI-minimized while showing exact non-PHI object IDs for high-risk action review.
+- Added focused regression assertions that each workflow confirmation dialog shows the full target ID and key non-PHI context before the API call is confirmed.
+
+### Files Changed
+
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`: passed, unchanged.
+- `pnpm exec eslint 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 12 tests.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+- Exact `rg` check for `workflowShortId`: no remaining references.
+- `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-route-mocked-smoke.spec.ts --project=chromium --grep "pharmacy cooperation route-mocked browser workflow smoke"`: passed, 1 Chromium test in 7.3s.
+
+### Remaining / Next Loop
+
+- Pharmacy-cooperation confirmation details now show exact target IDs for inspected workflow actions. UI/UX remediation remains active for raw setup tables, responsive table density, and broader browser/a11y coverage outside this focused slice.
+
 ## 20260620-0036 JST - Billing Rule Row Action Names
 
 ### Summary
