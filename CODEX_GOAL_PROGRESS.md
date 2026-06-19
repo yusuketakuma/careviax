@@ -4393,6 +4393,34 @@ Implemented:
 
 - Contract renewal alerting is now covered at the admin setup UI level without a DB migration. Pending migration application and direct DB-backed browser proof still require the existing external approval path.
 
+## 20260620-0232 JST - Workflow Refill Proposal Action Names
+
+### Summary
+
+- Added target-specific accessible names to repeated refill/split `候補生成` buttons.
+- Used row context (`リフィル` / `分割調剤` and row number) rather than patient names to avoid adding PHI to button names.
+- Added a focused regression test proving the button is distinguishable and does not expose the patient name in its accessible name.
+
+### Files Changed
+
+- `src/app/(dashboard)/workflow/workflow-dashboard-view.tsx`
+- `src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/workflow/workflow-dashboard-view.tsx' 'src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx'`: passed.
+- `pnpm exec eslint 'src/app/(dashboard)/workflow/workflow-dashboard-view.tsx' 'src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 4 tests.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Refill proposal action naming is addressed. PHI-bearing raw tables remain intentionally not converted to searchable DataTables; future fixes should use search-disabled tables or targeted accessible-name updates.
+
 ## 20260620-0057 JST - QR Draft Case Selector Label
 
 ### Summary
