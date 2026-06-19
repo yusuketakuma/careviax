@@ -14,6 +14,7 @@ import {
   resolveClaimsExportConfig,
   type ClaimsExportRecord,
 } from '@/server/adapters/claims-export';
+import { resolveClaimsExportSiteId } from '@/server/services/claims-export-site';
 import { BILLING_DOMAIN_ERROR_MESSAGE, parseBillingDomainOrDefault } from '../billing-domain';
 import { BILLING_MONTH_FORMAT_MESSAGE, parseStrictBillingMonth } from '../billing-month';
 
@@ -21,7 +22,7 @@ type ClaimsExportCloseOutcome =
   | { transmitted: false; reason: 'not_configured' }
   | { transmitted: false; reason: 'no_records' }
   | { transmitted: true; recordCount: number }
-  | { transmitted: false; reason: 'failed' };
+  | { transmitted: false; reason: 'missing_site_id' | 'multiple_site_ids' | 'failed' };
 
 /**
  * 月次締め完了後、レセコン consumer が構成済みであれば締め済み請求候補を
@@ -66,6 +67,27 @@ async function transmitClaimsExportForClose(args: {
       }),
     );
 
+    const siteResolution = resolveClaimsExportSiteId(candidates);
+    if (!siteResolution.ok) {
+      logger.error(
+        {
+          event: 'billing.claims_export_site_unresolved',
+          orgId: args.orgId,
+          entityType: 'billing_month',
+          entityId: args.billingMonth.toISOString().slice(0, 7),
+          operation: args.billingDomain,
+          phase: siteResolution.reason,
+          count:
+            siteResolution.reason === 'missing_site_id'
+              ? siteResolution.missingCount
+              : siteResolution.siteCount,
+          code: 'CLAIMS_EXPORT_SITE_UNRESOLVED',
+        },
+        new Error('CLAIMS_EXPORT_SITE_UNRESOLVED'),
+      );
+      return { transmitted: false, reason: siteResolution.reason };
+    }
+
     const records: ClaimsExportRecord[] = candidates.map((candidate) => ({
       patientId: candidate.patient_id ?? '',
       patientName: '',
@@ -82,10 +104,40 @@ async function transmitClaimsExportForClose(args: {
       status: candidate.status,
     }));
 
+    try {
+      await withOrgContext(args.orgId, (tx) =>
+        createAuditLogEntry(tx, args.ctx, {
+          action: 'billing.claims_export_attempted',
+          targetType: 'billing_month',
+          targetId: `${args.billingMonth.toISOString().slice(0, 7)}/${args.billingDomain}`,
+          changes: {
+            billing_domain: args.billingDomain,
+            site_id: siteResolution.siteId,
+            record_count: records.length,
+            audit_phase: 'attempt',
+          },
+        }),
+      );
+    } catch (auditCause) {
+      logger.error(
+        {
+          event: 'billing.claims_export_audit_failed',
+          orgId: args.orgId,
+          entityType: 'billing_month',
+          entityId: args.billingMonth.toISOString().slice(0, 7),
+          phase: 'attempt',
+          count: records.length,
+          code: 'CLAIMS_EXPORT_AUDIT_FAILED',
+        },
+        auditCause,
+      );
+      return { transmitted: false, reason: 'failed' };
+    }
+
     const adapter = createClaimsExportAdapter(resolveClaimsExportConfig());
     const result = await adapter.exportClaims({
       orgId: args.orgId,
-      siteId: '',
+      siteId: siteResolution.siteId,
       billingMonth: args.billingMonth.toISOString().slice(0, 7),
       records,
     });
@@ -102,7 +154,9 @@ async function transmitClaimsExportForClose(args: {
           targetId: `${args.billingMonth.toISOString().slice(0, 7)}/${args.billingDomain}`,
           changes: {
             billing_domain: args.billingDomain,
+            site_id: siteResolution.siteId,
             record_count: result.recordCount,
+            audit_phase: 'success',
           },
         }),
       );
@@ -113,6 +167,8 @@ async function transmitClaimsExportForClose(args: {
           orgId: args.orgId,
           entityType: 'billing_month',
           entityId: args.billingMonth.toISOString().slice(0, 7),
+          phase: 'success',
+          count: result.recordCount,
           code: 'CLAIMS_EXPORT_AUDIT_FAILED',
         },
         auditCause,

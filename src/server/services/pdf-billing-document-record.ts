@@ -69,6 +69,10 @@ function readBillingTargetName(value: unknown) {
   return readString(target?.name);
 }
 
+function hasPositiveAmount(value: number | null) {
+  return value != null && value > 0;
+}
+
 export async function getBillingDocumentRecord(
   orgId: string,
   candidateId: string,
@@ -100,11 +104,16 @@ export async function getBillingDocumentRecord(
 
   if (
     kind === 'receipt' &&
-    (collection.receipt_issue_status !== 'issued' || !collection.receipt_number)
+    (collection.receipt_issue_status !== 'issued' ||
+      !collection.receipt_number ||
+      !hasPositiveAmount(collection.collected_amount))
   ) {
     throw new Error('BILLING_DOCUMENT_NOT_ISSUED');
   }
-  if (kind === 'invoice' && collection.invoice_issue_status !== 'issued') {
+  if (
+    kind === 'invoice' &&
+    (collection.invoice_issue_status !== 'issued' || !hasPositiveAmount(collection.billed_amount))
+  ) {
     throw new Error('BILLING_DOCUMENT_NOT_ISSUED');
   }
 

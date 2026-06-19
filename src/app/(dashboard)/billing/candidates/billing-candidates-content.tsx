@@ -25,6 +25,13 @@ import { PageSection } from '@/components/layout/page-section';
 import { ActionRail } from '@/components/ui/action-rail';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import {
+  BILLING_VALIDATION_LAYER_KEYS,
+  collectBillingValidationMessages,
+  readBillingValidationLayers,
+  summarizeBillingValidationLayers,
+  type BillingValidationLayerSnapshot,
+} from '@/lib/billing/validation-layers';
 
 // --- Types ---
 
@@ -83,24 +90,7 @@ type BillingCandidate = {
       closed_by?: string | null;
       note?: string | null;
     } | null;
-    validation_layers?: {
-      evidence?: {
-        label?: string;
-        state?: 'passed' | 'manual_review' | 'blocked';
-        message?: string;
-      } | null;
-      rule_engine?: {
-        label?: string;
-        state?: 'passed' | 'manual_review' | 'blocked';
-        message?: string;
-        version?: string;
-      } | null;
-      close_review?: {
-        label?: string;
-        state?: 'passed' | 'manual_review' | 'blocked';
-        message?: string;
-      } | null;
-    } | null;
+    validation_layers?: BillingValidationLayerSnapshot | null;
   } | null;
   workflow_state?: {
     review_state?: 'pending' | 'reviewed';
@@ -115,9 +105,7 @@ type BillingCandidate = {
 
 type BillingDomain = 'home_care' | 'pca_rental';
 
-type CandidateValidationLayers = NonNullable<
-  NonNullable<BillingCandidate['source_snapshot']>['validation_layers']
->;
+type CandidateValidationLayers = BillingValidationLayerSnapshot;
 
 type BillingCandidateSummary = {
   total: number;
@@ -205,20 +193,16 @@ function ValidationBadge({
   status: string;
   layers?: CandidateValidationLayers | null;
 }) {
-  const layerStates = layers
-    ? [layers.evidence?.state, layers.rule_engine?.state, layers.close_review?.state].filter(
-        (value): value is 'passed' | 'manual_review' | 'blocked' => value != null,
-      )
-    : [];
+  const validationSummary = summarizeBillingValidationLayers(layers);
 
-  if (layerStates.includes('blocked')) {
+  if (validationSummary.state === 'blocked') {
     return (
       <span className="flex items-center gap-1 text-xs text-red-700" aria-label="バリデーションNG">
         <XCircle className="size-3.5" aria-hidden="true" /> NG
       </span>
     );
   }
-  if (layerStates.includes('manual_review')) {
+  if (validationSummary.state === 'manual_review') {
     return (
       <span className="flex items-center gap-1 text-xs text-yellow-700" aria-label="要確認">
         <AlertTriangle className="size-3.5" aria-hidden="true" /> 要確認
@@ -273,6 +257,10 @@ function candidateWorkflow(candidate: BillingCandidate) {
   return candidate.workflow_state ?? candidate.source_snapshot?.billing_close ?? null;
 }
 
+function candidateValidationLayers(candidate: BillingCandidate) {
+  return readBillingValidationLayers(candidate.source_snapshot);
+}
+
 function candidateEvidenceSummary(candidate: BillingCandidate) {
   const source = candidate.source_snapshot;
   const lines: string[] = [];
@@ -286,12 +274,7 @@ function candidateEvidenceSummary(candidate: BillingCandidate) {
   if (source?.ruleset_version) {
     lines.push(`ルール ${source.ruleset_version}`);
   }
-  if (source?.validation_layers?.evidence?.message) {
-    lines.push(source.validation_layers.evidence.message);
-  }
-  if (source?.validation_layers?.rule_engine?.message) {
-    lines.push(source.validation_layers.rule_engine.message);
-  }
+  lines.push(...collectBillingValidationMessages(readBillingValidationLayers(source)));
   if (candidate.calculation_breakdown?.derived_points != null) {
     lines.push(`算出 ${candidate.calculation_breakdown.derived_points}点`);
   }
@@ -643,7 +626,7 @@ export function BillingCandidatesContent({
         cell: ({ row }) => (
           <ValidationBadge
             status={row.original.status}
-            layers={row.original.source_snapshot?.validation_layers ?? null}
+            layers={candidateValidationLayers(row.original)}
           />
         ),
       },
@@ -1202,38 +1185,40 @@ export function BillingCandidatesContent({
                     3層バリデーション
                   </p>
                   <div className="space-y-2 rounded-md bg-muted/40 p-3 text-xs">
-                    {candidate.source_snapshot?.validation_layers ? (
-                      <>
-                        {(['evidence', 'rule_engine', 'close_review'] as const).map((key) => {
-                          const layer = candidate.source_snapshot?.validation_layers?.[key];
-                          if (!layer) return null;
-                          const layerVersion =
-                            key === 'rule_engine'
-                              ? candidate.source_snapshot?.validation_layers?.rule_engine?.version
-                              : undefined;
+                    {(() => {
+                      const validationLayers = candidateValidationLayers(candidate);
+                      if (!validationLayers) {
+                        return <p className="text-muted-foreground">バリデーション情報なし</p>;
+                      }
+                      return (
+                        <>
+                          {BILLING_VALIDATION_LAYER_KEYS.map((key) => {
+                            const layer = validationLayers?.[key];
+                            if (!layer) return null;
 
-                          return (
-                            <div key={key}>
-                              <p className="font-medium text-foreground">
-                                {layer.label ?? key}
-                                {key === 'rule_engine' && layerVersion ? ` / ${layerVersion}` : ''}
-                              </p>
-                              <p className="text-muted-foreground">
-                                {layer.state === 'passed'
-                                  ? 'OK'
-                                  : layer.state === 'blocked'
-                                    ? 'ブロック'
-                                    : '要確認'}
-                                {' · '}
-                                {layer.message ?? '—'}
-                              </p>
-                            </div>
-                          );
-                        })}
-                      </>
-                    ) : (
-                      <p className="text-muted-foreground">バリデーション情報なし</p>
-                    )}
+                            return (
+                              <div key={key}>
+                                <p className="font-medium text-foreground">
+                                  {layer.label ?? key}
+                                  {key === 'rule_engine' && layer.version
+                                    ? ` / ${layer.version}`
+                                    : ''}
+                                </p>
+                                <p className="text-muted-foreground">
+                                  {layer.state === 'passed'
+                                    ? 'OK'
+                                    : layer.state === 'blocked'
+                                      ? 'ブロック'
+                                      : '要確認'}
+                                  {' · '}
+                                  {layer.message ?? '—'}
+                                </p>
+                              </div>
+                            );
+                          })}
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>

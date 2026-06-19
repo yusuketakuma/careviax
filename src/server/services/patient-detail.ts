@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { hasPermission } from '@/lib/auth/permissions';
 import { prisma } from '@/lib/db/client';
 import {
   getPatientPrivacyFlags,
@@ -23,6 +24,10 @@ import { listPatientLabSummary } from '@/server/services/patient-detail-labs';
 import { runPatientDetailTasks } from '@/server/services/patient-detail-tasks';
 import { buildPatientTimelineEvents } from '@/server/services/patient-detail-timeline-events';
 import {
+  buildPatientTimelineConferenceNoteWhere,
+  buildPatientTimelineOperationHistoryFilters,
+} from '@/server/services/patient-detail-timeline-query';
+import {
   buildAssignedCareCaseWhere,
   buildCareReportCaseScope,
   buildNullableCaseScope,
@@ -30,7 +35,7 @@ import {
   buildVisitRecordCaseScope,
   type PatientDetailScopeArgs,
 } from '@/server/services/patient-detail-scope';
-import { buildExternalAccessGrantVisibilityWhere } from '@/server/services/external-access';
+import { buildVisibleExternalAccessGrantWhere } from '@/server/services/external-access';
 
 export { runPatientDetailTasks } from '@/server/services/patient-detail-tasks';
 export { getPatientCommunicationsData } from '@/server/services/patient-detail-communications';
@@ -114,12 +119,11 @@ async function listVisibleTimelineExternalShares(
   caseIds: string[],
 ) {
   return db.externalAccessGrant.findMany({
-    where: {
-      org_id: args.orgId,
-      patient_id: args.patientId,
-      revoked_at: null,
-      ...buildExternalAccessGrantVisibilityWhere(caseIds),
-    },
+    where: buildVisibleExternalAccessGrantWhere({
+      orgId: args.orgId,
+      patientId: args.patientId,
+      caseIds,
+    }),
     orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
     take: PATIENT_TIMELINE_EXTERNAL_SHARE_LIMIT,
     select: {
@@ -422,7 +426,10 @@ export async function getPatientTimelineData(db: PatientTimelineDb, args: Detail
   if (!patient) return null;
 
   const caseIds = patient.cases.map((item) => item.id);
-  const billingRefs = await listPatientBillingCaseRefs(db, args, caseIds);
+  const canManageBilling = hasPermission(args.role, 'canManageBilling');
+  const billingRefs = canManageBilling
+    ? await listPatientBillingCaseRefs(db, args, caseIds)
+    : { visitRecordIds: [] as string[], cycleIds: [] as string[] };
 
   const {
     visitSchedules,
@@ -724,114 +731,65 @@ export async function getPatientTimelineData(db: PatientTimelineDb, args: Detail
             },
           }),
     conferenceNotes: () =>
-      caseIds.length === 0
-        ? Promise.resolve([])
-        : db.conferenceNote.findMany({
-            where: {
-              org_id: args.orgId,
-              OR: [{ patient_id: args.patientId, case_id: null }, { case_id: { in: caseIds } }],
-            },
-            orderBy: [{ conference_date: 'desc' }],
-            take: 8,
-            select: {
-              id: true,
-              note_type: true,
-              title: true,
-              conference_date: true,
-              follow_up_date: true,
-              follow_up_completed: true,
-              generated_report_id: true,
-              action_items: true,
-            },
-          }),
-    billingCandidates: () =>
-      db.billingCandidate.findMany({
+      db.conferenceNote.findMany({
         where: {
-          org_id: args.orgId,
-          patient_id: args.patientId,
-          ...(billingRefs.cycleIds.length === 0
-            ? { id: { in: [] } }
-            : { cycle_id: { in: billingRefs.cycleIds } }),
+          ...buildPatientTimelineConferenceNoteWhere({
+            orgId: args.orgId,
+            patientId: args.patientId,
+            caseIds,
+          }),
         },
-        orderBy: [{ updated_at: 'desc' }],
+        orderBy: [{ conference_date: 'desc' }],
         take: 8,
         select: {
           id: true,
-          billing_month: true,
-          billing_code: true,
-          billing_name: true,
-          points: true,
-          status: true,
-          exclusion_reason: true,
-          updated_at: true,
+          note_type: true,
+          title: true,
+          conference_date: true,
+          follow_up_date: true,
+          follow_up_completed: true,
+          generated_report_id: true,
+          action_items: true,
         },
       }),
+    billingCandidates: () =>
+      canManageBilling
+        ? db.billingCandidate.findMany({
+            where: {
+              org_id: args.orgId,
+              patient_id: args.patientId,
+              ...(billingRefs.cycleIds.length === 0
+                ? { id: { in: [] } }
+                : { cycle_id: { in: billingRefs.cycleIds } }),
+            },
+            orderBy: [{ updated_at: 'desc' }],
+            take: 8,
+            select: {
+              id: true,
+              billing_month: true,
+              billing_code: true,
+              billing_name: true,
+              points: true,
+              status: true,
+              exclusion_reason: true,
+              updated_at: true,
+            },
+          })
+        : Promise.resolve([]),
   });
 
-  const operationHistoryFilters: Prisma.AuditLogWhereInput[] = [
-    {
-      target_type: 'Patient',
-      target_id: args.patientId,
-      action: {
-        in: [
-          'billing_payment_profile_updated',
-          'patient_mcs_profile_updated',
-          'patient_mcs_check_log_created',
-        ],
-      },
-    },
-    {
-      target_type: {
-        in: [
-          'medication_history',
-          'medication_calendar',
-          'visit_record_list',
-          'prescription_history',
-        ],
-      },
-      target_id: args.patientId,
-      action: 'export',
-    },
-  ];
   const prescriptionIntakeIds = prescriptionIntakes.map((item) => item.id);
-  if (prescriptionIntakeIds.length > 0) {
-    operationHistoryFilters.push({
-      target_type: 'prescription_intake',
-      target_id: { in: prescriptionIntakeIds },
-      action: {
-        in: ['prescription_original_management_updated', 'prescription_original_document_saved'],
-      },
-    });
-  }
   const firstVisitDocumentIds = firstVisitDocuments.map((item) => item.id);
-  if (firstVisitDocumentIds.length > 0) {
-    operationHistoryFilters.push({
-      target_type: 'first_visit_document',
-      target_id: { in: firstVisitDocumentIds },
-      action: { startsWith: 'first_visit_document.' },
-    });
-  }
   const billingCandidateIds = billingCandidates.map((item) => item.id);
-  if (billingCandidateIds.length > 0) {
-    operationHistoryFilters.push({
-      target_type: 'BillingCandidate',
-      target_id: { in: billingCandidateIds },
-      action: { in: ['billing_collection_updated'] },
-    });
-    operationHistoryFilters.push({
-      target_type: { in: ['billing_receipt', 'billing_invoice'] },
-      target_id: { in: billingCandidateIds },
-      action: 'export',
-    });
-  }
   const conferenceNoteIds = conferenceNotes.map((item) => item.id);
-  if (conferenceNoteIds.length > 0) {
-    operationHistoryFilters.push({
-      target_type: 'conference_note',
-      target_id: { in: conferenceNoteIds },
-      action: { startsWith: 'conference_note.' },
-    });
-  }
+  const operationHistoryFilters = buildPatientTimelineOperationHistoryFilters({
+    patientId: args.patientId,
+    prescriptionIntakeIds,
+    firstVisitDocumentIds,
+    billingCandidateIds,
+    conferenceNoteIds,
+    canManageBilling,
+  });
 
   const operationHistory = await db.auditLog.findMany({
     where: {

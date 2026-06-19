@@ -2163,6 +2163,152 @@ describe('getPatientTimelineData', () => {
     );
   });
 
+  it('keeps patient-level conference notes in the timeline when the patient has no cases', async () => {
+    const conferenceNoteFindManyMock = vi.fn().mockResolvedValue([
+      {
+        id: 'conference_patient_level',
+        note_type: 'service_manager',
+        title: 'ケース作成前の担当者会議',
+        conference_date: new Date('2026-04-08T10:00:00.000Z'),
+        follow_up_date: null,
+        follow_up_completed: true,
+        generated_report_id: null,
+        action_items: [],
+      },
+    ]);
+    const auditLogFindManyMock = vi.fn().mockResolvedValue([
+      {
+        id: 'audit_conference_patient_level',
+        action: 'conference_note.created',
+        target_type: 'conference_note',
+        target_id: 'conference_patient_level',
+        actor_id: 'user_2',
+        changes: { conference_note: { note_type: 'service_manager' } },
+        created_at: new Date('2026-04-08T11:00:00.000Z'),
+      },
+    ]);
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [],
+        }),
+      },
+      conferenceNote: { findMany: conferenceNoteFindManyMock },
+      auditLog: { findMany: auditLogFindManyMock },
+      user: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'user_2', name: '佐藤 薬剤師' }]),
+      },
+    });
+
+    const result = await getPatientTimelineData(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist',
+      userId: 'user_1',
+    });
+
+    expect(conferenceNoteFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          OR: [{ patient_id: 'patient_1', case_id: null }],
+        },
+      }),
+    );
+    expect(auditLogFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              target_type: 'conference_note',
+              target_id: { in: ['conference_patient_level'] },
+            }),
+          ]),
+        }),
+      }),
+    );
+    expect(result?.timeline_events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'conference_note:conference_patient_level',
+          event_type: 'conference_note',
+        }),
+        expect.objectContaining({
+          id: 'operation_history:audit_conference_patient_level',
+          title: 'カンファレンス記録を登録',
+          actor_name: '佐藤 薬剤師',
+        }),
+      ]),
+    );
+  });
+
+  it('omits billing candidates and billing operation history for non-billing roles', async () => {
+    const billingCandidateFindManyMock = vi.fn().mockResolvedValue([
+      {
+        id: 'candidate_1',
+        status: 'candidate',
+        billing_month: new Date('2026-06-01T00:00:00.000Z'),
+        billing_code: 'HOME_VISIT_MANAGEMENT',
+        billing_name: '居宅療養管理指導',
+        points: 518,
+        exclusion_reason: null,
+        updated_at: new Date('2026-06-01T00:00:00.000Z'),
+      },
+    ]);
+    const medicationCycleFindManyMock = vi.fn().mockResolvedValue([{ id: 'cycle_1' }]);
+    const auditLogFindManyMock = vi.fn().mockImplementation((args) =>
+      JSON.stringify(args).includes('billing_payment_profile_updated')
+        ? Promise.resolve([
+            {
+              id: 'audit_billing_profile',
+              action: 'billing_payment_profile_updated',
+              target_type: 'Patient',
+              target_id: 'patient_1',
+              actor_id: 'billing_user',
+              changes: {
+                payer_name: '山田花子',
+                payment_method: 'bank_transfer',
+                collection: { receipt_number: 'R-001', unpaid_reason: '次回訪問時に集金' },
+              },
+              created_at: new Date('2026-06-01T01:00:00.000Z'),
+            },
+          ])
+        : Promise.resolve([]),
+    );
+    const db = buildDb({
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'patient_1',
+          cases: [{ id: 'case_1' }],
+        }),
+      },
+      billingCandidate: { findMany: billingCandidateFindManyMock },
+      medicationCycle: {
+        findMany: medicationCycleFindManyMock,
+        findFirst: vi.fn().mockResolvedValue(null),
+      },
+      auditLog: { findMany: auditLogFindManyMock },
+    });
+
+    const result = await getPatientTimelineData(db, {
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      role: 'pharmacist_trainee',
+      userId: 'user_1',
+    });
+
+    expect(medicationCycleFindManyMock).not.toHaveBeenCalled();
+    expect(billingCandidateFindManyMock).not.toHaveBeenCalled();
+    expect(JSON.stringify(auditLogFindManyMock.mock.calls[0]?.[0])).not.toContain(
+      'billing_payment_profile_updated',
+    );
+    expect(JSON.stringify(result?.timeline_events)).not.toContain('居宅療養管理指導');
+    expect(JSON.stringify(result?.timeline_events)).not.toContain('/billing/candidates');
+    expect(JSON.stringify(result?.timeline_events)).not.toContain('山田花子');
+    expect(JSON.stringify(result?.timeline_events)).not.toContain('R-001');
+  });
+
   it('filters timeline external shares by assigned case boundary', async () => {
     const externalAccessGrantFindManyMock = vi.fn().mockResolvedValue([
       {

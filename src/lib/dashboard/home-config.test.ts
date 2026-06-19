@@ -70,6 +70,7 @@ describe('dashboard home config', () => {
   it('routes synthetic medication-set queue items to the correct tabs', () => {
     expect(DASHBOARD_TASK_TYPE_TO_TAB.medication_set_queue).toBe('medication_set');
     expect(DASHBOARD_TASK_TYPE_TO_TAB.set_audit_queue).toBe('set_audit');
+    expect(DASHBOARD_TASK_TYPE_TO_TAB.communication_request_followup).toBe('reporting');
   });
 
   it('labels visit planning as schedule registration in the pipeline', () => {

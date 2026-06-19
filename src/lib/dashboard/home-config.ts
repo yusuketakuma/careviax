@@ -108,6 +108,7 @@ export const DASHBOARD_TASK_TYPE_TO_TAB: Record<string, DashboardTaskTabKey> = {
   report_delivery_followup: 'reporting',
   report_response_followup: 'reporting',
   tracing_report_followup: 'reporting',
+  communication_request_followup: 'reporting',
   management_plan_review: 'reporting',
   community_activity_followup: 'reporting',
 };

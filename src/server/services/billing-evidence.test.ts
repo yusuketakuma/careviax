@@ -173,6 +173,9 @@ describe('billing-evidence service', () => {
             claimable: true,
             exclusion_reason: null,
             calculation_context: {
+              site_id: 'site_1',
+              site_config_status: 'resolved',
+              site_config_revision_code: '2026',
               building_id: 'building_b',
               unit_name: null,
               assignment_scope: 'patient',
@@ -228,6 +231,12 @@ describe('billing-evidence service', () => {
             base_points: 650,
           },
           source_snapshot: expect.objectContaining({
+            site_id: 'site_1',
+            billing_site: expect.objectContaining({
+              site_id: 'site_1',
+              site_config_status: 'resolved',
+              site_config_revision_code: '2026',
+            }),
             billing_assignment: expect.objectContaining({
               building_id: 'building_b',
               unit_name: null,

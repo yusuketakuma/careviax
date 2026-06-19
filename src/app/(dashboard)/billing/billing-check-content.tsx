@@ -278,6 +278,12 @@ export function BillingCheckContent() {
           meta: `${data.records.summary_template_kind_count}種`,
           href: '/admin/document-templates',
         },
+        {
+          id: 'partner-cooperation',
+          label: '薬局間協力',
+          meta: '月次処理',
+          href: '/billing/partner-cooperation',
+        },
       ]
     : [];
 

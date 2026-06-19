@@ -113,6 +113,7 @@ const TASK_TYPE_OPTIONS = [
   { value: 'management_plan_review', label: '計画書' },
   { value: 'report_delivery_followup', label: '報告送達' },
   { value: 'report_response_followup', label: '報告返信待ち' },
+  { value: 'communication_request_followup', label: '連携返信待ち' },
   { value: 'handoff_confirmation', label: '申し送り確認' },
   { value: 'conference_action_item', label: 'カンファレンス' },
   { value: 'emergency_coverage_gap', label: '当番体制' },

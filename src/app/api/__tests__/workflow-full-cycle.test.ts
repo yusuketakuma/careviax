@@ -93,6 +93,7 @@ type TestState = {
     report_type: string;
     status: string;
     pdf_url: string;
+    updated_at: Date;
   }>;
   deliveryRecords: Array<{
     id: string;
@@ -1234,6 +1235,7 @@ describe('workflow full-cycle integration', () => {
         visit_record_id: report.visit_record_id,
         report_type: report.report_type,
         pdf_url: report.pdf_url,
+        updated_at: report.updated_at,
         content: {
           source_provenance: {
             visit_record_version: state.visitRecord?.version ?? 1,
@@ -1270,7 +1272,14 @@ describe('workflow full-cycle integration', () => {
 
         if (existing) {
           return {
-            reports: [{ id: existing.id, report_type: existing.report_type }],
+            reports: [
+              {
+                id: existing.id,
+                report_type: existing.report_type,
+                status: existing.status,
+                updated_at: existing.updated_at,
+              },
+            ],
           };
         }
 
@@ -1280,11 +1289,19 @@ describe('workflow full-cycle integration', () => {
           report_type: type,
           status: 'draft',
           pdf_url: `https://example.com/${type}.pdf`,
+          updated_at: new Date('2026-03-29T09:00:00.000Z'),
         };
         state.careReports.push(created);
 
         return {
-          reports: [{ id: created.id, report_type: created.report_type }],
+          reports: [
+            {
+              id: created.id,
+              report_type: created.report_type,
+              status: created.status,
+              updated_at: created.updated_at,
+            },
+          ],
         };
       },
     );
@@ -1402,6 +1419,7 @@ describe('workflow full-cycle integration', () => {
     const generateResponse = await generateCareReports(
       createRequest({
         visit_record_id: 'record_1',
+        expected_visit_record_updated_at: '2026-03-29T09:00:00.000Z',
         report_type: 'physician_report',
       }),
       emptyRouteContext,
@@ -1422,6 +1440,7 @@ describe('workflow full-cycle integration', () => {
           recipient_name: '在宅主治医',
           recipient_contact: 'doctor@example.com',
           recipient_role: 'physician',
+          expected_updated_at: state.careReports[0]?.updated_at.toISOString(),
           safety_ack: true,
         },
         { 'x-org-id': 'org_1' },
@@ -1444,6 +1463,10 @@ describe('workflow full-cycle integration', () => {
       'record_1',
       'physician_report',
       { userId: 'user_1', role: 'pharmacist' },
+      {
+        expectedVisitRecordUpdatedAt: new Date('2026-03-29T09:00:00.000Z'),
+        expectedReportUpdatedAt: null,
+      },
     );
     expect(sendCareReportEmailMock).toHaveBeenCalledWith({
       to: 'doctor@example.com',
@@ -1596,6 +1619,7 @@ describe('workflow full-cycle integration', () => {
     const generateResponse = await generateCareReports(
       createRequest({
         visit_record_id: 'record_1',
+        expected_visit_record_updated_at: '2026-03-29T09:00:00.000Z',
         report_type: 'care_manager_report',
       }),
       emptyRouteContext,
@@ -1619,6 +1643,7 @@ describe('workflow full-cycle integration', () => {
           recipient_name: '担当ケアマネ',
           recipient_contact: 'caremanager@example.com',
           recipient_role: 'care_manager',
+          expected_updated_at: state.careReports[0]?.updated_at.toISOString(),
           safety_ack: true,
         },
         { 'x-org-id': 'org_1' },

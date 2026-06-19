@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
+import { createHash } from 'node:crypto';
 import { withAuthContext } from '@/lib/auth/context';
 import { conflict, error, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { readJsonObject, readJsonObjectString } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { recordDataExportAudit } from '@/server/services/export-audit';
@@ -10,8 +12,10 @@ import {
   resolveClaimsExportConfig,
   type ClaimsExportRecord,
 } from '@/server/adapters/claims-export';
+import { resolveClaimsExportSiteId } from '@/server/services/claims-export-site';
 import { BILLING_DOMAIN_ERROR_MESSAGE, parseOptionalBillingDomain } from '../billing-domain';
 import { BILLING_MONTH_FORMAT_MESSAGE, parseStrictBillingMonth } from '../billing-month';
+import { quotedCsvCell as csvCell } from '@/lib/csv/safe-csv';
 
 type ExportFormat = 'csv' | 'claims-xml';
 
@@ -50,15 +54,12 @@ function resolveInsuranceType(
   return readJsonObjectString(sourceSnapshot, 'payer_basis') === 'care' ? 'care' : 'medical';
 }
 
-function csvCell(value: string | number | null | undefined) {
-  if (value == null) return '';
-  const raw = String(value);
-  const safe = /^[=+\-@\t\r\n]/.test(raw) ? `'${raw}` : raw;
-  return `"${safe.replace(/"/g, '""')}"`;
-}
-
 function isSafeFilterId(value: string | null) {
   return !value || /^[A-Za-z0-9_-]{1,80}$/.test(value);
+}
+
+function hashBillingExportFilterId(value: string) {
+  return createHash('sha256').update(value).digest('hex').slice(0, 16);
 }
 
 function readBillingTargetName(candidate: {
@@ -134,16 +135,18 @@ export const GET = withAuthContext(
 
     const parsedBillingMonth = billingMonth === null ? null : parseStrictBillingMonth(billingMonth);
     if (billingMonth !== null && !parsedBillingMonth) {
-      return validationError(BILLING_MONTH_FORMAT_MESSAGE);
+      return withSensitiveNoStore(validationError(BILLING_MONTH_FORMAT_MESSAGE));
     }
     if (!isSafeFilterId(patientId)) {
-      return validationError('patient_id の形式が不正です');
+      return withSensitiveNoStore(validationError('patient_id の形式が不正です'));
     }
     if (requestedBillingDomain === null) {
-      return validationError(BILLING_DOMAIN_ERROR_MESSAGE);
+      return withSensitiveNoStore(validationError(BILLING_DOMAIN_ERROR_MESSAGE));
     }
     if (exportFormat === null) {
-      return validationError('format は csv または claims-xml を指定してください');
+      return withSensitiveNoStore(
+        validationError('format は csv または claims-xml を指定してください'),
+      );
     }
     const billingDomain = requestedBillingDomain ?? 'home_care';
 
@@ -170,14 +173,16 @@ export const GET = withAuthContext(
         return buildExportPreview(records);
       });
 
-      return NextResponse.json({
-        data: {
-          ...previewData,
-          billing_month: parsedBillingMonth?.canonical ?? null,
-          billing_domain: billingDomain,
-          generated_at: new Date().toISOString(),
-        },
-      });
+      return withSensitiveNoStore(
+        NextResponse.json({
+          data: {
+            ...previewData,
+            billing_month: parsedBillingMonth?.canonical ?? null,
+            billing_domain: billingDomain,
+            generated_at: new Date().toISOString(),
+          },
+        }),
+      );
     }
 
     const exportResult = await withOrgContext(ctx.orgId, async (tx) => {
@@ -312,39 +317,77 @@ export const GET = withAuthContext(
         };
       });
 
-      await recordDataExportAudit(tx, {
-        orgId: ctx.orgId,
-        actorId: ctx.userId,
-        targetType: 'billing_candidate',
-        format: 'csv',
-        recordCount: candidates.length,
-        filters: {
-          billing_month: parsedBillingMonth?.canonical ?? null,
-          patient_id: patientId ?? null,
-          billing_domain: billingDomain,
-          statuses: ['confirmed', 'exported'],
-        },
-        metadata: { export_format: exportFormat },
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-      });
-
       return { kind: 'records' as const, candidates };
     });
     if (exportResult.kind === 'empty') {
-      return conflict('確定済みまたは締め済みの請求候補がないためエクスポートできません', {
-        billing_month: parsedBillingMonth?.canonical ?? null,
-        patient_id: patientId ?? null,
-        billing_domain: billingDomain,
-        statuses: ['confirmed', 'exported'],
-      });
+      return withSensitiveNoStore(
+        conflict('確定済みまたは締め済みの請求候補がないためエクスポートできません', {
+          billing_month: parsedBillingMonth?.canonical ?? null,
+          patient_filter: patientId ? 'specified' : null,
+          billing_domain: billingDomain,
+          statuses: ['confirmed', 'exported'],
+        }),
+      );
     }
     const candidates = exportResult.candidates;
+
+    const recordExportAudit = async (metadata?: Record<string, unknown>) => {
+      try {
+        await withOrgContext(ctx.orgId, (tx) =>
+          recordDataExportAudit(tx, {
+            orgId: ctx.orgId,
+            actorId: ctx.userId,
+            targetType: 'billing_candidate',
+            format: exportFormat,
+            recordCount: candidates.length,
+            filters: {
+              billing_month: parsedBillingMonth?.canonical ?? null,
+              patient_filter: patientId ? 'specified' : null,
+              billing_domain: billingDomain,
+              statuses: ['confirmed', 'exported'],
+            },
+            metadata: {
+              export_format: exportFormat,
+              patient_filter_hash: patientId ? hashBillingExportFilterId(patientId) : null,
+              ...metadata,
+            },
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+          }),
+        );
+        return null;
+      } catch {
+        return withSensitiveNoStore(
+          error(
+            'BILLING_EXPORT_AUDIT_FAILED',
+            '請求候補のエクスポート監査を記録できませんでした',
+            500,
+          ),
+        );
+      }
+    };
 
     const monthOf = (value: Date | string) =>
       value instanceof Date ? value.toISOString().slice(0, 7) : String(value).slice(0, 7);
 
     if (exportFormat === 'claims-xml') {
+      const siteResolution = resolveClaimsExportSiteId(candidates);
+      if (!siteResolution.ok) {
+        return withSensitiveNoStore(
+          error(
+            'CLAIMS_EXPORT_SITE_UNRESOLVED',
+            siteResolution.reason === 'missing_site_id'
+              ? 'CLAIMS-XML の薬局拠点を解決できません'
+              : 'CLAIMS-XML は単一薬局拠点の候補だけをエクスポートできます',
+            422,
+            {
+              reason: siteResolution.reason,
+              missing_count: siteResolution.missingCount,
+              site_count: siteResolution.siteCount,
+            },
+          ),
+        );
+      }
       const records: ClaimsExportRecord[] = candidates.map((c) => ({
         patientId: c.patient_id ?? '',
         patientName: c.patient_name,
@@ -356,39 +399,53 @@ export const GET = withAuthContext(
         status: c.status,
       }));
 
+      const auditFailureResponse = await recordExportAudit({ audit_phase: 'attempt' });
+      if (auditFailureResponse) return auditFailureResponse;
+
       const adapter = createClaimsExportAdapter(resolveClaimsExportConfig());
       let result;
       try {
         result = await adapter.exportClaims({
           orgId: ctx.orgId,
-          siteId: '',
+          siteId: siteResolution.siteId,
           billingMonth: parsedBillingMonth ? parsedBillingMonth.canonical.slice(0, 7) : '',
           records,
         });
       } catch (cause) {
         if (cause instanceof ClaimsExportAdapterError) {
-          return error(
-            'CLAIMS_EXPORT_FAILED',
-            'CLAIMS-XML の生成に失敗しました',
-            cause.retriable ? 502 : 422,
-            { code: cause.code },
+          return withSensitiveNoStore(
+            error(
+              'CLAIMS_EXPORT_FAILED',
+              'CLAIMS-XML の生成に失敗しました',
+              cause.retriable ? 502 : 422,
+              { code: cause.code },
+            ),
           );
         }
         throw cause;
       }
+
+      const successAuditFailureResponse = await recordExportAudit({
+        audit_phase: 'success',
+        claims_record_count: result.recordCount,
+        site_id: siteResolution.siteId,
+      });
+      if (successAuditFailureResponse) return successAuditFailureResponse;
 
       const xmlFilename = parsedBillingMonth
         ? `${filenamePrefixFor(billingDomain)}_${parsedBillingMonth.canonical.slice(0, 7)}.xml`
         : `${filenamePrefixFor(billingDomain)}_candidates.xml`;
       const encodedXmlFilename = encodeURIComponent(xmlFilename);
 
-      return new NextResponse(result.content, {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/xml; charset=utf-8',
-          'Content-Disposition': `attachment; filename="${encodedXmlFilename}"; filename*=UTF-8''${encodedXmlFilename}`,
-        },
-      });
+      return withSensitiveNoStore(
+        new NextResponse(result.content, {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/xml; charset=utf-8',
+            'Content-Disposition': `attachment; filename="${encodedXmlFilename}"; filename*=UTF-8''${encodedXmlFilename}`,
+          },
+        }),
+      );
     }
 
     const header = [
@@ -446,13 +503,18 @@ export const GET = withAuthContext(
       : `${filenamePrefix}_candidates.csv`;
     const encodedFilename = encodeURIComponent(filename);
 
-    return new NextResponse(csv, {
-      status: 200,
-      headers: {
-        'Content-Type': 'text/csv; charset=utf-8',
-        'Content-Disposition': `attachment; filename="${encodedFilename}"; filename*=UTF-8''${encodedFilename}`,
-      },
-    });
+    const auditFailureResponse = await recordExportAudit();
+    if (auditFailureResponse) return auditFailureResponse;
+
+    return withSensitiveNoStore(
+      new NextResponse(csv, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Content-Disposition': `attachment; filename="${encodedFilename}"; filename*=UTF-8''${encodedFilename}`,
+        },
+      }),
+    );
   },
   {
     permission: 'canManageBilling',

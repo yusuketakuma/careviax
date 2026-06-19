@@ -55,6 +55,7 @@ const PERMISSION_DENIAL_MESSAGE: Record<PermissionKey, string> = {
   canAuthorReport: '報告書作成権限がありません',
   canSendCareReport: '報告書送付権限がありません',
   canManageBilling: '請求管理権限がありません',
+  canManagePatientSharing: '患者共有管理権限がありません',
   canViewDashboard: 'ダッシュボード閲覧権限がありません',
   canAdmin: '管理者権限がありません',
 };

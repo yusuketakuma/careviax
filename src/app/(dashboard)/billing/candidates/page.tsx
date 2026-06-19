@@ -43,6 +43,7 @@ export default async function BillingCandidatesPage({ searchParams }: BillingCan
         }
         shortcuts={[
           { href: '/billing', label: '請求ダッシュボード' },
+          { href: '/billing/partner-cooperation', label: '薬局間協力' },
           { href: '/admin/billing-rules', label: '請求ルール' },
           { href: '/workflow', label: 'ワークフロー' },
         ]}

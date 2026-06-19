@@ -170,6 +170,12 @@ export function describeOperationalTask(
         actionLabel: '未確認報告を確認',
         queueLabel: '報告返信待ち',
       };
+    case 'communication_request_followup':
+      return {
+        actionHref: '/communications/requests',
+        actionLabel: '連携依頼を確認',
+        queueLabel: '連携返信待ち',
+      };
     case 'handoff_confirmation':
       return {
         actionHref: '/handoff',

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { useUIStore } from '@/lib/stores/ui-store';
@@ -22,6 +22,7 @@ vi.mock('@/lib/hooks/use-realtime-query', () => ({
 }));
 
 import { DashboardCockpit } from './dashboard-cockpit';
+import { formatCockpitGeneratedAtMeta } from './dashboard-cockpit.helpers';
 
 function localIso(hours: number, minutes = 0) {
   return new Date(2026, 5, 12, hours, minutes).toISOString();
@@ -343,6 +344,63 @@ describe('DashboardCockpit', () => {
 
     // デザイン 01: 右レールは 3 点セットのみ。「私の今日」リストカードは置かない
     expect(screen.queryByTestId('dashboard-my-today')).toBeNull();
+  });
+
+  it('marks cockpit evidence as stale when the generated snapshot is older than the realtime freshness window', () => {
+    useRealtimeQueryMock.mockReturnValue({
+      data: {
+        ...buildFixture(),
+        generated_at: localIso(9, 40),
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: refetchMock,
+    });
+
+    render(<DashboardCockpit />);
+
+    const evidence = screen.getByTestId('evidence-panel');
+    expect(within(evidence).getByText('09:40 / 要更新')).toBeTruthy();
+  });
+
+  it('updates the cockpit evidence freshness label as time passes without a refetch', () => {
+    render(<DashboardCockpit />);
+
+    const evidence = screen.getByTestId('evidence-panel');
+    expect(within(evidence).getByText('09:42')).toBeTruthy();
+
+    act(() => {
+      vi.advanceTimersByTime(30_000);
+    });
+
+    expect(within(evidence).getByText('09:42 / 要更新')).toBeTruthy();
+  });
+
+  it('does not render NaN for malformed cockpit evidence timestamps', () => {
+    expect(formatCockpitGeneratedAtMeta('not-a-date', new Date('2026-06-12T00:00:00.000Z'))).toBe(
+      '—',
+    );
+    expect(formatCockpitGeneratedAtMeta(localIso(9, 43), new Date(2026, 5, 12, 9, 42))).toBe(
+      '09:43',
+    );
+
+    useRealtimeQueryMock.mockReturnValue({
+      data: {
+        ...buildFixture(),
+        generated_at: 'not-a-date',
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: refetchMock,
+    });
+
+    render(<DashboardCockpit />);
+
+    const evidence = screen.getByTestId('evidence-panel');
+    expect(within(evidence).getByText('—')).toBeTruthy();
+    expect(evidence.textContent).not.toContain('NaN');
   });
 
   it('shows the error state with retry when the cockpit fetch fails', () => {

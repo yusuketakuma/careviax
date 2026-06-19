@@ -21,4 +21,18 @@ describe('describeOperationalTask', () => {
       }).actionHref,
     ).toBe('/audit?taskId=task-tanaka');
   });
+
+  it('links generic communication follow-up tasks back to communication requests', () => {
+    expect(
+      describeOperationalTask({
+        task_type: 'communication_request_followup',
+        related_entity_type: 'patient',
+        related_entity_id: 'patient_1',
+      }),
+    ).toMatchObject({
+      actionHref: '/communications/requests',
+      actionLabel: '連携依頼を確認',
+      queueLabel: '連携返信待ち',
+    });
+  });
 });

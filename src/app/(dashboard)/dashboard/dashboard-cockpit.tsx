@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
@@ -34,6 +34,8 @@ import {
   buildBottleneckNote,
   buildTeamHandoffSuggestion,
   buildConditionSummary,
+  COCKPIT_FRESHNESS_WINDOW_MS,
+  formatCockpitGeneratedAtMeta,
   buildProcessNowTiles,
   buildTimelineBlocks,
   formatAgeLabel,
@@ -615,12 +617,16 @@ export function DashboardCockpit() {
   const cockpitQuery = useRealtimeQuery({
     queryKey: ['dashboard', 'cockpit', orgId, viewScope],
     queryFn: () => fetchDashboardCockpit(orgId, viewScope),
-    staleTime: 30_000,
+    staleTime: COCKPIT_FRESHNESS_WINDOW_MS,
     enabled: !isBootstrappingOrg,
     invalidateOn: ['cycle_transition', 'workflow_refresh'],
   });
 
-  const now = new Date();
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), COCKPIT_FRESHNESS_WINDOW_MS);
+    return () => window.clearInterval(timer);
+  }, []);
   const data = cockpitQuery.data ?? null;
   const appliedScope = data?.scope?.applied ?? viewScope;
   const canViewTeam = data?.scope?.can_view_team ?? true;
@@ -643,7 +649,7 @@ export function DashboardCockpit() {
     {
       id: 'sync',
       label: '今朝の同期',
-      meta: data ? formatTimeOfDay(data.generated_at) : '—',
+      meta: data ? formatCockpitGeneratedAtMeta(data.generated_at, now) : '—',
       onView: () => void cockpitQuery.refetch(),
     },
     {

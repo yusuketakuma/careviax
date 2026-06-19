@@ -14,9 +14,21 @@ import type { CockpitVisit } from '@/types/dashboard-cockpit';
 /** ISO 文字列 → ローカル時刻の HH:MM。 */
 export function formatTimeOfDay(iso: string): string {
   const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '—';
   const hours = `${date.getHours()}`.padStart(2, '0');
   const minutes = `${date.getMinutes()}`.padStart(2, '0');
   return `${hours}:${minutes}`;
+}
+
+export const COCKPIT_FRESHNESS_WINDOW_MS = 30_000;
+
+export function formatCockpitGeneratedAtMeta(generatedAtIso: string, now: Date): string {
+  const generatedAt = new Date(generatedAtIso);
+  const timeLabel = formatTimeOfDay(generatedAtIso);
+  if (Number.isNaN(generatedAt.getTime())) return timeLabel;
+
+  const ageMs = Math.max(0, now.getTime() - generatedAt.getTime());
+  return ageMs >= COCKPIT_FRESHNESS_WINDOW_MS ? `${timeLabel} / 要更新` : timeLabel;
 }
 
 /** ISO 文字列 → ローカル 0:00 からの経過分。 */

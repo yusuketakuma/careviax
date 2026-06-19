@@ -20,6 +20,7 @@ import {
   getHomeVisitMedicationSupportMethods,
   getHomeVisitSpecialMedicalProcedures,
 } from '@/lib/patient/home-visit-intake';
+import type { BillingValidationLayers } from '@/types/billing-validation-layers';
 import type { StructuredSoap } from '@/types/structured-soap';
 
 type RegionAddOnKey = 'special_15' | 'small_office_10' | 'resident_5';
@@ -191,21 +192,6 @@ export type BillingCandidateWorkflowState = {
   note: string | null;
 };
 
-export type BillingValidationLayerState = 'passed' | 'manual_review' | 'blocked';
-
-export type BillingValidationLayer = {
-  label: string;
-  state: BillingValidationLayerState;
-  message: string;
-  version?: string;
-};
-
-export type BillingValidationLayers = {
-  evidence: BillingValidationLayer;
-  rule_engine: BillingValidationLayer;
-  close_review: BillingValidationLayer;
-};
-
 export type AdditionalBillingRuleDefinition = {
   ssotKey: string;
   code: string;
@@ -316,11 +302,19 @@ function endOfWeek(value: Date) {
   return date;
 }
 
+function readNonEmptyString(value: unknown) {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
 function isClaimableOutcome(outcome: string) {
   return ['completed', 'completed_with_issue', 'revisit_needed'].includes(outcome);
 }
 
-function hasDeliveredReportStatus(status: string) {
+function hasDeliveredCareReportStatus(status: string) {
+  return status === 'sent';
+}
+
+function hasSuccessfulDeliveryRecordStatus(status: string) {
   return ['sent', 'confirmed'].includes(status);
 }
 
@@ -335,14 +329,15 @@ function areReportsDelivered(args: {
   if (args.reports.length === 0) {
     return false;
   }
-  if (!args.reports.every((report) => hasDeliveredReportStatus(report.status))) {
+  // CareReport.confirmed means pharmacist approval; it is not external delivery evidence.
+  if (!args.reports.every((report) => hasDeliveredCareReportStatus(report.status))) {
     return false;
   }
 
-  // Legacy records may not have DeliveryRecord rows yet; preserve sent/confirmed CareReport semantics.
+  // Legacy sent reports may not have DeliveryRecord rows yet; preserve sent CareReport semantics.
   return (
     args.deliveryRecords.length === 0 ||
-    args.deliveryRecords.every((delivery) => hasDeliveredReportStatus(delivery.status))
+    args.deliveryRecords.every((delivery) => hasSuccessfulDeliveryRecordStatus(delivery.status))
   );
 }
 
@@ -639,8 +634,19 @@ export function mergeCandidateSourceSnapshot(args: {
   workflow: BillingCandidateWorkflowState;
 }) {
   const calculationContext = isRecord(args.calculationContext) ? args.calculationContext : {};
+  const siteId =
+    readNonEmptyString(calculationContext.site_id) ??
+    readNonEmptyString(args.sourceSnapshot.site_id);
+  const siteConfigStatus = readNonEmptyString(calculationContext.site_config_status);
+  const siteConfigRevisionCode = readNonEmptyString(calculationContext.site_config_revision_code);
   return {
     ...args.sourceSnapshot,
+    site_id: siteId,
+    billing_site: {
+      site_id: siteId,
+      site_config_status: siteConfigStatus,
+      site_config_revision_code: siteConfigRevisionCode,
+    },
     ruleset_version: HOME_CARE_BILLING_RULESET_VERSION,
     billing_assignment: {
       building_id:
@@ -1744,6 +1750,7 @@ export async function upsertBillingEvidenceForVisit(
   const calculationContext: Prisma.InputJsonValue = {
     billing_service_type: billingServiceType,
     provider_scope: providerScope,
+    site_id: siteId,
     effective_revision_code: runtimeContext.effectiveRevisionCode,
     effective_revision_label: runtimeContext.effectiveRevisionLabel,
     site_config_status: runtimeContext.siteConfigStatus,

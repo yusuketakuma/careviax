@@ -432,6 +432,39 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
     );
   });
 
+  it('persists visit schedule site attribution in billing evidence calculation context', async () => {
+    const tx = makeTx({
+      visitRecord: {
+        findFirst: vi.fn().mockResolvedValue(
+          makeVisitRecord({
+            schedule: {
+              cycle_id: 'cycle_1',
+              case_id: 'case_1',
+              pharmacist_id: 'pharm_1',
+              visit_type: 'regular',
+              site_id: 'site_1',
+            },
+          }),
+        ),
+      },
+    });
+
+    await upsertBillingEvidenceForVisit(tx, {
+      orgId: 'org_1',
+      visitRecordId: 'visit_1',
+    });
+
+    expect(tx.billingEvidence.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          calculation_context: expect.objectContaining({
+            site_id: 'site_1',
+          }),
+        }),
+      }),
+    );
+  });
+
   it('blocks billing evidence when care certification is still applying', async () => {
     const tx = makeCareCertificationTx('applying');
 
@@ -1019,6 +1052,64 @@ describe('billing-evidence/core: upsertBillingEvidenceForVisit', () => {
         create: expect.objectContaining({
           claimable: true,
           exclusion_reason: null,
+        }),
+      }),
+    );
+  });
+
+  it('does not treat pharmacist-confirmed reports as delivered without send evidence', async () => {
+    const tx = makeTx({
+      careReport: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'report_1', status: 'confirmed' }]),
+      },
+      deliveryRecord: {
+        findMany: vi.fn().mockResolvedValue([]),
+      },
+    });
+
+    await upsertBillingEvidenceForVisit(tx, {
+      orgId: 'org_1',
+      visitRecordId: 'visit_1',
+    });
+
+    expect(tx.billingEvidence.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          claimable: false,
+          exclusion_reason: '報告書送付が未完了です',
+          same_month_exclusion_flags: expect.objectContaining({
+            report_delivery_incomplete: true,
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('sets claimable=false when sent reports only have failed delivery records', async () => {
+    const tx = makeTx({
+      careReport: {
+        findMany: vi.fn().mockResolvedValue([{ id: 'report_1', status: 'sent' }]),
+      },
+      deliveryRecord: {
+        findMany: vi
+          .fn()
+          .mockResolvedValue([{ id: 'delivery_1', report_id: 'report_1', status: 'failed' }]),
+      },
+    });
+
+    await upsertBillingEvidenceForVisit(tx, {
+      orgId: 'org_1',
+      visitRecordId: 'visit_1',
+    });
+
+    expect(tx.billingEvidence.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          claimable: false,
+          exclusion_reason: '報告書送付が未完了です',
+          same_month_exclusion_flags: expect.objectContaining({
+            report_delivery_incomplete: true,
+          }),
         }),
       }),
     );

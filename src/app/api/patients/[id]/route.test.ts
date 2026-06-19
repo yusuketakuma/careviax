@@ -27,6 +27,8 @@ const {
   managementPlanFindManyMock,
   userFindManyMock,
   firstVisitDocumentFindManyMock,
+  conferenceNoteFindManyMock,
+  auditLogFindManyMock,
   billingEvidenceFindManyMock,
   billingCandidateFindManyMock,
   billingEvidenceBlockersMock,
@@ -83,6 +85,8 @@ const {
   managementPlanFindManyMock: vi.fn(),
   userFindManyMock: vi.fn(),
   firstVisitDocumentFindManyMock: vi.fn(),
+  conferenceNoteFindManyMock: vi.fn(),
+  auditLogFindManyMock: vi.fn(),
   billingEvidenceFindManyMock: vi.fn(),
   billingCandidateFindManyMock: vi.fn(),
   billingEvidenceBlockersMock: vi.fn(),
@@ -171,6 +175,12 @@ vi.mock('@/lib/db/client', () => ({
     },
     firstVisitDocument: {
       findMany: firstVisitDocumentFindManyMock,
+    },
+    conferenceNote: {
+      findMany: conferenceNoteFindManyMock,
+    },
+    auditLog: {
+      findMany: auditLogFindManyMock,
     },
     billingEvidence: {
       findMany: billingEvidenceFindManyMock,
@@ -312,6 +322,8 @@ describe('/api/patients/[id]', () => {
     managementPlanFindManyMock.mockResolvedValue([]);
     userFindManyMock.mockResolvedValue([]);
     firstVisitDocumentFindManyMock.mockResolvedValue([]);
+    conferenceNoteFindManyMock.mockResolvedValue([]);
+    auditLogFindManyMock.mockResolvedValue([]);
     billingEvidenceFindManyMock.mockResolvedValue([]);
     billingCandidateFindManyMock.mockResolvedValue([]);
     billingEvidenceBlockersMock.mockResolvedValue([]);
@@ -1914,6 +1926,317 @@ describe('/api/patients/[id]', () => {
         }),
       ]),
     });
+  });
+
+  it('includes billing candidate activity in patient timeline events through the shared builder', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '患者A',
+      cases: [{ id: 'case_1' }],
+    });
+    medicationCycleFindManyMock.mockResolvedValue([{ id: 'cycle_1' }]);
+    billingCandidateFindManyMock.mockResolvedValue([
+      {
+        id: 'candidate_1',
+        billing_month: new Date('2026-03-01T00:00:00.000Z'),
+        billing_code: 'C001',
+        billing_name: '在宅患者訪問薬剤管理指導料',
+        points: 650,
+        status: 'candidate',
+        exclusion_reason: null,
+        updated_at: new Date('2026-03-30T09:00:00.000Z'),
+      },
+    ]);
+
+    const response = await GET(
+      createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+
+    expect(billingCandidateFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          updated_at: true,
+        }),
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      timeline_events: expect.arrayContaining([
+        expect.objectContaining({
+          event_type: 'billing_candidate',
+          category: 'billing',
+          title: '算定候補を更新',
+          summary: '在宅患者訪問薬剤管理指導料 / 650点',
+          href: '/billing/candidates?billing_month=2026-03-01&patient_id=patient_1',
+          action_label: '算定候補を開く',
+          status_label: '候補',
+          metadata: ['C001', '算定月 2026/03/01'],
+        }),
+      ]),
+    });
+  });
+
+  it('includes conference notes and scoped operation history in patient timeline events', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '患者A',
+      cases: [{ id: 'case_1' }],
+    });
+    conferenceNoteFindManyMock.mockResolvedValue([
+      {
+        id: 'conference_1',
+        note_type: 'service_manager',
+        title: 'サービス担当者会議',
+        conference_date: new Date('2026-04-05T10:00:00.000Z'),
+        follow_up_date: new Date('2026-04-06T00:00:00.000Z'),
+        follow_up_completed: false,
+        generated_report_id: null,
+        action_items: [{ title: '報告書作成' }, { title: '次回訪問調整' }],
+      },
+    ]);
+    auditLogFindManyMock.mockResolvedValue([
+      {
+        id: 'audit_conference_1',
+        action: 'conference_note.created',
+        target_type: 'conference_note',
+        target_id: 'conference_1',
+        actor_id: 'user_2',
+        changes: {
+          content: '退院後の服薬支援本文',
+          conference_note: {
+            note_type: 'service_manager',
+            report_type: 'care_manager_report',
+            follow_up_date: '2026-04-06T00:00:00.000Z',
+            follow_up_completed: false,
+            action_item_count: 2,
+            billing_code: 'MED_INFO_PROVISION_2_HA',
+          },
+        },
+        created_at: new Date('2026-04-05T11:00:00.000Z'),
+      },
+    ]);
+    userFindManyMock.mockResolvedValue([{ id: 'user_2', name: '薬剤師B' }]);
+
+    const response = await GET(
+      createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(conferenceNoteFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'corg1234567890123456789012',
+          OR: [{ patient_id: 'patient_1', case_id: null }, { case_id: { in: ['case_1'] } }],
+        },
+        take: 8,
+      }),
+    );
+    expect(auditLogFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'corg1234567890123456789012',
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              target_type: 'conference_note',
+              target_id: { in: ['conference_1'] },
+              action: { startsWith: 'conference_note.' },
+            }),
+          ]),
+        }),
+        take: 20,
+      }),
+    );
+
+    const json = await response.json();
+    expect(json.timeline_events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event_type: 'conference_note',
+          category: 'communication',
+          title: '担当者会議を記録',
+          href: '/conferences?patient_id=patient_1',
+          metadata: ['フォロー期限 2026/04/06'],
+        }),
+        expect.objectContaining({
+          event_type: 'operation_history',
+          category: 'communication',
+          title: 'カンファレンス記録を登録',
+          summary: expect.stringContaining('報告用途 ケアマネ向け'),
+          actor_name: '薬剤師B',
+        }),
+      ]),
+    );
+    expect(JSON.stringify(json.timeline_events)).not.toContain('退院後の服薬支援本文');
+  });
+
+  it('includes patient-level conference notes even when the patient has no assigned cases', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '患者A',
+      cases: [],
+    });
+    conferenceNoteFindManyMock.mockResolvedValue([
+      {
+        id: 'conference_patient_level',
+        note_type: 'service_manager',
+        title: 'ケース作成前の担当者会議',
+        conference_date: new Date('2026-04-08T10:00:00.000Z'),
+        follow_up_date: null,
+        follow_up_completed: true,
+        generated_report_id: null,
+        action_items: [],
+      },
+    ]);
+    auditLogFindManyMock.mockResolvedValue([
+      {
+        id: 'audit_conference_patient_level',
+        action: 'conference_note.updated',
+        target_type: 'conference_note',
+        target_id: 'conference_patient_level',
+        actor_id: 'user_2',
+        changes: { conference_note: { note_type: 'service_manager' } },
+        created_at: new Date('2026-04-08T11:00:00.000Z'),
+      },
+    ]);
+    userFindManyMock.mockResolvedValue([{ id: 'user_2', name: '薬剤師B' }]);
+
+    const response = await GET(
+      createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(conferenceNoteFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'corg1234567890123456789012',
+          OR: [{ patient_id: 'patient_1', case_id: null }],
+        },
+      }),
+    );
+    expect(auditLogFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              target_type: 'conference_note',
+              target_id: { in: ['conference_patient_level'] },
+            }),
+          ]),
+        }),
+      }),
+    );
+    const json = await response.json();
+    expect(json.timeline_events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          event_type: 'conference_note',
+          title: '担当者会議を記録',
+        }),
+        expect.objectContaining({
+          event_type: 'operation_history',
+          title: 'カンファレンス記録を更新',
+          actor_name: '薬剤師B',
+        }),
+      ]),
+    );
+  });
+
+  it('omits billing candidate activity for roles without billing management permission', async () => {
+    requireAuthContextMock.mockResolvedValue({
+      ctx: {
+        orgId: 'corg1234567890123456789012',
+        userId: 'user_trainee',
+        role: 'pharmacist_trainee',
+      },
+    });
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '患者A',
+      cases: [{ id: 'case_1' }],
+    });
+    medicationCycleFindManyMock.mockResolvedValue([{ id: 'cycle_1' }]);
+    billingEvidenceFindManyMock.mockResolvedValue([
+      {
+        id: 'evidence_1',
+        billing_month: new Date('2026-03-01T00:00:00.000Z'),
+        claimable: false,
+        exclusion_reason: '請求根拠不足',
+        validation_notes: 'payer_name: 山田花子',
+      },
+    ]);
+    billingEvidenceBlockersMock.mockResolvedValue([
+      { id: 'evidence_1', blockers: ['請求検証メモ'] },
+    ]);
+    billingCandidateFindManyMock.mockResolvedValue([
+      {
+        id: 'candidate_1',
+        billing_month: new Date('2026-03-01T00:00:00.000Z'),
+        billing_code: 'C001',
+        billing_name: '在宅患者訪問薬剤管理指導料',
+        points: 650,
+        status: 'candidate',
+        exclusion_reason: null,
+        updated_at: new Date('2026-03-30T09:00:00.000Z'),
+      },
+    ]);
+    auditLogFindManyMock.mockImplementation((args) =>
+      JSON.stringify(args).includes('billing_payment_profile_updated')
+        ? Promise.resolve([
+            {
+              id: 'audit_billing_profile',
+              action: 'billing_payment_profile_updated',
+              target_type: 'Patient',
+              target_id: 'patient_1',
+              actor_id: 'billing_user',
+              changes: {
+                payer_name: '山田花子',
+                payment_method: 'bank_transfer',
+                collection: {
+                  receipt_number: 'R-001',
+                  unpaid_reason: '次回訪問時に集金',
+                },
+              },
+              created_at: new Date('2026-03-30T09:10:00.000Z'),
+            },
+          ])
+        : Promise.resolve([]),
+    );
+
+    const response = await GET(
+      createRequest(undefined, { 'x-org-id': 'corg1234567890123456789012' }),
+      {
+        params: Promise.resolve({ id: 'patient_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+
+    expect(medicationCycleFindManyMock).not.toHaveBeenCalled();
+    expect(billingEvidenceFindManyMock).not.toHaveBeenCalled();
+    expect(billingEvidenceBlockersMock).not.toHaveBeenCalled();
+    expect(billingCandidateFindManyMock).not.toHaveBeenCalled();
+    expect(JSON.stringify(auditLogFindManyMock.mock.calls[0]?.[0])).not.toContain(
+      'billing_payment_profile_updated',
+    );
+    const json = await response.json();
+    expect(json.billing_summary.evidence).toEqual([]);
+    expect(json.billing_summary.candidates).toEqual([]);
+    expect(JSON.stringify(json.timeline_events)).not.toContain('billing_candidate');
+    expect(JSON.stringify(json.timeline_events)).not.toContain('/billing/candidates');
+    expect(JSON.stringify(json)).not.toContain('在宅患者訪問薬剤管理指導料');
+    expect(JSON.stringify(json)).not.toContain('山田花子');
+    expect(JSON.stringify(json)).not.toContain('R-001');
+    expect(JSON.stringify(json)).not.toContain('次回訪問時に集金');
   });
 
   it('returns the exact current-month visit count for patient detail badges', async () => {
