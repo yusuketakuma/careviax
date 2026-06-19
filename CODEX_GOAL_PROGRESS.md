@@ -3186,3 +3186,49 @@ Blocked: C11 (diverged user-visible label strings — product/UX sign-off), C12 
 - Migration was generated and validated but not applied to any database.
 - Direct authenticated browser proof remains blocked until v0.2 migrations are approved/applied to the local e2e DB.
 - Remaining v0.2 gap candidates include patient/visit request message-thread integration and notification service reuse for pharmacy-cooperation lifecycle events.
+
+## 20260619-2204 JST - Pharmacy Cooperation Message Threads
+
+### Completed
+
+- Added first-class v0.2 pharmacy cooperation message thread schema for patient-share-case and visit-request contexts.
+- Added an expand-only migration, `20260619223000_add_pharmacy_cooperation_message_threads`, with org-scoped FKs, RLS, context uniqueness, body length check, and DB-triggered audit redaction for message bodies.
+- Added `GET/POST /api/pharmacy-cooperation-message-threads`; both routes require active patient share case access, use no-store responses, and write explicit read/create audit events with patient context but without message body text.
+- Reused the existing notification service for new message notifications with PHI-free title/message and safe workflow links. Visit-request messages explicitly notify the original requester when the sender differs.
+- Registered the route in the operational route catalog and rate-limit template list.
+
+### Files Changed
+
+- `prisma/schema/organization.prisma`
+- `prisma/schema/pharmacy-partnership.prisma`
+- `prisma/migrations/20260619223000_add_pharmacy_cooperation_message_threads/migration.sql`
+- `src/app/api/pharmacy-cooperation-message-threads/route.ts`
+- `src/app/api/pharmacy-cooperation-message-threads/route.test.ts`
+- `src/lib/api/route-catalog.ts`
+- `src/lib/api/route-catalog.test.ts`
+- `src/app/api/meta/route-catalog/route.test.ts`
+- `src/lib/api/rate-limit.ts`
+- `src/lib/api/rate-limit.test.ts`
+- `Plans.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prisma format --schema=prisma/schema/`: passed.
+- `pnpm exec prisma validate --schema=prisma/schema/`: passed.
+- `pnpm db:generate`: passed.
+- Targeted Prettier over touched TS files: passed.
+- `pnpm exec vitest run src/app/api/pharmacy-cooperation-message-threads/route.test.ts src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts src/lib/api/rate-limit.test.ts`: passed, 4 files / 42 tests.
+- `pnpm typecheck`: passed after tightening route union and JSON input types.
+- Targeted `pnpm exec eslint` over touched TS files: passed.
+- `pnpm lint`: passed.
+- `git diff --check`: passed.
+- `pnpm exec prettier --check` over touched TS files: passed.
+- `pnpm format:check`: failed on unrelated dirty UI files already present in the worktree: `src/components/ui/confirm-dialog.tsx`, `src/components/ui/error-state.tsx`, and `src/components/ui/switch.tsx`.
+
+### Remaining / Next Loop
+
+- Migration was generated and validated but not applied to any database.
+- The workflow UI still needs a message list/posting surface and browser proof for patient-share-case and visit-request message contexts.
+- Direct authenticated browser proof remains blocked until v0.2 migrations are approved/applied to the local e2e DB.
