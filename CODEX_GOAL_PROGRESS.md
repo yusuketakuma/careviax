@@ -4450,6 +4450,34 @@ Implemented:
 
 - Correction request table convergence is addressed without exposing reason/proposed-value free text. Remaining pharmacy-cooperation raw tables include PHI-bearing share-case, consent, visit-request, and partner-record tables; future DataTable work must either keep search disabled or use targeted non-PHI labels.
 
+## 20260620-0237 JST - Admin Shift Calendar Cell Buttons
+
+### Summary
+
+- Changed edit-mode monthly shift cells from clickable table cells into native buttons inside each cell.
+- Added PHI-free accessible names with staff/date/site/availability context.
+- Added a regression test proving edit-mode cells are exposed as buttons and open the matching shift edit panel.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/shifts/shifts-content.tsx`
+- `src/app/(dashboard)/admin/shifts/shifts-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/shifts/shifts-content.tsx' 'src/app/(dashboard)/admin/shifts/shifts-content.test.tsx'`: passed.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/shifts/shifts-content.tsx' 'src/app/(dashboard)/admin/shifts/shifts-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/shifts/shifts-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 3 tests.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Shift calendar edit cells are now keyboard-accessible. The monthly matrix remains a calendar-style table rather than a DataTable; future work should focus on grid semantics or browser/a11y proof.
+
 ## 20260620-0057 JST - QR Draft Case Selector Label
 
 ### Summary
