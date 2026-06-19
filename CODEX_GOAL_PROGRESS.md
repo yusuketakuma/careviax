@@ -3018,3 +3018,35 @@ Blocked: C11 (diverged user-visible label strings — product/UX sign-off), C12 
 - Migration was generated and validated but not applied to any database, per repository DB mutation rules.
 - Direct authenticated browser proof remains blocked until v0.2 migrations are approved/applied to the local e2e DB.
 - Remaining v0.2 gaps should be re-audited against the attached specification now that contract, share-case, and visit-request lifecycle enums are aligned.
+
+## 20260619-2100 JST - Contract Document Operator UI
+
+### Completed
+
+- Re-read the v0.2 contract-document requirements for contract template selection, fee schedule generation, contract preview, saved contract documents, and signed-PDF attachment metadata.
+- Extended the existing pharmacy cooperation setup screen to fetch `contract_document` templates and the selected contract's generated documents.
+- Added a contract-document operator panel that selects a contract/template, previews the rendered contract and fee schedule through `/api/pharmacy-contracts/[id]/documents`, saves `ContractDocument` rows, and records optional signed PDF `FileAsset` ID plus signature date through the existing API.
+- Added a saved contract-document list with document hash, signed PDF attachment state, signature date, and saved date so operators can return to previously generated contract documents.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx`
+- `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx`
+- `Plans.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx'`: passed.
+- `pnpm vitest run 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 4 tests.
+- `pnpm typecheck`: passed.
+- Targeted `pnpm exec eslint` over the setup UI and test: passed.
+- `pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- This UI uses the existing FileAsset ID attach contract; first-party upload controls for signed contract PDFs can be added later if operators should upload from the same panel.
+- First-party binary PDF generation/storage for unsigned contract previews remains a follow-up if required before full v0.2 close.
+- Direct authenticated browser proof remains blocked until v0.2 migrations are approved/applied to the local e2e DB.
