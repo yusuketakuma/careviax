@@ -5223,6 +5223,37 @@ Implemented:
 
 - Pharmacy-cooperation confirmation details now show exact target IDs for inspected workflow actions. UI/UX remediation remains active for raw setup tables, responsive table density, and broader browser/a11y coverage outside this focused slice.
 
+## 20260620-0214 JST - Admin Pharmacy Cooperation DataTables
+
+### Summary
+
+- Replaced the admin pharmacy-cooperation setup raw tables for partnerships, contract documents, and contracts with the shared `DataTable`.
+- Added table search, column visibility, row a11y labels, and mobile-card behavior without enabling CSV/print export surfaces.
+- Preserved the partnership activation inputs/action and existing contract document preview/save flows.
+- Updated regression tests away from raw-table `min-w-*` assertions and toward DataTable search/column controls.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx`
+- `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx'`: passed.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 5 tests.
+- `if rg -n '<table|overflow-x-auto|min-w-\\[' 'src/app/(dashboard)/admin/pharmacy-cooperation' -g '*.tsx'; then exit 1; else echo 'no raw admin pharmacy-cooperation tables'; fi`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+- Route-mocked browser test inventory scan found no existing admin setup browser smoke, so browser proof was not run for this admin route.
+
+### Remaining / Next Loop
+
+- Admin setup raw-table convergence is addressed for the inspected page. Broader browser/a11y coverage for the admin setup route remains a follow-up candidate.
+
 ## 20260620-0036 JST - Billing Rule Row Action Names
 
 ### Summary
