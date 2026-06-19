@@ -4181,7 +4181,8 @@ Implemented:
   - `pnpm exec vitest run 'src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.test.tsx' --reporter=dot --testTimeout=30000`
   - `pnpm exec eslint 'src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.test.tsx'`
   - `git diff --check -- 'src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.test.tsx'`
-- Follow-up ledger validation will run after this record update.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check .codex/ralph-state.md CODEX_GOAL_PROGRESS.md`: blocked by JavaScript heap OOM while checking the large progress files.
+- `git diff --check`: passed after the ledger update.
 
 ### Remaining / Next Loop
 
@@ -4218,3 +4219,31 @@ Implemented:
 
 - Direct DB-backed proof and migration application remain explicit-approval blocked.
 - Concrete attachment/PDF/download routes can adopt the same output-action policy where they receive explicit share-case context.
+
+## 20260620-0023 JST - Notification Escalation Delete Confirmation
+
+### Summary
+
+- Added an explicit destructive confirmation before deleting notification escalation rules.
+- Named the target trigger, action, role, and threshold in the delete action and confirmation copy.
+- Added a regression test proving the DELETE request is not sent until the confirmation action is clicked.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx`
+- `src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx' 'src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx' src/components/ui/confirm-dialog.test.tsx --reporter=dot --testTimeout=30000`: passed, 2 files / 5 tests.
+- Targeted ESLint over touched notification-settings and confirm-dialog files: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Remaining candidates include broader admin destructive-action consistency, pharmacy-cooperation responsive table density, select accessible-name gaps outside fixed screens, raw table/DataTable convergence, and expanded browser/a11y proof.

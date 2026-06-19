@@ -23,6 +23,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Dialog,
   DialogContent,
@@ -236,6 +237,21 @@ const ESCALATION_ROLE_OPTIONS: Array<{
   { value: 'office_staff', label: '事務' },
 ];
 
+function escalationRuleSummary(rule: EscalationRule) {
+  const trigger =
+    ESCALATION_TRIGGER_OPTIONS.find((item) => item.value === rule.trigger_type)?.label ??
+    rule.trigger_type;
+  const action =
+    ESCALATION_ACTION_OPTIONS.find((item) => item.value === rule.action)?.label ?? rule.action;
+  const role = rule.notify_role
+    ? (ESCALATION_ROLE_OPTIONS.find((item) => item.value === rule.notify_role)?.label ??
+      rule.notify_role)
+    : '通知先未指定';
+  const thresholdHours = rule.condition?.threshold_hours ?? '未設定';
+
+  return `${trigger} / ${action} / ${role} / ${thresholdHours}時間`;
+}
+
 function isPermissionSupported() {
   return isBrowserNotificationSupported();
 }
@@ -271,6 +287,7 @@ export function NotificationSettingsContent() {
   const [newEscalationRole, setNewEscalationRole] =
     useState<NonNullable<EscalationRule['notify_role']>>('admin');
   const [newEscalationThresholdHours, setNewEscalationThresholdHours] = useState('24');
+  const [deleteEscalationTarget, setDeleteEscalationTarget] = useState<EscalationRule | null>(null);
 
   useEffect(() => {
     if (!orgId) return;
@@ -540,6 +557,7 @@ export function NotificationSettingsContent() {
           throw new Error('エスカレーションルールの削除に失敗しました');
         }
         setEscalationRules((prev) => prev.filter((rule) => rule.id !== ruleId));
+        setDeleteEscalationTarget((current) => (current?.id === ruleId ? null : current));
         toast.success('エスカレーションルールを削除しました');
       } catch (error) {
         toast.error(
@@ -766,7 +784,8 @@ export function NotificationSettingsContent() {
                       size="sm"
                       variant="outline"
                       disabled={isDeleting}
-                      onClick={() => void deleteEscalationRule(rule.id)}
+                      aria-label={`${escalationRuleSummary(rule)} を削除`}
+                      onClick={() => setDeleteEscalationTarget(rule)}
                     >
                       削除
                     </Button>
@@ -870,6 +889,36 @@ export function NotificationSettingsContent() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={deleteEscalationTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteEscalationTarget(null);
+        }}
+        title="エスカレーションルールを削除しますか"
+        description={
+          deleteEscalationTarget
+            ? `${escalationRuleSummary(deleteEscalationTarget)} を削除します。この操作は取り消せません。停滞・失敗時の通知やタスク起票にも反映されます。`
+            : ''
+        }
+        confirmLabel={
+          deleteEscalationTarget && savingKey === `escalation:delete:${deleteEscalationTarget.id}`
+            ? '削除中...'
+            : '削除する'
+        }
+        confirmDisabled={
+          deleteEscalationTarget
+            ? savingKey === `escalation:delete:${deleteEscalationTarget.id}`
+            : true
+        }
+        closeOnConfirm={false}
+        variant="destructive"
+        onConfirm={() => {
+          if (deleteEscalationTarget) {
+            void deleteEscalationRule(deleteEscalationTarget.id);
+          }
+        }}
+      />
     </PageScaffold>
   );
 }
