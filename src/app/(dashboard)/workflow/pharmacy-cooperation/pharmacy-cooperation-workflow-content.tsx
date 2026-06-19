@@ -602,10 +602,6 @@ function statusVariant(status: string): 'default' | 'secondary' | 'destructive' 
   return 'outline';
 }
 
-function workflowShortId(id: string) {
-  return id.length <= 14 ? id : `...${id.slice(-14)}`;
-}
-
 function workflowActionTitle(action: PendingWorkflowAction) {
   switch (action.kind) {
     case 'activateShareCase':
@@ -683,27 +679,27 @@ function workflowActionDetails(action: PendingWorkflowAction) {
     case 'activateShareCase':
     case 'baseApproveLink':
       return [
-        `共有ケース: ${workflowShortId(action.shareCase.id)}`,
+        `共有ケース: ${action.shareCase.id}`,
         `協力薬局: ${action.shareCase.partnership.partner_pharmacy.name}`,
         `現在の共有状態: ${statusLabel(action.shareCase.status)}`,
         `患者リンク: ${statusLabel(action.shareCase.patient_link?.match_status ?? 'pending')}`,
       ];
     case 'acceptLink':
       return [
-        `共有ケース: ${workflowShortId(action.shareCase.id)}`,
+        `共有ケース: ${action.shareCase.id}`,
         `協力薬局: ${action.shareCase.partnership.partner_pharmacy.name}`,
         `協力側ID: ${action.acceptForm.partnerPatientId}`,
         `照合補足: ${action.acceptForm.overrideReason.trim() ? '入力済み' : '未入力'}`,
       ];
     case 'declineLink':
       return [
-        `共有ケース: ${workflowShortId(action.shareCase.id)}`,
+        `共有ケース: ${action.shareCase.id}`,
         `協力薬局: ${action.shareCase.partnership.partner_pharmacy.name}`,
         `辞退理由: 入力済み (${action.declineReason.trim().length}文字)`,
       ];
     case 'revokePatientShareConsent':
       return [
-        `共有ケース: ${workflowShortId(action.consent.share_case_id)}`,
+        `共有ケース: ${action.consent.share_case_id}`,
         `協力薬局: ${action.shareCase?.partnership.partner_pharmacy.name ?? '不明'}`,
         `同意: ${action.consent.id}`,
         `同意日: ${formatDate(action.consent.consent_date)}`,
@@ -711,27 +707,27 @@ function workflowActionDetails(action: PendingWorkflowAction) {
       ];
     case 'acceptVisitRequest':
       return [
-        `訪問依頼: ${workflowShortId(action.request.id)}`,
+        `訪問依頼: ${action.request.id}`,
         `協力薬局: ${action.request.partner_pharmacy.name}`,
         `希望日時: ${formatDateTime(action.request.desired_start_at)}`,
         `見込額: ${formatYen(action.request.estimated_amount)}`,
       ];
     case 'declineVisitRequest':
       return [
-        `訪問依頼: ${workflowShortId(action.request.id)}`,
+        `訪問依頼: ${action.request.id}`,
         `協力薬局: ${action.request.partner_pharmacy.name}`,
         `辞退理由: 入力済み (${action.declineReason.trim().length}文字)`,
       ];
     case 'submitPartnerVisitRecord':
       return [
-        `訪問記録: ${workflowShortId(action.record.id)}`,
+        `訪問記録: ${action.record.id}`,
         `協力薬局: ${action.record.owner_partner_pharmacy.name}`,
         `訪問日時: ${formatDateTime(action.record.visit_at)}`,
         `版: rev.${action.record.revision_no}`,
       ];
     case 'confirmPartnerVisitRecord':
       return [
-        `訪問記録: ${workflowShortId(action.record.id)}`,
+        `訪問記録: ${action.record.id}`,
         `協力薬局: ${action.record.owner_partner_pharmacy.name}`,
         `訪問日時: ${formatDateTime(action.record.visit_at)}`,
         action.doctorReportRequired
@@ -740,13 +736,13 @@ function workflowActionDetails(action: PendingWorkflowAction) {
       ];
     case 'returnPartnerVisitRecord':
       return [
-        `訪問記録: ${workflowShortId(action.record.id)}`,
+        `訪問記録: ${action.record.id}`,
         `協力薬局: ${action.record.owner_partner_pharmacy.name}`,
         `差戻し理由: 入力済み (${action.returnReason.trim().length}文字)`,
       ];
     case 'createReportDraft':
       return [
-        `訪問記録: ${workflowShortId(action.record.id)}`,
+        `訪問記録: ${action.record.id}`,
         `協力薬局: ${action.record.owner_partner_pharmacy.name}`,
         `訪問日時: ${formatDateTime(action.record.visit_at)}`,
         `現在の状態: ${statusLabel(action.record.status)}`,
