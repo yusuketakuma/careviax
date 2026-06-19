@@ -4,6 +4,14 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+  },
+}));
+
 const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
 const useMutationMock = vi.hoisted(() => vi.fn());
@@ -28,6 +36,7 @@ vi.mock('next/navigation', () => ({
   usePathname: usePathnameMock,
 }));
 
+import { toast } from 'sonner';
 import { ConferencesContent } from './conferences-content';
 
 setupDomTestEnv();
@@ -37,6 +46,7 @@ describe('ConferencesContent', () => {
     mutationFn?: (payload: object) => Promise<unknown>;
     onSuccess?: (payload: unknown) => void;
   }> = [];
+  const mutationMocks: ReturnType<typeof vi.fn>[] = [];
   const queryConfigs: Array<{
     queryKey: unknown[];
     queryFn?: () => Promise<unknown>;
@@ -46,6 +56,7 @@ describe('ConferencesContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mutationConfigs.length = 0;
+    mutationMocks.length = 0;
     queryConfigs.length = 0;
     useOrgIdMock.mockReturnValue('org_1');
     useSearchParamsMock.mockReturnValue(new URLSearchParams());
@@ -56,8 +67,10 @@ describe('ConferencesContent', () => {
     });
     useMutationMock.mockImplementation((config: (typeof mutationConfigs)[number]) => {
       mutationConfigs.push(config);
+      const mutate = vi.fn();
+      mutationMocks.push(mutate);
       return {
-        mutate: vi.fn(),
+        mutate,
         mutateAsync: vi.fn(),
         isPending: false,
       };
@@ -103,6 +116,48 @@ describe('ConferencesContent', () => {
     expect(screen.getByLabelText('役割・所属')).toBeTruthy();
     expect(screen.getByLabelText('メール')).toBeTruthy();
     expect(screen.getByLabelText('FAX')).toBeTruthy();
+  });
+
+  it('keeps conference note required validation visible inline', () => {
+    render(<ConferencesContent initialFocus="notes" initialContext="dashboard_home" />);
+
+    fireEvent.click(screen.getByRole('button', { name: '新規記録' }));
+    fireEvent.click(screen.getByRole('button', { name: '作成' }));
+
+    expect(screen.getByText('タイトルを入力してください').getAttribute('role')).toBe('alert');
+    expect(screen.getByText('開催日時を入力してください').getAttribute('role')).toBe('alert');
+    expect(screen.getByText('内容または構造化項目を入力してください').getAttribute('role')).toBe(
+      'alert',
+    );
+    expect(screen.getByLabelText('タイトル').getAttribute('aria-invalid')).toBe('true');
+    expect(screen.getByLabelText('開催日時').getAttribute('aria-describedby')).toBe(
+      'conf-date-error',
+    );
+    expect(screen.getByLabelText('内容').getAttribute('aria-describedby')).toBe(
+      'conf-content-error',
+    );
+    expect(toast.error).toHaveBeenCalledWith('タイトルを入力してください');
+    expect(mutationMocks[0]).not.toHaveBeenCalled();
+  });
+
+  it('keeps community activity required validation visible inline', () => {
+    render(<ConferencesContent initialFocus="activities" initialContext="dashboard_home" />);
+
+    fireEvent.click(screen.getByRole('button', { name: '活動登録' }));
+    fireEvent.click(screen.getByRole('button', { name: '登録' }));
+
+    expect(screen.getByText('活動種別を入力してください').getAttribute('role')).toBe('alert');
+    expect(screen.getByText('実施日時を入力してください').getAttribute('role')).toBe('alert');
+    expect(screen.getByText('タイトルを入力してください').getAttribute('role')).toBe('alert');
+    expect(screen.getByLabelText('活動種別').getAttribute('aria-invalid')).toBe('true');
+    expect(screen.getByLabelText('実施日時').getAttribute('aria-describedby')).toBe(
+      'activity-date-error',
+    );
+    expect(screen.getByLabelText('タイトル').getAttribute('aria-describedby')).toBe(
+      'activity-title-error',
+    );
+    expect(toast.error).toHaveBeenCalledWith('活動種別を入力してください');
+    expect(mutationMocks[1]).not.toHaveBeenCalled();
   });
 
   it('shows patient-detail context and refreshes patient home operations after creating a note', () => {

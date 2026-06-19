@@ -104,6 +104,18 @@ type ActionItem = {
   converted_at?: string;
 };
 
+type NoteFormErrors = {
+  title?: string;
+  conferenceDate?: string;
+  content?: string;
+};
+
+type ActivityFormErrors = {
+  activityType?: string;
+  activityDate?: string;
+  activityTitle?: string;
+};
+
 const NOTE_TYPE_LABELS: Record<string, string> = {
   regular: '定例会議',
   pre_discharge: '退院前',
@@ -534,6 +546,7 @@ export function ConferencesContent({
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [conferenceDate, setConferenceDate] = useState('');
+  const [noteFormErrors, setNoteFormErrors] = useState<NoteFormErrors>({});
   const [structuredSectionDraftStore, setStructuredSectionDraftStore] = useState<
     Partial<Record<ConferenceNote['note_type'], Record<string, string>>>
   >({});
@@ -550,6 +563,7 @@ export function ConferencesContent({
   const [activityDescription, setActivityDescription] = useState('');
   const [partnerName, setPartnerName] = useState('');
   const [activityDate, setActivityDate] = useState('');
+  const [activityFormErrors, setActivityFormErrors] = useState<ActivityFormErrors>({});
   const [targetPopulation, setTargetPopulation] = useState('');
   const [attendeeCount, setAttendeeCount] = useState('');
   const [referralsGenerated, setReferralsGenerated] = useState('');
@@ -844,6 +858,7 @@ export function ConferencesContent({
     setTitle('');
     setContent('');
     setConferenceDate('');
+    setNoteFormErrors({});
     setStructuredSectionDraftStore({});
     setStructuredSectionDrafts(sectionTemplatesFor('regular'));
     setParticipantDrafts([{ name: '', role: '', attended: true, is_report_recipient: false }]);
@@ -873,6 +888,7 @@ export function ConferencesContent({
     setActivityDescription('');
     setPartnerName('');
     setActivityDate('');
+    setActivityFormErrors({});
     setTargetPopulation('');
     setAttendeeCount('');
     setReferralsGenerated('');
@@ -888,8 +904,21 @@ export function ConferencesContent({
       }))
       .filter((section) => section.body.length > 0);
 
-    if (!title.trim() || !conferenceDate || (!content.trim() && structuredSections.length === 0)) {
-      toast.error('タイトル・日時・内容または構造化項目を入力してください');
+    const nextErrors: NoteFormErrors = {};
+    if (!title.trim()) {
+      nextErrors.title = 'タイトルを入力してください';
+    }
+    if (!conferenceDate) {
+      nextErrors.conferenceDate = '開催日時を入力してください';
+    }
+    if (!content.trim() && structuredSections.length === 0) {
+      nextErrors.content = '内容または構造化項目を入力してください';
+    }
+    setNoteFormErrors(nextErrors);
+
+    const firstError = nextErrors.title ?? nextErrors.conferenceDate ?? nextErrors.content;
+    if (firstError) {
+      toast.error(firstError);
       return;
     }
 
@@ -939,8 +968,22 @@ export function ConferencesContent({
   }
 
   function handleCreateActivity() {
-    if (!activityType.trim() || !activityTitle.trim() || !activityDate) {
-      toast.error('活動種別・タイトル・実施日時は必須です');
+    const nextErrors: ActivityFormErrors = {};
+    if (!activityType.trim()) {
+      nextErrors.activityType = '活動種別を入力してください';
+    }
+    if (!activityDate) {
+      nextErrors.activityDate = '実施日時を入力してください';
+    }
+    if (!activityTitle.trim()) {
+      nextErrors.activityTitle = 'タイトルを入力してください';
+    }
+    setActivityFormErrors(nextErrors);
+
+    const firstError =
+      nextErrors.activityType ?? nextErrors.activityDate ?? nextErrors.activityTitle;
+    if (firstError) {
+      toast.error(firstError);
       return;
     }
 
@@ -1590,9 +1633,21 @@ export function ConferencesContent({
               <Input
                 id="conf-title"
                 value={title}
-                onChange={(event) => setTitle(event.target.value)}
+                onChange={(event) => {
+                  setTitle(event.target.value);
+                  if (event.target.value.trim()) {
+                    setNoteFormErrors((current) => ({ ...current, title: undefined }));
+                  }
+                }}
                 placeholder="例: 山田太郎様 定期カンファレンス"
+                aria-invalid={Boolean(noteFormErrors.title)}
+                aria-describedby={noteFormErrors.title ? 'conf-title-error' : undefined}
               />
+              {noteFormErrors.title ? (
+                <p id="conf-title-error" role="alert" className="text-xs text-destructive">
+                  {noteFormErrors.title}
+                </p>
+              ) : null}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="conf-date">開催日時</Label>
@@ -1600,8 +1655,20 @@ export function ConferencesContent({
                 id="conf-date"
                 type="datetime-local"
                 value={conferenceDate}
-                onChange={(event) => setConferenceDate(event.target.value)}
+                onChange={(event) => {
+                  setConferenceDate(event.target.value);
+                  if (event.target.value) {
+                    setNoteFormErrors((current) => ({ ...current, conferenceDate: undefined }));
+                  }
+                }}
+                aria-invalid={Boolean(noteFormErrors.conferenceDate)}
+                aria-describedby={noteFormErrors.conferenceDate ? 'conf-date-error' : undefined}
               />
+              {noteFormErrors.conferenceDate ? (
+                <p id="conf-date-error" role="alert" className="text-xs text-destructive">
+                  {noteFormErrors.conferenceDate}
+                </p>
+              ) : null}
             </div>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
@@ -1811,10 +1878,22 @@ export function ConferencesContent({
               <Textarea
                 id="conf-content"
                 value={content}
-                onChange={(event) => setContent(event.target.value)}
+                onChange={(event) => {
+                  setContent(event.target.value);
+                  if (event.target.value.trim()) {
+                    setNoteFormErrors((current) => ({ ...current, content: undefined }));
+                  }
+                }}
                 placeholder="カンファレンスの内容・決定事項を記録"
                 rows={5}
+                aria-invalid={Boolean(noteFormErrors.content)}
+                aria-describedby={noteFormErrors.content ? 'conf-content-error' : undefined}
               />
+              {noteFormErrors.content ? (
+                <p id="conf-content-error" role="alert" className="text-xs text-destructive">
+                  {noteFormErrors.content}
+                </p>
+              ) : null}
             </div>
             <div className="space-y-3">
               <Label>構造化項目</Label>
@@ -1825,13 +1904,16 @@ export function ConferencesContent({
                     <Textarea
                       id={`conf-section-${section.key}`}
                       value={section.body}
-                      onChange={(event) =>
+                      onChange={(event) => {
                         setStructuredSectionDrafts((current) =>
                           current.map((item) =>
                             item.key === section.key ? { ...item, body: event.target.value } : item,
                           ),
-                        )
-                      }
+                        );
+                        if (event.target.value.trim()) {
+                          setNoteFormErrors((current) => ({ ...current, content: undefined }));
+                        }
+                      }}
                       placeholder={section.placeholder}
                       rows={section.rows ?? 3}
                     />
@@ -1878,9 +1960,26 @@ export function ConferencesContent({
               <Input
                 id="activity-type"
                 value={activityType}
-                onChange={(event) => setActivityType(event.target.value)}
+                onChange={(event) => {
+                  setActivityType(event.target.value);
+                  if (event.target.value.trim()) {
+                    setActivityFormErrors((current) => ({
+                      ...current,
+                      activityType: undefined,
+                    }));
+                  }
+                }}
                 placeholder="例: 地域勉強会"
+                aria-invalid={Boolean(activityFormErrors.activityType)}
+                aria-describedby={
+                  activityFormErrors.activityType ? 'activity-type-error' : undefined
+                }
               />
+              {activityFormErrors.activityType ? (
+                <p id="activity-type-error" role="alert" className="text-xs text-destructive">
+                  {activityFormErrors.activityType}
+                </p>
+              ) : null}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="activity-date">実施日時</Label>
@@ -1888,17 +1987,51 @@ export function ConferencesContent({
                 id="activity-date"
                 type="datetime-local"
                 value={activityDate}
-                onChange={(event) => setActivityDate(event.target.value)}
+                onChange={(event) => {
+                  setActivityDate(event.target.value);
+                  if (event.target.value) {
+                    setActivityFormErrors((current) => ({
+                      ...current,
+                      activityDate: undefined,
+                    }));
+                  }
+                }}
+                aria-invalid={Boolean(activityFormErrors.activityDate)}
+                aria-describedby={
+                  activityFormErrors.activityDate ? 'activity-date-error' : undefined
+                }
               />
+              {activityFormErrors.activityDate ? (
+                <p id="activity-date-error" role="alert" className="text-xs text-destructive">
+                  {activityFormErrors.activityDate}
+                </p>
+              ) : null}
             </div>
             <div className="space-y-1.5 md:col-span-2">
               <Label htmlFor="activity-title">タイトル</Label>
               <Input
                 id="activity-title"
                 value={activityTitle}
-                onChange={(event) => setActivityTitle(event.target.value)}
+                onChange={(event) => {
+                  setActivityTitle(event.target.value);
+                  if (event.target.value.trim()) {
+                    setActivityFormErrors((current) => ({
+                      ...current,
+                      activityTitle: undefined,
+                    }));
+                  }
+                }}
                 placeholder="例: 施設職員向け服薬支援研修"
+                aria-invalid={Boolean(activityFormErrors.activityTitle)}
+                aria-describedby={
+                  activityFormErrors.activityTitle ? 'activity-title-error' : undefined
+                }
               />
+              {activityFormErrors.activityTitle ? (
+                <p id="activity-title-error" role="alert" className="text-xs text-destructive">
+                  {activityFormErrors.activityTitle}
+                </p>
+              ) : null}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="partner-name">連携先</Label>
