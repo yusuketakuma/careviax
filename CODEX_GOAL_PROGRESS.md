@@ -4306,6 +4306,35 @@ Implemented:
 
 - UI/UX remediation remains active. Remaining candidates include pharmacy-cooperation responsive table density, select accessible-name gaps outside fixed/verified screens, raw table/DataTable convergence, and expanded browser/a11y proof.
 
+## 20260620-0224 JST - Admin Analytics Monthly Trend DataTable
+
+### Summary
+
+- Replaced the admin analytics monthly-trend raw table with the shared `DataTable`.
+- Kept the existing aggregate columns and added table search, column visibility, row labels, loading, empty, and mobile-card behavior through the shared component.
+- Added a focused regression test with route-level fetch mocks to prove the monthly trend uses aggregate-only DataTable controls.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/analytics/analytics-content.tsx`
+- `src/app/(dashboard)/admin/analytics/analytics-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/analytics/analytics-content.tsx' 'src/app/(dashboard)/admin/analytics/analytics-content.test.tsx'`: passed.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/analytics/analytics-content.tsx' 'src/app/(dashboard)/admin/analytics/analytics-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/analytics/analytics-content.test.tsx' --reporter=dot --testTimeout=30000`: initially exposed a test assertion/wait issue, then passed with 1 file / 1 test.
+- `rg -n "<table|overflow-auto|min-w-full|overflow-x-auto" 'src/app/(dashboard)/admin/analytics/analytics-content.tsx'`: passed with no matches.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Admin analytics monthly trend convergence is addressed for this slice. UI/UX remediation remains active for raw tables in other routes, pharmacy-cooperation responsive density, and expanded browser/a11y proof.
+
 ## 20260620-0057 JST - QR Draft Case Selector Label
 
 ### Summary
