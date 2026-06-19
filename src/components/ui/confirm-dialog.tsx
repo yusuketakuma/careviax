@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { type ReactNode, useId, useState } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,6 +24,8 @@ interface ConfirmDialogProps {
   variant?: 'default' | 'destructive';
   /** If set, user must type this exact text before confirming */
   requiredConfirmText?: string;
+  confirmDisabled?: boolean;
+  children?: ReactNode;
   onConfirm: () => void;
 }
 
@@ -36,12 +38,15 @@ export function ConfirmDialog({
   cancelLabel = 'キャンセル',
   variant = 'default',
   requiredConfirmText,
+  confirmDisabled = false,
+  children,
   onConfirm,
 }: ConfirmDialogProps) {
   const [inputValue, setInputValue] = useState('');
+  const confirmInputId = useId();
 
   const isConfirmDisabled =
-    requiredConfirmText !== undefined && inputValue !== requiredConfirmText;
+    confirmDisabled || (requiredConfirmText !== undefined && inputValue !== requiredConfirmText);
 
   function handleOpenChange(nextOpen: boolean) {
     if (!nextOpen) setInputValue('');
@@ -63,9 +68,11 @@ export function ConfirmDialog({
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
 
+        {children ? <div className="py-2">{children}</div> : null}
+
         {requiredConfirmText && (
           <div className="space-y-2 py-2">
-            <Label htmlFor="confirm-input" className="text-sm text-muted-foreground">
+            <Label htmlFor={confirmInputId} className="text-sm text-muted-foreground">
               確認のため{' '}
               <span className="font-semibold text-foreground">
                 &ldquo;{requiredConfirmText}&rdquo;
@@ -73,7 +80,7 @@ export function ConfirmDialog({
               と入力してください
             </Label>
             <Input
-              id="confirm-input"
+              id={confirmInputId}
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               placeholder={requiredConfirmText}

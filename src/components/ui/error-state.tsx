@@ -2,10 +2,10 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { AlertTriangle, Ban, CloudOff, FileQuestion, LockKeyhole } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { HelpPopover } from '@/components/ui/help-popover';
 import { cn } from '@/lib/utils';
 
 type ErrorStateVariant = 'not-found' | 'server' | 'network' | 'forbidden' | 'unauthorized';
+type ErrorStateLive = 'off' | 'polite' | 'assertive';
 
 type ErrorStateAction = {
   label: string;
@@ -24,6 +24,7 @@ type ErrorStateProps = {
   secondaryAction?: ErrorStateAction;
   size?: 'inline' | 'page';
   headingLevel?: 1 | 2 | 3 | 4;
+  live?: ErrorStateLive;
   className?: string;
 };
 
@@ -70,40 +71,17 @@ const VARIANT_META = {
   }
 >;
 
-function getLinkButtonClass(
-  variant: NonNullable<ErrorStateAction['variant']> = 'default',
-  size: NonNullable<ErrorStateAction['size']> = 'default',
-) {
-  const base =
-    'inline-flex items-center justify-center rounded-lg border border-transparent font-medium whitespace-nowrap transition-all outline-none';
-  const sizeClass =
-    size === 'lg'
-      ? 'h-9 px-3 text-sm'
-      : size === 'sm'
-        ? 'h-7 px-2.5 text-[0.8rem]'
-        : 'h-8 px-2.5 text-sm';
-  const variantClass =
-    variant === 'outline'
-      ? 'border-border bg-background text-foreground hover:bg-muted'
-      : variant === 'secondary'
-        ? 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-        : variant === 'ghost'
-          ? 'text-foreground hover:bg-muted'
-          : variant === 'destructive'
-            ? 'bg-destructive/10 text-destructive hover:bg-destructive/20'
-            : variant === 'link'
-              ? 'text-primary underline underline-offset-4'
-              : 'bg-primary text-primary-foreground hover:bg-primary/80';
-
-  return cn(base, sizeClass, variantClass);
-}
-
 function renderAction(action: ErrorStateAction) {
   if (action.href) {
     return (
-      <Link href={action.href} className={getLinkButtonClass(action.variant, action.size)}>
-        {action.label}
-      </Link>
+      <Button
+        asChild
+        type="button"
+        variant={action.variant ?? 'default'}
+        size={action.size ?? 'default'}
+      >
+        <Link href={action.href}>{action.label}</Link>
+      </Button>
     );
   }
 
@@ -149,6 +127,7 @@ export function ErrorState({
   secondaryAction,
   size = 'inline',
   headingLevel,
+  live = 'polite',
   className,
 }: ErrorStateProps) {
   const meta = VARIANT_META[variant];
@@ -159,9 +138,19 @@ export function ErrorState({
     size === 'page' ? 'text-2xl' : 'text-lg',
   );
   const headingText = title ?? meta.title;
+  const bodyText = description ?? meta.description;
+  const liveRegionProps =
+    live === 'off'
+      ? {}
+      : {
+          role: live === 'assertive' ? 'alert' : 'status',
+          'aria-live': live,
+          'aria-atomic': true,
+        };
 
   return (
     <div
+      {...liveRegionProps}
       className={cn(
         'flex flex-col items-center justify-center gap-5 text-center',
         size === 'page'
@@ -181,13 +170,13 @@ export function ErrorState({
       </div>
 
       <div className="space-y-2">
-        <div className="flex items-center justify-center gap-2">
+        <div className="flex items-center justify-center">
           <ErrorStateHeading level={resolvedHeadingLevel} className={headingClassName}>
             {headingText}
           </ErrorStateHeading>
-          <HelpPopover title={headingText} description={description ?? meta.description} />
         </div>
-        {detail ? <div className="text-xs text-muted-foreground">{detail}</div> : null}
+        <p className="mx-auto max-w-2xl text-sm leading-6 text-muted-foreground">{bodyText}</p>
+        {detail ? <div className="text-xs leading-5 text-muted-foreground">{detail}</div> : null}
       </div>
 
       {(action || secondaryAction) && (

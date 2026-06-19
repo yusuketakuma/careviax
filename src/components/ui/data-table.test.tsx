@@ -21,6 +21,10 @@ const columns: ColumnDef<RowData>[] = [
   },
 ];
 
+function expectButtonDisabled(name: string, disabled: boolean) {
+  expect((screen.getByRole('button', { name }) as HTMLButtonElement).disabled).toBe(disabled);
+}
+
 describe('DataTable', () => {
   it('does not loop when the parent passes an inline selection callback that sets state', () => {
     const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -36,6 +40,7 @@ describe('DataTable', () => {
             data={[{ id: 'patient-1', name: '山田 太郎' }]}
             enableRowSelection
             getRowId={(row) => row.id}
+            getRowA11yLabel={(row) => row.name}
             onSelectionChange={(rows) => {
               setSelectedRows(rows);
             }}
@@ -47,7 +52,7 @@ describe('DataTable', () => {
     render(<Harness />);
 
     expect(screen.getByText('selected:0')).not.toBeNull();
-    expect(screen.getAllByRole('checkbox', { name: 'patient-1 を選択' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('checkbox', { name: '山田 太郎 を選択' }).length).toBeGreaterThan(0);
     expect(
       consoleErrorSpy.mock.calls.some(
         ([message]) =>
@@ -75,5 +80,46 @@ describe('DataTable', () => {
     fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
 
     expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables export and print actions while table data is invalid', () => {
+    const toolbar = { enableExport: true, enablePrint: true };
+    const { rerender } = render(<DataTable columns={columns} data={[]} toolbar={toolbar} />);
+
+    expectButtonDisabled('CSV出力', true);
+    expectButtonDisabled('印刷', true);
+
+    rerender(
+      <DataTable
+        columns={columns}
+        data={[{ id: 'patient-1', name: '山田 太郎' }]}
+        isLoading
+        toolbar={toolbar}
+      />,
+    );
+
+    expectButtonDisabled('CSV出力', true);
+
+    rerender(
+      <DataTable
+        columns={columns}
+        data={[{ id: 'patient-1', name: '山田 太郎' }]}
+        errorMessage="取得できませんでした"
+        toolbar={toolbar}
+      />,
+    );
+
+    expectButtonDisabled('CSV出力', true);
+
+    rerender(
+      <DataTable
+        columns={columns}
+        data={[{ id: 'patient-1', name: '山田 太郎' }]}
+        toolbar={toolbar}
+      />,
+    );
+
+    expectButtonDisabled('CSV出力', false);
+    expectButtonDisabled('印刷', false);
   });
 });

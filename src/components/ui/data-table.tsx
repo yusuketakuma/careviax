@@ -15,7 +15,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronDown,
   ChevronUp,
@@ -54,6 +54,7 @@ type DataTableToolbarOptions = {
   enableColumnVisibility?: boolean;
   enableExport?: boolean;
   enablePrint?: boolean;
+  disableActionsWhenInvalid?: boolean;
   exportFileName?: string;
   filterFields?: Array<{
     columnId: string;
@@ -74,6 +75,7 @@ interface DataTableProps<TData> {
   enableRowSelection?: boolean;
   onSelectionChange?: (rows: TData[]) => void;
   getRowId?: (originalRow: TData, index: number, parent?: Row<TData>) => string;
+  getRowA11yLabel?: (row: TData, index: number) => string;
   renderExpandedRow?: (row: Row<TData>) => React.ReactNode;
   toolbar?: DataTableToolbarOptions;
   emptyMessage?: string;
@@ -123,6 +125,7 @@ export function DataTable<TData>({
   enableRowSelection,
   onSelectionChange,
   getRowId,
+  getRowA11yLabel,
   renderExpandedRow,
   toolbar,
   emptyMessage = 'データがありません',
@@ -136,6 +139,10 @@ export function DataTable<TData>({
   const [expanded, setExpanded] = useState<ExpandedState>({});
   const [globalFilter, setGlobalFilter] = useState('');
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const getResolvedRowA11yLabel = useCallback(
+    (row: Row<TData>) => getRowA11yLabel?.(row.original, row.index) ?? row.id,
+    [getRowA11yLabel],
+  );
 
   const effectiveColumns = useMemo<ColumnDef<TData>[]>(() => {
     const leadingColumns: ColumnDef<TData>[] = [];
@@ -152,16 +159,19 @@ export function DataTable<TData>({
             />
           </div>
         ),
-        cell: ({ row }) => (
-          <div className="flex items-center justify-center">
-            <Checkbox
-              checked={row.getIsSelected()}
-              onCheckedChange={(checked) => row.toggleSelected(Boolean(checked))}
-              aria-label={`${row.id} を選択`}
-              onClick={(event) => event.stopPropagation()}
-            />
-          </div>
-        ),
+        cell: ({ row }) => {
+          const rowLabel = getResolvedRowA11yLabel(row);
+          return (
+            <div className="flex items-center justify-center">
+              <Checkbox
+                checked={row.getIsSelected()}
+                onCheckedChange={(checked) => row.toggleSelected(Boolean(checked))}
+                aria-label={`${rowLabel} を選択`}
+                onClick={(event) => event.stopPropagation()}
+              />
+            </div>
+          );
+        },
         enableSorting: false,
         enableHiding: false,
         enableResizing: false,
@@ -173,24 +183,29 @@ export function DataTable<TData>({
       leadingColumns.push({
         id: '__expand',
         header: () => <span className="sr-only">展開</span>,
-        cell: ({ row }) => (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="size-11 sm:size-7"
-            onClick={(event) => {
-              event.stopPropagation();
-              row.toggleExpanded();
-            }}
-            aria-label={row.getIsExpanded() ? '詳細を閉じる' : '詳細を開く'}
-          >
-            <ChevronDown
-              className={cn('size-4 transition-transform', row.getIsExpanded() && 'rotate-180')}
-              aria-hidden="true"
-            />
-          </Button>
-        ),
+        cell: ({ row }) => {
+          const rowLabel = getResolvedRowA11yLabel(row);
+          return (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="size-11 sm:size-7"
+              onClick={(event) => {
+                event.stopPropagation();
+                row.toggleExpanded();
+              }}
+              aria-label={
+                row.getIsExpanded() ? `${rowLabel} の詳細を閉じる` : `${rowLabel} の詳細を開く`
+              }
+            >
+              <ChevronDown
+                className={cn('size-4 transition-transform', row.getIsExpanded() && 'rotate-180')}
+                aria-hidden="true"
+              />
+            </Button>
+          );
+        },
         enableSorting: false,
         enableHiding: false,
         enableResizing: false,
@@ -199,7 +214,7 @@ export function DataTable<TData>({
     }
 
     return [...leadingColumns, ...columns];
-  }, [columns, enableRowSelection, renderExpandedRow]);
+  }, [columns, enableRowSelection, getResolvedRowA11yLabel, renderExpandedRow]);
 
   // TanStack Table is not yet React Compiler compatible.
   // eslint-disable-next-line react-hooks/incompatible-library
@@ -256,8 +271,20 @@ export function DataTable<TData>({
     .getVisibleLeafColumns()
     .filter((column) => !column.id.startsWith('__'));
   const selectedCount = table.getSelectedRowModel().rows.length;
+  const toolbarActionsDisabled =
+    toolbar?.disableActionsWhenInvalid !== false &&
+    (Boolean(errorMessage) || Boolean(isLoading) || table.getRowModel().rows.length === 0);
+  const toolbarDisabledReason = errorMessage
+    ? '取得エラー中は出力できません'
+    : isLoading
+      ? '読み込み中は出力できません'
+      : table.getRowModel().rows.length === 0
+        ? '出力できる行がありません'
+        : undefined;
 
   function handleExport() {
+    if (toolbarActionsDisabled) return;
+
     const headers = visibleLeafColumns.map((column) => getColumnLabel(column.columnDef, column.id));
     const rows = table.getRowModel().rows.map((row) =>
       visibleLeafColumns.map((column) => {
@@ -410,6 +437,8 @@ export function DataTable<TData>({
                 size="sm"
                 variant="outline"
                 className="min-h-[44px] sm:min-h-0"
+                disabled={toolbarActionsDisabled}
+                title={toolbarDisabledReason}
                 onClick={handleExport}
               >
                 <Download className="mr-1.5 size-3.5" aria-hidden="true" />
@@ -421,6 +450,8 @@ export function DataTable<TData>({
                 size="sm"
                 variant="outline"
                 className="min-h-[44px] sm:min-h-0"
+                disabled={toolbarActionsDisabled}
+                title={toolbarDisabledReason}
                 onClick={() => window.print()}
               >
                 <Printer className="mr-1.5 size-3.5" aria-hidden="true" />
@@ -571,7 +602,7 @@ export function DataTable<TData>({
                       <Checkbox
                         checked={row.getIsSelected()}
                         onCheckedChange={(checked) => row.toggleSelected(Boolean(checked))}
-                        aria-label={`${row.id} を選択`}
+                        aria-label={`${getResolvedRowA11yLabel(row)} を選択`}
                         onClick={(event) => event.stopPropagation()}
                       />
                     )}
@@ -585,6 +616,11 @@ export function DataTable<TData>({
                           event.stopPropagation();
                           row.toggleExpanded();
                         }}
+                        aria-label={
+                          row.getIsExpanded()
+                            ? `${getResolvedRowA11yLabel(row)} の詳細を閉じる`
+                            : `${getResolvedRowA11yLabel(row)} の詳細を開く`
+                        }
                       >
                         {row.getIsExpanded() ? '詳細を閉じる' : '詳細を開く'}
                       </Button>

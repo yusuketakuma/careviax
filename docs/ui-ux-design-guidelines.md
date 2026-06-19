@@ -11,6 +11,52 @@
 - モバイルでも同じ情報階層を崩さず、単に縦積みで読めるようにする
 - 患者情報の変更を「いつ・誰が・何を・何から何へ・どの確認元で」追跡でき、正本と過去記録を区別できるようにする
 
+## PH-OS Clinical Workbench Language
+
+PH-OS の共通 UI は、`/dispense`、`/audit`、`/set`、`/set-audit` のメインワークベンチを視覚・操作思想の原型とする。
+これらの画面は、広い作業面、状態別の即時判断、操作対象に近いアクション、作業を止めない密度を備えているため、一般画面にも「臨床業務ワークベンチ」として展開する。
+
+### 外部デザインシステムから統合する要素
+
+- Apple Human Interface Guidelines: 画面内に主要内容が収まり、操作対象とコントロールが近く、44pt 相当の操作面を保つ。[Apple UI Design Dos and Don'ts](https://developer.apple.com/design/tips/)
+- Google Material 3 / Expressive: 色・サイズ・形・包含で重要操作へ注意を向ける。ただし既存業務パターンやテキストラベルを壊さない。[Google Design: Expressive Design](https://design.google/library/expressive-material-design-google-research)
+- Adobe Spectrum: アクセシビリティ、密度、コントラスト、読みやすさを個人差・環境差に適応させ、複雑な業務でも焦点を失わせない。[Adobe Spectrum 2](https://blog.adobe.com/en/publish/2023/12/12/adobe-unveils-spectrum-2-design-system-reimagining-user-experience-over-100-adobe-applications)
+- Zoom: 利用者の時間と注意を尊重し、文言・部品・フローを一貫させ、最小セットアップで動く体験を優先する。[Zoom Apps Design Principles](https://developers.zoom.us/docs/zoom-apps/design/design-principles-and-guidelines/)
+- Atlassian Design System: token / foundation / component / pattern を分け、共通問題を共通部品で解き、画面ごとの自由度を無制限にしない。[Atlassian Design System](https://atlassian.design/design-system)
+- 医療・公共系アクセシビリティ: 取得失敗を空状態に見せず、操作不能理由・更新状態・フォーカスを支援技術でも追えるようにする。[WCAG 2.2 日本語訳](https://waic.jp/translations/WCAG22/) / [NHS Design System](https://service-manual.nhs.uk/design-system)
+
+### デザイン言語の原則
+
+1. **Workbench first**
+   - 一般画面も、読み物ではなく業務を進める作業面として設計する
+   - ヘッダー直下に「今やる操作」「判断材料」「一覧/詳細」を近接配置する
+   - 調剤・監査・セット系のメイン画面は保護対象とし、ワークベンチ本体の視覚を変更しない
+
+2. **Action beside evidence**
+   - 操作ボタンは対象データ、根拠、警告の近くに置く
+   - 送信、確定、出力、取消などのリスク操作は、確認情報と監査記録の発生を同じ領域で示す
+   - 無効ボタンは理由を表示し、可能なら解消導線を置く
+
+3. **Clear state, never false empty**
+   - loading / error / empty / stale / partial success を見分ける
+   - 取得失敗を「データなし」に見せない
+   - 動的エラーは `aria-live` または `role="alert"` で通知する
+
+4. **Dense but readable**
+   - 一覧は検索・比較・編集・行動のために使う。列、フィルタ、CSV/印刷は状態と連動させる
+   - 高密度画面でも本文 14px 以上、主要操作 44px 以上、見出しと本文の 8px 以上の間隔を維持する
+   - 情報の階層は「強い外枠、弱い内枠、罫線、余白」の順に表現し、装飾カードを増やさない
+
+5. **Calm expressiveness**
+   - 医療システムでは派手さより安全な注意誘導を優先する
+   - 色は状態意味、主要操作、現在位置に限定し、彩度の高い面は重要操作や警告に集中させる
+   - アイコンは lucide を優先し、テキストだけでは見つけにくい操作に補助として使う
+
+6. **System as product**
+   - 共通部品を先に改善し、画面個別の似た実装を増やさない
+   - 新しい UI パターンは、token / common component / screen pattern のどこに属するかを明示する
+   - 既存 API、権限、DB、監査、患者安全フローは UI 都合で変更しない
+
 ## 基本原則
 
 ### 1. 画面は「意味のある塊」で分ける

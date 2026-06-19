@@ -22,4 +22,16 @@ describe('DialogDescription', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ダイアログ説明を表示' }));
     expect(screen.getByRole('tooltip').textContent).toContain('説明本文です。');
   });
+
+  it('supports wider clinical workflow dialogs without overriding existing callers', () => {
+    render(
+      <Dialog open>
+        <DialogContent size="2xl">
+          <DialogTitle>送付前確認</DialogTitle>
+        </DialogContent>
+      </Dialog>,
+    );
+
+    expect(screen.getByRole('dialog', { name: '送付前確認' }).className).toContain('sm:max-w-2xl');
+  });
 });
