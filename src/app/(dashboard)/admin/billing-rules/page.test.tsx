@@ -40,6 +40,28 @@ vi.mock('@tanstack/react-query', () => ({
           created_at: '2026-06-19T00:00:00.000Z',
           updated_at: '2026-06-19T00:00:00.000Z',
         },
+        {
+          id: 'rule_system',
+          org_id: 'org_1',
+          billing_scope: 'home_care',
+          rule_type: 'base',
+          service_type: 'home_care',
+          payer_basis: 'medical',
+          provider_scope: null,
+          selection_mode: 'automatic',
+          calculation_unit: 'point',
+          name: '基本報酬',
+          code: 'BASE',
+          conditions: {},
+          evidence_requirements: {},
+          amount: 1000,
+          source_url: 'https://example.test/source',
+          source_note: null,
+          is_system: true,
+          is_active: true,
+          created_at: '2026-06-19T00:00:00.000Z',
+          updated_at: '2026-06-19T00:00:00.000Z',
+        },
       ],
       source: {
         source_of_truth: 'local',
@@ -103,5 +125,24 @@ describe('BillingRulesPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '削除する' }));
 
     expect(mutationMutateMock).toHaveBeenCalledWith('rule_1');
+  });
+
+  it('explains why system billing rules cannot be edited or deleted', () => {
+    render(<BillingRulesPage />);
+
+    const editButton = screen.getByRole('button', { name: '基本報酬 を編集' }) as HTMLButtonElement;
+    const deleteButton = screen.getByRole('button', {
+      name: '基本報酬 を削除',
+    }) as HTMLButtonElement;
+
+    expect(editButton.disabled).toBe(true);
+    expect(deleteButton.disabled).toBe(true);
+    const reasonId = editButton.getAttribute('aria-describedby');
+    expect(reasonId).toBeTruthy();
+    expect(deleteButton.getAttribute('aria-describedby')).toBe(reasonId);
+    expect(document.getElementById(reasonId ?? '')?.textContent).toBe(
+      '公式SSOTルールは編集・削除できません。',
+    );
+    expect(screen.getByText('公式SSOTルールは編集・削除できません。')).toBeTruthy();
   });
 });

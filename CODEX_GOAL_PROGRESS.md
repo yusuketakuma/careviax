@@ -4427,6 +4427,35 @@ Implemented:
 
 - Institution row action names are addressed. Continue with billing-rule system disabled reasons or admin jobs rerun action names.
 
+## 20260620-0521 JST - Billing Rule System Disabled Reasons
+
+### Summary
+
+- Added a visible reason for system billing rules whose edit/delete actions are disabled.
+- Connected both disabled icon buttons to that reason with `aria-describedby`.
+- Extended the billing-rules regression test to cover the locked system row.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/billing-rules/page.tsx`
+- `src/app/(dashboard)/admin/billing-rules/page.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/billing-rules/page.tsx' 'src/app/(dashboard)/admin/billing-rules/page.test.tsx'`: passed.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/billing-rules/page.tsx' 'src/app/(dashboard)/admin/billing-rules/page.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/billing-rules/page.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 2 tests.
+- `git diff --check -- 'src/app/(dashboard)/admin/billing-rules/page.tsx' 'src/app/(dashboard)/admin/billing-rules/page.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `pnpm lint`: passed.
+
+### Remaining / Next Loop
+
+- Billing-rule system action disabled reasons are addressed. Continue with admin jobs rerun action names or another small UI consistency candidate.
+
 ## 20260620-0451 JST - Pharmacist Credential Inline Validation
 
 ### Summary

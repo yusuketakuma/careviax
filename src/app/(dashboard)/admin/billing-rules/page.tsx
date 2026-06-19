@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Pencil, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
@@ -182,6 +182,51 @@ function ruleToFormData(rule: BillingRule): RuleFormData {
     amount: rule.amount !== null ? String(rule.amount) : '',
     is_active: rule.is_active,
   };
+}
+
+function BillingRuleRowActions({
+  rule,
+  onEdit,
+  onDelete,
+}: {
+  rule: BillingRule;
+  onEdit: (rule: BillingRule) => void;
+  onDelete: (rule: BillingRule) => void;
+}) {
+  const systemRuleReasonId = useId();
+  const systemRuleReason = rule.is_system ? '公式SSOTルールは編集・削除できません。' : null;
+
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <div className="flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={`${rule.name} を編集`}
+          aria-describedby={systemRuleReason ? systemRuleReasonId : undefined}
+          disabled={rule.is_system}
+          onClick={() => onEdit(rule)}
+        >
+          <Pencil className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={`${rule.name} を削除`}
+          aria-describedby={systemRuleReason ? systemRuleReasonId : undefined}
+          disabled={rule.is_system}
+          onClick={() => onDelete(rule)}
+        >
+          <Trash2 className="h-4 w-4 text-destructive" />
+        </Button>
+      </div>
+      {systemRuleReason ? (
+        <p id={systemRuleReasonId} className="max-w-40 text-xs text-muted-foreground">
+          {systemRuleReason}
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 // --- Rule Form Dialog ---
@@ -457,26 +502,11 @@ export default function BillingRulesPage() {
       id: 'actions',
       header: '操作',
       cell: ({ row }) => (
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={`${row.original.name} を編集`}
-            disabled={row.original.is_system}
-            onClick={() => setEditTarget(row.original)}
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={`${row.original.name} を削除`}
-            disabled={row.original.is_system}
-            onClick={() => setDeleteTarget(row.original)}
-          >
-            <Trash2 className="h-4 w-4 text-destructive" />
-          </Button>
-        </div>
+        <BillingRuleRowActions
+          rule={row.original}
+          onEdit={setEditTarget}
+          onDelete={setDeleteTarget}
+        />
       ),
     },
   ];
