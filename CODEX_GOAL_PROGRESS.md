@@ -4364,6 +4364,35 @@ Implemented:
 
 - Inventory drug table convergence is addressed. Affected-patient cards intentionally remain non-DataTable to avoid patient search; remaining PHI-bearing raw tables should be handled only with search disabled or targeted action-name/accessibility fixes.
 
+## 20260620-0231 JST - Pharmacy Contract Renewal Alerts
+
+### Summary
+
+- Added a PHI-free contract renewal alert section to the pharmacy-cooperation setup screen.
+- Flags active, suspended, expired, and approval-pending contracts when `effective_to` is expired or within 60 days.
+- Shows contract ID, base/partner pharmacy names, status, end date, and fee model only; it does not expose patient data, contract body text, filenames, or file links.
+- Added a focused regression test proving a soon-ending contract renders in the alert list and does not make patient/file details searchable or visible.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx`
+- `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx'`: passed.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 6 tests.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Contract renewal alerting is now covered at the admin setup UI level without a DB migration. Pending migration application and direct DB-backed browser proof still require the existing external approval path.
+
 ## 20260620-0057 JST - QR Draft Case Selector Label
 
 ### Summary
