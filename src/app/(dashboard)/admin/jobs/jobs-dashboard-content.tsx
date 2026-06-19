@@ -280,6 +280,7 @@ export function JobsDashboardContent() {
             size="sm"
             variant="outline"
             className="h-7 px-2 text-xs"
+            aria-label={`${row.original.job_type} を再実行`}
             disabled={rerunMutation.isPending}
             onClick={() =>
               rerunMutation.mutate({

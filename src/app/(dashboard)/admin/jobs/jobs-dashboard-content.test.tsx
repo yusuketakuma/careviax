@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import type { Row } from '@tanstack/react-table';
+import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
@@ -9,6 +10,7 @@ const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
 const useMutationMock = vi.hoisted(() => vi.fn());
 const useQueryClientMock = vi.hoisted(() => vi.fn());
+const mutationMutateMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -22,18 +24,32 @@ vi.mock('@tanstack/react-query', () => ({
 
 vi.mock('@/components/ui/data-table', () => ({
   DataTable: ({
+    columns,
     data,
     renderExpandedRow,
   }: {
-    data: Array<{ job_type: string }>;
-    renderExpandedRow?: (row: Row<{ job_type: string }>) => React.ReactNode;
+    columns: Array<{
+      id?: string;
+      cell?: (args: { row: { original: Record<string, unknown> } }) => ReactNode;
+    }>;
+    data: Array<{ job_type: string } & Record<string, unknown>>;
+    renderExpandedRow?: (row: Row<{ job_type: string } & Record<string, unknown>>) => ReactNode;
   }) => (
     <div data-testid="jobs-table">
       {data.map((entry) => (
         <section key={entry.job_type}>
           <p>{entry.job_type}</p>
+          {columns.map((column, columnIndex) =>
+            column.cell ? (
+              <div key={`${entry.job_type}-${column.id ?? columnIndex}`}>
+                {column.cell({ row: { original: entry } })}
+              </div>
+            ) : null,
+          )}
           <div data-testid={`expanded-${entry.job_type}`}>
-            {renderExpandedRow?.({ original: entry } as Row<{ job_type: string }>)}
+            {renderExpandedRow?.({ original: entry } as Row<
+              { job_type: string } & Record<string, unknown>
+            >)}
           </div>
         </section>
       ))}
@@ -67,7 +83,7 @@ describe('JobsDashboardContent', () => {
     vi.clearAllMocks();
     useOrgIdMock.mockReturnValue('org_1');
     useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
-    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    useMutationMock.mockReturnValue({ mutate: mutationMutateMock, isPending: false });
   });
 
   it('surfaces completed bulk export partial failures from job output', () => {
@@ -162,5 +178,38 @@ describe('JobsDashboardContent', () => {
         }),
       ),
     ).toBeNull();
+  });
+
+  it('names rerun actions by job type and sends the row endpoint', () => {
+    useQueryMock.mockReturnValue({
+      isLoading: false,
+      data: {
+        data: [
+          {
+            job_type: 'daily',
+            schedule_hint: '毎朝',
+            endpoint: '/api/jobs/daily',
+            latest_run: null,
+          },
+          {
+            job_type: 'monthly',
+            schedule_hint: '毎月',
+            endpoint: '/api/jobs/monthly',
+            latest_run: null,
+          },
+        ],
+      },
+    });
+
+    render(<JobsDashboardContent />);
+
+    expect(screen.getByRole('button', { name: 'daily を再実行' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'monthly を再実行' }));
+
+    expect(mutationMutateMock).toHaveBeenCalledWith({
+      endpoint: '/api/jobs/monthly',
+      jobType: 'monthly',
+    });
   });
 });

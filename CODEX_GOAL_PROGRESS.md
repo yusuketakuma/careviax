@@ -4427,6 +4427,34 @@ Implemented:
 
 - Institution row action names are addressed. Continue with billing-rule system disabled reasons or admin jobs rerun action names.
 
+## 20260620-0525 JST - Job Rerun Action Names
+
+### Summary
+
+- Added job-type-specific accessible names for admin job rerun buttons.
+- Extended the focused jobs regression to render action cells and verify the rerun mutation uses the selected row endpoint.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/jobs/jobs-dashboard-content.tsx`
+- `src/app/(dashboard)/admin/jobs/jobs-dashboard-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/jobs/jobs-dashboard-content.tsx' 'src/app/(dashboard)/admin/jobs/jobs-dashboard-content.test.tsx'`: passed.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/jobs/jobs-dashboard-content.tsx' 'src/app/(dashboard)/admin/jobs/jobs-dashboard-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/jobs/jobs-dashboard-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 4 tests.
+- `git diff --check -- 'src/app/(dashboard)/admin/jobs/jobs-dashboard-content.tsx' 'src/app/(dashboard)/admin/jobs/jobs-dashboard-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `pnpm lint`: passed.
+
+### Remaining / Next Loop
+
+- Job rerun action names are addressed. Continue with another small UI/API consistency candidate.
+
 ## 20260620-0521 JST - Billing Rule System Disabled Reasons
 
 ### Summary
