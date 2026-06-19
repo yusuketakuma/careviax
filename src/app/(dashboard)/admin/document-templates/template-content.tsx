@@ -12,6 +12,7 @@ import { getAdminDocumentTemplatesShortcutLinks } from '@/components/features/ad
 import { DataTable } from '@/components/ui/data-table';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -110,6 +111,7 @@ export function DocumentTemplateContent() {
   const queryClient = useQueryClient();
   const [filterType, setFilterType] = useState<'all' | TemplateType>('all');
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DocumentTemplateRow | null>(null);
   const [form, setForm] = useState<{
     name: string;
     templateType: TemplateType;
@@ -212,6 +214,7 @@ export function DocumentTemplateContent() {
     onSuccess: async () => {
       toast.success('テンプレートを削除しました');
       resetForm();
+      setDeleteTarget(null);
       await queryClient.invalidateQueries({ queryKey: ['document-templates', orgId] });
     },
     onError: (error) => {
@@ -294,8 +297,9 @@ export function DocumentTemplateContent() {
           <Button
             size="sm"
             variant="outline"
-            onClick={() => deleteMutation.mutate(row.original.id)}
+            onClick={() => setDeleteTarget(row.original)}
             disabled={deleteMutation.isPending}
+            aria-label={`${row.original.name} を削除`}
           >
             <Trash2 className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
             削除
@@ -524,6 +528,32 @@ export function DocumentTemplateContent() {
       />
 
       <DocumentDeliveryRuleManager />
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleteMutation.isPending) {
+            setDeleteTarget(null);
+          }
+        }}
+        title="テンプレートを削除しますか"
+        description={
+          deleteTarget
+            ? `${deleteTarget.name}（${TEMPLATE_TYPE_LABELS[deleteTarget.template_type]} v${
+                deleteTarget.version
+              }）を削除します。この操作は取り消せません。送付や印刷で参照しているテンプレート版を確認してから削除してください。`
+            : ''
+        }
+        confirmLabel={deleteMutation.isPending ? '削除中...' : '削除する'}
+        confirmDisabled={deleteMutation.isPending}
+        variant="destructive"
+        closeOnConfirm={false}
+        onConfirm={() => {
+          if (deleteTarget) {
+            deleteMutation.mutate(deleteTarget.id);
+          }
+        }}
+      />
     </PageScaffold>
   );
 }

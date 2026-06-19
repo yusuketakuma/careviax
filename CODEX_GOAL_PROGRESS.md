@@ -3957,6 +3957,30 @@ Implemented:
 
 - R2 is stronger for correction/addition requests. Direct DB-backed proof and migration application remain blocked until explicit approval.
 
+## 20260620-0005 JST - Document Template Delete Confirmation
+
+### Summary
+
+- Added an explicit destructive confirmation before deleting document templates.
+- Named the target template, template type, and version in the confirmation copy.
+- Added a regression test proving the DELETE request is not sent until the confirmation action is clicked.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/document-templates/template-content.tsx`
+- `src/app/(dashboard)/admin/document-templates/template-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/document-templates/template-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 1 test.
+- Targeted ESLint over touched template-content files: passed.
+
+### Remaining / Next Loop
+
+- DB-backed proof for the broader v0.2 goal remains blocked until migration application is explicitly approved.
+
 ## 20260619-2356 JST - Dialog Viewport Safety
 
 ### Summary
