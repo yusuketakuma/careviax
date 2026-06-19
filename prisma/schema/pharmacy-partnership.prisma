@@ -45,9 +45,16 @@ enum PharmacyVisitRequestStatus {
   requested
   accepted
   declined
-  cancelled
+  scheduled
+  visited
+  recording
+  submitted
+  base_reviewing
+  returned
+  confirmed
+  physician_report_created
+  claim_checked
   completed
-  expired
 }
 
 enum PartnerVisitRecordStatus {

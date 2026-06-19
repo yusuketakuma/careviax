@@ -9,6 +9,7 @@ const {
   visitBillingCandidateFindUniqueMock,
   visitBillingCandidateCreateMock,
   visitBillingCandidateUpdateMock,
+  pharmacyVisitRequestUpdateManyMock,
   createAuditLogEntryMock,
 } = vi.hoisted(() => ({
   withOrgContextMock: vi.fn(),
@@ -18,6 +19,7 @@ const {
   visitBillingCandidateFindUniqueMock: vi.fn(),
   visitBillingCandidateCreateMock: vi.fn(),
   visitBillingCandidateUpdateMock: vi.fn(),
+  pharmacyVisitRequestUpdateManyMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
 }));
 
@@ -65,7 +67,7 @@ function confirmedPartnerRecord(overrides: Partial<Record<string, unknown>> = {}
     confirmed_at: new Date('2026-06-19T03:00:00.000Z'),
     visit_request: {
       id: 'visit_request_1',
-      status: 'completed',
+      status: 'confirmed',
       contract_version_id: 'contract_version_1',
     },
     share_case: {
@@ -111,6 +113,7 @@ describe('/api/visit-billing-candidates POST', () => {
       billing_status: 'candidate',
       is_billable: true,
     });
+    pharmacyVisitRequestUpdateManyMock.mockResolvedValue({ count: 1 });
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -126,11 +129,14 @@ describe('/api/visit-billing-candidates POST', () => {
           create: visitBillingCandidateCreateMock,
           update: visitBillingCandidateUpdateMock,
         },
+        pharmacyVisitRequest: {
+          updateMany: pharmacyVisitRequestUpdateManyMock,
+        },
       }),
     );
   });
 
-  it('generates billable candidates only from confirmed completed partner visit records', async () => {
+  it('generates billable candidates only from confirmed claim-ready partner visit records', async () => {
     const response = await POST(createRequest({ billing_month: '2026-06-01' }));
 
     expect(response.status).toBe(200);
@@ -143,7 +149,9 @@ describe('/api/visit-billing-candidates POST', () => {
           gte: new Date('2026-06-01T00:00:00.000Z'),
           lt: new Date('2026-07-01T00:00:00.000Z'),
         },
-        visit_request: { status: 'completed' },
+        visit_request: {
+          status: { in: ['confirmed', 'physician_report_created', 'claim_checked', 'completed'] },
+        },
       },
       select: expect.any(Object),
     });
@@ -189,6 +197,14 @@ describe('/api/visit-billing-candidates POST', () => {
       }),
     });
     expect(visitBillingCandidateUpdateMock).not.toHaveBeenCalled();
+    expect(pharmacyVisitRequestUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'visit_request_1',
+        org_id: 'org_1',
+        status: { in: ['confirmed', 'physician_report_created'] },
+      },
+      data: { status: 'claim_checked' },
+    });
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),

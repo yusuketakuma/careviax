@@ -485,11 +485,15 @@ function statusLabel(status: string) {
     requested: '依頼中',
     accepted: '受諾済み',
     declined: '辞退',
-    cancelled: '取消',
-    completed: '完了',
-    expired: '期限切れ',
+    scheduled: '予定済み',
+    visited: '訪問済み',
+    recording: '記録中',
     submitted: '提出済み',
+    base_reviewing: '基幹確認中',
     confirmed: '確認済み',
+    physician_report_created: '医師報告下書き済み',
+    claim_checked: '請求確認済み',
+    completed: '完了',
     returned: '差戻し',
     superseded: '置換済み',
     open: '未対応',
@@ -500,7 +504,15 @@ function statusLabel(status: string) {
 }
 
 function statusVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
-  if (status === 'active' || status === 'accepted' || status === 'confirmed') return 'default';
+  if (
+    status === 'active' ||
+    status === 'accepted' ||
+    status === 'confirmed' ||
+    status === 'physician_report_created' ||
+    status === 'claim_checked'
+  ) {
+    return 'default';
+  }
   if (status === 'declined' || status === 'returned' || status === 'revoked') return 'destructive';
   if (
     status === 'draft' ||
@@ -1983,7 +1995,10 @@ export function PharmacyCooperationWorkflowContent() {
   const partnerVisitRecords = partnerVisitRecordsQuery.data?.data ?? [];
   const activeShareCases = shareCases.filter((shareCase) => shareCase.status === 'active');
   const draftableVisitRequests = visitRequests.filter(
-    (request) => request.status === 'accepted' || request.status === 'completed',
+    (request) =>
+      request.status === 'accepted' ||
+      request.status === 'recording' ||
+      request.status === 'returned',
   );
   const selectedRecordVisitRequestStillVisible = draftableVisitRequests.some(
     (request) => request.id === selectedRecordVisitRequestId,

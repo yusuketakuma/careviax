@@ -73,7 +73,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
       share_case: { status: 'active' },
       owner_partner_pharmacy: { name: '協力薬局', status: 'active' },
       visit_request: {
-        status: 'accepted',
+        status: 'submitted',
         partnership_id: 'partnership_1',
         partnership: {
           status: 'active',
@@ -91,7 +91,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
       visit_request_id: 'visit_request_1',
       share_case_id: 'share_case_1',
       owner_partner_pharmacy: { id: 'partner_pharmacy_1', name: '協力薬局', status: 'active' },
-      visit_request: { id: 'visit_request_1', status: 'completed', urgency: 'normal' },
+      visit_request: { id: 'visit_request_1', status: 'confirmed', urgency: 'normal' },
       claim_note: { id: 'claim_note_1', claim_status: 'pending' },
     });
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
@@ -112,7 +112,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
     );
   });
 
-  it('confirms a submitted partner visit record, completes the request, and creates claim support', async () => {
+  it('confirms a submitted partner visit record, marks the request confirmed, and creates claim support', async () => {
     const response = await rawPOST(
       createRequest({ decision: 'confirm', doctor_report_required: true }),
       routeContext,
@@ -123,13 +123,13 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
       where: {
         id: 'visit_request_1',
         org_id: 'org_1',
-        status: 'accepted',
+        status: 'submitted',
         partnership: {
           status: 'active',
           partner_pharmacy: { status: 'active' },
         },
       },
-      data: { status: 'completed', completed_at: new Date('2026-06-19T00:00:00.000Z') },
+      data: { status: 'confirmed', completed_at: new Date('2026-06-19T00:00:00.000Z') },
     });
     expect(partnerVisitRecordUpdateManyMock).toHaveBeenCalledWith({
       where: {
@@ -139,7 +139,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
         share_case: { status: 'active' },
         owner_partner_pharmacy: { status: 'active' },
         visit_request: {
-          status: 'completed',
+          status: 'submitted',
           partnership: {
             status: 'active',
             partner_pharmacy: { status: 'active' },
@@ -178,7 +178,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
           decision: 'confirm',
           previous_status: 'submitted',
           status: 'confirmed',
-          visit_request_status: 'completed',
+          visit_request_status: 'confirmed',
           doctor_report_required: true,
         }),
       }),
@@ -192,7 +192,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
       visit_request_id: 'visit_request_1',
       share_case_id: 'share_case_1',
       owner_partner_pharmacy: { id: 'partner_pharmacy_1', name: '協力薬局', status: 'active' },
-      visit_request: { id: 'visit_request_1', status: 'accepted', urgency: 'normal' },
+      visit_request: { id: 'visit_request_1', status: 'returned', urgency: 'normal' },
       claim_note: null,
     });
 
@@ -208,7 +208,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
     expect(partnerVisitRecordUpdateManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          visit_request: expect.objectContaining({ status: 'accepted' }),
+          visit_request: expect.objectContaining({ status: 'submitted' }),
         }),
         data: expect.objectContaining({
           status: 'returned',
@@ -236,7 +236,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
       share_case: { status: 'active' },
       owner_partner_pharmacy: { name: '協力薬局', status: 'active' },
       visit_request: {
-        status: 'accepted',
+        status: 'submitted',
         partnership_id: 'partnership_1',
         partnership: {
           status: 'active',

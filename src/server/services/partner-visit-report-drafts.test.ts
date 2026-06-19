@@ -61,7 +61,7 @@ function confirmedPartnerVisitRecord(overrides: Record<string, unknown> = {}) {
     },
     visit_request: {
       id: 'visit_request_1',
-      status: 'completed',
+      status: 'confirmed',
       urgency: 'normal',
       request_reason: '残薬確認',
       physician_instruction: '眠気を確認',
@@ -115,6 +115,7 @@ describe('createPartnerVisitPhysicianReportDraft', () => {
   const careReportCreateMock = vi.fn();
   const partnerVisitRecordFindFirstMock = vi.fn();
   const prescriptionIntakeFindFirstMock = vi.fn();
+  const pharmacyVisitRequestUpdateManyMock = vi.fn();
   const auditLogCreateMock = vi.fn();
 
   function tx() {
@@ -128,6 +129,9 @@ describe('createPartnerVisitPhysicianReportDraft', () => {
       },
       prescriptionIntake: {
         findFirst: prescriptionIntakeFindFirstMock,
+      },
+      pharmacyVisitRequest: {
+        updateMany: pharmacyVisitRequestUpdateManyMock,
       },
       auditLog: {
         create: auditLogCreateMock,
@@ -153,6 +157,7 @@ describe('createPartnerVisitPhysicianReportDraft', () => {
         address: '東京都',
       },
     });
+    pharmacyVisitRequestUpdateManyMock.mockResolvedValue({ count: 1 });
     auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
   });
 
@@ -198,6 +203,10 @@ describe('createPartnerVisitPhysicianReportDraft', () => {
         }),
       }),
     );
+    expect(pharmacyVisitRequestUpdateManyMock).toHaveBeenCalledWith({
+      where: { id: 'visit_request_1', org_id: 'org_1', status: 'confirmed' },
+      data: { status: 'physician_report_created' },
+    });
     expect(auditLogCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -239,7 +248,7 @@ describe('createPartnerVisitPhysicianReportDraft', () => {
       reused: true,
       report: { id: 'report_existing', partner_visit_record_id: 'partner_visit_record_1' },
     });
-    expect(partnerVisitRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(partnerVisitRecordFindFirstMock).toHaveBeenCalled();
     expect(careReportCreateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });

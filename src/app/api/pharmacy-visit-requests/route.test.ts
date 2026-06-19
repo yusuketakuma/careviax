@@ -254,7 +254,7 @@ describe('/api/pharmacy-visit-requests POST', () => {
   it('rejects inactive share cases before create or audit side effects', async () => {
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
-      status: 'pending_partner',
+      status: 'consent_pending',
       starts_at: null,
       ends_at: null,
       partnership_id: 'partnership_1',

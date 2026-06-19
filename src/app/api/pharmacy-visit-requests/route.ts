@@ -17,9 +17,16 @@ const visitRequestStatusSchema = z.enum([
   'requested',
   'accepted',
   'declined',
-  'cancelled',
+  'scheduled',
+  'visited',
+  'recording',
+  'submitted',
+  'base_reviewing',
+  'returned',
+  'confirmed',
+  'physician_report_created',
+  'claim_checked',
   'completed',
-  'expired',
 ]);
 const urgencySchema = z.enum(['normal', 'urgent', 'emergency']);
 

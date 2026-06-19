@@ -382,14 +382,17 @@ function assertRecordCanGenerateDraft(record: PartnerVisitRecordForDraft) {
 
   if (
     record.share_case.status !== 'active' ||
-    record.visit_request.status !== 'completed' ||
+    (record.visit_request.status !== 'confirmed' &&
+      record.visit_request.status !== 'physician_report_created' &&
+      record.visit_request.status !== 'claim_checked' &&
+      record.visit_request.status !== 'completed') ||
     record.visit_request.partnership.status !== 'active' ||
     record.visit_request.partnership.partner_pharmacy.status !== 'active' ||
     record.owner_partner_pharmacy.status !== 'active'
   ) {
     throw new PartnerVisitPhysicianReportDraftError(
       'PARTNER_VISIT_SOURCE_INACTIVE',
-      '有効な患者共有ケースと完了済み協力訪問のみ医師向け報告書を作成できます',
+      '有効な患者共有ケースと確認済み協力訪問のみ医師向け報告書を作成できます',
       {
         share_case_status: record.share_case.status,
         visit_request_status: record.visit_request.status,
@@ -406,11 +409,6 @@ export async function createPartnerVisitPhysicianReportDraft(
   ctx: Pick<AuthContext, 'orgId' | 'userId' | 'ipAddress' | 'userAgent'>,
   input: { partnerVisitRecordId: string },
 ): Promise<CreatePartnerVisitPhysicianReportDraftResult> {
-  const existing = await findExistingDraft(tx, ctx.orgId, input.partnerVisitRecordId);
-  if (existing) {
-    return { reused: true, report: toSafeReport(existing) };
-  }
-
   const record = await tx.partnerVisitRecord.findFirst({
     where: { id: input.partnerVisitRecordId, org_id: ctx.orgId },
     select: partnerVisitRecordSelect,
@@ -422,6 +420,17 @@ export async function createPartnerVisitPhysicianReportDraft(
     );
   }
   assertRecordCanGenerateDraft(record);
+
+  const existing = await findExistingDraft(tx, ctx.orgId, input.partnerVisitRecordId);
+  if (existing) {
+    if (record.visit_request.status === 'confirmed') {
+      await tx.pharmacyVisitRequest.updateMany({
+        where: { id: record.visit_request.id, org_id: ctx.orgId, status: 'confirmed' },
+        data: { status: 'physician_report_created' },
+      });
+    }
+    return { reused: true, report: toSafeReport(existing) };
+  }
 
   const prescriberSuggestion = await findLatestPrescriberInstitutionSuggestion(tx, ctx.orgId, {
     patientId: record.share_case.base_patient_id,
@@ -477,6 +486,13 @@ export async function createPartnerVisitPhysicianReportDraft(
         attachment_count: attachmentCount(record.attachments),
       },
     });
+
+    if (record.visit_request.status === 'confirmed') {
+      await tx.pharmacyVisitRequest.updateMany({
+        where: { id: record.visit_request.id, org_id: ctx.orgId, status: 'confirmed' },
+        data: { status: 'physician_report_created' },
+      });
+    }
 
     return { reused: false, report: toSafeReport(report) };
   } catch (error) {

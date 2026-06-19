@@ -86,7 +86,11 @@ export const POST = withAuthContext<{ id: string }>(
       ) {
         return { response: conflict('有効な薬局間連携と協力薬局に紐づく訪問記録のみ提出できます') };
       }
-      if (record.visit_request.status !== 'accepted') {
+      if (
+        record.visit_request.status !== 'accepted' &&
+        record.visit_request.status !== 'recording' &&
+        record.visit_request.status !== 'returned'
+      ) {
         return { response: conflict('受諾済みの訪問依頼に紐づく訪問記録のみ提出できます') };
       }
 
@@ -103,7 +107,7 @@ export const POST = withAuthContext<{ id: string }>(
           share_case: { status: 'active' },
           owner_partner_pharmacy: { status: 'active' },
           visit_request: {
-            status: 'accepted',
+            status: { in: ['accepted', 'recording', 'returned'] },
             partnership: {
               status: 'active',
               partner_pharmacy: { status: 'active' },
@@ -121,6 +125,15 @@ export const POST = withAuthContext<{ id: string }>(
       if (updatedCount.count !== 1) {
         return { response: conflict('訪問記録はすでに更新されています') };
       }
+
+      await tx.pharmacyVisitRequest.updateMany({
+        where: {
+          id: record.visit_request_id,
+          org_id: ctx.orgId,
+          status: { in: ['accepted', 'recording', 'returned'] },
+        },
+        data: { status: 'submitted' },
+      });
 
       const notifications = notifyBasePharmacy
         ? await dispatchNotificationEvent(tx, {
@@ -169,7 +182,8 @@ export const POST = withAuthContext<{ id: string }>(
           revision_no: record.revision_no,
           previous_status: record.status,
           status: submitted.status,
-          visit_request_status: record.visit_request.status,
+          visit_request_status_before: record.visit_request.status,
+          visit_request_status_after: 'submitted',
           submitted_at: now.toISOString(),
           notify_base_pharmacy: notifyBasePharmacy,
           notification_count: notifications.length,

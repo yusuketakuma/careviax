@@ -209,7 +209,9 @@ export const POST = withAuthContext(
           visit_at: { gte: billingMonth.start, lt: billingMonth.nextStart },
           ...(shareCaseId ? { share_case_id: shareCaseId } : {}),
           ...(partnerPharmacyId ? { owner_partner_pharmacy_id: partnerPharmacyId } : {}),
-          visit_request: { status: 'completed' },
+          visit_request: {
+            status: { in: ['confirmed', 'physician_report_created', 'claim_checked', 'completed'] },
+          },
         },
         select: {
           id: true,
@@ -345,6 +347,19 @@ export const POST = withAuthContext(
           skippedLockedCount += 1;
         }
         candidates.push(candidate);
+        if (
+          record.visit_request.status === 'confirmed' ||
+          record.visit_request.status === 'physician_report_created'
+        ) {
+          await tx.pharmacyVisitRequest.updateMany({
+            where: {
+              id: record.visit_request.id,
+              org_id: ctx.orgId,
+              status: { in: ['confirmed', 'physician_report_created'] },
+            },
+            data: { status: 'claim_checked' },
+          });
+        }
       }
 
       await createAuditLogEntry(tx, ctx, {

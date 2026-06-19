@@ -6,6 +6,7 @@ const {
   partnerVisitRecordFindFirstMock,
   partnerVisitRecordUpdateManyMock,
   partnerVisitRecordFindUniqueOrThrowMock,
+  pharmacyVisitRequestUpdateManyMock,
   dispatchNotificationEventMock,
   createAuditLogEntryMock,
 } = vi.hoisted(() => ({
@@ -13,6 +14,7 @@ const {
   partnerVisitRecordFindFirstMock: vi.fn(),
   partnerVisitRecordUpdateManyMock: vi.fn(),
   partnerVisitRecordFindUniqueOrThrowMock: vi.fn(),
+  pharmacyVisitRequestUpdateManyMock: vi.fn(),
   dispatchNotificationEventMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
 }));
@@ -74,7 +76,7 @@ describe('/api/partner-visit-records/[id]/submit POST', () => {
       owner_partner_pharmacy: { name: '協力薬局', status: 'active' },
       share_case: { status: 'active' },
       visit_request: {
-        status: 'accepted',
+        status: 'recording',
         requested_by: 'base_user_1',
         partnership_id: 'partnership_1',
         partnership: {
@@ -93,9 +95,10 @@ describe('/api/partner-visit-records/[id]/submit POST', () => {
       revision_no: 1,
       visit_at: new Date('2026-06-20T01:30:00.000Z'),
       owner_partner_pharmacy: { id: 'partner_pharmacy_1', name: '協力薬局', status: 'active' },
-      visit_request: { id: 'visit_request_1', status: 'accepted', urgency: 'normal' },
+      visit_request: { id: 'visit_request_1', status: 'submitted', urgency: 'normal' },
       claim_note: null,
     });
+    pharmacyVisitRequestUpdateManyMock.mockResolvedValue({ count: 1 });
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -103,6 +106,9 @@ describe('/api/partner-visit-records/[id]/submit POST', () => {
           findFirst: partnerVisitRecordFindFirstMock,
           updateMany: partnerVisitRecordUpdateManyMock,
           findUniqueOrThrow: partnerVisitRecordFindUniqueOrThrowMock,
+        },
+        pharmacyVisitRequest: {
+          updateMany: pharmacyVisitRequestUpdateManyMock,
         },
       }),
     );
@@ -120,7 +126,7 @@ describe('/api/partner-visit-records/[id]/submit POST', () => {
         share_case: { status: 'active' },
         owner_partner_pharmacy: { status: 'active' },
         visit_request: {
-          status: 'accepted',
+          status: { in: ['accepted', 'recording', 'returned'] },
           partnership: {
             status: 'active',
             partner_pharmacy: { status: 'active' },
@@ -134,6 +140,14 @@ describe('/api/partner-visit-records/[id]/submit POST', () => {
         returned_by: null,
         returned_reason: null,
       },
+    });
+    expect(pharmacyVisitRequestUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'visit_request_1',
+        org_id: 'org_1',
+        status: { in: ['accepted', 'recording', 'returned'] },
+      },
+      data: { status: 'submitted' },
     });
     expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
       expect.anything(),
@@ -160,7 +174,8 @@ describe('/api/partner-visit-records/[id]/submit POST', () => {
         changes: expect.objectContaining({
           previous_status: 'draft',
           status: 'submitted',
-          visit_request_status: 'accepted',
+          visit_request_status_before: 'recording',
+          visit_request_status_after: 'submitted',
           notify_base_pharmacy: true,
           notification_count: 1,
           attachment_count: 1,
@@ -183,7 +198,7 @@ describe('/api/partner-visit-records/[id]/submit POST', () => {
       owner_partner_pharmacy: { name: '協力薬局', status: 'active' },
       share_case: { status: 'active' },
       visit_request: {
-        status: 'completed',
+        status: 'submitted',
         requested_by: 'base_user_1',
         partnership_id: 'partnership_1',
         partnership: {

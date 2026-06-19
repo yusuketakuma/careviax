@@ -319,7 +319,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   },
                   visit_request: {
                     id: 'visit_request_1',
-                    status: 'accepted',
+                    status: 'submitted',
                     urgency: 'normal',
                   },
                   claim_note: null,
@@ -345,7 +345,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   },
                   visit_request: {
                     id: 'visit_request_2',
-                    status: 'completed',
+                    status: 'confirmed',
                     urgency: 'normal',
                   },
                   claim_note: {
@@ -492,7 +492,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
               },
               visit_request: {
                 id: 'visit_request_record_ready',
-                status: 'accepted',
+                status: 'recording',
                 urgency: 'normal',
               },
               claim_note: null,

@@ -190,10 +190,10 @@ describe('pharmacy partnership policy guards', () => {
     ).toBe(false);
   });
 
-  it('counts only completed requests with confirmed partner visit records as billable', () => {
+  it('counts only confirmed-or-later requests with confirmed partner visit records as billable', () => {
     expect(
       evaluateVisitBillingCandidate({
-        request: { status: 'completed' },
+        request: { status: 'confirmed' },
         record: {
           status: 'confirmed',
           confirmed_at: new Date('2026-06-19T03:00:00.000Z'),

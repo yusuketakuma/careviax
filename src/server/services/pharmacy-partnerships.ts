@@ -15,9 +15,16 @@ export type PharmacyVisitRequestLifecycleStatus =
   | 'requested'
   | 'accepted'
   | 'declined'
-  | 'cancelled'
-  | 'completed'
-  | 'expired';
+  | 'scheduled'
+  | 'visited'
+  | 'recording'
+  | 'submitted'
+  | 'base_reviewing'
+  | 'returned'
+  | 'confirmed'
+  | 'physician_report_created'
+  | 'claim_checked'
+  | 'completed';
 
 export type PartnerVisitRecordLifecycleStatus =
   | 'draft'
@@ -197,7 +204,14 @@ export function evaluateVisitBillingCandidate(args: {
 }): VisitBillingCandidateResult {
   const blockers: VisitBillingCandidateBlocker[] = [];
 
-  if (args.request.status !== 'completed') blockers.push('request_not_completed');
+  if (
+    args.request.status !== 'confirmed' &&
+    args.request.status !== 'physician_report_created' &&
+    args.request.status !== 'claim_checked' &&
+    args.request.status !== 'completed'
+  ) {
+    blockers.push('request_not_completed');
+  }
   if (args.record.status !== 'confirmed' || !args.record.confirmed_at) {
     blockers.push('record_not_confirmed');
   }

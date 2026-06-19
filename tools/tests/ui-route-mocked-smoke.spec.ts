@@ -1062,9 +1062,23 @@ function buildPharmacyCoopVisitRequest(args: { created: boolean; status: string 
       tax_category: 'taxable',
     },
     accepted_at:
-      args.status === 'accepted' || args.status === 'completed' ? '2026-06-20T00:30:00.000Z' : null,
+      args.status === 'accepted' ||
+      args.status === 'recording' ||
+      args.status === 'submitted' ||
+      args.status === 'confirmed' ||
+      args.status === 'physician_report_created' ||
+      args.status === 'claim_checked' ||
+      args.status === 'completed'
+        ? '2026-06-20T00:30:00.000Z'
+        : null,
     declined_at: null,
-    completed_at: args.status === 'completed' ? '2026-06-20T03:00:00.000Z' : null,
+    completed_at:
+      args.status === 'confirmed' ||
+      args.status === 'physician_report_created' ||
+      args.status === 'claim_checked' ||
+      args.status === 'completed'
+        ? '2026-06-20T03:00:00.000Z'
+        : null,
     partner_pharmacy: {
       id: PHARMACY_COOP_PARTNER_PHARMACY_ID,
       name: 'RouteMock協力薬局',
@@ -1105,7 +1119,7 @@ function buildPharmacyCoopPartnerRecord(args: { created: boolean; status: string
     },
     visit_request: {
       id: PHARMACY_COOP_VISIT_REQUEST_ID,
-      status: args.status === 'confirmed' ? 'completed' : 'accepted',
+      status: args.status === 'confirmed' ? 'confirmed' : 'recording',
       urgency: 'emergency',
     },
     claim_note:
@@ -1428,6 +1442,7 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
     if (request.method === 'POST') {
       state.partnerRecordCreated = true;
       state.partnerRecordStatus = 'draft';
+      state.visitRequestStatus = 'recording';
       await fulfillJson(
         route,
         buildPharmacyCoopPartnerRecord({
@@ -1451,6 +1466,7 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
     async (route) => {
       requests.partnerVisitRecordSubmits.push(captureRouteRequest(route));
       state.partnerRecordStatus = 'submitted';
+      state.visitRequestStatus = 'submitted';
       await fulfillJson(route, { id: PHARMACY_COOP_PARTNER_RECORD_ID, status: 'submitted' });
     },
   );
@@ -1460,7 +1476,7 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
     async (route) => {
       requests.partnerVisitRecordReviews.push(captureRouteRequest(route));
       state.partnerRecordStatus = 'confirmed';
-      state.visitRequestStatus = 'completed';
+      state.visitRequestStatus = 'confirmed';
       await fulfillJson(route, { id: PHARMACY_COOP_PARTNER_RECORD_ID, status: 'confirmed' });
     },
   );
@@ -1471,6 +1487,7 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
     ),
     async (route) => {
       requests.reportDrafts.push(captureRouteRequest(route));
+      state.visitRequestStatus = 'physician_report_created';
       await fulfillJson(
         route,
         {
@@ -1514,6 +1531,7 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
     requests.billingCandidates.push(request);
     if (request.method === 'POST') {
       state.billingCandidateGenerated = true;
+      state.visitRequestStatus = 'claim_checked';
       await fulfillJson(route, {
         message: '2026-06-01 の薬局間協力訪問請求候補を生成しました',
         billing_month: PHARMACY_COOP_BILLING_MONTH,

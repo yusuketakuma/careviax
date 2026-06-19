@@ -200,7 +200,11 @@ export const POST = withAuthContext(
       ) {
         return { response: conflict('有効な薬局間連携と協力薬局に紐づく訪問依頼のみ記録できます') };
       }
-      if (visitRequest.status !== 'accepted' && visitRequest.status !== 'completed') {
+      if (
+        visitRequest.status !== 'accepted' &&
+        visitRequest.status !== 'recording' &&
+        visitRequest.status !== 'returned'
+      ) {
         return { response: conflict('受諾済みの訪問依頼にのみ訪問記録を保存できます') };
       }
 
@@ -303,6 +307,21 @@ export const POST = withAuthContext(
         return { response: conflict('訪問記録はすでに更新されています') };
       }
 
+      const nextVisitRequestStatus =
+        visitRequest.status === 'accepted' || visitRequest.status === 'returned'
+          ? 'recording'
+          : visitRequest.status;
+      if (nextVisitRequestStatus !== visitRequest.status) {
+        await tx.pharmacyVisitRequest.updateMany({
+          where: {
+            id: visitRequest.id,
+            org_id: ctx.orgId,
+            status: { in: ['accepted', 'returned'] },
+          },
+          data: { status: nextVisitRequestStatus },
+        });
+      }
+
       await createAuditLogEntry(tx, ctx, {
         action: latestRecord
           ? 'partner_visit_record_draft_updated'
@@ -316,6 +335,8 @@ export const POST = withAuthContext(
           revision_no: partnerVisitRecord.revision_no,
           previous_status: latestRecord?.status ?? null,
           status: partnerVisitRecord.status,
+          visit_request_status_before: visitRequest.status,
+          visit_request_status_after: nextVisitRequestStatus,
           visit_at: partnerVisitRecord.visit_at.toISOString(),
           record_content_keys: Object.keys(parsed.data.record_content).sort(),
           attachment_count: attachmentCount(parsed.data.attachments),

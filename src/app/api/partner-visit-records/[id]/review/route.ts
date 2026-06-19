@@ -131,28 +131,28 @@ export const POST = withAuthContext<{ id: string }>(
           return { response: conflict('共有中の患者共有ケースに紐づく訪問記録のみ確認できます') };
         }
         if (
-          record.visit_request.status !== 'accepted' ||
+          record.visit_request.status !== 'submitted' ||
           record.visit_request.partnership.status !== 'active' ||
           record.visit_request.partnership.partner_pharmacy.status !== 'active' ||
           record.owner_partner_pharmacy.status !== 'active'
         ) {
-          return { response: conflict('受諾済みの有効な協力訪問のみ確認できます') };
+          return { response: conflict('提出済みの有効な協力訪問のみ確認できます') };
         }
 
         if (parsed.data.decision === 'confirm') {
-          const completedRequestCount = await tx.pharmacyVisitRequest.updateMany({
+          const confirmedRequestCount = await tx.pharmacyVisitRequest.updateMany({
             where: {
               id: record.visit_request_id,
               org_id: ctx.orgId,
-              status: 'accepted',
+              status: 'submitted',
               partnership: {
                 status: 'active',
                 partner_pharmacy: { status: 'active' },
               },
             },
-            data: { status: 'completed', completed_at: now },
+            data: { status: 'confirmed', completed_at: now },
           });
-          if (completedRequestCount.count !== 1) {
+          if (confirmedRequestCount.count !== 1) {
             return { response: conflict('訪問依頼はすでに更新されています') };
           }
         }
@@ -165,7 +165,7 @@ export const POST = withAuthContext<{ id: string }>(
             share_case: { status: 'active' },
             owner_partner_pharmacy: { status: 'active' },
             visit_request: {
-              status: parsed.data.decision === 'confirm' ? 'completed' : 'accepted',
+              status: 'submitted',
               partnership: {
                 status: 'active',
                 partner_pharmacy: { status: 'active' },
@@ -199,8 +199,8 @@ export const POST = withAuthContext<{ id: string }>(
 
         if (parsed.data.decision === 'return') {
           await tx.pharmacyVisitRequest.updateMany({
-            where: { id: record.visit_request_id, org_id: ctx.orgId, status: 'completed' },
-            data: { status: 'accepted', completed_at: null },
+            where: { id: record.visit_request_id, org_id: ctx.orgId, status: 'submitted' },
+            data: { status: 'returned', completed_at: null },
           });
         }
 
@@ -271,8 +271,7 @@ export const POST = withAuthContext<{ id: string }>(
             decision: parsed.data.decision,
             previous_status: record.status,
             status: updated.status,
-            visit_request_status:
-              parsed.data.decision === 'confirm' ? 'completed' : record.visit_request.status,
+            visit_request_status: parsed.data.decision === 'confirm' ? 'confirmed' : 'returned',
             doctor_report_required: parsed.data.doctor_report_required,
             return_reason_length: parsed.data.return_reason?.length ?? 0,
           },

@@ -5,6 +5,7 @@ const {
   withOrgContextMock,
   partnerVisitRecordFindManyMock,
   pharmacyVisitRequestFindFirstMock,
+  pharmacyVisitRequestUpdateManyMock,
   sourceVisitRecordFindFirstMock,
   partnerVisitRecordFindFirstMock,
   partnerVisitRecordCreateMock,
@@ -15,6 +16,7 @@ const {
   withOrgContextMock: vi.fn(),
   partnerVisitRecordFindManyMock: vi.fn(),
   pharmacyVisitRequestFindFirstMock: vi.fn(),
+  pharmacyVisitRequestUpdateManyMock: vi.fn(),
   sourceVisitRecordFindFirstMock: vi.fn(),
   partnerVisitRecordFindFirstMock: vi.fn(),
   partnerVisitRecordCreateMock: vi.fn(),
@@ -77,6 +79,7 @@ describe('/api/partner-visit-records POST', () => {
         partner_pharmacy: { status: 'active' },
       },
     });
+    pharmacyVisitRequestUpdateManyMock.mockResolvedValue({ count: 1 });
     sourceVisitRecordFindFirstMock.mockResolvedValue({ id: 'visit_record_1' });
     partnerVisitRecordFindFirstMock.mockResolvedValue(null);
     partnerVisitRecordCreateMock.mockResolvedValue({
@@ -141,6 +144,7 @@ describe('/api/partner-visit-records POST', () => {
       callback({
         pharmacyVisitRequest: {
           findFirst: pharmacyVisitRequestFindFirstMock,
+          updateMany: pharmacyVisitRequestUpdateManyMock,
         },
         visitRecord: {
           findFirst: sourceVisitRecordFindFirstMock,
@@ -227,6 +231,14 @@ describe('/api/partner-visit-records POST', () => {
       }),
       include: expect.any(Object),
     });
+    expect(pharmacyVisitRequestUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'visit_request_1',
+        org_id: 'org_1',
+        status: { in: ['accepted', 'returned'] },
+      },
+      data: { status: 'recording' },
+    });
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
@@ -235,6 +247,8 @@ describe('/api/partner-visit-records POST', () => {
         targetType: 'PartnerVisitRecord',
         targetId: 'partner_visit_record_1',
         changes: expect.objectContaining({
+          visit_request_status_before: 'accepted',
+          visit_request_status_after: 'recording',
           record_content_keys: [
             'medication_adherence',
             'proposals',
