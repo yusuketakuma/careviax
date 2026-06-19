@@ -2399,6 +2399,50 @@ Blocked: C11 (diverged user-visible label strings — product/UX sign-off), C12 
 - Phase 1 still needs actor pharmacy/site context completion in remaining read audits, share-scope update/audit, patient-share-case creation UI, visit request creation UI, and stronger management-plan version evidence.
 - Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
 
+## 20260619-1740 JST - Audit Log Search Vocabulary and PatientShareConsent DB Redaction Slice
+
+### Completed
+
+- Re-read the v0.2 specification around `FR-019`, `SC-011`, `AC-009`, `P1-27`, and `P1-28`, plus the Next.js route handler and PH-OS UI/UX guidance before changing the audit-log UI/API slice.
+- Added shared audit-log filter option vocabulary for consent records, patient-share cases, patient-share consents, patient links, file downloads, care-report print/output actions, and DB-triggered snake_case targets.
+- Updated the admin audit-log page to use the shared filter vocabulary so administrators can search newly added consent/share/file-download events from the UI and export the same filtered set.
+- Added UI/API/export regression coverage for canonical v0.2 audit action names, including the singular `patient_share_consent_registered` and `patient_share_consent_revoked` mutation events.
+- Added a forward migration replacing `PatientShareConsent` DB-triggered audit rows with `ph_os_write_patient_share_consent_audit_log`, redacting raw `consent_person`, `scope`, linked file/consent IDs, and exact consent/validity/revocation dates into counts and flags.
+- Extended the audit trigger contract so `audit_log_patient_share_consent` must use the dedicated redacted trigger function.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/audit-logs/audit-logs-content.tsx`
+- `src/app/(dashboard)/admin/audit-logs/audit-logs-content.test.tsx`
+- `src/lib/audit-logs/filter-options.ts`
+- `src/lib/audit-logs/filter-options.test.ts`
+- `src/app/api/audit-logs/route.test.ts`
+- `src/app/api/audit-logs/export/route.test.ts`
+- `prisma/migrations/20260619173403_redact_patient_share_consent_audit/migration.sql`
+- `src/tools/pharmacy-partnership-db-contract.test.ts`
+- `tools/scripts/audit-trigger-contract.ts`
+- `tools/scripts/audit-trigger-contract.test.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write ... migration.sql`: failed because this repo has no SQL parser configured for Prettier.
+- `pnpm exec prettier --write ...` over touched TS/TSX files: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/audit-logs/audit-logs-content.test.tsx' src/lib/audit-logs/filter-options.test.ts src/app/api/audit-logs/route.test.ts src/app/api/audit-logs/export/route.test.ts src/tools/pharmacy-partnership-db-contract.test.ts tools/scripts/audit-trigger-contract.test.ts src/server/services/file-download-audit.test.ts src/server/services/consent-record-audit.test.ts 'src/app/api/patient-share-cases/[id]/consents/route.test.ts' 'src/app/api/patient-share-cases/[id]/consents/[consentId]/revoke/route.test.ts' --reporter=dot --testTimeout=30000`: passed, 10 files / 64 tests.
+- `pnpm exec eslint ...`: passed for touched UI/API/helper/tool/test files.
+- `pnpm typecheck`: passed.
+- `pnpm exec prisma validate`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Consent document download audit still cannot directly resolve a `ConsentRecord` context because `ConsentRecord` stores only `document_url`; a stronger file-id linkage or resolver remains needed.
+- ConsentRecord expiry/document update UI remains absent; only the API PATCH path is covered.
+- Phase 1 still needs actor pharmacy/site context completion in remaining read audits, share-scope update/audit, patient-share-case creation UI, visit request creation UI, and stronger management-plan version evidence.
+- Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
+
 ## 20260619-1523 JST - Legacy Consent Document Upload Hardening Slice
 
 ### Completed
