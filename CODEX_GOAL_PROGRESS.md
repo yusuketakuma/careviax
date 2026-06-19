@@ -4776,6 +4776,37 @@ Implemented:
 
 - UI/UX remediation remains active. Patient cases, patient contacts, patient master, QR draft, and conferences inputs have focused coverage. Broader remaining candidates include care-team Input/Textarea labels, workflow pharmacy cooperation labels, raw table/DataTable convergence, and expanded browser/a11y proof.
 
+## 20260620-0117 JST - Remaining Patient Detail Input Label Associations
+
+### Summary
+
+- Associated visit-constraint time-range labels with their time inputs using stable `id`/`htmlFor` pairs.
+- Added row-specific accessible names to repeated care-team contact fields and quick-create dialog fields.
+- Extended focused tests for visit time ranges, care-team row fields, and quick-create dialog fields.
+
+### Files Changed
+
+- `src/app/(dashboard)/patients/[id]/visit-constraints-card.tsx`
+- `src/app/(dashboard)/patients/[id]/visit-constraints-card.test.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-care-team-panel.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/visit-constraints-card.tsx' 'src/app/(dashboard)/patients/[id]/visit-constraints-card.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx'`: passed, unchanged.
+- Initial focused visit-constraints Vitest failed because the new assertions used non-current label text; the assertions were corrected to the actual UI labels.
+- `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/visit-constraints-card.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx' --reporter=dot --testTimeout=30000`: passed, 2 files / 4 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/visit-constraints-card.tsx' 'src/app/(dashboard)/patients/[id]/visit-constraints-card.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Patient detail input/select label coverage now includes master, contacts, cases, care team, and visit constraints. Broader remaining candidates include workflow pharmacy cooperation labels, raw table/DataTable convergence, and expanded browser/a11y proof.
+
 ## 20260620-0036 JST - Billing Rule Row Action Names
 
 ### Summary
