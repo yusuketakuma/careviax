@@ -3233,6 +3233,69 @@ Blocked: C11 (diverged user-visible label strings — product/UX sign-off), C12 
 - The workflow UI still needs a message list/posting surface and browser proof for patient-share-case and visit-request message contexts.
 - Direct authenticated browser proof remains blocked until v0.2 migrations are approved/applied to the local e2e DB.
 
+## 20260619-2230 JST - PH-OS Clinical Workbench Language and Common UI Refresh
+
+### Loop UI-0 - Baseline / Protected Surface
+
+- Re-read `docs/ui-ux-design-guidelines.md` before UI edits.
+- Re-confirmed local Next.js 16 docs already read for App Router client boundaries, accessibility, and error handling in this UI goal.
+- Confirmed `/dispense`, `/audit`, `/set`, and `/set-audit` all mount `DispensingWorkbench` through `PageScaffold variant="bare"` with padding/min-height neutralized.
+- Decision: these four main screens remain the visual/interaction base and are not redesigned in this slice. Shared `PageScaffold` updates are limited to general/card pages and do not alter the workbench component itself.
+
+### Loop UI-1 - Research Synthesis
+
+External design research integrated into the PH-OS UI SSOT:
+
+- Apple HIG: fit primary content to the screen, keep controls near modified content, maintain 44pt-class hit targets.
+- Google Material 3 / Expressive: use color, size, shape, and containment to guide attention, while preserving familiar patterns and text labels.
+- Adobe Spectrum 2: prioritize inclusive accessibility, density/contrast adaptation, and clearer focus hierarchy.
+- Zoom Apps: respect operator time and attention through concise wording, consistent flows, and minimal setup.
+- Atlassian Design System: separate foundation, component, and pattern layers so common problems are solved once.
+- NHS / WCAG 2.2: treat accessibility and failure-state clarity as clinical safety concerns.
+
+Adjacent UI candidates evaluated:
+
+| Candidate                                                        | Term  | Priority | Reuse target                               | Decision                                                              |
+| ---------------------------------------------------------------- | ----- | -------- | ------------------------------------------ | --------------------------------------------------------------------- |
+| PH-OS Clinical Workbench Language in UI SSOT                     | Short | High     | `docs/ui-ux-design-guidelines.md`          | Implemented                                                           |
+| General page working-area expansion                              | Short | High     | `PageScaffold`, `PageSection`              | Implemented                                                           |
+| Visible error/empty descriptions and live error announcements    | Short | High     | `ErrorState`, `EmptyState`                 | Implemented                                                           |
+| Data table export/print invalid-state gating and row labels      | Short | High     | `DataTable`                                | Implemented                                                           |
+| Wider clinical workflow dialogs                                  | Short | Medium   | `DialogContent`                            | Implemented and applied to report send dialog                         |
+| Communication/request and patient-packaging query failure states | Mid   | High     | `ErrorState`, query screens                | Deferred to next UI error-state loop                                  |
+| Full visual overhaul of every general screen                     | Long  | High     | shared scaffold/section/table/dialog first | Continue incrementally; direct broad rewrite would duplicate patterns |
+
+### Loop UI-2 - Implementation
+
+Implemented:
+
+- Added `PH-OS Clinical Workbench Language` to `docs/ui-ux-design-guidelines.md`, with the dispensing/audit/set workbench as the canonical base and Apple/Google/Adobe/Zoom/Atlassian/NHS/WCAG synthesis.
+- Updated `PageScaffold` default padding and stack spacing to give general pages a wider, more deliberate work area (`space-y-6`).
+- Updated `PageSection` to use the clinical section marker, slightly tighter radius, wider padding on larger screens, and wrapped action groups.
+- Updated `ErrorState` so descriptions are visible by default and dynamic errors announce via `aria-live="polite"` unless `live="off"` is requested.
+- Updated `EmptyState` so guidance text is visible instead of hidden behind a help popover.
+- Updated `DataTable` with `getRowA11yLabel`, row-aware selection/expand labels, and default export/print disabling for loading, error, and empty states.
+- Applied table row labels to billing candidates and task list rows.
+- Added `DialogContent size` variants and applied `size="2xl"` to the report send confirmation dialog.
+- Ran Prettier on existing dirty pharmacy-cooperation and partner-cooperation billing UI files to restore repository format checks.
+- Preserved existing API, DB schema, permission, audit, and protected workbench flows.
+
+### Validation
+
+- `pnpm exec vitest run src/components/ui/confirm-dialog.test.tsx src/components/ui/switch.test.tsx src/components/ui/data-table.test.tsx src/components/ui/dialog.test.tsx src/components/ui/empty-state.test.tsx src/components/ui/error-state.test.tsx src/components/layout/app-header.test.tsx src/components/layout/sidebar.test.tsx`: passed, 8 files / 47 tests.
+- `pnpm exec vitest run 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-master-card.test.tsx' 'src/app/(dashboard)/reports/[id]/page.test.tsx'`: passed, 6 files / 26 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check`: passed.
+- `pnpm build`: passed with Next.js 16.2.9 webpack build.
+
+### Remaining / Blocked
+
+- Direct authenticated browser proof remains blocked by the existing unapplied v0.2 local e2e DB migrations.
+- Broad visual replacement of every screen should continue through the shared UI layer and representative screen slices, not by parallel one-off page rewrites.
+- Next actionable UI loop: apply the new `ErrorState` contract to high-risk false-empty query screens such as communication requests, patient packaging, schedule proposals, workflow dashboard, and report delivery analytics.
+
 ## 20260619-2216 JST - Pharmacy Cooperation Message UI
 
 ### Completed
@@ -3263,3 +3326,63 @@ Blocked: C11 (diverged user-visible label strings — product/UX sign-off), C12 
 
 - Direct authenticated browser proof for message threads remains blocked until v0.2 migrations are approved/applied to the local e2e DB.
 - Unrelated dirty UI changes remain in the worktree and were not included in this slice's commits.
+
+## 20260619-2217 JST - PH-OS UI Safety and Accessibility Slice
+
+### Completed
+
+- Reused shared `Button` styling in `EmptyState` and `ErrorState` link actions so empty/error recovery actions keep the same 44px target and variant behavior as the rest of PH-OS.
+- Hardened `ConfirmDialog` with unique generated input IDs, optional custom body content, and an external disabled gate while preserving existing call sites.
+- Added Switch hit-area expansion without changing the compact visual size.
+- Connected the sidebar logout button to `next-auth` sign-out and changed the header help shortcut to the actual settings destination.
+- Added rollback and toast feedback when care-mode preference saving fails.
+- Added missing accessible labels to non-native selects in patient master, contacts, care team, conditions, and report send channel flows.
+- Added a confirmation gate to partner-cooperation billing invoice lifecycle actions. PATCH now occurs only after confirmation; `cancel` and `reissue` require a non-empty trimmed reason.
+- Reduced billing-page privacy leakage by replacing raw fetch `error.message` details with a safe fixed support message and by hiding internal invoice IDs from the history table/action labels.
+
+### Files Changed
+
+- `src/components/ui/empty-state.tsx`
+- `src/components/ui/empty-state.test.tsx`
+- `src/components/ui/error-state.tsx`
+- `src/components/ui/error-state.test.tsx`
+- `src/components/ui/confirm-dialog.tsx`
+- `src/components/ui/confirm-dialog.test.tsx`
+- `src/components/ui/switch.tsx`
+- `src/components/ui/switch.test.tsx`
+- `src/components/layout/sidebar.tsx`
+- `src/components/layout/sidebar.test.tsx`
+- `src/components/layout/app-header.tsx`
+- `src/components/layout/app-header.test.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-master-card.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-master-card.test.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-care-team-panel.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-conditions-card.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx`
+- `src/app/(dashboard)/reports/[id]/page.tsx`
+- `src/app/(dashboard)/reports/[id]/page.test.tsx`
+- `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx`
+- `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx`
+- `Plans.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- Baseline `pnpm format:check`: passed before this slice.
+- Baseline `pnpm typecheck`: passed before this slice.
+- Baseline `pnpm lint`: passed before this slice.
+- Targeted Prettier over touched UI/test files: passed.
+- `pnpm exec vitest run src/components/ui/empty-state.test.tsx src/components/ui/error-state.test.tsx src/components/ui/confirm-dialog.test.tsx src/components/ui/switch.test.tsx src/components/layout/sidebar.test.tsx src/components/layout/app-header.test.tsx 'src/app/(dashboard)/patients/[id]/patient-master-card.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-conditions-card.test.tsx' 'src/app/(dashboard)/reports/[id]/page.test.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 12 files / 68 tests.
+- `pnpm format:check`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed.
+- `pnpm build`: passed with Next.js 16.2.9 webpack build.
+
+### Remaining / Next Loop
+
+- Direct authenticated browser proof remains blocked until v0.2 migrations are approved/applied to the local e2e DB.
+- Remaining UI audit candidates include broader DataTable export audit routing, pharmacy-cooperation responsive table density, and expanded axe/browser coverage for reports/workflow/billing/admin pharmacy cooperation routes.
