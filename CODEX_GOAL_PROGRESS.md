@@ -3710,4 +3710,37 @@ Implemented:
 
 ### Remaining / Next Loop
 
-- R-07 is now implemented for visit request / partner visit record / physician report / claim-check transitions. Patient-share-case transition helper remains broader future hardening; DB-backed browser proof and migration application still require explicit approval.
+- R-07 is now implemented for visit request / partner visit record / physician report / claim-check transitions and for patient-share-case consent/link/revoke/activate status transitions. DB-backed browser proof and migration application still require explicit approval.
+
+## 20260619-2325 JST - Patient Share Case Transition Helper
+
+### Summary
+
+- Centralized patient-share-case lifecycle transition rules in `src/server/services/pharmacy-partnerships.ts` with explicit allowed-from contracts for consent registration, patient-link approval/acceptance/decline, consent revoke, and activation.
+- Updated consent registration, patient-link update, consent revoke, and activation routes to use the shared transition helper while preserving existing terminal-case conflicts, active-case decline conflict, activation blocker ordering, audit metadata, and transaction boundaries.
+- Added service-level transition coverage for non-terminal, terminal, activation prerequisite, revoke, and active-decline behavior.
+
+### Files Changed
+
+- `src/server/services/pharmacy-partnerships.ts`
+- `src/server/services/pharmacy-partnerships.test.ts`
+- `src/app/api/patient-share-cases/[id]/activate/route.ts`
+- `src/app/api/patient-share-cases/[id]/consents/route.ts`
+- `src/app/api/patient-share-cases/[id]/patient-link/route.ts`
+- `src/app/api/patient-share-cases/[id]/consents/[consentId]/revoke/route.ts`
+- `docs/pharmacy-cooperation-v0.2-completion-audit.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write src/server/services/pharmacy-partnerships.ts src/server/services/pharmacy-partnerships.test.ts 'src/app/api/patient-share-cases/[id]/activate/route.ts' 'src/app/api/patient-share-cases/[id]/consents/route.ts' 'src/app/api/patient-share-cases/[id]/consents/[consentId]/revoke/route.ts' 'src/app/api/patient-share-cases/[id]/patient-link/route.ts'`: passed.
+- `pnpm exec vitest run src/server/services/pharmacy-partnerships.test.ts 'src/app/api/patient-share-cases/[id]/activate/route.test.ts' 'src/app/api/patient-share-cases/[id]/consents/route.test.ts' 'src/app/api/patient-share-cases/[id]/consents/[consentId]/revoke/route.test.ts' 'src/app/api/patient-share-cases/[id]/patient-link/route.test.ts' 'src/app/api/patient-share-cases/[id]/route.test.ts' src/app/api/patient-share-cases/route.test.ts --reporter=dot --testTimeout=30000`: passed, 7 files / 48 tests.
+- Targeted ESLint over touched patient-share transition files/tests: passed.
+- `pnpm typecheck`: initially failed on a narrowed `allowedFrom.includes` type, then passed after widening the includes check without changing runtime behavior.
+- `pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Patient-share-case transition commonality is now covered for the active v0.2 mutation routes. Broader legacy-wide state-machine modeling, DB-backed browser proof, and migration application remain follow-ups requiring either wider scope or explicit approval.

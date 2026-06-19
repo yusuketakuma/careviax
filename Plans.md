@@ -28,7 +28,7 @@
 - [x] 契約状態管理: `PharmacyContractStatus` を v0.2 仕様の `expired` / `terminated` へ追随し、旧 `ended` / `archived` は migration で rename
 - [x] 患者共有ケース状態管理: `PatientShareCaseStatus` を v0.2 仕様の `consent_pending` / `partner_confirmation_pending` / `declined` へ追随し、旧 `pending_partner` は migration で rename。作成→同意→協力確認→有効化の順序を API/UI/browser proof で固定
 - [x] 訪問依頼状態管理: `PharmacyVisitRequestStatus` を v0.2 仕様の `requested`→`accepted`→`recording`→`submitted`→`confirmed`→`physician_report_created`→`claim_checked` へ追随し、旧 `cancelled` / `expired` は migration で `declined` へ集約
-- [x] 訪問/記録ステータス遷移共通化: `pharmacy-partnerships.ts` に訪問依頼・協力訪問記録の明示的な遷移ルールを追加し、受諾/辞退、記録提出、基幹確認/差戻し、医師報告下書き、請求候補化の status 更新を共通ヘルパー経由に統一
+- [x] 患者共有/訪問/記録ステータス遷移共通化: `pharmacy-partnerships.ts` に患者共有ケース、訪問依頼、協力訪問記録の明示的な遷移ルールを追加し、同意登録、患者リンク承認/辞退、有効化、受諾/辞退、記録提出、基幹確認/差戻し、医師報告下書き、請求候補化の status 更新を共通ヘルパー経由に統一
 - [x] 月次請求状態管理: `PharmacyInvoice` の発行/送付/受領/支払予定/入金/取消/再発行を `PATCH /api/pharmacy-invoices/:id` と月次請求 UI から実行し、`payment_scheduled_for` date-only カラムと `pharmacy_invoice_*` 監査検索語彙まで接続
 - [x] 月次請求 UI 安全化: 請求書/無償報告書の状態更新は確認ダイアログ後のみ実行し、取消/再発行は理由入力を必須化。請求履歴の内部 ID 表示と生エラー詳細表示も抑制
 - [x] 患者別・訪問依頼別メッセージ API/DB: `PharmacyCooperationMessageThread` / `PharmacyCooperationMessage`、有効共有ケース境界、本文 redacted DB 監査、PHI-free 通知サービス連携
