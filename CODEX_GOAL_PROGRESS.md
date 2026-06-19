@@ -5070,6 +5070,65 @@ Implemented:
 
 - Partner-cooperation billing tables now use the shared DataTable contract. UI/UX remediation remains active; next pass should run browser/a11y proof or continue scanning pharmacy-cooperation action names.
 
+## 20260620-0153 JST - Patient Share Consent Revoke Safety
+
+### Summary
+
+- Moved patient-share-consent revoke into the shared pharmacy-cooperation `ConfirmDialog` flow.
+- Required a non-empty trimmed revoke reason before enabling the row action and before sending the mutation body.
+- Made the revoke action destructive and target-specific, with confirmation details for share case, partner pharmacy, consent ID/date, and reason length.
+- Bound the revoke mutation to the consent's own share-case ID so a later selector change cannot retarget the request.
+
+### Files Changed
+
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' tools/tests/ui-route-mocked-smoke.spec.ts`: passed, unchanged.
+- `pnpm exec eslint 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' tools/tests/ui-route-mocked-smoke.spec.ts`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 12 tests after fixing the confirmation detail to show the full consent ID.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+- Focused `rg` scan for revoke wiring: confirmed the revoke mutation is invoked from the pending workflow action path and rejects empty reasons.
+
+### Remaining / Next Loop
+
+- Patient-share-consent revoke now requires reason + confirmation before API execution, and the revoke URL is bound to the target consent's share case. UI/UX remediation remains active; route-mocked browser/a11y proof was expanded in the next grouped test slice.
+
+## 20260620-0154 JST - Partner Billing Route-Mocked Browser Proof
+
+### Summary
+
+- Extended the route-mocked pharmacy-cooperation browser smoke to exercise the new partner billing DataTable search controls.
+- Added monthly document filtering, root overflow checking, and an axe critical/serious scan for the partner-cooperation billing surface.
+- Scoped the PDF link assertion to the generated invoice draft result so repeated links remain unambiguous.
+
+### Files Changed
+
+- `tools/tests/ui-route-mocked-smoke.spec.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `nc -z localhost 3012`: passed.
+- `nc -z localhost 5433`: passed.
+- `PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-route-mocked-smoke.spec.ts --project chromium --grep "pharmacy cooperation route-mocked browser workflow smoke"`: passed, 1 Chromium test in 8.8s on the latest rerun.
+- `pnpm exec eslint tools/tests/ui-route-mocked-smoke.spec.ts`: passed.
+- `pnpm exec eslint 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' tools/tests/ui-route-mocked-smoke.spec.ts`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Partner billing DataTable now has route-mocked browser/a11y proof. UI/UX remediation remains active; next candidates are patient-link acceptance context and repeated workflow/admin row action names.
+
 ## 20260620-0036 JST - Billing Rule Row Action Names
 
 ### Summary
