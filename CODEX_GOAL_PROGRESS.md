@@ -4306,6 +4306,33 @@ Implemented:
 
 - UI/UX remediation remains active. Remaining candidates include pharmacy-cooperation responsive table density, select accessible-name gaps outside fixed/verified screens, raw table/DataTable convergence, and expanded browser/a11y proof.
 
+## 20260620-0057 JST - QR Draft Case Selector Label
+
+### Summary
+
+- Added an explicit accessible name to the QR prescription draft case selector.
+- Added a lightweight accessibility contract test matching existing static source-contract test patterns for route-heavy pages.
+
+### Files Changed
+
+- `src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.tsx`
+- `src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.accessibility.test.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.tsx' 'src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.accessibility.test.ts'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.accessibility.test.ts' 'src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.helpers.test.ts' --reporter=dot --testTimeout=30000`: passed, 2 files / 3 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.tsx' 'src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.accessibility.test.ts'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Remaining candidates include pharmacy-cooperation responsive table density, raw table/DataTable convergence, expanded browser/a11y proof, and broader legacy select/input label scans outside the fixed QR draft case selector.
+
 ## 20260620-0054 JST - Patient Detail Label Associations
 
 ### Summary
