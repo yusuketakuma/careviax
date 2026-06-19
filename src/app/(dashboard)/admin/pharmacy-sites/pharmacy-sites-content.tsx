@@ -352,26 +352,30 @@ export function PharmacySitesContent() {
           </SheetHeader>
           {siteForm && (
             <div className="mt-6 space-y-4">
-              <Field label="薬局名">
+              <Field label="薬局名" htmlFor="pharmacy-site-name">
                 <Input
+                  id="pharmacy-site-name"
                   value={siteForm.name}
                   onChange={(e) => setSiteForm((f) => (f ? { ...f, name: e.target.value } : f))}
                 />
               </Field>
-              <Field label="住所">
+              <Field label="住所" htmlFor="pharmacy-site-address">
                 <Input
+                  id="pharmacy-site-address"
                   value={siteForm.address}
                   onChange={(e) => setSiteForm((f) => (f ? { ...f, address: e.target.value } : f))}
                 />
               </Field>
-              <Field label="電話番号">
+              <Field label="電話番号" htmlFor="pharmacy-site-phone">
                 <Input
+                  id="pharmacy-site-phone"
                   value={siteForm.phone}
                   onChange={(e) => setSiteForm((f) => (f ? { ...f, phone: e.target.value } : f))}
                 />
               </Field>
-              <Field label="FAX">
+              <Field label="FAX" htmlFor="pharmacy-site-fax">
                 <Input
+                  id="pharmacy-site-fax"
                   value={siteForm.fax}
                   onChange={(e) => setSiteForm((f) => (f ? { ...f, fax: e.target.value } : f))}
                 />
@@ -536,7 +540,7 @@ export function PharmacySitesContent() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid gap-4 md:grid-cols-2">
-                    <Field label="保険種別">
+                    <Field label="保険種別" htmlFor="insurance-config-type">
                       <Select
                         value={configForm.insurance_type}
                         onValueChange={(v) => {
@@ -558,7 +562,7 @@ export function PharmacySitesContent() {
                         }}
                         disabled={!!editingConfigId}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger id="insurance-config-type">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -567,7 +571,7 @@ export function PharmacySitesContent() {
                         </SelectContent>
                       </Select>
                     </Field>
-                    <Field label="改定年度">
+                    <Field label="改定年度" htmlFor="insurance-config-revision">
                       <Select
                         value={configForm.revision_code}
                         onValueChange={(v) => {
@@ -587,7 +591,7 @@ export function PharmacySitesContent() {
                         }}
                         disabled={!!editingConfigId}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger id="insurance-config-revision">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -599,8 +603,9 @@ export function PharmacySitesContent() {
                         </SelectContent>
                       </Select>
                     </Field>
-                    <Field label="施行日">
+                    <Field label="施行日" htmlFor="insurance-config-effective-from">
                       <Input
+                        id="insurance-config-effective-from"
                         type="date"
                         value={configForm.effective_from}
                         onChange={(e) =>
@@ -608,8 +613,9 @@ export function PharmacySitesContent() {
                         }
                       />
                     </Field>
-                    <Field label="終了日（空欄=現行）">
+                    <Field label="終了日（空欄=現行）" htmlFor="insurance-config-effective-to">
                       <Input
+                        id="insurance-config-effective-to"
                         type="date"
                         value={configForm.effective_to}
                         onChange={(e) =>
@@ -630,7 +636,11 @@ export function PharmacySitesContent() {
                         return (
                           <>
                             {configFields.map((field) => (
-                              <Field key={field.key} label={field.label}>
+                              <Field
+                                key={field.key}
+                                label={field.label}
+                                htmlFor={`insurance-config-${field.key}`}
+                              >
                                 <Select
                                   value={(configForm.config[field.key] as string) || '__none'}
                                   onValueChange={(v) =>
@@ -647,7 +657,7 @@ export function PharmacySitesContent() {
                                     )
                                   }
                                 >
-                                  <SelectTrigger>
+                                  <SelectTrigger id={`insurance-config-${field.key}`}>
                                     <SelectValue placeholder="選択してください" />
                                   </SelectTrigger>
                                   <SelectContent>
@@ -752,10 +762,20 @@ export function PharmacySitesContent() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  htmlFor: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
-      <Label className="mb-1.5 block">{label}</Label>
+      <Label htmlFor={htmlFor} className="mb-1.5 block">
+        {label}
+      </Label>
       {children}
     </div>
   );
