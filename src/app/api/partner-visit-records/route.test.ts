@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 
 const {
   withOrgContextMock,
+  partnerVisitRecordFindManyMock,
   pharmacyVisitRequestFindFirstMock,
   sourceVisitRecordFindFirstMock,
   partnerVisitRecordFindFirstMock,
@@ -12,6 +13,7 @@ const {
   createAuditLogEntryMock,
 } = vi.hoisted(() => ({
   withOrgContextMock: vi.fn(),
+  partnerVisitRecordFindManyMock: vi.fn(),
   pharmacyVisitRequestFindFirstMock: vi.fn(),
   sourceVisitRecordFindFirstMock: vi.fn(),
   partnerVisitRecordFindFirstMock: vi.fn(),
@@ -44,9 +46,10 @@ vi.mock('@/lib/audit/audit-entry', () => ({
   createAuditLogEntry: createAuditLogEntryMock,
 }));
 
-import { POST as rawPOST } from './route';
+import { GET as rawGET, POST as rawPOST } from './route';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createRequest(body: unknown) {
@@ -101,6 +104,38 @@ describe('/api/partner-visit-records POST', () => {
       visit_request: { id: 'visit_request_1', status: 'accepted', urgency: 'normal' },
       claim_note: null,
     });
+    partnerVisitRecordFindManyMock.mockResolvedValue([
+      {
+        id: 'partner_visit_record_1',
+        org_id: 'org_1',
+        visit_request_id: 'visit_request_1',
+        share_case_id: 'share_case_1',
+        owner_partner_pharmacy_id: 'partner_pharmacy_1',
+        source_visit_record_id: 'visit_record_1',
+        revision_no: 1,
+        status: 'submitted',
+        pharmacist_id: 'pharmacist_1',
+        pharmacist_name: '協力 太郎',
+        visit_at: new Date('2026-06-20T01:30:00.000Z'),
+        submitted_at: new Date('2026-06-20T02:00:00.000Z'),
+        confirmed_at: null,
+        confirmed_by: null,
+        returned_at: null,
+        returned_by: null,
+        created_at: new Date('2026-06-20T01:30:00.000Z'),
+        updated_at: new Date('2026-06-20T02:00:00.000Z'),
+        record_content: {
+          medication_adherence: '患者名 山田花子: 飲み忘れあり',
+          remaining_medications: 'A薬 10錠',
+        },
+        attachments: [{ file_id: 'file_1' }],
+        returned_reason: null,
+        base_confirmation_snapshot: null,
+        owner_partner_pharmacy: { id: 'partner_pharmacy_1', name: '協力薬局', status: 'active' },
+        visit_request: { id: 'visit_request_1', status: 'accepted', urgency: 'normal' },
+        claim_note: null,
+      },
+    ]);
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -111,6 +146,7 @@ describe('/api/partner-visit-records POST', () => {
           findFirst: sourceVisitRecordFindFirstMock,
         },
         partnerVisitRecord: {
+          findMany: partnerVisitRecordFindManyMock,
           findFirst: partnerVisitRecordFindFirstMock,
           create: partnerVisitRecordCreateMock,
           updateMany: partnerVisitRecordUpdateManyMock,
@@ -118,6 +154,42 @@ describe('/api/partner-visit-records POST', () => {
         },
       }),
     );
+  });
+
+  it('lists records only through active patient share cases with active consent', async () => {
+    const response = await GET(
+      new NextRequest(
+        'http://localhost/api/partner-visit-records?share_case_id=share_case_1&status=submitted',
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    const where = partnerVisitRecordFindManyMock.mock.calls[0]?.[0]?.where;
+    expect(where).toEqual(
+      expect.objectContaining({
+        org_id: 'org_1',
+        status: 'submitted',
+        share_case_id: 'share_case_1',
+      }),
+    );
+    expect(where.share_case.is).toEqual(
+      expect.objectContaining({
+        org_id: 'org_1',
+        status: 'active',
+        partnership: {
+          status: 'active',
+          partner_pharmacy: { status: 'active' },
+        },
+      }),
+    );
+    expect(JSON.stringify(where.share_case.is)).toContain('"revoked_at":null');
+    expect(JSON.stringify(where.share_case.is)).toContain('"valid_until":null');
+    const responseText = JSON.stringify(await response.json());
+    expect(responseText).toContain('has_record_content');
+    expect(responseText).toContain('attachment_count');
+    expect(responseText).not.toContain('山田花子');
+    expect(responseText).not.toContain('飲み忘れ');
+    expect(responseText).not.toContain('A薬');
   });
 
   it('creates a partner-owned draft record for an accepted request without auditing clinical content', async () => {

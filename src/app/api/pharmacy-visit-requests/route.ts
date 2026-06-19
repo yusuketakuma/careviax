@@ -10,6 +10,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { visitTypeValues } from '@/lib/validations/visit-schedule';
+import { buildActivePatientShareCaseReadWhere } from '@/server/services/patient-share-access';
 
 const visitRequestStatusSchema = z.enum([
   'draft',
@@ -228,6 +229,7 @@ export const GET = withAuthContext(
 
     const shareCaseId = optionalSearchParam(searchParams.get('share_case_id'));
     const partnerPharmacyId = optionalSearchParam(searchParams.get('partner_pharmacy_id'));
+    const now = new Date();
 
     const rows = await withOrgContext(ctx.orgId, (tx) =>
       tx.pharmacyVisitRequest.findMany({
@@ -236,6 +238,7 @@ export const GET = withAuthContext(
           ...(status ? { status: status.data } : {}),
           ...(shareCaseId ? { share_case_id: shareCaseId } : {}),
           ...(partnerPharmacyId ? { partner_pharmacy_id: partnerPharmacyId } : {}),
+          share_case: { is: buildActivePatientShareCaseReadWhere({ orgId: ctx.orgId, asOf: now }) },
         },
         take: limit + 1,
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),

@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 
 const {
   withOrgContextMock,
+  pharmacyVisitRequestFindManyMock,
   patientShareCaseFindFirstMock,
   pharmacyContractFindFirstMock,
   pharmacyContractVersionFindFirstMock,
@@ -10,6 +11,7 @@ const {
   createAuditLogEntryMock,
 } = vi.hoisted(() => ({
   withOrgContextMock: vi.fn(),
+  pharmacyVisitRequestFindManyMock: vi.fn(),
   patientShareCaseFindFirstMock: vi.fn(),
   pharmacyContractFindFirstMock: vi.fn(),
   pharmacyContractVersionFindFirstMock: vi.fn(),
@@ -40,9 +42,10 @@ vi.mock('@/lib/audit/audit-entry', () => ({
   createAuditLogEntry: createAuditLogEntryMock,
 }));
 
-import { POST as rawPOST } from './route';
+import { GET as rawGET, POST as rawPOST } from './route';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createRequest(body: unknown) {
@@ -102,6 +105,40 @@ describe('/api/pharmacy-visit-requests POST', () => {
       partner_pharmacy: { id: 'partner_pharmacy_1', name: '協力薬局', status: 'active' },
       partnership: { id: 'partnership_1', base_site: { id: 'site_1', name: '基幹薬局' } },
     });
+    pharmacyVisitRequestFindManyMock.mockResolvedValue([
+      {
+        id: 'visit_request_1',
+        org_id: 'org_1',
+        share_case_id: 'share_case_1',
+        partnership_id: 'partnership_1',
+        partner_pharmacy_id: 'partner_pharmacy_1',
+        requested_by: 'user_1',
+        urgency: 'normal',
+        desired_start_at: new Date('2026-06-20T01:00:00.000Z'),
+        desired_end_at: null,
+        visit_type: 'regular',
+        status: 'requested',
+        contract_id: 'contract_1',
+        contract_version_id: 'contract_version_1',
+        estimated_amount: 5500,
+        estimated_snapshot: { estimate_status: 'estimated' },
+        accepted_by: null,
+        accepted_at: null,
+        declined_by: null,
+        declined_at: null,
+        cancelled_at: null,
+        completed_at: null,
+        created_at: new Date('2026-06-18T00:00:00.000Z'),
+        updated_at: new Date('2026-06-18T00:00:00.000Z'),
+        request_reason: '患者名 山田花子: 訪問依頼',
+        physician_instruction: '医師指示',
+        carry_items: { medication: ['A薬'] },
+        patient_home_notes: '玄関暗証番号',
+        decline_reason: null,
+        partner_pharmacy: { id: 'partner_pharmacy_1', name: '協力薬局', status: 'active' },
+        partnership: { id: 'partnership_1', base_site: { id: 'site_1', name: '基幹薬局' } },
+      },
+    ]);
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -115,10 +152,46 @@ describe('/api/pharmacy-visit-requests POST', () => {
           findFirst: pharmacyContractVersionFindFirstMock,
         },
         pharmacyVisitRequest: {
+          findMany: pharmacyVisitRequestFindManyMock,
           create: pharmacyVisitRequestCreateMock,
         },
       }),
     );
+  });
+
+  it('lists requests only through active patient share cases with active consent', async () => {
+    const response = await GET(
+      new NextRequest(
+        'http://localhost/api/pharmacy-visit-requests?share_case_id=share_case_1&status=requested',
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    const where = pharmacyVisitRequestFindManyMock.mock.calls[0]?.[0]?.where;
+    expect(where).toEqual(
+      expect.objectContaining({
+        org_id: 'org_1',
+        status: 'requested',
+        share_case_id: 'share_case_1',
+      }),
+    );
+    expect(where.share_case.is).toEqual(
+      expect.objectContaining({
+        org_id: 'org_1',
+        status: 'active',
+        partnership: {
+          status: 'active',
+          partner_pharmacy: { status: 'active' },
+        },
+      }),
+    );
+    expect(JSON.stringify(where.share_case.is)).toContain('"revoked_at":null');
+    expect(JSON.stringify(where.share_case.is)).toContain('"valid_until":null');
+    const responseText = JSON.stringify(await response.json());
+    expect(responseText).toContain('has_request_reason');
+    expect(responseText).not.toContain('山田花子');
+    expect(responseText).not.toContain('医師指示');
+    expect(responseText).not.toContain('A薬');
   });
 
   it('creates a requested visit request with an active contract estimate and compact audit', async () => {

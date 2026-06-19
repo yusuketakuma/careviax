@@ -6,6 +6,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
+import { buildActivePatientShareCaseReadWhere } from '@/server/services/patient-share-access';
 import { canEditPharmacyOwnedData } from '@/server/services/pharmacy-partnerships';
 
 const partnerVisitRecordStatusSchema = z.enum([
@@ -95,6 +96,7 @@ export const GET = withAuthContext(
 
     const visitRequestId = optionalSearchParam(searchParams.get('visit_request_id'));
     const shareCaseId = optionalSearchParam(searchParams.get('share_case_id'));
+    const now = new Date();
 
     const rows = await withOrgContext(ctx.orgId, (tx) =>
       tx.partnerVisitRecord.findMany({
@@ -103,6 +105,7 @@ export const GET = withAuthContext(
           ...(status ? { status: status.data } : {}),
           ...(visitRequestId ? { visit_request_id: visitRequestId } : {}),
           ...(shareCaseId ? { share_case_id: shareCaseId } : {}),
+          share_case: { is: buildActivePatientShareCaseReadWhere({ orgId: ctx.orgId, asOf: now }) },
         },
         take: limit + 1,
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
