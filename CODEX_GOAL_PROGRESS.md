@@ -3232,3 +3232,32 @@ Blocked: C11 (diverged user-visible label strings — product/UX sign-off), C12 
 - Migration was generated and validated but not applied to any database.
 - The workflow UI still needs a message list/posting surface and browser proof for patient-share-case and visit-request message contexts.
 - Direct authenticated browser proof remains blocked until v0.2 migrations are approved/applied to the local e2e DB.
+
+## 20260619-2216 JST - Pharmacy Cooperation Message UI
+
+### Completed
+
+- Connected the pharmacy cooperation workflow UI to `GET/POST /api/pharmacy-cooperation-message-threads`.
+- Added an active-share-case scoped message panel with a patient-share-case thread target and optional visit-request target.
+- Added message posting with trimmed body submission, existing org header handling, workflow cache invalidation, and busy/error handling aligned with the rest of the workflow.
+- Added UI coverage for listing a patient-share-case message, switching to a visit-request message thread, and posting a visit-request-scoped message.
+
+### Files Changed
+
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`
+- `Plans.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- Targeted Prettier over the two touched workflow files: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`: passed, 1 file / 9 tests.
+- Targeted `pnpm exec eslint` over the two touched workflow files: passed.
+- `pnpm typecheck`: failed on unrelated dirty tests outside this slice: `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx` and `src/components/ui/confirm-dialog.test.tsx` use `toBeDisabled` without the current assertion type extension.
+
+### Remaining / Next Loop
+
+- Direct authenticated browser proof for message threads remains blocked until v0.2 migrations are approved/applied to the local e2e DB.
+- Repo-level typecheck currently remains blocked by unrelated dirty UI/test changes in the worktree.
