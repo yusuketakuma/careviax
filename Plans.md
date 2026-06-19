@@ -23,8 +23,8 @@
 
 - [x] v0.2 仕様を上位版 SSOT として扱い、既存コード側を仕様に合わせる運用へ更新
 - [x] 薬局間連携の基盤モデル/API: 連携薬局、提携、患者共有ケース、患者リンク、訂正依頼、訪問依頼、訪問記録、契約、請求候補、月次請求/無償報告、医師報告下書き
-- [x] 契約文書 API foundation: 契約書テンプレート第1-23条検証、契約版/費用条件表プレビュー、`ContractDocument` 保存、署名済み PDF file attach、本文非保存のメタ監査
-- [x] 契約書作成 UI: 管理セットアップ画面から契約書テンプレート選択、費用条件表プレビュー、`ContractDocument` 保存、署名済み PDF FileAsset 添付メタデータ入力、保存済み契約書一覧確認までを接続
+- [x] 契約文書 API foundation: 契約書テンプレート第1-23条検証、契約版/費用条件表プレビュー、`ContractDocument` 保存、契約書 PDF 生成/保存、署名済み PDF upload attach、本文非保存のメタ監査
+- [x] 契約書作成 UI: 管理セットアップ画面から契約書テンプレート選択、費用条件表プレビュー、契約書 PDF 生成保存、署名済み PDF アップロード、`ContractDocument` 保存、保存済み契約書一覧確認までを接続
 - [x] 契約状態管理: `PharmacyContractStatus` を v0.2 仕様の `expired` / `terminated` へ追随し、旧 `ended` / `archived` は migration で rename
 - [x] 患者共有ケース状態管理: `PatientShareCaseStatus` を v0.2 仕様の `consent_pending` / `partner_confirmation_pending` / `declined` へ追随し、旧 `pending_partner` は migration で rename。作成→同意→協力確認→有効化の順序を API/UI/browser proof で固定
 - [x] 訪問依頼状態管理: `PharmacyVisitRequestStatus` を v0.2 仕様の `requested`→`accepted`→`recording`→`submitted`→`confirmed`→`physician_report_created`→`claim_checked` へ追随し、旧 `cancelled` / `expired` は migration で `declined` へ集約

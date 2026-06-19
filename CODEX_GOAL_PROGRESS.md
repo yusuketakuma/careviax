@@ -3050,3 +3050,49 @@ Blocked: C11 (diverged user-visible label strings — product/UX sign-off), C12 
 - This UI uses the existing FileAsset ID attach contract; first-party upload controls for signed contract PDFs can be added later if operators should upload from the same panel.
 - First-party binary PDF generation/storage for unsigned contract previews remains a follow-up if required before full v0.2 close.
 - Direct authenticated browser proof remains blocked until v0.2 migrations are approved/applied to the local e2e DB.
+
+## 20260619-2125 JST - Contract Document PDF Storage And Upload
+
+### Completed
+
+- Added first-party contract document PDF rendering from the frozen contract preview snapshot and attached generated PDFs to saved `ContractDocument` rows.
+- Added `contract-document` as a dedicated FileAsset purpose for both generated PDFs and signed-PDF uploads, with PDF-only MIME validation, contract-document storage prefixes, 7-year default retention metadata, KMS/report-key reuse, and canonical FileAsset write failure as a hard failure for contract documents.
+- Replaced manual signed PDF FileAsset ID entry in the pharmacy cooperation setup UI with the normal `presigned-upload -> PUT -> complete` upload flow, then saved the completed FileAsset ID through the contract document API.
+- Tightened signed-file validation so `signed_file_id` must be an uploaded, unused, same-org `contract-document` PDF without patient/visit/report/job references.
+- Minimized contract document creation audit metadata by removing contract body, file IDs, signed date values, hash, billing amount, billing model, and tax category from the audit payload.
+- Added contract-document context to file download audit resolution so downloads record contract document/contract/version identifiers without filenames, storage keys, signed URLs, hashes, contract body, patient data, or fee values.
+- Restricted contract-document listing to `canManagePatientSharing`, matching create/upload/download access expectations.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx`
+- `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx`
+- `src/app/api/files/[id]/download/route.ts`
+- `src/app/api/files/[id]/presigned-download/route.ts`
+- `src/app/api/files/presigned-upload/route.ts`
+- `src/app/api/files/presigned-upload/route.test.ts`
+- `src/app/api/pharmacy-contracts/[id]/documents/route.ts`
+- `src/app/api/pharmacy-contracts/[id]/documents/route.test.ts`
+- `src/server/services/file-download-audit.ts`
+- `src/server/services/file-download-audit.test.ts`
+- `src/server/services/file-storage.ts`
+- `src/server/services/file-storage.test.ts`
+- `src/server/services/pdf-pharmacy-contract-document.tsx`
+- `src/server/services/pdf-pharmacy-contract-document.test.tsx`
+- `Plans.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm vitest run 'src/app/api/pharmacy-contracts/[id]/documents/route.test.ts' src/server/services/file-storage.test.ts src/server/services/pdf-pharmacy-contract-document.test.tsx 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' src/app/api/files/presigned-upload/route.test.ts src/server/services/file-download-audit.test.ts 'src/app/api/files/[id]/download/route.test.ts' 'src/app/api/files/[id]/presigned-download/route.test.ts' --reporter=dot --testTimeout=30000`: passed, 8 files / 135 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Real S3/DB upload/download was not executed in this slice; behavior is covered by unit/component tests and existing file API abstractions.
+- Direct authenticated browser proof remains blocked until v0.2 migrations are approved/applied to the local e2e DB.
+- New migrations were not applied to any database in this slice.
