@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import {
   differenceInYears,
   format,
@@ -3730,6 +3730,18 @@ function CardTodayPanel({ tasks }: { tasks: PatientWorkspaceTodayTask[] }) {
   );
 }
 
+// 患者カードは最頻アクセス画面で、presence heartbeat や 17 本のクエリ/ミューテーション更新の
+// たびに本体が再レンダリングされる。これらのパネルは props がすべてクエリ data / 安定参照
+// (react-query の data・mutate、idle時 null の primitive) のため、React.memo で無関係な
+// 再レンダリングを抑止できる。表示内容は不変。
+const PatientFoundationPanelMemo = memo(PatientFoundationPanel);
+const PatientProfilePanelMemo = memo(PatientProfilePanel);
+const PatientHomeOperationsPanelMemo = memo(PatientHomeOperationsPanel);
+const PatientShareCaseCreatePanelMemo = memo(PatientShareCaseCreatePanel);
+const PatientCardDocumentsPanelMemo = memo(PatientCardDocumentsPanel);
+const PatientVisitPreparationPanelMemo = memo(PatientVisitPreparationPanel);
+const CardTodayPanelMemo = memo(CardTodayPanel);
+
 export function CardWorkspace({
   patientId,
   initialPatient = null,
@@ -4187,9 +4199,9 @@ export function CardWorkspace({
     return (
       <div className="space-y-6" data-testid="card-workspace">
         {headerRow}
-        <PatientFoundationPanel patient={patient} />
-        <PatientProfilePanel patient={patient} />
-        <PatientHomeOperationsPanel
+        <PatientFoundationPanelMemo patient={patient} />
+        <PatientProfilePanelMemo patient={patient} />
+        <PatientHomeOperationsPanelMemo
           patient={patient}
           operations={homeOperations}
           markingFaxOriginalIntakeId={
@@ -4240,9 +4252,9 @@ export function CardWorkspace({
           onRecordConferenceNote={recordConferenceNoteMutation.mutate}
           onRecordMcsCheckLog={recordMcsCheckLogMutation.mutate}
         />
-        <PatientShareCaseCreatePanel patient={patient} orgId={orgId} />
-        <PatientCardDocumentsPanel patient={patient} orgId={orgId} />
-        <PatientVisitPreparationPanel patient={patient} />
+        <PatientShareCaseCreatePanelMemo patient={patient} orgId={orgId} />
+        <PatientCardDocumentsPanelMemo patient={patient} orgId={orgId} />
+        <PatientVisitPreparationPanelMemo patient={patient} />
         <EmptyState
           icon={FileQuestion}
           title="進行中のカードがありません"
@@ -4347,9 +4359,9 @@ export function CardWorkspace({
       {/* 本文を圧迫しないため、補助3点セットは上部バーから開く右ドロワーへ移す。 */}
       <div className="space-y-4">
         <div className="min-w-0 space-y-4">
-          <PatientFoundationPanel patient={patient} />
-          <PatientProfilePanel patient={patient} />
-          <PatientHomeOperationsPanel
+          <PatientFoundationPanelMemo patient={patient} />
+          <PatientProfilePanelMemo patient={patient} />
+          <PatientHomeOperationsPanelMemo
             patient={patient}
             operations={homeOperations}
             markingFaxOriginalIntakeId={
@@ -4400,9 +4412,9 @@ export function CardWorkspace({
             onRecordConferenceNote={recordConferenceNoteMutation.mutate}
             onRecordMcsCheckLog={recordMcsCheckLogMutation.mutate}
           />
-          <PatientShareCaseCreatePanel patient={patient} orgId={orgId} />
-          <PatientCardDocumentsPanel patient={patient} orgId={orgId} />
-          <PatientVisitPreparationPanel patient={patient} />
+          <PatientShareCaseCreatePanelMemo patient={patient} orgId={orgId} />
+          <PatientCardDocumentsPanelMemo patient={patient} orgId={orgId} />
+          <PatientVisitPreparationPanelMemo patient={patient} />
 
           {/* セーフティボード: どの工程でも常時表示。危険タグは絶対に隠さない */}
           <SafetyBoard
@@ -4530,7 +4542,7 @@ export function CardWorkspace({
         </div>
 
         <aside className="space-y-4" aria-label="このカードに紐づく今日">
-          <CardTodayPanel tasks={workspace.today_tasks} />
+          <CardTodayPanelMemo tasks={workspace.today_tasks} />
           <WorkspaceActionRail
             nextAction={nextAction}
             blockedReasons={blockedReasons}

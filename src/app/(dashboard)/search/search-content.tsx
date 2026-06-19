@@ -95,13 +95,16 @@ export function SearchContent({
   // 担当者選択肢を一度だけ取得
   useEffect(() => {
     if (!orgId) return;
-    void fetch('/api/pharmacists', { headers: { 'x-org-id': orgId } })
+    // unmount/orgId変更で in-flight を中断し、teardown後の setState と stale 上書きを防ぐ
+    const controller = new AbortController();
+    void fetch('/api/pharmacists', { headers: { 'x-org-id': orgId }, signal: controller.signal })
       .then((res) => (res.ok ? res.json() : null))
       .then((payload: { data?: Array<{ user: { id: string; name: string } }> } | null) => {
         if (!payload?.data) return;
         setPharmacists(payload.data.map((m) => ({ id: m.user.id, name: m.user.name })));
       })
       .catch(() => undefined);
+    return () => controller.abort();
   }, [orgId]);
 
   const handleCategoryChange = useCallback(

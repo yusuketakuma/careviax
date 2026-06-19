@@ -35,6 +35,17 @@ export default function MfaSetupPage() {
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const [setupLoading, setSetupLoading] = useState(true);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // コピー完了トグルのタイマーを unmount 時に確実にクリア（unmount 後 setState 防止）
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) {
+        clearTimeout(copyTimerRef.current);
+        copyTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const setRef = useCallback(
     (index: number) => (el: HTMLInputElement | null) => {
@@ -191,7 +202,11 @@ export default function MfaSetupPage() {
         recoveryCodes.length > 0 ? recoveryCodes.join('\n') : secretCode || otpauthUri,
       );
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => {
+        copyTimerRef.current = null;
+        setCopied(false);
+      }, 2000);
     } catch {
       // Fallback: select text for manual copy
     }

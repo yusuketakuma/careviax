@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { PatientForm } from './patient-form';
@@ -184,5 +184,66 @@ describe('PatientForm', () => {
       name: '山田 太郎',
       duplicate_acknowledged: true,
     });
+  });
+
+  it('ignores a superseded duplicate-check response after the inputs change (stale race)', async () => {
+    vi.useFakeTimers();
+    try {
+      useOrgIdMock.mockReturnValue('org_1');
+      useQueryMock.mockReturnValue({ data: [], isLoading: false });
+      const fetchMock = vi.mocked(fetch);
+
+      // 1本目の重複チェック: 後で stale なレスポンスを解決できるよう保留にする
+      let resolveFirst: ((res: Response) => void) | undefined;
+      let firstSignal: AbortSignal | undefined;
+      fetchMock.mockImplementationOnce((_url, init) => {
+        firstSignal = (init as RequestInit | undefined)?.signal ?? undefined;
+        return new Promise<Response>((resolve) => {
+          resolveFirst = resolve;
+        });
+      });
+      // 2本目以降は保留(解決しない)
+      fetchMock.mockImplementation(() => new Promise<Response>(() => {}));
+
+      render(<PatientForm />);
+      fillRequiredPatientFields();
+
+      // 500ms デバウンス経過 → 1本目の checkDuplicate 発火
+      await act(async () => {
+        vi.advanceTimersByTime(500);
+      });
+      expect(fetchMock).toHaveBeenCalled();
+      expect(firstSignal?.aborted).toBe(false);
+
+      // 入力変更 → 直前 effect の cleanup が controller.abort() を呼ぶ
+      fireEvent.change(screen.getByLabelText('氏名 *'), { target: { value: '山田 次郎' } });
+      await act(async () => {
+        vi.advanceTimersByTime(0);
+      });
+      expect(firstSignal?.aborted).toBe(true);
+
+      // abort 後に 1本目の stale レスポンスを解決 → guard により setDuplicates されない
+      await act(async () => {
+        resolveFirst?.({
+          ok: true,
+          json: async () => ({
+            duplicates: [
+              {
+                id: 'patient_stale',
+                name: '山田 太郎',
+                name_kana: 'ヤマダ タロウ',
+                birth_date: '1950-01-01T00:00:00.000Z',
+                gender: 'male',
+              },
+            ],
+          }),
+        } as Response);
+        vi.advanceTimersByTime(0);
+      });
+
+      expect(screen.queryByText('同名の患者が存在します:')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

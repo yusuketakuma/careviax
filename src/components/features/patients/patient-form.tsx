@@ -379,18 +379,21 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
   );
 
   const checkDuplicate = useCallback(
-    async (name: string, birthDate: string, gender: string) => {
+    async (name: string, birthDate: string, gender: string, signal?: AbortSignal) => {
       try {
         const params = new URLSearchParams({ name, date_of_birth: birthDate, gender });
         const res = await fetch(`/api/patients/check-duplicate?${params}`, {
           headers: { 'x-org-id': orgId },
+          signal,
         });
         if (res.ok) {
           const data = await res.json();
+          // 解決済みレスポンスの json parse 中に abort された場合、古い結果での上書きを防ぐ
+          if (signal?.aborted) return;
           setDuplicates(data.duplicates ?? []);
         }
       } catch {
-        // Silently ignore duplicate check errors
+        // Silently ignore duplicate check errors (incl. AbortError for superseded requests)
       }
     },
     [orgId],
@@ -453,13 +456,16 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
       return;
     }
 
+    const controller = new AbortController();
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      checkDuplicate(watchedName.trim(), watchedBirthDate, watchedGender);
+      checkDuplicate(watchedName.trim(), watchedBirthDate, watchedGender, controller.signal);
     }, 500);
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      // 入力が更新されたら進行中の重複チェックを中断し、古いレスポンスでの上書きを防ぐ
+      controller.abort();
     };
   }, [patientId, watchedName, watchedBirthDate, watchedGender, checkDuplicate]);
 

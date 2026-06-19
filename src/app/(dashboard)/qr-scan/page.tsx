@@ -47,6 +47,7 @@ import {
   type JahisQRData,
   type JahisParseResult,
 } from '@/lib/pharmacy/jahis-qr';
+import type { IScannerControls } from '@zxing/browser';
 import { buildQrScanDraftPayload } from './qr-scan-draft-payload';
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -82,6 +83,7 @@ export default function QRScanPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const readerRef = useRef<unknown>(null);
+  const controlsRef = useRef<IScannerControls | null>(null);
 
   const [phase, setPhase] = useState<ScanPhase>('camera');
   const [cameraActive, setCameraActive] = useState(false);
@@ -104,6 +106,16 @@ export default function QRScanPage() {
 
   // ── カメラ停止 ──
   const stopCamera = useCallback(() => {
+    // ZXing の継続デコードを停止（コールバックループ + 参照のリーク防止）
+    if (controlsRef.current) {
+      try {
+        controlsRef.current.stop();
+      } catch {
+        // 停止済み等は無視
+      }
+      controlsRef.current = null;
+    }
+    readerRef.current = null;
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
@@ -227,30 +239,57 @@ export default function QRScanPage() {
   }, [handleQRResult]);
 
   // ── カメラ起動 ──
-  const startCamera = useCallback(async () => {
+  const startCamera = useCallback(async (isCancelled?: () => boolean) => {
     setCameraError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
       });
+      // await 中に phase 変更/unmount でキャンセルされた場合、後発 stream を確実に解放
+      if (isCancelled?.()) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
       streamRef.current = stream;
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
+        if (isCancelled?.()) {
+          stream.getTracks().forEach((t) => t.stop());
+          streamRef.current = null;
+          return;
+        }
         setCameraActive(true);
       }
 
       // @zxing/browser を dynamic import
       const { BrowserQRCodeReader } = await import('@zxing/browser');
+      if (isCancelled?.()) {
+        stream.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+        return;
+      }
       const reader = new BrowserQRCodeReader();
       readerRef.current = reader;
 
-      reader.decodeFromVideoElement(videoRef.current!, (result) => {
+      const controls = await reader.decodeFromVideoElement(videoRef.current!, (result) => {
+        // ZXing は controls を返す前に scan() を開始しうるため、callback 自身でも
+        // キャンセル済み(phase変更/unmount)を確認し、teardown後の副作用を防ぐ
+        if (isCancelled?.()) return;
         if (result) {
           handleQRResultRef.current(result.getText());
         }
       });
+      // controls 取得までの間にキャンセルされたら即停止
+      if (isCancelled?.()) {
+        controls.stop();
+        stream.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+        readerRef.current = null;
+        return;
+      }
+      controlsRef.current = controls;
     } catch (err) {
       const message =
         err instanceof DOMException && err.name === 'NotAllowedError'
@@ -273,16 +312,20 @@ export default function QRScanPage() {
 
       const img = new Image();
       const url = URL.createObjectURL(file);
-      img.src = url;
+      try {
+        img.src = url;
 
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
-      });
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
+        });
 
-      const result = await reader.decodeFromImageElement(img);
-      URL.revokeObjectURL(url);
-      handleQRResultRef.current(result.getText());
+        const result = await reader.decodeFromImageElement(img);
+        handleQRResultRef.current(result.getText());
+      } finally {
+        // decode 失敗時も Blob URL を確実に解放（リーク防止）
+        URL.revokeObjectURL(url);
+      }
     } catch {
       setCameraError('QRコードを画像から読み取れませんでした。鮮明な画像をお試しください。');
     }
@@ -353,9 +396,11 @@ export default function QRScanPage() {
       return;
     }
 
-    const timer = window.setTimeout(() => startCamera(), 0);
+    let cancelled = false;
+    const timer = window.setTimeout(() => startCamera(() => cancelled), 0);
 
     return () => {
+      cancelled = true;
       window.clearTimeout(timer);
       stopCamera();
     };
@@ -476,7 +521,7 @@ export default function QRScanPage() {
                     variant="outline"
                     size="sm"
                     className="min-h-[44px] sm:min-h-0"
-                    onClick={startCamera}
+                    onClick={() => startCamera()}
                   >
                     <Camera className="mr-1.5 h-4 w-4" />
                     再試行
