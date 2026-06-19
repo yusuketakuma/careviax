@@ -53,7 +53,7 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
     vi.clearAllMocks();
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
-      status: 'pending_partner',
+      status: 'partner_confirmation_pending',
       starts_at: new Date('2026-06-01T00:00:00.000Z'),
       ends_at: new Date('2026-06-19T00:00:00.000Z'),
       base_pharmacy_approved_by: 'base_user',
@@ -105,7 +105,7 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
   it('rejects activation without active consent before update or audit side effects', async () => {
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
-      status: 'pending_partner',
+      status: 'partner_confirmation_pending',
       starts_at: new Date('2026-06-01T00:00:00.000Z'),
       ends_at: new Date('2026-12-31T00:00:00.000Z'),
       base_pharmacy_approved_by: 'base_user',
@@ -147,7 +147,7 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
   it('rejects activation when share-case and patient-link approvals drift', async () => {
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
-      status: 'pending_partner',
+      status: 'partner_confirmation_pending',
       starts_at: new Date('2026-06-01T00:00:00.000Z'),
       ends_at: new Date('2026-12-31T00:00:00.000Z'),
       base_pharmacy_approved_by: 'base_user',
@@ -193,7 +193,7 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
   it('rejects activation for inactive partner pharmacies before update or audit side effects', async () => {
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
-      status: 'pending_partner',
+      status: 'partner_confirmation_pending',
       starts_at: new Date('2026-06-01T00:00:00.000Z'),
       ends_at: new Date('2026-12-31T00:00:00.000Z'),
       base_pharmacy_approved_by: 'base_user',
@@ -237,7 +237,7 @@ describe('/api/patient-share-cases/[id]/activate POST', () => {
   it('rejects activation without partner identity proof before update or audit side effects', async () => {
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
-      status: 'pending_partner',
+      status: 'partner_confirmation_pending',
       starts_at: new Date('2026-06-01T00:00:00.000Z'),
       ends_at: new Date('2026-12-31T00:00:00.000Z'),
       base_pharmacy_approved_by: 'base_user',

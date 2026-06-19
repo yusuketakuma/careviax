@@ -43,6 +43,11 @@ vi.mock('@/lib/audit/audit-entry', () => ({
 import { PATCH as rawPATCH } from './route';
 
 const routeContext = { params: Promise.resolve({ id: 'share_case_1' }) };
+const ACTIVE_CONSENT = {
+  consent_date: new Date('2026-06-01T00:00:00.000Z'),
+  valid_until: null,
+  revoked_at: null,
+};
 
 function createRequest(body: unknown) {
   return new NextRequest('http://localhost/api/patient-share-cases/share_case_1/patient-link', {
@@ -59,9 +64,10 @@ describe('/api/patient-share-cases/[id]/patient-link PATCH', () => {
     vi.clearAllMocks();
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
-      status: 'draft',
+      status: 'partner_confirmation_pending',
       base_pharmacy_approved_by: null,
       partner_pharmacy_approved_by: null,
+      consents: [ACTIVE_CONSENT],
       patient_link: {
         id: 'patient_link_1',
         match_status: 'pending',
@@ -81,7 +87,7 @@ describe('/api/patient-share-cases/[id]/patient-link PATCH', () => {
     });
     patientShareCaseUpdateMock.mockResolvedValue({
       id: 'share_case_1',
-      status: 'pending_partner',
+      status: 'partner_confirmation_pending',
       updated_at: new Date('2026-06-19T00:00:00.000Z'),
     });
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
@@ -116,7 +122,7 @@ describe('/api/patient-share-cases/[id]/patient-link PATCH', () => {
     expect(patientShareCaseUpdateMock).toHaveBeenCalledWith({
       where: { id_org_id: { id: 'share_case_1', org_id: 'org_1' } },
       data: {
-        status: 'pending_partner',
+        status: 'partner_confirmation_pending',
         base_pharmacy_approved_by: 'user_1',
         base_pharmacy_approved_at: new Date('2026-06-19T00:00:00.000Z'),
         updated_by: 'user_1',
@@ -150,9 +156,10 @@ describe('/api/patient-share-cases/[id]/patient-link PATCH', () => {
   it('accepts only pending links and writes compact audit metadata without snapshots', async () => {
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
-      status: 'pending_partner',
+      status: 'partner_confirmation_pending',
       base_pharmacy_approved_by: 'base_user',
       partner_pharmacy_approved_by: null,
+      consents: [ACTIVE_CONSENT],
       patient_link: {
         id: 'patient_link_1',
         match_status: 'pending',
@@ -225,12 +232,66 @@ describe('/api/patient-share-cases/[id]/patient-link PATCH', () => {
     expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('東京都港区1-2-3');
   });
 
+  it('declines a pending link and closes the share case as declined', async () => {
+    patientLinkFindUniqueOrThrowMock.mockResolvedValueOnce({
+      id: 'patient_link_1',
+      match_status: 'declined',
+    });
+    patientShareCaseUpdateMock.mockResolvedValueOnce({
+      id: 'share_case_1',
+      status: 'declined',
+      updated_at: new Date('2026-06-19T00:00:00.000Z'),
+    });
+
+    const response = await rawPATCH(
+      createRequest({ decision: 'decline', decline_reason: '別人でした' }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(200);
+    expect(patientLinkUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        share_case_id: 'share_case_1',
+        org_id: 'org_1',
+        match_status: 'pending',
+      },
+      data: expect.objectContaining({
+        match_status: 'declined',
+        declined_at: new Date('2026-06-19T00:00:00.000Z'),
+        decline_reason: '別人でした',
+      }),
+    });
+    expect(patientShareCaseUpdateMock).toHaveBeenCalledWith({
+      where: { id_org_id: { id: 'share_case_1', org_id: 'org_1' } },
+      data: {
+        status: 'declined',
+        ended_at: new Date('2026-06-19T00:00:00.000Z'),
+        updated_by: 'user_1',
+      },
+      select: { id: true, status: true, updated_at: true },
+    });
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      expect.objectContaining({
+        action: 'patient_link_declined',
+        changes: expect.objectContaining({
+          decision: 'decline',
+          match_status: 'declined',
+          share_case_status: 'declined',
+          decline_reason_length: 5,
+        }),
+      }),
+    );
+  });
+
   it('rejects partner acceptance without identity proof before update or audit side effects', async () => {
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
-      status: 'pending_partner',
+      status: 'partner_confirmation_pending',
       base_pharmacy_approved_by: 'base_user',
       partner_pharmacy_approved_by: null,
+      consents: [ACTIVE_CONSENT],
       patient_link: {
         id: 'patient_link_1',
         match_status: 'pending',
@@ -260,9 +321,10 @@ describe('/api/patient-share-cases/[id]/patient-link PATCH', () => {
   it('rejects mismatched partner identity without an override reason', async () => {
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
-      status: 'pending_partner',
+      status: 'partner_confirmation_pending',
       base_pharmacy_approved_by: 'base_user',
       partner_pharmacy_approved_by: null,
+      consents: [ACTIVE_CONSENT],
       patient_link: {
         id: 'patient_link_1',
         match_status: 'pending',
@@ -300,9 +362,10 @@ describe('/api/patient-share-cases/[id]/patient-link PATCH', () => {
   it('rejects terminal link transitions before update or audit side effects', async () => {
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
-      status: 'pending_partner',
+      status: 'partner_confirmation_pending',
       base_pharmacy_approved_by: 'base_user',
       partner_pharmacy_approved_by: 'partner_user',
+      consents: [ACTIVE_CONSENT],
       patient_link: {
         id: 'patient_link_1',
         match_status: 'accepted',

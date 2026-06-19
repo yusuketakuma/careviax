@@ -1223,7 +1223,7 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
   };
   const state = {
     shareCaseCreated: true,
-    shareCaseStatus: 'draft',
+    shareCaseStatus: 'consent_pending',
     baseApproved: false,
     partnerAccepted: false,
     consentCreated: false,
@@ -1298,7 +1298,7 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
     requests.patientShareCases.push(request);
     if (request.method === 'POST') {
       state.shareCaseCreated = true;
-      state.shareCaseStatus = 'draft';
+      state.shareCaseStatus = 'consent_pending';
       await fulfillJson(
         route,
         buildPharmacyCoopShareCase({
@@ -1329,10 +1329,16 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
       const body = request.body as { decision?: string } | null;
       if (body?.decision === 'base_approve') {
         state.baseApproved = true;
+        state.shareCaseStatus = state.consentCreated
+          ? 'partner_confirmation_pending'
+          : 'consent_pending';
       }
       if (body?.decision === 'accept') {
         state.baseApproved = true;
         state.partnerAccepted = true;
+        state.shareCaseStatus = state.consentCreated
+          ? 'partner_confirmation_pending'
+          : 'consent_pending';
       }
       await fulfillJson(route, {
         id: 'pharmacy_coop_route_patient_link',
@@ -1357,6 +1363,9 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
       requests.patientShareConsents.push(request);
       if (request.method === 'POST') {
         state.consentCreated = true;
+        if (state.shareCaseStatus !== 'active') {
+          state.shareCaseStatus = 'partner_confirmation_pending';
+        }
         await fulfillJson(route, buildPharmacyCoopConsent(true), 201);
         return;
       }
@@ -2920,6 +2929,29 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
     await expect(page.getByText('薬局間RouteMock 患者')).toHaveCount(0);
     await expect(page.getByText('東京都千代田区RouteMock')).toHaveCount(0);
 
+    await page.getByLabel('患者共有同意日').fill('2026-06-19');
+    await page.getByLabel('患者共有同意者').fill('患者家族 RouteMock');
+    await page.getByLabel('患者共有同意記録ID').fill('pharmacy_coop_route_consent_record');
+    await page.getByLabel('患者共有同意添付ID').fill('pharmacy_coop_route_file');
+    await page.getByLabel('患者共有同意有効期限').fill('2026-12-31');
+    await page.getByLabel('患者共有同意PDF出力').check();
+    await page.getByLabel('患者共有同意添付閲覧').check();
+    await page.getByRole('button', { name: /同意登録/ }).click();
+
+    await expect
+      .poll(
+        () =>
+          requests.patientShareConsents.some(
+            (request) =>
+              request.method === 'POST' &&
+              (request.body as { consent_record_id?: string } | null)?.consent_record_id ===
+                'pharmacy_coop_route_consent_record',
+          ),
+        { message: 'workflow should register consent with file attachment scope' },
+      )
+      .toBe(true);
+    await expect(shareCaseRow.getByText('協力薬局確認待ち')).toBeVisible({ timeout: 10_000 });
+
     await shareCaseRow.getByRole('button', { name: /基幹承認/ }).click();
     await expect
       .poll(
@@ -2962,28 +2994,7 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
         message: 'workflow should activate the patient share case',
       })
       .toBe(1);
-
-    await page.getByLabel('患者共有同意日').fill('2026-06-19');
-    await page.getByLabel('患者共有同意者').fill('患者家族 RouteMock');
-    await page.getByLabel('患者共有同意記録ID').fill('pharmacy_coop_route_consent_record');
-    await page.getByLabel('患者共有同意添付ID').fill('pharmacy_coop_route_file');
-    await page.getByLabel('患者共有同意有効期限').fill('2026-12-31');
-    await page.getByLabel('患者共有同意PDF出力').check();
-    await page.getByLabel('患者共有同意添付閲覧').check();
-    await page.getByRole('button', { name: /同意登録/ }).click();
-
-    await expect
-      .poll(
-        () =>
-          requests.patientShareConsents.some(
-            (request) =>
-              request.method === 'POST' &&
-              (request.body as { consent_record_id?: string } | null)?.consent_record_id ===
-                'pharmacy_coop_route_consent_record',
-          ),
-        { message: 'workflow should register consent with file attachment scope' },
-      )
-      .toBe(true);
+    await expect(shareCaseRow.getByText('共有中')).toBeVisible({ timeout: 10_000 });
 
     await page.getByLabel('訪問依頼の希望開始').fill('2026-06-20T10:30');
     await page.getByLabel('訪問依頼の希望終了').fill('2026-06-20T11:30');

@@ -476,7 +476,8 @@ function statusLabel(status: string) {
   const labels: Record<string, string> = {
     draft: '下書き',
     pending: '照合待ち',
-    pending_partner: '協力薬局待ち',
+    consent_pending: '同意待ち',
+    partner_confirmation_pending: '協力薬局確認待ち',
     active: '共有中',
     suspended: '停止中',
     revoked: '撤回',
@@ -501,7 +502,13 @@ function statusLabel(status: string) {
 function statusVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
   if (status === 'active' || status === 'accepted' || status === 'confirmed') return 'default';
   if (status === 'declined' || status === 'returned' || status === 'revoked') return 'destructive';
-  if (status === 'draft' || status === 'pending_partner') return 'secondary';
+  if (
+    status === 'draft' ||
+    status === 'consent_pending' ||
+    status === 'partner_confirmation_pending'
+  ) {
+    return 'secondary';
+  }
   return 'outline';
 }
 
@@ -887,6 +894,7 @@ function PatientShareConsentsPanel({
     Boolean(selectedShareCase) &&
     selectedShareCase?.status !== 'ended' &&
     selectedShareCase?.status !== 'revoked' &&
+    selectedShareCase?.status !== 'declined' &&
     form.consentDate.trim().length > 0 &&
     form.consentPerson.trim().length > 0;
 

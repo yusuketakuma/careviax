@@ -13,11 +13,13 @@ enum PharmacyPartnershipStatus {
 
 enum PatientShareCaseStatus {
   draft
-  pending_partner
+  consent_pending
+  partner_confirmation_pending
   active
   suspended
   revoked
   ended
+  declined
 }
 
 enum PatientLinkStatus {

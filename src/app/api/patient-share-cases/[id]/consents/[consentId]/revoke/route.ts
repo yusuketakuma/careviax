@@ -94,7 +94,9 @@ export const POST = withAuthContext<{ id: string; consentId: string }>(
       });
 
       const shouldRevokeShareCase =
-        existing.share_case.status !== 'ended' && existing.share_case.status !== 'revoked';
+        existing.share_case.status !== 'ended' &&
+        existing.share_case.status !== 'revoked' &&
+        existing.share_case.status !== 'declined';
       const shareCase = shouldRevokeShareCase
         ? await tx.patientShareCase.update({
             where: { id_org_id: { id, org_id: ctx.orgId } },

@@ -16,11 +16,13 @@ import {
 
 const shareCaseStatusSchema = z.enum([
   'draft',
-  'pending_partner',
+  'consent_pending',
+  'partner_confirmation_pending',
   'active',
   'suspended',
   'revoked',
   'ended',
+  'declined',
 ]);
 const viewContextSchema = z
   .enum(['pharmacy_cooperation_workflow', 'patient_share_cases_api'])
@@ -323,7 +325,7 @@ export const POST = withAuthContext(
           partnership_id: parsed.data.partnership_id,
           base_patient_id: parsed.data.base_patient_id,
           base_case_id: parsed.data.base_case_id,
-          status: 'draft',
+          status: 'consent_pending',
           share_scope: toPrismaJsonInput(parsed.data.share_scope),
           starts_at: optionalDate(parsed.data.starts_at),
           ends_at: optionalDate(parsed.data.ends_at),

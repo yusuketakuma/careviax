@@ -6,6 +6,7 @@ const {
   patientShareCaseFindFirstMock,
   patientShareConsentFindManyMock,
   patientShareConsentCreateMock,
+  patientShareCaseUpdateMock,
   consentRecordFindFirstMock,
   fileAssetFindFirstMock,
   createAuditLogEntryMock,
@@ -14,6 +15,7 @@ const {
   patientShareCaseFindFirstMock: vi.fn(),
   patientShareConsentFindManyMock: vi.fn(),
   patientShareConsentCreateMock: vi.fn(),
+  patientShareCaseUpdateMock: vi.fn(),
   consentRecordFindFirstMock: vi.fn(),
   fileAssetFindFirstMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
@@ -64,7 +66,7 @@ describe('/api/patient-share-cases/[id]/consents', () => {
     vi.clearAllMocks();
     patientShareCaseFindFirstMock.mockResolvedValue({
       id: 'share_case_1',
-      status: 'draft',
+      status: 'consent_pending',
       base_patient_id: 'patient_1',
     });
     patientShareConsentFindManyMock.mockResolvedValue([
@@ -101,12 +103,16 @@ describe('/api/patient-share-cases/[id]/consents', () => {
       updated_at: new Date('2026-06-19T01:00:00.000Z'),
       consent_person: '患者家族 山田花子',
     });
+    patientShareCaseUpdateMock.mockResolvedValue({ id: 'share_case_1' });
     consentRecordFindFirstMock.mockResolvedValue({ id: 'consent_record_1' });
     fileAssetFindFirstMock.mockResolvedValue({ id: 'file_1' });
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
-        patientShareCase: { findFirst: patientShareCaseFindFirstMock },
+        patientShareCase: {
+          findFirst: patientShareCaseFindFirstMock,
+          update: patientShareCaseUpdateMock,
+        },
         patientShareConsent: {
           findMany: patientShareConsentFindManyMock,
           create: patientShareConsentCreateMock,
@@ -224,6 +230,14 @@ describe('/api/patient-share-cases/[id]/consents', () => {
         created_by: 'user_1',
       }),
     });
+    expect(patientShareCaseUpdateMock).toHaveBeenCalledWith({
+      where: { id_org_id: { id: 'share_case_1', org_id: 'org_1' } },
+      data: {
+        status: 'partner_confirmation_pending',
+        updated_by: 'user_1',
+      },
+      select: { id: true },
+    });
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ orgId: 'org_1', userId: 'user_1', actorSiteId: 'site_1' }),
@@ -233,6 +247,8 @@ describe('/api/patient-share-cases/[id]/consents', () => {
         targetId: 'share_consent_1',
         patientId: 'patient_1',
         changes: expect.objectContaining({
+          share_case_status_before: 'consent_pending',
+          share_case_status_after: 'partner_confirmation_pending',
           consent_person_length: expect.any(Number),
           has_file_asset: true,
           has_consent_record: true,
@@ -258,6 +274,28 @@ describe('/api/patient-share-cases/[id]/consents', () => {
 
     expect(response.status).toBe(400);
     expect(patientShareConsentCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects declined share cases before create or audit side effects', async () => {
+    patientShareCaseFindFirstMock.mockResolvedValueOnce({
+      id: 'share_case_1',
+      status: 'declined',
+      base_patient_id: 'patient_1',
+    });
+
+    const response = await rawPOST(
+      createPostRequest({
+        consent_date: '2026-06-19',
+        consent_person: '患者家族',
+        consent_method: 'paper_scan',
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(409);
+    expect(patientShareConsentCreateMock).not.toHaveBeenCalled();
+    expect(patientShareCaseUpdateMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 });

@@ -54,7 +54,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
               data: [
                 {
                   id: 'share_case_1',
-                  status: 'draft',
+                  status: 'consent_pending',
                   starts_at: '2026-06-01T00:00:00.000Z',
                   ends_at: null,
                   updated_at: '2026-06-18T00:00:00.000Z',
@@ -79,7 +79,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
                 },
                 {
                   id: 'share_case_accept_ready',
-                  status: 'pending_partner',
+                  status: 'partner_confirmation_pending',
                   starts_at: '2026-06-01T00:00:00.000Z',
                   ends_at: null,
                   updated_at: '2026-06-18T00:00:00.000Z',
@@ -104,7 +104,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
                 },
                 {
                   id: 'share_case_activation_ready',
-                  status: 'pending_partner',
+                  status: 'partner_confirmation_pending',
                   starts_at: '2026-06-01T00:00:00.000Z',
                   ends_at: null,
                   updated_at: '2026-06-18T00:00:00.000Z',

@@ -67,7 +67,7 @@ describe('pharmacy partnership policy guards', () => {
   it('blocks activating a patient share case without active consent', () => {
     expect(
       evaluatePatientShareCaseActivation({
-        status: 'pending_partner',
+        status: 'partner_confirmation_pending',
         consents: [],
         now: NOW,
         patientLink: {
@@ -80,10 +80,26 @@ describe('pharmacy partnership policy guards', () => {
     ).toEqual({ allowed: false, blocker: 'missing_active_consent' });
   });
 
+  it('blocks activation while the case is still waiting for patient consent', () => {
+    expect(
+      evaluatePatientShareCaseActivation({
+        status: 'consent_pending',
+        consents: [ACTIVE_CONSENT],
+        now: NOW,
+        patientLink: {
+          match_status: 'accepted',
+          accepted_at: NOW,
+          approved_by_base: 'base-user',
+          approved_by_partner: 'partner-user',
+        },
+      }),
+    ).toEqual({ allowed: false, blocker: 'invalid_status' });
+  });
+
   it('requires accepted patient link and both pharmacy approvals before activation', () => {
     expect(
       evaluatePatientShareCaseActivation({
-        status: 'pending_partner',
+        status: 'partner_confirmation_pending',
         consents: [ACTIVE_CONSENT],
         now: NOW,
         patientLink: {
@@ -97,7 +113,7 @@ describe('pharmacy partnership policy guards', () => {
 
     expect(
       evaluatePatientShareCaseActivation({
-        status: 'pending_partner',
+        status: 'partner_confirmation_pending',
         consents: [ACTIVE_CONSENT],
         now: NOW,
         patientLink: {
@@ -113,7 +129,7 @@ describe('pharmacy partnership policy guards', () => {
   it('allows activation when consent, patient link, and both approvals are present', () => {
     expect(
       evaluatePatientShareCaseActivation({
-        status: 'pending_partner',
+        status: 'partner_confirmation_pending',
         consents: [ACTIVE_CONSENT],
         now: NOW,
         patientLink: {

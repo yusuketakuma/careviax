@@ -1,10 +1,12 @@
 export type PatientShareCaseLifecycleStatus =
   | 'draft'
-  | 'pending_partner'
+  | 'consent_pending'
+  | 'partner_confirmation_pending'
   | 'active'
   | 'suspended'
   | 'revoked'
-  | 'ended';
+  | 'ended'
+  | 'declined';
 
 export type PatientLinkLifecycleStatus = 'pending' | 'accepted' | 'declined';
 
@@ -85,8 +87,7 @@ export type VisitBillingCandidateResult =
   | { billable: false; blockers: VisitBillingCandidateBlocker[] };
 
 const ACTIVATABLE_SHARE_CASE_STATUSES = new Set<PatientShareCaseLifecycleStatus>([
-  'draft',
-  'pending_partner',
+  'partner_confirmation_pending',
   'suspended',
 ]);
 

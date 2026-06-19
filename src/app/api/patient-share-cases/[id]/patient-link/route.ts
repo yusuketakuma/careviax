@@ -7,6 +7,7 @@ import { conflict, notFound, success, validationError } from '@/lib/api/response
 import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { dateKeySchema } from '@/lib/validations/date-key';
+import { findActivePatientShareConsent } from '@/server/services/pharmacy-partnerships';
 
 const linkDecisionSchema = z.enum(['base_approve', 'accept', 'decline']);
 const partnerPatientSnapshotSchema = z
@@ -146,6 +147,14 @@ export const PATCH = withAuthContext<{ id: string }>(
           status: true,
           base_pharmacy_approved_by: true,
           partner_pharmacy_approved_by: true,
+          consents: {
+            select: {
+              consent_date: true,
+              valid_until: true,
+              revoked_at: true,
+            },
+            orderBy: { created_at: 'desc' },
+          },
           patient_link: {
             select: {
               id: true,
@@ -162,8 +171,14 @@ export const PATCH = withAuthContext<{ id: string }>(
       if (!shareCase.patient_link) {
         return { response: conflict('患者リンクが作成されていません') };
       }
-      if (shareCase.status === 'ended' || shareCase.status === 'revoked') {
-        return { response: conflict('終了または撤回済みの患者共有ケースは更新できません') };
+      if (
+        shareCase.status === 'ended' ||
+        shareCase.status === 'revoked' ||
+        shareCase.status === 'declined'
+      ) {
+        return {
+          response: conflict('終了・撤回・辞退済みの患者共有ケースは更新できません'),
+        };
       }
 
       const link = shareCase.patient_link;
@@ -258,57 +273,40 @@ export const PATCH = withAuthContext<{ id: string }>(
         where: { share_case_id_org_id: { share_case_id: id, org_id: ctx.orgId } },
       });
 
-      const nextShareCase =
+      const hasActiveConsent = Boolean(findActivePatientShareConsent(shareCase.consents, now));
+      const nextStatus =
         parsed.data.decision === 'decline'
-          ? await tx.patientShareCase.update({
-              where: { id_org_id: { id, org_id: ctx.orgId } },
-              data: {
-                status: 'ended',
+          ? 'declined'
+          : shareCase.status === 'active' || shareCase.status === 'suspended'
+            ? shareCase.status
+            : hasActiveConsent
+              ? 'partner_confirmation_pending'
+              : 'consent_pending';
+      const nextShareCase = await tx.patientShareCase.update({
+        where: { id_org_id: { id, org_id: ctx.orgId } },
+        data: {
+          status: nextStatus,
+          ...(parsed.data.decision === 'decline'
+            ? {
                 ended_at: now,
-                updated_by: ctx.userId,
-              },
-              select: { id: true, status: true, updated_at: true },
-            })
-          : shareCase.status === 'draft'
-            ? await tx.patientShareCase.update({
-                where: { id_org_id: { id, org_id: ctx.orgId } },
-                data: {
-                  status: 'pending_partner',
-                  ...(parsed.data.decision === 'base_approve'
-                    ? {
-                        base_pharmacy_approved_by: link.approved_by_base ?? ctx.userId,
-                        base_pharmacy_approved_at: now,
-                      }
-                    : {}),
-                  ...(parsed.data.decision === 'accept'
-                    ? {
-                        partner_pharmacy_approved_by: link.approved_by_partner ?? ctx.userId,
-                        partner_pharmacy_approved_at: now,
-                      }
-                    : {}),
-                  updated_by: ctx.userId,
-                },
-                select: { id: true, status: true, updated_at: true },
-              })
-            : await tx.patientShareCase.update({
-                where: { id_org_id: { id, org_id: ctx.orgId } },
-                data: {
-                  ...(parsed.data.decision === 'base_approve'
-                    ? {
-                        base_pharmacy_approved_by: link.approved_by_base ?? ctx.userId,
-                        base_pharmacy_approved_at: now,
-                      }
-                    : {}),
-                  ...(parsed.data.decision === 'accept'
-                    ? {
-                        partner_pharmacy_approved_by: link.approved_by_partner ?? ctx.userId,
-                        partner_pharmacy_approved_at: now,
-                      }
-                    : {}),
-                  updated_by: ctx.userId,
-                },
-                select: { id: true, status: true, updated_at: true },
-              });
+              }
+            : {}),
+          ...(parsed.data.decision === 'base_approve'
+            ? {
+                base_pharmacy_approved_by: link.approved_by_base ?? ctx.userId,
+                base_pharmacy_approved_at: now,
+              }
+            : {}),
+          ...(parsed.data.decision === 'accept'
+            ? {
+                partner_pharmacy_approved_by: link.approved_by_partner ?? ctx.userId,
+                partner_pharmacy_approved_at: now,
+              }
+            : {}),
+          updated_by: ctx.userId,
+        },
+        select: { id: true, status: true, updated_at: true },
+      });
 
       await createAuditLogEntry(tx, ctx, {
         action: auditActionForDecision(parsed.data.decision),

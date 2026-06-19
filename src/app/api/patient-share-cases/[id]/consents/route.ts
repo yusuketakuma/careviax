@@ -170,8 +170,14 @@ export const POST = withAuthContext<{ id: string }>(
       });
 
       if (!shareCase) return { response: notFound('患者共有ケースが見つかりません') };
-      if (shareCase.status === 'ended' || shareCase.status === 'revoked') {
-        return { response: conflict('終了または撤回済みの患者共有ケースには同意を追加できません') };
+      if (
+        shareCase.status === 'ended' ||
+        shareCase.status === 'revoked' ||
+        shareCase.status === 'declined'
+      ) {
+        return {
+          response: conflict('終了・撤回・辞退済みの患者共有ケースには同意を追加できません'),
+        };
       }
 
       if (parsed.data.consent_record_id) {
@@ -232,6 +238,21 @@ export const POST = withAuthContext<{ id: string }>(
         },
       });
 
+      const nextShareCaseStatus =
+        shareCase.status === 'draft' || shareCase.status === 'consent_pending'
+          ? 'partner_confirmation_pending'
+          : shareCase.status;
+      if (nextShareCaseStatus !== shareCase.status) {
+        await tx.patientShareCase.update({
+          where: { id_org_id: { id, org_id: ctx.orgId } },
+          data: {
+            status: nextShareCaseStatus,
+            updated_by: ctx.userId,
+          },
+          select: { id: true },
+        });
+      }
+
       await createAuditLogEntry(tx, ctx, {
         action: 'patient_share_consent_registered',
         targetType: 'PatientShareConsent',
@@ -239,6 +260,8 @@ export const POST = withAuthContext<{ id: string }>(
         patientId: shareCase.base_patient_id,
         changes: {
           share_case_id: id,
+          share_case_status_before: shareCase.status,
+          share_case_status_after: nextShareCaseStatus,
           consent_date: parsed.data.consent_date,
           consent_method: parsed.data.consent_method,
           scope_keys: Object.keys(parsed.data.scope).sort(),

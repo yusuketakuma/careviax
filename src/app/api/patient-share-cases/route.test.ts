@@ -83,7 +83,7 @@ describe('/api/patient-share-cases POST', () => {
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_1', patient_id: 'patient_1' });
     patientShareCaseCreateMock.mockResolvedValue({
       id: 'share_case_1',
-      status: 'draft',
+      status: 'consent_pending',
       partnership_id: 'partnership_1',
       base_patient_id: 'patient_1',
       share_scope: {
@@ -231,7 +231,7 @@ describe('/api/patient-share-cases POST', () => {
     expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('東京都港区1-2-3');
   });
 
-  it('creates a draft share case with a pending patient link and patient snapshot', async () => {
+  it('creates a consent-pending share case with a pending patient link and patient snapshot', async () => {
     const response = await POST(
       createPostRequest({
         partnership_id: ' partnership_1 ',
@@ -259,7 +259,7 @@ describe('/api/patient-share-cases POST', () => {
         partnership_id: 'partnership_1',
         base_patient_id: 'patient_1',
         base_case_id: 'case_1',
-        status: 'draft',
+        status: 'consent_pending',
         starts_at: new Date('2026-06-01T00:00:00.000Z'),
         ends_at: new Date('2026-12-31T00:00:00.000Z'),
         shared_management_plan_id: 'plan_1',
@@ -305,7 +305,7 @@ describe('/api/patient-share-cases POST', () => {
           partnership_id: 'partnership_1',
           base_patient_id: 'patient_1',
           base_case_id: 'case_1',
-          status: 'draft',
+          status: 'consent_pending',
           share_scope_keys: [
             'care_reports',
             'medication_profile',
@@ -329,7 +329,7 @@ describe('/api/patient-share-cases POST', () => {
     expect(JSON.stringify(createAuditLogEntryMock.mock.calls)).not.toContain('東京都港区1-2-3');
   });
 
-  it('creates a draft share case without a care case lookup when base_case_id is omitted', async () => {
+  it('creates a consent-pending share case without a care case lookup when base_case_id is omitted', async () => {
     const response = await POST(
       createPostRequest({
         partnership_id: 'partnership_1',

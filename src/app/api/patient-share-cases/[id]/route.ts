@@ -90,8 +90,12 @@ export const PATCH = withAuthContext<{ id: string }>(
       });
 
       if (!shareCase) return { response: notFound('患者共有ケースが見つかりません') };
-      if (shareCase.status === 'ended' || shareCase.status === 'revoked') {
-        return { response: conflict('終了または撤回済みの患者共有ケースは更新できません') };
+      if (
+        shareCase.status === 'ended' ||
+        shareCase.status === 'revoked' ||
+        shareCase.status === 'declined'
+      ) {
+        return { response: conflict('終了・撤回・辞退済みの患者共有ケースは更新できません') };
       }
       if (
         shareCase.status === 'active' &&
