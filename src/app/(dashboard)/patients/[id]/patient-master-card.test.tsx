@@ -86,9 +86,20 @@ describe('PatientMasterCard', () => {
     }
 
     expect(screen.getByLabelText('性別')).toBeTruthy();
+    expect(screen.getByLabelText('氏名')).toBeTruthy();
+    expect(screen.getByLabelText('フリガナ')).toBeTruthy();
+    expect(screen.getByLabelText('生年月日')).toBeTruthy();
+    expect(screen.getByLabelText('電話番号')).toBeTruthy();
+    expect(screen.getByLabelText('住所')).toBeTruthy();
     expect(screen.getByLabelText('施設')).toBeTruthy();
     expect(screen.getByLabelText('ユニット')).toBeTruthy();
+    expect(screen.getByLabelText('同時訪問グループID')).toBeTruthy();
+    expect(screen.getByLabelText('部屋番号等')).toBeTruthy();
+    expect(screen.getByLabelText('医療保険番号')).toBeTruthy();
+    expect(screen.getByLabelText('介護保険番号')).toBeTruthy();
+    expect(screen.getByLabelText('アレルギー1件目の名称')).toBeTruthy();
     expect(screen.getByLabelText('アレルギー1件目の区分')).toBeTruthy();
     expect(screen.getByLabelText('アレルギー1件目の重症度')).toBeTruthy();
+    expect(screen.getByLabelText('患者メモ')).toBeTruthy();
   });
 });

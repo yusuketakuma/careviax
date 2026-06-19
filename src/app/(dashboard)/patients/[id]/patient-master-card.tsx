@@ -233,6 +233,7 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="氏名">
               <Input
+                id="patient-master-name"
                 value={form.name}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, name: event.target.value }))
@@ -241,6 +242,7 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
             </Field>
             <Field label="フリガナ">
               <Input
+                id="patient-master-name-kana"
                 value={form.name_kana}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, name_kana: event.target.value }))
@@ -249,6 +251,7 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
             </Field>
             <Field label="生年月日">
               <Input
+                id="patient-master-birth-date"
                 type="date"
                 value={form.birth_date}
                 onChange={(event) =>
@@ -287,6 +290,7 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="電話番号">
               <Input
+                id="patient-master-phone"
                 value={form.phone}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, phone: event.target.value }))
@@ -295,6 +299,7 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
             </Field>
             <Field label="住所">
               <Input
+                id="patient-master-address"
                 value={form.address}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, address: event.target.value }))
@@ -371,6 +376,7 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
             </Field>
             <Field label="同時訪問グループID">
               <Input
+                id="patient-master-building-id"
                 value={form.building_id}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, building_id: event.target.value }))
@@ -380,6 +386,7 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
             </Field>
             <Field label="部屋番号等">
               <Input
+                id="patient-master-unit-name"
                 value={form.unit_name}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, unit_name: event.target.value }))
@@ -394,9 +401,10 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
             C. 保険
           </legend>
           <div className="grid gap-4 md:grid-cols-2">
-            <Field label="医療保険番号">
+            <Field label="医療保険番号" htmlFor="patient-medical-insurance-number">
               <div className="flex gap-2">
                 <Input
+                  id="patient-medical-insurance-number"
                   className="flex-1"
                   value={form.medical_insurance_number}
                   onChange={(event) =>
@@ -422,6 +430,7 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
             </Field>
             <Field label="介護保険番号">
               <Input
+                id="patient-master-care-insurance-number"
                 value={form.care_insurance_number}
                 onChange={(event) =>
                   setForm((current) => ({
@@ -457,6 +466,7 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
             {form.allergy_info.map((entry, index) => (
               <div key={index} className="flex gap-2 items-center">
                 <Input
+                  aria-label={`アレルギー${index + 1}件目の名称`}
                   className="flex-1"
                   value={entry.drug_name}
                   onChange={(event) =>
@@ -553,6 +563,7 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
           </legend>
           <Field label="患者メモ">
             <Textarea
+              id="patient-master-notes"
               rows={4}
               value={form.notes}
               onChange={(event) =>
@@ -574,27 +585,30 @@ export function PatientMasterCard({ orgId, patient }: PatientMasterCardProps) {
 
 function Field({
   label,
+  htmlFor,
   children,
   className,
 }: {
   label: string;
+  htmlFor?: string;
   children: ReactNode;
   className?: string;
 }) {
   const autoId = useId();
   const fieldId = `field-${autoId}`;
 
-  // Check if the child is a native input-like element that supports htmlFor/id binding.
-  // Select (Radix) doesn't forward id to its trigger, so we skip cloneElement for it.
-  const isNativeInput = isValidElement(children) && typeof children.type === 'string';
+  const canBindLabel =
+    isValidElement(children) && (children.type === Input || children.type === Textarea);
+  const childProps = canBindLabel ? (children.props as { id?: unknown }) : null;
+  const boundId = htmlFor ?? (typeof childProps?.id === 'string' ? childProps.id : fieldId);
 
   return (
     <div className={className}>
-      <Label htmlFor={isNativeInput ? fieldId : undefined} className="mb-1.5 block">
+      <Label htmlFor={htmlFor ?? (canBindLabel ? boundId : undefined)} className="mb-1.5 block">
         {label}
       </Label>
-      {isNativeInput
-        ? cloneElement(children as ReactElement<{ id?: string }>, { id: fieldId })
+      {canBindLabel
+        ? cloneElement(children as ReactElement<{ id?: string }>, { id: boundId })
         : children}
     </div>
   );
