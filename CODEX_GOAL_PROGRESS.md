@@ -3419,35 +3419,38 @@ Implemented:
 - New migrations were not applied to any database in this slice.
 - Remaining v0.2 close-out work should continue with non-DB-mutating proof or wait for explicit migration-application approval.
 
-## 20260619-2240 JST - Pharmacy Cooperation High-Risk Action Confirmation
+## 20260619-2247 JST - Pharmacy Cooperation Confirmation Gate Verifier Follow-up
 
 ### Completed
 
-- Added a shared `ConfirmDialog` review step before pharmacy-cooperation workflow state transitions that previously executed from table row buttons immediately.
-- Covered patient share activation, patient-link base approval, partner acceptance, link decline, visit-request acceptance/decline, partner-visit-record submit/confirm/confirm+report/return, and physician report draft creation.
-- Kept the existing API/mutation contracts intact; the dialog holds a row snapshot and calls the same mutation payloads only after confirmation.
-- Replaced raw workflow query `error.message` detail display with safe retry/support guidance.
-- Added targeted tests proving high-risk actions do not issue fetches before confirmation and that confirmed actions keep their existing payloads, including `doctor_report_required: true` for `確認+報告`.
+- Ran a verifier pass over the already-implemented pharmacy cooperation confirmation gates.
+- Closed the verifier's low-severity unit coverage gap by adding direct confirmation-before-fetch assertions for visit-request decline, partner-visit-record submit, and plain record confirmation without report draft.
+- Preserved existing API payload expectations, including `decline_reason`, submit POST, `doctor_report_required: false`, and the existing `doctor_report_required: true` confirm+report coverage.
+- Clarified the progress ledger so the 22:39 entry remains the implementation record and this entry records the verifier follow-up.
 
 ### Files Changed
 
-- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`
 - `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`
+- `docs/pharmacy-cooperation-v0.2-completion-audit.md`
 - `Plans.md`
 - `CODEX_GOAL_PROGRESS.md`
 - `.codex/ralph-state.md`
 
 ### Validation
 
-- `pnpm exec prettier --write 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`: passed, unchanged.
-- `pnpm exec vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`: passed, 1 file / 10 tests.
-- `pnpm format:check`: passed.
-- `pnpm exec eslint 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`: passed.
+- `pnpm exec prettier --write 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`: passed, 1 file / 12 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`: passed.
+- `pnpm exec prettier --write docs/pharmacy-cooperation-v0.2-completion-audit.md`: passed.
+- `pnpm exec prettier --write docs/pharmacy-cooperation-v0.2-completion-audit.md Plans.md CODEX_GOAL_PROGRESS.md .codex/ralph-state.md`: failed when Prettier reached 6.8MB `.codex/ralph-state.md` with Node heap OOM; the first three files were unchanged.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --write .codex/ralph-state.md`: failed with Node heap OOM. `tools/scripts/check-format-changed-files.mjs` excludes `.codex/`, so this file was verified by `git diff --check` instead.
+- `pnpm format:check`: passed after formatting the new completion-audit document.
 - `pnpm typecheck`: passed.
+- `git diff --check`: passed.
 
 ### Remaining / Next Loop
 
-- Current unrelated dirty file preserved: `tools/tests/ui-route-mocked-smoke.spec.ts`.
+- Verifier follow-up unit coverage was committed separately as `test(pharmacy): extend workflow confirmation gates`.
 - Remaining UI audit candidates still include pharmacy-cooperation responsive table density, false-empty query screens, broader custom table/DataTable consolidation, select accessible-name gaps, and expanded browser/a11y coverage.
 
 ## 20260619-2239 JST - Pharmacy Cooperation Workflow Confirmation Gates
@@ -3482,4 +3485,34 @@ Implemented:
 ### Remaining / Next Loop
 
 - Local e2e DB remains behind 18 migrations, confirmed read-only by `prisma migrate status`.
+- Direct patient-card browser proof and real migration application confirmation still require explicit approval to apply the pending migrations.
+
+## 20260619-2244 JST - Pharmacy Cooperation v0.2 Completion Audit
+
+### Completed
+
+- Added `docs/pharmacy-cooperation-v0.2-completion-audit.md` as the current-state v0.2 final report/audit artifact.
+- Mapped the attached specification's implementation targets into a feature inventory with state, evidence, remaining work, refactor status, and priority.
+- Audited the 14 explicit completion criteria against current code, tests, route-mocked browser proof, and the known DB migration blocker.
+- Documented the pending local e2e migration set from read-only `prisma migrate status`.
+- Added a v0.2 migration application and rollback policy without applying any migration.
+
+### Files Changed
+
+- `docs/pharmacy-cooperation-v0.2-completion-audit.md`
+- `Plans.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- Read `/Users/yusuke/.codex/attachments/a1d41d8b-d1ed-492b-bf6e-304ff52ab0af/pasted-text-1.txt` completely.
+- Inspected model/API/UI/service/test evidence for pharmacy cooperation v0.2.
+- Read-only `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public pnpm exec prisma migrate status --schema=prisma/schema/`: confirmed 18 pending migrations.
+- `pnpm exec prettier --write docs/pharmacy-cooperation-v0.2-completion-audit.md`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
 - Direct patient-card browser proof and real migration application confirmation still require explicit approval to apply the pending migrations.

@@ -35,7 +35,9 @@
 - [x] メッセージ UI: 薬局間連携ワークフローから患者共有ケース・訪問依頼ごとのメッセージ一覧/投稿を実行
 - [x] メッセージ browser 実証: 薬局間連携ワークフローから患者共有ケース・訪問依頼ごとのメッセージ一覧/投稿を実操作で確認
 - [x] 状態遷移 UI 安全化: 共有開始、患者リンク、訪問依頼、協力訪問記録、報告書ドラフト作成の高リスク操作を確認ダイアログ経由に固定
+  - 2026-06-19: `pharmacy-cooperation-workflow-content.test.tsx` で共有開始/リンク承認/受諾/辞退、訪問依頼受諾/辞退、訪問記録提出/確認/確認+報告/差戻し、報告書ドラフト作成の確認前 fetch 抑止と既存 payload 維持を検証済み。`pnpm exec vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'` は 12 tests passed。`pnpm format:check`、対象 ESLint、`pnpm typecheck` passed。
 - [x] 監査補完: 共有ケース/同意/訂正/ファイル/同意文書/audit-log 検索の最小監査、`AuditLog.actor_pharmacy_id` / `actor_site_id` / `patient_id`
+- [x] v0.2 completion audit: `docs/pharmacy-cooperation-v0.2-completion-audit.md` に機能棚卸し、完了条件別証跡、未適用 migration、rollback 方針、残課題を集約
 - [ ] ブラウザ実証: 患者カード作成 → 同意/リンク/有効化 → 訪問依頼 → 訪問記録 → 請求 → 報告下書き
   - [x] Route-mocked browser proof: `consent_pending` 共有ケースを前提に、同意登録、患者リンク基幹承認/協力受諾、共有有効化、訪問依頼、協力訪問記録、基幹確認、医師報告下書き、請求候補生成、請求書 PDF リンクまでを検証
   - [ ] 患者カード作成の browser 直踏み: local e2e DB に v0.2 migrations (`AuditLog.actor_pharmacy_id`, `ConsentRecord.document_file_id`) が未適用のため、患者詳細 SSR が Prisma P2022 で停止。患者カード作成自体は unit で継続カバー。
