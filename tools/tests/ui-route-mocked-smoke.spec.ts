@@ -47,6 +47,21 @@ const PROPOSAL_SEARCH_PATIENT_A_ID = 'patient_search_a';
 const PROPOSAL_SEARCH_PATIENT_B_ID = 'patient_search_b';
 const PROPOSAL_SEARCH_A_ID = 'proposal_search_a';
 const PROPOSAL_SEARCH_B_ID = 'proposal_search_b';
+const PHARMACY_COOP_PATIENT_ID = 'pharmacy_coop_route_patient';
+const PHARMACY_COOP_CASE_ID = 'pharmacy_coop_route_case';
+const PHARMACY_COOP_MANAGEMENT_PLAN_ID = 'pharmacy_coop_route_plan';
+const PHARMACY_COOP_PARTNERSHIP_ID = 'pharmacy_coop_route_partnership';
+const PHARMACY_COOP_PARTNER_PHARMACY_ID = 'pharmacy_coop_route_partner';
+const PHARMACY_COOP_CONTRACT_ID = 'pharmacy_coop_route_contract';
+const PHARMACY_COOP_CONTRACT_VERSION_ID = 'pharmacy_coop_route_contract_version';
+const PHARMACY_COOP_SHARE_CASE_ID = 'pharmacy_coop_route_share_case';
+const PHARMACY_COOP_SHARE_CONSENT_ID = 'pharmacy_coop_route_share_consent';
+const PHARMACY_COOP_VISIT_REQUEST_ID = 'pharmacy_coop_route_visit_request';
+const PHARMACY_COOP_PARTNER_RECORD_ID = 'pharmacy_coop_route_partner_record';
+const PHARMACY_COOP_REPORT_ID = 'pharmacy_coop_route_report';
+const PHARMACY_COOP_BILLING_CANDIDATE_ID = 'pharmacy_coop_route_candidate';
+const PHARMACY_COOP_INVOICE_ID = 'pharmacy_coop_route_invoice';
+const PHARMACY_COOP_BILLING_MONTH = '2026-06-01';
 
 test.use({ serviceWorkers: 'block' });
 
@@ -758,6 +773,785 @@ async function installSharedViewerRouteMock(page: Page) {
   });
 
   return { selfReportRequests, viewerRequests };
+}
+
+async function installDashboardShellRouteMocks(page: Page) {
+  await page.route(apiPathPattern('/api/notifications/stream'), async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: '',
+    });
+  });
+
+  await page.route(apiPathPattern('/api/notifications'), async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get('summary') === '1') {
+      await fulfillJson(route, { data: { unreadCount: 0 } });
+      return;
+    }
+    await fulfillJson(route, { data: [], hasMore: false, nextCursor: null });
+  });
+
+  await page.route(apiPathPattern('/api/nav-badges'), async (route) => {
+    await fulfillJson(route, { data: { audit: 0, handoff: 0 } });
+  });
+
+  await page.route(apiPathPattern('/api/presence'), async (route) => {
+    await fulfillJson(
+      route,
+      route.request().method() === 'POST' ? { data: { ok: true } } : { data: [] },
+    );
+  });
+}
+
+function buildPharmacyCoopVisitBrief() {
+  return {
+    patient: {
+      id: PHARMACY_COOP_PATIENT_ID,
+      name: '薬局間RouteMock 患者',
+    },
+    context: 'patient',
+    generated_at: '2026-06-19T00:00:00.000Z',
+    last_prescribed_date: null,
+    baseline_context: null,
+    medication_changes: [],
+    patient_changes: [],
+    medications: [],
+    dispensing_items: [],
+    delivery_status: [],
+    dosage_form_support: [],
+    multidisciplinary_updates: [],
+    jahis_supplemental_records: [],
+    unresolved_items: [],
+    must_check_today: [],
+    rule_summary: {
+      generation_id: 'pharmacy_coop_route_rule',
+      headline: '確認事項はありません',
+      bullets: [],
+      must_check_today: [],
+      source_refs: [],
+      generated_at: '2026-06-19T00:00:00.000Z',
+    },
+    ai_summary: {
+      generation_id: 'pharmacy_coop_route_ai',
+      provider: 'rule',
+      requested_provider: 'disabled',
+      is_fallback: true,
+      model: null,
+      fallback_reason: null,
+      headline: '確認事項はありません',
+      bullets: [],
+      must_check_today: [],
+      source_refs: [],
+      generated_at: '2026-06-19T00:00:00.000Z',
+      duration_ms: null,
+      recent_generation_count_24h: 0,
+      recent_failure_count_24h: 0,
+      recent_failure_rate_24h: null,
+    },
+    conference_summary: null,
+    facility_context: null,
+    drug_cautions: [],
+  };
+}
+
+function buildPharmacyCoopPatientOverview() {
+  return {
+    id: PHARMACY_COOP_PATIENT_ID,
+    name: '薬局間RouteMock 患者',
+    name_kana: 'ヤッキョクカンルートモック カンジャ',
+    birth_date: '1942-04-12',
+    gender: 'female',
+    phone: '090-1111-2222',
+    medical_insurance_number: null,
+    care_insurance_number: null,
+    billing_support_flag: true,
+    allergy_info: [],
+    notes: null,
+    archived_at: null,
+    archived_by: null,
+    archived_by_name: null,
+    residences: [
+      {
+        id: 'pharmacy_coop_route_residence',
+        address: '東京都千代田区RouteMock 101',
+        building_id: null,
+        facility_id: null,
+        facility_unit_id: null,
+        unit_name: '101',
+        is_primary: true,
+      },
+    ],
+    scheduling_preference: null,
+    conditions: [],
+    cases: [
+      {
+        id: PHARMACY_COOP_CASE_ID,
+        status: 'active',
+        primary_pharmacist_id: null,
+        backup_pharmacist_id: null,
+        referral_source: null,
+        referral_date: null,
+        start_date: '2026-06-01',
+        end_date: null,
+        end_reason: null,
+        notes: null,
+        created_at: '2026-06-01T00:00:00.000Z',
+        updated_at: '2026-06-18T00:00:00.000Z',
+        required_visit_support: null,
+        care_team_links: [],
+      },
+    ],
+    visit_schedules: [],
+    summary_metrics: { open_tasks_count: 0 },
+    risk_summary: null,
+    visit_brief: buildPharmacyCoopVisitBrief(),
+    lab_summary: [],
+    foundation: {
+      summary: { status: 'ready', label: '確認済み', items: [] },
+      items: [],
+      changes_since_last_visit: [],
+      latest_labs: [],
+      insurances: [],
+      archive: {
+        archived: false,
+        archived_at: null,
+        archived_by_name: null,
+      },
+    },
+    jahis_supplemental_records: [],
+    workspace: null,
+    privacy: {
+      sensitive_fields_masked: false,
+      address_fields_masked: false,
+      can_view_detail: true,
+    },
+  };
+}
+
+function buildPharmacyCoopDocumentsSnapshot() {
+  return {
+    patient: {
+      id: PHARMACY_COOP_PATIENT_ID,
+      name: '薬局間RouteMock 患者',
+      name_kana: 'ヤッキョクカンルートモック カンジャ',
+    },
+    print_readiness: {
+      overall_status: 'ready',
+      missing_required_count: 0,
+      warning_count: 0,
+      template_versions: [
+        {
+          document_type: 'contract',
+          label: '契約書',
+          template_id: 'template_pharmacy_coop_contract',
+          template_name: '薬局間RouteMock契約書',
+          template_version: 'v1',
+          effective_from: '2026-06-01T00:00:00.000Z',
+          effective_to: null,
+        },
+      ],
+      checks: [
+        {
+          key: 'patient_profile',
+          label: '患者基本情報',
+          completed: true,
+          severity: 'required',
+          description: '氏名と生年月日を確認済みです。',
+          action_href: `/patients/${PHARMACY_COOP_PATIENT_ID}/edit`,
+          action_label: '基本情報を編集',
+        },
+      ],
+    },
+    document_statuses: [
+      {
+        document_type: 'contract',
+        label: '契約書',
+        status: 'created',
+        status_label: '作成済み',
+        template_name: '薬局間RouteMock契約書',
+        template_version: 'v1',
+        storage_location: '店舗',
+        latest_action_at: '2026-06-19T00:00:00.000Z',
+        latest_printed_at: '2026-06-19T00:00:00.000Z',
+        latest_print_batch_id: 'print_pharmacy_coop_route_batch',
+        latest_document_id: 'doc_pharmacy_coop_route',
+        has_file: true,
+        delivered_at: null,
+        alerts: [],
+      },
+    ],
+    first_visit_documents: [],
+  };
+}
+
+function buildPharmacyCoopShareCase(args: {
+  created: boolean;
+  status: string;
+  baseApproved: boolean;
+  partnerAccepted: boolean;
+}) {
+  if (!args.created) return null;
+
+  return {
+    id: PHARMACY_COOP_SHARE_CASE_ID,
+    status: args.status,
+    starts_at: '2026-06-20T00:00:00.000Z',
+    ends_at: '2026-12-31T00:00:00.000Z',
+    updated_at: '2026-06-19T00:00:00.000Z',
+    partnership: {
+      id: PHARMACY_COOP_PARTNERSHIP_ID,
+      status: 'active',
+      partner_pharmacy: {
+        id: PHARMACY_COOP_PARTNER_PHARMACY_ID,
+        name: 'RouteMock協力薬局',
+        status: 'active',
+      },
+    },
+    patient_link: {
+      id: 'pharmacy_coop_route_patient_link',
+      match_status: args.partnerAccepted ? 'accepted' : 'pending',
+      approved_by_base: args.baseApproved ? 'route_base_user' : null,
+      approved_by_partner: args.partnerAccepted ? 'route_partner_user' : null,
+      accepted_at: args.partnerAccepted ? '2026-06-19T01:00:00.000Z' : null,
+      declined_at: null,
+      has_partner_patient_id: args.partnerAccepted,
+    },
+  };
+}
+
+function buildPharmacyCoopConsent(created: boolean) {
+  if (!created) return null;
+
+  return {
+    id: PHARMACY_COOP_SHARE_CONSENT_ID,
+    share_case_id: PHARMACY_COOP_SHARE_CASE_ID,
+    consent_record_id: 'pharmacy_coop_route_consent_record',
+    consent_date: '2026-06-19T00:00:00.000Z',
+    consent_method: 'paper_scan',
+    scope_keys: ['pdf_output', 'attachments'],
+    has_file_asset: true,
+    valid_until: '2026-12-31T00:00:00.000Z',
+    revoked_at: null,
+    revoked_by: null,
+    created_by: 'route_base_user',
+    created_at: '2026-06-19T00:00:00.000Z',
+    updated_at: '2026-06-19T00:00:00.000Z',
+  };
+}
+
+function buildPharmacyCoopVisitRequest(args: { created: boolean; status: string }) {
+  if (!args.created) return null;
+
+  return {
+    id: PHARMACY_COOP_VISIT_REQUEST_ID,
+    share_case_id: PHARMACY_COOP_SHARE_CASE_ID,
+    urgency: 'emergency',
+    desired_start_at: '2026-06-20T01:30:00.000Z',
+    desired_end_at: '2026-06-20T02:30:00.000Z',
+    visit_type: 'physician_co_visit',
+    status: args.status,
+    contract_id: PHARMACY_COOP_CONTRACT_ID,
+    contract_version_id: PHARMACY_COOP_CONTRACT_VERSION_ID,
+    estimated_amount: 8800,
+    estimated_snapshot: {
+      estimate_status: 'estimated',
+      billing_model: 'per_visit_with_addon',
+      unit_price: 8800,
+      tax_category: 'taxable',
+    },
+    accepted_at:
+      args.status === 'accepted' || args.status === 'completed' ? '2026-06-20T00:30:00.000Z' : null,
+    declined_at: null,
+    completed_at: args.status === 'completed' ? '2026-06-20T03:00:00.000Z' : null,
+    partner_pharmacy: {
+      id: PHARMACY_COOP_PARTNER_PHARMACY_ID,
+      name: 'RouteMock協力薬局',
+      status: 'active',
+    },
+    partnership: {
+      id: PHARMACY_COOP_PARTNERSHIP_ID,
+      base_site: { id: 'pharmacy_coop_route_site', name: 'RouteMock基幹薬局' },
+    },
+    has_request_reason: true,
+    has_physician_instruction: true,
+    has_carry_items: true,
+    has_patient_home_notes: true,
+    has_decline_reason: false,
+  };
+}
+
+function buildPharmacyCoopPartnerRecord(args: { created: boolean; status: string }) {
+  if (!args.created) return null;
+
+  return {
+    id: PHARMACY_COOP_PARTNER_RECORD_ID,
+    visit_request_id: PHARMACY_COOP_VISIT_REQUEST_ID,
+    share_case_id: PHARMACY_COOP_SHARE_CASE_ID,
+    revision_no: 1,
+    status: args.status,
+    pharmacist_name: '協力 RouteMock',
+    visit_at: '2026-06-20T01:45:00.000Z',
+    submitted_at:
+      args.status === 'submitted' || args.status === 'confirmed'
+        ? '2026-06-20T02:30:00.000Z'
+        : null,
+    confirmed_at: args.status === 'confirmed' ? '2026-06-20T03:00:00.000Z' : null,
+    owner_partner_pharmacy: {
+      id: PHARMACY_COOP_PARTNER_PHARMACY_ID,
+      name: 'RouteMock協力薬局',
+      status: 'active',
+    },
+    visit_request: {
+      id: PHARMACY_COOP_VISIT_REQUEST_ID,
+      status: args.status === 'confirmed' ? 'completed' : 'accepted',
+      urgency: 'emergency',
+    },
+    claim_note:
+      args.status === 'confirmed'
+        ? {
+            id: 'pharmacy_coop_route_claim_note',
+            claim_status: 'pending',
+            visit_date: '2026-06-20T00:00:00.000Z',
+            partner_pharmacy_name: 'RouteMock協力薬局',
+            prescription_received_by: 'RouteMock基幹薬局',
+            dispensing_pharmacy_name: 'RouteMock基幹薬局',
+          }
+        : null,
+    has_record_content: true,
+    attachment_count: 0,
+    has_returned_reason: false,
+    has_base_confirmation_snapshot: args.status === 'confirmed',
+  };
+}
+
+function buildPharmacyCoopContract() {
+  return {
+    id: PHARMACY_COOP_CONTRACT_ID,
+    status: 'active',
+    effective_from: '2026-06-01T00:00:00.000Z',
+    effective_to: null,
+    partnership: {
+      base_site: { name: 'RouteMock基幹薬局' },
+      partner_pharmacy: { name: 'RouteMock協力薬局', status: 'active' },
+    },
+    latest_version: {
+      id: PHARMACY_COOP_CONTRACT_VERSION_ID,
+      version_no: 1,
+      active_fee_rule: {
+        billing_model: 'per_visit_with_addon',
+        unit_price: 8800,
+        tax_category: 'taxable',
+      },
+    },
+  };
+}
+
+function buildPharmacyCoopBillingCandidate(created: boolean) {
+  if (!created) return null;
+
+  return {
+    id: PHARMACY_COOP_BILLING_CANDIDATE_ID,
+    billing_month: `${PHARMACY_COOP_BILLING_MONTH}T00:00:00.000Z`,
+    billing_status: 'candidate',
+    is_billable: true,
+    exclusion_reason: null,
+    amount_summary: {
+      billing_model: 'per_visit_with_addon',
+      amount: 8800,
+      tax_category: 'taxable',
+      blocker_codes: [],
+    },
+    partner_visit_record: {
+      id: PHARMACY_COOP_PARTNER_RECORD_ID,
+      visit_at: '2026-06-20T01:45:00.000Z',
+      status: 'confirmed',
+      confirmed_at: '2026-06-20T03:00:00.000Z',
+      owner_partner_pharmacy: { name: 'RouteMock協力薬局', status: 'active' },
+    },
+    contract_version: {
+      id: PHARMACY_COOP_CONTRACT_VERSION_ID,
+      version_no: 1,
+      effective_from: '2026-06-01T00:00:00.000Z',
+    },
+  };
+}
+
+function buildPharmacyCoopInvoice(created: boolean) {
+  if (!created) return null;
+
+  return {
+    id: PHARMACY_COOP_INVOICE_ID,
+    contract_id: PHARMACY_COOP_CONTRACT_ID,
+    document_kind: 'invoice',
+    invoice_no: 'RM-COOP-001',
+    billing_month: PHARMACY_COOP_BILLING_MONTH,
+    subtotal: 8800,
+    tax_amount: 880,
+    total: 9680,
+    status: 'draft',
+    issued_at: null,
+    sent_at: null,
+    paid_at: null,
+    item_count: 1,
+    partnership: {
+      base_site: { id: 'pharmacy_coop_route_site', name: 'RouteMock基幹薬局' },
+      partner_pharmacy: {
+        id: PHARMACY_COOP_PARTNER_PHARMACY_ID,
+        name: 'RouteMock協力薬局',
+        status: 'active',
+      },
+    },
+  };
+}
+
+async function installPharmacyCooperationRouteMocks(page: Page) {
+  const requests = {
+    patientShareCases: [] as CapturedRouteRequest[],
+    patientShareConsents: [] as CapturedRouteRequest[],
+    patientLinks: [] as CapturedRouteRequest[],
+    shareCaseActivations: [] as CapturedRouteRequest[],
+    visitRequests: [] as CapturedRouteRequest[],
+    visitRequestDecisions: [] as CapturedRouteRequest[],
+    partnerVisitRecords: [] as CapturedRouteRequest[],
+    partnerVisitRecordSubmits: [] as CapturedRouteRequest[],
+    partnerVisitRecordReviews: [] as CapturedRouteRequest[],
+    reportDrafts: [] as CapturedRouteRequest[],
+    billingCandidates: [] as CapturedRouteRequest[],
+    pharmacyInvoices: [] as CapturedRouteRequest[],
+  };
+  const state = {
+    shareCaseCreated: true,
+    shareCaseStatus: 'draft',
+    baseApproved: false,
+    partnerAccepted: false,
+    consentCreated: false,
+    visitRequestCreated: false,
+    visitRequestStatus: 'requested',
+    partnerRecordCreated: false,
+    partnerRecordStatus: 'draft',
+    billingCandidateGenerated: false,
+    invoiceCreated: false,
+  };
+
+  await installDashboardShellRouteMocks(page);
+
+  await page.route(
+    apiPathPattern(`/api/patients/${PHARMACY_COOP_PATIENT_ID}/overview`),
+    async (route) => {
+      await fulfillJson(route, buildPharmacyCoopPatientOverview());
+    },
+  );
+
+  await page.route(
+    apiPathPattern(`/api/patients/${PHARMACY_COOP_PATIENT_ID}/home-operations`),
+    async (route) => {
+      await fulfillJson(route, null);
+    },
+  );
+
+  await page.route(
+    apiPathPattern(`/api/patients/${PHARMACY_COOP_PATIENT_ID}/documents`),
+    async (route) => {
+      await fulfillJson(route, buildPharmacyCoopDocumentsSnapshot());
+    },
+  );
+
+  await page.route(apiPathPattern('/api/pharmacy-partnerships'), async (route) => {
+    await fulfillJson(route, {
+      data: [
+        {
+          id: PHARMACY_COOP_PARTNERSHIP_ID,
+          status: 'active',
+          effective_from: '2026-06-01T00:00:00.000Z',
+          effective_to: null,
+          base_site: { id: 'pharmacy_coop_route_site', name: 'RouteMock基幹薬局' },
+          partner_pharmacy: {
+            id: PHARMACY_COOP_PARTNER_PHARMACY_ID,
+            name: 'RouteMock協力薬局',
+            status: 'active',
+          },
+        },
+      ],
+    });
+  });
+
+  await page.route(apiPathPattern('/api/management-plans'), async (route) => {
+    await fulfillJson(route, {
+      data: [
+        {
+          id: PHARMACY_COOP_MANAGEMENT_PLAN_ID,
+          case_id: PHARMACY_COOP_CASE_ID,
+          title: '薬局間RouteMock 管理計画',
+          version: 2,
+          status: 'approved',
+          effective_from: '2026-06-01T00:00:00.000Z',
+          updated_at: '2026-06-18T00:00:00.000Z',
+        },
+      ],
+    });
+  });
+
+  await page.route(apiPathPattern('/api/patient-share-cases'), async (route) => {
+    const request = captureRouteRequest(route);
+    requests.patientShareCases.push(request);
+    if (request.method === 'POST') {
+      state.shareCaseCreated = true;
+      state.shareCaseStatus = 'draft';
+      await fulfillJson(
+        route,
+        buildPharmacyCoopShareCase({
+          created: state.shareCaseCreated,
+          status: state.shareCaseStatus,
+          baseApproved: state.baseApproved,
+          partnerAccepted: state.partnerAccepted,
+        }),
+        201,
+      );
+      return;
+    }
+
+    const shareCase = buildPharmacyCoopShareCase({
+      created: state.shareCaseCreated,
+      status: state.shareCaseStatus,
+      baseApproved: state.baseApproved,
+      partnerAccepted: state.partnerAccepted,
+    });
+    await fulfillJson(route, { data: shareCase ? [shareCase] : [], hasMore: false });
+  });
+
+  await page.route(
+    apiPathPattern(`/api/patient-share-cases/${PHARMACY_COOP_SHARE_CASE_ID}/patient-link`),
+    async (route) => {
+      const request = captureRouteRequest(route);
+      requests.patientLinks.push(request);
+      const body = request.body as { decision?: string } | null;
+      if (body?.decision === 'base_approve') {
+        state.baseApproved = true;
+      }
+      if (body?.decision === 'accept') {
+        state.baseApproved = true;
+        state.partnerAccepted = true;
+      }
+      await fulfillJson(route, {
+        id: 'pharmacy_coop_route_patient_link',
+        match_status: state.partnerAccepted ? 'accepted' : 'pending',
+      });
+    },
+  );
+
+  await page.route(
+    apiPathPattern(`/api/patient-share-cases/${PHARMACY_COOP_SHARE_CASE_ID}/activate`),
+    async (route) => {
+      requests.shareCaseActivations.push(captureRouteRequest(route));
+      state.shareCaseStatus = 'active';
+      await fulfillJson(route, { id: PHARMACY_COOP_SHARE_CASE_ID, status: 'active' });
+    },
+  );
+
+  await page.route(
+    apiPathPattern(`/api/patient-share-cases/${PHARMACY_COOP_SHARE_CASE_ID}/consents`),
+    async (route) => {
+      const request = captureRouteRequest(route);
+      requests.patientShareConsents.push(request);
+      if (request.method === 'POST') {
+        state.consentCreated = true;
+        await fulfillJson(route, buildPharmacyCoopConsent(true), 201);
+        return;
+      }
+
+      const consent = buildPharmacyCoopConsent(state.consentCreated);
+      await fulfillJson(route, { data: consent ? [consent] : [] });
+    },
+  );
+
+  await page.route(
+    apiPathPattern(`/api/patient-share-cases/${PHARMACY_COOP_SHARE_CASE_ID}/correction-requests`),
+    async (route) => {
+      await fulfillJson(route, { data: [] });
+    },
+  );
+
+  await page.route(apiPathPattern('/api/pharmacy-visit-requests'), async (route) => {
+    const request = captureRouteRequest(route);
+    requests.visitRequests.push(request);
+    if (request.method === 'POST') {
+      state.visitRequestCreated = true;
+      state.visitRequestStatus = 'requested';
+      await fulfillJson(
+        route,
+        buildPharmacyCoopVisitRequest({
+          created: state.visitRequestCreated,
+          status: state.visitRequestStatus,
+        }),
+        201,
+      );
+      return;
+    }
+
+    const visitRequest = buildPharmacyCoopVisitRequest({
+      created: state.visitRequestCreated,
+      status: state.visitRequestStatus,
+    });
+    await fulfillJson(route, { data: visitRequest ? [visitRequest] : [] });
+  });
+
+  await page.route(
+    apiPathPattern(`/api/pharmacy-visit-requests/${PHARMACY_COOP_VISIT_REQUEST_ID}/decision`),
+    async (route) => {
+      const request = captureRouteRequest(route);
+      requests.visitRequestDecisions.push(request);
+      const body = request.body as { decision?: string } | null;
+      if (body?.decision === 'accept') {
+        state.visitRequestStatus = 'accepted';
+      }
+      await fulfillJson(route, {
+        id: PHARMACY_COOP_VISIT_REQUEST_ID,
+        status: state.visitRequestStatus,
+      });
+    },
+  );
+
+  await page.route(apiPathPattern('/api/partner-visit-records'), async (route) => {
+    const request = captureRouteRequest(route);
+    requests.partnerVisitRecords.push(request);
+    if (request.method === 'POST') {
+      state.partnerRecordCreated = true;
+      state.partnerRecordStatus = 'draft';
+      await fulfillJson(
+        route,
+        buildPharmacyCoopPartnerRecord({
+          created: state.partnerRecordCreated,
+          status: state.partnerRecordStatus,
+        }),
+        201,
+      );
+      return;
+    }
+
+    const record = buildPharmacyCoopPartnerRecord({
+      created: state.partnerRecordCreated,
+      status: state.partnerRecordStatus,
+    });
+    await fulfillJson(route, { data: record ? [record] : [] });
+  });
+
+  await page.route(
+    apiPathPattern(`/api/partner-visit-records/${PHARMACY_COOP_PARTNER_RECORD_ID}/submit`),
+    async (route) => {
+      requests.partnerVisitRecordSubmits.push(captureRouteRequest(route));
+      state.partnerRecordStatus = 'submitted';
+      await fulfillJson(route, { id: PHARMACY_COOP_PARTNER_RECORD_ID, status: 'submitted' });
+    },
+  );
+
+  await page.route(
+    apiPathPattern(`/api/partner-visit-records/${PHARMACY_COOP_PARTNER_RECORD_ID}/review`),
+    async (route) => {
+      requests.partnerVisitRecordReviews.push(captureRouteRequest(route));
+      state.partnerRecordStatus = 'confirmed';
+      state.visitRequestStatus = 'completed';
+      await fulfillJson(route, { id: PHARMACY_COOP_PARTNER_RECORD_ID, status: 'confirmed' });
+    },
+  );
+
+  await page.route(
+    apiPathPattern(
+      `/api/partner-visit-records/${PHARMACY_COOP_PARTNER_RECORD_ID}/physician-report-draft`,
+    ),
+    async (route) => {
+      requests.reportDrafts.push(captureRouteRequest(route));
+      await fulfillJson(
+        route,
+        {
+          message: '医師向け報告書ドラフトを作成しました',
+          reused_existing_draft: false,
+          report: {
+            id: PHARMACY_COOP_REPORT_ID,
+            status: 'draft',
+            report_type: 'physician',
+          },
+        },
+        201,
+      );
+    },
+  );
+
+  await page.route(apiPathPattern('/api/visit-billing-candidates/summary'), async (route) => {
+    await fulfillJson(route, {
+      billing_month: PHARMACY_COOP_BILLING_MONTH,
+      visit_record_count: state.partnerRecordStatus === 'confirmed' ? 1 : 0,
+      confirmed_visit_record_count: state.partnerRecordStatus === 'confirmed' ? 1 : 0,
+      unconfirmed_visit_record_count: state.partnerRecordStatus === 'confirmed' ? 0 : 1,
+      generated_candidate_count: state.billingCandidateGenerated ? 1 : 0,
+      billable_candidate_count: state.billingCandidateGenerated ? 1 : 0,
+      excluded_candidate_count: 0,
+      invoiced_candidate_count: state.invoiceCreated ? 1 : 0,
+      free_candidate_count: 0,
+      paid_candidate_count: state.billingCandidateGenerated ? 1 : 0,
+      planned_invoice_amount: state.billingCandidateGenerated ? 8800 : 0,
+      pending_candidate_generation_count:
+        state.partnerRecordStatus === 'confirmed' && !state.billingCandidateGenerated ? 1 : 0,
+    });
+  });
+
+  await page.route(apiPathPattern('/api/pharmacy-contracts'), async (route) => {
+    await fulfillJson(route, { data: [buildPharmacyCoopContract()] });
+  });
+
+  await page.route(apiPathPattern('/api/visit-billing-candidates'), async (route) => {
+    const request = captureRouteRequest(route);
+    requests.billingCandidates.push(request);
+    if (request.method === 'POST') {
+      state.billingCandidateGenerated = true;
+      await fulfillJson(route, {
+        message: '2026-06-01 の薬局間協力訪問請求候補を生成しました',
+        billing_month: PHARMACY_COOP_BILLING_MONTH,
+        scanned_confirmed_records: 1,
+        generated_candidates: 1,
+        billable_count: 1,
+        excluded_count: 0,
+        skipped_locked_count: 0,
+      });
+      return;
+    }
+
+    const candidate = buildPharmacyCoopBillingCandidate(state.billingCandidateGenerated);
+    await fulfillJson(route, { data: candidate ? [candidate] : [] });
+  });
+
+  await page.route(apiPathPattern('/api/pharmacy-invoices'), async (route) => {
+    const request = captureRouteRequest(route);
+    requests.pharmacyInvoices.push(request);
+    if (request.method === 'POST') {
+      state.invoiceCreated = true;
+      await fulfillJson(
+        route,
+        {
+          message: '薬局間請求書ドラフトを作成しました',
+          id: PHARMACY_COOP_INVOICE_ID,
+          contract_id: PHARMACY_COOP_CONTRACT_ID,
+          document_kind: 'invoice',
+          billing_month: PHARMACY_COOP_BILLING_MONTH,
+          subtotal: 8800,
+          tax_amount: 880,
+          total: 9680,
+          status: 'draft',
+          reused_existing_draft: false,
+          item_count: 1,
+          items: [],
+        },
+        201,
+      );
+      return;
+    }
+
+    const invoice = buildPharmacyCoopInvoice(state.invoiceCreated);
+    await fulfillJson(route, { data: invoice ? [invoice] : [] });
+  });
+
+  return requests;
 }
 
 async function installBillingWorkbenchRouteMocks(page: Page) {
@@ -2097,6 +2891,278 @@ test.describe('shared external viewer route-mocked smoke', () => {
     });
     expect(selfReportRequests[0]?.body).not.toHaveProperty('otp');
     expect(page.url()).not.toContain(SHARED_OTP);
+    expect(errors).toEqual([]);
+  });
+});
+
+test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => {
+  test.beforeEach(async ({ context }) => {
+    await attachLocalSession(context);
+  });
+
+  test('proves share consent, link activation, visit, billing, and report draft flow', async ({
+    context,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== 'chromium');
+
+    const { page, errors } = await createInstrumentedPage(context);
+    const requests = await installPharmacyCooperationRouteMocks(page);
+
+    await openStableRoute(page, '/workflow/pharmacy-cooperation');
+    await expect(page.getByTestId('pharmacy-cooperation-workflow')).toBeVisible({
+      timeout: 30_000,
+    });
+    const shareCasesTable = page.getByRole('table', { name: '患者共有ケース一覧' });
+    const shareCaseRow = shareCasesTable.getByRole('row').filter({
+      hasText: PHARMACY_COOP_SHARE_CASE_ID,
+    });
+    await expect(shareCaseRow).toBeVisible();
+    await expect(page.getByText('薬局間RouteMock 患者')).toHaveCount(0);
+    await expect(page.getByText('東京都千代田区RouteMock')).toHaveCount(0);
+
+    await shareCaseRow.getByRole('button', { name: /基幹承認/ }).click();
+    await expect
+      .poll(
+        () =>
+          requests.patientLinks.some(
+            (request) =>
+              request.method === 'PATCH' &&
+              (request.body as { decision?: string } | null)?.decision === 'base_approve',
+          ),
+        { message: 'workflow should base-approve the patient link' },
+      )
+      .toBe(true);
+
+    await shareCaseRow
+      .getByLabel(`${PHARMACY_COOP_SHARE_CASE_ID} の協力側ID`)
+      .fill('route_partner_patient');
+    await shareCaseRow
+      .getByLabel(`${PHARMACY_COOP_SHARE_CASE_ID} の協力側氏名`, { exact: true })
+      .fill('連携 確認');
+    await shareCaseRow
+      .getByLabel(`${PHARMACY_COOP_SHARE_CASE_ID} の協力側生年月日`)
+      .fill('1942-04-12');
+    await shareCaseRow.getByRole('button', { name: /協力受諾/ }).click();
+    await expect
+      .poll(
+        () =>
+          requests.patientLinks.some(
+            (request) =>
+              request.method === 'PATCH' &&
+              (request.body as { decision?: string } | null)?.decision === 'accept',
+          ),
+        { message: 'workflow should accept the patient link after identity confirmation' },
+      )
+      .toBe(true);
+
+    await expect(shareCaseRow.getByText('承認済み')).toBeVisible({ timeout: 10_000 });
+    await shareCaseRow.getByRole('button', { name: /共有開始/ }).click();
+    await expect
+      .poll(() => requests.shareCaseActivations.length, {
+        message: 'workflow should activate the patient share case',
+      })
+      .toBe(1);
+
+    await page.getByLabel('患者共有同意日').fill('2026-06-19');
+    await page.getByLabel('患者共有同意者').fill('患者家族 RouteMock');
+    await page.getByLabel('患者共有同意記録ID').fill('pharmacy_coop_route_consent_record');
+    await page.getByLabel('患者共有同意添付ID').fill('pharmacy_coop_route_file');
+    await page.getByLabel('患者共有同意有効期限').fill('2026-12-31');
+    await page.getByLabel('患者共有同意PDF出力').check();
+    await page.getByLabel('患者共有同意添付閲覧').check();
+    await page.getByRole('button', { name: /同意登録/ }).click();
+
+    await expect
+      .poll(
+        () =>
+          requests.patientShareConsents.some(
+            (request) =>
+              request.method === 'POST' &&
+              (request.body as { consent_record_id?: string } | null)?.consent_record_id ===
+                'pharmacy_coop_route_consent_record',
+          ),
+        { message: 'workflow should register consent with file attachment scope' },
+      )
+      .toBe(true);
+
+    await page.getByLabel('訪問依頼の希望開始').fill('2026-06-20T10:30');
+    await page.getByLabel('訪問依頼の希望終了').fill('2026-06-20T11:30');
+    await page.getByLabel('訪問依頼の依頼理由').fill('退院直後の服薬確認が必要です');
+    await page.getByLabel('訪問依頼の医師指示').fill('血圧と副作用を確認');
+    await page.getByLabel('訪問依頼の持参薬・物品').fill('分包済み一包\n残薬バッグ');
+    await page.getByLabel('訪問依頼の居宅注意事項').fill('家族同席予定');
+    await page.getByRole('button', { name: /訪問依頼を作成/ }).click();
+
+    await expect
+      .poll(
+        () =>
+          requests.visitRequests.some(
+            (request) =>
+              request.method === 'POST' && request.url.includes('/api/pharmacy-visit-requests'),
+          ),
+        { message: 'workflow should create a pharmacy visit request' },
+      )
+      .toBe(true);
+    const createVisitRequest = requests.visitRequests.find((request) => request.method === 'POST');
+    expect(createVisitRequest?.body).toMatchObject({
+      share_case_id: PHARMACY_COOP_SHARE_CASE_ID,
+      urgency: 'normal',
+      visit_type: 'regular',
+      request_reason: '退院直後の服薬確認が必要です',
+      physician_instruction: '血圧と副作用を確認',
+      carry_items: ['分包済み一包', '残薬バッグ'],
+      patient_home_notes: '家族同席予定',
+    });
+    await expect(page.getByText('退院直後の服薬確認が必要です')).toHaveCount(0);
+
+    const visitRequestsTable = page.getByRole('table', { name: '協力薬局訪問依頼一覧' });
+    await expect(
+      visitRequestsTable.getByRole('row').filter({ hasText: PHARMACY_COOP_VISIT_REQUEST_ID }),
+    ).toBeVisible({ timeout: 10_000 });
+    await visitRequestsTable.getByRole('button', { name: /^受諾$/ }).click();
+    await expect
+      .poll(
+        () =>
+          requests.visitRequestDecisions.some(
+            (request) =>
+              request.method === 'POST' &&
+              (request.body as { decision?: string } | null)?.decision === 'accept',
+          ),
+        { message: 'workflow should accept the visit request' },
+      )
+      .toBe(true);
+
+    await page.getByLabel('協力訪問記録の訪問日時').fill('2026-06-20T10:45');
+    await page.getByLabel('協力訪問記録の薬剤師ID').fill('route_pharmacist');
+    await page.getByLabel('協力訪問記録の薬剤師名').fill('協力 RouteMock');
+    await page.getByLabel('協力訪問記録の元記録ID').fill('source_visit_record_route');
+    await page.getByLabel('協力訪問記録の服薬状況').fill('確認済み');
+    await page.getByLabel('協力訪問記録の残薬').fill('残薬なし');
+    await page.getByLabel('協力訪問記録の副作用疑い').fill('疑いなし');
+    await page.getByLabel('協力訪問記録の保管状況').fill('良好');
+    await page.getByLabel('協力訪問記録の提案').fill('継続確認');
+    await page.getByRole('button', { name: /下書き保存/ }).click();
+
+    await expect
+      .poll(
+        () =>
+          requests.partnerVisitRecords.some(
+            (request) =>
+              request.method === 'POST' && request.url.includes('/api/partner-visit-records'),
+          ),
+        { message: 'workflow should save a partner visit record draft' },
+      )
+      .toBe(true);
+    const createRecordRequest = requests.partnerVisitRecords.find(
+      (request) => request.method === 'POST',
+    );
+    expect(createRecordRequest?.body).toMatchObject({
+      visit_request_id: PHARMACY_COOP_VISIT_REQUEST_ID,
+      pharmacist_id: 'route_pharmacist',
+      pharmacist_name: '協力 RouteMock',
+      source_visit_record_id: 'source_visit_record_route',
+      record_content: {
+        medication_adherence: '確認済み',
+        remaining_medications: '残薬なし',
+        suspected_adverse_effects: '疑いなし',
+        storage_status: '良好',
+        proposals: '継続確認',
+      },
+    });
+
+    const partnerRecordsTable = page.getByRole('table', { name: '協力訪問記録一覧' });
+    const partnerRecordRow = partnerRecordsTable.getByRole('row').filter({
+      hasText: PHARMACY_COOP_PARTNER_RECORD_ID,
+    });
+    await expect(partnerRecordRow).toBeVisible({ timeout: 10_000 });
+    await partnerRecordRow.getByRole('button', { name: /提出/ }).click();
+    await expect
+      .poll(() => requests.partnerVisitRecordSubmits.length, {
+        message: 'workflow should submit the partner visit record',
+      })
+      .toBe(1);
+    await partnerRecordRow.getByRole('button', { name: /確認\+報告/ }).click();
+    await expect
+      .poll(
+        () =>
+          requests.partnerVisitRecordReviews.some(
+            (request) =>
+              request.method === 'POST' &&
+              (request.body as { decision?: string; doctor_report_required?: boolean } | null)
+                ?.decision === 'confirm' &&
+              (request.body as { doctor_report_required?: boolean } | null)
+                ?.doctor_report_required === true,
+          ),
+        { message: 'workflow should confirm the partner record with report requirement' },
+      )
+      .toBe(true);
+
+    await partnerRecordRow.getByRole('button', { name: /報告書ドラフト/ }).click();
+    await expect
+      .poll(() => requests.reportDrafts.length, {
+        message: 'workflow should create a physician report draft',
+      })
+      .toBe(1);
+    await expect(page.getByTestId('pharmacy-cooperation-report-result')).toBeVisible();
+    await expect(page.getByRole('link', { name: /報告書を開く/ })).toHaveAttribute(
+      'href',
+      `/reports/${PHARMACY_COOP_REPORT_ID}`,
+    );
+
+    await openStableRoute(page, '/billing/partner-cooperation');
+    await expect(page.getByTestId('partner-cooperation-billing')).toBeVisible({
+      timeout: 30_000,
+    });
+    await page.getByLabel('対象月').fill('2026-06');
+    await expect(page.getByText(/選択中: RouteMock基幹薬局/)).toBeVisible();
+    await page.getByRole('button', { name: /候補を生成/ }).click();
+    await expect
+      .poll(
+        () =>
+          requests.billingCandidates.some(
+            (request) =>
+              request.method === 'POST' && request.url.includes('/api/visit-billing-candidates'),
+          ),
+        { message: 'billing page should generate partner cooperation billing candidates' },
+      )
+      .toBe(true);
+    const billingPost = requests.billingCandidates.find((request) => request.method === 'POST');
+    expect(billingPost?.body).toEqual({ billing_month: PHARMACY_COOP_BILLING_MONTH });
+    const billingCandidatesTable = page.getByRole('table', {
+      name: '薬局間協力請求候補一覧',
+    });
+    const billingCandidateRow = billingCandidatesTable
+      .getByRole('row')
+      .filter({ hasText: 'RouteMock協力薬局' })
+      .filter({ hasText: '8,800円' });
+    await expect(billingCandidateRow).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(billingCandidateRow.getByText('有償/加算')).toBeVisible();
+    await page.getByRole('button', { name: /請求書ドラフト/ }).click();
+    await expect
+      .poll(
+        () =>
+          requests.pharmacyInvoices.some(
+            (request) =>
+              request.method === 'POST' && request.url.includes('/api/pharmacy-invoices'),
+          ),
+        { message: 'billing page should create an invoice draft' },
+      )
+      .toBe(true);
+    const invoicePost = requests.pharmacyInvoices.find((request) => request.method === 'POST');
+    expect(invoicePost?.body).toMatchObject({
+      billing_month: PHARMACY_COOP_BILLING_MONTH,
+      contract_id: PHARMACY_COOP_CONTRACT_ID,
+      document_kind: 'invoice',
+    });
+    await expect(page.getByTestId('partner-invoice-draft-result')).toBeVisible();
+    await expect(page.getByRole('link', { name: /PDFを開く/ })).toHaveAttribute(
+      'href',
+      new RegExp(`/api/pharmacy-invoices/${PHARMACY_COOP_INVOICE_ID}/pdf\\?purpose=`),
+    );
+    await expect(page.getByText('薬局間RouteMock 患者')).toHaveCount(0);
+    await expect(page.getByText('東京都千代田区RouteMock')).toHaveCount(0);
     expect(errors).toEqual([]);
   });
 });
