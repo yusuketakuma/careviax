@@ -66,7 +66,23 @@ describe('PharmacySitesContent', () => {
         }
 
         if (url === '/api/pharmacy-sites/site_1/insurance-configs') {
-          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: 'config_2024_medical',
+                  site_id: 'site_1',
+                  insurance_type: 'medical',
+                  revision_code: '2024',
+                  revision_label: '令和6年度改定',
+                  effective_from: '2024-06-01',
+                  effective_to: null,
+                  config: {},
+                },
+              ],
+            }),
+            { status: 200 },
+          );
         }
 
         return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
@@ -81,7 +97,7 @@ describe('PharmacySitesContent', () => {
   it('associates visible labels with pharmacy site edit fields', async () => {
     renderContent();
 
-    fireEvent.click(await screen.findByRole('button', { name: '編集' }));
+    fireEvent.click(await screen.findByRole('button', { name: '本店の薬局情報を編集' }));
 
     expect(screen.getByLabelText('薬局名')).toBeTruthy();
     expect(screen.getByLabelText('住所')).toBeTruthy();
@@ -92,12 +108,57 @@ describe('PharmacySitesContent', () => {
   it('associates visible labels with insurance config fields', async () => {
     renderContent();
 
-    fireEvent.click(await screen.findByRole('button', { name: '保険設定' }));
-    fireEvent.click(await screen.findByRole('button', { name: '設定を追加' }));
+    fireEvent.click(await screen.findByRole('button', { name: '本店の保険設定を開く' }));
+    fireEvent.click(await screen.findByRole('button', { name: '本店の保険設定を追加' }));
 
     expect(screen.getByLabelText('保険種別')).toBeTruthy();
     expect(screen.getByLabelText('改定年度')).toBeTruthy();
     expect(screen.getByLabelText('施行日')).toBeTruthy();
     expect(screen.getByLabelText('終了日（空欄=現行）')).toBeTruthy();
+  });
+
+  it('names repeated insurance config actions by target', async () => {
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: '本店の保険設定を開く' }));
+
+    expect(
+      await screen.findByRole('button', { name: '医療保険 2024から2026設定を作成' }),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: '医療保険 2024の保険設定を編集' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '医療保険 2024の保険設定を削除' }));
+
+    expect(screen.getByText(/医療保険 2024の保険設定を削除します/)).toBeTruthy();
+  });
+
+  it('blocks insurance config ranges that end before the effective date', async () => {
+    renderContent();
+
+    fireEvent.click(await screen.findByRole('button', { name: '本店の保険設定を開く' }));
+    fireEvent.click(await screen.findByRole('button', { name: '本店の保険設定を追加' }));
+
+    const effectiveFrom = screen.getByLabelText('施行日') as HTMLInputElement;
+    const effectiveTo = screen.getByLabelText('終了日（空欄=現行）') as HTMLInputElement;
+    const submit = screen.getByRole('button', { name: '登録する' }) as HTMLButtonElement;
+
+    fireEvent.change(effectiveFrom, { target: { value: '2026-06-01' } });
+    fireEvent.change(effectiveTo, { target: { value: '2026-06-01' } });
+
+    expect(effectiveFrom.max).toBe('2026-05-31');
+    expect(effectiveTo.min).toBe('2026-06-02');
+    expect(effectiveTo.getAttribute('aria-invalid')).toBe('true');
+    expect(effectiveTo.getAttribute('aria-describedby')).toContain(
+      'insurance-config-effective-to-error',
+    );
+    expect(screen.getAllByText('終了日は施行日より後の日付を指定してください。')).toHaveLength(2);
+    expect(submit.disabled).toBe(true);
+    expect(submit.getAttribute('aria-describedby')).toBe('insurance-config-save-blocker');
+
+    fireEvent.click(submit);
+    expect(fetch).not.toHaveBeenCalledWith(
+      '/api/pharmacy-sites/site_1/insurance-configs',
+      expect.objectContaining({ method: 'POST' }),
+    );
   });
 });

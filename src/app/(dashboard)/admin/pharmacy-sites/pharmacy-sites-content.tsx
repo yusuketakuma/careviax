@@ -33,7 +33,17 @@ import {
 } from '@/components/ui/dialog';
 import { AlertTriangle } from 'lucide-react';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import {
+  CARE_BOOL_FIELDS,
+  getAvailableRevisions,
+  getMedicalConfigFields,
+  getDefaultRevisionCode,
+  getRevisionMeta,
+  normalizeInsuranceConfigForRevision,
+} from '@/lib/constants/site-config-fields';
+import { formatUtcDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { isValidDateKey } from '@/lib/validations/date-key';
 
 type PharmacySite = {
   id: string;
@@ -78,14 +88,8 @@ type ConfigForm = {
   config: Record<string, unknown>;
 };
 
-import {
-  CARE_BOOL_FIELDS,
-  getAvailableRevisions,
-  getMedicalConfigFields,
-  getDefaultRevisionCode,
-  getRevisionMeta,
-  normalizeInsuranceConfigForRevision,
-} from '@/lib/constants/site-config-fields';
+type ConfigFormErrorKey = 'effective_from' | 'effective_to';
+type ConfigFormErrors = Partial<Record<ConfigFormErrorKey, string>>;
 
 function makeEmptyConfig(): ConfigForm {
   const insuranceType = 'medical';
@@ -106,6 +110,45 @@ const INSURANCE_TYPE_LABELS: Record<string, string> = {
   care: '介護保険',
 };
 
+const CONFIG_SAVE_BLOCKER_ID = 'insurance-config-save-blocker';
+
+function descriptionIds(...ids: Array<string | false | null | undefined>) {
+  const value = ids.filter(Boolean).join(' ');
+  return value || undefined;
+}
+
+function getInsuranceConfigTargetLabel(config: InsuranceConfig) {
+  return `${INSURANCE_TYPE_LABELS[config.insurance_type] ?? config.insurance_type} ${
+    config.revision_code
+  }`;
+}
+
+function getConfigFormErrors(form: ConfigForm | null): ConfigFormErrors {
+  if (!form) return {};
+  const errors: ConfigFormErrors = {};
+  if (!isValidDateKey(form.effective_from)) {
+    errors.effective_from = '施行日はYYYY-MM-DD形式で指定してください。';
+  }
+  if (form.effective_to) {
+    if (!isValidDateKey(form.effective_to)) {
+      errors.effective_to = '終了日はYYYY-MM-DD形式で指定してください。';
+    } else if (isValidDateKey(form.effective_from) && form.effective_to <= form.effective_from) {
+      errors.effective_to = '終了日は施行日より後の日付を指定してください。';
+    }
+  }
+  return errors;
+}
+
+function getConfigSaveBlocker(errors: ConfigFormErrors) {
+  return errors.effective_from ?? errors.effective_to ?? null;
+}
+
+function offsetDateKey(value: string, days: number) {
+  if (!isValidDateKey(value)) return undefined;
+  const [year, month, day] = value.split('-').map(Number);
+  return formatUtcDateKey(new Date(Date.UTC(year, month - 1, day + days)));
+}
+
 export function PharmacySitesContent() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
@@ -114,9 +157,11 @@ export function PharmacySitesContent() {
   const [configSiteId, setConfigSiteId] = useState<string | null>(null);
   const [configForm, setConfigForm] = useState<ConfigForm | null>(null);
   const [editingConfigId, setEditingConfigId] = useState<string | null>(null);
-  const [deleteConfig, setDeleteConfig] = useState<{ siteId: string; configId: string } | null>(
-    null,
-  );
+  const [deleteConfig, setDeleteConfig] = useState<{
+    siteId: string;
+    configId: string;
+    targetLabel: string;
+  } | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['pharmacy-sites-admin', orgId],
@@ -145,6 +190,9 @@ export function PharmacySitesContent() {
   });
 
   const configs = configsQuery.data?.data ?? [];
+  const configSite = sites.find((site) => site.id === configSiteId) ?? null;
+  const configFormErrors = getConfigFormErrors(configForm);
+  const configSaveBlocker = getConfigSaveBlocker(configFormErrors);
 
   const saveSiteMutation = useMutation({
     mutationFn: async () => {
@@ -174,6 +222,7 @@ export function PharmacySitesContent() {
   const saveConfigMutation = useMutation({
     mutationFn: async () => {
       if (!configSiteId || !configForm) throw new Error('設定対象がありません');
+      if (configSaveBlocker) throw new Error(configSaveBlocker);
       const url = editingConfigId
         ? `/api/pharmacy-sites/${configSiteId}/insurance-configs/${editingConfigId}`
         : `/api/pharmacy-sites/${configSiteId}/insurance-configs`;
@@ -304,10 +353,20 @@ export function PharmacySitesContent() {
                 <div className="mt-1 text-sm text-muted-foreground">{site.address}</div>
               </div>
               <div className="flex gap-2">
-                <Button size="sm" variant="outline" onClick={() => openSiteEdit(site)}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  aria-label={`${site.name}の薬局情報を編集`}
+                  onClick={() => openSiteEdit(site)}
+                >
                   編集
                 </Button>
-                <Button size="sm" variant="secondary" onClick={() => setConfigSiteId(site.id)}>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  aria-label={`${site.name}の保険設定を開く`}
+                  onClick={() => setConfigSiteId(site.id)}
+                >
                   保険設定
                 </Button>
               </div>
@@ -453,6 +512,7 @@ export function PharmacySitesContent() {
               <div className="text-sm font-medium">登録済み設定</div>
               <Button
                 size="sm"
+                aria-label={`${configSite?.name ?? '薬局'}の保険設定を追加`}
                 onClick={() => {
                   setConfigForm(makeEmptyConfig());
                   setEditingConfigId(null);
@@ -507,19 +567,30 @@ export function PharmacySitesContent() {
                           <Button
                             size="sm"
                             variant="secondary"
+                            aria-label={`${getInsuranceConfigTargetLabel(config)}から2026設定を作成`}
                             onClick={() => cloneConfigFor2026(config)}
                           >
                             2026設定を作成
                           </Button>
                         )}
-                      <Button size="sm" variant="outline" onClick={() => openConfigEdit(config)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        aria-label={`${getInsuranceConfigTargetLabel(config)}の保険設定を編集`}
+                        onClick={() => openConfigEdit(config)}
+                      >
                         編集
                       </Button>
                       <Button
                         size="sm"
                         variant="destructive"
+                        aria-label={`${getInsuranceConfigTargetLabel(config)}の保険設定を削除`}
                         onClick={() =>
-                          setDeleteConfig({ siteId: config.site_id, configId: config.id })
+                          setDeleteConfig({
+                            siteId: config.site_id,
+                            configId: config.id,
+                            targetLabel: getInsuranceConfigTargetLabel(config),
+                          })
                         }
                       >
                         削除
@@ -607,21 +678,64 @@ export function PharmacySitesContent() {
                       <Input
                         id="insurance-config-effective-from"
                         type="date"
+                        max={offsetDateKey(configForm.effective_to, -1)}
                         value={configForm.effective_from}
                         onChange={(e) =>
                           setConfigForm((f) => (f ? { ...f, effective_from: e.target.value } : f))
                         }
+                        aria-invalid={Boolean(configFormErrors.effective_from)}
+                        aria-describedby={descriptionIds(
+                          'insurance-config-effective-from-help',
+                          configFormErrors.effective_from &&
+                            'insurance-config-effective-from-error',
+                        )}
                       />
+                      <p
+                        id="insurance-config-effective-from-help"
+                        className="text-xs text-muted-foreground"
+                      >
+                        保険設定を適用開始する日付を入力します。
+                      </p>
+                      {configFormErrors.effective_from ? (
+                        <p
+                          id="insurance-config-effective-from-error"
+                          className="text-xs text-destructive"
+                          role="alert"
+                        >
+                          {configFormErrors.effective_from}
+                        </p>
+                      ) : null}
                     </Field>
                     <Field label="終了日（空欄=現行）" htmlFor="insurance-config-effective-to">
                       <Input
                         id="insurance-config-effective-to"
                         type="date"
+                        min={offsetDateKey(configForm.effective_from, 1)}
                         value={configForm.effective_to}
                         onChange={(e) =>
                           setConfigForm((f) => (f ? { ...f, effective_to: e.target.value } : f))
                         }
+                        aria-invalid={Boolean(configFormErrors.effective_to)}
+                        aria-describedby={descriptionIds(
+                          'insurance-config-effective-to-help',
+                          configFormErrors.effective_to && 'insurance-config-effective-to-error',
+                        )}
                       />
+                      <p
+                        id="insurance-config-effective-to-help"
+                        className="text-xs text-muted-foreground"
+                      >
+                        空欄の場合は現行設定として扱います。入力する場合は施行日より後の日付にします。
+                      </p>
+                      {configFormErrors.effective_to ? (
+                        <p
+                          id="insurance-config-effective-to-error"
+                          className="text-xs text-destructive"
+                          role="alert"
+                        >
+                          {configFormErrors.effective_to}
+                        </p>
+                      ) : null}
                     </Field>
                   </div>
 
@@ -719,9 +833,18 @@ export function PharmacySitesContent() {
                     >
                       キャンセル
                     </Button>
+                    {configSaveBlocker ? (
+                      <p
+                        id={CONFIG_SAVE_BLOCKER_ID}
+                        className="self-center text-xs text-destructive"
+                      >
+                        {configSaveBlocker}
+                      </p>
+                    ) : null}
                     <Button
                       onClick={() => saveConfigMutation.mutate()}
-                      disabled={saveConfigMutation.isPending}
+                      disabled={saveConfigMutation.isPending || Boolean(configSaveBlocker)}
+                      aria-describedby={configSaveBlocker ? CONFIG_SAVE_BLOCKER_ID : undefined}
                     >
                       {saveConfigMutation.isPending
                         ? '保存中...'
@@ -742,7 +865,10 @@ export function PharmacySitesContent() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>保険設定を削除</DialogTitle>
-            <DialogDescription>この操作は取り消せません。本当に削除しますか？</DialogDescription>
+            <DialogDescription>
+              {deleteConfig ? `${deleteConfig.targetLabel}の保険設定を削除します。` : null}
+              この操作は取り消せません。
+            </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteConfig(null)}>

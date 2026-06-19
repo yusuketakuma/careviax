@@ -4368,6 +4368,37 @@ Implemented:
 
 - PCA return-inspection disabled reasons and target-specific action names are addressed for the inspected screen with jsdom, DB-backed API, and browser evidence.
 
+## 20260620-0512 JST - Pharmacy Site Insurance Config Inline Validation
+
+### Summary
+
+- Added target-specific accessible names for repeated pharmacy site and insurance config actions.
+- Added inline validation for insurance config effective date ranges before save.
+- Connected effective-date helper/error text and the disabled save reason through ARIA.
+- Added focused regression coverage for target-specific action names, delete confirmation copy, and blocked invalid date ranges.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.tsx`
+- `src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.tsx' 'src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.test.tsx' 'src/app/api/pharmacy-sites/[id]/insurance-configs/route.test.ts' 'src/app/api/pharmacy-sites/[id]/insurance-configs/[configId]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, 3 files / 23 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.tsx' 'src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.test.tsx'`: passed.
+- `git diff --check -- 'src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.tsx' 'src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `pnpm lint`: passed.
+
+### Remaining / Next Loop
+
+- Pharmacy-site insurance config date ranges now match the existing API validation at the form boundary, and repeated site/config actions have target-specific accessible names.
+- Continue with the next small UI/UX candidate from the scan, likely admin institutions row action names, billing-rule disabled reasons, or admin jobs rerun action names.
+
 ## 20260620-0451 JST - Pharmacist Credential Inline Validation
 
 ### Summary
