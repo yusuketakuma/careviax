@@ -3891,6 +3891,36 @@ Implemented:
 - `pnpm exec vitest run src/server/services/patient-share-summary.test.ts src/app/api/patients/route.test.ts --reporter=dot --testTimeout=30000`: passed, 2 files / 20 tests. Existing mocked webhook stderr appeared during patient creation tests.
 - Targeted ESLint over touched patient-list/share-summary files: passed.
 - `pnpm typecheck`: passed.
+## 20260620-0316 JST - DataTable Row and Error Accessibility
+
+### Summary
+
+- Added explicit accessible names to clickable DataTable desktop and mobile row containers using the existing row accessibility label.
+- Stopped DataTable error states from also announcing the generic empty-table copy.
+- Exposed the toolbar disabled reason through `aria-describedby` for export/print buttons instead of relying only on `title`.
+- Added regression coverage for row naming, disabled action descriptions, and error-state empty copy.
+
+### Files Changed
+
+- `src/components/ui/data-table.tsx`
+- `src/components/ui/data-table.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx`: passed.
+- `pnpm exec eslint src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx`: passed.
+- `pnpm exec vitest run src/components/ui/data-table.test.tsx --reporter=dot --testTimeout=30000`: passed, 1 file / 4 tests.
+- `git diff --check -- src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Remaining candidates include pharmacy-cooperation responsive table density, raw workflow table convergence, toast-only form validation, and expanded browser/a11y proof.
+- Concurrent dirty files outside this DataTable slice are preserved and should be handled separately.
+
 - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
 - `git diff --check`: passed.
 
@@ -4346,6 +4376,65 @@ Implemented:
 
 - Full DB-backed pharmacy cooperation workflow proof is still pending beyond the patient-card creation slice: consent/link/activation, visit request, partner record, report draft, billing candidate, invoice/payment, and message thread.
 - `patient detail screen surfaces representative backend data` was rerun after migration apply and failed on a stale `safety-board` expectation because the seeded demo case currently renders no active card/safety board; no migration/Prisma 5xx surfaced in that run.
+
+## 20260620-0314 JST - Patient Share Activation DB Proof and JST Date Boundary
+
+### Summary
+
+- Extended the DB-backed patient-card Playwright proof from share-case creation to consent registration, base approval, partner acceptance, activation, and workflow active-state display.
+- Fixed a JST morning `@db.Date` boundary bug that rejected same-local-day patient-share activation with `薬局間連携の開始日前です`.
+- Normalized activation share-case/partnership windows and active patient-share consent checks through the repo's `localDateKey()` -> `utcDateFromLocalKey()` @db.Date convention.
+
+### Files Changed
+
+- `src/app/api/patient-share-cases/[id]/activate/route.ts`
+- `src/app/api/patient-share-cases/[id]/activate/route.test.ts`
+- `src/server/services/pharmacy-partnerships.ts`
+- `src/server/services/pharmacy-partnerships.test.ts`
+- `tools/tests/ui-major-screens.spec.ts`
+- `docs/pharmacy-cooperation-v0.2-completion-audit.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec eslint src/server/services/pharmacy-partnerships.ts src/server/services/pharmacy-partnerships.test.ts 'src/app/api/patient-share-cases/[id]/activate/route.ts' 'src/app/api/patient-share-cases/[id]/activate/route.test.ts' tools/tests/ui-major-screens.spec.ts`: passed.
+- `pnpm exec vitest run src/server/services/pharmacy-partnerships.test.ts 'src/app/api/patient-share-cases/[id]/activate/route.test.ts' src/app/api/patient-share-cases/route.test.ts --reporter=dot --testTimeout=30000`: passed, 3 files / 39 tests.
+- `DATABASE_URL=... DIRECT_URL=... PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-major-screens.spec.ts --project=chromium -g "patient card creates and activates a DB-backed share case"`: passed, 1 test.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- DB-backed proof still needs downstream pharmacy cooperation flow coverage: visit request, partner visit record, physician report draft, billing candidate, invoice/payment, and message thread.
+- The separate DataTable accessibility/error-state diff is present in the worktree and should be validated/committed as its own UI component group.
+
+## 20260620-0316 JST - DataTable Error and Row Activation Accessibility
+
+### Summary
+
+- Added disabled-toolbar reason text through `aria-describedby` so CSV/print disabled states expose why the action is unavailable.
+- Changed DataTable error empty rows to render an error-specific empty message instead of the normal empty-data text.
+- Named clickable desktop and mobile rows from `getRowA11yLabel()` as `<label> を開く`.
+
+### Files Changed
+
+- `src/components/ui/data-table.tsx`
+- `src/components/ui/data-table.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec eslint src/components/ui/data-table.tsx src/components/ui/data-table.test.tsx`: passed.
+- `pnpm exec vitest run src/components/ui/data-table.test.tsx --reporter=dot --testTimeout=30000`: passed, 1 file / 4 tests.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- DataTable component slice is ready to commit as a separate UI component group.
 
 ## 20260620-0224 JST - Admin Analytics Monthly Trend DataTable
 
