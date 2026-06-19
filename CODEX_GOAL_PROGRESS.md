@@ -2312,3 +2312,42 @@ Blocked: C11 (diverged user-visible label strings — product/UX sign-off), C12 
 - Phase 1 still needs broader operator end-to-end verification and remaining P1 audit-log gap inspection, especially `P1-27` viewing log coverage.
 - Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
 - Current user request supersedes the loop temporarily: group and commit all current changes before continuing implementation.
+
+## 20260619-1447 JST - Share Case Read Audit and Revoked Share Read Guard Slice
+
+### Completed
+
+- Re-read the v0.2 specification and ran parallel read-only reviews against Phase 1.
+- Added `patient_share_cases_viewed` audit logging to `GET /api/patient-share-cases`.
+- Added a `view_context` query parameter so `/workflow/pharmacy-cooperation` records the target screen as `pharmacy_cooperation_workflow`.
+- Kept the view audit PHI-minimized: IDs, role, target screen, filter flags, site IDs, partner pharmacy IDs, and counts only.
+- Added a shared `buildActivePatientShareCaseReadWhere` helper for active share case read predicates.
+- Applied the active share case + active partnership + unrevoked active consent predicate to `GET /api/pharmacy-visit-requests` and `GET /api/partner-visit-records`.
+- Updated focused tests to assert the read audit and revoked-consent visibility guard without exposing patient names, clinical instructions, visit bodies, or medication text.
+
+### Files Changed
+
+- `src/app/api/patient-share-cases/route.ts`
+- `src/app/api/patient-share-cases/route.test.ts`
+- `src/app/api/pharmacy-visit-requests/route.ts`
+- `src/app/api/pharmacy-visit-requests/route.test.ts`
+- `src/app/api/partner-visit-records/route.ts`
+- `src/app/api/partner-visit-records/route.test.ts`
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`
+- `src/server/services/patient-share-access.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write src/server/services/patient-share-access.ts src/app/api/pharmacy-visit-requests/route.ts src/app/api/pharmacy-visit-requests/route.test.ts src/app/api/partner-visit-records/route.ts src/app/api/partner-visit-records/route.test.ts`: passed.
+- `pnpm exec vitest run src/app/api/patient-share-cases/route.test.ts 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' src/app/api/pharmacy-visit-requests/route.test.ts src/app/api/partner-visit-records/route.test.ts --reporter=dot --testTimeout=30000`: passed, 4 files / 17 tests.
+- `pnpm exec eslint src/server/services/patient-share-access.ts src/app/api/patient-share-cases/route.ts src/app/api/patient-share-cases/route.test.ts 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' src/app/api/pharmacy-visit-requests/route.ts src/app/api/pharmacy-visit-requests/route.test.ts src/app/api/partner-visit-records/route.ts src/app/api/partner-visit-records/route.test.ts`: passed.
+- `pnpm typecheck`: passed.
+
+### Remaining / Next Loop
+
+- Phase 1 still needs file/attachment download audit for P1-06/P1-28, actor pharmacy/site context in read audits, share-scope update/audit, patient-share-case creation UI, visit request creation UI, and stronger management-plan version evidence.
+- Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
+- Next slice: add audited file/attachment download or add the visit request creation panel; privacy reviewers ranked download audit and revoked-share read guards as the highest risks.
