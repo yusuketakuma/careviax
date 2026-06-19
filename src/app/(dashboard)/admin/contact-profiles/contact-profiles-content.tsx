@@ -209,9 +209,9 @@ export function ContactProfilesContent() {
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
           <div className="space-y-1.5">
-            <Label>種別</Label>
+            <Label htmlFor="contact-kind-filter">種別</Label>
             <Select value={kind} onValueChange={(value) => setKind(value as typeof kind)}>
-              <SelectTrigger>
+              <SelectTrigger id="contact-kind-filter">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -223,8 +223,9 @@ export function ContactProfilesContent() {
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>検索</Label>
+            <Label htmlFor="contact-profile-search">検索</Label>
             <Input
+              id="contact-profile-search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="氏名・所属・電話・FAX・メール"
@@ -455,7 +456,7 @@ export function ContactProfilesContent() {
                 )}
 
                 <div className={fieldClassName}>
-                  <Label>送付方法</Label>
+                  <Label htmlFor="contact-preferred-method">送付方法</Label>
                   <Select
                     value={form.preferred_contact_method}
                     onValueChange={(value) =>
@@ -465,7 +466,7 @@ export function ContactProfilesContent() {
                       }))
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="contact-preferred-method">
                       <SelectValue placeholder="送付方法を選択" />
                     </SelectTrigger>
                     <SelectContent>

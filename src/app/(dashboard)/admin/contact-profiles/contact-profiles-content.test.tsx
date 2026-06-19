@@ -117,10 +117,13 @@ describe('ContactProfilesContent', () => {
 
     await screen.findByTestId('contact-delivery-target-edit');
     expect(screen.getByText('検索・フィルタ')).toBeTruthy();
+    expect(screen.getByLabelText('種別')).toBeTruthy();
+    expect(screen.getByLabelText('検索')).toBeTruthy();
     expect(await screen.findByRole('button', { name: /山本ケアプランセンター/ })).toBeTruthy();
     expect((screen.getByLabelText('宛先') as HTMLInputElement).value).toBe(
       '山本ケアプランセンター',
     );
+    expect(screen.getByLabelText('送付方法')).toBeTruthy();
     expect(screen.getByText('表示中')).toBeTruthy();
     expect(screen.getByText('未完了')).toBeTruthy();
     expect(screen.getByText('方法未設定')).toBeTruthy();

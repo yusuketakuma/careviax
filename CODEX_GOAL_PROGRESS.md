@@ -4327,7 +4327,7 @@ Implemented:
 - `pnpm exec prettier --write 'src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.tsx' 'src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.test.tsx'`: passed.
 - `pnpm exec vitest run 'src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 2 tests.
 - `pnpm exec eslint 'src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.tsx' 'src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.test.tsx'`: passed.
-- `pnpm exec prettier --check 'src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.tsx' 'src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
 - `pnpm typecheck`: passed.
 - `git diff --check`: passed.
 
