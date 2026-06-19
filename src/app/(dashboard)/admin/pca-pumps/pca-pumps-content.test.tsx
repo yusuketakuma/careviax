@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import {
@@ -19,13 +20,15 @@ const { useOrgIdMock } = vi.hoisted(() => ({
   useOrgIdMock: vi.fn(),
 }));
 
+const mutationMutateMock = vi.hoisted(() => vi.fn());
+
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
 }));
 
 vi.mock('@tanstack/react-query', () => ({
   useMutation: () => ({
-    mutate: vi.fn(),
+    mutate: mutationMutateMock,
     isPending: false,
   }),
   useQueryClient: () => ({
@@ -195,6 +198,82 @@ vi.mock('@/components/ui/data-table', () => ({
   ),
 }));
 
+vi.mock('@/components/ui/select', async () => {
+  const React = await import('react');
+
+  function collectItems(children: React.ReactNode): Array<{ value: string; label: string }> {
+    const items: Array<{ value: string; label: string }> = [];
+    React.Children.forEach(children, (child) => {
+      if (!React.isValidElement(child)) return;
+      const props = child.props as { value?: string; children?: React.ReactNode };
+      if (props.value) {
+        items.push({
+          value: props.value,
+          label: React.Children.toArray(props.children).join(''),
+        });
+      }
+      items.push(...collectItems(props.children));
+    });
+    return items;
+  }
+
+  type TriggerProps = {
+    id?: string;
+    'aria-describedby'?: string;
+    'aria-invalid'?: boolean;
+    children?: React.ReactNode;
+  };
+
+  function findTriggerProps(children: React.ReactNode): TriggerProps | undefined {
+    let triggerProps: TriggerProps | undefined;
+    React.Children.forEach(children, (child) => {
+      if (!React.isValidElement(child)) return;
+      const props = child.props as TriggerProps;
+      if (props.id) {
+        triggerProps = props;
+      }
+      if (!triggerProps) triggerProps = findTriggerProps(props.children);
+    });
+    return triggerProps;
+  }
+
+  function MockSelect({
+    value,
+    onValueChange,
+    children,
+  }: {
+    value?: string;
+    onValueChange?: (value: string) => void;
+    children: ReactNode;
+  }) {
+    const triggerProps = findTriggerProps(children);
+
+    return (
+      <select
+        id={triggerProps?.id}
+        aria-describedby={triggerProps?.['aria-describedby']}
+        aria-invalid={triggerProps?.['aria-invalid']}
+        value={value}
+        onChange={(event) => onValueChange?.(event.target.value)}
+      >
+        {collectItems(children).map((item) => (
+          <option key={item.value} value={item.value}>
+            {item.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  return {
+    Select: MockSelect,
+    SelectContent: ({ children }: { children: ReactNode }) => <>{children}</>,
+    SelectItem: ({ children }: { children: ReactNode }) => <>{children}</>,
+    SelectTrigger: ({ children }: { children: ReactNode }) => <>{children}</>,
+    SelectValue: ({ placeholder }: { placeholder?: string }) => <>{placeholder ?? null}</>,
+  };
+});
+
 describe('PcaPumpsContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -211,6 +290,50 @@ describe('PcaPumpsContent', () => {
     expect(screen.getAllByText('PCA-SEED-002').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/PCA-RETURNED/)).toBeTruthy();
     expect(screen.getByRole('button', { name: '検品' })).toBeTruthy();
+  });
+
+  it('surfaces rental required fields and date/fee blockers inline before mutation', () => {
+    render(<PcaPumpsContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: '貸出登録' }));
+
+    const pumpSelect = screen.getByLabelText('PCAポンプ') as HTMLSelectElement;
+    const institutionSelect = screen.getByLabelText('貸出先医療機関') as HTMLSelectElement;
+    const rentedAtInput = screen.getByLabelText('貸出日') as HTMLInputElement;
+    const dueAtInput = screen.getByLabelText('返却予定日') as HTMLInputElement;
+    const feeInput = screen.getByLabelText('請求予定額') as HTMLInputElement;
+    const saveButton = screen.getAllByRole('button', { name: '貸出登録' }).at(-1) as
+      | HTMLButtonElement
+      | undefined;
+    expect(saveButton).toBeTruthy();
+
+    expect(saveButton!.disabled).toBe(true);
+    expect(saveButton!.getAttribute('aria-describedby')).toBe('rental-save-blocker');
+    expect(pumpSelect.getAttribute('aria-invalid')).toBe('true');
+    expect(pumpSelect.getAttribute('aria-describedby')).toBe('rental-pump-help rental-pump-error');
+    expect(institutionSelect.getAttribute('aria-invalid')).toBe('true');
+    expect(institutionSelect.getAttribute('aria-describedby')).toBe(
+      'rental-institution-help rental-institution-error',
+    );
+    expect(screen.getAllByText('PCAポンプを選択してください。')).toHaveLength(2);
+
+    fireEvent.change(pumpSelect, { target: { value: 'pump_available' } });
+    fireEvent.change(institutionSelect, { target: { value: 'institution_1' } });
+    fireEvent.change(rentedAtInput, { target: { value: '2026-06-10' } });
+    fireEvent.change(dueAtInput, { target: { value: '2026-06-09' } });
+    fireEvent.change(feeInput, { target: { value: '12.5' } });
+
+    expect(screen.getAllByText('返却予定日は貸出日以降の日付を指定してください。')).toHaveLength(2);
+    expect(screen.getByText('請求予定額は0以上の整数で入力してください。')).toBeTruthy();
+    expect(dueAtInput.min).toBe('2026-06-10');
+    expect(dueAtInput.getAttribute('aria-invalid')).toBe('true');
+    expect(feeInput.step).toBe('1');
+    expect(feeInput.inputMode).toBe('numeric');
+    expect(saveButton!.disabled).toBe(true);
+    expect(saveButton!.getAttribute('aria-describedby')).toBe('rental-save-blocker');
+
+    fireEvent.click(saveButton!);
+    expect(mutationMutateMock).not.toHaveBeenCalled();
   });
 
   it('starts return inspection items as unchecked', () => {

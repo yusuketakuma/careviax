@@ -4306,6 +4306,35 @@ Implemented:
 
 - UI/UX remediation remains active. Remaining candidates include pharmacy-cooperation responsive table density, select accessible-name gaps outside fixed/verified screens, raw table/DataTable convergence, and expanded browser/a11y proof.
 
+## 20260620-0500 JST - PCA Pump Rental Inline Validation
+
+### Summary
+
+- Aligned the admin PCA pump rental sheet with the existing API validation contract before submission.
+- Added inline blockers for missing pump/institution, invalid or reversed rental dates, and non-integer fee values.
+- Added accessible error/help wiring and a disabled save reason so invalid rental payloads are not sent to the mutation.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx`
+- `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx' 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx'`: passed.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx' 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 6 tests.
+- `git diff --check -- 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx' 'src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `pnpm lint`: passed.
+
+### Remaining / Next Loop
+
+- PCA rental creation now matches the inspected API schema at the form boundary. Next candidates include PCA return-inspection disabled reasons and DB-backed browser proof now that DB access is allowed.
+
 ## 20260620-0451 JST - Pharmacist Credential Inline Validation
 
 ### Summary

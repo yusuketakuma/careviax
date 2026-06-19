@@ -28,6 +28,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { formatDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { isValidDateKey } from '@/lib/validations/date-key';
 
 type PcaPumpStatus = 'available' | 'rented' | 'maintenance' | 'retired';
 type PcaPumpRentalStatus = 'scheduled' | 'active' | 'overdue' | 'returned' | 'cancelled';
@@ -137,6 +138,9 @@ type RentalFormState = {
   notes: string;
 };
 
+type RentalFormErrorKey = 'pump_id' | 'institution_id' | 'rented_at' | 'due_at' | 'rental_fee_yen';
+type RentalFormErrors = Partial<Record<RentalFormErrorKey, string>>;
+
 type ReturnInspectionFormState = {
   rental: PcaPumpRental | null;
   notes: string;
@@ -203,6 +207,9 @@ const EMPTY_PUMP_FORM: PumpFormState = {
   maintenance_due_at: '',
   notes: '',
 };
+
+const RENTAL_SAVE_BLOCKER_ID = 'rental-save-blocker';
+const PLAIN_INTEGER_PATTERN = /^\d+$/;
 
 function todayDateKey() {
   return formatDateKey(new Date());
@@ -342,6 +349,48 @@ function toNullableString(value: string) {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function toNullableInteger(value: string) {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? Number(trimmed) : null;
+}
+
+function descriptionIds(...ids: Array<string | false | null | undefined>) {
+  const value = ids.filter(Boolean).join(' ');
+  return value || undefined;
+}
+
+function getRentalFormErrors(form: RentalFormState): RentalFormErrors {
+  const errors: RentalFormErrors = {};
+  if (!form.pump_id) errors.pump_id = 'PCAポンプを選択してください。';
+  if (!form.institution_id) errors.institution_id = '貸出先医療機関を選択してください。';
+  if (!isValidDateKey(form.rented_at)) {
+    errors.rented_at = '貸出日はYYYY-MM-DD形式で指定してください。';
+  }
+  if (!form.due_at) {
+    errors.due_at = '貸出中のPCAポンプには返却予定日が必須です。';
+  } else if (!isValidDateKey(form.due_at)) {
+    errors.due_at = '返却予定日はYYYY-MM-DD形式で指定してください。';
+  } else if (isValidDateKey(form.rented_at) && form.due_at < form.rented_at) {
+    errors.due_at = '返却予定日は貸出日以降の日付を指定してください。';
+  }
+  const fee = form.rental_fee_yen.trim();
+  if (fee && !PLAIN_INTEGER_PATTERN.test(fee)) {
+    errors.rental_fee_yen = '請求予定額は0以上の整数で入力してください。';
+  }
+  return errors;
+}
+
+function getRentalSaveBlocker(errors: RentalFormErrors) {
+  return (
+    errors.pump_id ??
+    errors.institution_id ??
+    errors.rented_at ??
+    errors.due_at ??
+    errors.rental_fee_yen ??
+    null
+  );
+}
+
 function yen(value: number | null) {
   return formatYen(value);
 }
@@ -444,6 +493,8 @@ export function PcaPumpsContent() {
       ),
     [pumps, pendingInspectionPumpIds, rentalForm.pump_id],
   );
+  const rentalFormErrors = getRentalFormErrors(rentalForm);
+  const rentalSaveBlocker = getRentalSaveBlocker(rentalFormErrors);
 
   async function invalidateAll() {
     await Promise.all([
@@ -489,6 +540,9 @@ export function PcaPumpsContent() {
 
   const createRentalMutation = useMutation({
     mutationFn: async () => {
+      if (rentalSaveBlocker) {
+        throw new Error(rentalSaveBlocker);
+      }
       const response = await fetch('/api/pca-pump-rentals', {
         method: 'POST',
         headers: {
@@ -503,7 +557,7 @@ export function PcaPumpsContent() {
           due_at: toNullableString(rentalForm.due_at),
           contact_name: toNullableString(rentalForm.contact_name),
           contact_phone: toNullableString(rentalForm.contact_phone),
-          rental_fee_yen: rentalForm.rental_fee_yen ? Number(rentalForm.rental_fee_yen) : null,
+          rental_fee_yen: toNullableInteger(rentalForm.rental_fee_yen),
           notes: toNullableString(rentalForm.notes),
         }),
       });
@@ -1042,7 +1096,14 @@ export function PcaPumpsContent() {
                   setRentalForm((current) => ({ ...current, pump_id: value ?? '' }))
                 }
               >
-                <SelectTrigger id="rental-pump">
+                <SelectTrigger
+                  id="rental-pump"
+                  aria-invalid={Boolean(rentalFormErrors.pump_id)}
+                  aria-describedby={descriptionIds(
+                    'rental-pump-help',
+                    rentalFormErrors.pump_id && 'rental-pump-error',
+                  )}
+                >
                   <SelectValue placeholder="PCAポンプを選択" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1053,6 +1114,14 @@ export function PcaPumpsContent() {
                   ))}
                 </SelectContent>
               </Select>
+              <p id="rental-pump-help" className="text-xs text-muted-foreground">
+                利用可能で返却検品待ちではないPCAポンプを選択します。
+              </p>
+              {rentalFormErrors.pump_id ? (
+                <p id="rental-pump-error" className="text-xs text-destructive" role="alert">
+                  {rentalFormErrors.pump_id}
+                </p>
+              ) : null}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="rental-institution">貸出先医療機関</Label>
@@ -1062,7 +1131,14 @@ export function PcaPumpsContent() {
                   setRentalForm((current) => ({ ...current, institution_id: value ?? '' }))
                 }
               >
-                <SelectTrigger id="rental-institution">
+                <SelectTrigger
+                  id="rental-institution"
+                  aria-invalid={Boolean(rentalFormErrors.institution_id)}
+                  aria-describedby={descriptionIds(
+                    'rental-institution-help',
+                    rentalFormErrors.institution_id && 'rental-institution-error',
+                  )}
+                >
                   <SelectValue placeholder="医療機関を選択" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1073,6 +1149,14 @@ export function PcaPumpsContent() {
                   ))}
                 </SelectContent>
               </Select>
+              <p id="rental-institution-help" className="text-xs text-muted-foreground">
+                請求と返却確認の対象になる医療機関を選択します。
+              </p>
+              {rentalFormErrors.institution_id ? (
+                <p id="rental-institution-error" className="text-xs text-destructive" role="alert">
+                  {rentalFormErrors.institution_id}
+                </p>
+              ) : null}
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-1.5">
@@ -1080,22 +1164,50 @@ export function PcaPumpsContent() {
                 <Input
                   id="rental-start"
                   type="date"
+                  max={rentalForm.due_at || undefined}
                   value={rentalForm.rented_at}
                   onChange={(event) =>
                     setRentalForm((current) => ({ ...current, rented_at: event.target.value }))
                   }
+                  aria-invalid={Boolean(rentalFormErrors.rented_at)}
+                  aria-describedby={descriptionIds(
+                    'rental-start-help',
+                    rentalFormErrors.rented_at && 'rental-start-error',
+                  )}
                 />
+                <p id="rental-start-help" className="text-xs text-muted-foreground">
+                  貸出を開始する日付を入力します。
+                </p>
+                {rentalFormErrors.rented_at ? (
+                  <p id="rental-start-error" className="text-xs text-destructive" role="alert">
+                    {rentalFormErrors.rented_at}
+                  </p>
+                ) : null}
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="rental-due">返却予定日</Label>
                 <Input
                   id="rental-due"
                   type="date"
+                  min={rentalForm.rented_at || undefined}
                   value={rentalForm.due_at}
                   onChange={(event) =>
                     setRentalForm((current) => ({ ...current, due_at: event.target.value }))
                   }
+                  aria-invalid={Boolean(rentalFormErrors.due_at)}
+                  aria-describedby={descriptionIds(
+                    'rental-due-help',
+                    rentalFormErrors.due_at && 'rental-due-error',
+                  )}
                 />
+                <p id="rental-due-help" className="text-xs text-muted-foreground">
+                  貸出日以降の日付を入力します。
+                </p>
+                {rentalFormErrors.due_at ? (
+                  <p id="rental-due-error" className="text-xs text-destructive" role="alert">
+                    {rentalFormErrors.due_at}
+                  </p>
+                ) : null}
               </div>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
@@ -1126,11 +1238,26 @@ export function PcaPumpsContent() {
                 id="rental-fee"
                 type="number"
                 min={0}
+                step={1}
+                inputMode="numeric"
                 value={rentalForm.rental_fee_yen}
                 onChange={(event) =>
                   setRentalForm((current) => ({ ...current, rental_fee_yen: event.target.value }))
                 }
+                aria-invalid={Boolean(rentalFormErrors.rental_fee_yen)}
+                aria-describedby={descriptionIds(
+                  'rental-fee-help',
+                  rentalFormErrors.rental_fee_yen && 'rental-fee-error',
+                )}
               />
+              <p id="rental-fee-help" className="text-xs text-muted-foreground">
+                0以上の整数。空欄は未設定。
+              </p>
+              {rentalFormErrors.rental_fee_yen ? (
+                <p id="rental-fee-error" className="text-xs text-destructive" role="alert">
+                  {rentalFormErrors.rental_fee_yen}
+                </p>
+              ) : null}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="rental-notes">備考</Label>
@@ -1147,9 +1274,15 @@ export function PcaPumpsContent() {
               <Button variant="outline" onClick={() => setRentalSheetOpen(false)}>
                 キャンセル
               </Button>
+              {rentalSaveBlocker ? (
+                <p id={RENTAL_SAVE_BLOCKER_ID} className="self-center text-xs text-destructive">
+                  {rentalSaveBlocker}
+                </p>
+              ) : null}
               <Button
                 onClick={() => createRentalMutation.mutate()}
-                disabled={createRentalMutation.isPending}
+                disabled={createRentalMutation.isPending || Boolean(rentalSaveBlocker)}
+                aria-describedby={rentalSaveBlocker ? RENTAL_SAVE_BLOCKER_ID : undefined}
               >
                 {createRentalMutation.isPending ? '登録中...' : '貸出登録'}
               </Button>
