@@ -865,6 +865,11 @@ function DrugMasterOperationalContent({
     searchQuery.trim(),
     DRUG_MASTER_SEARCH_DEBOUNCE_MS,
   );
+  const openDrugDetail = (drugId: string | null) => {
+    setSelectedDrugId(drugId);
+    setPreferredGenericId(null);
+    setReorderPointError(null);
+  };
   const debouncedTemplateSearchQuery = useDebouncedValue(
     templateSearchQuery.trim(),
     DRUG_MASTER_SEARCH_DEBOUNCE_MS,
@@ -2159,10 +2164,7 @@ function DrugMasterOperationalContent({
                         <button
                           type="button"
                           className="min-w-0 flex-1 text-left"
-                          onClick={() => {
-                            setSelectedDrugId(request.drug_master_id);
-                            setPreferredGenericId(null);
-                          }}
+                          onClick={() => openDrugDetail(request.drug_master_id)}
                         >
                           <span className="block text-sm font-medium text-foreground">
                             {formatFormularyRequestActionLabel(request.action_type)}
@@ -2269,8 +2271,7 @@ function DrugMasterOperationalContent({
                         className="w-full rounded-md border border-border/60 bg-background px-3 py-2 text-left hover:bg-muted/40"
                         onClick={() => {
                           if (!item.matched_drug) return;
-                          setSelectedDrugId(item.matched_drug.id);
-                          setPreferredGenericId(null);
+                          openDrugDetail(item.matched_drug.id);
                         }}
                       >
                         <span className="block text-sm font-medium text-foreground">
@@ -2299,10 +2300,7 @@ function DrugMasterOperationalContent({
                         key={stock.id}
                         type="button"
                         className="w-full rounded-md border border-border/60 bg-background px-3 py-2 text-left hover:bg-muted/40"
-                        onClick={() => {
-                          setSelectedDrugId(stock.drug_master_id);
-                          setPreferredGenericId(null);
-                        }}
+                        onClick={() => openDrugDetail(stock.drug_master_id)}
                       >
                         <span className="block text-sm font-medium text-foreground">
                           {stock.drug_master.drug_name}
@@ -2463,10 +2461,7 @@ function DrugMasterOperationalContent({
                         key={stock.id}
                         type="button"
                         className="w-full rounded-md border border-border/60 bg-background px-3 py-2 text-left hover:bg-muted/40"
-                        onClick={() => {
-                          setSelectedDrugId(stock.drug_master_id);
-                          setPreferredGenericId(null);
-                        }}
+                        onClick={() => openDrugDetail(stock.drug_master_id)}
                       >
                         <span className="block text-sm font-medium text-foreground">
                           {stock.drug_master.drug_name}
@@ -2562,10 +2557,7 @@ function DrugMasterOperationalContent({
                             key={row.stock.id}
                             type="button"
                             className="flex w-full flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-2 text-left text-xs hover:text-primary"
-                            onClick={() => {
-                              setSelectedDrugId(row.stock.drug_master_id);
-                              setPreferredGenericId(null);
-                            }}
+                            onClick={() => openDrugDetail(row.stock.drug_master_id)}
                           >
                             <span className="min-w-0 font-medium text-foreground">
                               {row.stock.drug_master.drug_name}
@@ -2602,10 +2594,7 @@ function DrugMasterOperationalContent({
                         key={row.stock.id}
                         type="button"
                         className="w-full rounded-md border border-border/60 bg-background px-3 py-2 text-left hover:bg-muted/40"
-                        onClick={() => {
-                          setSelectedDrugId(row.stock.drug_master_id);
-                          setPreferredGenericId(null);
-                        }}
+                        onClick={() => openDrugDetail(row.stock.drug_master_id)}
                       >
                         <span className="block text-sm font-medium text-foreground">
                           {row.stock.drug_master.drug_name}
@@ -3446,11 +3435,7 @@ function DrugMasterOperationalContent({
         data={drugs}
         isLoading={isLoading}
         caption="医薬品マスター一覧"
-        onRowClick={(index) => {
-          setSelectedDrugId(drugs[index]?.id ?? null);
-          setPreferredGenericId(null);
-          setReorderPointError(null);
-        }}
+        onRowClick={(index) => openDrugDetail(drugs[index]?.id ?? null)}
         selectedRowIndex={selectedRowIndex}
         errorMessage={
           isDrugMasterError
@@ -3517,9 +3502,7 @@ function DrugMasterOperationalContent({
         open={selectedDrugId !== null}
         onOpenChange={(open) => {
           if (!open) {
-            setSelectedDrugId(null);
-            setPreferredGenericId(null);
-            setReorderPointError(null);
+            openDrugDetail(null);
           }
         }}
       >
@@ -3948,10 +3931,7 @@ function DrugMasterOperationalContent({
                             key={member.id}
                             type="button"
                             className="w-full rounded-md border border-border/60 bg-background px-3 py-2 text-left hover:bg-muted/40"
-                            onClick={() => {
-                              setSelectedDrugId(member.id);
-                              setPreferredGenericId(null);
-                            }}
+                            onClick={() => openDrugDetail(member.id)}
                           >
                             <span className="block text-sm font-medium text-foreground">
                               {member.drug_name}
