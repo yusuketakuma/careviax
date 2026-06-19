@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { type ColumnDef } from '@tanstack/react-table';
 import {
   CalendarClock,
   CheckCircle2,
@@ -16,6 +17,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { DataTable } from '@/components/ui/data-table';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
@@ -350,6 +352,102 @@ function ContractSelector({
 }
 
 function CandidateTable({ candidates }: { candidates: VisitBillingCandidateRow[] }) {
+  const columns = useMemo<ColumnDef<VisitBillingCandidateRow>[]>(
+    () => [
+      {
+        id: 'visit_date',
+        accessorFn: (candidate) => formatDate(candidate.partner_visit_record.visit_at),
+        header: '訪問日',
+        cell: ({ row }) => (
+          <span className="tabular-nums">
+            {formatDate(row.original.partner_visit_record.visit_at)}
+          </span>
+        ),
+        meta: {
+          label: '訪問日',
+          exportValue: (candidate: VisitBillingCandidateRow) =>
+            formatDate(candidate.partner_visit_record.visit_at),
+        },
+      },
+      {
+        id: 'partner_pharmacy',
+        accessorFn: (candidate) => candidate.partner_visit_record.owner_partner_pharmacy.name,
+        header: '協力薬局',
+        cell: ({ getValue }) => <span className="font-medium">{getValue<string>()}</span>,
+        meta: {
+          label: '協力薬局',
+          exportValue: (candidate: VisitBillingCandidateRow) =>
+            candidate.partner_visit_record.owner_partner_pharmacy.name,
+        },
+      },
+      {
+        id: 'status',
+        accessorFn: (candidate) => statusLabel(candidate.billing_status),
+        header: '状態',
+        cell: ({ row }) => (
+          <Badge variant={row.original.billing_status === 'excluded' ? 'destructive' : 'outline'}>
+            {statusLabel(row.original.billing_status)}
+          </Badge>
+        ),
+        meta: {
+          label: '状態',
+          exportValue: (candidate: VisitBillingCandidateRow) =>
+            statusLabel(candidate.billing_status),
+        },
+      },
+      {
+        id: 'billing_model',
+        accessorFn: (candidate) => billingModelLabel(candidate.amount_summary.billing_model),
+        header: '区分',
+        cell: ({ row }) => billingModelLabel(row.original.amount_summary.billing_model),
+        meta: {
+          label: '区分',
+          exportValue: (candidate: VisitBillingCandidateRow) =>
+            billingModelLabel(candidate.amount_summary.billing_model),
+        },
+      },
+      {
+        id: 'amount',
+        accessorFn: (candidate) => candidate.amount_summary.amount ?? 0,
+        header: '金額',
+        cell: ({ row }) => (
+          <span className="block text-right tabular-nums">
+            {formatYen(row.original.amount_summary.amount)}
+          </span>
+        ),
+        meta: {
+          label: '金額',
+          exportValue: (candidate: VisitBillingCandidateRow) =>
+            formatYen(candidate.amount_summary.amount),
+        },
+      },
+      {
+        id: 'basis',
+        accessorFn: (candidate) => {
+          const blockerText = candidate.amount_summary.blocker_codes.join(', ');
+          return candidate.exclusion_reason ?? (blockerText || '算定候補');
+        },
+        header: '根拠',
+        cell: ({ row }) => {
+          const blockerText = row.original.amount_summary.blocker_codes.join(', ');
+          return (
+            <span className="block max-w-64 text-xs text-muted-foreground">
+              {row.original.exclusion_reason ?? (blockerText || '算定候補')}
+            </span>
+          );
+        },
+        meta: {
+          label: '根拠',
+          exportValue: (candidate: VisitBillingCandidateRow) => {
+            const blockerText = candidate.amount_summary.blocker_codes.join(', ');
+            return candidate.exclusion_reason ?? (blockerText || '算定候補');
+          },
+        },
+      },
+    ],
+    [],
+  );
+
   if (candidates.length === 0) {
     return (
       <EmptyState
@@ -360,63 +458,34 @@ function CandidateTable({ candidates }: { candidates: VisitBillingCandidateRow[]
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-border/70">
-      <table className="min-w-[56rem] text-sm" aria-label="薬局間協力請求候補一覧">
-        <thead className="bg-muted/60 text-xs text-muted-foreground">
-          <tr>
-            <th scope="col" className="px-3 py-2 text-left font-medium">
-              訪問日
-            </th>
-            <th scope="col" className="px-3 py-2 text-left font-medium">
-              協力薬局
-            </th>
-            <th scope="col" className="px-3 py-2 text-left font-medium">
-              状態
-            </th>
-            <th scope="col" className="px-3 py-2 text-left font-medium">
-              区分
-            </th>
-            <th scope="col" className="px-3 py-2 text-right font-medium">
-              金額
-            </th>
-            <th scope="col" className="px-3 py-2 text-left font-medium">
-              根拠
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {candidates.map((candidate) => {
-            const blockerText = candidate.amount_summary.blocker_codes.join(', ');
-            return (
-              <tr key={candidate.id} className="border-t border-border/70">
-                <td className="px-3 py-2 tabular-nums">
-                  {formatDate(candidate.partner_visit_record.visit_at)}
-                </td>
-                <td className="px-3 py-2 font-medium">
-                  {candidate.partner_visit_record.owner_partner_pharmacy.name}
-                </td>
-                <td className="px-3 py-2">
-                  <Badge
-                    variant={candidate.billing_status === 'excluded' ? 'destructive' : 'outline'}
-                  >
-                    {statusLabel(candidate.billing_status)}
-                  </Badge>
-                </td>
-                <td className="px-3 py-2">
-                  {billingModelLabel(candidate.amount_summary.billing_model)}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">
-                  {formatYen(candidate.amount_summary.amount)}
-                </td>
-                <td className="max-w-64 px-3 py-2 text-xs text-muted-foreground">
-                  {candidate.exclusion_reason ?? (blockerText || '算定候補')}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      columns={columns}
+      data={candidates}
+      caption="薬局間協力請求候補一覧"
+      getRowId={(candidate) => candidate.id}
+      getRowA11yLabel={(candidate) =>
+        `${candidate.partner_visit_record.owner_partner_pharmacy.name} ${formatDate(
+          candidate.partner_visit_record.visit_at,
+        )} ${statusLabel(candidate.billing_status)}`
+      }
+      toolbar={{
+        enableGlobalFilter: true,
+        globalFilterPlaceholder: '請求候補内検索',
+        enableColumnVisibility: true,
+        filterFields: [
+          {
+            columnId: 'partner_pharmacy',
+            label: '協力薬局',
+            placeholder: '協力薬局で絞り込み',
+          },
+          {
+            columnId: 'status',
+            label: '状態',
+            placeholder: '状態で絞り込み',
+          },
+        ],
+      }}
+    />
   );
 }
 
@@ -569,107 +638,193 @@ function InvoiceHistoryTable({
   onTransition: (invoice: PharmacyInvoiceRow, action: InvoiceTransitionAction) => void;
   pendingInvoiceId: string | null;
 }) {
+  const columns = useMemo<ColumnDef<PharmacyInvoiceRow>[]>(
+    () => [
+      {
+        id: 'document',
+        accessorFn: (invoice) =>
+          `${documentKindLabel(invoice.document_kind)} ${invoiceNumberLabel(invoice)}`,
+        header: 'ドキュメント',
+        cell: ({ row }) => (
+          <div>
+            <div className="font-medium">{documentKindLabel(row.original.document_kind)}</div>
+            <div className="text-xs text-muted-foreground">{invoiceNumberLabel(row.original)}</div>
+          </div>
+        ),
+        meta: {
+          label: 'ドキュメント',
+          exportValue: (invoice: PharmacyInvoiceRow) =>
+            `${documentKindLabel(invoice.document_kind)} ${invoiceNumberLabel(invoice)}`,
+        },
+      },
+      {
+        id: 'partner_pharmacy',
+        accessorFn: (invoice) =>
+          `${invoice.partnership.base_site.name} / ${invoice.partnership.partner_pharmacy.name}`,
+        header: '協力薬局',
+        cell: ({ row }) =>
+          `${row.original.partnership.base_site.name} / ${row.original.partnership.partner_pharmacy.name}`,
+        meta: {
+          label: '協力薬局',
+          exportValue: (invoice: PharmacyInvoiceRow) =>
+            `${invoice.partnership.base_site.name} / ${invoice.partnership.partner_pharmacy.name}`,
+        },
+      },
+      {
+        id: 'total',
+        accessorFn: (invoice) => invoice.total,
+        header: '金額',
+        cell: ({ row }) => (
+          <span className="block text-right tabular-nums">{formatYen(row.original.total)}</span>
+        ),
+        meta: {
+          label: '金額',
+          exportValue: (invoice: PharmacyInvoiceRow) => formatYen(invoice.total),
+        },
+      },
+      {
+        id: 'item_count',
+        accessorFn: (invoice) => invoice.item_count,
+        header: '件数',
+        cell: ({ row }) => <span className="tabular-nums">{row.original.item_count}件</span>,
+        meta: {
+          label: '件数',
+          exportValue: (invoice: PharmacyInvoiceRow) => `${invoice.item_count}件`,
+        },
+      },
+      {
+        id: 'status',
+        accessorFn: (invoice) => statusLabel(invoice.status),
+        header: '状態',
+        cell: ({ row }) => (
+          <div>
+            <Badge variant={row.original.status === 'voided' ? 'destructive' : 'outline'}>
+              {statusLabel(row.original.status)}
+            </Badge>
+            {row.original.payment_scheduled_for ? (
+              <div className="mt-1 text-xs text-muted-foreground">
+                支払予定 {formatDate(row.original.payment_scheduled_for)}
+              </div>
+            ) : null}
+          </div>
+        ),
+        meta: {
+          label: '状態',
+          exportValue: (invoice: PharmacyInvoiceRow) => {
+            const schedule = invoice.payment_scheduled_for
+              ? ` / 支払予定 ${formatDate(invoice.payment_scheduled_for)}`
+              : '';
+            return `${statusLabel(invoice.status)}${schedule}`;
+          },
+        },
+      },
+      {
+        id: 'output',
+        accessorFn: (invoice) =>
+          `${documentKindLabel(invoice.document_kind)} ${invoiceNumberLabel(invoice)} PDF`,
+        header: '出力',
+        enableSorting: false,
+        cell: ({ row }) => {
+          const invoice = row.original;
+          const purpose = encodeURIComponent(`${invoice.billing_month} 薬局間月次出力`);
+          return (
+            <a
+              href={`/api/pharmacy-invoices/${invoice.id}/pdf?purpose=${purpose}`}
+              className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
+              aria-label={`${documentKindLabel(invoice.document_kind)} ${invoiceNumberLabel(invoice)} PDFを開く`}
+            >
+              <Download className="size-4" aria-hidden="true" />
+              PDF
+            </a>
+          );
+        },
+        meta: {
+          label: '出力',
+          exportValue: (invoice: PharmacyInvoiceRow) =>
+            `${documentKindLabel(invoice.document_kind)} ${invoiceNumberLabel(invoice)} PDF`,
+        },
+      },
+      {
+        id: 'actions',
+        accessorFn: (invoice) => invoiceActions(invoice.status).map(invoiceActionLabel).join(' '),
+        header: '操作',
+        enableSorting: false,
+        enableHiding: false,
+        cell: ({ row }) => {
+          const invoice = row.original;
+          const actions = invoiceActions(invoice.status);
+          const isPending = pendingInvoiceId === invoice.id;
+          return (
+            <div>
+              {actions.includes('schedule_payment') ? (
+                <Input
+                  type="date"
+                  className="mb-2 h-8 w-40"
+                  value={scheduledDates[invoice.id] ?? todayDateInputValue()}
+                  onChange={(event) => onScheduledDateChange(invoice.id, event.target.value)}
+                  aria-label={`支払予定日 ${invoiceNumberLabel(invoice)}`}
+                />
+              ) : null}
+              <div className="flex flex-wrap gap-1.5">
+                {actions.map((action) => (
+                  <Button
+                    key={action}
+                    type="button"
+                    size="sm"
+                    variant={action === 'cancel' ? 'destructive' : 'outline'}
+                    disabled={isPending}
+                    onClick={() => onTransition(invoice, action)}
+                    aria-label={`${documentKindLabel(invoice.document_kind)} ${invoiceNumberLabel(invoice)} ${invoiceActionLabel(action)}`}
+                  >
+                    {invoiceActionIcon(action)}
+                    {invoiceActionLabel(action)}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          );
+        },
+        meta: {
+          label: '操作',
+          exportValue: (invoice: PharmacyInvoiceRow) =>
+            invoiceActions(invoice.status).map(invoiceActionLabel).join(', '),
+        },
+      },
+    ],
+    [onScheduledDateChange, onTransition, pendingInvoiceId, scheduledDates],
+  );
+
   if (invoices.length === 0) {
     return <EmptyState title="対象月の薬局間月次ドキュメントはまだありません" />;
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-border/70">
-      <table className="min-w-[72rem] text-sm" aria-label="薬局間月次ドキュメント一覧">
-        <thead className="bg-muted/60 text-xs text-muted-foreground">
-          <tr>
-            <th scope="col" className="px-3 py-2 text-left font-medium">
-              ドキュメント
-            </th>
-            <th scope="col" className="px-3 py-2 text-left font-medium">
-              協力薬局
-            </th>
-            <th scope="col" className="px-3 py-2 text-right font-medium">
-              金額
-            </th>
-            <th scope="col" className="px-3 py-2 text-left font-medium">
-              件数
-            </th>
-            <th scope="col" className="px-3 py-2 text-left font-medium">
-              状態
-            </th>
-            <th scope="col" className="px-3 py-2 text-right font-medium">
-              出力
-            </th>
-            <th scope="col" className="px-3 py-2 text-left font-medium">
-              操作
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {invoices.map((invoice) => {
-            const purpose = encodeURIComponent(`${invoice.billing_month} 薬局間月次出力`);
-            const actions = invoiceActions(invoice.status);
-            const isPending = pendingInvoiceId === invoice.id;
-            return (
-              <tr key={invoice.id} className="border-t border-border/70">
-                <td className="px-3 py-2">
-                  <div className="font-medium">{documentKindLabel(invoice.document_kind)}</div>
-                  <div className="text-xs text-muted-foreground">{invoiceNumberLabel(invoice)}</div>
-                </td>
-                <td className="px-3 py-2">
-                  {invoice.partnership.base_site.name} / {invoice.partnership.partner_pharmacy.name}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">{formatYen(invoice.total)}</td>
-                <td className="px-3 py-2 tabular-nums">{invoice.item_count}件</td>
-                <td className="px-3 py-2">
-                  <Badge variant={invoice.status === 'voided' ? 'destructive' : 'outline'}>
-                    {statusLabel(invoice.status)}
-                  </Badge>
-                  {invoice.payment_scheduled_for ? (
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      支払予定 {formatDate(invoice.payment_scheduled_for)}
-                    </div>
-                  ) : null}
-                </td>
-                <td className="px-3 py-2 text-right">
-                  <a
-                    href={`/api/pharmacy-invoices/${invoice.id}/pdf?purpose=${purpose}`}
-                    className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
-                    aria-label={`${documentKindLabel(invoice.document_kind)} ${invoiceNumberLabel(invoice)} PDFを開く`}
-                  >
-                    <Download className="size-4" aria-hidden="true" />
-                    PDF
-                  </a>
-                </td>
-                <td className="min-w-72 px-3 py-2">
-                  {actions.includes('schedule_payment') ? (
-                    <Input
-                      type="date"
-                      className="mb-2 h-8 w-40"
-                      value={scheduledDates[invoice.id] ?? todayDateInputValue()}
-                      onChange={(event) => onScheduledDateChange(invoice.id, event.target.value)}
-                      aria-label={`支払予定日 ${invoiceNumberLabel(invoice)}`}
-                    />
-                  ) : null}
-                  <div className="flex flex-wrap gap-1.5">
-                    {actions.map((action) => (
-                      <Button
-                        key={action}
-                        type="button"
-                        size="sm"
-                        variant={action === 'cancel' ? 'destructive' : 'outline'}
-                        disabled={isPending}
-                        onClick={() => onTransition(invoice, action)}
-                        aria-label={`${documentKindLabel(invoice.document_kind)} ${invoiceNumberLabel(invoice)} ${invoiceActionLabel(action)}`}
-                      >
-                        {invoiceActionIcon(action)}
-                        {invoiceActionLabel(action)}
-                      </Button>
-                    ))}
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      columns={columns}
+      data={invoices}
+      caption="薬局間月次ドキュメント一覧"
+      getRowId={(invoice) => invoice.id}
+      getRowA11yLabel={(invoice) =>
+        `${documentKindLabel(invoice.document_kind)} ${invoiceNumberLabel(invoice)} ${invoice.partnership.partner_pharmacy.name}`
+      }
+      toolbar={{
+        enableGlobalFilter: true,
+        globalFilterPlaceholder: '月次ドキュメント内検索',
+        enableColumnVisibility: true,
+        filterFields: [
+          {
+            columnId: 'partner_pharmacy',
+            label: '協力薬局',
+            placeholder: '協力薬局で絞り込み',
+          },
+          {
+            columnId: 'status',
+            label: '状態',
+            placeholder: '状態で絞り込み',
+          },
+        ],
+      }}
+    />
   );
 }
 
