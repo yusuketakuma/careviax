@@ -1,5 +1,339 @@
 # CODEX Goal Progress
 
+## Current Goal - 2026-06-19 JST Adjacent Feature and Consistency Loop
+
+Objective: investigate the current CareViaX implementation, add/improve nearby features that naturally extend existing product flows, remove duplication/inconsistency/unfinished behavior, and continue until actionable in-session candidates are exhausted.
+
+### Acceptance Criteria
+
+- Run at least two implementation/audit loops.
+- List and score at least five adjacent candidates across short/mid/long terms.
+- Prefer extension/reuse of existing APIs, permissions, components, hooks, types, tests, and docs.
+- Implement all actionable short/mid/long candidates that do not require external approval, destructive DB changes, credentials, legal/product/design decisions, or environment-only access.
+- Finish only after two consecutive re-audits report no new actionable candidates.
+
+### Loop 0 - Baseline
+
+Required context read:
+
+- `AGENTS.md`
+- `README.md`
+- `Plans.md`
+- `.codex/ralph-state.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `package.json`
+- `.github/workflows/ci.yml`
+- `docs/ui-ux-design-guidelines.md`
+- `docs/api-conventions.md`
+- `docs/high-roi-functional-proposals-2026-06-18.md`
+- Next.js local route-handler and route file-convention docs under `node_modules/next/dist/docs/`
+
+Initial validation:
+
+- `pnpm format:check`: passed.
+- `pnpm date-slices:check`: passed.
+- `pnpm eventbridge-schedules:check`: passed.
+- `pnpm lint`: passed.
+- `pnpm typecheck`: passed.
+
+Initial worktree:
+
+- Pre-existing dirty file: `.harness-mem/state/continuity.json`.
+- No repository source edits had been made for this goal before the baseline checks.
+
+### Loop 1 - Inventory and Required Agent Review
+
+Required read-only agents completed:
+
+- Product Discovery Agent: existing flows, TODOs, unfinished areas, adjacent candidates.
+- Similarity Agent: reusable components/hooks/services/API/types/validators/utilities/stores.
+- Architecture Agent: placement, responsibility, dependencies, naming, type design.
+- UX/API Consistency Agent: UI, API, loading/error/empty, permissions.
+- Duplication Agent: double implementations and consolidation opportunities.
+- Test Agent: normal/error/empty/boundary/permission/invalid-input/data-integrity coverage.
+- Documentation Agent: README/API/runbook/type/comment drift.
+
+Major product surfaces identified:
+
+- Dashboard cockpit and daily operations.
+- Patient home/visit preparation/report/billing continuity.
+- Care-report authoring, confirmation, delivery, sharing, and delivery history.
+- Dispense/set/audit workflows.
+- Collaboration, communication requests, tasks, and external professional contact flows.
+- Admin/operations APIs and runbooks.
+
+### Loop 2 - Candidate Evaluation
+
+| Candidate                                         | Term      | Priority | Nearby existing implementation                                                                   | Value                                                               | Cost   | Risk   | Decision                                               |
+| ------------------------------------------------- | --------- | -------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- | ------ | ------ | ------------------------------------------------------ |
+| Permission-aware report detail actions            | Short     | High     | `requireAuthContext`, `hasPermission`, care-report GET/PATCH/send routes, report detail UI/tests | Stops clerk/read-only users from seeing edit/send actions that 403  | Low    | Low    | Implement first                                        |
+| Today report workspace billing blockers           | Short/Mid | High     | `care-reports/today-workspace`, billing candidate/check surfaces, `ReportOpenIssue`              | Connects report readiness to billing blockers in the same workspace | Medium | Medium | Actionable after first slice                           |
+| Dashboard freshness/staleness grounding           | Short     | Medium   | existing dashboard/cockpit generated timestamps/cache TTL                                        | Preserves current cockpit while reducing stale-state ambiguity      | Low    | Low    | Actionable if no higher report/billing blockers remain |
+| API/docs pagination/version drift cleanup         | Short     | Medium   | `docs/api-conventions.md`, cursor helpers, actual route responses                                | Prevents repeated client/API mismatch                               | Low    | Low    | Actionable docs slice                                  |
+| Inline error heading hierarchy                    | Short/Mid | Medium   | shared `ErrorState`/alert components and UI guideline SSOT                                       | Improves accessible page structure without redesign                 | Medium | Low    | Actionable after focused scan                          |
+| Admin webhook response/audit consistency          | Mid       | Medium   | `withAuthContext`, response helpers, audit helper                                                | Aligns admin API error shape and audit trail                        | Medium | Medium | Actionable if tests are localized                      |
+| Patient detail timeline duplication consolidation | Mid/Long  | Medium   | `patient-detail-timeline-events` service and patient detail route local builder                  | Removes duplicate timeline construction                             | High   | Medium | Actionable only if safe after report/billing loops     |
+
+Current first implementation target:
+
+- Fix report detail UI/API permission metadata by reusing the existing permission matrix instead of duplicating role logic in the client.
+
+### Loop 3 - Similarity and Design Decision
+
+- Reuse `hasPermission(role, 'canAuthorReport' | 'canSendCareReport')` in `GET /api/care-reports/[id]`.
+- Add a small `permissions` metadata object to the existing report detail payload.
+- Keep existing route permissions unchanged: viewing still uses `canReport`; editing still uses `canAuthorReport`; sending still uses `canSendCareReport`.
+- Gate existing `ReportEditForm`, draft confirmation review, send dialog, and composer entry points by the metadata.
+- Keep print/share detail links available because they already route through their own access checks and are not report authoring/send mutations.
+
+### Loop 4 - Implementation Pass 1: Report Permissions and Billing Blockers
+
+Implemented:
+
+- Added `permissions.can_edit` and `permissions.can_send` to `GET /api/care-reports/[id]` using the existing role permission matrix.
+- Gated report detail edit, draft confirmation, send dialog, and composer entry points by those server-provided permissions.
+- Added same-workspace `BillingCandidate(status=candidate)` blockers to `/api/care-reports/today-workspace` `open_issues`, limited to patients already present in the report workspace.
+- Extended `ReportOpenIssue` with `kind` and nullable `report_id` so report issues and billing candidate issues can share the existing UI section without fake report IDs.
+
+Deleted or consolidated:
+
+- No new report action component, route, or permission map was created.
+- Reused existing `ReportOpenIssuesSection`, `/billing/candidates` filters, and billing candidate data.
+
+Focused validation:
+
+- `pnpm exec vitest run 'src/app/api/care-reports/[id]/route.test.ts' 'src/app/(dashboard)/reports/[id]/page.test.tsx' --reporter=dot --testTimeout=30000`: passed, 2 files / 24 tests.
+- `pnpm exec vitest run 'src/app/api/care-reports/today-workspace/route.test.ts' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' --reporter=dot --testTimeout=30000`: passed, 2 files / 17 tests.
+- Touched-file ESLint for the report slices: passed.
+
+### Loop 5 - Implementation Pass 2: Cockpit Freshness, Docs Drift, ErrorState, Admin Webhooks
+
+Implemented:
+
+- Added dashboard cockpit freshness metadata: fresh snapshots keep the existing time-only display; stale snapshots show `HH:mm / 要更新`.
+- Updated API docs to match actual cursor response shape `{ data, hasMore, nextCursor?, totalCount? }`.
+- Updated API versioning docs to clarify that current endpoints are unprefixed `/api` v1-equivalent and `/api/v1` is not currently implemented.
+- Corrected deploy/recovery migration runbooks to use `pnpm prisma migrate deploy --schema=prisma/schema/` where deploy semantics are intended.
+- Updated shared `ErrorState` so inline usage defaults to `h2`, page usage defaults to `h1`, and callers can set `headingLevel`.
+- Aligned `/api/admin/webhooks` with response helpers and added creation audit logging without persisting the generated secret.
+
+Focused validation:
+
+- `pnpm exec vitest run 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' 'src/app/(dashboard)/dashboard/dashboard-cockpit.helpers.test.ts' --reporter=dot --testTimeout=30000`: passed, 2 files / 29 tests.
+- `pnpm exec vitest run src/components/ui/error-state.test.tsx --reporter=dot --testTimeout=30000`: passed, 1 file / 2 tests.
+- `pnpm exec vitest run 'src/app/api/admin/webhooks/route.test.ts' --reporter=dot --testTimeout=30000`: passed, 1 file / 5 tests.
+- Touched-file ESLint for dashboard, ErrorState, and admin webhooks: passed.
+
+### Loop 6 - Implementation Pass 3: Patient Timeline Consolidation
+
+Implemented:
+
+- Replaced the duplicated patient detail timeline event builder in `src/app/api/patients/[id]/route.ts` with the canonical `buildPatientTimelineEvents` service helper.
+- Preserved existing source queries and avoided an additional timeline-service DB round trip.
+- Added `billing_candidate` timeline entries to patient detail from the already-returned billing candidate summary data.
+- Added `updated_at` to the patient detail billing candidate select so the canonical builder has a stable event timestamp.
+
+Deleted or consolidated:
+
+- Removed route-local timeline label maps and helper functions that duplicated `patient-detail-timeline-events.ts`.
+- Reduced the patient detail route diff surface by delegating timeline presentation rules to the shared service.
+
+Focused validation:
+
+- `pnpm exec vitest run 'src/app/api/patients/[id]/route.test.ts' src/server/services/patient-detail.test.ts --reporter=dot --testTimeout=30000`: passed, 2 files / 64 tests.
+- Touched-file ESLint for patient route/timeline service: passed.
+
+### Loop 7 - Validation Snapshot Before Re-Audit
+
+Validation:
+
+- `pnpm format:check`: passed after Prettier.
+- `pnpm lint`: passed.
+- `pnpm typecheck`: initially failed on missing `ReportOpenIssueSeverity` import in `today-workspace`, then passed after adding the type import.
+- `pnpm date-slices:check`: passed.
+- `pnpm eventbridge-schedules:check`: passed.
+- Combined focused regression bundle for report, dashboard, ErrorState, admin webhooks, patient detail, and patient-detail service: passed, 10 files / 141 tests.
+
+Remaining candidates for re-audit:
+
+- Re-run Discovery/Similarity/Duplication/Test/Review agents over the current diff.
+- Decide whether remaining medium/long items are safe in-session or blocked by product/API/privacy/DB migration scope.
+- Run full `pnpm test` and `pnpm build` after re-audit fixes, if no new actionable items remain.
+
+### Loop 8 - Zero Audit 1 Findings and Follow-up Implementation
+
+Zero Audit 1 agents completed:
+
+- Discovery/Explorer: found remaining shortcut permission, output-route, webhook display, and open-issue fairness gaps.
+- Similarity/Duplication: found duplicate webhook URL credential/redaction helpers and validation-layer message reads.
+- Strict Review: found direct PDF/print URL output still allowed through broader report-view access.
+- Test Auditor: found same-severity open-issue starvation cases missing tests.
+- Medical Safety and Privacy: found report output and webhook URL response exposure issues that should be fixed before a zero audit.
+
+Implemented:
+
+- Changed `/api/care-reports/[id]/pdf` to require `canSendCareReport`, aligning direct PDF export with the report-detail output UI.
+- Added print-page permission gating from the existing care-report detail `permissions.can_send` metadata, preventing direct print URL rendering and auto-print for send-denied roles.
+- Added shared `CareReportActionPermissions` and extended care-report detail metadata with `can_view_patient` and `can_view_related_requests`.
+- Filtered report-detail shortcuts by server-provided permissions so read-only/report-only roles do not get patient or related-request shortcuts they cannot use.
+- Changed today-workspace billing-candidate scan from the visible issue limit to a bounded oversample and added fair source preservation so report and billing issues do not completely starve each other at equal severity.
+- Added `collectBillingValidationMessages()` and reused `readBillingValidationLayers()` in billing candidate badge, evidence summary, detail panel, and today-workspace BFF paths.
+- Moved webhook URL credential detection and display redaction into `outbound-webhook` service helpers.
+- Redacted webhook URL query/hash/userinfo in admin webhook GET/POST responses while preserving raw stored URLs for dispatch.
+- Added `fieldErrors` as a compatibility alias for admin webhook schema validation errors.
+
+Focused validation:
+
+- `pnpm exec vitest run 'src/app/api/care-reports/[id]/pdf/route.test.ts' 'src/app/(dashboard)/reports/[id]/print/page.test.tsx' 'src/app/api/care-reports/today-workspace/route.test.ts' 'src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx' 'src/app/api/admin/webhooks/route.test.ts' 'src/server/services/outbound-webhook.test.ts' 'src/app/(dashboard)/reports/[id]/page.test.tsx' 'src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx' 'src/app/api/care-reports/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed after fixing the print-page test to mock `useQuery`, 9 files / 83 tests.
+- `pnpm format:check`: passed.
+- `pnpm lint`: passed.
+- `pnpm typecheck`: initially failed on one share-page view-only fixture missing the new permission fields, then passed after fixture update.
+- `git diff --check`: passed.
+
+Next loop:
+
+- Run Zero Audit 2. If it reports no actionable issues, run Zero Audit 3 for the required second consecutive zero. If it finds actionable issues, implement them before full `pnpm test`/`pnpm build`.
+
+### Loop 9 - Zero Audit 2 Findings and Follow-up Implementation
+
+Zero Audit 2 agents completed:
+
+- Deep Explorer: found that today-workspace open-issue fairness could allow lower-severity billing issues to displace higher-severity report issues, and that the report share page still exposed patient shortcuts/API fetches from `can_view_patient`-denied payloads.
+- Refactor/Similarity: found optional permission fields and local billing validation-layer typing that should use the shared contracts.
+- Strict Reviewer: confirmed the share-page `can_view_patient` shortcut/API gap.
+- Test Auditor: reported no additional test-only blockers before the follow-up fixes.
+- Medical Safety: found that print rendering was gated by send permission but did not record an export/print audit before rendering printable clinical content.
+- Privacy Compliance: reported no additional privacy blockers after the already-redacted webhook/report-output changes.
+
+Implemented:
+
+- Added `POST /api/care-reports/[id]/print-audit`, reusing the existing care-report access checks and export-audit service with `format: 'print'`.
+- Changed the print page to record the print audit before rendering `PrintLayout` or calling `window.print`; audit failure now shows an alert and suppresses printable report content.
+- Gated the interprofessional share page's patient-detail shortcut, patient share action, and patient support fetches by `permissions.can_view_patient`.
+- Tightened `CareReportActionPermissions` to required booleans so fixtures and consumers cannot silently omit new permission fields.
+- Reused shared `BillingValidationLayers` in billing candidate UI typing.
+- Changed today-workspace open-issue fair merging so lower-severity items cannot displace higher-severity blockers; cross-source fairness now applies only among items at the visible cutoff severity.
+
+Focused validation:
+
+- `pnpm exec vitest run 'src/app/api/care-reports/[id]/print-audit/route.test.ts' 'src/app/(dashboard)/reports/[id]/print/page.test.tsx' 'src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx' 'src/app/api/care-reports/today-workspace/route.test.ts' 'src/server/services/export-audit.test.ts' 'src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 6 files / 40 tests.
+- `pnpm format:check`: passed.
+- `pnpm lint`: passed.
+- `pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- `pnpm exec vitest run 'src/app/api/care-reports/[id]/pdf/route.test.ts' 'src/app/api/care-reports/[id]/print-audit/route.test.ts' 'src/app/(dashboard)/reports/[id]/print/page.test.tsx' 'src/app/api/care-reports/today-workspace/route.test.ts' 'src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx' 'src/app/api/admin/webhooks/route.test.ts' 'src/server/services/outbound-webhook.test.ts' 'src/server/services/export-audit.test.ts' 'src/app/(dashboard)/reports/[id]/page.test.tsx' 'src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx' 'src/app/api/care-reports/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, 11 files / 96 tests.
+
+Next loop:
+
+- Run the next re-audit over the current diff. Because Zero Audit 2 produced actionable findings, the consecutive zero-actionable counter is reset to 0. Two clean audits are still required before full `pnpm test`/`pnpm build` and final reporting.
+
+### Loop 10 - Zero Audit 3 Findings and Follow-up Implementation
+
+Zero Audit 3 agents completed:
+
+- Deep Explorer and Strict Review: found remaining report-output and share-page permission leakage around send-denied and patient-view-denied roles.
+- Refactor/Similarity: found duplicate billing validation-layer contracts, duplicate prescription cycle status labels, and admin-webhook compatibility error helpers that should use shared modules.
+- Test Auditor: found missing regressions for direct validation-layer parsing, print-audit POST/loading behavior, invalid cockpit timestamps, and patient timeline conference/operation-history inputs.
+- Medical Safety and Privacy: found that report detail still fetched or returned send-support contact metadata for users who could view but not send reports, and that malformed legacy webhook URLs could still echo secrets.
+
+Implemented:
+
+- Added shared `src/types/billing-validation-layers.ts` and reused it from billing validation helpers, billing candidate UI, and billing evidence service code.
+- Reused `CYCLE_STATUS_LABELS` from the prescription cycle workspace in patient timeline event construction instead of keeping a local duplicate.
+- Added shared API compatibility error helpers in `src/lib/api/response.ts` and reused them from `/api/admin/webhooks`.
+- Changed webhook URL display redaction so malformed stored URLs return `[invalid webhook URL]` instead of echoing raw text.
+- Changed care-report detail GET so send-denied roles do not trigger prescriber/contact/channel/delivery-rule helper lookups, and delivery record recipient contact is redacted for those roles.
+- Changed the report detail UI so external professional suggestions and the patient care-team source panel are disabled for send-denied roles.
+- Changed the interprofessional share page so users without report-output permission see only the permission warning, without preview, replies, output actions, communication fetches, or care-team/contact refetches.
+- Changed today-workspace billing candidate issue discovery to union a bounded recent scan with bounded blocked-state JSON-path queries so older blocked billing candidates are not missed solely because they are outside the recent cap.
+- Changed patient detail route timeline inputs to pass real conference notes and bounded operation history into the canonical timeline builder.
+- Hardened dashboard cockpit time formatting so invalid timestamps render a safe placeholder instead of `NaN:NaN`.
+
+Focused validation:
+
+- `pnpm exec vitest run 'src/app/api/care-reports/[id]/route.test.ts' 'src/app/(dashboard)/reports/[id]/page.test.tsx' 'src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx' 'src/app/api/care-reports/today-workspace/route.test.ts' 'src/app/api/patients/[id]/route.test.ts' 'src/lib/billing/validation-layers.test.ts' 'src/app/(dashboard)/dashboard/dashboard-cockpit.test.tsx' 'src/app/(dashboard)/reports/[id]/print/page.test.tsx' 'src/app/api/admin/webhooks/route.test.ts' 'src/server/services/outbound-webhook.test.ts' 'src/server/services/patient-detail.test.ts' 'src/server/services/export-audit.test.ts' 'src/app/(dashboard)/billing/candidates/billing-candidates-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 13 files / 175 tests.
+- `pnpm format:check`: passed.
+- `git diff --check`: passed.
+- Touched-file ESLint for the Loop 10 source/test files: initially failed on unused type imports in `billing-evidence/core.ts`, then passed after removing them.
+- `pnpm typecheck`: passed.
+
+Next loop:
+
+- Run Zero Audit 4. Because Zero Audit 3 produced actionable findings, the consecutive zero-actionable counter is still 0. Two clean audits are still required before full `pnpm test`/`pnpm build` and final reporting.
+
+### Loop 11 - Zero Audit 4 Findings and Follow-up Implementation
+
+Zero Audit 4 agents completed:
+
+- Product Discovery/Test: found a real patient timeline gap where patient-level conference notes were skipped when the patient had no cases.
+- Refactor/Similarity: found duplicate patient timeline query filters, hardcoded billing validation-layer JSON paths, and duplicated report-send recipient validation.
+- Strict Review/Privacy: found high-priority billing/payment metadata leakage through patient detail and timeline APIs for roles without `canManageBilling`, plus external professional suggestion API access still using `canReport`.
+- Medical Safety: reported no additional medical-safety blockers after the prior print/report-output fixes.
+
+Implemented:
+
+- Added shared `src/server/services/patient-detail-timeline-query.ts` for patient-level conference-note scoping and patient timeline operation-history filters.
+- Changed both `GET /api/patients/[id]` and `getPatientTimelineData()` to always include patient-level `conferenceNote(patient_id, case_id=null)` records even when the patient has no assigned cases.
+- Changed patient detail route and timeline service so billing refs, billing evidence, billing blockers, billing candidates, billing payment-profile audit history, billing collection audit history, and billing invoice/receipt export history are read only when `canManageBilling` is true.
+- Changed `/api/external-professionals/suggestions` from `canReport` to `canSendCareReport`, aligning direct API access with report output/delivery-support UI boundaries.
+- Changed report detail UI so direct `送付` remains available with `can_send=true`, while `他職種共有` and the share composer require both `can_send` and `can_create_external_share`.
+- Added shared `src/lib/reports/care-report-send-validation.ts` and reused it from the send API route and report detail send form, removing duplicated recipient required/email/role validation.
+- Changed today-workspace blocked billing candidate JSON-path filters to build from `BILLING_VALIDATION_LAYER_KEYS` instead of hardcoded layer names.
+- Added regression coverage for no-case patient-level conference notes, non-billing-role patient timeline redaction, external professional suggestion send permission, report external-share partial permission, share follow-up task partial permission, malformed facility-batch patient ids, and shared send/timeline query helpers.
+
+Focused validation:
+
+- `pnpm exec vitest run 'src/app/api/patients/[id]/route.test.ts' src/server/services/patient-detail.test.ts src/server/services/patient-detail-timeline-query.test.ts src/app/api/external-professionals/suggestions/route.test.ts src/app/api/care-reports/today-workspace/route.test.ts src/lib/reports/care-report-send-validation.test.ts 'src/app/api/care-reports/[id]/send/route.test.ts' 'src/app/(dashboard)/reports/[id]/page.test.tsx' 'src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 9 files / 157 tests.
+- Touched-file ESLint for the Loop 11 source/test files: passed.
+- `git diff --check`: passed.
+- `pnpm typecheck`: passed.
+
+Blocked or deferred from Zero Audit 4:
+
+- Admin webhook transaction rollback integration test remains blocked by lack of real Prisma transaction/DB fixture in this unit-test pass.
+- Browser proof for print audit/report share/dashboard freshness remains blocked until authenticated browser runtime and seeded data are available.
+- Production cardinality/index proof for today-workspace JSON-path billing scans remains blocked without seeded/live DB and migration/index decisions.
+
+Next loop:
+
+- Run Zero Audit 5 over the current diff. Because Zero Audit 4 produced actionable findings, the consecutive zero-actionable counter is still 0. Two clean audits are still required before full `pnpm test`/`pnpm build` and final reporting.
+
+### Loop 12 - Zero Audit 5 Findings and Follow-up Implementation
+
+Zero Audit 5 agents completed:
+
+- Deep Explorer/Strict Review/Privacy: found remaining care-report output leakage through communication-request APIs, stored report PDF URLs, report-purpose file APIs, print content prefetch, and webhook delivery persistence/Data Explorer surfaces.
+- Refactor/Similarity: found `inferCareReportTargetRole()` living in a Prisma-dependent module and billing validation-layer snapshot typing exported under the full-layer name.
+- Test Auditor: requested direct permission, audit-failure, webhook redaction, file-handle redaction, and route-catalog coverage.
+- Medical Safety: prioritized audited print output and care-report communication/request response boundaries.
+
+Implemented:
+
+- Added care-report-specific `canSendCareReport` gating to communication-request list/create/detail/update/responses/resolve-followup/export flows while preserving existing non-care-report `canReport` behavior and assignment checks.
+- Redacted `pdf_url` from care-report list/detail responses for roles without report-output permission.
+- Changed report-purpose stored file download/complete access to require `canSendCareReport`, and report-purpose presigned upload access to require `canAuthorReport`.
+- Changed print audit POST to return the printable report only after export audit persistence succeeds; changed the print page to use the audit response as its only report-content data source.
+- Redacted persisted webhook delivery URLs and denied `WebhookDelivery.url`/`payload` from Data Explorer projections.
+- Moved pure care-report target-role inference into client-safe `src/lib/reports/care-report-target-role.ts` and reused it from server routes and delivery-rule code.
+- Corrected billing validation-layer reexports so full `BillingValidationLayers` and partial `BillingValidationLayerSnapshot` have distinct names at call sites.
+- Updated route catalog metadata for care-report PDF output to `canSendCareReport`.
+
+Focused validation:
+
+- `pnpm exec vitest run src/app/api/communication-requests/route.test.ts 'src/app/api/communication-requests/[id]/route.test.ts' 'src/app/api/communication-requests/[id]/responses/route.test.ts' 'src/app/api/communication-requests/[id]/resolve-followup/route.test.ts' src/app/api/communication-requests/export/route.test.ts 'src/app/api/care-reports/[id]/route.test.ts' src/app/api/care-reports/route.test.ts 'src/app/api/care-reports/[id]/print-audit/route.test.ts' 'src/app/(dashboard)/reports/[id]/print/page.test.tsx' src/app/api/files/presigned-upload/route.test.ts src/server/services/file-storage.test.ts src/server/services/outbound-webhook.test.ts src/server/services/data-explorer.test.ts src/app/api/meta/route-catalog/route.test.ts src/lib/reports/care-report-target-role.test.ts src/lib/billing/validation-layers.test.ts --reporter=dot --testTimeout=30000`: passed, 16 files / 256 tests.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: initially failed on print-page test and communication responses route formatting, then passed after targeted Prettier.
+- `git diff --check`: passed.
+
+Blocked or deferred from Zero Audit 5:
+
+- Patient detail/timeline query fan-out still has larger consolidation potential, but the high-risk privacy and report-output boundaries from the audit were prioritized first; it should be re-checked by the next audit before deciding whether a safe in-session extraction remains.
+- Admin webhook rollback integration and authenticated browser proof remain blocked by the same missing real Prisma/browser fixtures noted in Loop 11.
+
+Next loop:
+
+- Run Zero Audit 6 over the current diff. Because Zero Audit 5 produced actionable findings, the consecutive zero-actionable counter is still 0. Two clean audits are still required before full `pnpm test`/`pnpm build` and final reporting.
+
 Goal started: 2026-06-18 JST
 
 Objective: Preserve existing CareViaX behavior while improving runtime speed, response performance, resource efficiency, exception tolerance, async safety, and stability until actionable candidates are exhausted and two consecutive Zero Candidate Audits pass.
@@ -700,3 +1034,1281 @@ Blocked: C11 (diverged user-visible label strings — product/UX sign-off), C12 
 
 - Actionable but larger next-loop items: durable cross-tab sync/evidence leases, queue/server idempotency key contract, singleton draft duplicate collapse migration, skipped evidence backoff, and autosave hash-skip/common timer hook.
 - Blocked/deferred: voice memo server sync/STT and full PHOS/dashboard queue engine unification require product/external-service/runtime decisions.
+
+## 20260619-0546 JST - Adjacent Feature Zero Audit 6 Follow-Up
+
+### Re-Audit Findings Addressed
+
+- Product/Review/Test/Medical/Privacy agents found new actionable items, so the consecutive zero-actionable counter remains `0`.
+- Added `/api/care-reports/:id/print-audit` to the rate-limit catalog and API route catalog.
+- Hardened print-audit by reloading a confirmed report after audit persistence and returning only the print payload from that audited lookup.
+- Scoped the print page audit query by org and per-mount run id so direct print views do not reuse stale cached clinical output.
+- Hid print output links until reports are pharmacist-confirmed, matching the direct print-audit route requirement.
+- Moved report-purpose presigned upload authorization before file constraint validation and aligned it with `canSendCareReport`, matching stored report file completion/download permissions.
+- Added communication request CSV export audit logging and `Cache-Control: no-store`; export now fails closed if audit persistence fails.
+- Normalized care-report communication request creation from the linked report scope and rejects missing, inaccessible, or mismatched linked report context.
+- Changed report detail `can_view_related_requests` to require `canSendCareReport`, matching care-report communication request access.
+- Extracted shared communication-request helpers for care-report visibility, writable patient scope, and care-report scope normalization.
+- Reused the shared care-report target-role helpers in the report detail page instead of local role inference.
+- Added shared visible external-access grant where construction and reused it from patient detail route/service.
+
+### Files Changed In This Follow-Up
+
+- `src/lib/api/rate-limit.ts`, `src/lib/api/rate-limit.test.ts`, `src/lib/api/route-catalog.ts`, `src/app/api/meta/route-catalog/route.test.ts`
+- `src/app/api/care-reports/[id]/print-audit/route.ts`, `src/app/api/care-reports/[id]/print-audit/route.test.ts`
+- `src/app/(dashboard)/reports/[id]/print/page.tsx`, `src/app/(dashboard)/reports/[id]/print/page.test.tsx`
+- `src/app/(dashboard)/reports/[id]/page.tsx`, `src/app/(dashboard)/reports/[id]/page.test.tsx`
+- `src/app/api/files/presigned-upload/route.ts`, `src/app/api/files/presigned-upload/route.test.ts`
+- `src/app/api/communication-requests/route.ts`, `src/app/api/communication-requests/route.test.ts`
+- `src/app/api/communication-requests/[id]/route.ts`, `src/app/api/communication-requests/[id]/responses/route.ts`, `src/app/api/communication-requests/[id]/resolve-followup/route.ts`
+- `src/app/api/communication-requests/export/route.ts`, `src/app/api/communication-requests/export/route.test.ts`
+- `src/app/api/care-reports/[id]/route.ts`, `src/app/api/care-reports/[id]/route.test.ts`
+- `src/server/services/communication-request-access.ts`
+- `src/server/services/external-access.ts`, `src/server/services/external-access.test.ts`, `src/server/services/patient-detail.ts`, `src/app/api/patients/[id]/route.ts`
+
+### Validation
+
+- Focused Vitest: `pnpm exec vitest run ...` passed with 16 files / 324 tests.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- `pnpm lint`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Blocked: communication-request assignment-scope export/list tests for staff-assignment-only cases need a role/fixture contract that is not currently available without broader product/role-model work.
+- Next action: run Zero Audit 7 with Discovery/Similarity/Duplication/Test/Review/Medical/Privacy coverage. If it finds actionables, implement and validate them; if it finds none, count clean audit `1/2` and run one more audit before final full `pnpm test` and `pnpm build`.
+
+## 20260619-0618 JST - Adjacent Feature Zero Audit 7 Follow-Up
+
+### Re-Audit Findings Addressed
+
+- Product/API/Duplication/Test/Medical/Privacy agents found new actionable items, so the consecutive zero-actionable counter remains `0`.
+- Hardened direct communication request response creation:
+  - requires `expected_updated_at`
+  - rejects stale request versions with 409 before side effects
+  - requires strict ISO datetime `responded_at`
+  - guards status claim with `updated_at`
+  - reuses shared idempotent response upsert logic across direct response, request close, and resolve-followup paths
+- Standardized stale communication-request list cursors to `VALIDATION_ERROR` instead of leaking Prisma `P2025`.
+- Hardened communication request CSV export:
+  - uses care-report communication access helper
+  - prefixes spreadsheet-formula/control-character cells
+  - records structured export metadata with request IDs, patient ID hashes, counts, truncation flags, and snapshot id
+- Hardened care-report output/update surfaces:
+  - report PATCH requires `expected_updated_at` and uses guarded `updateMany`
+  - report detail edit and draft-confirm UI pass the current report version token
+  - print-audit records audit after the final confirmed report reload, includes `report_updated_at`, and returns `no-store`
+  - PDF audit failure is locked so a failed audit does not return `pdfResponse`
+  - report file download denial for trainee role is covered before signed URL creation
+- Hardened visit-to-report generation:
+  - `/api/care-reports/generate-from-visit` now requires `expected_visit_record_updated_at`
+  - `generateReportsFromVisit` rejects stale visit versions before loading report inputs and rechecks the visit row inside the write transaction
+  - report workspace BFF returns `visit_record_updated_at`
+  - report workspace and visit detail generation buttons pass the visit version token
+- Removed adjacent inconsistencies:
+  - interprofessional share follow-up task type now uses canonical `report_response_followup`
+  - print hub save-copy controls are visible only for `first_visit_documents`, the only print type with persisted-copy/history support
+  - Data Explorer hides `WebhookRegistration.url` as well as secret
+  - external-access patient branches reuse shared visible-grant where construction
+  - API conventions now document clinical output/export audit, no-store, fail-closed, metadata, and CSV formula-neutralization rules
+
+### Files Changed In This Follow-Up
+
+- `src/server/services/communication-response-upsert.ts`, `src/server/services/communication-response-upsert.test.ts`
+- `src/app/api/communication-requests/[id]/responses/route.ts`, `src/app/api/communication-requests/[id]/responses/route.test.ts`
+- `src/app/api/communication-requests/[id]/route.ts`, `src/app/api/communication-requests/[id]/resolve-followup/route.ts`
+- `src/app/api/communication-requests/route.ts`, `src/app/api/communication-requests/route.test.ts`
+- `src/app/api/communication-requests/export/route.ts`, `src/app/api/communication-requests/export/route.test.ts`
+- `src/app/api/care-reports/[id]/route.ts`, `src/app/api/care-reports/[id]/route.test.ts`
+- `src/app/api/care-reports/[id]/print-audit/route.ts`, `src/app/api/care-reports/[id]/print-audit/route.test.ts`
+- `src/app/api/care-reports/[id]/pdf/route.test.ts`, `src/server/services/file-storage.test.ts`
+- `src/app/api/care-reports/generate-from-visit/route.ts`, `src/app/api/care-reports/generate-from-visit/route.test.ts`
+- `src/server/services/report-generator.ts`, `src/server/services/report-generator.test.ts`
+- `src/app/api/care-reports/today-workspace/route.ts`, `src/app/api/care-reports/today-workspace/route.test.ts`, `src/types/reports-today-workspace.ts`
+- `src/app/(dashboard)/reports/[id]/page.tsx`, `src/app/(dashboard)/reports/[id]/page.test.tsx`
+- `src/components/features/reports/report-edit-form.tsx`, `src/components/features/reports/report-edit-form.test.tsx`
+- `src/app/(dashboard)/reports/[id]/share/interprofessional-share.helpers.ts`, `src/app/(dashboard)/reports/[id]/share/interprofessional-share.helpers.test.ts`, `src/app/(dashboard)/reports/[id]/share/interprofessional-share-content.test.tsx`
+- `src/app/(dashboard)/reports/print/print-hub-content.tsx`, `src/app/(dashboard)/reports/print/print-hub-content.test.tsx`
+- `src/app/(dashboard)/reports/report-share-workspace.tsx`, `src/app/(dashboard)/reports/report-share-workspace.test.tsx`
+- `src/app/(dashboard)/visits/[id]/visit-record-detail.tsx`
+- `src/server/services/data-explorer.ts`, `src/server/services/data-explorer.test.ts`
+- `src/app/api/external-access/route.ts`
+- `src/app/api/__tests__/workflow-full-cycle.test.ts`
+- `docs/api-conventions.md`
+
+### Validation
+
+- Focused Zero Audit 7 suite: `pnpm vitest run ...` passed with 16 files / 236 tests after fixing test expectations.
+- Generate-from-visit OCC suite: `pnpm vitest run ...` passed with 5 files / 58 tests.
+- Combined focused regression suite: `pnpm vitest run ...` passed with 21 files / 294 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed.
+- Initial `pnpm format:check` failed on `src/components/features/reports/report-edit-form.tsx`; Prettier was applied to that file.
+- Final `pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Blocked/deferred: generic persisted print-copy support for non-first-visit print types requires artifact/storage/product policy; replacing share-page direct task creation with full request resolve/close workflow requires product decision on whether viewing a reply should close the communication request.
+- Next action: run Zero Audit 8 with Discovery/Similarity/Duplication/Test/Review/Medical/Privacy coverage. If it finds actionables, implement and validate them; if it finds none, count clean audit `1/2` and run one more audit before final full `pnpm test` and `pnpm build`.
+
+## 20260619-0802 JST - Adjacent Feature Zero Audit 8 Follow-Up
+
+### Re-Audit Findings Addressed
+
+- Zero Audit 8 produced new actionable items, so the consecutive zero-actionable counter remains `0`.
+- Hardened visit-to-care-report draft regeneration:
+  - existing draft reports now require a report version token instead of being silently reused through bulk auto-generation
+  - generate-from-visit returns refreshed `status` and `updated_at`
+  - visit detail hides the automatic generation option when any draft exists, preserving the per-type version-token flow
+- Hardened care-report output boundaries:
+  - report list keyword body search is restricted to report output roles before content lookup
+  - report detail no longer selects or returns `content` for roles without report output/send permission
+  - PDF content types reuse shared `AudienceReportContent` instead of a local duplicate type
+- Hardened external access and communication privacy/audit surfaces:
+  - external-access grant creation records masked audit metadata without token or OTP values
+  - communication response recording records audit metadata with response hash/length only, never raw body
+  - report reminders expose masked recipient contacts in analytics and task metadata
+- Hardened communication request export:
+  - default profile is external/redacted
+  - internal export requires output permission plus a narrowing status or request type filter
+  - internal and external exports both enforce the 1000-row synchronous cap before CSV/audit output
+- Hardened route/API catalog and retry behavior:
+  - high-risk communication/external-access routes were added to the catalog
+  - route-catalog admin gate is now covered by tests
+  - duplicate response retries against already-responded communication requests no longer touch the parent request row or advance `updated_at`
+
+### Files Changed In This Follow-Up
+
+- `src/app/api/care-reports/[id]/route.ts`, `src/app/api/care-reports/[id]/route.test.ts`
+- `src/app/api/care-reports/route.ts`, `src/app/api/care-reports/route.test.ts`
+- `src/app/api/care-reports/generate-from-visit/route.ts`, `src/app/api/care-reports/generate-from-visit/route.test.ts`
+- `src/server/services/report-generator.ts`, `src/server/services/report-generator.test.ts`
+- `src/server/services/pdf-documents.tsx`, `src/server/services/report-templates.ts`, `src/types/care-report-content.ts`
+- `src/app/(dashboard)/visits/[id]/visit-record-detail.tsx`
+- `src/app/(dashboard)/visits/[id]/visit-record-report-generation.ts`, `src/app/(dashboard)/visits/[id]/visit-record-report-generation.test.ts`
+- `src/app/api/external-access/route.ts`, `src/app/api/external-access/route.test.ts`
+- `src/app/api/communication-requests/[id]/responses/route.ts`, `src/app/api/communication-requests/[id]/responses/route.test.ts`
+- `src/app/api/communication-requests/[id]/route.ts`, `src/app/api/communication-requests/[id]/route.test.ts`
+- `src/app/api/communication-requests/export/route.ts`, `src/app/api/communication-requests/export/route.test.ts`
+- `src/server/services/report-reminders.ts`, `src/server/services/report-reminders.test.ts`
+- `src/lib/api/route-catalog.ts`, `src/app/api/meta/route-catalog/route.test.ts`
+
+### Validation
+
+- First Zero Audit 8 focused suite: `pnpm exec vitest run ...` passed with 8 files / 119 tests.
+- First Zero Audit 8 gates: `pnpm typecheck`, `pnpm lint`, `pnpm format:check`, `git diff --check`, full `pnpm test`, and `pnpm build` passed after formatting fixes.
+- Re-audit follow-up focused suite: `pnpm exec vitest run 'src/app/api/care-reports/[id]/route.test.ts' 'src/app/api/external-access/route.test.ts' 'src/app/api/communication-requests/export/route.test.ts' 'src/app/api/meta/route-catalog/route.test.ts' 'src/app/api/communication-requests/[id]/responses/route.test.ts' 'src/app/api/communication-requests/[id]/route.test.ts' 'src/app/(dashboard)/visits/[id]/visit-record-report-generation.test.ts' --reporter=dot --testTimeout=30000` passed with 7 files / 103 tests.
+- Re-audit follow-up gates: `pnpm format:check`, `pnpm typecheck`, `pnpm lint`, and `git diff --check` passed.
+- Full regression: `pnpm test -- --reporter=dot --testTimeout=30000` passed with 997 files passed / 1 skipped and 7861 tests passed / 1 skipped.
+- Production build: `pnpm build` passed for 272 app routes.
+
+### Remaining / Next Loop
+
+- Blocked/deferred: generic persisted print-copy support for non-first-visit print types requires artifact/storage/product policy; replacing share-page direct task creation with full request resolve/close workflow requires a product decision; staff-assignment-only export/list fixture coverage requires a role/fixture contract; supporting auto-generation across multiple existing draft report types would require a typed per-report version-token request contract.
+- Next action: run Zero Audit 9 with fresh Product/Similarity/Architecture/UX/API/Duplication/Test/Medical/Privacy coverage. If no new actionable findings are found, record clean audit `1/2`; otherwise implement and revalidate.
+
+## 20260619-0854 JST - Adjacent Feature Zero Audit 9 Follow-Up
+
+### Re-Audit Findings Addressed
+
+- Zero Audit 9 produced new actionable items, so the consecutive zero-actionable counter remains `0`.
+- Hardened external access response caching:
+  - `/api/external-access/[token]/self-report` now wraps validation, rate-limit, grant-validation/not-found, idempotency-conflict, replay, and success responses with the existing `withSensitiveNoStore` helper.
+  - `/api/external-access` stale cursor validation responses now use the same no-store helper; GET success/empty paths are covered by tests.
+- Aligned standalone report print audit semantics with the print hub:
+  - preview rendering sends `{ intent: 'preview_rendered' }`
+  - auto-print and manual print send a fresh `{ intent: 'print_requested' }` audit before invoking `window.print()`
+  - the intentional second print-audit report read is documented as stale-output fail-closed protection.
+- Hardened billing export privacy/audit semantics:
+  - CSV and claims XML responses use `private, no-store, max-age=0` and `Pragma: no-cache`
+  - claims XML exports are audited as `format: 'claims-xml'`, not `csv`
+  - billing export audit no longer stores raw `patient_id` filters and records a short patient filter hash instead
+  - claims XML generation failures no longer write successful export audits.
+- Hardened CSV/export consistency:
+  - communication external CSV tests now require `external_row_id` hash rows and raw request IDs to be absent
+  - audit-log export tests now lock no-store headers and spreadsheet formula-prefix neutralization
+  - shared CSV helper now quotes CR-containing minimal cells, preventing row-boundary drift
+  - patient and prescription CSV exports now have route-level formula-prefix tests
+  - pharmacy stock export now stringifies Decimal drug prices before CSV cell formatting.
+- Added client/API contract coverage:
+  - `generateCareReportFromVisit` now has direct tests for org header, snake_case payload, version tokens, explicit report regeneration, JSON error messages, and non-JSON fallback errors
+  - communication response duplicate retry tests now assert no duplicate audit event is written
+  - route catalog now has a pure uniqueness/shape/self-route test
+  - rate-limit canonical paths now use `:token` for external-access token routes, matching the route catalog and CSRF redaction.
+- Hardened care-report detail patient-boundary coverage:
+  - `can_view_patient=false` detail responses now assert `patient_summary:null`, `visit_summary:null`, and no patient/visit summary queries.
+
+### Files Changed In This Follow-Up
+
+- `src/app/api/external-access/[token]/self-report/route.ts`, `src/app/api/external-access/[token]/self-report/route.test.ts`
+- `src/app/api/external-access/route.ts`, `src/app/api/external-access/route.test.ts`
+- `src/app/(dashboard)/reports/[id]/print/page.tsx`, `src/app/(dashboard)/reports/[id]/print/page.test.tsx`
+- `src/app/api/care-reports/[id]/print-audit/route.ts`
+- `src/app/api/care-reports/[id]/route.test.ts`
+- `src/app/api/communication-requests/export/route.test.ts`
+- `src/app/api/communication-requests/[id]/responses/route.test.ts`
+- `src/lib/reports/generate-from-visit-client.test.ts`
+- `src/app/api/billing-candidates/export/route.ts`, `src/app/api/billing-candidates/export/route.test.ts`
+- `src/server/services/export-audit.ts`, `src/server/services/export-audit.test.ts`
+- `src/app/api/audit-logs/export/route.test.ts`
+- `src/lib/api/rate-limit.ts`, `src/lib/api/rate-limit.test.ts`
+- `src/proxy.test.ts`
+- `src/lib/api/route-catalog.test.ts`
+- `src/lib/csv/safe-csv.ts`, `src/lib/csv/safe-csv.test.ts`
+- `src/app/api/patients/export/route.test.ts`
+- `src/app/api/patients/[id]/prescriptions/export/route.test.ts`
+- `src/app/api/pharmacy-drug-stocks/export/route.ts`
+
+### Validation
+
+- Focused Zero Audit 9 suite: `pnpm exec vitest run ...` passed with 18 files / 235 tests.
+- `pnpm format:check`: passed.
+- `pnpm lint`: passed.
+- `pnpm typecheck`: initially failed on `Decimal` values passed to the CSV helper from pharmacy stock export, then passed after explicit stringification.
+
+### Remaining / Next Loop
+
+- Not implemented intentionally: removing the second `print-audit` report read. It protects against stale report status/content between initial access validation and output, so this follow-up documented the intent instead of weakening the fail-closed behavior.
+- Blocked/deferred remain unchanged: generic persisted print-copy support for non-first-visit print types requires artifact/storage/product policy; replacing share-page direct task creation with full request resolve/close workflow requires a product decision; staff-assignment-only export/list fixture coverage requires a role/fixture contract; supporting auto-generation across multiple existing draft report types requires a typed per-report version-token request contract.
+- Next action: run Zero Audit 10 with fresh Discovery/Similarity/Duplication/Test/Review/Medical/Privacy/API-contract coverage. If no new actionable findings are found, record clean audit `1/2`; otherwise implement and revalidate.
+
+## 20260619-0922 JST - Current Editing Scope Close-Out
+
+### User Stop Condition
+
+- The latest user instruction changed the stop condition to: finish the current editing scope, then stop.
+- No new broad candidate search was started after this instruction. Existing in-flight fixes were completed and validated.
+
+### Fixes Completed In This Scope
+
+- Billing and pharmacy CSV/export routes now consistently apply sensitive no-store headers on success and failure paths covered by this slice.
+- Billing claims XML audit semantics now preserve `claims-xml`, fail closed on audit failure before external generation, and avoid raw patient filter metadata.
+- Communication request export now separates read/export failures from audit failures and keeps no-store behavior covered.
+- Care-report print audit now uses `recordCareReportPrintAudit` with action-specific `care_report_print_previewed` and `care_report_print_requested` events instead of overloading generic export audit events.
+- External access list UI/API now use masked contact display for listed grants, and OTP delivery fallback audit coverage avoids raw token/OTP leakage.
+- Public external-access token routes now share OTP preparation/grant validation helpers while preserving no-store responses and existing route contracts.
+- Print hub retry behavior now avoids duplicate preview audit calls from automatic refetches.
+- Route catalog/rate-limit tests now lock high-risk route alignment, including billing/audit and external token routes.
+- Pharmacy stock template CSV output now reuses the safe CSV row helper, keeps no-store headers, and encodes download filenames safely.
+
+### Validation
+
+- Focused current-scope suite: `pnpm vitest run src/app/api/billing-candidates/export/route.test.ts src/app/api/pharmacy-drug-stocks/export/route.test.ts src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts src/app/api/communication-requests/export/route.test.ts 'src/app/api/care-reports/[id]/print-audit/route.test.ts' src/server/services/export-audit.test.ts 'src/app/api/care-reports/[id]/route.test.ts' src/app/api/external-access/route.test.ts 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' 'src/app/api/communication-requests/[id]/responses/route.test.ts' src/lib/api/rate-limit.test.ts src/app/api/pharmacy-drug-stocks/template/route.test.ts src/lib/csv/safe-csv.test.ts 'src/app/api/external-access/[token]/route.test.ts' 'src/app/api/external-access/[token]/self-report/route.test.ts'` passed with 16 files / 200 tests.
+- `pnpm format:check`: initially found Prettier drift in 6 current-scope files, then passed after targeted formatting.
+- `pnpm lint`: passed.
+- `pnpm typecheck`: initially failed on a route-catalog test literal type, then passed after preserving literal path types with `as const`.
+- `git diff --check`: passed.
+
+### Remaining / Stop Decision
+
+- Current editing scope is complete and validated.
+- Broader original-goal follow-up remains intentionally stopped per the latest user instruction.
+- Existing blocked/deferred items remain unchanged: generic persisted print-copy support for non-first-visit print types, share reply close/resolve semantics, staff-assignment-only fixture coverage, and multi-draft generation version-token contract all require product/storage/fixture/API-contract decisions.
+
+## 20260619-1015 JST - Adjacent Feature Zero Audit 10 Follow-Up
+
+### Re-Audit Findings Addressed
+
+- Zero Audit 10 produced new actionable items, so the consecutive zero-actionable counter remains `0`.
+- Hardened sensitive export cache behavior:
+  - communication-request CSV export now wraps success, validation, forbidden, audit failure, row-cap, and read-failure responses with `withSensitiveNoStore`
+  - patient list, patient prescription, and pharmacy-stock CSV exports now use the canonical sensitive no-store headers on covered success/error paths
+- Reduced raw identifier and PII leakage:
+  - patient export masks phone, insurance numbers, and address for visit-only roles such as `pharmacist_trainee`
+  - patient prescription export filenames no longer include patient names
+  - pharmacy-stock export filenames are URL encoded and include `filename*` to avoid CRLF/header injection
+  - empty billing export 409 details now expose `patient_filter` rather than raw `patient_id`
+  - external-access POST responses omit raw `granted_to_contact` and return only masked contact metadata
+- Hardened external-access audit/scope semantics:
+  - successful public external-access payload views now require an explicit audit event with masked contact, public scope keys, IP, and user agent before returning data
+  - self-report POST now requires a `care_reports` scope; medication-only/allergy-only grants fail closed
+  - SMS fallback audit failure revokes the just-created grant before returning a 500, preventing an active grant with incomplete delivery/audit semantics
+- Hardened communication response behavior:
+  - response list/detail ordering now uses `responded_at desc, id desc`
+  - response content is capped at 4000 characters across direct response POST, PATCH inline response, and follow-up resolution inline response
+  - stale retries that match an existing response intent can replay the existing response instead of surfacing false 409 conflicts, without duplicate write/audit side effects
+- Expanded operational route coverage:
+  - route catalog and meta-route tests now include patient prescription export and pharmacy-stock export/template routes.
+
+### Files Changed In This Follow-Up
+
+- `src/lib/validations/communication-request.ts`
+- `src/app/api/communication-requests/export/route.ts`, `src/app/api/communication-requests/export/route.test.ts`
+- `src/app/api/communication-requests/[id]/responses/route.ts`, `src/app/api/communication-requests/[id]/responses/route.test.ts`
+- `src/app/api/communication-requests/[id]/route.ts`, `src/app/api/communication-requests/[id]/route.test.ts`
+- `src/app/api/communication-requests/[id]/resolve-followup/route.ts`
+- `src/app/api/pharmacy-drug-stocks/export/route.ts`, `src/app/api/pharmacy-drug-stocks/export/route.test.ts`
+- `src/app/api/patients/export/route.ts`, `src/app/api/patients/export/route.test.ts`
+- `src/app/api/patients/[id]/prescriptions/export/route.ts`, `src/app/api/patients/[id]/prescriptions/export/route.test.ts`
+- `src/app/api/billing-candidates/export/route.ts`, `src/app/api/billing-candidates/export/route.test.ts`
+- `src/lib/api/route-catalog.ts`, `src/lib/api/route-catalog.test.ts`
+- `src/app/api/meta/route-catalog/route.test.ts`
+- `src/app/api/external-access/route.ts`, `src/app/api/external-access/route.test.ts`
+- `src/app/api/external-access/[token]/route.ts`, `src/app/api/external-access/[token]/route.test.ts`
+- `src/app/api/external-access/[token]/self-report/route.ts`, `src/app/api/external-access/[token]/self-report/route.test.ts`
+- `src/server/services/external-access.ts`, `src/server/services/external-access.test.ts`
+
+### Validation
+
+- Focused Zero Audit 10 suite: `pnpm vitest run src/app/api/communication-requests/export/route.test.ts 'src/app/api/communication-requests/[id]/responses/route.test.ts' 'src/app/api/communication-requests/[id]/route.test.ts' src/app/api/pharmacy-drug-stocks/export/route.test.ts src/app/api/patients/export/route.test.ts 'src/app/api/patients/[id]/prescriptions/export/route.test.ts' src/app/api/billing-candidates/export/route.test.ts src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts src/app/api/external-access/route.test.ts 'src/app/api/external-access/[token]/route.test.ts' 'src/app/api/external-access/[token]/self-report/route.test.ts' src/server/services/external-access.test.ts` passed with 13 files / 191 tests.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- Targeted touched-file ESLint: passed.
+
+### Remaining / Next Loop
+
+- Deferred from this slice because they need broader schema/product/clinical/tax decisions or a separate plan: clinical report generation/send outcome gating; billing evidence `confirmed` vs actually delivered report semantics; claims XML `siteId` resolution and success-audit split; malformed PDF fallback redaction/fail-closed coverage; patient-detail service-level contact redaction coverage; care-report send access helper deduplication; invoice/receipt positive-amount gates.
+- Next action: take the next safe Zero Audit 10 item as a separate slice, or plan the claims XML/site-resolution and clinical outcome-gating changes before implementation.
+
+## 20260619-1024 JST - Billing Evidence Delivery Semantics Slice
+
+### Completed
+
+- Split billing evidence delivery predicates so `CareReport.status='confirmed'` is no longer external delivery evidence.
+- Preserved legacy compatibility for `sent` reports with no backfilled `DeliveryRecord`.
+- Preserved successful delivery record semantics for `DeliveryRecord.status='sent'` and `DeliveryRecord.status='confirmed'`.
+- Added regressions proving:
+  - confirmed-only reports with no delivery record keep `claimable=false`
+  - failed delivery records keep `report_delivery_incomplete=true`
+  - legacy sent reports without delivery rows remain claimable
+
+### Files Changed
+
+- `src/server/services/billing-evidence/core.ts`
+- `src/server/services/billing-evidence/core.test.ts`
+- `.codex/ralph-state.md`
+- `CODEX_GOAL_PROGRESS.md`
+
+### Validation
+
+- `pnpm exec vitest run src/server/services/billing-evidence/core.test.ts --reporter=dot --testTimeout=30000`: passed, 1 file / 65 tests.
+- `pnpm exec vitest run src/server/services/billing-evidence/core.test.ts 'src/app/api/care-reports/[id]/send/route.test.ts' --reporter=dot --testTimeout=30000`: passed, 2 files / 108 tests.
+- `pnpm exec eslint --max-warnings=0 src/server/services/billing-evidence/core.ts src/server/services/billing-evidence/core.test.ts`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check -- src/server/services/billing-evidence/core.ts src/server/services/billing-evidence/core.test.ts`: passed.
+
+### Remaining / Next Loop
+
+- Still separate from this slice: `response_waiting` delivery policy, clinical report generation/send outcome gating, claims XML `siteId` resolution and success-audit split, malformed PDF fallback coverage, patient-detail contact redaction coverage, care-report send access helper deduplication, and invoice/receipt positive-amount gates.
+- Next action: pick the next safe Zero Audit 10 item, likely claims XML site attribution/success audit after defining the authoritative site source, or a narrow PDF/contact redaction coverage slice.
+
+## 20260619-1040 JST - Claims XML Site Attribution / Audit Split Slice
+
+### Completed
+
+- Added a shared claims export site resolver that reads candidate `source_snapshot.site_id` or nested `billing_site.site_id`.
+- Billing evidence generation now persists visit schedule `site_id` into `calculation_context`, generated candidate `source_snapshot.site_id`, and `source_snapshot.billing_site`.
+- Manual billing claims XML export now fails closed before audit/adapter when candidate site attribution is missing or spans multiple pharmacy sites.
+- Manual billing claims XML export now passes the resolved `siteId` to the adapter and records separate attempt/success export audit metadata.
+- Billing close auto-transmit now fails closed before adapter on missing/multiple sites, records an attempt audit before the adapter, records success audit after adapter success, preserves close success on adapter failure with attempt evidence, and skips the adapter when attempt audit cannot be recorded.
+- Verifier re-check found no actionable findings after the attempt/success close-audit follow-up.
+
+### Files Changed
+
+- `src/server/services/claims-export-site.ts`
+- `src/app/api/billing-candidates/export/route.ts`
+- `src/app/api/billing-candidates/export/route.test.ts`
+- `src/app/api/billing-candidates/close/route.ts`
+- `src/app/api/billing-candidates/close/route.test.ts`
+- `src/server/services/billing-evidence/core.ts`
+- `src/server/services/billing-evidence/core.test.ts`
+- `src/server/services/billing-evidence.test.ts`
+- `.codex/ralph-state.md`
+- `CODEX_GOAL_PROGRESS.md`
+
+### Validation
+
+- `pnpm exec vitest run src/app/api/billing-candidates/export/route.test.ts src/app/api/billing-candidates/close/route.test.ts src/server/services/billing-evidence/core.test.ts src/server/services/billing-evidence.test.ts --reporter=dot --testTimeout=30000`: passed, 4 files / 125 tests.
+- `pnpm exec vitest run src/app/api/billing-candidates/close/route.test.ts --reporter=dot --testTimeout=30000`: passed, 1 file / 21 tests.
+- `pnpm exec eslint --max-warnings=0 src/server/services/claims-export-site.ts src/app/api/billing-candidates/export/route.ts src/app/api/billing-candidates/export/route.test.ts src/app/api/billing-candidates/close/route.ts src/app/api/billing-candidates/close/route.test.ts src/server/services/billing-evidence/core.ts src/server/services/billing-evidence/core.test.ts src/server/services/billing-evidence.test.ts`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check -- src/server/services/claims-export-site.ts src/app/api/billing-candidates/export/route.ts src/app/api/billing-candidates/export/route.test.ts src/app/api/billing-candidates/close/route.ts src/app/api/billing-candidates/close/route.test.ts src/server/services/billing-evidence/core.ts src/server/services/billing-evidence/core.test.ts src/server/services/billing-evidence.test.ts`: passed.
+
+### Remaining / Next Loop
+
+- Still separate from this slice: `response_waiting` delivery policy, clinical report generation/send outcome gating, malformed PDF fallback coverage, patient-detail contact redaction coverage, care-report send access helper deduplication, and invoice/receipt positive-amount gates.
+- Next action: pick the next low-policy-risk item, likely malformed PDF/contact-redaction coverage or invoice/receipt positive-amount gates.
+
+## 20260619-1045 JST - Billing PDF Positive Amount Gate Slice
+
+### Completed
+
+- Receipt PDF generation now requires `collection.collected_amount > 0` in addition to issued status and a receipt number.
+- Invoice PDF generation now requires `collection.billed_amount > 0` in addition to issued invoice status.
+- Non-positive receipt/invoice amount snapshots fail before PDF rendering and before export audit.
+- Added regressions proving issued receipt/invoice snapshots with zero amounts throw `BILLING_DOCUMENT_NOT_ISSUED` and do not call the PDF renderer.
+- Verifier found no must-fix findings. It noted collection route URL-save alignment as non-blocking because the actual PDF route/service now rejects render/audit for non-positive amounts.
+
+### Files Changed
+
+- `src/server/services/pdf-billing-document-record.ts`
+- `src/server/services/pdf-documents.test.tsx`
+- `.codex/ralph-state.md`
+- `CODEX_GOAL_PROGRESS.md`
+
+### Validation
+
+- `pnpm exec vitest run src/server/services/pdf-documents.test.tsx 'src/app/api/billing-candidates/[id]/documents/pdf/route.test.ts' --reporter=dot --testTimeout=30000`: passed, 2 files / 17 tests.
+- `pnpm exec vitest run src/server/services/pdf-documents.test.tsx 'src/app/api/billing-candidates/[id]/documents/pdf/route.test.ts' 'src/app/api/billing-candidates/[id]/collection/route.test.ts' --reporter=dot --testTimeout=30000`: passed, 3 files / 37 tests.
+- `pnpm exec eslint --max-warnings=0 src/server/services/pdf-billing-document-record.ts src/server/services/pdf-documents.test.tsx 'src/app/api/billing-candidates/[id]/documents/pdf/route.test.ts' 'src/app/api/billing-candidates/[id]/collection/route.test.ts'`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check -- src/server/services/pdf-billing-document-record.ts src/server/services/pdf-documents.test.tsx 'src/app/api/billing-candidates/[id]/documents/pdf/route.test.ts' 'src/app/api/billing-candidates/[id]/collection/route.test.ts'`: passed.
+
+### Remaining / Next Loop
+
+- Still separate from this slice: `response_waiting` delivery policy, clinical report generation/send outcome gating, malformed PDF fallback coverage, patient-detail contact redaction coverage, and care-report send access helper deduplication.
+- Next action: pick the next low-policy-risk item, likely malformed PDF fallback coverage or patient-detail contact redaction coverage.
+
+## 20260619-1049 JST - Malformed Care-Report PDF Fallback Coverage Slice
+
+### Completed
+
+- Added a route-level regression for malformed/generic care-report PDF build failures.
+- The route now has direct coverage proving `EXTERNAL_PDF_RENDER_FAILED` returns a generic response, does not leak malformed report details or PHI-like content from the thrown error, does not return a partial PDF response, and does not record a successful export audit.
+- Re-read the attached v0.2 specification and recorded the user's clarification: when the v0.2 spec is a higher-version contract than existing code, existing code should be updated to fully align with the spec instead of preserving the older behavior.
+
+### Files Changed
+
+- `src/app/api/care-reports/[id]/pdf/route.test.ts`
+- `.codex/ralph-state.md`
+- `CODEX_GOAL_PROGRESS.md`
+
+### Validation
+
+- `pnpm exec vitest run 'src/app/api/care-reports/[id]/pdf/route.test.ts' src/server/services/pdf-documents.test.tsx --reporter=dot --testTimeout=30000`: passed, 2 files / 20 tests.
+- `pnpm exec eslint --max-warnings=0 'src/app/api/care-reports/[id]/pdf/route.test.ts' src/server/services/pdf-documents.test.tsx`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check -- 'src/app/api/care-reports/[id]/pdf/route.test.ts' src/server/services/pdf-documents.test.tsx`: passed.
+
+### Remaining / Next Loop
+
+- Continue with v0.2 as the upper-version SSOT. Live-map the Phase 1 checklist against current code and update older behavior to match the spec, especially patient share cases, consent blocking, partner edit denial, visit request/record workflow, contract effective-version billing, paid/free monthly outputs, and audit logging.
+- Still separate from this slice: `response_waiting` delivery policy, clinical report generation/send outcome gating, patient-detail contact redaction coverage, and care-report send access helper deduplication.
+
+## 20260619-1059 JST - External Sharing Consent Gate / Notification PHI Slice
+
+### Completed
+
+- Reconfirmed v0.2 as the upper-version SSOT and ran read-only mapping through code/spec/privacy/DB/planning subagents.
+- Added an active `external_sharing` consent gate to external-access grant creation. Missing, revoked, or expired consent now returns 409 before token, OTP, grant, audit, or SMS side effects.
+- Preserved existing external access scope validation, patient access checks, archived-patient guard, hidden case boundary behavior, no-store responses, and audit safety.
+- Changed generic notification dispatch so persisted in-app notifications and realtime in-app updates keep detailed operational content, but SMS, LINE, and Web Push receive only fixed PHI-free text: `PH-OS通知 / アプリで詳細を確認してください`.
+- Added regressions for SMS, LINE, and Web Push proving patient names, drug names, and diagnosis-like terms do not leave through external notification payloads.
+
+### Files Changed
+
+- `src/app/api/external-access/route.ts`
+- `src/app/api/external-access/route.test.ts`
+- `src/server/services/notifications.ts`
+- `src/server/services/notifications.test.ts`
+- `.codex/ralph-state.md`
+- `CODEX_GOAL_PROGRESS.md`
+
+### Validation
+
+- `pnpm exec vitest run src/app/api/external-access/route.test.ts --reporter=dot --testTimeout=30000`: passed, 1 file / 32 tests.
+- `pnpm exec vitest run src/server/services/notifications.test.ts --reporter=dot --testTimeout=30000`: passed, 1 file / 14 tests.
+- `pnpm exec vitest run src/app/api/external-access/route.test.ts src/server/services/notifications.test.ts --reporter=dot --testTimeout=30000`: passed, 2 files / 46 tests.
+- `pnpm exec eslint --max-warnings=0 src/app/api/external-access/route.ts src/app/api/external-access/route.test.ts src/server/services/notifications.ts src/server/services/notifications.test.ts`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed after targeted Prettier on notification files.
+- `git diff --check -- src/app/api/external-access/route.ts src/app/api/external-access/route.test.ts src/server/services/notifications.ts src/server/services/notifications.test.ts .codex/ralph-state.md CODEX_GOAL_PROGRESS.md`: passed.
+
+### Remaining / Next Loop
+
+- Implement v0.2 Phase 1 foundation as new append-only pharmacy-partnership/patient-share-case tables and isolated APIs, instead of treating `ExternalAccessGrant`, ordinary `VisitRecord`, or ordinary `BillingCandidate` as substitutes.
+- Planned foundation includes `PartnerPharmacy`, `PharmacyPartnership`, `PatientShareCase`, `PatientShareConsent`, `PatientLink`, correction requests, partner visit record submission, RLS/check constraints, and focused service/API tests.
+
+## 20260619-1113 JST - Pharmacy Partnership / Patient Share Foundation Schema Slice
+
+### Completed
+
+- Added the user's new repo rule to `AGENTS.md`: higher-version specification documents override older existing-code behavior and require updating existing code to align.
+- Added v0.2 foundation Prisma models for partner pharmacies, pharmacy partnerships, patient share cases, share-case consents, patient links, correction requests, partner visit requests/records, claim cooperation notes, pharmacy contracts/versions/fee rules, visit billing candidates, invoices/items, and contract documents.
+- Added tenant-safe `(id, org_id)` relation keys on `Patient`, `CareCase`, `ConsentRecord`, and `VisitRecord` so the new cross-domain records can keep DB-level org boundaries.
+- Added migration SQL generated from Prisma datamodel diff, then appended `app_enforced_org_id()` RLS + `FORCE ROW LEVEL SECURITY` and audit triggers for all new org-scoped partnership/share/contract/billing tables.
+- Updated `prisma/rls-policies.sql` with the same new table RLS policy block.
+- Added focused service guards for AC-001/AC-002/AC-003/AC-004 style behavior: active consent required for share activation, accepted patient link and both approvals required, other-pharmacy data edits denied, submitted records locked, base pharmacy notified on new submission, and only completed+confirmed+consented+contract-effective visits become billable.
+- Added regressions for same-day `@db.Date` consent/contract validity so date-only expirations remain valid through the whole day.
+
+### Files Changed
+
+- `AGENTS.md`
+- `prisma/schema/pharmacy-partnership.prisma`
+- `prisma/schema/organization.prisma`
+- `prisma/schema/patient.prisma`
+- `prisma/schema/visit.prisma`
+- `prisma/migrations/20260619110800_add_pharmacy_partnership_foundation/migration.sql`
+- `prisma/rls-policies.sql`
+- `src/server/services/pharmacy-partnerships.ts`
+- `src/server/services/pharmacy-partnerships.test.ts`
+- `.codex/ralph-state.md`
+- `CODEX_GOAL_PROGRESS.md`
+
+### Validation
+
+- `pnpm exec prisma format --schema=prisma/schema/ && pnpm exec prisma validate --schema=prisma/schema/`: passed.
+- `pnpm exec prisma generate --schema=prisma/schema/`: passed.
+- `pnpm exec vitest run src/server/services/pharmacy-partnerships.test.ts --reporter=dot --testTimeout=30000`: passed, 1 file / 8 tests.
+- `pnpm exec eslint --max-warnings=0 src/server/services/pharmacy-partnerships.ts src/server/services/pharmacy-partnerships.test.ts`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed after targeted Prettier on `AGENTS.md`.
+- `git diff --check -- AGENTS.md prisma/schema/organization.prisma prisma/schema/patient.prisma prisma/schema/visit.prisma prisma/schema/pharmacy-partnership.prisma prisma/rls-policies.sql prisma/migrations/20260619110800_add_pharmacy_partnership_foundation/migration.sql src/server/services/pharmacy-partnerships.ts src/server/services/pharmacy-partnerships.test.ts`: passed.
+- `pnpm exec prisma migrate diff --from-migrations=prisma/migrations --to-schema=prisma/schema --exit-code`: blocked by repo config requiring `datasource.shadowDatabaseUrl`; no DB migration was applied.
+
+### Remaining / Next Loop
+
+- Implement isolated API routes/tests for the new foundation: partner pharmacy registration/list, pharmacy partnership creation/list, patient share case creation/activation, patient link accept/decline, correction request creation, partner visit request/record submit/confirm/return, and billing candidate generation.
+- Update route catalog/rate-limit coverage for those routes when APIs are added.
+- Later slices still need UI surfaces, physician report draft generation from partner records, monthly paid/free PDF outputs, invoice snapshot immutability, and audit/search views.
+
+## 20260619-1128 JST - Foundation API Slice: Partner Pharmacies / Partnerships / Patient Share Cases
+
+### Completed
+
+- Added `/api/partner-pharmacies` GET/POST with bounded cursor pagination, org-scoped RLS context, partner pharmacy creation, and compact transaction audit.
+- Added `/api/pharmacy-partnerships` GET/POST with base-site and partner-pharmacy validation, archived-partner rejection, effective date validation, RLS context, and transaction audit.
+- Added `/api/patient-share-cases` GET/POST with partnership/patient/case validation, mismatched-patient case rejection, pending `PatientLink` creation, patient matching snapshot creation, and PHI-minimized audit metadata.
+- Added `/api/patient-share-cases/[id]/activate` POST that enforces the existing v0.2 service guard at the request boundary: active consent, accepted patient link, base approval, and partner approval are required before status changes to `active`.
+- Registered the new high-risk/operational endpoints in route catalog and rate-limit canonical templates, including the dynamic activation route.
+- Added focused route and catalog/rate-limit regressions, including no-side-effect checks for invalid payloads, archived partners, mismatched patient cases, missing consent, and patient-name/address audit exclusion.
+
+### Files Changed
+
+- `src/app/api/partner-pharmacies/route.ts`
+- `src/app/api/partner-pharmacies/route.test.ts`
+- `src/app/api/pharmacy-partnerships/route.ts`
+- `src/app/api/pharmacy-partnerships/route.test.ts`
+- `src/app/api/patient-share-cases/route.ts`
+- `src/app/api/patient-share-cases/route.test.ts`
+- `src/app/api/patient-share-cases/[id]/activate/route.ts`
+- `src/app/api/patient-share-cases/[id]/activate/route.test.ts`
+- `src/lib/api/route-catalog.ts`
+- `src/lib/api/route-catalog.test.ts`
+- `src/lib/api/rate-limit.ts`
+- `src/lib/api/rate-limit.test.ts`
+- `src/app/api/meta/route-catalog/route.test.ts`
+- `.codex/ralph-state.md`
+- `CODEX_GOAL_PROGRESS.md`
+
+### Validation
+
+- `pnpm exec vitest run src/app/api/partner-pharmacies/route.test.ts src/app/api/pharmacy-partnerships/route.test.ts src/app/api/patient-share-cases/route.test.ts 'src/app/api/patient-share-cases/[id]/activate/route.test.ts' src/lib/api/route-catalog.test.ts src/lib/api/rate-limit.test.ts src/app/api/meta/route-catalog/route.test.ts --reporter=dot --testTimeout=30000`: passed, 7 files / 46 tests.
+- `pnpm exec eslint --max-warnings=0 ...`: passed for all new/changed API, catalog, and rate-limit files.
+- `pnpm exec prisma validate --schema=prisma/schema/`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed after targeted Prettier on `src/app/api/patient-share-cases/[id]/activate/route.ts`.
+- `git diff --check -- src/app/api/partner-pharmacies src/app/api/pharmacy-partnerships src/app/api/patient-share-cases src/lib/api/route-catalog.ts src/lib/api/route-catalog.test.ts src/lib/api/rate-limit.ts src/lib/api/rate-limit.test.ts src/app/api/meta/route-catalog/route.test.ts`: passed.
+
+### Remaining / Next Loop
+
+- Next smallest Phase 1 slice: patient link accept/decline APIs and correction request creation, because they complete the activation prerequisite path and AC-002 correction workflow before partner visit records depend on it.
+- Still pending after that: partner visit request/record submit/confirm/return, billing candidate generation, UI surfaces, physician report draft generation from partner records, monthly paid/free PDF outputs, invoice snapshot immutability, and audit/search views.
+- Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
+
+## 20260619-1148 JST - Patient Link / Correction Request Safety Slice
+
+### Completed
+
+- Added `canManagePatientSharing` and moved patient-sharing lifecycle mutations away from broad `canVisit`; owner/admin/pharmacist are allowed, trainee/clerk/driver/external viewer are denied.
+- Added `/api/patient-share-cases/[id]/patient-link` PATCH for base approval, partner acceptance, and decline with pending-only state transitions, terminal transition rejection, base approval required before partner acceptance, and atomic `PatientLink` + `PatientShareCase` approval SSOT updates.
+- Hardened `/api/patient-share-cases/[id]/activate` so activation rejects inactive/ended partnerships, archived partner pharmacies, out-of-window share cases/partnerships, and approval drift between `PatientShareCase` and `PatientLink`.
+- Added `/api/patient-share-cases/[id]/correction-requests` GET/POST with target type and field-path allowlists, target ownership derived server-side, same-share-case target validation, no direct cross-owner writes, and PHI-minimized route audit metadata.
+- Minimized `canVisit` list responses: patient-share lists no longer expose patient-link snapshots/decline reasons, and correction-request lists no longer expose `reason`, `response_note`, or `proposed_value`.
+- Expanded DB-trigger audit redaction: patient link snapshots/decline reason, correction `reason`/`proposed_value`/`response_note`, and future partner visit request/record/claim note clinical free text/snapshots are summarized instead of copied into `AuditLog`.
+- Registered the new mutation/read endpoints in route catalog and rate-limit canonicalization, with regression tests.
+
+### Files Changed
+
+- `src/lib/auth/permissions.ts`
+- `src/lib/auth/__tests__/permissions.test.ts`
+- `src/app/api/partner-pharmacies/route.ts`
+- `src/app/api/pharmacy-partnerships/route.ts`
+- `src/app/api/patient-share-cases/route.ts`
+- `src/app/api/patient-share-cases/route.test.ts`
+- `src/app/api/patient-share-cases/[id]/activate/route.ts`
+- `src/app/api/patient-share-cases/[id]/activate/route.test.ts`
+- `src/app/api/patient-share-cases/[id]/patient-link/route.ts`
+- `src/app/api/patient-share-cases/[id]/patient-link/route.test.ts`
+- `src/app/api/patient-share-cases/[id]/correction-requests/route.ts`
+- `src/app/api/patient-share-cases/[id]/correction-requests/route.test.ts`
+- `src/lib/api/route-catalog.ts`
+- `src/lib/api/route-catalog.test.ts`
+- `src/lib/api/rate-limit.ts`
+- `src/lib/api/rate-limit.test.ts`
+- `src/app/api/meta/route-catalog/route.test.ts`
+- `src/app/api/medication-cycles/[id]/transition/route.ts`
+- `src/tools/pharmacy-partnership-db-contract.test.ts`
+- `prisma/migrations/20260619110800_add_pharmacy_partnership_foundation/migration.sql`
+- `.codex/ralph-state.md`
+- `CODEX_GOAL_PROGRESS.md`
+
+### Validation
+
+- `pnpm exec vitest run ... --reporter=dot --testTimeout=30000`: passed, 11 files / 67 tests.
+- `pnpm exec eslint --max-warnings=0 ...`: passed for all new/changed patient-sharing, auth, catalog, rate-limit, and DB-contract files.
+- `pnpm exec prisma validate --schema=prisma/schema/`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check -- ...`: passed for the current slice.
+
+### Remaining / Next Loop
+
+- Next slice: partner visit request + partner visit record draft/submit APIs, with base confirmation/return workflow following.
+- Still pending after that: billing candidate generation, UI surfaces, physician report draft generation from partner records, monthly paid/free PDF outputs, invoice snapshot immutability, and audit/search views.
+- Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
+
+## 20260619-1218 JST - Partner Visit Request / Partner Record Workflow Slice
+
+### Completed
+
+- Added `/api/pharmacy-visit-requests` GET/POST for active patient-share cases, including active partnership/partner pharmacy gates, desired-date window checks, contract/version/fee-rule estimate snapshots, and PHI-minimized responses.
+- Added `/api/pharmacy-visit-requests/[id]/decision` POST for accept/decline with requested-only guarded transitions, active share/partnership predicates, decline-reason length audit, and no raw decline reason in audit.
+- Added `/api/partner-visit-records` GET/POST for accepted visit requests, source visit-record ownership validation, one active draft/returned record per request, submitted/confirmed edit lockout, and PHI-minimized responses/audits.
+- Added `/api/partner-visit-records/[id]/submit` POST so partner records move `draft/returned -> submitted`, persist PHI-free in-app notification to the base requester, and do not mark the request completed or generate claim support before base confirmation.
+- Added `/api/partner-visit-records/[id]/review` POST so the base pharmacy can confirm or return submitted partner records; confirm now completes the visit request and generates the claim cooperation note, while return leaves the request accepted and stores only reason length in audit.
+- Hardened patient-link identity safety discovered by medical review: partner acceptance now requires partner name/birth-date snapshot proof against the base snapshot, mismatch requires explicit override reason, and activation rejects missing identity proof.
+- Hardened activation to require `partner_pharmacy.status === active`, not merely non-archived.
+- Registered visit request and partner visit record endpoints in route catalog, meta route catalog tests, and rate-limit canonicalization.
+
+### Files Changed
+
+- `src/app/api/pharmacy-visit-requests/route.ts`
+- `src/app/api/pharmacy-visit-requests/route.test.ts`
+- `src/app/api/pharmacy-visit-requests/[id]/decision/route.ts`
+- `src/app/api/pharmacy-visit-requests/[id]/decision/route.test.ts`
+- `src/app/api/partner-visit-records/route.ts`
+- `src/app/api/partner-visit-records/route.test.ts`
+- `src/app/api/partner-visit-records/[id]/submit/route.ts`
+- `src/app/api/partner-visit-records/[id]/submit/route.test.ts`
+- `src/app/api/partner-visit-records/[id]/review/route.ts`
+- `src/app/api/partner-visit-records/[id]/review/route.test.ts`
+- `src/app/api/patient-share-cases/[id]/patient-link/route.ts`
+- `src/app/api/patient-share-cases/[id]/patient-link/route.test.ts`
+- `src/app/api/patient-share-cases/[id]/activate/route.ts`
+- `src/app/api/patient-share-cases/[id]/activate/route.test.ts`
+- `src/lib/api/route-catalog.ts`
+- `src/lib/api/route-catalog.test.ts`
+- `src/lib/api/rate-limit.ts`
+- `src/lib/api/rate-limit.test.ts`
+- `src/app/api/meta/route-catalog/route.test.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec vitest run ... --reporter=dot --testTimeout=30000`: passed, 14 files / 80 tests.
+- `pnpm exec eslint --max-warnings=0 ...`: passed for the new/changed visit request, partner record, patient-link, activation, catalog, and rate-limit files.
+- `pnpm typecheck`: passed.
+- `pnpm exec prisma validate --schema=prisma/schema/`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check -- src/app/api/pharmacy-visit-requests src/app/api/partner-visit-records src/app/api/patient-share-cases src/lib/api/route-catalog.ts src/lib/api/rate-limit.ts src/app/api/meta/route-catalog/route.test.ts`: passed.
+
+### Review Follow-up Closed
+
+- Medical safety reviewer flagged early request completion/claim-note creation on submit; fixed by moving request completion and claim note upsert to base confirm only.
+- Medical safety reviewer flagged weak patient identity proof; fixed by requiring partner identity snapshot proof and activation proof checks.
+- Medical safety reviewer flagged inactive partner activation; fixed by requiring active partner pharmacy on activation.
+- Medical safety reviewer flagged stale transition predicates; added guarded active lifecycle predicates to visit-request decision, partner-record submit, and partner-record review updates.
+
+### Remaining / Next Loop
+
+- Next slice: billing candidate generation from confirmed partner visit records using active consent and effective contract version, plus tests that returned/submitted-only records are excluded.
+- Still pending after that: UI surfaces, physician report draft generation from partner records, monthly paid/free PDF outputs, invoice snapshot immutability, contract master registration API, and audit/search views.
+- Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
+
+## 20260619-1228 JST - Visit Billing Candidate Generation Slice
+
+### Completed
+
+- Added `/api/visit-billing-candidates` GET/POST behind `canManageBilling`.
+- POST generates monthly visit billing candidates only from partner visit records that are `confirmed`, have `confirmed_at`, belong to completed visit requests, and whose `visit_at` falls inside the strict billing month.
+- Candidate generation now requires active patient-share consent at visit date and an effective active contract version; missing contract/consent or ineffective contract versions produce excluded candidates instead of billable candidates.
+- Fee snapshots are persisted without PHI. Fixed-per-visit and free fee rules become billable candidates; unresolved amount models now become excluded candidates with `amount_unresolved`.
+- Candidate generation uses org-scoped upsert by partner visit record and writes one compact PHI-free batch audit with scanned/generated/billable/excluded counts.
+- GET supports bounded cursor pagination and filters by billing month, billing status, share case, and partner pharmacy, returning only operational partner-record/contract summaries.
+- Registered the route in API catalog, meta route catalog tests, and rate-limit canonicalization.
+
+### Files Changed
+
+- `src/app/api/visit-billing-candidates/route.ts`
+- `src/app/api/visit-billing-candidates/route.test.ts`
+- `src/lib/api/route-catalog.ts`
+- `src/lib/api/route-catalog.test.ts`
+- `src/app/api/meta/route-catalog/route.test.ts`
+- `src/lib/api/rate-limit.ts`
+- `src/lib/api/rate-limit.test.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec vitest run src/app/api/visit-billing-candidates/route.test.ts src/server/services/pharmacy-partnerships.test.ts src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts src/lib/api/rate-limit.test.ts --reporter=dot --testTimeout=30000`: passed, 5 files / 50 tests.
+- `pnpm exec eslint src/app/api/visit-billing-candidates/route.ts src/app/api/visit-billing-candidates/route.test.ts src/lib/api/route-catalog.ts src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts src/lib/api/rate-limit.ts src/lib/api/rate-limit.test.ts`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm exec prisma validate --schema=prisma/schema/`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check -- src/app/api/visit-billing-candidates src/lib/api/route-catalog.ts src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts src/lib/api/rate-limit.ts src/lib/api/rate-limit.test.ts`: passed.
+
+### Remaining / Next Loop
+
+- Next slice: contract master registration/update API or UI surfaces for partner pharmacy/share case/visit/billing operations.
+- Still pending after that: physician report draft generation from partner records, monthly paid/free PDF outputs, invoice snapshot immutability, and audit/search views.
+- Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
+
+## 20260619-1238 JST - Pharmacy Contract Master API Slice
+
+### Completed
+
+- Added `/api/pharmacy-contracts` GET/POST for org-scoped pharmacy contract master listing and registration.
+- POST creates a contract, initial contract version, and one active fee rule in a single transaction so visit requests and billing candidate generation have a durable active contract/version/fee-rule source.
+- Active contract creation now requires base and partner approval records, an active pharmacy partnership, an active partner pharmacy, and no overlapping active contract period for the same partnership.
+- Added `/api/pharmacy-contracts/[id]/versions` POST to add a new contract version and fee rule instead of mutating old versions, preserving version history for visit-date pricing.
+- Active contract-version creation now requires both approval records, an active parent contract/partnership/partner pharmacy, and no overlapping active version period.
+- Fee rule validation rejects fixed-per-visit and per-visit-with-addon models without a positive unit price. Free contracts remain allowed with zero/null amount.
+- Contract and version audit events are compact: IDs, status, date windows, billing model, unit price, tax metadata, approval flags, and reason length only; raw legal terms snapshots are not written to audit changes.
+- Registered pharmacy contract routes in route catalog, meta route catalog tests, high-risk route alignment tests, and rate-limit canonicalization.
+
+### Files Changed
+
+- `src/app/api/pharmacy-contracts/route.ts`
+- `src/app/api/pharmacy-contracts/route.test.ts`
+- `src/app/api/pharmacy-contracts/[id]/versions/route.ts`
+- `src/app/api/pharmacy-contracts/[id]/versions/route.test.ts`
+- `src/lib/api/route-catalog.ts`
+- `src/lib/api/route-catalog.test.ts`
+- `src/app/api/meta/route-catalog/route.test.ts`
+- `src/lib/api/rate-limit.ts`
+- `src/lib/api/rate-limit.test.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec vitest run src/app/api/pharmacy-contracts/route.test.ts 'src/app/api/pharmacy-contracts/[id]/versions/route.test.ts' src/app/api/pharmacy-visit-requests/route.test.ts src/app/api/visit-billing-candidates/route.test.ts src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts src/lib/api/rate-limit.test.ts --reporter=dot --testTimeout=30000`: passed, 7 files / 52 tests.
+- `pnpm exec eslint src/app/api/pharmacy-contracts/route.ts src/app/api/pharmacy-contracts/route.test.ts 'src/app/api/pharmacy-contracts/[id]/versions/route.ts' 'src/app/api/pharmacy-contracts/[id]/versions/route.test.ts' src/lib/api/route-catalog.ts src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts src/lib/api/rate-limit.ts src/lib/api/rate-limit.test.ts`: passed.
+- `pnpm typecheck`: initially failed because the Zod `fee_rule` default omitted `tax_category`; fixed by adding `tax_pending`, then passed.
+- `pnpm exec prisma validate --schema=prisma/schema/`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check -- src/app/api/pharmacy-contracts src/lib/api/route-catalog.ts src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts src/lib/api/rate-limit.ts src/lib/api/rate-limit.test.ts`: passed.
+
+### Remaining / Next Loop
+
+- Next slice: monthly performance aggregation / invoice and free-report draft generation, or a minimal UI shell to operate the new partner pharmacy/share case/visit/contract workflows.
+- Still pending after that: physician report draft generation from partner records, monthly paid/free PDF outputs, invoice snapshot immutability, and audit/search views.
+- Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
+
+## 20260619-1242 JST - Visit Billing Monthly Summary Slice
+
+### Completed
+
+- Added `/api/visit-billing-candidates/summary` GET behind `canManageBilling`.
+- The route requires strict `billing_month=YYYY-MM-01` and supports optional `share_case_id` / `partner_pharmacy_id` filters.
+- Summary returns PHI-free monthly operational counts: total partner visit records, confirmed records, unconfirmed records, generated candidates, billable candidates, excluded candidates, invoiced candidates, free candidates, paid candidates, planned invoice amount, and pending candidate generation count.
+- Free vs paid counts are derived from `VisitBillingCandidate.amount_snapshot.billing_model`, so free cooperation visits are visible before invoice/free-report generation.
+- Registered the summary route in route catalog, meta route catalog tests, high-risk route alignment tests, and rate-limit templates.
+
+### Files Changed
+
+- `src/app/api/visit-billing-candidates/summary/route.ts`
+- `src/app/api/visit-billing-candidates/summary/route.test.ts`
+- `src/lib/api/route-catalog.ts`
+- `src/lib/api/route-catalog.test.ts`
+- `src/app/api/meta/route-catalog/route.test.ts`
+- `src/lib/api/rate-limit.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec vitest run src/app/api/visit-billing-candidates/summary/route.test.ts src/app/api/visit-billing-candidates/route.test.ts src/app/api/pharmacy-contracts/route.test.ts 'src/app/api/pharmacy-contracts/[id]/versions/route.test.ts' src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts src/lib/api/rate-limit.test.ts --reporter=dot --testTimeout=30000`: passed, 7 files / 52 tests.
+- `pnpm exec eslint src/app/api/visit-billing-candidates/summary/route.ts src/app/api/visit-billing-candidates/summary/route.test.ts src/app/api/visit-billing-candidates/route.ts src/app/api/visit-billing-candidates/route.test.ts src/lib/api/route-catalog.ts src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts src/lib/api/rate-limit.ts src/lib/api/rate-limit.test.ts`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm exec prisma validate --schema=prisma/schema/`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check -- src/app/api/visit-billing-candidates/summary src/lib/api/route-catalog.ts src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts src/lib/api/rate-limit.ts src/lib/api/rate-limit.test.ts`: passed.
+
+### Remaining / Next Loop
+
+- Next slice: invoice/free-report draft generation from billable visit billing candidates with snapshot immutability.
+- Still pending after that: monthly paid/free PDF outputs, physician report draft generation from partner records, UI surfaces, and audit/search views.
+- Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
+
+## 20260619-1259 JST - Pharmacy Invoice / Free Report Draft Slice
+
+### Completed
+
+- Treated the attached v0.2 specification as the higher-version SSOT where it conflicts with older existing code, per the latest user instruction.
+- Added `PharmacyInvoiceDocumentKind` with `invoice` and `free_cooperation_report`, plus `PharmacyInvoice.document_kind`.
+- Added active-document uniqueness for `org_id + contract_id + billing_month + document_kind` so only one active draft/issued/sent/received/scheduled/paid document exists per contract-month-kind.
+- Added item-level uniqueness for `org_id + visit_billing_candidate_id` so a billing candidate cannot be inserted into multiple invoice items.
+- Added redacted DB audit triggers for `VisitBillingCandidate`, `PharmacyInvoice`, and `PharmacyInvoiceItem`, preventing raw amount snapshots, invoice snapshots, item descriptions, and linkable visit/candidate IDs from being copied wholesale into `AuditLog.changes`.
+- Added `createPharmacyInvoiceDraft` service. It splits paid invoice vs free cooperation report by frozen `VisitBillingCandidate.amount_snapshot.billing_model`, copies amount/tax data into invoice item scalars/snapshots, computes totals from item snapshots, and never re-reads live fee rules for created items.
+- Added `/api/pharmacy-invoices` POST behind `canManageBilling`, with strict `billing_month=YYYY-MM-01`, `contract_id`, and explicit `document_kind`.
+- Re-running the same contract/month/document-kind returns the existing active draft idempotently instead of duplicating items.
+- Created invoice/free report responses use `private, no-store, max-age=0` and omit raw snapshots.
+- Hardened `/api/visit-billing-candidates` regeneration so `confirmed`, `invoiced`, `voided`, or invoice-item-linked candidates are not overwritten by later candidate generation.
+- Hardened visit billing candidate list/generation responses with `withSensitiveNoStore`; GET now returns fixed `amount_summary` instead of raw `amount_snapshot`, and POST caps returned candidate IDs with a truncation flag.
+- Registered `/api/pharmacy-invoices` in route catalog, meta route catalog tests, high-risk route alignment, and rate-limit templates.
+
+### Files Changed
+
+- `prisma/schema/pharmacy-partnership.prisma`
+- `prisma/migrations/20260619110800_add_pharmacy_partnership_foundation/migration.sql`
+- `src/server/services/pharmacy-invoices.ts`
+- `src/server/services/pharmacy-invoices.test.ts`
+- `src/app/api/pharmacy-invoices/route.ts`
+- `src/app/api/pharmacy-invoices/route.test.ts`
+- `src/app/api/visit-billing-candidates/route.ts`
+- `src/app/api/visit-billing-candidates/route.test.ts`
+- `src/tools/pharmacy-partnership-db-contract.test.ts`
+- `src/lib/api/route-catalog.ts`
+- `src/lib/api/route-catalog.test.ts`
+- `src/app/api/meta/route-catalog/route.test.ts`
+- `src/lib/api/rate-limit.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prisma format --schema=prisma/schema/ && pnpm exec prisma validate --schema=prisma/schema/ && pnpm exec prisma generate --schema=prisma/schema/`: passed.
+- `pnpm exec vitest run src/server/services/pharmacy-invoices.test.ts src/app/api/pharmacy-invoices/route.test.ts src/app/api/visit-billing-candidates/route.test.ts src/tools/pharmacy-partnership-db-contract.test.ts src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts src/lib/api/rate-limit.test.ts --reporter=dot --testTimeout=30000`: passed, 7 files / 55 tests.
+- `pnpm exec eslint src/server/services/pharmacy-invoices.ts src/server/services/pharmacy-invoices.test.ts src/app/api/pharmacy-invoices/route.ts src/app/api/pharmacy-invoices/route.test.ts src/app/api/visit-billing-candidates/route.ts src/app/api/visit-billing-candidates/route.test.ts src/lib/api/route-catalog.ts src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts src/lib/api/rate-limit.ts src/lib/api/rate-limit.test.ts src/tools/pharmacy-partnership-db-contract.test.ts`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check -- prisma/schema/pharmacy-partnership.prisma prisma/migrations/20260619110800_add_pharmacy_partnership_foundation/migration.sql src/tools/pharmacy-partnership-db-contract.test.ts src/server/services/pharmacy-invoices.ts src/server/services/pharmacy-invoices.test.ts src/app/api/pharmacy-invoices/route.ts src/app/api/pharmacy-invoices/route.test.ts src/app/api/visit-billing-candidates/route.ts src/app/api/visit-billing-candidates/route.test.ts src/lib/api/route-catalog.ts src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts src/lib/api/rate-limit.ts`: passed.
+
+### Remaining / Next Loop
+
+- Next slice: monthly paid/free PDF output for pharmacy invoices/free cooperation reports with fail-closed export audit, output purpose, no-store, and PHI-minimized patient display policy.
+- Still pending after that: physician report draft generation from partner records, UI surfaces, invoice search/audit views, and broader end-to-end operator flow.
+- Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
+
+## 20260619-1308 JST - Pharmacy Invoice / Free Report PDF Export Slice
+
+### Completed
+
+- Added a dedicated pharmacy invoice/free cooperation report PDF builder that reads `PharmacyInvoice` and `PharmacyInvoiceItem` immutable scalar fields instead of live contract fee rules.
+- PDF output covers both `invoice` and `free_cooperation_report` document kinds, including billing month, issuer/recipient snapshot names, patient display mode, totals, and item rows.
+- PDF content intentionally excludes patient names, patient addresses, raw partner visit record content, attachments, and raw item/invoice snapshots.
+- Added `GET /api/pharmacy-invoices/[id]/pdf?purpose=...` behind `canManageBilling`.
+- `purpose` is required and capped at 200 characters so export reason is explicit before rendering/audit side effects.
+- Export audit is fail-closed: the route renders, records `recordDataExportAudit`, and only then returns the PDF response. If audit fails, no PDF body is returned.
+- PDF success and error responses are wrapped with `private, no-store, max-age=0`.
+- Added safe errors for missing pharmacy invoices and voided/cancelled invoice documents.
+- Registered `/api/pharmacy-invoices/:id/pdf` in route catalog, high-risk catalog alignment, meta route catalog tests, rate-limit templates, PDF route smoke tests, and protected GET route matrix.
+
+### Files Changed
+
+- `src/server/services/pdf-pharmacy-invoice.tsx`
+- `src/server/services/pdf-pharmacy-invoice.test.tsx`
+- `src/server/services/pdf-errors.ts`
+- `src/app/api/pharmacy-invoices/[id]/pdf/route.ts`
+- `src/app/api/pharmacy-invoices/[id]/pdf/route.test.ts`
+- `src/app/api/__tests__/pdf-routes.test.ts`
+- `src/app/api/__tests__/protected-get-routes.test.ts`
+- `src/lib/api/route-catalog.ts`
+- `src/lib/api/route-catalog.test.ts`
+- `src/app/api/meta/route-catalog/route.test.ts`
+- `src/lib/api/rate-limit.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec vitest run src/server/services/pdf-pharmacy-invoice.test.tsx 'src/app/api/pharmacy-invoices/[id]/pdf/route.test.ts' src/app/api/__tests__/pdf-routes.test.ts src/app/api/__tests__/protected-get-routes.test.ts src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts src/lib/api/rate-limit.test.ts --reporter=dot --testTimeout=30000`: passed, 7 files / 187 tests.
+- `pnpm exec eslint src/server/services/pdf-pharmacy-invoice.tsx src/server/services/pdf-pharmacy-invoice.test.tsx 'src/app/api/pharmacy-invoices/[id]/pdf/route.ts' 'src/app/api/pharmacy-invoices/[id]/pdf/route.test.ts' src/app/api/__tests__/pdf-routes.test.ts src/app/api/__tests__/protected-get-routes.test.ts src/server/services/pdf-errors.ts src/lib/api/route-catalog.ts src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts src/lib/api/rate-limit.ts src/lib/api/rate-limit.test.ts`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check -- src/server/services/pdf-pharmacy-invoice.tsx src/server/services/pdf-pharmacy-invoice.test.tsx 'src/app/api/pharmacy-invoices/[id]/pdf/route.ts' 'src/app/api/pharmacy-invoices/[id]/pdf/route.test.ts' src/app/api/__tests__/pdf-routes.test.ts src/app/api/__tests__/protected-get-routes.test.ts src/server/services/pdf-errors.ts src/lib/api/route-catalog.ts src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts src/lib/api/rate-limit.ts`: passed.
+
+### Remaining / Next Loop
+
+- Next slice: physician report draft generation from confirmed partner records, or minimal UI surfaces to operate partner pharmacy/share case/visit/billing workflows.
+- Still pending after that: invoice search/audit views, full operator UI flow, and broader end-to-end verification.
+- Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
+
+## 20260619-1324 JST - Partner Visit Physician Report Draft Slice
+
+### Completed
+
+- Added `CareReport.partner_visit_record_id` with a composite relation back to `PartnerVisitRecord`.
+- Added DB uniqueness for `org_id + partner_visit_record_id + report_type`, preventing duplicate physician report drafts from the same confirmed partner visit record.
+- Added migration contract coverage for the new CareReport column, unique index, and composite FK.
+- Added `createPartnerVisitPhysicianReportDraft` service for confirmed partner visit records.
+- The service returns an existing physician draft idempotently and handles concurrent DB unique conflicts by re-reading the existing draft.
+- Generated report content uses the existing `PhysicianReportContent` shape so the report edit/view surfaces can consume it.
+- Draft content is populated from known partner visit record keys only; unknown raw JSON and attachments are not copied wholesale.
+- Manual audit records only IDs, status, content keys, and attachment count, not clinical free text or patient names.
+- Added `/api/partner-visit-records/:id/physician-report-draft` POST behind `canAuthorReport`, with `Serializable` transaction and `private, no-store, max-age=0` responses.
+- Registered the new endpoint in route catalog, meta route catalog tests, high-risk route alignment, and rate-limit templates.
+
+### Files Changed
+
+- `prisma/schema/communication.prisma`
+- `prisma/schema/pharmacy-partnership.prisma`
+- `prisma/migrations/20260619110800_add_pharmacy_partnership_foundation/migration.sql`
+- `src/server/services/partner-visit-report-drafts.ts`
+- `src/server/services/partner-visit-report-drafts.test.ts`
+- `src/app/api/partner-visit-records/[id]/physician-report-draft/route.ts`
+- `src/app/api/partner-visit-records/[id]/physician-report-draft/route.test.ts`
+- `src/tools/pharmacy-partnership-db-contract.test.ts`
+- `src/lib/api/route-catalog.ts`
+- `src/lib/api/route-catalog.test.ts`
+- `src/app/api/meta/route-catalog/route.test.ts`
+- `src/lib/api/rate-limit.ts`
+- `src/lib/api/rate-limit.test.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prisma format --schema=prisma/schema/ && pnpm exec prisma validate --schema=prisma/schema/ && pnpm exec prisma generate --schema=prisma/schema/`: passed.
+- `pnpm exec vitest run src/server/services/partner-visit-report-drafts.test.ts 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.test.ts' src/tools/pharmacy-partnership-db-contract.test.ts src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts src/lib/api/rate-limit.test.ts --reporter=dot --testTimeout=30000`: passed, 6 files / 51 tests.
+- `pnpm exec eslint src/server/services/partner-visit-report-drafts.ts src/server/services/partner-visit-report-drafts.test.ts 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.ts' 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.test.ts' src/tools/pharmacy-partnership-db-contract.test.ts src/lib/api/route-catalog.ts src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts src/lib/api/rate-limit.ts src/lib/api/rate-limit.test.ts`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check -- prisma/schema/communication.prisma prisma/schema/pharmacy-partnership.prisma prisma/migrations/20260619110800_add_pharmacy_partnership_foundation/migration.sql src/server/services/partner-visit-report-drafts.ts src/server/services/partner-visit-report-drafts.test.ts 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.ts' 'src/app/api/partner-visit-records/[id]/physician-report-draft/route.test.ts' src/tools/pharmacy-partnership-db-contract.test.ts src/lib/api/route-catalog.ts src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts src/lib/api/rate-limit.ts src/lib/api/rate-limit.test.ts`: passed.
+
+### Remaining / Next Loop
+
+- Phase 1 still needs UI surfaces for the pharmacy-partnership workflow, invoice search/audit views, and broader end-to-end operator verification.
+- Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
+- Next slice: build minimal operator UI surfaces for partner pharmacy/share case/visit/billing/report operations, unless invoice search/audit is prioritized first.
+
+## 20260619-1336 JST - Partner Cooperation Monthly Billing UI Slice
+
+### Completed
+
+- Added `/billing/partner-cooperation` as the minimal monthly operator surface for v0.2 pharmacy-partnership billing.
+- The page shows monthly cooperation summary KPIs, active contract selection, billing candidate rows, candidate generation, invoice draft creation, free cooperation report draft creation, and a PDF output link with explicit purpose.
+- Candidate rows intentionally omit patient names, visit body, physician instructions, attachments, and raw clinical JSON; the UI only shows visit date, partner pharmacy, status, billing model, amount, and non-PHI evidence/blocker text.
+- Linked the new surface from the existing billing check page and monthly billing candidates page.
+- Added route labels and breadcrumb segment labels for `/billing/partner-cooperation`.
+- Added jsdom/React Query tests that mock the API boundary and verify summary display, PHI-minimized rows, candidate generation POST body, invoice draft POST body, and PDF link exposure.
+- Removed an initial React effect-based contract auto-selection and replaced it with a derived effective contract ID to satisfy React hook linting and avoid cascading renders.
+- Added a month-input guard so cleared/invalid month values do not trigger malformed API requests.
+
+### Files Changed
+
+- `src/app/(dashboard)/billing/partner-cooperation/page.tsx`
+- `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx`
+- `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx`
+- `src/app/(dashboard)/billing/billing-check-content.tsx`
+- `src/app/(dashboard)/billing/candidates/page.tsx`
+- `src/lib/navigation/route-labels.ts`
+- `src/lib/navigation/route-labels.test.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/billing/partner-cooperation/page.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' 'src/app/(dashboard)/billing/billing-check-content.tsx' 'src/app/(dashboard)/billing/candidates/page.tsx' src/lib/navigation/route-labels.ts src/lib/navigation/route-labels.test.ts`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' 'src/app/(dashboard)/billing/billing-check-content.test.tsx' src/lib/navigation/route-labels.test.ts --reporter=dot --testTimeout=30000`: passed, 3 files / 13 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/billing/partner-cooperation/page.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' 'src/app/(dashboard)/billing/billing-check-content.tsx' 'src/app/(dashboard)/billing/candidates/page.tsx' src/lib/navigation/route-labels.ts src/lib/navigation/route-labels.test.ts`: passed after replacing effect-driven selection with derived state.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check -- 'src/app/(dashboard)/billing/partner-cooperation/page.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' 'src/app/(dashboard)/billing/billing-check-content.tsx' 'src/app/(dashboard)/billing/candidates/page.tsx' src/lib/navigation/route-labels.ts src/lib/navigation/route-labels.test.ts`: passed.
+
+### Remaining / Next Loop
+
+- Phase 1 still needs operator UI surfaces for partner pharmacy registration, partnership creation, patient share case activation/link/correction, partner visit request/record review, and physician report draft creation.
+- Invoice search/audit views and broader operator end-to-end verification remain pending.
+- Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
+- Next slice: add a compact workflow UI for share cases and partner visit records so the already implemented API state machine can be operated without ad hoc API calls.
+
+## 20260619-1346 JST - Pharmacy Cooperation Workflow UI Slice
+
+### Completed
+
+- Added `/workflow/pharmacy-cooperation` as the compact operator surface for v0.2 patient share cases, pharmacy visit requests, partner visit records, and physician report draft handoff.
+- Added workflow shortcuts from `/workflow` and breadcrumb labels for `/workflow/pharmacy-cooperation`.
+- The page shows high-level work counts for inactive share cases, requested visits, and submitted records.
+- Added safe tables for patient share cases, visit requests, and partner visit records using existing minimized API responses.
+- Added row actions for share case activation, visit request accept/decline, partner record submit, partner record confirm, partner record return, and confirmed-record physician report draft creation.
+- Kept the UI PHI-minimized by not rendering patient names, addresses, request body, physician instructions, home notes, record content, attachments, or raw snapshots.
+- Added jsdom/React Query tests for minimized rendering, activation/accept POST bodies, return POST body, and report draft result link.
+
+### Files Changed
+
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/page.tsx`
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`
+- `src/app/(dashboard)/workflow/page.tsx`
+- `src/lib/navigation/route-labels.ts`
+- `src/lib/navigation/route-labels.test.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/workflow/pharmacy-cooperation/page.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' 'src/app/(dashboard)/workflow/page.tsx' src/lib/navigation/route-labels.ts src/lib/navigation/route-labels.test.ts`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' 'src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx' src/lib/navigation/route-labels.test.ts --reporter=dot --testTimeout=30000`: passed, 3 files / 7 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/workflow/pharmacy-cooperation/page.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' 'src/app/(dashboard)/workflow/page.tsx' src/lib/navigation/route-labels.ts src/lib/navigation/route-labels.test.ts`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check -- 'src/app/(dashboard)/workflow/pharmacy-cooperation/page.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' 'src/app/(dashboard)/workflow/page.tsx' src/lib/navigation/route-labels.ts src/lib/navigation/route-labels.test.ts`: passed.
+
+### Remaining / Next Loop
+
+- Phase 1 still needs UI surfaces or guided actions for partner pharmacy registration, pharmacy partnership creation, patient-link accept/decline, correction request creation, and partner visit record content entry.
+- Invoice search/audit views and broader operator end-to-end verification remain pending.
+- Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
+- Next slice: add a small admin/workflow surface for partner pharmacy + partnership + contract registration, or add invoice search/audit if billing review is prioritized.
+
+## 20260619-1351 JST - Pharmacy Partnership Activation API Slice
+
+### Completed
+
+- Added `/api/pharmacy-partnerships/:id/activate` POST so draft/suspended pharmacy partnerships can be moved to `active`.
+- Activation now requires both base-pharmacy and partner-pharmacy approval records.
+- Activation rejects missing IDs, invalid bodies, inactive partner pharmacies, ended partnerships, future effective start dates, and expired effective end dates.
+- Already-active partnerships return safely without another update or audit entry.
+- Successful activation updates approval fields and writes compact audit metadata without raw contact snapshots.
+- Registered the route in route catalog, meta route catalog coverage, high-risk route alignment, and rate-limit templates.
+
+### Files Changed
+
+- `src/app/api/pharmacy-partnerships/[id]/activate/route.ts`
+- `src/app/api/pharmacy-partnerships/[id]/activate/route.test.ts`
+- `src/lib/api/route-catalog.ts`
+- `src/lib/api/route-catalog.test.ts`
+- `src/app/api/meta/route-catalog/route.test.ts`
+- `src/lib/api/rate-limit.ts`
+- `src/lib/api/rate-limit.test.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/api/pharmacy-partnerships/[id]/activate/route.ts' 'src/app/api/pharmacy-partnerships/[id]/activate/route.test.ts' src/lib/api/route-catalog.ts src/lib/api/route-catalog.test.ts src/lib/api/rate-limit.ts src/lib/api/rate-limit.test.ts src/app/api/meta/route-catalog/route.test.ts`: passed.
+- `pnpm exec vitest run 'src/app/api/pharmacy-partnerships/[id]/activate/route.test.ts' src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts src/lib/api/rate-limit.test.ts --reporter=dot --testTimeout=30000`: passed, 4 files / 42 tests.
+- `pnpm exec eslint 'src/app/api/pharmacy-partnerships/[id]/activate/route.ts' 'src/app/api/pharmacy-partnerships/[id]/activate/route.test.ts' src/lib/api/route-catalog.ts src/lib/api/route-catalog.test.ts src/lib/api/rate-limit.ts src/lib/api/rate-limit.test.ts src/app/api/meta/route-catalog/route.test.ts`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check -- 'src/app/api/pharmacy-partnerships/[id]/activate/route.ts' 'src/app/api/pharmacy-partnerships/[id]/activate/route.test.ts' src/lib/api/route-catalog.ts src/lib/api/route-catalog.test.ts src/lib/api/rate-limit.ts src/lib/api/rate-limit.test.ts src/app/api/meta/route-catalog/route.test.ts`: passed.
+
+### Remaining / Next Loop
+
+- Phase 1 still needs UI surfaces or guided actions for partner pharmacy registration, partnership creation/activation, contract registration, patient-link accept/decline, correction request creation, and partner visit record content entry.
+- Invoice search/audit views and broader operator end-to-end verification remain pending.
+- Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
+- Next slice: resume the setup UI now that pharmacy partnership activation has a concrete API path.
+
+## 20260619-1358 JST - Pharmacy Cooperation Setup UI Slice
+
+### Completed
+
+- Added `/admin/pharmacy-cooperation` for v0.2 setup of partner pharmacies, pharmacy partnerships, partnership activation, and pharmacy contracts.
+- Added a workflow shortcut from `/workflow/pharmacy-cooperation` to the setup page.
+- Added navigation labels for the new admin route and admin-specific breadcrumb segment handling.
+- The setup page fetches pharmacy sites, partner pharmacies, pharmacy partnerships, and pharmacy contracts.
+- Added forms for partner pharmacy registration, draft partnership creation, partnership activation with both approvals, and active/draft contract creation with fee rule input.
+- Added compact setup summary cards and tables for current partnerships and contracts.
+- Kept the surface master-data-only; no patient names, clinical notes, visit record content, or raw snapshots are rendered.
+- Added jsdom/React Query tests covering minimized rendering, partner pharmacy POST body, partnership POST body, partnership activation POST body, and contract POST body.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/pharmacy-cooperation/page.tsx`
+- `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx`
+- `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx`
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/page.tsx`
+- `src/lib/navigation/route-labels.ts`
+- `src/lib/navigation/route-labels.test.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/pharmacy-cooperation/page.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/page.tsx' src/lib/navigation/route-labels.ts src/lib/navigation/route-labels.test.ts`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' src/lib/navigation/route-labels.test.ts --reporter=dot --testTimeout=30000`: passed, 3 files / 9 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/pharmacy-cooperation/page.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/page.tsx' src/lib/navigation/route-labels.ts src/lib/navigation/route-labels.test.ts`: passed after changing the initial date memo to an inline function.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check -- 'src/app/(dashboard)/admin/pharmacy-cooperation/page.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/page.tsx' src/lib/navigation/route-labels.ts src/lib/navigation/route-labels.test.ts`: passed.
+
+### Remaining / Next Loop
+
+- Phase 1 still needs guided UI/actions for patient-link accept/decline, correction request creation, and partner visit record content entry.
+- Invoice search/audit views and broader operator end-to-end verification remain pending.
+- Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
+- Next slice: add patient-share-case/patient-link/correction UI, or add invoice search/audit if billing review is prioritized.
+
+## 20260619-1402 JST - Pharmacy Invoice List API Slice
+
+### Completed
+
+- Added `/api/pharmacy-invoices` GET for safe pharmacy invoice/free cooperation report listing.
+- Supports bounded pagination plus `billing_month`, `document_kind`, `status`, and `contract_id` filters.
+- Returns only operational fields: document kind, invoice number, billing month, totals, status timestamps, item count, and base/partner pharmacy names.
+- Does not return raw invoice snapshots, issuer/recipient snapshots, item snapshots, or invoice item rows.
+- Wrapped success and validation errors with `private, no-store, max-age=0`.
+- Updated route catalog metadata so `/api/pharmacy-invoices` is registered as `GET, POST`.
+
+### Files Changed
+
+- `src/app/api/pharmacy-invoices/route.ts`
+- `src/app/api/pharmacy-invoices/route.test.ts`
+- `src/lib/api/route-catalog.ts`
+- `src/app/api/meta/route-catalog/route.test.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write src/app/api/pharmacy-invoices/route.ts src/app/api/pharmacy-invoices/route.test.ts src/lib/api/route-catalog.ts src/app/api/meta/route-catalog/route.test.ts`: passed.
+- `pnpm exec vitest run src/app/api/pharmacy-invoices/route.test.ts src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts src/lib/api/rate-limit.test.ts --reporter=dot --testTimeout=30000`: passed, 4 files / 44 tests.
+- `pnpm exec eslint src/app/api/pharmacy-invoices/route.ts src/app/api/pharmacy-invoices/route.test.ts src/lib/api/route-catalog.ts src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts src/lib/api/rate-limit.test.ts`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check -- src/app/api/pharmacy-invoices/route.ts src/app/api/pharmacy-invoices/route.test.ts src/lib/api/route-catalog.ts src/app/api/meta/route-catalog/route.test.ts`: passed.
+
+### Remaining / Next Loop
+
+- Phase 1 still needs an invoice search/audit UI that consumes this GET API.
+- Patient-link accept/decline UI, correction request UI, partner visit record content entry, and broader operator end-to-end verification remain pending.
+- Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
+- Next slice: add the invoice search/audit UI now that a safe list API exists.
+
+## 20260619-1405 JST - Partner Cooperation Invoice History UI Slice
+
+### Completed
+
+- Extended `/billing/partner-cooperation` with a monthly output history section.
+- The page now fetches `/api/pharmacy-invoices?billing_month=...&limit=20` alongside summary, contracts, and billing candidates.
+- Shows invoice/free-report document kind, invoice number or ID, base/partner pharmacy names, total, item count, status, and PDF link with explicit purpose.
+- Invalidates invoice history after candidate generation and invoice/free-report draft creation.
+- Updated UI test stubs and assertions for invoice history rendering and PDF link exposure.
+- Shortened the candidate section copy so the UI does not list hidden clinical content categories.
+
+### Files Changed
+
+- `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx`
+- `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' src/app/api/pharmacy-invoices/route.test.ts src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts --reporter=dot --testTimeout=30000`: passed, 4 files / 15 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' src/app/api/pharmacy-invoices/route.ts src/app/api/pharmacy-invoices/route.test.ts src/lib/api/route-catalog.ts src/app/api/meta/route-catalog/route.test.ts`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check -- 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' src/app/api/pharmacy-invoices/route.ts src/app/api/pharmacy-invoices/route.test.ts src/lib/api/route-catalog.ts src/app/api/meta/route-catalog/route.test.ts`: passed.
+
+### Remaining / Next Loop
+
+- Phase 1 still needs patient-link accept/decline UI, correction request UI, partner visit record content entry, and broader operator end-to-end verification.
+- Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
+- Next slice: add patient-share-case/patient-link/correction UI, then fill partner visit record content entry if still missing.
+
+## 20260619-1415 JST - Patient Link and Correction Request UI Slice
+
+### Completed
+
+- Extended `/workflow/pharmacy-cooperation` so patient share case rows can perform base approval, partner acceptance with identity proof input, and decline with a required reason.
+- Added guarded share activation behavior: the UI only enables `共有開始` when the patient link is already accepted.
+- Added a correction request panel that selects a share case, lists safe correction request metadata, and creates correction/addition requests through `/api/patient-share-cases/:id/correction-requests`.
+- Kept list rendering PHI-minimized: patient names, raw reasons, proposed values, snapshots, and clinical record bodies are not rendered from API responses.
+- Updated UI tests to assert patient-link PATCH payloads, correction request POST payloads, safe correction listing, and existing visit/record/report actions.
+
+### Files Changed
+
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 5 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' 'src/app/api/patient-share-cases/[id]/patient-link/route.test.ts' 'src/app/api/patient-share-cases/[id]/correction-requests/route.test.ts' --reporter=dot --testTimeout=30000`: passed, 3 files / 15 tests.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- `git diff --no-index --check /dev/null <target file>` for the two untracked workflow UI files: no whitespace diagnostics; command exits 1 because no-index file differences exist.
+
+### Remaining / Next Loop
+
+- Phase 1 still needs partner visit record content entry and broader operator end-to-end verification.
+- Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
+- Next slice: add partner visit record content entry to the pharmacy cooperation workflow, then run broader workflow verification.
+
+## 20260619-1420 JST - Partner Visit Record Draft Entry UI Slice
+
+### Completed
+
+- Added a draft entry panel to `/workflow/pharmacy-cooperation` for accepted/completed pharmacy visit requests.
+- The panel saves partner visit record drafts through `POST /api/partner-visit-records`, including pharmacist metadata, visit datetime, source visit record ID, and structured record content keys.
+- Existing submit/confirm/return/report actions remain in the same section after the draft entry panel.
+- Updated UI tests to assert the generated partner visit record POST payload and keep the existing PHI-minimized rendering checks.
+
+### Files Changed
+
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 6 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' 'src/app/api/patient-share-cases/[id]/patient-link/route.test.ts' 'src/app/api/patient-share-cases/[id]/correction-requests/route.test.ts' src/app/api/partner-visit-records/route.test.ts --reporter=dot --testTimeout=30000`: passed, 4 files / 19 tests.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- `git diff --no-index --check /dev/null <target file>` for the two untracked workflow UI files: no whitespace diagnostics; command exits 1 because no-index file differences exist.
+
+### Remaining / Next Loop
+
+- Phase 1 now needs broader operator end-to-end verification across setup, workflow, billing, and report draft paths.
+- Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
+- Next slice: run broader targeted workflow/API test coverage and inspect remaining v0.2 gaps before deciding whether Phase 1 can close.
+
+## 20260619-1435 JST - Patient Share Consent API/UI Slice
+
+### Completed
+
+- Added patient share consent registration and revocation APIs for `P1-06` and `P1-07`.
+- Added consent attachment validation for existing consent records and completed file assets scoped to the base patient/org.
+- Made consent revoke idempotent and tied an active share case to `revoked` when the consent is revoked.
+- Registered the new routes in route catalog/rate limit metadata and covered them in catalog tests.
+- Extended `/workflow/pharmacy-cooperation` with a PHI-minimized consent panel for registering consent scope/attachments and revoking existing consent.
+
+### Files Changed
+
+- `src/app/api/patient-share-cases/[id]/consents/route.ts`
+- `src/app/api/patient-share-cases/[id]/consents/route.test.ts`
+- `src/app/api/patient-share-cases/[id]/consents/[consentId]/revoke/route.ts`
+- `src/app/api/patient-share-cases/[id]/consents/[consentId]/revoke/route.test.ts`
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`
+- `src/lib/api/route-catalog.ts`
+- `src/lib/api/route-catalog.test.ts`
+- `src/app/api/meta/route-catalog/route.test.ts`
+- `src/lib/api/rate-limit.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' 'src/app/api/patient-share-cases/[id]/consents/route.test.ts' 'src/app/api/patient-share-cases/[id]/consents/[consentId]/revoke/route.test.ts' --reporter=dot --testTimeout=30000`: passed, 3 files / 12 tests.
+- Earlier focused consent API/catalog suite passed with 6 files / 49 tests.
+- Earlier targeted consent API/catalog ESLint passed.
+- Earlier `pnpm typecheck` passed after the consent API slice.
+
+### Remaining / Next Loop
+
+- Phase 1 still needs broader operator end-to-end verification and remaining P1 audit-log gap inspection, especially `P1-27` viewing log coverage.
+- Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
+- Current user request supersedes the loop temporarily: group and commit all current changes before continuing implementation.
