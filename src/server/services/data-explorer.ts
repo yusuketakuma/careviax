@@ -57,6 +57,10 @@ const NON_EDITABLE_MODEL_FIELDS: Record<string, ReadonlySet<string>> = {
     'session_version',
   ]),
 };
+const DENIED_MODEL_FIELDS: Record<string, ReadonlySet<string>> = {
+  WebhookRegistration: new Set(['url']),
+  WebhookDelivery: new Set(['payload', 'url']),
+};
 const DENIED_FIELD_PATTERNS = [
   /(^|_)secret($|_)/i,
   /(^|_)token($|_)/i,
@@ -191,7 +195,8 @@ type TableMeta = {
   scope: 'org_id' | 'organization' | 'global';
 };
 
-function isDeniedField(fieldName: string) {
+function isDeniedField(modelName: string, fieldName: string) {
+  if (DENIED_MODEL_FIELDS[modelName]?.has(fieldName)) return true;
   return DENIED_FIELD_PATTERNS.some((pattern) => pattern.test(fieldName));
 }
 
@@ -228,7 +233,7 @@ function buildTableMeta(modelName: string): TableMeta {
   const allFieldNameSet = new Set(scalarFields.map((field) => field.dbName ?? field.name));
   const scope = resolveTableScope(model.name, allFieldNameSet);
   const fields = scalarFields
-    .filter((field) => !isDeniedField(field.dbName ?? field.name))
+    .filter((field) => !isDeniedField(model.name, field.dbName ?? field.name))
     .map((field) => ({
       name: field.dbName ?? field.name,
       type: String(field.type),

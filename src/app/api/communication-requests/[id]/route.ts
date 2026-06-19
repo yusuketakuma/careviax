@@ -9,38 +9,23 @@ import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import {
+  communicationResponseContentSchema,
   optionalCommunicationRequestStatusSchema,
   requiredTrimmedStringSchema,
   trimStringOrUndefined,
 } from '@/lib/validations/communication-request';
 import {
+  canAccessCareReportCommunication,
   canAccessCommunicationRequestRecord,
+  isCareReportCommunicationRequest,
+  requireWritableCommunicationRequestPatient,
   resolveTracingReportCommunicationScope,
 } from '@/server/services/communication-request-access';
-import { requireWritablePatient } from '@/server/services/patient-write-guard';
+import { buildCommunicationResponseContentDigest } from '@/lib/communication-response-idempotency';
 import {
-  buildCommunicationResponseIntentKey,
-  isUniqueConstraintError,
-} from '@/lib/communication-response-idempotency';
-
-async function requireWritableCommunicationPatient(
-  ctx: Parameters<typeof requireWritablePatient>[1],
-  scope: { patient_id: string | null; case_id: string | null },
-) {
-  if (scope.patient_id) {
-    return requireWritablePatient(prisma, ctx, scope.patient_id);
-  }
-
-  if (!scope.case_id) return null;
-
-  const careCase = await prisma.careCase.findFirst({
-    where: { id: scope.case_id, org_id: ctx.orgId },
-    select: { patient_id: true },
-  });
-  if (!careCase) return null;
-
-  return requireWritablePatient(prisma, ctx, careCase.patient_id);
-}
+  findCommunicationResponseByIntent,
+  upsertCommunicationResponseByIntent,
+} from '@/server/services/communication-response-upsert';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
@@ -61,6 +46,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       id: true,
       patient_id: true,
       case_id: true,
+      related_entity_type: true,
     },
   });
 
@@ -75,6 +61,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }))
   ) {
     return notFound('依頼が見つかりません');
+  }
+  if (
+    isCareReportCommunicationRequest(requestScope.related_entity_type) &&
+    !canAccessCareReportCommunication(ctx.role)
+  ) {
+    return forbidden('報告書共有の閲覧権限がありません');
   }
 
   const request = await prisma.communicationRequest.findFirst({
@@ -99,7 +91,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       due_date: true,
       updated_at: true,
       responses: {
-        orderBy: { responded_at: 'desc' },
+        orderBy: [{ responded_at: 'desc' }, { id: 'desc' }],
         select: {
           id: true,
           responder_name: true,
@@ -163,7 +155,7 @@ const patchCommunicationRequestSchema = z.object({
   response: z
     .object({
       responder_name: requiredTrimmedStringSchema('返信者名は必須です'),
-      content: requiredTrimmedStringSchema('返信内容は必須です'),
+      content: communicationResponseContentSchema,
       responded_at: z.preprocess(trimStringOrUndefined, z.string().datetime().optional()),
     })
     .optional(),
@@ -224,8 +216,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   ) {
     return notFound('依頼が見つかりません');
   }
+  if (
+    isCareReportCommunicationRequest(existing.related_entity_type) &&
+    !canAccessCareReportCommunication(ctx.role)
+  ) {
+    return forbidden('報告書共有の更新権限がありません');
+  }
 
-  const writable = await requireWritableCommunicationPatient(ctx, existing);
+  const writable = await requireWritableCommunicationRequestPatient({
+    db: prisma,
+    ctx,
+    scope: existing,
+  });
   if (writable && 'response' in writable) return writable.response;
 
   if (existing.status === 'closed' || existing.status === 'cancelled') {
@@ -233,6 +235,53 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   if (existing.updated_at.getTime() !== expectedUpdatedAt.getTime()) {
+    if (response && existing.status === 'responded' && (!status || status === existing.status)) {
+      const respondedAt = response.responded_at ? new Date(response.responded_at) : new Date();
+      const existingResponse = await findCommunicationResponseByIntent({
+        db: prisma,
+        orgId,
+        requestId: id,
+        responderName: response.responder_name,
+        content: response.content,
+        respondedAt,
+        intentRespondedAt: response.responded_at ? respondedAt : null,
+      });
+      if (existingResponse.response) {
+        const current = await prisma.communicationRequest.findFirst({
+          where: { id, org_id: orgId },
+          select: {
+            id: true,
+            org_id: true,
+            patient_id: true,
+            case_id: true,
+            request_type: true,
+            template_key: true,
+            recipient_name: true,
+            recipient_role: true,
+            related_entity_type: true,
+            related_entity_id: true,
+            context_snapshot: true,
+            status: true,
+            subject: true,
+            content: true,
+            requested_by: true,
+            requested_at: true,
+            due_date: true,
+            updated_at: true,
+            responses: {
+              orderBy: [{ responded_at: 'desc' }, { id: 'desc' }],
+              select: {
+                id: true,
+                responder_name: true,
+                content: true,
+                responded_at: true,
+              },
+            },
+          },
+        });
+        if (current) return success({ data: current });
+      }
+    }
     return conflict('連携依頼が同時に更新されました。再読み込みしてください');
   }
 
@@ -308,7 +357,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const result = await withOrgContext(
     orgId,
     async (tx) => {
-      if (nextStatus) {
+      if (statusChanged) {
         const claim = await tx.communicationRequest.updateMany({
           where: {
             id,
@@ -326,58 +375,46 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
 
       let responseId: string | null = null;
+      let responseRespondedAt: Date | null = null;
+      let responseRecord: Awaited<ReturnType<typeof upsertCommunicationResponseByIntent>> | null =
+        null;
       if (response) {
         const respondedAt = response.responded_at ? new Date(response.responded_at) : new Date();
-        const responseIntentKey = buildCommunicationResponseIntentKey({
+        responseRespondedAt = respondedAt;
+        const responseArgs = {
+          db: tx,
+          orgId,
           requestId: id,
           responderName: response.responder_name,
           content: response.content,
-          respondedAt: response.responded_at ? respondedAt : null,
-        });
-        const existingResponse = await tx.communicationResponse.findFirst({
-          where: {
-            org_id: orgId,
-            request_id: id,
-            OR: [
-              { response_intent_key: responseIntentKey },
-              {
-                response_intent_key: null,
-                responder_name: response.responder_name,
-                content: response.content,
-                responded_at: respondedAt,
-              },
-            ],
-          },
-        });
-        if (existingResponse) {
-          responseId = existingResponse.id;
-        } else {
-          let createdResponse;
-          try {
-            createdResponse = await tx.communicationResponse.create({
-              data: {
-                org_id: orgId,
-                request_id: id,
-                responder_name: response.responder_name,
-                content: response.content,
-                responded_at: respondedAt,
-                response_intent_key: responseIntentKey,
-              },
-            });
-          } catch (error) {
-            if (!isUniqueConstraintError(error)) throw error;
-
-            createdResponse = await tx.communicationResponse.findFirst({
+          respondedAt,
+          intentRespondedAt: response.responded_at ? respondedAt : null,
+        };
+        if (!statusChanged) {
+          const existingResponse = await findCommunicationResponseByIntent(responseArgs);
+          if (existingResponse.response) {
+            responseRecord = {
+              response: existingResponse.response,
+              created: false,
+              responseIntentKey: existingResponse.responseIntentKey,
+            };
+          } else {
+            const claim = await tx.communicationRequest.updateMany({
               where: {
+                id,
                 org_id: orgId,
-                request_id: id,
-                response_intent_key: responseIntentKey,
+                status: existing.status,
+                updated_at: expectedUpdatedAt,
               },
+              data: { updated_at: new Date() },
             });
-            if (!createdResponse) throw error;
+            if (claim.count !== 1) {
+              return { error: 'state_changed' as const };
+            }
           }
-          responseId = createdResponse.id;
         }
+        responseRecord ??= await upsertCommunicationResponseByIntent(responseArgs);
+        responseId = responseRecord.response.id;
       }
 
       const updated = await tx.communicationRequest.findFirst({
@@ -402,7 +439,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           due_date: true,
           updated_at: true,
           responses: {
-            orderBy: { responded_at: 'desc' },
+            orderBy: [{ responded_at: 'desc' }, { id: 'desc' }],
             select: {
               id: true,
               responder_name: true,
@@ -429,6 +466,31 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             response_id: responseId,
             linked_tracing_report_id:
               updated.related_entity_type === 'tracing_report' ? updated.related_entity_id : null,
+            actor_id: ctx.userId,
+          },
+        });
+      }
+
+      if (response && responseRecord?.created && !statusChanged) {
+        const respondedAt = responseRespondedAt ?? new Date();
+        await createAuditLogEntry(tx, ctx, {
+          action: 'communication_response_recorded',
+          targetType: 'communication_request',
+          targetId: id,
+          changes: {
+            from_status: existing.status,
+            to_status: updated.status,
+            response_id: responseRecord.response.id,
+            response_created: true,
+            response_intent_key: responseRecord.responseIntentKey,
+            responder_name: response.responder_name,
+            response_content_digest: buildCommunicationResponseContentDigest({
+              requestId: id,
+              responseId: responseRecord.response.id,
+              content: response.content,
+            }),
+            response_content_length: response.content.length,
+            responded_at: respondedAt.toISOString(),
             actor_id: ctx.userId,
           },
         });

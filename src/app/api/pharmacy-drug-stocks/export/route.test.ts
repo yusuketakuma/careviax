@@ -27,6 +27,11 @@ function createRequest(url = 'http://localhost/api/pharmacy-drug-stocks/export?s
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/pharmacy-drug-stocks/export', () => {
   const originalTimezone = process.env.TZ;
 
@@ -85,9 +90,10 @@ describe('/api/pharmacy-drug-stocks/export', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(response.headers.get('content-type')).toContain('text/csv');
     expect(response.headers.get('content-disposition')).toBe(
-      'attachment; filename="formulary-operations-site_1-2026-04-02.csv"',
+      `attachment; filename="${encodeURIComponent('formulary-operations-site_1-2026-04-02.csv')}"; filename*=UTF-8''${encodeURIComponent('formulary-operations-site_1-2026-04-02.csv')}`,
     );
     const bytes = new Uint8Array(await response.arrayBuffer());
     expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
@@ -222,6 +228,65 @@ describe('/api/pharmacy-drug-stocks/export', () => {
     );
   });
 
+  it('exports pharmacist review CSV with review-specific safety fields', async () => {
+    prismaMock.pharmacyDrugStock.findMany.mockResolvedValue([
+      {
+        is_stocked: true,
+        reorder_point: 7,
+        adoption_note: '薬剤師レビュー対象',
+        last_reviewed_at: new Date('2026-05-20T00:00:00.000Z'),
+        follow_up_status: 'monitoring',
+        follow_up_reason: '安全性確認',
+        follow_up_due_date: new Date('2026-06-01T00:00:00.000Z'),
+        updated_at: new Date('2026-05-21T00:00:00.000Z'),
+        drug_master: {
+          yj_code: '111222333444',
+          receipt_code: '111222333',
+          drug_name: 'レビュー薬',
+          generic_name: 'レビュー一般名',
+          drug_price: '120.50',
+          unit: '錠',
+          dosage_form: '内用薬',
+          manufacturer: 'PH-OS製薬',
+          is_narcotic: true,
+          is_psychotropic: false,
+          is_high_risk: false,
+          is_lasa_risk: true,
+          transitional_expiry_date: new Date('2026-07-31T15:30:00.000Z'),
+        },
+        preferred_generic: {
+          yj_code: '111222333999',
+          drug_name: 'レビュー後発品',
+        },
+      },
+    ]);
+
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/pharmacy-drug-stocks/export?site_id=site_1&purpose=pharmacist_review',
+      ),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const csv = await response.text();
+    expect(csv).toContain(
+      '"YJコード","医薬品名","一般名","薬価","単位","発注点","優先後発品名","最終レビュー日","フォローアップ状態","経過措置期限","安全属性","メモ"',
+    );
+    expect(csv).toContain(
+      '"111222333444","レビュー薬","レビュー一般名","120.50","錠","7","レビュー後発品","2026-05-20","monitoring","2026-08-01","麻薬 / LASA","薬剤師レビュー対象"',
+    );
+    expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          changes: { site_id: 'site_1', purpose: 'pharmacist_review', row_count: 1 },
+        }),
+      }),
+    );
+  });
+
   it('neutralizes spreadsheet formula prefixes in CSV cells', async () => {
     prismaMock.pharmacyDrugStock.findMany.mockResolvedValue([
       {
@@ -261,7 +326,41 @@ describe('/api/pharmacy-drug-stocks/export', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
     expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid export purpose with sensitive no-store headers', async () => {
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/pharmacy-drug-stocks/export?site_id=site_1&purpose=partner',
+      ),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.pharmacyDrugStock.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it('encodes CRLF characters out of the download filename', async () => {
+    prismaMock.pharmacySite.findFirst.mockResolvedValue({
+      id: 'site_1\r\nX-Injected: yes',
+      name: '本店',
+    });
+    prismaMock.pharmacyDrugStock.findMany.mockResolvedValue([]);
+
+    const response = await GET(createRequest(), { params: Promise.resolve({}) });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    const disposition = response.headers.get('content-disposition') ?? '';
+    expect(disposition).toContain(encodeURIComponent('site_1\r\nX-Injected: yes'));
+    expect(disposition).not.toContain('\r');
+    expect(disposition).not.toContain('\n');
   });
 });

@@ -165,7 +165,7 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
         responder_name: '在宅主治医',
         content: '現行処方で継続',
         responded_at: new Date('2026-06-18T00:02:00.000Z'),
-        response_intent_key: expect.stringMatching(/^communication-response:v1:[a-f0-9]{64}$/),
+        response_intent_key: expect.stringMatching(/^communication-response:v2:[a-f0-9]{64}$/),
       }),
     });
     expect(taskUpsertMock).toHaveBeenCalledWith({
@@ -177,14 +177,14 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
       },
       create: expect.objectContaining({
         org_id: 'org_1',
-        task_type: 'report_response_followup',
+        task_type: 'communication_request_followup',
         title: '返信フォロー: 服薬情報提供書の確認',
         description: '夕食後薬の飲み忘れを確認',
         related_entity_type: 'patient',
         related_entity_id: 'patient_1',
       }),
       update: expect.objectContaining({
-        task_type: 'report_response_followup',
+        task_type: 'communication_request_followup',
         description: '夕食後薬の飲み忘れを確認',
         related_entity_type: 'patient',
         related_entity_id: 'patient_1',
@@ -198,11 +198,20 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
         changes: expect.objectContaining({
           from_status: 'sent',
           to_status: 'closed',
+          reason: 'フォロー対応済み（次回カードへ残す）',
+          status_change_reason: 'フォロー対応済み（次回カードへ残す）',
           response_id: 'response_1',
           followup_task_id: 'task_1',
+          followup_content_digest: expect.stringMatching(
+            /^communication-request-followup:v1:[a-f0-9]{64}$/,
+          ),
+          followup_content_length: 12,
         }),
       }),
     });
+    expect(JSON.stringify(auditLogCreateMock.mock.calls[0]?.[0]?.data.changes)).not.toContain(
+      '夕食後薬の飲み忘れを確認',
+    );
     await expect(response.json()).resolves.toMatchObject({
       data: {
         request: { id: 'request_1', status: 'closed' },
@@ -256,6 +265,81 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
     expect(taskUpsertMock).not.toHaveBeenCalled();
   });
 
+  it('rejects care report follow-up resolution when the caller cannot send reports', async () => {
+    requireAuthContextMock.mockResolvedValue({
+      ctx: {
+        orgId: 'org_1',
+        userId: 'clerk_1',
+        role: 'clerk',
+      },
+    });
+    communicationRequestFindFirstMock.mockResolvedValueOnce({
+      id: 'request_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'sent',
+      updated_at: CURRENT_UPDATED_AT_DATE,
+      subject: '報告書共有の確認',
+      recipient_name: '在宅主治医',
+      related_entity_type: 'care_report',
+      related_entity_id: 'report_1',
+    });
+
+    const response = await POST(
+      createRequest({
+        expected_updated_at: CURRENT_UPDATED_AT,
+      }),
+      { params: Promise.resolve({ id: 'request_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(taskUpsertMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps care report follow-up tasks in the report response queue', async () => {
+    communicationRequestFindFirstMock.mockResolvedValueOnce({
+      id: 'request_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'sent',
+      updated_at: CURRENT_UPDATED_AT_DATE,
+      subject: '報告書共有の確認',
+      recipient_name: '在宅主治医',
+      related_entity_type: 'care_report',
+      related_entity_id: 'report_1',
+    });
+
+    const response = await POST(
+      createRequest({
+        expected_updated_at: CURRENT_UPDATED_AT,
+        followup: '報告書返信を確認',
+      }),
+      { params: Promise.resolve({ id: 'request_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(taskUpsertMock).toHaveBeenCalledWith({
+      where: {
+        org_id_dedupe_key: {
+          org_id: 'org_1',
+          dedupe_key: 'communication-request-followup:request_1',
+        },
+      },
+      create: expect.objectContaining({
+        task_type: 'report_response_followup',
+        description: '報告書返信を確認',
+      }),
+      update: expect.objectContaining({
+        task_type: 'report_response_followup',
+        description: '報告書返信を確認',
+      }),
+    });
+  });
+
   it('syncs a linked tracing report only after scope consistency is verified', async () => {
     communicationRequestFindFirstMock.mockResolvedValue({
       id: 'request_1',
@@ -291,6 +375,7 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
     const response = await POST(
       createRequest({
         expected_updated_at: CURRENT_UPDATED_AT,
+        followup: 'トレーシング返信を確認',
       }),
       { params: Promise.resolve({ id: 'request_1' }) },
     );
@@ -306,6 +391,22 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
         acknowledged_at: expect.any(Date),
       }),
     });
+    expect(taskUpsertMock).toHaveBeenCalledWith({
+      where: {
+        org_id_dedupe_key: {
+          org_id: 'org_1',
+          dedupe_key: 'communication-request-followup:request_1',
+        },
+      },
+      create: expect.objectContaining({
+        task_type: 'tracing_report_followup',
+        description: 'トレーシング返信を確認',
+      }),
+      update: expect.objectContaining({
+        task_type: 'tracing_report_followup',
+        description: 'トレーシング返信を確認',
+      }),
+    });
     expect(auditLogCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         action: 'tracing_report_status_changed',
@@ -314,9 +415,17 @@ describe('/api/communication-requests/[id]/resolve-followup POST', () => {
         changes: expect.objectContaining({
           from_status: 'received',
           to_status: 'acknowledged',
+          reason: 'フォロー対応済み（次回カードへ残す）',
+          followup_content_digest: expect.stringMatching(
+            /^communication-request-followup:v1:[a-f0-9]{64}$/,
+          ),
+          followup_content_length: 11,
           linked_communication_request_id: 'request_1',
         }),
       }),
     });
+    for (const call of auditLogCreateMock.mock.calls) {
+      expect(JSON.stringify(call[0]?.data.changes)).not.toContain('トレーシング返信を確認');
+    }
   });
 });

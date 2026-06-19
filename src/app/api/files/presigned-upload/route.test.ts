@@ -181,6 +181,58 @@ describe('/api/files/presigned-upload POST', () => {
     });
   });
 
+  it('rejects report upload presigns when the caller lacks canSendCareReport', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: {
+        userId: 'clerk_1',
+        orgId: 'org_1',
+        role: 'clerk',
+      },
+    });
+
+    const response = await POST(
+      createRequest({
+        purpose: 'report',
+        file_name: 'report.exe',
+        mime_type: 'application/x-msdownload',
+        size_bytes: 999_999_999,
+        report_id: 'report_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expect(assertFileUploadConstraintsMock).not.toHaveBeenCalled();
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(createPresignedUploadMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects report upload presigns for author-only roles before file constraint validation', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: {
+        userId: 'trainee_1',
+        orgId: 'org_1',
+        role: 'pharmacist_trainee',
+      },
+    });
+
+    const response = await POST(
+      createRequest({
+        purpose: 'report',
+        file_name: 'report.exe',
+        mime_type: 'application/x-msdownload',
+        size_bytes: 999_999_999,
+        report_id: 'report_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expect(assertFileUploadConstraintsMock).not.toHaveBeenCalled();
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(createPresignedUploadMock).not.toHaveBeenCalled();
+  });
+
   it('rejects non-object upload payloads before entity lookup or presign', async () => {
     const response = await POST(createRequest([]));
 

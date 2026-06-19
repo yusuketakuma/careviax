@@ -7,18 +7,21 @@ const {
   getClientIpMock,
   validateExternalAccessGrantMock,
   markExternalAccessViewedMock,
+  recordExternalAccessViewAuditMock,
   buildExternalAccessPayloadMock,
 } = vi.hoisted(() => ({
   checkAuthRateLimitMock: vi.fn(),
   getClientIpMock: vi.fn(),
   validateExternalAccessGrantMock: vi.fn(),
   markExternalAccessViewedMock: vi.fn(),
+  recordExternalAccessViewAuditMock: vi.fn(),
   buildExternalAccessPayloadMock: vi.fn(),
 }));
 
 vi.mock('@/server/services/external-access', () => ({
   validateExternalAccessGrant: validateExternalAccessGrantMock,
   markExternalAccessViewed: markExternalAccessViewedMock,
+  recordExternalAccessViewAudit: recordExternalAccessViewAuditMock,
   buildExternalAccessPayload: buildExternalAccessPayloadMock,
 }));
 
@@ -61,8 +64,17 @@ describe('/api/external-access/[token]', () => {
     getClientIpMock.mockReturnValue('203.0.113.10');
     validateExternalAccessGrantMock.mockResolvedValue({
       ok: true,
-      grant: { id: 'grant_1' },
+      grant: {
+        id: 'grant_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        granted_to_name: '田中ケアマネ',
+        granted_to_contact: '09012345678',
+        scope: { medication_list: true },
+      },
     });
+    markExternalAccessViewedMock.mockResolvedValue(undefined);
+    recordExternalAccessViewAuditMock.mockResolvedValue(undefined);
     buildExternalAccessPayloadMock.mockResolvedValue({
       patient: { id: 'patient_1' },
     });
@@ -74,8 +86,22 @@ describe('/api/external-access/[token]', () => {
     });
 
     expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(validateExternalAccessGrantMock).toHaveBeenCalledWith('token_1', '1234');
     expect(markExternalAccessViewedMock).toHaveBeenCalledWith('grant_1');
+    expect(recordExternalAccessViewAuditMock).toHaveBeenCalledWith({
+      grant: {
+        id: 'grant_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        granted_to_name: '田中ケアマネ',
+        granted_to_contact: '09012345678',
+        scope: { medication_list: true },
+      },
+      ipAddress: '203.0.113.10',
+      userAgent: null,
+    });
   });
 
   it('rejects blank tokens before rate limiting or validating the grant', async () => {
@@ -109,6 +135,7 @@ describe('/api/external-access/[token]', () => {
     );
 
     expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(validateExternalAccessGrantMock).toHaveBeenCalledWith('token_1', null);
     expect(markExternalAccessViewedMock).not.toHaveBeenCalled();
     expect(buildExternalAccessPayloadMock).not.toHaveBeenCalled();
@@ -158,8 +185,32 @@ describe('/api/external-access/[token]', () => {
     });
 
     expect(response.status).toBe(404);
-    expect(buildExternalAccessPayloadMock).toHaveBeenCalledWith({ id: 'grant_1' });
+    expect(buildExternalAccessPayloadMock).toHaveBeenCalledWith({
+      id: 'grant_1',
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      granted_to_name: '田中ケアマネ',
+      granted_to_contact: '09012345678',
+      scope: { medication_list: true },
+    });
     expect(markExternalAccessViewedMock).not.toHaveBeenCalled();
+    expect(recordExternalAccessViewAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the successful external view cannot be audited', async () => {
+    recordExternalAccessViewAuditMock.mockRejectedValueOnce(new Error('audit unavailable'));
+
+    const response = await GET(makeRequest('1234'), {
+      params: Promise.resolve({ token: 'token_1' }),
+    });
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'EXTERNAL_ACCESS_VIEW_AUDIT_FAILED',
+      message: '外部共有の閲覧監査を記録できませんでした',
+    });
+    expect(markExternalAccessViewedMock).toHaveBeenCalledWith('grant_1');
   });
 
   it('rate limits OTP attempts by token and client IP', async () => {
@@ -187,6 +238,7 @@ describe('/api/external-access/[token]', () => {
     });
 
     expect(response.status).toBe(429);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
     expect(validateExternalAccessGrantMock).not.toHaveBeenCalled();
   });
 });

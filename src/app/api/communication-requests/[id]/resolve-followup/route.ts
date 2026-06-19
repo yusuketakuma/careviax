@@ -1,26 +1,28 @@
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { hasPermission } from '@/lib/auth/permissions';
 import { requireAuthContext } from '@/lib/auth/context';
+import { getAuthSecret } from '@/lib/auth/secret';
 import { conflict, forbidden, notFound, success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { prisma } from '@/lib/db/client';
 import { withOrgContext } from '@/lib/db/rls';
 import {
-  buildCommunicationResponseIntentKey,
-  isUniqueConstraintError,
-} from '@/lib/communication-response-idempotency';
-import {
+  communicationResponseContentSchema,
   requiredTrimmedStringSchema,
   trimStringOrUndefined,
 } from '@/lib/validations/communication-request';
+import { upsertCommunicationResponseByIntent } from '@/server/services/communication-response-upsert';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import {
+  canAccessCareReportCommunication,
   canAccessCommunicationRequestRecord,
+  isCareReportCommunicationRequest,
+  requireWritableCommunicationRequestPatient,
   resolveTracingReportCommunicationScope,
 } from '@/server/services/communication-request-access';
-import { requireWritablePatient } from '@/server/services/patient-write-guard';
 import { NextRequest } from 'next/server';
+import { createHmac } from 'node:crypto';
 import { z } from 'zod';
 
 const RESOLVABLE_REQUEST_STATUSES = new Set([
@@ -36,7 +38,7 @@ const resolveFollowupSchema = z.object({
   response: z
     .object({
       responder_name: requiredTrimmedStringSchema('返信者名は必須です'),
-      content: requiredTrimmedStringSchema('返信内容は必須です'),
+      content: communicationResponseContentSchema,
       responded_at: z.preprocess(trimStringOrUndefined, z.string().datetime().optional()),
     })
     .optional(),
@@ -46,25 +48,6 @@ const resolveFollowupSchema = z.object({
   ),
 });
 
-async function requireWritableCommunicationPatient(
-  ctx: Parameters<typeof requireWritablePatient>[1],
-  scope: { patient_id: string | null; case_id: string | null },
-) {
-  if (scope.patient_id) {
-    return requireWritablePatient(prisma, ctx, scope.patient_id);
-  }
-
-  if (!scope.case_id) return null;
-
-  const careCase = await prisma.careCase.findFirst({
-    where: { id: scope.case_id, org_id: ctx.orgId },
-    select: { patient_id: true },
-  });
-  if (!careCase) return null;
-
-  return requireWritablePatient(prisma, ctx, careCase.patient_id);
-}
-
 function readPersistedId(value: unknown) {
   if (typeof value !== 'object' || value === null || !('id' in value)) return null;
   const id = (value as { id?: unknown }).id;
@@ -73,6 +56,40 @@ function readPersistedId(value: unknown) {
 
 function buildFollowupTaskTitle(subject: string) {
   return `返信フォロー: ${subject}`.slice(0, 200);
+}
+
+function resolveFollowupTaskType(relatedEntityType: string | null) {
+  if (relatedEntityType === 'care_report') return 'report_response_followup';
+  if (relatedEntityType === 'tracing_report') return 'tracing_report_followup';
+  return 'communication_request_followup';
+}
+
+function resolveFollowupAuditHashSecret() {
+  const authSecret = getAuthSecret();
+  if (authSecret) return authSecret;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('follow-up audit hash secret is not configured');
+  }
+  return 'ph-os-local-followup-audit-secret';
+}
+
+function buildFollowupAuditChanges(requestId: string, followup: string | undefined) {
+  if (!followup) {
+    return {
+      reason: 'フォロー対応済み',
+      status_change_reason: 'フォロー対応済み',
+    };
+  }
+
+  const digest = createHmac('sha256', resolveFollowupAuditHashSecret())
+    .update(['communication-request-followup', requestId, followup.trim()].join(':'))
+    .digest('hex');
+  return {
+    reason: 'フォロー対応済み（次回カードへ残す）',
+    status_change_reason: 'フォロー対応済み（次回カードへ残す）',
+    followup_content_digest: `communication-request-followup:v1:${digest}`,
+    followup_content_length: followup.length,
+  };
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -128,8 +145,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   ) {
     return notFound('依頼が見つかりません');
   }
+  if (
+    isCareReportCommunicationRequest(existing.related_entity_type) &&
+    !canAccessCareReportCommunication(ctx.role)
+  ) {
+    return forbidden('報告書共有の更新権限がありません');
+  }
 
-  const writable = await requireWritableCommunicationPatient(ctx, existing);
+  const writable = await requireWritableCommunicationRequestPatient({
+    db: prisma,
+    ctx,
+    scope: existing,
+  });
   if (writable && 'response' in writable) return writable.response;
 
   if (existing.status === 'closed' || existing.status === 'cancelled') {
@@ -208,61 +235,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       let responseRecord: unknown = null;
       if (response) {
         const respondedAt = response.responded_at ? new Date(response.responded_at) : new Date();
-        const responseIntentKey = buildCommunicationResponseIntentKey({
+        const upsertedResponse = await upsertCommunicationResponseByIntent({
+          db: tx,
+          orgId: ctx.orgId,
           requestId: id,
           responderName: response.responder_name,
           content: response.content,
-          respondedAt: response.responded_at ? respondedAt : null,
+          respondedAt,
+          intentRespondedAt: response.responded_at ? respondedAt : null,
         });
-        const responseLookupWhere = {
-          org_id: ctx.orgId,
-          request_id: id,
-          OR: [
-            { response_intent_key: responseIntentKey },
-            {
-              response_intent_key: null,
-              responder_name: response.responder_name,
-              content: response.content,
-              responded_at: respondedAt,
-            },
-          ],
-        };
-        const existingResponse = await tx.communicationResponse.findFirst({
-          where: responseLookupWhere,
-        });
-        if (existingResponse) {
-          responseRecord = existingResponse;
-        } else {
-          try {
-            responseRecord = await tx.communicationResponse.create({
-              data: {
-                org_id: ctx.orgId,
-                request_id: id,
-                responder_name: response.responder_name,
-                content: response.content,
-                responded_at: respondedAt,
-                response_intent_key: responseIntentKey,
-              },
-            });
-          } catch (error) {
-            if (!isUniqueConstraintError(error)) throw error;
-            const responseCreatedByConcurrentRetry = await tx.communicationResponse.findFirst({
-              where: {
-                org_id: ctx.orgId,
-                request_id: id,
-                response_intent_key: responseIntentKey,
-              },
-            });
-            if (!responseCreatedByConcurrentRetry) throw error;
-            responseRecord = responseCreatedByConcurrentRetry;
-          }
-        }
+        responseRecord = upsertedResponse.response;
       }
 
       const taskRecord = followup
         ? await upsertOperationalTask(tx, {
             orgId: ctx.orgId,
-            taskType: 'report_response_followup',
+            taskType: resolveFollowupTaskType(existing.related_entity_type),
             title: buildFollowupTaskTitle(existing.subject),
             description: followup,
             priority: 'normal',
@@ -311,6 +299,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (!updated) {
         return { error: 'state_changed' as const };
       }
+      const followupAuditChanges = buildFollowupAuditChanges(id, followup);
 
       await createAuditLogEntry(tx, ctx, {
         action: 'communication_request_status_changed',
@@ -319,12 +308,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         changes: {
           from_status: existing.status,
           to_status: 'closed',
-          reason: followup
-            ? `フォロー対応済み（次回カードへ残す）: ${followup}`
-            : 'フォロー対応済み',
-          status_change_reason: followup
-            ? `フォロー対応済み（次回カードへ残す）: ${followup}`
-            : 'フォロー対応済み',
+          ...followupAuditChanges,
           response_id: readPersistedId(responseRecord),
           followup_task_id: readPersistedId(taskRecord),
           linked_tracing_report_id:
@@ -352,12 +336,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             changes: {
               from_status: linkedTracingReport.status,
               to_status: 'acknowledged',
-              reason: followup
-                ? `フォロー対応済み（次回カードへ残す）: ${followup}`
-                : 'フォロー対応済み',
-              status_change_reason: followup
-                ? `フォロー対応済み（次回カードへ残す）: ${followup}`
-                : 'フォロー対応済み',
+              ...followupAuditChanges,
               linked_communication_request_id: updated.id,
               actor_id: ctx.userId,
             },

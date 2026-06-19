@@ -53,11 +53,25 @@ describe('data explorer service hardening', () => {
       row: {
         id: 'webhook_1',
         org_id: 'org_1',
-        url: 'https://hooks.example.test/ph-os',
+        url: 'https://hooks.example.test/ph-os?token=super-secret#fragment',
+        events: ['patient.created'],
         secret: 'whsec_plaintext',
       },
-      deniedFields: ['secret'],
-      visibleField: 'url',
+      deniedFields: ['url', 'secret'],
+      visibleField: 'events',
+    },
+    {
+      tableName: 'WebhookDelivery',
+      row: {
+        id: 'delivery_1',
+        org_id: 'org_1',
+        event: 'patient.created',
+        status: 'failed',
+        url: 'https://hooks.example.test/ph-os?token=super-secret',
+        payload: { patient_name: '山田 太郎' },
+      },
+      deniedFields: ['url', 'payload'],
+      visibleField: 'status',
     },
     {
       tableName: 'User',
@@ -510,6 +524,7 @@ describe('data explorer service hardening', () => {
           id: 'webhook_1',
           org_id: 'org_1',
           url: 'https://hooks.example.test/new',
+          events: ['care_report.sent'],
           secret: 'should-not-return',
         },
       },
@@ -518,6 +533,7 @@ describe('data explorer service hardening', () => {
     const updated = await updateDataExplorerRow('org_1', 'WebhookRegistration', 'webhook_1', {
       secret: 'new-secret',
       url: 'https://hooks.example.test/new',
+      events: ['care_report.sent'],
     });
 
     const call = tx.$queryRawUnsafe.mock.calls[0];
@@ -526,17 +542,20 @@ describe('data explorer service hardening', () => {
     expect(sql).toContain('WHERE t."id" = $2 AND t."org_id" = $3');
     expect(sql).not.toContain('"secret"');
     expect(sql).not.toContain("'secret'");
+    expect(sql).not.toContain('"url"');
+    expect(sql).not.toContain("'url'");
     expect(call?.slice(1)).toEqual([
-      JSON.stringify({ url: 'https://hooks.example.test/new' }),
+      JSON.stringify({ events: ['care_report.sent'] }),
       'webhook_1',
       'org_1',
     ]);
     expect(updated).toMatchObject({
       id: 'webhook_1',
       org_id: 'org_1',
-      url: 'https://hooks.example.test/new',
+      events: ['care_report.sent'],
     });
     expect(Object.keys(updated)).not.toContain('secret');
+    expect(Object.keys(updated)).not.toContain('url');
   });
 
   it('scopes Organization edits by organization id and denies Organization email edits', async () => {

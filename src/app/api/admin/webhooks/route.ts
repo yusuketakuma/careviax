@@ -1,9 +1,15 @@
 import { withAuthContext } from '@/lib/auth/context';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { NextResponse } from 'next/server';
+import { compatibilityError, success, validationCompatibilityError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { z } from 'zod';
-import { isAllowedWebhookUrl, WEBHOOK_EVENT_TYPES } from '@/server/services/outbound-webhook';
+import {
+  hasWebhookUrlCredentials,
+  isAllowedWebhookUrl,
+  redactWebhookUrlForDisplay,
+  WEBHOOK_EVENT_TYPES,
+} from '@/server/services/outbound-webhook';
 import { encryptWebhookSecret } from '@/server/services/webhook-secret-encryption';
 import { randomBytes } from 'node:crypto';
 
@@ -14,6 +20,10 @@ const createWebhookSchema = z.object({
 
 function generateWebhookSecret(): string {
   return randomBytes(32).toString('hex');
+}
+
+function toPublicWebhookRegistration<T extends { url: string }>(registration: T): T {
+  return { ...registration, url: redactWebhookUrlForDisplay(registration.url) };
 }
 
 export const GET = withAuthContext(
@@ -34,7 +44,7 @@ export const GET = withAuthContext(
       });
     });
 
-    return NextResponse.json({ data: registrations });
+    return success({ data: registrations.map(toPublicWebhookRegistration) });
   },
   { permission: 'canAdmin', message: 'Webhook 設定の閲覧権限がありません' },
 );
@@ -43,23 +53,23 @@ export const POST = withAuthContext(
   async (req, ctx) => {
     const payload = await readJsonObjectRequestBody(req);
     if (!payload) {
-      return NextResponse.json({ error: 'リクエストボディが不正です' }, { status: 400 });
+      return validationCompatibilityError('リクエストボディが不正です');
     }
 
     const parsed = createWebhookSchema.safeParse(payload);
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: '入力値が不正です', fieldErrors: parsed.error.flatten().fieldErrors },
-        { status: 400 },
-      );
+      return validationCompatibilityError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
     const { url, events } = parsed.data;
 
+    if (hasWebhookUrlCredentials(url)) {
+      return validationCompatibilityError('WebhookのURLにユーザー情報は含められません');
+    }
+
     if (!(await isAllowedWebhookUrl(url))) {
-      return NextResponse.json(
-        { error: 'WebhookのURLはHTTPS公開エンドポイントである必要があります' },
-        { status: 400 },
+      return validationCompatibilityError(
+        'WebhookのURLはHTTPS公開エンドポイントである必要があります',
       );
     }
 
@@ -68,9 +78,10 @@ export const POST = withAuthContext(
     try {
       encryptedSecret = await encryptWebhookSecret(secret);
     } catch {
-      return NextResponse.json(
-        { error: 'Webhook secret encryption key is not configured' },
-        { status: 503 },
+      return compatibilityError(
+        'WEBHOOK_SECRET_ENCRYPTION_UNAVAILABLE',
+        'Webhook secret 暗号化キーが設定されていません',
+        503,
       );
     }
 
@@ -91,14 +102,24 @@ export const POST = withAuthContext(
           created_at: true,
         },
       });
+      await createAuditLogEntry(tx, ctx, {
+        action: 'webhook_registration_created',
+        targetType: 'WebhookRegistration',
+        targetId: created.id,
+        changes: {
+          url: redactWebhookUrlForDisplay(url),
+          events,
+          secret_key_id: encryptedSecret.secret_key_id,
+        },
+      });
       return {
-        ...created,
+        ...toPublicWebhookRegistration(created),
         // Return secret once at creation so caller can store it.
         secret,
       };
     });
 
-    return NextResponse.json({ data: registration }, { status: 201 });
+    return success({ data: registration }, 201);
   },
   { permission: 'canAdmin', message: 'Webhook 登録権限がありません' },
 );

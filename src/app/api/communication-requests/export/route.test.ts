@@ -8,6 +8,7 @@ const {
   communicationRequestFindManyMock,
   patientFindManyMock,
   careCaseFindManyMock,
+  auditLogCreateMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
@@ -15,6 +16,7 @@ const {
   communicationRequestFindManyMock: vi.fn(),
   patientFindManyMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
+  auditLogCreateMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -53,12 +55,18 @@ function createRequest(url: string) {
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/communication-requests/export GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
     careCaseFindManyMock.mockResolvedValue([{ id: 'case_1' }]);
+    auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
     communicationRequestFindManyMock.mockResolvedValue([
       {
         id: 'request_1',
@@ -78,6 +86,7 @@ describe('/api/communication-requests/export GET', () => {
           phone: '03-1234-5678',
           address: '東京都千代田区1-1-1',
           note: '家族へ事前共有',
+          recommended_channels: ['fax', 'phone'],
         },
         responses: [
           {
@@ -96,25 +105,168 @@ describe('/api/communication-requests/export GET', () => {
         patient: {
           findMany: patientFindManyMock,
         },
+        auditLog: {
+          create: auditLogCreateMock,
+        },
       }),
     );
   });
 
   it('returns collaborator handoff csv with patient and response fields', async () => {
     const response = await GET(
-      createRequest('http://localhost/api/communication-requests/export?status=responded'),
+      createRequest(
+        'http://localhost/api/communication-requests/export?profile=internal&status=responded',
+      ),
     );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
     expect(response.headers.get('Content-Type')).toContain('text/csv');
+    expectSensitiveNoStore(response);
+    const bytes = new Uint8Array(await response.clone().arrayBuffer());
+    expect(Array.from(bytes.slice(0, 3))).toEqual([0xef, 0xbb, 0xbf]);
     const body = await response.text();
     expect(body).toContain('patient_name');
     expect(body).toContain('"山田 太郎"');
     expect(body).toContain('"医師/FAX"');
+    expect(body).toContain('"yes"');
     expect(body).toContain('"handoff-prep"');
     expect(body).toContain('03-1234-5678');
     expect(body).toContain('東京都千代田区1-1-1');
+    expect(communicationRequestFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderBy: [{ requested_at: 'desc' }, { id: 'desc' }],
+        take: 1001,
+        select: expect.objectContaining({
+          responses: expect.objectContaining({
+            orderBy: [{ responded_at: 'desc' }, { id: 'desc' }],
+          }),
+        }),
+      }),
+    );
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        actor_id: 'user_1',
+        action: 'export',
+        target_type: 'communication_request',
+        target_id: 'bulk',
+        changes: expect.objectContaining({
+          format: 'csv',
+          record_count: 1,
+          filters: expect.objectContaining({
+            status: 'responded',
+            request_type: null,
+            profile: 'internal',
+            redaction_profile: 'internal',
+            care_report_rows_excluded: false,
+          }),
+          metadata: expect.objectContaining({
+            exported_request_id_hashes: [expect.stringMatching(/^[a-f0-9]{16}$/)],
+            exported_request_count: 1,
+            exported_request_id_hashes_truncated: false,
+            exported_patient_count: 1,
+            exported_patient_id_hashes: [expect.stringMatching(/^[a-f0-9]{16}$/)],
+            exported_patient_id_hashes_truncated: false,
+            export_snapshot_id: expect.stringMatching(/^[a-f0-9]{16}$/),
+          }),
+        }),
+      }),
+    });
+  });
+
+  it('neutralizes formula-leading CSV cells in internal exports', async () => {
+    communicationRequestFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'request_1',
+        patient_id: 'patient_1',
+        request_type: 'inquiry',
+        recipient_name: '@在宅主治医',
+        recipient_role: '医師/FAX',
+        related_entity_type: 'medication_cycle',
+        related_entity_id: 'cycle_1',
+        status: 'responded',
+        subject: '+疑義照会',
+        content: '=HYPERLINK("https://example.invalid","服用方法")',
+        due_date: new Date('2026-03-30T00:00:00.000Z'),
+        requested_at: new Date('2026-03-28T09:30:00.000Z'),
+        context_snapshot: {
+          note: '\t家族へ事前共有',
+        },
+        responses: [
+          {
+            responder_name: '在宅主治医',
+            responded_at: new Date('2026-03-28T11:00:00.000Z'),
+          },
+        ],
+      },
+    ]);
+    patientFindManyMock.mockResolvedValueOnce([{ id: 'patient_1', name: '-山田 太郎' }]);
+
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/communication-requests/export?profile=internal&status=responded',
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('"\'-山田 太郎"');
+    expect(body).toContain('"\'@在宅主治医"');
+    expect(body).toContain('"\' +疑義照会"'.replace(' ', ''));
+    expect(body).toContain('"\'=HYPERLINK(""https://example.invalid"",""服用方法"")"');
+    expect(body).not.toContain('"=HYPERLINK');
+    expect(body).not.toContain('"+疑義照会"');
+  });
+
+  it('rejects internal exports when the caller cannot output care-report communications', async () => {
+    membershipFindFirstMock.mockResolvedValueOnce({ role: 'clerk' });
+
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/communication-requests/export?profile=internal&status=responded',
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: '内部向け連携依頼エクスポートの権限がありません',
+    });
+    expect(communicationRequestFindManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('defaults to an external redacted csv profile when profile is omitted', async () => {
+    const response = await GET(
+      createRequest('http://localhost/api/communication-requests/export?status=responded'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    expect(response.headers.get('Content-Disposition')).toContain(
+      'communication_requests_responded_external.csv',
+    );
+    const body = await response.text();
+    expect(body).toContain('redaction_profile');
+    expect(body).toContain('"external"');
+    expect(body).not.toContain('patient_name');
+    expect(body).not.toContain('山田 太郎');
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        changes: expect.objectContaining({
+          filters: expect.objectContaining({
+            profile: 'external',
+            redaction_profile: 'external',
+          }),
+        }),
+      }),
+    });
   });
 
   it('returns an external redacted csv without patient names, snapshots, or free text', async () => {
@@ -126,14 +278,17 @@ describe('/api/communication-requests/export GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(response.headers.get('Content-Disposition')).toContain(
       'communication_requests_responded_external.csv',
     );
+    const bytes = new Uint8Array(await response.clone().arrayBuffer());
+    expect(Array.from(bytes.slice(0, 3))).toEqual([0xef, 0xbb, 0xbf]);
     const body = await response.text();
     const [header] = body.split('\n');
     expect(header).toBe(
       [
-        'id',
+        'external_row_id',
         'request_type',
         'status',
         'recipient_role',
@@ -146,8 +301,10 @@ describe('/api/communication-requests/export GET', () => {
         'redaction_profile',
       ].join(','),
     );
+    expect(body).toMatch(/\n"[a-f0-9]{16}","inquiry","responded"/);
     expect(body).toContain('"handoff-external-redacted"');
     expect(body).toContain('"external"');
+    expect(body).not.toContain('request_1');
     expect(body).not.toContain('patient_name');
     expect(body).not.toContain('patient_1');
     expect(body).not.toContain('山田 太郎');
@@ -165,19 +322,82 @@ describe('/api/communication-requests/export GET', () => {
       status: true,
       due_date: true,
       requested_at: true,
+      context_snapshot: true,
       responses: {
         select: {
           responded_at: true,
         },
       },
     });
+    expect(communicationRequestFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 1001,
+      }),
+    );
     expect(select).not.toHaveProperty('patient_id');
     expect(select).not.toHaveProperty('recipient_name');
     expect(select).not.toHaveProperty('related_entity_id');
     expect(select).not.toHaveProperty('subject');
     expect(select).not.toHaveProperty('content');
-    expect(select).not.toHaveProperty('context_snapshot');
     expect(select.responses.select).not.toHaveProperty('responder_name');
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        changes: expect.objectContaining({
+          record_count: 1,
+          filters: expect.objectContaining({
+            status: 'responded',
+            request_type: null,
+            profile: 'external',
+            redaction_profile: 'external',
+          }),
+          metadata: expect.objectContaining({
+            exported_request_id_hashes: [expect.stringMatching(/^[a-f0-9]{16}$/)],
+            exported_request_count: 1,
+            exported_patient_count: 0,
+            exported_patient_id_hashes: [],
+            export_snapshot_id: expect.stringMatching(/^[a-f0-9]{16}$/),
+          }),
+        }),
+      }),
+    });
+  });
+
+  it('fails closed when export audit persistence fails', async () => {
+    auditLogCreateMock.mockRejectedValueOnce(new Error('audit unavailable'));
+
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/communication-requests/export?profile=internal&status=responded',
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    expect(response.headers.get('Content-Type') ?? '').not.toContain('text/csv');
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'COMMUNICATION_REQUEST_EXPORT_AUDIT_FAILED',
+      message: '連携依頼のエクスポート監査を記録できませんでした',
+    });
+  });
+
+  it('returns an export failure code when the request read fails before audit persistence', async () => {
+    communicationRequestFindManyMock.mockRejectedValueOnce(new Error('database unavailable'));
+
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/communication-requests/export?profile=internal&status=responded',
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'COMMUNICATION_REQUEST_EXPORT_FAILED',
+      message: '連携依頼のエクスポートに失敗しました',
+    });
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects an invalid status before resolving assignment scope', async () => {
@@ -187,6 +407,7 @@ describe('/api/communication-requests/export GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       details: {
@@ -198,6 +419,182 @@ describe('/api/communication-requests/export GET', () => {
     expect(communicationRequestFindManyMock).not.toHaveBeenCalled();
   });
 
+  it('rejects internal exports without a narrowing status or request type filter', async () => {
+    const response = await GET(
+      createRequest('http://localhost/api/communication-requests/export?profile=internal'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: '内部向けエクスポートには status または request_type の指定が必要です',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationRequestFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects exports above the synchronous row cap before returning a csv', async () => {
+    communicationRequestFindManyMock.mockResolvedValueOnce(
+      Array.from({ length: 1001 }, (_, index) => ({
+        id: `request_${index}`,
+        request_type: 'inquiry',
+        recipient_role: '医師',
+        related_entity_type: 'medication_cycle',
+        status: 'responded',
+        due_date: null,
+        requested_at: new Date('2026-03-28T09:30:00.000Z'),
+        context_snapshot: {},
+        responses: [],
+      })),
+    );
+
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/communication-requests/export?profile=external&status=responded',
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: { max_rows: 1000 },
+    });
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('allows external exports at the synchronous row cap', async () => {
+    communicationRequestFindManyMock.mockResolvedValueOnce(
+      Array.from({ length: 1000 }, (_, index) => ({
+        id: `request_${index}`,
+        request_type: 'inquiry',
+        recipient_role: '医師',
+        related_entity_type: 'medication_cycle',
+        status: 'responded',
+        due_date: null,
+        requested_at: new Date('2026-03-28T09:30:00.000Z'),
+        context_snapshot: {},
+        responses: [],
+      })),
+    );
+
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/communication-requests/export?profile=external&status=responded',
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).not.toContain('"request_999"');
+    expect(body).toMatch(/\n"[a-f0-9]{16}","inquiry","responded"/);
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        changes: expect.objectContaining({
+          record_count: 1000,
+          filters: expect.objectContaining({ redaction_profile: 'external' }),
+        }),
+      }),
+    });
+  });
+
+  it('rejects internal exports above the synchronous row cap before reading patient names', async () => {
+    communicationRequestFindManyMock.mockResolvedValueOnce(
+      Array.from({ length: 1001 }, (_, index) => ({
+        id: `request_${index}`,
+        patient_id: `patient_${index}`,
+        request_type: 'inquiry',
+        recipient_name: '在宅主治医',
+        recipient_role: '医師',
+        related_entity_type: 'medication_cycle',
+        related_entity_id: 'cycle_1',
+        status: 'responded',
+        subject: '疑義照会',
+        content: '服用方法の確認',
+        due_date: null,
+        requested_at: new Date('2026-03-28T09:30:00.000Z'),
+        context_snapshot: {},
+        responses: [],
+      })),
+    );
+
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/communication-requests/export?profile=internal&status=responded',
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: { max_rows: 1000 },
+    });
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('allows internal exports at the synchronous row cap', async () => {
+    communicationRequestFindManyMock.mockResolvedValueOnce(
+      Array.from({ length: 1000 }, (_, index) => ({
+        id: `request_${index}`,
+        patient_id: `patient_${index}`,
+        request_type: 'inquiry',
+        recipient_name: '在宅主治医',
+        recipient_role: '医師',
+        related_entity_type: 'medication_cycle',
+        related_entity_id: 'cycle_1',
+        status: 'responded',
+        subject: '疑義照会',
+        content: '服用方法の確認',
+        due_date: null,
+        requested_at: new Date('2026-03-28T09:30:00.000Z'),
+        context_snapshot: {},
+        responses: [],
+      })),
+    );
+    patientFindManyMock.mockResolvedValueOnce(
+      Array.from({ length: 1000 }, (_, index) => ({
+        id: `patient_${index}`,
+        name: `患者 ${index}`,
+      })),
+    );
+
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/communication-requests/export?profile=internal&status=responded',
+      ),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const body = await response.text();
+    expect(body).toContain('"request_999"');
+    expect(body).toContain('"患者 999"');
+    expect(patientFindManyMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        id: { in: expect.arrayContaining(['patient_999']) },
+      },
+      select: { id: true, name: true },
+    });
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        changes: expect.objectContaining({
+          record_count: 1000,
+          filters: expect.objectContaining({ redaction_profile: 'internal' }),
+        }),
+      }),
+    });
+  });
+
   it('rejects an invalid export profile before resolving assignment scope', async () => {
     const response = await GET(
       createRequest('http://localhost/api/communication-requests/export?profile=partner'),
@@ -205,6 +602,7 @@ describe('/api/communication-requests/export GET', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       details: {

@@ -2,6 +2,7 @@ import { RequestStatus } from '@prisma/client';
 import { z } from 'zod';
 
 export const communicationRequestStatusSchema = z.nativeEnum(RequestStatus);
+export const COMMUNICATION_RESPONSE_CONTENT_MAX_LENGTH = 4000;
 
 export function trimStringOrUndefined(value: unknown) {
   if (value === null || value === undefined) return undefined;
@@ -11,6 +12,15 @@ export function trimStringOrUndefined(value: unknown) {
 }
 
 export const requiredTrimmedStringSchema = (message: string) => z.string().trim().min(1, message);
+
+export const communicationResponseContentSchema = z
+  .string()
+  .trim()
+  .min(1, '回答内容は必須です')
+  .max(
+    COMMUNICATION_RESPONSE_CONTENT_MAX_LENGTH,
+    `回答内容は${COMMUNICATION_RESPONSE_CONTENT_MAX_LENGTH}文字以内で入力してください`,
+  );
 
 export const optionalTrimmedStringSchema = z.preprocess(
   trimStringOrUndefined,

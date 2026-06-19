@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 const {
   communicationRequestFindManyMock,
   communicationRequestCreateMock,
+  careReportFindFirstMock,
   tracingReportFindFirstMock,
   patientFindFirstMock,
   patientFindManyMock,
@@ -15,6 +16,7 @@ const {
 } = vi.hoisted(() => ({
   communicationRequestFindManyMock: vi.fn(),
   communicationRequestCreateMock: vi.fn(),
+  careReportFindFirstMock: vi.fn(),
   tracingReportFindFirstMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   patientFindManyMock: vi.fn(),
@@ -32,11 +34,11 @@ vi.mock('@/lib/auth/context', () => ({
       ctx: { orgId: string; userId: string; role: 'pharmacist' },
     ) => Promise<Response>,
   ) => {
-    return (req: NextRequest) =>
+    return (req: NextRequest & { role?: string }) =>
       handler(req, {
         orgId: 'org_1',
         userId: 'user_1',
-        role: 'pharmacist' as const,
+        role: (req.role ?? 'pharmacist') as 'pharmacist',
       });
   },
 }));
@@ -45,6 +47,9 @@ vi.mock('@/lib/db/client', () => ({
   prisma: {
     communicationRequest: {
       findMany: communicationRequestFindManyMock,
+    },
+    careReport: {
+      findFirst: careReportFindFirstMock,
     },
     tracingReport: {
       findFirst: tracingReportFindFirstMock,
@@ -104,6 +109,12 @@ describe('/api/communication-requests', () => {
     vi.clearAllMocks();
     communicationRequestFindManyMock.mockResolvedValue([{ id: 'request_1', status: 'draft' }]);
     communicationRequestCreateMock.mockResolvedValue({ id: 'request_2', status: 'draft' });
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      visit_record_id: 'visit_record_1',
+    });
     tracingReportFindFirstMock.mockResolvedValue({
       id: 'tracing_1',
       patient_id: 'patient_1',
@@ -141,6 +152,28 @@ describe('/api/communication-requests', () => {
     expect(communicationRequestFindManyMock.mock.calls[0][0].where).not.toHaveProperty('AND');
   });
 
+  it('rejects care report request lists when the caller cannot send reports', async () => {
+    const response = (await GET(
+      Object.assign(createGetRequest('?related_entity_type=care_report'), { role: 'clerk' }),
+    ))!;
+
+    expect(response.status).toBe(403);
+    expect(communicationRequestFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('excludes care report request rows from broad lists for report-only callers', async () => {
+    const response = (await GET(Object.assign(createGetRequest(), { role: 'clerk' })))!;
+
+    expect(response.status).toBe(200);
+    expect(communicationRequestFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          NOT: { related_entity_type: 'care_report' },
+        }),
+      }),
+    );
+  });
+
   it('uses stable cursor pagination when listing communication requests', async () => {
     communicationRequestFindManyMock.mockResolvedValueOnce([
       { id: 'request_2', requested_at: new Date('2026-06-18T00:01:00.000Z') },
@@ -162,6 +195,21 @@ describe('/api/communication-requests', () => {
       data: [{ id: 'request_2' }],
       hasMore: true,
       nextCursor: 'request_2',
+    });
+  });
+
+  it('returns a validation error for a stale pagination cursor', async () => {
+    communicationRequestFindManyMock.mockRejectedValueOnce({ code: 'P2025' });
+
+    const response = (await GET(createGetRequest('?limit=1&cursor=deleted_request')))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'ページカーソルが不正です',
+      details: {
+        cursor: ['指定されたカーソルの連携依頼が見つかりません'],
+      },
     });
   });
 
@@ -249,6 +297,114 @@ describe('/api/communication-requests', () => {
         due_date: new Date('2026-03-31'),
       }),
     });
+  });
+
+  it('normalizes care report communication scope from the linked report', async () => {
+    const response = (await POST(
+      createPostRequest({
+        request_type: '疑義照会',
+        related_entity_type: 'care_report',
+        related_entity_id: 'report_1',
+        subject: '確認事項',
+        content: '処方内容を確認したいです',
+      }),
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(careReportFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'report_1',
+        org_id: 'org_1',
+      },
+      select: {
+        id: true,
+        patient_id: true,
+        case_id: true,
+        visit_record_id: true,
+      },
+    });
+    expect(communicationRequestCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        related_entity_type: 'care_report',
+        related_entity_id: 'report_1',
+      }),
+    });
+  });
+
+  it('requires a related care report id before creating care report communication requests', async () => {
+    const response = (await POST(
+      createPostRequest({
+        request_type: '疑義照会',
+        related_entity_type: 'care_report',
+        subject: '確認事項',
+        content: '処方内容を確認したいです',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects missing linked care reports before request creation', async () => {
+    careReportFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = (await POST(
+      createPostRequest({
+        request_type: '疑義照会',
+        related_entity_type: 'care_report',
+        related_entity_id: 'report_missing',
+        subject: '確認事項',
+        content: '処方内容を確認したいです',
+      }),
+    ))!;
+
+    expect(response.status).toBe(404);
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects mismatched care report communication patient or case scope', async () => {
+    const response = (await POST(
+      createPostRequest({
+        patient_id: 'patient_other',
+        case_id: 'case_1',
+        request_type: '疑義照会',
+        related_entity_type: 'care_report',
+        related_entity_id: 'report_1',
+        subject: '確認事項',
+        content: '処方内容を確認したいです',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        related_entity_id: ['関連報告書と患者またはケースが一致しません'],
+      },
+    });
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects care report communication request creation when the caller cannot send reports', async () => {
+    const response = (await POST(
+      Object.assign(
+        createPostRequest({
+          patient_id: 'patient_1',
+          request_type: '疑義照会',
+          related_entity_type: 'care_report',
+          related_entity_id: 'report_1',
+          subject: '確認事項',
+          content: '処方内容を確認したいです',
+        }),
+        { role: 'clerk' },
+      ),
+    ))!;
+
+    expect(response.status).toBe(403);
+    expect(communicationRequestCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects archived patients before recipient suggestions or request creation', async () => {

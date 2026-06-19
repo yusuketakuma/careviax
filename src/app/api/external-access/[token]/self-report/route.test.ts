@@ -68,6 +68,11 @@ function createMalformedSelfReportRequest(url: string, otpHeader: string | null 
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/external-access/[token]/self-report', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -83,6 +88,7 @@ describe('/api/external-access/[token]/self-report', () => {
         id: 'grant_1',
         org_id: VALID_ORG_ID,
         patient_id: 'patient_1',
+        scope: { care_reports: true },
       },
     });
     patientSelfReportCreateMock.mockResolvedValue({
@@ -124,6 +130,7 @@ describe('/api/external-access/[token]/self-report', () => {
     );
 
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toEqual({
       data: {
         accepted: true,
@@ -151,6 +158,44 @@ describe('/api/external-access/[token]/self-report', () => {
     });
   });
 
+  it('rejects self reports for medication-only external access grants', async () => {
+    validateExternalAccessGrantMock.mockResolvedValueOnce({
+      ok: true,
+      grant: {
+        id: 'grant_1',
+        org_id: VALID_ORG_ID,
+        patient_id: 'patient_1',
+        scope: { medication_list: true },
+      },
+    });
+
+    const response = await POST(
+      createSelfReportRequest(
+        'http://localhost/api/external-access/token_1/self-report',
+        {
+          reported_by_name: '家族A',
+          category: 'adherence',
+          subject: '飲み忘れ',
+          content: '夕食後を飲み忘れ',
+        },
+        '1234',
+      ),
+      {
+        params: Promise.resolve({ token: 'token_1' }),
+      },
+    );
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'EXTERNAL_ACCESS_SELF_REPORT_SCOPE_DENIED',
+      message: 'この共有リンクでは自己申告を登録できません',
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientSelfReportCreateMock).not.toHaveBeenCalled();
+    expect(communicationEventCreateMock).not.toHaveBeenCalled();
+  });
+
   it('stores a hashed idempotency key and PHI-minimal response for keyed self reports', async () => {
     const response = await POST(
       createSelfReportRequest(
@@ -173,6 +218,7 @@ describe('/api/external-access/[token]/self-report', () => {
     );
 
     expect(response.status).toBe(201);
+    expectSensitiveNoStore(response);
     const responseText = await response.text();
     expect(responseText).toBe('{"data":{"accepted":true,"replayed":false}}');
     expect(responseText).not.toContain('patient_1');
@@ -296,6 +342,7 @@ describe('/api/external-access/[token]/self-report', () => {
     );
 
     expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
     const responseText = await response.text();
     expect(responseText).toBe(
       '{"code":"IDEMPOTENCY_CONFLICT","message":"Idempotency-Keyが別の自己申告で使用されています","details":{"reason":"key_reused_with_different_request"}}',
@@ -368,6 +415,7 @@ describe('/api/external-access/[token]/self-report', () => {
     );
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'Idempotency-Keyが不正です',
@@ -388,6 +436,7 @@ describe('/api/external-access/[token]/self-report', () => {
     );
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '共有リンクトークンが不正です',
     });
@@ -414,6 +463,7 @@ describe('/api/external-access/[token]/self-report', () => {
     );
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'OTPはリクエストボディではなくヘッダーで送信してください',
@@ -444,6 +494,7 @@ describe('/api/external-access/[token]/self-report', () => {
     );
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'OTPはリクエストボディではなくヘッダーで送信してください',
@@ -466,6 +517,7 @@ describe('/api/external-access/[token]/self-report', () => {
     );
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
@@ -489,6 +541,7 @@ describe('/api/external-access/[token]/self-report', () => {
     );
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'リクエストボディが不正です',
@@ -520,6 +573,7 @@ describe('/api/external-access/[token]/self-report', () => {
     );
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     expect(validateExternalAccessGrantMock).toHaveBeenCalledWith('token_1', undefined);
   });
 
@@ -543,6 +597,7 @@ describe('/api/external-access/[token]/self-report', () => {
     );
 
     expect(response.status).toBe(429);
+    expectSensitiveNoStore(response);
     expect(validateExternalAccessGrantMock).not.toHaveBeenCalled();
   });
 });

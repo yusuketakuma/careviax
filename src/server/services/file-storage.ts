@@ -756,7 +756,7 @@ function assertRoleAuthorizedForStoredFile(
   mode: StoredFileAccessMode,
 ) {
   if (record.purpose === 'report') {
-    if (!hasPermission(accessContext.role, 'canReport')) {
+    if (!hasPermission(accessContext.role, 'canSendCareReport')) {
       throwFileAccessForbidden(mode, '報告書ファイルへのアクセス権限がありません');
     }
     return;

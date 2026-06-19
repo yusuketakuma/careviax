@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthContext } from '@/lib/auth/context';
+import { hasPermission } from '@/lib/auth/permissions';
 import { prisma } from '@/lib/db/client';
 import {
   applyPatientAssignmentWhere,
@@ -8,27 +9,13 @@ import {
 import { recordDataExportAudit } from '@/server/services/export-audit';
 import { CASE_STATUSES } from '@/lib/patient/case-status';
 import { validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { formatDateKey } from '@/lib/date-key';
+import { maskAddressDetail, maskInsuranceNumber, maskPhoneNumber } from '@/lib/patient/privacy';
+import { minimalCsvRow as buildCsvRow } from '@/lib/csv/safe-csv';
 import { z } from 'zod';
 
 const BOM = '\uFEFF';
-
-function escapeCsv(value: string | null | undefined): string {
-  if (value == null) return '';
-  let str = String(value);
-  // Prevent CSV formula injection (Excel/Sheets interpret leading =, +, -, @, tab, CR as formulas)
-  if (str.length > 0 && /^[=+\-@\t\r]/.test(str)) {
-    str = "'" + str;
-  }
-  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-    return `"${str.replace(/"/g, '""')}"`;
-  }
-  return str;
-}
-
-function buildCsvRow(values: (string | null | undefined)[]): string {
-  return values.map(escapeCsv).join(',');
-}
 
 const caseStatusSchema = z.enum(CASE_STATUSES);
 
@@ -49,9 +36,11 @@ export async function GET(req: NextRequest) {
   const caseStatusParam = searchParams.get('case_status') ?? undefined;
   const caseStatus = caseStatusParam ? caseStatusSchema.safeParse(caseStatusParam) : null;
   if (caseStatus && !caseStatus.success) {
-    return validationError('ケースステータスが不正です', {
-      case_status: ['対応していないステータスです'],
-    });
+    return withSensitiveNoStore(
+      validationError('ケースステータスが不正です', {
+        case_status: ['対応していないステータスです'],
+      }),
+    );
   }
 
   const EXPORT_LIMIT = 10000;
@@ -112,6 +101,7 @@ export async function GET(req: NextRequest) {
     '登録日',
   ]);
 
+  const canExportDirectIdentifiers = hasPermission(ctx.role, 'canSendCareReport');
   const rows = patients.map((patient) => {
     const residence = patient.residences[0] ?? null;
     const latestCase = patient.cases[0] ?? null;
@@ -121,10 +111,16 @@ export async function GET(req: NextRequest) {
       patient.name_kana,
       formatDateKey(patient.birth_date),
       patient.gender,
-      patient.phone,
-      patient.medical_insurance_number,
-      patient.care_insurance_number,
-      residence?.address,
+      canExportDirectIdentifiers ? patient.phone : maskPhoneNumber(patient.phone),
+      canExportDirectIdentifiers
+        ? patient.medical_insurance_number
+        : maskInsuranceNumber(patient.medical_insurance_number),
+      canExportDirectIdentifiers
+        ? patient.care_insurance_number
+        : maskInsuranceNumber(patient.care_insurance_number),
+      canExportDirectIdentifiers
+        ? residence?.address
+        : maskAddressDetail(residence?.address ?? null),
       latestCase?.status,
       formatDateKey(patient.created_at),
     ]);
@@ -148,13 +144,14 @@ export async function GET(req: NextRequest) {
     userAgent: ctx.userAgent,
   });
 
-  return new NextResponse(csv, {
-    status: 200,
-    headers: {
-      'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': `attachment; filename="patients_${formatDateKey(new Date())}.csv"`,
-      'Cache-Control': 'no-store',
-      ...(truncated ? { 'X-Export-Truncated': 'true' } : {}),
-    },
-  });
+  return withSensitiveNoStore(
+    new NextResponse(csv, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': `attachment; filename="patients_${formatDateKey(new Date())}.csv"`,
+        ...(truncated ? { 'X-Export-Truncated': 'true' } : {}),
+      },
+    }),
+  );
 }

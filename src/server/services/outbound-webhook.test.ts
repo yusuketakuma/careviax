@@ -40,7 +40,9 @@ vi.mock('@/lib/db/client', () => ({
 import {
   dispatchWebhookEvent,
   dispatchWebhookEventForOrg,
+  hasWebhookUrlCredentials,
   isAllowedWebhookUrl,
+  redactWebhookUrlForDisplay,
   retryDueWebhookDeliveries,
 } from './outbound-webhook';
 import { encryptWebhookSecret } from './webhook-secret-encryption';
@@ -95,6 +97,26 @@ describe('outbound-webhook', () => {
     await expect(isAllowedWebhookUrl('https://0177.0.0.1/webhook')).resolves.toBe(false);
     await expect(isAllowedWebhookUrl('https://2130706433/webhook')).resolves.toBe(false);
     expect(lookupMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects webhook URLs with embedded credentials', async () => {
+    await expect(
+      isAllowedWebhookUrl('https://user:pass@partner.example.com/webhook'),
+    ).resolves.toBe(false);
+    expect(lookupMock).not.toHaveBeenCalled();
+  });
+
+  it('redacts webhook display URLs without changing the stored dispatch target', () => {
+    expect(hasWebhookUrlCredentials('https://user:pass@partner.example.com/webhook')).toBe(true);
+    expect(
+      redactWebhookUrlForDisplay(
+        'https://user:pass@partner.example.com/webhook?token=secret#ignored',
+      ),
+    ).toBe('https://partner.example.com/webhook');
+  });
+
+  it('does not echo malformed legacy webhook URLs during display redaction', () => {
+    expect(redactWebhookUrlForDisplay('partner hook token=secret')).toBe('[invalid webhook URL]');
   });
 
   it('rejects reserved and multicast IPv4 destinations', async () => {
@@ -208,6 +230,42 @@ describe('outbound-webhook', () => {
         success: true,
       },
     ]);
+  });
+
+  it('persists redacted delivery URLs while dispatching to the registered webhook URL', async () => {
+    webhookRegistrationFindManyMock.mockResolvedValue([
+      {
+        id: 'webhook_1',
+        org_id: 'org_1',
+        url: 'https://hooks.example.com/patient?token=super-secret#ignored',
+        secret: 'secret_1',
+        events: ['patient.created'],
+        is_active: true,
+        created_at: new Date('2026-04-05T00:00:00.000Z'),
+      },
+    ]);
+    lookupMock.mockResolvedValue([{ address: '8.8.8.8', family: 4 }]);
+    fetchMock.mockResolvedValue({ status: 202, ok: true });
+
+    await dispatchWebhookEventForOrg('org_1', 'patient.created', {
+      patientId: 'patient_1',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://hooks.example.com/patient?token=super-secret#ignored',
+      expect.any(Object),
+    );
+    expect(webhookDeliveryUpsertMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          url: 'https://hooks.example.com/patient',
+        }),
+        update: expect.objectContaining({
+          url: 'https://hooks.example.com/patient',
+        }),
+      }),
+    );
+    expect(JSON.stringify(webhookDeliveryUpsertMock.mock.calls)).not.toContain('super-secret');
   });
 
   it('uses an unrefed cleanup timer for outbound webhook delivery requests', async () => {

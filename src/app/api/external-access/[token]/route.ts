@@ -1,17 +1,13 @@
 import { NextRequest } from 'next/server';
-import { success, notFound, validationError, error } from '@/lib/api/response';
+import { error, success, notFound } from '@/lib/api/response';
+import { getClientIp } from '@/lib/api/request-ip';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import {
   buildExternalAccessPayload,
   markExternalAccessViewed,
-  validateExternalAccessGrant,
+  recordExternalAccessViewAudit,
 } from '@/server/services/external-access';
-import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { checkAuthRateLimit } from '@/lib/api/rate-limit';
-import { getClientIp } from '@/lib/api/request-ip';
-import {
-  createExternalAccessOtpRateLimitIdentifier,
-  EXTERNAL_ACCESS_OTP_RATE_LIMIT_PATH,
-} from '../shared';
+import { prepareExternalAccessOtpRequest, validatePreparedExternalAccessGrant } from '../shared';
 
 /**
  * Public endpoint — no authentication required.
@@ -20,38 +16,27 @@ import {
  */
 export async function GET(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const { token: rawToken } = await params;
-  const token = normalizeRequiredRouteParam(rawToken);
-  if (!token) return validationError('共有リンクトークンが不正です');
+  const prepared = await prepareExternalAccessOtpRequest(req, rawToken);
+  if (!prepared.ok) return prepared.response;
 
-  const ip = getClientIp(req) ?? 'unknown';
-  const rateLimit = await checkAuthRateLimit(
-    createExternalAccessOtpRateLimitIdentifier(token, ip),
-    EXTERNAL_ACCESS_OTP_RATE_LIMIT_PATH,
-  );
-  if (!rateLimit.allowed) {
-    return error(
-      'RATE_LIMIT_EXCEEDED',
-      'リクエストが多すぎます。しばらく待ってから再試行してください。',
-      429,
-    );
-  }
-
-  // OTP is transmitted via header to avoid leaking it in server logs / browser history.
-  const otpParam = req.headers.get('x-otp');
-  const validation = await validateExternalAccessGrant(token, otpParam);
-
-  if (!validation.ok) {
-    if (validation.kind === 'validation') {
-      return validationError(validation.message);
-    }
-
-    return notFound(validation.message);
-  }
+  const validation = await validatePreparedExternalAccessGrant(prepared.request);
+  if (!validation.ok) return validation.response;
 
   const payload = await buildExternalAccessPayload(validation.grant);
 
-  if (!payload) return notFound('患者情報が見つかりません');
+  if (!payload) return withSensitiveNoStore(notFound('患者情報が見つかりません'));
 
-  await markExternalAccessViewed(validation.grant.id);
-  return success({ data: payload });
+  try {
+    await markExternalAccessViewed(validation.grant.id);
+    await recordExternalAccessViewAudit({
+      grant: validation.grant,
+      ipAddress: getClientIp(req),
+      userAgent: req.headers.get('user-agent'),
+    });
+  } catch {
+    return withSensitiveNoStore(
+      error('EXTERNAL_ACCESS_VIEW_AUDIT_FAILED', '外部共有の閲覧監査を記録できませんでした', 500),
+    );
+  }
+  return withSensitiveNoStore(success({ data: payload }));
 }

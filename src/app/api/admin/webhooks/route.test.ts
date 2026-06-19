@@ -7,6 +7,7 @@ const {
   withOrgContextMock,
   webhookRegistrationFindManyMock,
   webhookRegistrationCreateMock,
+  auditLogCreateMock,
   isAllowedWebhookUrlMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
@@ -29,6 +30,7 @@ const {
   withOrgContextMock: vi.fn(),
   webhookRegistrationFindManyMock: vi.fn(),
   webhookRegistrationCreateMock: vi.fn(),
+  auditLogCreateMock: vi.fn(),
   isAllowedWebhookUrlMock: vi.fn(),
 }));
 
@@ -96,7 +98,7 @@ describe('/api/admin/webhooks', () => {
     webhookRegistrationFindManyMock.mockResolvedValue([
       {
         id: 'webhook_1',
-        url: 'https://partner.example.com/hooks/careviax',
+        url: 'https://partner.example.com/hooks/careviax?token=list-secret#ignored',
         events: ['patient.created'],
         is_active: true,
         created_at: new Date('2026-05-01T00:00:00.000Z'),
@@ -110,11 +112,15 @@ describe('/api/admin/webhooks', () => {
       is_active: true,
       created_at: new Date('2026-05-01T00:00:00.000Z'),
     });
+    auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         webhookRegistration: {
           findMany: webhookRegistrationFindManyMock,
           create: webhookRegistrationCreateMock,
+        },
+        auditLog: {
+          create: auditLogCreateMock,
         },
       }),
     );
@@ -151,9 +157,39 @@ describe('/api/admin/webhooks', () => {
         updated_at: true,
       },
     });
-    await expect(response.json()).resolves.toMatchObject({
-      data: [expect.objectContaining({ id: 'webhook_1' })],
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: [
+        expect.objectContaining({
+          id: 'webhook_1',
+          url: 'https://partner.example.com/hooks/careviax',
+        }),
+      ],
     });
+    expect(JSON.stringify(body)).not.toContain('list-secret');
+  });
+
+  it('does not echo malformed legacy webhook URLs in list responses', async () => {
+    webhookRegistrationFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'webhook_legacy',
+        url: 'partner hook token=legacy-secret',
+        events: ['patient.created'],
+        is_active: true,
+        created_at: new Date('2026-05-01T00:00:00.000Z'),
+        updated_at: new Date('2026-05-01T00:00:00.000Z'),
+      },
+    ]);
+
+    const response = await GET(createRequest('GET'), emptyRouteContext);
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data[0]).toMatchObject({
+      id: 'webhook_legacy',
+      url: '[invalid webhook URL]',
+    });
+    expect(JSON.stringify(body)).not.toContain('legacy-secret');
   });
 
   it('creates a webhook registration after URL safety validation', async () => {
@@ -196,6 +232,21 @@ describe('/api/admin/webhooks', () => {
         secret: expect.stringMatching(/^[0-9a-f]{64}$/),
       },
     });
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        actor_id: 'user_1',
+        action: 'webhook_registration_created',
+        target_type: 'WebhookRegistration',
+        target_id: 'webhook_2',
+        changes: {
+          url: 'https://partner.example.com/hooks/careviax',
+          events: ['patient.created'],
+          secret_key_id: 'app:ENCRYPTION_KEY:v1',
+        },
+      }),
+    });
+    expect(JSON.stringify(auditLogCreateMock.mock.calls)).not.toContain('secret_ciphertext');
   });
 
   it('fails closed when webhook secret encryption is not configured', async () => {
@@ -212,9 +263,12 @@ describe('/api/admin/webhooks', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toMatchObject({
-      error: 'Webhook secret encryption key is not configured',
+      error: 'Webhook secret 暗号化キーが設定されていません',
+      code: 'WEBHOOK_SECRET_ENCRYPTION_UNAVAILABLE',
+      message: 'Webhook secret 暗号化キーが設定されていません',
     });
     expect(webhookRegistrationCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object create payloads before URL checks or writes', async () => {
@@ -224,6 +278,8 @@ describe('/api/admin/webhooks', () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
       error: 'リクエストボディが不正です',
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
     });
     expect(isAllowedWebhookUrlMock).not.toHaveBeenCalled();
     expect(webhookRegistrationCreateMock).not.toHaveBeenCalled();
@@ -236,8 +292,100 @@ describe('/api/admin/webhooks', () => {
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
       error: 'リクエストボディが不正です',
+      code: 'VALIDATION_ERROR',
+      message: 'リクエストボディが不正です',
     });
     expect(isAllowedWebhookUrlMock).not.toHaveBeenCalled();
     expect(webhookRegistrationCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns fieldErrors as a compatibility alias for schema validation failures', async () => {
+    const response = await POST(
+      createRequest('POST', {
+        url: 'not-a-url',
+        events: [],
+      }),
+      emptyRouteContext,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: '入力値が不正です',
+      code: 'VALIDATION_ERROR',
+      message: '入力値が不正です',
+      details: {
+        url: expect.any(Array),
+        events: expect.any(Array),
+      },
+      fieldErrors: {
+        url: expect.any(Array),
+        events: expect.any(Array),
+      },
+    });
+    expect(isAllowedWebhookUrlMock).not.toHaveBeenCalled();
+    expect(webhookRegistrationCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects webhook URLs with embedded credentials before DNS safety checks', async () => {
+    const response = await POST(
+      createRequest('POST', {
+        url: 'https://user:pass@partner.example.com/hooks/careviax',
+        events: ['patient.created'],
+      }),
+      emptyRouteContext,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'WebhookのURLにユーザー情報は含められません',
+      code: 'VALIDATION_ERROR',
+      message: 'WebhookのURLにユーザー情報は含められません',
+    });
+    expect(isAllowedWebhookUrlMock).not.toHaveBeenCalled();
+    expect(webhookRegistrationCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('redacts query strings from webhook creation audit changes', async () => {
+    webhookRegistrationCreateMock.mockResolvedValueOnce({
+      id: 'webhook_2',
+      url: 'https://partner.example.com/hooks/careviax?token=super-secret#ignored',
+      events: ['patient.created'],
+      is_active: true,
+      created_at: new Date('2026-05-01T00:00:00.000Z'),
+    });
+    const response = await POST(
+      createRequest('POST', {
+        url: 'https://partner.example.com/hooks/careviax?token=super-secret#ignored',
+        events: ['patient.created'],
+      }),
+      emptyRouteContext,
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body.data).toMatchObject({
+      id: 'webhook_2',
+      url: 'https://partner.example.com/hooks/careviax',
+      secret: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
+    expect(JSON.stringify(body)).not.toContain('super-secret');
+    expect(webhookRegistrationCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        url: 'https://partner.example.com/hooks/careviax?token=super-secret#ignored',
+      }),
+      select: expect.any(Object),
+    });
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        changes: expect.objectContaining({
+          url: 'https://partner.example.com/hooks/careviax',
+        }),
+      }),
+    });
+    expect(JSON.stringify(auditLogCreateMock.mock.calls)).not.toContain('super-secret');
   });
 });

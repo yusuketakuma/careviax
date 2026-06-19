@@ -259,6 +259,28 @@ function isUnsafeIpAddress(ip: string) {
   return true;
 }
 
+export function hasWebhookUrlCredentials(rawUrl: string) {
+  try {
+    const url = new URL(rawUrl);
+    return Boolean(url.username || url.password);
+  } catch {
+    return false;
+  }
+}
+
+export function redactWebhookUrlForDisplay(rawUrl: string) {
+  try {
+    const url = new URL(rawUrl);
+    url.username = '';
+    url.password = '';
+    url.search = '';
+    url.hash = '';
+    return url.toString();
+  } catch {
+    return '[invalid webhook URL]';
+  }
+}
+
 /**
  * Validate that a webhook URL is safe to send outbound requests to.
  * Rejects non-HTTPS URLs and private/loopback/link-local address ranges
@@ -268,6 +290,7 @@ export async function isAllowedWebhookUrl(rawUrl: string): Promise<boolean> {
   try {
     const url = new URL(rawUrl);
     if (url.protocol !== 'https:') return false;
+    if (hasWebhookUrlCredentials(rawUrl)) return false;
     const hostname = normalizeHostname(url.hostname);
     if (hostname === 'localhost') return false;
 
@@ -560,6 +583,7 @@ async function recordWebhookDeliveryPending(
     const db = await loadWebhookDeliveryPersistenceClient();
     if (!db.webhookDelivery) return;
     const now = new Date();
+    const displayUrl = redactWebhookUrlForDisplay(registration.url);
     await db.webhookDelivery.upsert({
       where: deliveryWhere(registration, payload),
       create: {
@@ -568,14 +592,14 @@ async function recordWebhookDeliveryPending(
         delivery_id: payload.id,
         event: payload.event,
         payload,
-        url: registration.url,
+        url: displayUrl,
         status: 'pending',
         next_attempt_at: now,
       },
       update: {
         event: payload.event,
         payload,
-        url: registration.url,
+        url: displayUrl,
         status: 'pending',
         status_code: null,
         error: null,

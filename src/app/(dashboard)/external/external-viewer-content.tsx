@@ -22,7 +22,7 @@ type ExternalGrant = {
   patient_id: string;
   patient: { name: string };
   granted_to_name: string;
-  granted_to_contact: string | null;
+  granted_to_contact_masked: string | null;
   scope: Record<string, boolean>;
   expires_at: string;
   accessed_at: string | null;
@@ -253,7 +253,9 @@ export function ExternalViewerContent({
                       <p className="font-medium text-foreground">{grant.patient.name}</p>
                       <p className="text-sm text-muted-foreground">
                         共有先: {grant.granted_to_name}
-                        {grant.granted_to_contact ? ` / ${grant.granted_to_contact}` : ''}
+                        {grant.granted_to_contact_masked
+                          ? ` / ${grant.granted_to_contact_masked}`
+                          : ''}
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">

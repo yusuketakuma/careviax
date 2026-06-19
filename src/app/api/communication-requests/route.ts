@@ -2,7 +2,8 @@ import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeJsonInput } from '@/lib/db/json';
-import { success, validationError, notFound } from '@/lib/api/response';
+import { isPrismaErrorCode } from '@/lib/db/prisma-errors';
+import { success, validationError, notFound, forbidden } from '@/lib/api/response';
 import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 import type { Prisma } from '@prisma/client';
@@ -19,9 +20,13 @@ import { pickCommunicationRecipientCandidate } from '@/lib/contact-profiles';
 import { findLatestPrescriberInstitutionSuggestion } from '@/lib/prescriptions/prescriber-institutions';
 import {
   buildCommunicationRequestAssignmentWhere,
+  canAccessCareReportCommunication,
   canAccessCommunicationRequestRecord,
+  isCareReportCommunicationRequest,
+  resolveCareReportCommunicationScope,
   resolveTracingReportCommunicationScope,
 } from '@/server/services/communication-request-access';
+import { canAccessCareReportSource } from '@/server/services/care-report-access';
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
 
 function isInputJsonObject(
@@ -89,6 +94,10 @@ export const GET = withAuthContext(
       related_entity_type: relatedEntityType,
       related_entity_id: relatedEntityId,
     } = parsedQuery.data;
+    const canReadCareReportOutput = canAccessCareReportCommunication(ctx.role);
+    if (isCareReportCommunicationRequest(relatedEntityType) && !canReadCareReportOutput) {
+      return forbidden('報告書共有の閲覧権限がありません');
+    }
 
     const assignmentWhere = await buildCommunicationRequestAssignmentWhere({
       db: prisma,
@@ -102,45 +111,61 @@ export const GET = withAuthContext(
       ...(patientId ? { patient_id: patientId } : {}),
       ...(relatedEntityType ? { related_entity_type: relatedEntityType } : {}),
       ...(relatedEntityId ? { related_entity_id: relatedEntityId } : {}),
+      ...(!relatedEntityType && !canReadCareReportOutput
+        ? { NOT: { related_entity_type: 'care_report' } }
+        : {}),
       ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
     };
 
-    const requests = await prisma.communicationRequest.findMany({
-      where,
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-      orderBy: [{ requested_at: 'desc' }, { id: 'desc' }],
-      select: {
-        id: true,
-        org_id: true,
-        patient_id: true,
-        case_id: true,
-        request_type: true,
-        template_key: true,
-        recipient_name: true,
-        recipient_role: true,
-        related_entity_type: true,
-        related_entity_id: true,
-        context_snapshot: true,
-        status: true,
-        subject: true,
-        content: true,
-        requested_by: true,
-        requested_at: true,
-        due_date: true,
-        created_at: true,
-        updated_at: true,
-        responses: {
-          orderBy: { responded_at: 'desc' },
-          take: 1,
-          select: {
-            id: true,
-            responder_name: true,
-            responded_at: true,
+    const requests = await prisma.communicationRequest
+      .findMany({
+        where,
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+        orderBy: [{ requested_at: 'desc' }, { id: 'desc' }],
+        select: {
+          id: true,
+          org_id: true,
+          patient_id: true,
+          case_id: true,
+          request_type: true,
+          template_key: true,
+          recipient_name: true,
+          recipient_role: true,
+          related_entity_type: true,
+          related_entity_id: true,
+          context_snapshot: true,
+          status: true,
+          subject: true,
+          content: true,
+          requested_by: true,
+          requested_at: true,
+          due_date: true,
+          created_at: true,
+          updated_at: true,
+          responses: {
+            orderBy: { responded_at: 'desc' },
+            take: 1,
+            select: {
+              id: true,
+              responder_name: true,
+              responded_at: true,
+            },
           },
         },
-      },
-    });
+      })
+      .catch((cause) => {
+        if (isPrismaErrorCode(cause, 'P2025')) {
+          return null;
+        }
+        throw cause;
+      });
+
+    if (!requests) {
+      return validationError('ページカーソルが不正です', {
+        cursor: ['指定されたカーソルの連携依頼が見つかりません'],
+      });
+    }
 
     return success(buildCursorPage(requests, limit, (request) => request.id));
   },
@@ -170,9 +195,63 @@ export const POST = withAuthContext(
       context_snapshot,
       status,
     } = parsed.data;
+    if (
+      isCareReportCommunicationRequest(related_entity_type) &&
+      !canAccessCareReportCommunication(ctx.role)
+    ) {
+      return forbidden('報告書共有の作成権限がありません');
+    }
 
     let effectivePatientId = patient_id ?? null;
     let effectiveCaseId = case_id ?? null;
+
+    if (isCareReportCommunicationRequest(related_entity_type)) {
+      if (!related_entity_id) {
+        return validationError('関連報告書IDは必須です', {
+          related_entity_id: ['関連報告書IDは必須です'],
+        });
+      }
+
+      const careReport = await prisma.careReport.findFirst({
+        where: {
+          id: related_entity_id,
+          org_id: ctx.orgId,
+        },
+        select: {
+          id: true,
+          patient_id: true,
+          case_id: true,
+          visit_record_id: true,
+        },
+      });
+
+      if (!careReport) return notFound('報告書が見つかりません');
+
+      const resolvedScope = resolveCareReportCommunicationScope({
+        requestedPatientId: patient_id,
+        requestedCaseId: case_id,
+        careReport,
+      });
+
+      if (!resolvedScope) {
+        return validationError('関連報告書と患者またはケースが一致しません', {
+          related_entity_id: ['関連報告書と患者またはケースが一致しません'],
+        });
+      }
+
+      if (
+        !(await canAccessCareReportSource(prisma, ctx.orgId, ctx, {
+          patientId: resolvedScope.patientId,
+          caseId: resolvedScope.caseId,
+          visitRecordId: careReport.visit_record_id,
+        }))
+      ) {
+        return notFound('報告書が見つかりません');
+      }
+
+      effectivePatientId = resolvedScope.patientId;
+      effectiveCaseId = resolvedScope.caseId;
+    }
 
     if (related_entity_type === 'tracing_report') {
       if (!related_entity_id) {

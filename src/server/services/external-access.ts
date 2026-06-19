@@ -3,14 +3,18 @@ import bcrypt from 'bcryptjs';
 import type { MemberRole, Prisma } from '@prisma/client';
 import { startOfDay } from 'date-fns';
 import { decode, encode } from 'next-auth/jwt';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { hasPermission, type PermissionKey } from '@/lib/auth/permissions';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
+import { maskContactValueForAudit } from '@/lib/privacy/contact-mask';
 
 type ExternalGrantRecord = {
   id: string;
   org_id: string;
   patient_id: string;
+  granted_to_name?: string;
+  granted_to_contact?: string | null;
   otp_hash: string | null;
   expires_at: Date;
   revoked_at: Date | null;
@@ -237,6 +241,19 @@ export function buildExternalAccessGrantVisibilityWhere(
   };
 }
 
+export function buildVisibleExternalAccessGrantWhere(args: {
+  orgId: string;
+  patientId: string;
+  caseIds: readonly string[] | undefined;
+}): Prisma.ExternalAccessGrantWhereInput {
+  return {
+    org_id: args.orgId,
+    patient_id: args.patientId,
+    revoked_at: null,
+    ...buildExternalAccessGrantVisibilityWhere(args.caseIds),
+  };
+}
+
 export function attachExternalAccessCaseBoundary(
   scope: ExternalAccessScope,
   allowedCaseIds: string[],
@@ -456,6 +473,8 @@ export async function validateExternalAccessGrant(
       id: true,
       org_id: true,
       patient_id: true,
+      granted_to_name: true,
+      granted_to_contact: true,
       otp_hash: true,
       expires_at: true,
       revoked_at: true,
@@ -520,6 +539,37 @@ export async function markExternalAccessViewed(grantId: string) {
     where: { id: grantId },
     data: { accessed_at: new Date() },
   });
+}
+
+export async function recordExternalAccessViewAudit(args: {
+  grant: ExternalGrantRecord;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+}) {
+  const publicScope = toPublicExternalAccessScope(args.grant.scope);
+  await createAuditLogEntry(
+    prisma,
+    {
+      orgId: args.grant.org_id,
+      userId: `external_access:${args.grant.id}`,
+      ipAddress: args.ipAddress ?? undefined,
+      userAgent: args.userAgent ?? undefined,
+    },
+    {
+      action: 'external_access_payload_viewed',
+      targetType: 'external_access_grant',
+      targetId: args.grant.id,
+      changes: {
+        patient_id: args.grant.patient_id,
+        granted_to_name: args.grant.granted_to_name ?? null,
+        granted_to_contact_masked: maskContactValueForAudit(args.grant.granted_to_contact ?? null, {
+          phoneLeadingDigits: 3,
+        }),
+        scope: publicScope,
+        scope_keys: EXTERNAL_ACCESS_SCOPE_KEYS.filter((scopeKey) => publicScope[scopeKey] === true),
+      },
+    },
+  );
 }
 
 function formatShareDate(value: Date) {

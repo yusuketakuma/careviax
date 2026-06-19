@@ -22,6 +22,7 @@ vi.mock('@/lib/db/client', () => ({
 import {
   buildExternalAccessGrantVisibilityWhere,
   buildExternalAccessPayload,
+  buildVisibleExternalAccessGrantWhere,
   externalAccessGrantVisibleForCaseIds,
   hashExternalAccessOtp,
   hashExternalAccessToken,
@@ -258,6 +259,35 @@ describe('external access scope validation', () => {
                 { scope: { path: ['self_report_history'], equals: true } },
               ]),
             }),
+            { scope: { path: ['allowed_case_ids'], array_contains: ['case_1'] } },
+          ],
+        },
+        {
+          AND: [
+            expect.any(Object),
+            { scope: { path: ['allowed_case_ids'], array_contains: ['case_2'] } },
+          ],
+        },
+      ],
+    });
+  });
+
+  it('builds patient-level visible grant predicates from the shared visibility helper', () => {
+    const where = buildVisibleExternalAccessGrantWhere({
+      orgId: 'org_1',
+      patientId: 'patient_1',
+      caseIds: ['case_2', 'case_1', 'case_1'],
+    });
+
+    expect(where).toMatchObject({
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      revoked_at: null,
+      OR: [
+        expect.any(Object),
+        {
+          AND: [
+            expect.any(Object),
             { scope: { path: ['allowed_case_ids'], array_contains: ['case_1'] } },
           ],
         },
@@ -531,6 +561,8 @@ describe('validateExternalAccessGrant', () => {
         id: true,
         org_id: true,
         patient_id: true,
+        granted_to_name: true,
+        granted_to_contact: true,
         otp_hash: true,
         expires_at: true,
         revoked_at: true,

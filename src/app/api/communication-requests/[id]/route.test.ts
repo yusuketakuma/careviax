@@ -50,6 +50,9 @@ vi.mock('@/lib/db/client', () => ({
     patient: {
       findFirst: patientFindFirstMock,
     },
+    communicationResponse: {
+      findFirst: communicationResponseFindFirstMock,
+    },
   },
 }));
 
@@ -157,6 +160,7 @@ describe('/api/communication-requests/[id] GET', () => {
         id: true,
         patient_id: true,
         case_id: true,
+        related_entity_type: true,
       },
     });
     expect(communicationRequestFindFirstMock).toHaveBeenNthCalledWith(
@@ -167,6 +171,7 @@ describe('/api/communication-requests/[id] GET', () => {
           subject: true,
           content: true,
           responses: expect.objectContaining({
+            orderBy: [{ responded_at: 'desc' }, { id: 'desc' }],
             select: expect.objectContaining({ content: true }),
           }),
         }),
@@ -193,6 +198,31 @@ describe('/api/communication-requests/[id] GET', () => {
     expect(communicationRequestFindFirstMock).not.toHaveBeenCalled();
     expect(careCaseFindFirstMock).not.toHaveBeenCalled();
     expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(fetchEmergencyContactsMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects care report communication content for callers without report send permission', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: {
+        orgId: 'org_1',
+        userId: 'clerk_1',
+        role: 'clerk',
+      },
+    });
+    communicationRequestFindFirstMock.mockResolvedValueOnce({
+      id: 'request_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      related_entity_type: 'care_report',
+    });
+
+    const response = await GET(createGetRequest(), {
+      params: Promise.resolve({ id: 'request_1' }),
+    });
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expect(communicationRequestFindFirstMock).toHaveBeenCalledTimes(1);
     expect(fetchEmergencyContactsMock).not.toHaveBeenCalled();
   });
 
@@ -229,6 +259,7 @@ describe('/api/communication-requests/[id] GET', () => {
         id: true,
         patient_id: true,
         case_id: true,
+        related_entity_type: true,
       },
     });
     expect(fetchEmergencyContactsMock).toHaveBeenCalled();
@@ -291,6 +322,38 @@ describe('/api/communication-requests/[id] PATCH', () => {
         },
       }),
     );
+  });
+
+  it('rejects care report communication mutations for callers without report send permission', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      ctx: {
+        orgId: 'org_1',
+        userId: 'clerk_1',
+        role: 'clerk',
+      },
+    });
+    communicationRequestFindFirstMock.mockResolvedValueOnce({
+      id: 'request_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'sent',
+      updated_at: CURRENT_UPDATED_AT_DATE,
+      related_entity_type: 'care_report',
+      related_entity_id: 'report_1',
+    });
+
+    const response = await PATCH(
+      createRequest({
+        status: 'responded',
+        status_change_reason: '医師から返信あり',
+      }),
+      { params: Promise.resolve({ id: 'request_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
   });
 
   it('rejects invalid status transitions', async () => {
@@ -391,6 +454,64 @@ describe('/api/communication-requests/[id] PATCH', () => {
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
+  it('replays an existing PATCH response when the retry carries the original version', async () => {
+    communicationRequestFindFirstMock
+      .mockResolvedValueOnce({
+        id: 'request_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        status: 'responded',
+        updated_at: new Date('2026-06-18T00:01:00.000Z'),
+        related_entity_type: null,
+        related_entity_id: null,
+      })
+      .mockResolvedValueOnce({
+        id: 'request_1',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        status: 'responded',
+        updated_at: new Date('2026-06-18T00:01:00.000Z'),
+        responses: [{ id: 'response_existing' }],
+      });
+    communicationResponseFindFirstMock.mockResolvedValueOnce({
+      id: 'response_existing',
+      org_id: 'org_1',
+      request_id: 'request_1',
+      responder_name: '在宅主治医',
+      content: '現行処方で継続',
+      responded_at: new Date('2026-03-29T00:00:00.000Z'),
+    });
+
+    const response = await PATCH(
+      createRequest(
+        {
+          expected_updated_at: CURRENT_UPDATED_AT,
+          response: {
+            responder_name: '在宅主治医',
+            content: '現行処方で継続',
+            responded_at: '2026-03-29T00:00:00.000Z',
+          },
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'request_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: 'request_1',
+        responses: [{ id: 'response_existing' }],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(communicationResponseCreateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
   it('rejects non-object request bodies before loading the request', async () => {
     const response = await PATCH(createRequest(['unexpected'], { 'x-org-id': 'org_1' }), {
       params: Promise.resolve({ id: 'request_1' }),
@@ -481,6 +602,36 @@ describe('/api/communication-requests/[id] PATCH', () => {
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
+  it('rejects response content above the clinical note length cap before loading the request', async () => {
+    const response = await PATCH(
+      createRequest(
+        {
+          response: {
+            responder_name: '在宅主治医',
+            content: 'あ'.repeat(4001),
+            responded_at: '2026-03-29T00:00:00.000Z',
+          },
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      {
+        params: Promise.resolve({ id: 'request_1' }),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        response: expect.any(Array),
+      },
+    });
+    expect(communicationRequestFindFirstMock).not.toHaveBeenCalled();
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(communicationResponseCreateMock).not.toHaveBeenCalled();
+  });
+
   it('records an audit log with the reason for direct status changes', async () => {
     const response = await PATCH(
       createRequest(
@@ -562,7 +713,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
         request_id: 'request_1',
         responder_name: '在宅主治医',
         content: '現行処方で継続',
-        response_intent_key: expect.stringMatching(/^communication-response:v1:[a-f0-9]{64}$/),
+        response_intent_key: expect.stringMatching(/^communication-response:v2:[a-f0-9]{64}$/),
       }),
     });
     expect(communicationRequestUpdateManyMock).toHaveBeenCalledWith({
@@ -659,25 +810,88 @@ describe('/api/communication-requests/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
-    expect(communicationResponseFindFirstMock).toHaveBeenCalledWith({
-      where: {
-        org_id: 'org_1',
-        request_id: 'request_1',
-        OR: [
-          {
-            response_intent_key: expect.stringMatching(/^communication-response:v1:[a-f0-9]{64}$/),
-          },
-          {
-            response_intent_key: null,
-            responder_name: '在宅主治医',
-            content: '現行処方で継続',
-            responded_at: new Date('2026-03-29T00:00:00.000Z'),
-          },
-        ],
-      },
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
+    const query = communicationResponseFindFirstMock.mock.calls[0]?.[0];
+    expect(query?.where).toMatchObject({
+      org_id: 'org_1',
+      request_id: 'request_1',
+    });
+    expect(query?.where.OR[0].response_intent_key).toEqual(
+      expect.stringMatching(/^communication-response:v2:[a-f0-9]{64}$/),
+    );
+    expect(query?.where.OR[1].response_intent_key).toEqual(
+      expect.stringMatching(/^communication-response:v1:[a-f0-9]{64}$/),
+    );
+    expect(query?.where.OR[2]).toMatchObject({
+      response_intent_key: null,
+      responder_name: '在宅主治医',
+      content: '現行処方で継続',
+      responded_at: new Date('2026-03-29T00:00:00.000Z'),
     });
     expect(communicationResponseCreateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('touches and audits an already-responded request when PATCH records a different new response', async () => {
+    communicationRequestFindFirstMock.mockResolvedValue({
+      id: 'request_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'responded',
+      updated_at: CURRENT_UPDATED_AT_DATE,
+      related_entity_type: null,
+      related_entity_id: null,
+    });
+    communicationResponseFindFirstMock.mockResolvedValue(null);
+    communicationResponseCreateMock.mockResolvedValue({ id: 'response_new' });
+    communicationRequestTxFindFirstMock.mockResolvedValue({
+      id: 'request_1',
+      status: 'responded',
+      responses: [{ id: 'response_new' }],
+    });
+
+    const response = await PATCH(
+      createRequest(
+        {
+          response: {
+            responder_name: '薬剤部B',
+            content: '追加確認しました',
+            responded_at: '2026-03-29T00:05:00.000Z',
+          },
+        },
+        { 'x-org-id': 'org_1' },
+      ),
+      { params: Promise.resolve({ id: 'request_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(communicationRequestUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'request_1',
+        org_id: 'org_1',
+        status: 'responded',
+        updated_at: CURRENT_UPDATED_AT_DATE,
+      },
+      data: { updated_at: expect.any(Date) },
+    });
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'communication_response_recorded',
+        target_type: 'communication_request',
+        target_id: 'request_1',
+        changes: expect.objectContaining({
+          from_status: 'responded',
+          to_status: 'responded',
+          response_id: 'response_new',
+          response_created: true,
+          response_content_digest: expect.stringMatching(
+            /^communication-response-content:v1:[a-f0-9]{64}$/,
+          ),
+          response_content_length: 8,
+        }),
+      }),
+    });
   });
 
   it('reuses an existing inline response retry even when responded_at was omitted', async () => {
@@ -714,15 +928,22 @@ describe('/api/communication-requests/[id] PATCH', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expect(communicationRequestUpdateManyMock).not.toHaveBeenCalled();
     const query = communicationResponseFindFirstMock.mock.calls[0]?.[0];
     const intentKey = query?.where.OR[0].response_intent_key;
-    expect(intentKey).toEqual(expect.stringMatching(/^communication-response:v1:[a-f0-9]{64}$/));
+    expect(intentKey).toEqual(expect.stringMatching(/^communication-response:v2:[a-f0-9]{64}$/));
+    expect(query?.where.OR[1].response_intent_key).toEqual(
+      expect.stringMatching(/^communication-response:v1:[a-f0-9]{64}$/),
+    );
     expect(query).toMatchObject({
       where: {
         org_id: 'org_1',
         request_id: 'request_1',
         OR: [
           { response_intent_key: intentKey },
+          {
+            response_intent_key: query?.where.OR[1].response_intent_key,
+          },
           {
             response_intent_key: null,
             responder_name: '在宅主治医',
@@ -731,7 +952,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
         ],
       },
     });
-    expect(query?.where.OR[1].responded_at).toBeInstanceOf(Date);
+    expect(query?.where.OR[2].responded_at).toBeInstanceOf(Date);
     expect(communicationResponseCreateMock).not.toHaveBeenCalled();
     expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
@@ -746,14 +967,17 @@ describe('/api/communication-requests/[id] PATCH', () => {
       related_entity_type: null,
       related_entity_id: null,
     });
-    communicationResponseFindFirstMock.mockResolvedValueOnce(null).mockResolvedValueOnce({
-      id: 'response_race',
-      org_id: 'org_1',
-      request_id: 'request_1',
-      responder_name: '在宅主治医',
-      content: '現行処方で継続',
-      responded_at: new Date('2026-03-29T00:00:00.000Z'),
-    });
+    communicationResponseFindFirstMock
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'response_race',
+        org_id: 'org_1',
+        request_id: 'request_1',
+        responder_name: '在宅主治医',
+        content: '現行処方で継続',
+        responded_at: new Date('2026-03-29T00:00:00.000Z'),
+      });
     communicationResponseCreateMock.mockRejectedValueOnce(buildUniqueConstraintError());
 
     const response = await PATCH(
@@ -776,7 +1000,7 @@ describe('/api/communication-requests/[id] PATCH', () => {
       data: expect.objectContaining({
         org_id: 'org_1',
         request_id: 'request_1',
-        response_intent_key: expect.stringMatching(/^communication-response:v1:[a-f0-9]{64}$/),
+        response_intent_key: expect.stringMatching(/^communication-response:v2:[a-f0-9]{64}$/),
       }),
     });
     const createData = communicationResponseCreateMock.mock.calls[0]?.[0]?.data;

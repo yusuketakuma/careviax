@@ -1,46 +1,35 @@
 import { NextRequest } from 'next/server';
+import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError, notFound, conflict } from '@/lib/api/response';
+import { success, validationError, notFound, conflict, forbidden } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { z } from 'zod';
-import { canAccessCommunicationRequestRecord } from '@/server/services/communication-request-access';
-import { requiredTrimmedStringSchema } from '@/lib/validations/communication-request';
-import { requireWritablePatient } from '@/server/services/patient-write-guard';
 import {
-  buildCommunicationResponseIntentKey,
-  isUniqueConstraintError,
-} from '@/lib/communication-response-idempotency';
+  canAccessCareReportCommunication,
+  canAccessCommunicationRequestRecord,
+  isCareReportCommunicationRequest,
+  requireWritableCommunicationRequestPatient,
+} from '@/server/services/communication-request-access';
+import {
+  communicationResponseContentSchema,
+  requiredTrimmedStringSchema,
+  trimStringOrUndefined,
+} from '@/lib/validations/communication-request';
+import { buildCommunicationResponseContentDigest } from '@/lib/communication-response-idempotency';
+import {
+  findCommunicationResponseByIntent,
+  upsertCommunicationResponseByIntent,
+} from '@/server/services/communication-response-upsert';
 
 const createResponseSchema = z.object({
+  expected_updated_at: z.string().datetime('版情報が不正です'),
   responder_name: requiredTrimmedStringSchema('回答者名は必須です'),
-  content: requiredTrimmedStringSchema('回答内容は必須です'),
-  responded_at: z
-    .string()
-    .trim()
-    .regex(/^\d{4}-\d{2}-\d{2}/, '日付形式が不正です'),
+  content: communicationResponseContentSchema,
+  responded_at: z.preprocess(trimStringOrUndefined, z.string().datetime('日付形式が不正です')),
 });
-
-async function requireWritableCommunicationPatient(
-  ctx: Parameters<typeof requireWritablePatient>[1],
-  scope: { patient_id: string | null; case_id: string | null },
-) {
-  if (scope.patient_id) {
-    return requireWritablePatient(prisma, ctx, scope.patient_id);
-  }
-
-  if (!scope.case_id) return null;
-
-  const careCase = await prisma.careCase.findFirst({
-    where: { id: scope.case_id, org_id: ctx.orgId },
-    select: { patient_id: true },
-  });
-  if (!careCase) return null;
-
-  return requireWritablePatient(prisma, ctx, careCase.patient_id);
-}
 
 export const GET = withAuthContext(
   async (_req: NextRequest, ctx, { params }: { params: Promise<{ id: string }> }) => {
@@ -50,7 +39,13 @@ export const GET = withAuthContext(
 
     const request = await prisma.communicationRequest.findFirst({
       where: { id, org_id: ctx.orgId },
-      select: { id: true, patient_id: true, case_id: true },
+      select: {
+        id: true,
+        patient_id: true,
+        case_id: true,
+        related_entity_type: true,
+        updated_at: true,
+      },
     });
     if (!request) return notFound('依頼が見つかりません');
     if (
@@ -64,13 +59,19 @@ export const GET = withAuthContext(
     ) {
       return notFound('依頼が見つかりません');
     }
+    if (
+      isCareReportCommunicationRequest(request.related_entity_type) &&
+      !canAccessCareReportCommunication(ctx.role)
+    ) {
+      return forbidden('報告書共有の閲覧権限がありません');
+    }
 
     const responses = await prisma.communicationResponse.findMany({
       where: { request_id: id, org_id: ctx.orgId },
-      orderBy: { responded_at: 'desc' },
+      orderBy: [{ responded_at: 'desc' }, { id: 'desc' }],
     });
 
-    return success({ data: responses });
+    return success({ data: responses, request_updated_at: request.updated_at.toISOString() });
   },
   {
     permission: 'canReport',
@@ -94,7 +95,14 @@ export const POST = withAuthContext(
 
     const existingRequest = await prisma.communicationRequest.findFirst({
       where: { id, org_id: ctx.orgId },
-      select: { id: true, patient_id: true, case_id: true, status: true },
+      select: {
+        id: true,
+        patient_id: true,
+        case_id: true,
+        status: true,
+        updated_at: true,
+        related_entity_type: true,
+      },
     });
     if (!existingRequest) return notFound('依頼が見つかりません');
     if (
@@ -108,90 +116,141 @@ export const POST = withAuthContext(
     ) {
       return notFound('依頼が見つかりません');
     }
+    if (
+      isCareReportCommunicationRequest(existingRequest.related_entity_type) &&
+      !canAccessCareReportCommunication(ctx.role)
+    ) {
+      return forbidden('報告書共有の更新権限がありません');
+    }
     if (['closed', 'cancelled', 'expired'].includes(existingRequest.status)) {
       return validationError('完了・取消・期限切れの依頼には返信を追加できません');
     }
-
-    const writable = await requireWritableCommunicationPatient(ctx, existingRequest);
-    if (writable && 'response' in writable) return writable.response;
-
-    const result = await withOrgContext(ctx.orgId, async (tx) => {
-      const respondedAt = new Date(parsed.data.responded_at);
-      const responseIntentKey = buildCommunicationResponseIntentKey({
+    const expectedUpdatedAt = new Date(parsed.data.expected_updated_at);
+    const respondedAt = new Date(parsed.data.responded_at);
+    if (existingRequest.updated_at.getTime() !== expectedUpdatedAt.getTime()) {
+      const existingResponse = await findCommunicationResponseByIntent({
+        db: prisma,
+        orgId: ctx.orgId,
         requestId: id,
         responderName: parsed.data.responder_name,
         content: parsed.data.content,
         respondedAt,
       });
+      if (existingResponse.response) {
+        return success({
+          data: existingResponse.response,
+          request_updated_at: existingRequest.updated_at.toISOString(),
+        });
+      }
+      return conflict('連携依頼が同時に更新されました。再読み込みしてください');
+    }
 
-      const responseLookupWhere = {
-        org_id: ctx.orgId,
-        request_id: id,
-        OR: [
-          { response_intent_key: responseIntentKey },
-          {
-            response_intent_key: null,
-            responder_name: parsed.data.responder_name,
-            content: parsed.data.content,
-            responded_at: respondedAt,
+    const writable = await requireWritableCommunicationRequestPatient({
+      db: prisma,
+      ctx,
+      scope: existingRequest,
+    });
+    if (writable && 'response' in writable) return writable.response;
+
+    const result = await withOrgContext(ctx.orgId, async (tx) => {
+      let responseResult: Awaited<ReturnType<typeof upsertCommunicationResponseByIntent>> | null =
+        null;
+      if (existingRequest.status !== 'responded') {
+        const claim = await tx.communicationRequest.updateMany({
+          where: {
+            id,
+            org_id: ctx.orgId,
+            status: existingRequest.status,
+            updated_at: expectedUpdatedAt,
           },
-        ],
-      };
-
-      const existingResponse = await tx.communicationResponse.findFirst({
-        where: responseLookupWhere,
-      });
-      if (existingResponse) {
-        return { response: existingResponse, created: false };
+          data: { status: 'responded' },
+        });
+        if (claim.count !== 1) {
+          return { error: 'state_changed' as const };
+        }
+      } else {
+        const existingResponse = await findCommunicationResponseByIntent({
+          db: tx,
+          orgId: ctx.orgId,
+          requestId: id,
+          responderName: parsed.data.responder_name,
+          content: parsed.data.content,
+          respondedAt,
+        });
+        if (existingResponse.response) {
+          responseResult = {
+            response: existingResponse.response,
+            created: false,
+            responseIntentKey: existingResponse.responseIntentKey,
+          };
+        } else {
+          const claim = await tx.communicationRequest.updateMany({
+            where: {
+              id,
+              org_id: ctx.orgId,
+              status: existingRequest.status,
+              updated_at: expectedUpdatedAt,
+            },
+            data: { updated_at: new Date() },
+          });
+          if (claim.count !== 1) {
+            return { error: 'state_changed' as const };
+          }
+        }
       }
 
-      const claim = await tx.communicationRequest.updateMany({
-        where: {
-          id,
-          org_id: ctx.orgId,
-          status: existingRequest.status,
-        },
-        data: { status: 'responded' },
+      responseResult ??= await upsertCommunicationResponseByIntent({
+        db: tx,
+        orgId: ctx.orgId,
+        requestId: id,
+        responderName: parsed.data.responder_name,
+        content: parsed.data.content,
+        respondedAt,
       });
-      if (claim.count !== 1) {
+      const updatedRequest = await tx.communicationRequest.findFirst({
+        where: { id, org_id: ctx.orgId },
+        select: { updated_at: true },
+      });
+      if (!updatedRequest) {
         return { error: 'state_changed' as const };
       }
-
-      let response;
-      try {
-        response = await tx.communicationResponse.create({
-          data: {
-            org_id: ctx.orgId,
-            request_id: id,
+      if (responseResult.created || existingRequest.status !== 'responded') {
+        await createAuditLogEntry(tx, ctx, {
+          action: 'communication_response_recorded',
+          targetType: 'communication_request',
+          targetId: id,
+          changes: {
+            from_status: existingRequest.status,
+            to_status: 'responded',
+            response_id: responseResult.response.id,
+            response_created: responseResult.created,
+            response_intent_key: responseResult.responseIntentKey,
             responder_name: parsed.data.responder_name,
-            content: parsed.data.content,
-            responded_at: respondedAt,
-            response_intent_key: responseIntentKey,
+            response_content_digest: buildCommunicationResponseContentDigest({
+              requestId: id,
+              responseId: responseResult.response.id,
+              content: parsed.data.content,
+            }),
+            response_content_length: parsed.data.content.length,
+            responded_at: respondedAt.toISOString(),
+            actor_id: ctx.userId,
           },
         });
-      } catch (error) {
-        if (!isUniqueConstraintError(error)) throw error;
-
-        const responseCreatedByConcurrentRetry = await tx.communicationResponse.findFirst({
-          where: {
-            org_id: ctx.orgId,
-            request_id: id,
-            response_intent_key: responseIntentKey,
-          },
-        });
-        if (!responseCreatedByConcurrentRetry) throw error;
-
-        return { response: responseCreatedByConcurrentRetry, created: false };
       }
-
-      return { response, created: true };
+      return { ...responseResult, requestUpdatedAt: updatedRequest.updated_at };
     });
 
     if ('error' in result) {
       return conflict('連携依頼が同時に更新されました。再読み込みしてください');
     }
 
-    return success({ data: result.response }, result.created ? 201 : 200);
+    return success(
+      {
+        data: result.response,
+        request_updated_at: result.requestUpdatedAt.toISOString(),
+      },
+      result.created ? 201 : 200,
+    );
   },
   {
     permission: 'canReport',

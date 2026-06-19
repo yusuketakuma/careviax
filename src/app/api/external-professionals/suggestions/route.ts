@@ -42,7 +42,7 @@ export const GET = withAuthContext(
     });
   },
   {
-    permission: 'canReport',
+    permission: 'canSendCareReport',
     message: '他職種候補の閲覧権限がありません',
   },
 );

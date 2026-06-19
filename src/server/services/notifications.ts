@@ -13,6 +13,8 @@ const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT ?? 'mailto:noreply@ph-os.jp';
 const DEFAULT_NOTIFICATION_DELIVERY_CONCURRENCY = 16;
 const MAX_NOTIFICATION_DELIVERY_CONCURRENCY = 32;
+const EXTERNAL_NOTIFICATION_TITLE = 'PH-OS通知';
+const EXTERNAL_NOTIFICATION_MESSAGE = 'アプリで詳細を確認してください';
 
 function getWebPushEnabled() {
   return Boolean(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
@@ -128,6 +130,13 @@ function toNotificationStreamItem(notification: PersistedNotification) {
     link: notification.link,
     is_read: notification.is_read ?? false,
     created_at: createdAt,
+  };
+}
+
+export function buildExternalNotificationContent() {
+  return {
+    title: EXTERNAL_NOTIFICATION_TITLE,
+    message: EXTERNAL_NOTIFICATION_MESSAGE,
   };
 }
 
@@ -354,14 +363,15 @@ export async function dispatchNotificationEvent(tx: Tx, input: DispatchNotificat
 
   // Web Push — send to all subscriptions for in-app notification recipients
   if (getWebPushEnabled() && targetUserIds.length > 0) {
+    const externalNotification = buildExternalNotificationContent();
     const pushSubscriptions = await tx.pushSubscription.findMany({
       where: { org_id: input.orgId, user_id: { in: targetUserIds } },
       select: { endpoint: true, p256dh: true, auth: true },
     });
 
     const pushPayload = JSON.stringify({
-      title: input.title,
-      body: input.message,
+      title: externalNotification.title,
+      body: externalNotification.message,
       link: input.link ?? null,
     });
 
@@ -377,6 +387,7 @@ export async function dispatchNotificationEvent(tx: Tx, input: DispatchNotificat
   }
 
   if (externalUserIds.length > 0) {
+    const externalNotification = buildExternalNotificationContent();
     const users = await tx.user.findMany({
       where: {
         org_id: input.orgId,
@@ -395,11 +406,20 @@ export async function dispatchNotificationEvent(tx: Tx, input: DispatchNotificat
         .filter((userId) => usersById.get(userId)?.phone)
         .map(
           (userId) => () =>
-            smsAdapter.sendSms(usersById.get(userId)!.phone!, `${input.title}\n${input.message}`),
+            smsAdapter.sendSms(
+              usersById.get(userId)!.phone!,
+              `${externalNotification.title}\n${externalNotification.message}`,
+            ),
         ),
       ...lineUserIds
         .filter((userId) => usersById.has(userId))
-        .map((userId) => () => lineAdapter.sendMessage(userId, `${input.title}\n${input.message}`)),
+        .map(
+          (userId) => () =>
+            lineAdapter.sendMessage(
+              userId,
+              `${externalNotification.title}\n${externalNotification.message}`,
+            ),
+        ),
     ]);
   }
 

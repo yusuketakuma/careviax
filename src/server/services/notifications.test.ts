@@ -1,14 +1,28 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { dispatchNotificationEvent } from './notifications';
+import { buildExternalNotificationContent, dispatchNotificationEvent } from './notifications';
 
-const { broadcastStatusUpdateMock, loggerWarnMock, sendSmsMock, sendLineMessageMock } = vi.hoisted(
-  () => ({
-    broadcastStatusUpdateMock: vi.fn(),
-    loggerWarnMock: vi.fn(),
-    sendSmsMock: vi.fn(),
-    sendLineMessageMock: vi.fn(),
-  }),
-);
+const {
+  broadcastStatusUpdateMock,
+  loggerWarnMock,
+  sendSmsMock,
+  sendLineMessageMock,
+  sendWebPushMock,
+  setVapidDetailsMock,
+} = vi.hoisted(() => ({
+  broadcastStatusUpdateMock: vi.fn(),
+  loggerWarnMock: vi.fn(),
+  sendSmsMock: vi.fn(),
+  sendLineMessageMock: vi.fn(),
+  sendWebPushMock: vi.fn(),
+  setVapidDetailsMock: vi.fn(),
+}));
+
+vi.mock('web-push', () => ({
+  default: {
+    setVapidDetails: setVapidDetailsMock,
+    sendNotification: sendWebPushMock,
+  },
+}));
 
 vi.mock('@/server/adapters/realtime', () => ({
   getRealtimeAdapter: () => ({
@@ -419,12 +433,12 @@ describe('dispatchNotificationEvent', () => {
     expect(sendSmsMock).toHaveBeenNthCalledWith(
       1,
       '09000000001',
-      '承認待ち\n通知を確認してください',
+      'PH-OS通知\nアプリで詳細を確認してください',
     );
     expect(sendSmsMock).toHaveBeenNthCalledWith(
       2,
       '09000000003',
-      '承認待ち\n通知を確認してください',
+      'PH-OS通知\nアプリで詳細を確認してください',
     );
     expect(sendLineMessageMock).not.toHaveBeenCalled();
   });
@@ -471,14 +485,195 @@ describe('dispatchNotificationEvent', () => {
     expect(sendLineMessageMock).toHaveBeenNthCalledWith(
       1,
       'user_1',
-      '折り返し依頼\n至急対応してください',
+      'PH-OS通知\nアプリで詳細を確認してください',
     );
     expect(sendLineMessageMock).toHaveBeenNthCalledWith(
       2,
       'user_2',
-      '折り返し依頼\n至急対応してください',
+      'PH-OS通知\nアプリで詳細を確認してください',
     );
     expect(sendSmsMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps PHI in persisted in-app notifications while redacting external SMS and LINE bodies', async () => {
+    vi.useFakeTimers();
+    sendSmsMock.mockReset();
+    sendLineMessageMock.mockReset();
+    const { tx, notificationRuleFindMany, membershipFindMany, notificationCreate, userFindMany } =
+      createTx();
+
+    notificationRuleFindMany.mockResolvedValue([
+      {
+        id: 'rule_sms',
+        org_id: 'org_1',
+        event_type: 'patient_self_report_followup_due',
+        channel: 'sms',
+        recipients: {
+          user_ids: ['user_1'],
+        },
+        enabled: true,
+      },
+      {
+        id: 'rule_line',
+        org_id: 'org_1',
+        event_type: 'patient_self_report_followup_due',
+        channel: 'line',
+        recipients: {
+          user_ids: ['user_1'],
+        },
+        enabled: true,
+      },
+    ]);
+    membershipFindMany.mockResolvedValue([]);
+    userFindMany.mockResolvedValue([{ id: 'user_1', phone: '09000000001' }]);
+    notificationCreate.mockImplementation(async ({ data }) => ({
+      id: 'notification_1',
+      created_at: new Date('2026-06-17T00:00:00.000Z'),
+      is_read: false,
+      ...data,
+    }));
+
+    await dispatchNotificationEvent(tx, {
+      orgId: 'org_1',
+      eventType: 'patient_self_report_followup_due',
+      type: 'urgent',
+      title: '田中 一郎さんの麻薬管理確認',
+      message: 'モルヒネ残薬と肺がん疼痛について確認してください',
+      explicitUserIds: ['user_1'],
+    });
+
+    expect(notificationCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          title: '田中 一郎さんの麻薬管理確認',
+          message: 'モルヒネ残薬と肺がん疼痛について確認してください',
+        }),
+      }),
+    );
+    expect(broadcastStatusUpdateMock).toHaveBeenCalledWith('user:user_1', [
+      expect.objectContaining({
+        title: '田中 一郎さんの麻薬管理確認',
+        message: 'モルヒネ残薬と肺がん疼痛について確認してください',
+      }),
+    ]);
+
+    await runScheduledDeliveries();
+
+    const expectedExternalBody = 'PH-OS通知\nアプリで詳細を確認してください';
+    expect(sendSmsMock).toHaveBeenCalledWith('09000000001', expectedExternalBody);
+    expect(sendLineMessageMock).toHaveBeenCalledWith('user_1', expectedExternalBody);
+    const externalPayloads = JSON.stringify([
+      sendSmsMock.mock.calls,
+      sendLineMessageMock.mock.calls,
+      buildExternalNotificationContent(),
+    ]);
+    expect(externalPayloads).not.toContain('田中');
+    expect(externalPayloads).not.toContain('一郎');
+    expect(externalPayloads).not.toContain('モルヒネ');
+    expect(externalPayloads).not.toContain('肺がん');
+  });
+
+  it('redacts Web Push payloads while preserving persisted in-app notification details', async () => {
+    const originalPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+    const originalPrivateKey = process.env.VAPID_PRIVATE_KEY;
+    const originalSubject = process.env.VAPID_SUBJECT;
+    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY = 'public-key';
+    process.env.VAPID_PRIVATE_KEY = 'private-key';
+    process.env.VAPID_SUBJECT = 'mailto:test@example.com';
+    vi.useFakeTimers();
+    vi.resetModules();
+    sendWebPushMock.mockReset();
+    setVapidDetailsMock.mockReset();
+    const { dispatchNotificationEvent: dispatchWithPush } = await import('./notifications');
+    const {
+      tx,
+      notificationRuleFindMany,
+      membershipFindMany,
+      notificationCreate,
+      pushSubscriptionFindMany,
+    } = createTx();
+
+    notificationRuleFindMany.mockResolvedValue([]);
+    membershipFindMany.mockResolvedValue([]);
+    notificationCreate.mockImplementation(async ({ data }) => ({
+      id: 'notification_1',
+      created_at: new Date('2026-06-17T00:00:00.000Z'),
+      is_read: false,
+      ...data,
+    }));
+    pushSubscriptionFindMany.mockResolvedValue([
+      {
+        endpoint: 'https://push.example.test/subscription',
+        p256dh: 'p256dh-key',
+        auth: 'auth-secret',
+      },
+    ]);
+
+    try {
+      await dispatchWithPush(tx, {
+        orgId: 'org_1',
+        eventType: 'patient_self_report_followup_due',
+        type: 'urgent',
+        title: '田中 一郎さんの麻薬管理確認',
+        message: 'モルヒネ残薬と肺がん疼痛について確認してください',
+        link: '/patients/patient_1',
+        explicitUserIds: ['user_1'],
+      });
+
+      expect(notificationCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            title: '田中 一郎さんの麻薬管理確認',
+            message: 'モルヒネ残薬と肺がん疼痛について確認してください',
+          }),
+        }),
+      );
+      expect(pushSubscriptionFindMany).toHaveBeenCalledWith({
+        where: { org_id: 'org_1', user_id: { in: ['user_1'] } },
+        select: { endpoint: true, p256dh: true, auth: true },
+      });
+
+      await runScheduledDeliveries();
+
+      expect(setVapidDetailsMock).toHaveBeenCalledWith(
+        'mailto:test@example.com',
+        'public-key',
+        'private-key',
+      );
+      expect(sendWebPushMock).toHaveBeenCalledTimes(1);
+      const pushBody = JSON.parse(sendWebPushMock.mock.calls[0]?.[1] as string) as {
+        title: string;
+        body: string;
+        link: string | null;
+      };
+      expect(pushBody).toEqual({
+        title: 'PH-OS通知',
+        body: 'アプリで詳細を確認してください',
+        link: '/patients/patient_1',
+      });
+      const payloadJson = JSON.stringify(pushBody);
+      expect(payloadJson).not.toContain('田中');
+      expect(payloadJson).not.toContain('一郎');
+      expect(payloadJson).not.toContain('モルヒネ');
+      expect(payloadJson).not.toContain('肺がん');
+    } finally {
+      if (originalPublicKey === undefined) {
+        delete process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      } else {
+        process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY = originalPublicKey;
+      }
+      if (originalPrivateKey === undefined) {
+        delete process.env.VAPID_PRIVATE_KEY;
+      } else {
+        process.env.VAPID_PRIVATE_KEY = originalPrivateKey;
+      }
+      if (originalSubject === undefined) {
+        delete process.env.VAPID_SUBJECT;
+      } else {
+        process.env.VAPID_SUBJECT = originalSubject;
+      }
+      vi.resetModules();
+    }
   });
 
   it('reuses role membership lookups across notification channels', async () => {

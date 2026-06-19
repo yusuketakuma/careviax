@@ -9,11 +9,15 @@ const {
   sendSmsMock,
   patientFindFirstMock,
   patientFindManyMock,
+  consentRecordFindFirstMock,
   careCaseFindManyMock,
+  externalAccessGrantFindFirstMock,
   externalAccessGrantFindManyMock,
   patientSelfReportFindManyMock,
+  patientSelfReportGroupByMock,
   createMock,
   updateMock,
+  auditLogCreateMock,
   validateExternalAccessScopeForRoleMock,
   MissingExternalAccessSecretErrorMock,
 } = vi.hoisted(() => ({
@@ -24,11 +28,15 @@ const {
   sendSmsMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   patientFindManyMock: vi.fn(),
+  consentRecordFindFirstMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
+  externalAccessGrantFindFirstMock: vi.fn(),
   externalAccessGrantFindManyMock: vi.fn(),
   patientSelfReportFindManyMock: vi.fn(),
+  patientSelfReportGroupByMock: vi.fn(),
   createMock: vi.fn(),
   updateMock: vi.fn(),
+  auditLogCreateMock: vi.fn(),
   validateExternalAccessScopeForRoleMock: vi.fn(),
   MissingExternalAccessSecretErrorMock: class MissingExternalAccessSecretError extends Error {
     constructor() {
@@ -80,14 +88,19 @@ vi.mock('@/lib/db/client', () => ({
       findFirst: patientFindFirstMock,
       findMany: patientFindManyMock,
     },
+    consentRecord: {
+      findFirst: consentRecordFindFirstMock,
+    },
     careCase: {
       findMany: careCaseFindManyMock,
     },
     externalAccessGrant: {
+      findFirst: externalAccessGrantFindFirstMock,
       findMany: externalAccessGrantFindManyMock,
     },
     patientSelfReport: {
       findMany: patientSelfReportFindManyMock,
+      groupBy: patientSelfReportGroupByMock,
     },
   },
 }));
@@ -136,6 +149,11 @@ function createGetRequest(url = 'http://localhost/api/external-access') {
   return new NextRequest(url);
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 // 新ポリシー: org-wide ロール(pharmacist 等)は担当割当スコープを撤廃。
 // canAccessPatient / listAccessiblePatientCaseIds は org_id(+id/patient_id)のみで照合する。
 function expectPharmacistPatientAssignmentWhere(patientId?: string) {
@@ -150,6 +168,44 @@ function expectPharmacistCareCaseAssignmentWhere(patientId: string) {
     org_id: 'org_1',
     patient_id: patientId,
   };
+}
+
+const EXTERNAL_ACCESS_AUDIT_ALLOWED_KEYS = [
+  'actor_id',
+  'expires_at',
+  'expires_hours',
+  'granted_to_contact_masked',
+  'granted_to_name',
+  'otp_delivery_intent',
+  'patient_id',
+  'scope',
+  'scope_keys',
+] as const;
+
+function expectExternalAccessAuditChangesSafe(changes: Record<string, unknown>) {
+  expect(Object.keys(changes).sort()).toEqual([...EXTERNAL_ACCESS_AUDIT_ALLOWED_KEYS].sort());
+  for (const key of [
+    'otp',
+    'raw_otp',
+    'otp_hash',
+    'token',
+    'token_hash',
+    'provisional_token',
+    'provisional_token_hash',
+    'jwt',
+    'secret',
+  ]) {
+    expect(changes).not.toHaveProperty(key);
+  }
+
+  const auditJson = JSON.stringify(changes);
+  const createData = createMock.mock.calls[0]?.[0]?.data ?? {};
+  const updateData = updateMock.mock.calls[0]?.[0]?.data ?? {};
+  for (const verifier of [createData.token_hash, createData.otp_hash, updateData.token_hash]) {
+    if (typeof verifier === 'string' && verifier.length > 0) {
+      expect(auditJson).not.toContain(verifier);
+    }
+  }
 }
 
 describe('/api/external-access GET', () => {
@@ -185,6 +241,23 @@ describe('/api/external-access GET', () => {
         created_at: new Date('2026-04-02T00:00:00.000Z'),
       },
     ]);
+    patientSelfReportGroupByMock.mockImplementation((args) => {
+      if (args.where?.status) {
+        return Promise.resolve([
+          {
+            external_access_grant_id: 'grant_1',
+            _count: { _all: 1 },
+          },
+        ]);
+      }
+      return Promise.resolve([
+        {
+          external_access_grant_id: 'grant_1',
+          _count: { _all: 1 },
+          _max: { created_at: new Date('2026-04-02T00:00:00.000Z') },
+        },
+      ]);
+    });
   });
 
   it.each(['driver', 'external_viewer'])(
@@ -209,11 +282,16 @@ describe('/api/external-access GET', () => {
     const response = await GET(createGetRequest(), routeContext);
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
     expect(externalAccessGrantFindManyMock).not.toHaveBeenCalled();
     expect(patientFindManyMock).not.toHaveBeenCalled();
     expect(patientSelfReportFindManyMock).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toEqual({ data: [] });
+    await expect(response.json()).resolves.toEqual({
+      data: [],
+      hasMore: false,
+      nextCursor: null,
+    });
   });
 
   it('lets a pharmacist trainee list visit-scope external sharing metadata through report access', async () => {
@@ -222,6 +300,7 @@ describe('/api/external-access GET', () => {
     const response = await GET(createGetRequest(), routeContext);
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(externalAccessGrantFindManyMock).toHaveBeenCalledTimes(1);
     await expect(response.json()).resolves.toMatchObject({
       data: [expect.objectContaining({ id: 'grant_1' })],
@@ -237,6 +316,7 @@ describe('/api/external-access GET', () => {
     );
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(externalAccessGrantFindManyMock).toHaveBeenCalledTimes(1);
     // 新ポリシー: 組織内フルアクセスのため担当割当スコープ(grant visibility OR)は付かず、
     // org_id + patient_id の単純なリスト取得になる。
@@ -246,7 +326,7 @@ describe('/api/external-access GET', () => {
         revoked_at: null,
         patient_id: 'patient_1',
       },
-      orderBy: { created_at: 'desc' },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       select: {
         id: true,
         org_id: true,
@@ -258,7 +338,7 @@ describe('/api/external-access GET', () => {
         accessed_at: true,
         created_at: true,
       },
-      take: 200,
+      take: 201,
     });
     expect(externalAccessGrantFindManyMock.mock.calls[0][0]).not.toHaveProperty('skip');
     // canAccessPatient は org-wide ロールでは担当割当を付けず org_id + id だけで照合する。
@@ -279,13 +359,16 @@ describe('/api/external-access GET', () => {
         name_kana: true,
       },
     });
-    await expect(response.json()).resolves.toMatchObject({
+    expect(patientSelfReportFindManyMock).not.toHaveBeenCalled();
+    expect(patientSelfReportGroupByMock).toHaveBeenCalledTimes(2);
+    const body = await response.json();
+    expect(body).toMatchObject({
       data: [
         {
           id: 'grant_1',
           patient_id: 'patient_1',
           granted_to_name: '田中ケアマネ',
-          granted_to_contact: '09012345678',
+          granted_to_contact_masked: '090****5678',
           scope: { care_reports: true },
           patient: {
             name: '山田 太郎',
@@ -298,7 +381,80 @@ describe('/api/external-access GET', () => {
           },
         },
       ],
+      hasMore: false,
+      nextCursor: null,
     });
+    expect(body.data[0]).not.toHaveProperty('granted_to_contact');
+    const payloadText = JSON.stringify(body);
+    expect(payloadText).not.toContain('09012345678');
+  });
+
+  it('returns hasMore and nextCursor without returning the sentinel row', async () => {
+    const grants = Array.from({ length: 201 }, (_, index) => ({
+      id: `grant_${index.toString().padStart(3, '0')}`,
+      org_id: 'org_1',
+      patient_id: 'patient_1',
+      granted_to_name: '田中ケアマネ',
+      granted_to_contact: null,
+      scope: { care_reports: true },
+      expires_at: new Date('2026-04-03T00:00:00.000Z'),
+      accessed_at: null,
+      created_at: new Date('2026-04-01T00:00:00.000Z'),
+    }));
+    externalAccessGrantFindManyMock.mockResolvedValue(grants);
+    patientSelfReportGroupByMock.mockResolvedValue([]);
+
+    const response = await GET(createGetRequest(), routeContext);
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.data).toHaveLength(200);
+    expect(body.hasMore).toBe(true);
+    expect(body.nextCursor).toBe('grant_199');
+    expect(body.data.at(-1).id).toBe('grant_199');
+  });
+
+  it('rejects stale grant cursors before listing grant rows', async () => {
+    externalAccessGrantFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await GET(
+      createGetRequest('http://localhost/api/external-access?cursor=stale_cursor'),
+      routeContext,
+    );
+
+    expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: { cursor: ['カーソルが見つかりません'] },
+    });
+    expect(externalAccessGrantFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        revoked_at: null,
+        id: 'stale_cursor',
+      },
+      select: { id: true },
+    });
+    expect(externalAccessGrantFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('uses a valid grant cursor as a stable page boundary', async () => {
+    externalAccessGrantFindFirstMock.mockResolvedValueOnce({ id: 'grant_1' });
+
+    const response = await GET(
+      createGetRequest('http://localhost/api/external-access?cursor=grant_1'),
+      routeContext,
+    );
+
+    expect(response.status).toBe(200);
+    expect(externalAccessGrantFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cursor: { id: 'grant_1' },
+        skip: 1,
+        take: 201,
+      }),
+    );
   });
 
   it('returns no grants for an inaccessible patient without grant or patient enrichment reads', async () => {
@@ -313,7 +469,11 @@ describe('/api/external-access GET', () => {
     expect(externalAccessGrantFindManyMock).not.toHaveBeenCalled();
     expect(patientFindManyMock).not.toHaveBeenCalled();
     expect(patientSelfReportFindManyMock).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toEqual({ data: [] });
+    await expect(response.json()).resolves.toEqual({
+      data: [],
+      hasMore: false,
+      nextCursor: null,
+    });
   });
 
   it('pushes patient-specific grant case visibility into the listing query', async () => {
@@ -346,7 +506,7 @@ describe('/api/external-access GET', () => {
           revoked_at: null,
           patient_id: 'patient_1',
         },
-        take: 200,
+        take: 201,
       }),
     );
     expect(externalAccessGrantFindManyMock.mock.calls[0][0]).not.toHaveProperty('skip');
@@ -389,7 +549,7 @@ describe('/api/external-access GET', () => {
         org_id: 'org_1',
         revoked_at: null,
       },
-      orderBy: { created_at: 'desc' },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       select: {
         id: true,
         org_id: true,
@@ -401,7 +561,7 @@ describe('/api/external-access GET', () => {
         accessed_at: true,
         created_at: true,
       },
-      take: 200,
+      take: 201,
     });
     expect(externalAccessGrantFindManyMock.mock.calls[0][0]).not.toHaveProperty('skip');
     // bypass 経路では候補ケースを集める careCase.findMany は実行されない。
@@ -451,7 +611,7 @@ describe('/api/external-access GET', () => {
           org_id: 'org_1',
           revoked_at: null,
         },
-        take: 200,
+        take: 201,
       }),
     );
     expect(externalAccessGrantFindManyMock.mock.calls[0][0]).not.toHaveProperty('skip');
@@ -466,6 +626,10 @@ describe('/api/external-access POST', () => {
     vi.clearAllMocks();
     currentRole.value = 'pharmacist';
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
+    consentRecordFindFirstMock.mockResolvedValue({
+      id: 'external_sharing_consent_1',
+      case_id: null,
+    });
     validateOrgReferencesMock.mockResolvedValue({ ok: true, data: {} });
     issueExternalAccessTokenMock.mockResolvedValue('jwt-token');
     validateExternalAccessScopeForRoleMock.mockReturnValue({
@@ -482,11 +646,15 @@ describe('/api/external-access POST', () => {
       created_at: new Date('2026-03-29T00:00:00.000Z'),
     });
     updateMock.mockResolvedValue({ id: 'grant_1' });
+    auditLogCreateMock.mockResolvedValue({ id: 'audit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         externalAccessGrant: {
           create: createMock,
           update: updateMock,
+        },
+        auditLog: {
+          create: auditLogCreateMock,
         },
       }),
     );
@@ -665,12 +833,27 @@ describe('/api/external-access POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(response.headers.get('Pragma')).toBe('no-cache');
     expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
       patient_id: 'patient_1',
     });
     expect(patientFindFirstMock).toHaveBeenCalledWith({
       where: expectPharmacistPatientAssignmentWhere('patient_1'),
       select: { id: true },
+    });
+    expect(consentRecordFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        consent_type: 'external_sharing',
+        is_active: true,
+        revoked_date: null,
+        OR: [{ expiry_date: null }, { expiry_date: { gte: expect.any(Date) } }],
+        AND: [{ OR: [{ case_id: null }] }],
+      },
+      orderBy: [{ obtained_date: 'desc' }],
+      select: { id: true, case_id: true },
     });
     expect(createMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -692,6 +875,29 @@ describe('/api/external-access POST', () => {
         token_hash: expect.any(String),
       },
     });
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        org_id: 'org_1',
+        actor_id: 'user_1',
+        action: 'external_access_grant_created',
+        target_type: 'external_access_grant',
+        target_id: 'grant_1',
+        changes: expect.objectContaining({
+          patient_id: 'patient_1',
+          granted_to_name: '田中ケアマネ',
+          granted_to_contact_masked: '090****5678',
+          scope: { medication_list: true },
+          scope_keys: ['medication_list'],
+          expires_hours: 72,
+          otp_delivery_intent: 'sms',
+          actor_id: 'user_1',
+        }),
+      }),
+    });
+    const smsAuditChanges = auditLogCreateMock.mock.calls[0]?.[0]?.data.changes;
+    expectExternalAccessAuditChangesSafe(smsAuditChanges);
+    expect(smsAuditChanges).not.toHaveProperty('otp');
+    expect(JSON.stringify(smsAuditChanges)).not.toContain('jwt-token');
     expect(sendSmsMock).toHaveBeenCalledWith(
       '090-1234-5678',
       expect.stringContaining('PH-OS共有OTP:'),
@@ -704,11 +910,110 @@ describe('/api/external-access POST', () => {
     expect(body).toMatchObject({
       data: {
         token: 'jwt-token',
+        granted_to_contact_masked: '090****5678',
         otp_delivery: 'sms',
         otp_delivery_destination: '090****5678',
       },
     });
     expect(body.data).not.toHaveProperty('otp');
+    expect(body.data).not.toHaveProperty('granted_to_contact');
+    const bodyText = JSON.stringify(body);
+    expect(bodyText).not.toContain('090-1234-5678');
+    expect(bodyText).not.toContain('09012345678');
+    expect(bodyText).not.toMatch(/token_hash|otp_hash|provisional|bcrypt/);
+  });
+
+  it('keeps the grant creation audit when SMS delivery falls back to manual OTP handling', async () => {
+    sendSmsMock.mockRejectedValueOnce(new Error('sms unavailable'));
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        granted_to_name: '田中ケアマネ',
+        granted_to_contact: '090-1234-5678',
+        scope: { medication_list: true },
+        expires_hours: 24,
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'external_access_grant_created',
+        changes: expect.objectContaining({
+          granted_to_contact_masked: '090****5678',
+          otp_delivery_intent: 'sms',
+        }),
+      }),
+    });
+    const body = await response.json();
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'external_access_otp_delivery_fallback',
+        target_type: 'external_access_grant',
+        target_id: 'grant_1',
+        changes: expect.objectContaining({
+          patient_id: 'patient_1',
+          granted_to_contact_masked: '090****5678',
+          otp_delivery_intent: 'sms',
+          otp_delivery_result: 'manual',
+          actor_id: 'user_1',
+        }),
+      }),
+    });
+    expect(body).toMatchObject({
+      data: {
+        token: 'jwt-token',
+        otp: expect.any(String),
+        otp_delivery: 'manual',
+      },
+    });
+    const auditChanges = auditLogCreateMock.mock.calls[0]?.[0]?.data.changes;
+    const fallbackChanges = auditLogCreateMock.mock.calls.find(
+      ([call]) => call.data.action === 'external_access_otp_delivery_fallback',
+    )?.[0].data.changes;
+    expectExternalAccessAuditChangesSafe(auditChanges);
+    expect(auditChanges).not.toHaveProperty('otp');
+    expect(JSON.stringify(auditChanges)).not.toContain(body.data.otp);
+    expect(JSON.stringify(auditChanges)).not.toContain(body.data.token);
+    expect(JSON.stringify(fallbackChanges)).not.toContain(body.data.otp);
+    expect(JSON.stringify(fallbackChanges)).not.toContain(body.data.token);
+    expect(body.data).not.toHaveProperty('granted_to_contact');
+    expect(JSON.stringify(body)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(body)).not.toContain('09012345678');
+    expect(JSON.stringify(body)).not.toMatch(/token_hash|otp_hash|provisional|bcrypt/);
+  });
+
+  it('revokes the grant and returns no token when SMS fallback audit persistence fails', async () => {
+    sendSmsMock.mockRejectedValueOnce(new Error('sms unavailable'));
+    auditLogCreateMock
+      .mockResolvedValueOnce({ id: 'grant-audit' })
+      .mockRejectedValueOnce(new Error('audit unavailable'));
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        granted_to_name: '田中ケアマネ',
+        granted_to_contact: '090-1234-5678',
+        scope: { medication_list: true },
+        expires_hours: 24,
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(500);
+    expect(updateMock).toHaveBeenCalledWith({
+      where: { id: 'grant_1' },
+      data: { revoked_at: expect.any(Date) },
+    });
+    const responseText = await response.text();
+    expect(responseText).not.toContain('jwt-token');
+    expect(responseText).not.toContain('090-1234-5678');
+    expect(responseText).not.toContain('09012345678');
+    expect(responseText).not.toMatch(/\b\d{6}\b/);
   });
 
   it('rejects archived patients before token, OTP, grant, or SMS side effects', async () => {
@@ -731,6 +1036,7 @@ describe('/api/external-access POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(409);
     expect(careCaseFindManyMock).not.toHaveBeenCalled();
+    expect(consentRecordFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(createMock).not.toHaveBeenCalled();
     expect(updateMock).not.toHaveBeenCalled();
@@ -770,6 +1076,19 @@ describe('/api/external-access POST', () => {
       where: expectPharmacistCareCaseAssignmentWhere('patient_1'),
       select: { id: true },
     });
+    expect(consentRecordFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        consent_type: 'external_sharing',
+        is_active: true,
+        revoked_date: null,
+        OR: [{ expiry_date: null }, { expiry_date: { gte: expect.any(Date) } }],
+        AND: [{ OR: [{ case_id: null }, { case_id: { in: ['case_1'] } }] }],
+      },
+      orderBy: [{ obtained_date: 'desc' }],
+      select: { id: true, case_id: true },
+    });
     expect(createMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         scope: {
@@ -807,12 +1126,23 @@ describe('/api/external-access POST', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(403);
+    expect(consentRecordFindFirstMock).not.toHaveBeenCalled();
     expect(createMock).not.toHaveBeenCalled();
     expect(issueExternalAccessTokenMock).not.toHaveBeenCalled();
     expect(sendSmsMock).not.toHaveBeenCalled();
   });
 
   it('keeps OTP delivery manual when the contact is not a phone number', async () => {
+    createMock.mockResolvedValueOnce({
+      id: 'grant_1',
+      patient_id: 'patient_1',
+      granted_to_name: '田中ケアマネ',
+      granted_to_contact: 'care@example.com',
+      scope: { medication_list: true },
+      expires_at: new Date('2026-04-01T00:00:00.000Z'),
+      created_at: new Date('2026-03-29T00:00:00.000Z'),
+    });
+
     const response = await POST(
       createRequest({
         patient_id: 'patient_1',
@@ -827,14 +1157,33 @@ describe('/api/external-access POST', () => {
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(201);
     expect(sendSmsMock).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toMatchObject({
+    expect(auditLogCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'external_access_grant_created',
+        changes: expect.objectContaining({
+          granted_to_contact_masked: 'c***@example.com',
+          otp_delivery_intent: 'manual',
+        }),
+      }),
+    });
+    const body = await response.json();
+    expect(body).toMatchObject({
       data: {
         token: 'jwt-token',
+        granted_to_contact_masked: 'c***@example.com',
         otp: expect.any(String),
         otp_delivery: 'manual',
         otp_delivery_destination: null,
       },
     });
+    expect(body.data).not.toHaveProperty('granted_to_contact');
+    expect(JSON.stringify(body)).not.toContain('care@example.com');
+    expect(JSON.stringify(body)).not.toMatch(/token_hash|otp_hash|provisional|bcrypt/);
+    const auditChanges = auditLogCreateMock.mock.calls[0]?.[0]?.data.changes;
+    expectExternalAccessAuditChangesSafe(auditChanges);
+    expect(auditChanges).not.toHaveProperty('otp');
+    expect(JSON.stringify(auditChanges)).not.toContain(body.data.otp);
+    expect(JSON.stringify(auditChanges)).not.toContain(body.data.token);
   });
 
   it('accepts a null contact from the share form and still creates a manual-delivery grant', async () => {
@@ -860,6 +1209,53 @@ describe('/api/external-access POST', () => {
     expect(sendSmsMock).not.toHaveBeenCalled();
   });
 
+  it('requires active external-sharing consent before token, OTP, grant, audit, or SMS side effects', async () => {
+    consentRecordFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await POST(
+      createRequest({
+        patient_id: 'patient_1',
+        granted_to_name: '田中ケアマネ',
+        granted_to_contact: '090-1234-5678',
+        scope: { medication_list: true },
+        expires_hours: 24,
+      }),
+      { params: Promise.resolve({}) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '外部共有の有効な同意が未登録または期限切れです',
+      details: {
+        consent_type: 'external_sharing',
+        scope_keys: ['medication_list'],
+      },
+    });
+    expect(validateOrgReferencesMock).toHaveBeenCalled();
+    expect(patientFindFirstMock).toHaveBeenCalled();
+    expect(consentRecordFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        consent_type: 'external_sharing',
+        is_active: true,
+        revoked_date: null,
+        OR: [{ expiry_date: null }, { expiry_date: { gte: expect.any(Date) } }],
+        AND: [{ OR: [{ case_id: null }] }],
+      },
+      orderBy: [{ obtained_date: 'desc' }],
+      select: { id: true, case_id: true },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(createMock).not.toHaveBeenCalled();
+    expect(updateMock).not.toHaveBeenCalled();
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
+    expect(issueExternalAccessTokenMock).not.toHaveBeenCalled();
+    expect(sendSmsMock).not.toHaveBeenCalled();
+  });
+
   it('returns 500 when the external access signing secret is missing', async () => {
     issueExternalAccessTokenMock.mockRejectedValue(new MissingExternalAccessSecretErrorMock());
 
@@ -879,6 +1275,7 @@ describe('/api/external-access POST', () => {
     await expect(response.json()).resolves.toMatchObject({
       code: 'EXTERNAL_ACCESS_SECRET_MISSING',
     });
+    expect(auditLogCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects an inaccessible patient before OTP, token, grant, or SMS side effects', async () => {

@@ -6,19 +6,11 @@ import { validationError } from '@/lib/api/response';
 import { parseAuditLogFilters } from '@/lib/api/audit-log-filters';
 import { redactAuditLogsForResponse } from '@/lib/audit-logs/redaction';
 import { recordDataExportAudit } from '@/server/services/export-audit';
+import { quotedCsvRow as toCsvRow } from '@/lib/csv/safe-csv';
 
 const querySchema = z.object({
   format: z.enum(['csv', 'json']).default('csv'),
 });
-
-function toCsvRow(values: unknown[]): string {
-  return values
-    .map((v) => {
-      const s = v == null ? '' : String(v);
-      return `"${s.replace(/"/g, '""')}"`;
-    })
-    .join(',');
-}
 
 export const GET = withAuthContext(
   async (req, ctx) => {
@@ -93,6 +85,8 @@ export const GET = withAuthContext(
         headers: {
           'Content-Type': 'application/json',
           'Content-Disposition': `attachment; filename="audit-logs-${Date.now()}.json"`,
+          'Cache-Control': 'no-store',
+          Pragma: 'no-cache',
           ...(truncated
             ? { 'X-Export-Truncated': 'true', 'X-Export-Limit': String(EXPORT_LIMIT) }
             : {}),
@@ -142,6 +136,8 @@ export const GET = withAuthContext(
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',
         'Content-Disposition': `attachment; filename="audit-logs-${Date.now()}.csv"`,
+        'Cache-Control': 'no-store',
+        Pragma: 'no-cache',
         ...(truncated
           ? { 'X-Export-Truncated': 'true', 'X-Export-Limit': String(EXPORT_LIMIT) }
           : {}),

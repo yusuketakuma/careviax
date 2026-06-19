@@ -1,31 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
 import { forbiddenResponse, notFound, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { applyPatientAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { formatDateKey, formatNullableDateKey } from '@/lib/date-key';
 import { recordDataExportAudit } from '@/server/services/export-audit';
 import { listAccessiblePatientCaseIds } from '@/server/services/patient-access';
+import { minimalCsvRow as buildCsvRow } from '@/lib/csv/safe-csv';
 
 const BOM = '\uFEFF';
-
-function escapeCsv(value: string | null | undefined): string {
-  if (value == null) return '';
-  let str = String(value);
-  // Prevent CSV formula injection (Excel/Sheets interpret leading =, +, -, @, tab, CR as formulas)
-  if (str.length > 0 && /^[=+\-@\t\r]/.test(str)) {
-    str = "'" + str;
-  }
-  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-    return `"${str.replace(/"/g, '""')}"`;
-  }
-  return str;
-}
-
-function buildCsvRow(values: (string | null | undefined)[]): string {
-  return values.map(escapeCsv).join(',');
-}
 
 /**
  * GET /api/patients/[id]/prescriptions/export
@@ -37,7 +22,7 @@ export const GET = withAuthContext(
   async (_req: NextRequest, ctx, { params }: { params: Promise<{ id: string }> }) => {
     const { id: rawPatientId } = await params;
     const patientId = normalizeRequiredRouteParam(rawPatientId);
-    if (!patientId) return validationError('患者IDが不正です');
+    if (!patientId) return withSensitiveNoStore(validationError('患者IDが不正です'));
 
     const patient = await prisma.patient.findFirst({
       where: applyPatientAssignmentWhere(
@@ -46,7 +31,7 @@ export const GET = withAuthContext(
       ),
       select: { id: true, name: true, name_kana: true },
     });
-    if (!patient) return notFound('患者が見つかりません');
+    if (!patient) return withSensitiveNoStore(notFound('患者が見つかりません'));
     const caseIds = await listAccessiblePatientCaseIds({
       db: prisma,
       orgId: ctx.orgId,
@@ -54,7 +39,9 @@ export const GET = withAuthContext(
       accessContext: { userId: ctx.userId, role: ctx.role },
     });
     if (caseIds.length === 0) {
-      return forbiddenResponse('割り当て済みのケースがないため処方履歴をエクスポートできません');
+      return withSensitiveNoStore(
+        await forbiddenResponse('割り当て済みのケースがないため処方履歴をエクスポートできません'),
+      );
     }
 
     const EXPORT_LIMIT = 10000;
@@ -169,7 +156,7 @@ export const GET = withAuthContext(
     }
 
     const csv = BOM + [header, ...rows].join('\r\n') + '\r\n';
-    const filename = `prescriptions_${patient.name}_${formatDateKey(new Date())}.csv`;
+    const filename = `prescriptions_${formatDateKey(new Date())}.csv`;
     const truncated = intakes.length === EXPORT_LIMIT;
 
     await recordDataExportAudit(prisma, {
@@ -187,15 +174,17 @@ export const GET = withAuthContext(
       userAgent: ctx.userAgent,
     });
 
-    return new NextResponse(csv, {
-      status: 200,
-      headers: {
-        'Content-Type': 'text/csv; charset=utf-8',
-        'Content-Disposition': `attachment; filename="${encodeURIComponent(filename)}"`,
-        'Cache-Control': 'no-store',
-        ...(truncated ? { 'X-Export-Truncated': 'true' } : {}),
-      },
-    });
+    const encodedFileName = encodeURIComponent(filename);
+    return withSensitiveNoStore(
+      new NextResponse(csv, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/csv; charset=utf-8',
+          'Content-Disposition': `attachment; filename="${encodedFileName}"; filename*=UTF-8''${encodedFileName}`,
+          ...(truncated ? { 'X-Export-Truncated': 'true' } : {}),
+        },
+      }),
+    );
   },
   {
     permission: 'canVisit',

@@ -50,6 +50,11 @@ function createRequest(headers?: Record<string, string>, search = 'format=csv') 
   });
 }
 
+function expectNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('no-store');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/audit-logs/export GET', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -83,6 +88,7 @@ describe('/api/audit-logs/export GET', () => {
     )) as Response;
 
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(response.headers.get('content-type')).toContain('text/csv');
     expect(findManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -120,6 +126,7 @@ describe('/api/audit-logs/export GET', () => {
     )) as Response;
 
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(response.headers.get('content-type')).toContain('application/json');
     await expect(response.json()).resolves.toEqual([
       expect.objectContaining({
@@ -157,6 +164,7 @@ describe('/api/audit-logs/export GET', () => {
     const bodyText = JSON.stringify(body);
 
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(body[0].changes).toMatchObject({
       reject_reason: '却下理由の自由記載は出力対象外です',
       reject_reason_redacted: true,
@@ -194,11 +202,50 @@ describe('/api/audit-logs/export GET', () => {
     const body = await response.text();
 
     expect(response.status).toBe(200);
+    expectNoStore(response);
     expect(body).toContain('却下理由の自由記載は出力対象外です');
     expect(body).toContain('reject_reason_redacted');
     expect(body).not.toContain('東京都港区2-2-2');
     expect(body).not.toContain('090-1234-5678');
     expect(body).not.toContain('アムロジピン');
     expect(body).not.toContain('処方詳細');
+  });
+
+  it('neutralizes spreadsheet formula prefixes in csv cells', async () => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+    findManyMock.mockResolvedValue([
+      {
+        id: '=audit_1',
+        org_id: 'org_1',
+        actor_id: '+user_1',
+        action: '@export',
+        target_type: 'visit_record',
+        target_id: '-visit_1',
+        changes: { note: '\tformula-like' },
+        ip_address: '\r127.0.0.1',
+        user_agent: '\nvitest',
+        created_at: new Date('2026-03-28T00:00:00.000Z'),
+      },
+    ]);
+
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, 'format=csv'),
+      emptyRouteContext,
+    )) as Response;
+    const body = await response.text();
+
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(body).toContain('"\'=audit_1"');
+    expect(body).toContain('"\'+user_1"');
+    expect(body).toContain('"\'@export"');
+    expect(body).toContain('"\'-visit_1"');
+    expect(body).toContain('"\'\r127.0.0.1"');
+    expect(body).toContain('"\'\nvitest"');
+    expect(body).not.toContain('"=audit_1"');
+    expect(body).not.toContain('"+user_1"');
+    expect(body).not.toContain('"@export"');
+    expect(body).not.toContain('"-visit_1"');
   });
 });

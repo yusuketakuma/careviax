@@ -1048,7 +1048,7 @@ describe('file-storage', () => {
     });
   });
 
-  it('rejects report downloads when the caller lacks canReport', async () => {
+  it('rejects report downloads when the caller lacks canSendCareReport', async () => {
     settingFindFirstMock.mockResolvedValue({
       id: 'setting_1',
       value: {
@@ -1074,14 +1074,52 @@ describe('file-storage', () => {
         orgId: 'org_1',
         fileId: 'file_2',
         accessContext: {
-          userId: 'driver_1',
-          role: 'driver',
+          userId: 'clerk_1',
+          role: 'clerk',
         },
       }),
     ).rejects.toMatchObject({
       code: 'FILE_DOWNLOAD_FORBIDDEN',
       status: 403,
     });
+  });
+
+  it('rejects report downloads for author-only roles before signing a URL', async () => {
+    settingFindFirstMock.mockResolvedValue({
+      id: 'setting_1',
+      value: {
+        version: 1,
+        id: 'file_2',
+        orgId: 'org_1',
+        purpose: 'report',
+        storageKey: 'reports/org_1/report_1/file_2-report.pdf',
+        originalName: 'report.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        status: 'uploaded',
+        reportId: 'report_1',
+        createdAt: '2026-03-28T00:00:00.000Z',
+        updatedAt: '2026-03-28T00:00:00.000Z',
+        completedAt: '2026-03-28T00:00:00.000Z',
+        downloadDisposition: 'inline',
+      },
+    });
+
+    await expect(
+      createPresignedDownload({
+        orgId: 'org_1',
+        fileId: 'file_2',
+        accessContext: {
+          userId: 'trainee_1',
+          role: 'pharmacist_trainee',
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: 'FILE_DOWNLOAD_FORBIDDEN',
+      status: 403,
+    });
+    expect(getSignedUrlMock).not.toHaveBeenCalled();
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
   });
 
   it.each(fileAccessCases)(

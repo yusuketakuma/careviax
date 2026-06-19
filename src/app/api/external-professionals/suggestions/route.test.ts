@@ -16,6 +16,7 @@ const authContext = {
   ipAddress: '127.0.0.1',
   userAgent: 'vitest',
 };
+type WithAuthOptions = { permission?: string; message?: string };
 
 vi.mock('@/lib/auth/context', () => ({
   withAuthContext: (
@@ -24,9 +25,19 @@ vi.mock('@/lib/auth/context', () => ({
       ctx: typeof authContext,
       routeContext: typeof emptyRouteContext,
     ) => Promise<Response>,
+    options?: WithAuthOptions,
   ) => {
-    return (req: NextRequest, routeContext = emptyRouteContext) =>
-      handler(req, authContext, routeContext);
+    return (req: NextRequest, routeContext = emptyRouteContext) => {
+      if (options?.permission === 'canSendCareReport' && authContext.role === 'clerk') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ error: options.message ?? '権限がありません' }), {
+            status: 403,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }
+      return handler(req, authContext, routeContext);
+    };
   },
 }));
 
@@ -54,6 +65,7 @@ function createRequest(search = '') {
 describe('/api/external-professionals/suggestions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authContext.role = 'pharmacist';
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
     findExternalProfessionalSuggestionsMock.mockResolvedValue([
@@ -137,5 +149,21 @@ describe('/api/external-professionals/suggestions', () => {
     expect(response.status).toBe(200);
     expect(findExternalProfessionalSuggestionsMock).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toEqual({ data: [] });
+  });
+
+  it('requires care-report send permission because suggestions include delivery contacts', async () => {
+    authContext.role = 'clerk';
+
+    const response = (await GET(
+      createRequest('?patient_id=patient_1&case_id=case_1'),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(403);
+    expect(careCaseFindFirstMock).not.toHaveBeenCalled();
+    expect(findExternalProfessionalSuggestionsMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      error: '他職種候補の閲覧権限がありません',
+    });
   });
 });

@@ -247,6 +247,10 @@ export async function POST(req: NextRequest) {
     return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
   }
 
+  if (parsed.data.purpose === 'report' && !hasPermission(ctx.role, 'canSendCareReport')) {
+    return forbiddenResponse('報告書ファイルのアップロード権限がありません');
+  }
+
   try {
     assertFileUploadConstraints({
       purpose: parsed.data.purpose as FilePurpose,
@@ -262,10 +266,6 @@ export async function POST(req: NextRequest) {
   }
 
   if (parsed.data.purpose === 'report') {
-    if (!hasPermission(ctx.role, 'canReport')) {
-      return forbiddenResponse('報告書ファイルのアップロード権限がありません');
-    }
-
     const report = await prisma.careReport.findFirst({
       where: {
         id: parsed.data.report_id,

@@ -3,23 +3,23 @@ import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { notFound, validationError } from '@/lib/api/response';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { parseSearchParams } from '@/lib/api/validation';
 import { prisma } from '@/lib/db/client';
 import { formatDateKey, formatNullableDateKey } from '@/lib/date-key';
+import { quotedCsvCell as safeCsvCell } from '@/lib/csv/safe-csv';
 
 const exportQuerySchema = z.object({
   site_id: z.string().trim().min(1, 'site_id は必須です'),
   purpose: z.enum(['operations', 'audit', 'posting', 'pharmacist_review']).default('operations'),
 });
 
-function safeCsvCell(value: unknown): string {
-  const text = value == null ? '' : String(value);
-  const neutralized = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
-  return `"${neutralized.replaceAll('"', '""')}"`;
-}
-
 function formatDate(value: Date | null | undefined): string | null {
   return formatNullableDateKey(value);
+}
+
+function formatCsvValue(value: unknown): string | null {
+  return value == null ? null : String(value);
 }
 
 function formatSafetyFlags(drug: {
@@ -38,18 +38,27 @@ function formatSafetyFlags(drug: {
     .join(' / ');
 }
 
+function buildExportFilename(
+  purpose: z.infer<typeof exportQuerySchema>['purpose'],
+  siteId: string,
+) {
+  return encodeURIComponent(`formulary-${purpose}-${siteId}-${formatDateKey(new Date())}.csv`);
+}
+
 export const GET = withAuthContext(
   async (req: NextRequest, authCtx) => {
     const parsed = parseSearchParams(exportQuerySchema, new URL(req.url).searchParams);
     if (!parsed.ok) {
-      return validationError('クエリパラメータが不正です', parsed.error.flatten().fieldErrors);
+      return withSensitiveNoStore(
+        validationError('クエリパラメータが不正です', parsed.error.flatten().fieldErrors),
+      );
     }
 
     const site = await prisma.pharmacySite.findFirst({
       where: { id: parsed.data.site_id, org_id: authCtx.orgId },
       select: { id: true, name: true },
     });
-    if (!site) return notFound('対象の薬局拠点が見つかりません');
+    if (!site) return withSensitiveNoStore(notFound('対象の薬局拠点が見つかりません'));
 
     const stocks = await prisma.pharmacyDrugStock.findMany({
       where: {
@@ -127,7 +136,7 @@ export const GET = withAuthContext(
           stock.drug_master.receipt_code,
           stock.drug_master.drug_name,
           stock.drug_master.generic_name,
-          stock.drug_master.drug_price,
+          formatCsvValue(stock.drug_master.drug_price),
           stock.drug_master.unit,
           stock.drug_master.manufacturer,
           formatSafetyFlags(stock.drug_master),
@@ -165,7 +174,7 @@ export const GET = withAuthContext(
           stock.drug_master.receipt_code,
           stock.drug_master.drug_name,
           stock.drug_master.generic_name,
-          stock.drug_master.drug_price,
+          formatCsvValue(stock.drug_master.drug_price),
           stock.drug_master.unit,
           stock.drug_master.manufacturer,
           formatSafetyFlags(stock.drug_master),
@@ -211,7 +220,7 @@ export const GET = withAuthContext(
           stock.drug_master.yj_code,
           stock.drug_master.drug_name,
           stock.drug_master.generic_name,
-          stock.drug_master.drug_price,
+          formatCsvValue(stock.drug_master.drug_price),
           stock.drug_master.unit,
           stock.reorder_point,
           stock.preferred_generic?.drug_name,
@@ -227,15 +236,17 @@ export const GET = withAuthContext(
     const header = exportRows.header;
     const rows = exportRows.rows;
     const csv = [header, ...rows].map((row) => row.map(safeCsvCell).join(',')).join('\n');
-    const fileName = `formulary-${parsed.data.purpose}-${site.id}-${formatDateKey(new Date())}.csv`;
+    const fileName = buildExportFilename(parsed.data.purpose, site.id);
 
-    return new NextResponse(`\uFEFF${csv}`, {
-      status: 200,
-      headers: {
-        'content-type': 'text/csv; charset=utf-8',
-        'content-disposition': `attachment; filename="${fileName}"`,
-      },
-    });
+    return withSensitiveNoStore(
+      new NextResponse(`\uFEFF${csv}`, {
+        status: 200,
+        headers: {
+          'content-type': 'text/csv; charset=utf-8',
+          'content-disposition': `attachment; filename="${fileName}"; filename*=UTF-8''${fileName}`,
+        },
+      }),
+    );
   },
   { permission: 'canAdmin' },
 );

@@ -1,19 +1,13 @@
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { NextRequest } from 'next/server';
-import { success, notFound, validationError, error } from '@/lib/api/response';
+import { success, validationError, error } from '@/lib/api/response';
 import { parseOptionalIdempotencyKey } from '@/lib/api/idempotency-key';
-import { checkAuthRateLimit } from '@/lib/api/rate-limit';
-import { getClientIp } from '@/lib/api/request-ip';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
+import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
-import { validateExternalAccessGrant } from '@/server/services/external-access';
 import { z } from 'zod';
-import {
-  createExternalAccessOtpRateLimitIdentifier,
-  EXTERNAL_ACCESS_OTP_RATE_LIMIT_PATH,
-} from '../../shared';
+import { prepareExternalAccessOtpRequest, validatePreparedExternalAccessGrant } from '../../shared';
 
 // OTP is intentionally accepted only via the `x-otp` header to keep the secret
 // out of POST body request logs (Sentry breadcrumbs, WAF, Next.js logger).
@@ -82,51 +76,45 @@ function isMatchingSelfReportReplay(
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   const { token: rawToken } = await params;
-  const token = normalizeRequiredRouteParam(rawToken);
-  if (!token) return validationError('共有リンクトークンが不正です');
-
-  const ip = getClientIp(req) ?? 'unknown';
-  const rateLimit = await checkAuthRateLimit(
-    createExternalAccessOtpRateLimitIdentifier(token, ip),
-    EXTERNAL_ACCESS_OTP_RATE_LIMIT_PATH,
-  );
-  if (!rateLimit.allowed) {
-    return error(
-      'RATE_LIMIT_EXCEEDED',
-      'リクエストが多すぎます。しばらく待ってから再試行してください。',
-      429,
-    );
-  }
+  const prepared = await prepareExternalAccessOtpRequest(req, rawToken);
+  if (!prepared.ok) return prepared.response;
 
   const payload = await readJsonObjectRequestBody(req);
 
   if (!payload) {
-    return validationError('リクエストボディが不正です');
+    return withSensitiveNoStore(validationError('リクエストボディが不正です'));
   }
 
   if (containsBodyOtp(payload)) {
-    return validationError('OTPはリクエストボディではなくヘッダーで送信してください');
+    return withSensitiveNoStore(
+      validationError('OTPはリクエストボディではなくヘッダーで送信してください'),
+    );
   }
 
   const parsed = createSelfReportSchema.safeParse(payload);
   if (!parsed.success) {
-    return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
+    return withSensitiveNoStore(
+      validationError('入力値が不正です', parsed.error.flatten().fieldErrors),
+    );
   }
 
   const parsedIdempotencyKey = parseOptionalIdempotencyKey(req.headers.get('idempotency-key'));
   if (!parsedIdempotencyKey.ok) {
-    return validationError(parsedIdempotencyKey.message);
+    return withSensitiveNoStore(validationError(parsedIdempotencyKey.message));
   }
 
-  const otp = req.headers.get('x-otp') ?? undefined;
-  const validation = await validateExternalAccessGrant(token, otp);
-
-  if (!validation.ok) {
-    if (validation.kind === 'validation') {
-      return validationError(validation.message);
-    }
-
-    return notFound(validation.message);
+  const validation = await validatePreparedExternalAccessGrant(prepared.request, {
+    missingOtpValue: undefined,
+  });
+  if (!validation.ok) return validation.response;
+  if (validation.grant.scope.care_reports !== true) {
+    return withSensitiveNoStore(
+      error(
+        'EXTERNAL_ACCESS_SELF_REPORT_SCOPE_DENIED',
+        'この共有リンクでは自己申告を登録できません',
+        403,
+      ),
+    );
   }
 
   const idempotencyKeyHash = parsedIdempotencyKey.key
@@ -218,18 +206,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
   });
 
   if (result.kind === 'idempotency_conflict') {
-    return error('IDEMPOTENCY_CONFLICT', 'Idempotency-Keyが別の自己申告で使用されています', 409, {
-      reason: 'key_reused_with_different_request',
-    });
+    return withSensitiveNoStore(
+      error('IDEMPOTENCY_CONFLICT', 'Idempotency-Keyが別の自己申告で使用されています', 409, {
+        reason: 'key_reused_with_different_request',
+      }),
+    );
   }
 
-  return success(
-    {
-      data: {
-        accepted: true,
-        replayed: result.kind === 'replayed',
+  return withSensitiveNoStore(
+    success(
+      {
+        data: {
+          accepted: true,
+          replayed: result.kind === 'replayed',
+        },
       },
-    },
-    result.kind === 'created' ? 201 : 200,
+      result.kind === 'created' ? 201 : 200,
+    ),
   );
 }

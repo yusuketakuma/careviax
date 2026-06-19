@@ -50,6 +50,11 @@ function createRequest() {
   return new NextRequest('http://localhost/api/patients/patient_1/prescriptions/export');
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/patients/[id]/prescriptions/export GET', () => {
   const originalTimezone = process.env.TZ;
 
@@ -87,6 +92,7 @@ describe('/api/patients/[id]/prescriptions/export GET', () => {
     });
 
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(prescriptionIntakeFindManyMock).not.toHaveBeenCalled();
     expect(recordDataExportAuditMock).not.toHaveBeenCalled();
   });
@@ -97,6 +103,7 @@ describe('/api/patients/[id]/prescriptions/export GET', () => {
     });
 
     expect(response.status).toBe(400);
+    expectSensitiveNoStore(response);
     await expect(response.json()).resolves.toMatchObject({
       message: '患者IDが不正です',
     });
@@ -114,6 +121,7 @@ describe('/api/patients/[id]/prescriptions/export GET', () => {
     });
 
     expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
     expect(prescriptionIntakeFindManyMock).not.toHaveBeenCalled();
     expect(recordDataExportAuditMock).not.toHaveBeenCalled();
   });
@@ -152,14 +160,66 @@ describe('/api/patients/[id]/prescriptions/export GET', () => {
     });
 
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(response.headers.get('Content-Type')).toBe('text/csv; charset=utf-8');
     expect(response.headers.get('Content-Disposition')).toBe(
-      `attachment; filename="${encodeURIComponent('prescriptions_山田 太郎_2026-04-02.csv')}"`,
+      `attachment; filename="${encodeURIComponent('prescriptions_2026-04-02.csv')}"; filename*=UTF-8''${encodeURIComponent('prescriptions_2026-04-02.csv')}`,
     );
     const body = await response.text();
     expect(body).toContain('アスピリン');
     expect(body).toContain('2026-04-21');
     expect(body).toContain('2026-04-25');
     expect(recordDataExportAuditMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('neutralizes spreadsheet formula prefixes in prescription export cells', async () => {
+    patientFindFirstMock.mockResolvedValue({
+      id: 'patient_1',
+      name: '=山田 太郎',
+      name_kana: 'ヤマダ タロウ',
+    });
+    prescriptionIntakeFindManyMock.mockResolvedValue([
+      {
+        id: '+intake_1',
+        source_type: 'paper',
+        prescribed_date: new Date('2026-04-20T00:00:00.000Z'),
+        prescriber_name: '@医師A',
+        prescriber_institution: '-病院X',
+        prescription_expiry_date: new Date('2026-04-24T00:00:00.000Z'),
+        lines: [
+          {
+            line_number: 1,
+            drug_name: '=HYPERLINK("https://example.test")',
+            drug_code: '+YJ001',
+            dosage_form: '\t錠',
+            dose: '-1錠',
+            frequency: '@毎食後',
+            days: 7,
+            quantity: 21,
+            unit: '錠',
+            is_generic: false,
+            notes: '\r備考',
+          },
+        ],
+      },
+    ]);
+
+    const response = await GET(createRequest(), {
+      params: Promise.resolve({ id: 'patient_1' }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain("'=山田 太郎");
+    expect(body).toContain("'+intake_1");
+    expect(body).toContain("'@医師A");
+    expect(body).toContain("'-病院X");
+    expect(body).toContain(`"'=HYPERLINK(""https://example.test"")"`);
+    expect(body).toContain("'+YJ001");
+    expect(body).toContain("'\t錠");
+    expect(body).toContain("'-1錠");
+    expect(body).toContain("'@毎食後");
+    expect(body).toContain('"\'\r備考"');
+    expect(body).not.toContain(`"=HYPERLINK(""https://example.test"")"`);
   });
 });

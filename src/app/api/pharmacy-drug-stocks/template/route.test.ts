@@ -26,6 +26,11 @@ function createRequest(url = 'http://localhost/api/pharmacy-drug-stocks/template
   });
 }
 
+function expectSensitiveNoStore(response: Response) {
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+  expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
 describe('/api/pharmacy-drug-stocks/template', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -40,14 +45,13 @@ describe('/api/pharmacy-drug-stocks/template', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(response.headers.get('content-type')).toContain('text/csv');
     expect(response.headers.get('content-disposition')).toContain('formulary-template-site_1.csv');
     const bytes = new Uint8Array(await response.arrayBuffer());
     expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
     const csv = Buffer.from(bytes.slice(3)).toString('utf8');
-    expect(csv).toBe(
-      '"YJコード","医薬品名","採用","発注点","優先後発品YJコード","メモ"\n',
-    );
+    expect(csv).toBe('"YJコード","医薬品名","採用","発注点","優先後発品YJコード","メモ"\n');
     expect(prismaMock.pharmacySite.findFirst).toHaveBeenCalledWith({
       where: { id: 'site_1', org_id: 'org_1' },
       select: { id: true },
@@ -76,16 +80,40 @@ describe('/api/pharmacy-drug-stocks/template', () => {
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(404);
+    expectSensitiveNoStore(response);
     expect(prismaMock.auditLog.create).not.toHaveBeenCalled();
   });
 
-  it('allows an org-scoped generic template without a site_id', async () => {
-    const response = await GET(createRequest('http://localhost/api/pharmacy-drug-stocks/template'), {
-      params: Promise.resolve({}),
-    });
+  it('percent-encodes site ids in the download filename', async () => {
+    prismaMock.pharmacySite.findFirst.mockResolvedValue({ id: 'site\r\nSet-Cookie:bad=1' });
+
+    const response = await GET(
+      createRequest(
+        'http://localhost/api/pharmacy-drug-stocks/template?site_id=site%0D%0ASet-Cookie:bad=1',
+      ),
+      { params: Promise.resolve({}) },
+    );
 
     if (!response) throw new Error('response is required');
     expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const disposition = response.headers.get('content-disposition') ?? '';
+    expect(disposition).toContain('formulary-template-site%0D%0ASet-Cookie%3Abad%3D1.csv');
+    expect(disposition).not.toContain('\r');
+    expect(disposition).not.toContain('\n');
+  });
+
+  it('allows an org-scoped generic template without a site_id', async () => {
+    const response = await GET(
+      createRequest('http://localhost/api/pharmacy-drug-stocks/template'),
+      {
+        params: Promise.resolve({}),
+      },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
     expect(response.headers.get('content-disposition')).toContain('formulary-template.csv');
     expect(prismaMock.pharmacySite.findFirst).not.toHaveBeenCalled();
     expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
