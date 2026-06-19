@@ -5255,6 +5255,35 @@ Implemented:
 
 - Admin setup raw-table convergence is addressed for the inspected page. Broader browser/a11y coverage for the admin setup route remains a follow-up candidate.
 
+## 20260620-0218 JST - Report Delivery Analytics DataTables
+
+### Summary
+
+- Replaced the report delivery dashboard's monthly, physician, and channel analytics raw tables with the shared `DataTable`.
+- Added table search, column visibility, row a11y labels, and mobile-card behavior for aggregate analytics.
+- Left patient-level overdue follow-up cards unchanged.
+
+### Files Changed
+
+- `src/app/(dashboard)/reports/report-delivery-dashboard.tsx`
+- `src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/reports/report-delivery-dashboard.tsx' 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx'`: passed, unchanged.
+- `pnpm exec eslint 'src/app/(dashboard)/reports/report-delivery-dashboard.tsx' 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 2 tests.
+- `if rg -n '<table|overflow-x-auto|min-w-' 'src/app/(dashboard)/reports/report-delivery-dashboard.tsx'; then exit 1; else echo 'no raw report delivery analytics tables'; fi`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Report delivery aggregate table convergence is addressed for the inspected dashboard. Browser/mobile proof for this report section remains a possible follow-up if this route enters the browser/a11y proof queue.
+
 ## 20260620-0036 JST - Billing Rule Row Action Names
 
 ### Summary
