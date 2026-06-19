@@ -136,6 +136,53 @@ describe('/api/audit-logs/export GET', () => {
     ]);
   });
 
+  it.each([
+    ['consent_record', 'consent_record_revoked'],
+    ['PatientShareCase', 'patient_share_case_activated'],
+    ['PatientShareConsent', 'patient_share_consent_registered'],
+    ['PatientShareConsent', 'patient_share_consent_revoked'],
+    ['patient_share_consent', 'patient_share_consent.update'],
+    ['PatientLink', 'patient_link_accepted'],
+    ['file_asset', 'file_download'],
+    ['care_report', 'care_report_print_requested'],
+  ])('exports v0.2 audit vocabulary target_type=%s action=%s', async (targetType, action) => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const search = new URLSearchParams({
+      format: 'json',
+      target_type: targetType,
+      action,
+    }).toString();
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, search),
+      emptyRouteContext,
+    )) as Response;
+
+    expect(response.status).toBe(200);
+    expectNoStore(response);
+    expect(findManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          target_type: targetType,
+          action,
+        }),
+      }),
+    );
+    expect(recordDataExportAuditMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        targetType: 'audit_log',
+        format: 'json',
+        filters: expect.objectContaining({
+          targetType,
+          action,
+        }),
+      }),
+    );
+  });
+
   it('redacts proposal reject free text from json export payloads', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });

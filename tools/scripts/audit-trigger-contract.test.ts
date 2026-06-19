@@ -38,6 +38,20 @@ describe('validateAuditTriggerContracts', () => {
     });
   });
 
+  it('requires PatientShareConsent to use the redacted audit trigger function', () => {
+    const rows = makeValidRows().map((row) =>
+      row.tgname === 'audit_log_patient_share_consent'
+        ? { ...row, function_name: 'ph_os_write_audit_log' }
+        : row,
+    );
+
+    expect(validateAuditTriggerContracts(rows)).toContainEqual({
+      triggerName: 'audit_log_patient_share_consent',
+      reason:
+        'function=ph_os_write_audit_log, expected=ph_os_write_patient_share_consent_audit_log',
+    });
+  });
+
   it('rejects missing audit triggers', () => {
     const rows = makeValidRows().filter((row) => row.tgname !== 'audit_log_task');
 

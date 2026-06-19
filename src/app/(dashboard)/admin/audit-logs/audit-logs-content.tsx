@@ -23,6 +23,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  AUDIT_LOG_ACTION_LABEL_MAP,
+  AUDIT_LOG_ACTION_OPTIONS,
+  AUDIT_LOG_TARGET_TYPE_OPTIONS,
+} from '@/lib/audit-logs/filter-options';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 // --- Types ---
@@ -38,52 +43,29 @@ type AuditLog = {
   created_at: string;
 };
 
-// --- Constants ---
-
-const TARGET_TYPE_OPTIONS = [
-  { value: '', label: 'すべて' },
-  { value: 'patient', label: '患者' },
-  { value: 'prescription', label: '処方箋' },
-  { value: 'dispense', label: '調剤' },
-  { value: 'visit_record', label: '訪問記録' },
-  { value: 'user', label: 'ユーザー' },
-  { value: 'setting', label: '設定' },
-];
-
-const ACTION_LABEL_MAP: Record<string, string> = {
-  create: '作成',
-  update: '更新',
-  delete: '削除',
-  read: '閲覧',
-  login: 'ログイン',
-  logout: 'ログアウト',
-  export: 'エクスポート',
-  approve: '承認',
-  reject: '差戻し',
-};
-
-const ACTION_OPTIONS = [
-  { value: '', label: 'すべて' },
-  ...Object.entries(ACTION_LABEL_MAP).map(([value, label]) => ({ value, label })),
-];
-
 // --- Helpers ---
 
 function actionBadgeClass(action: string): string {
-  switch (action) {
-    case 'delete':
-      return 'bg-red-100 text-red-800 border-red-200';
-    case 'create':
-      return 'bg-green-100 text-green-800 border-green-200';
-    case 'approve':
-      return 'bg-blue-100 text-blue-800 border-blue-200';
-    case 'reject':
-      return 'bg-orange-100 text-orange-800 border-orange-200';
-    case 'export':
-      return 'bg-purple-100 text-purple-800 border-purple-200';
-    default:
-      return 'bg-gray-100 text-gray-700 border-gray-200';
+  if (action.includes('delete') || action.includes('revoked')) {
+    return 'bg-red-100 text-red-800 border-red-200';
   }
+  if (action.includes('create') || action.includes('created') || action.includes('registered')) {
+    return 'bg-green-100 text-green-800 border-green-200';
+  }
+  if (action.includes('approve') || action.includes('activated')) {
+    return 'bg-blue-100 text-blue-800 border-blue-200';
+  }
+  if (action.includes('reject') || action.includes('correction')) {
+    return 'bg-orange-100 text-orange-800 border-orange-200';
+  }
+  if (action.includes('export') || action.includes('download')) {
+    return 'bg-purple-100 text-purple-800 border-purple-200';
+  }
+  return 'bg-gray-100 text-gray-700 border-gray-200';
+}
+
+function actionLabel(action: string): string {
+  return (AUDIT_LOG_ACTION_LABEL_MAP as Record<string, string>)[action] ?? action;
 }
 
 // --- Main ---
@@ -142,7 +124,7 @@ export function AuditLogsContent() {
         header: '操作',
         cell: ({ row }) => (
           <Badge variant="outline" className={`text-xs ${actionBadgeClass(row.original.action)}`}>
-            {ACTION_LABEL_MAP[row.original.action] ?? row.original.action}
+            {actionLabel(row.original.action)}
           </Badge>
         ),
       },
@@ -150,7 +132,9 @@ export function AuditLogsContent() {
         accessorKey: 'target_type',
         header: '対象種別',
         cell: ({ row }) => {
-          const opt = TARGET_TYPE_OPTIONS.find((o) => o.value === row.original.target_type);
+          const opt = AUDIT_LOG_TARGET_TYPE_OPTIONS.find(
+            (o) => o.value === row.original.target_type,
+          );
           return (
             <span className="text-sm text-muted-foreground">
               {opt?.label ?? row.original.target_type}
@@ -244,7 +228,7 @@ export function AuditLogsContent() {
                 <SelectValue placeholder="すべて" />
               </SelectTrigger>
               <SelectContent>
-                {TARGET_TYPE_OPTIONS.map((opt) => (
+                {AUDIT_LOG_TARGET_TYPE_OPTIONS.map((opt) => (
                   <SelectItem key={opt.value} value={opt.value}>
                     {opt.label}
                   </SelectItem>
@@ -259,7 +243,7 @@ export function AuditLogsContent() {
                 <SelectValue placeholder="すべて" />
               </SelectTrigger>
               <SelectContent>
-                {ACTION_OPTIONS.map((opt) => (
+                {AUDIT_LOG_ACTION_OPTIONS.map((opt) => (
                   <SelectItem key={opt.value || 'all'} value={opt.value}>
                     {opt.label}
                   </SelectItem>
@@ -313,12 +297,14 @@ export function AuditLogsContent() {
               {
                 label: '対象種別',
                 value:
-                  TARGET_TYPE_OPTIONS.find((opt) => opt.value === targetTypeFilter)?.label ??
-                  'すべて',
+                  AUDIT_LOG_TARGET_TYPE_OPTIONS.find((opt) => opt.value === targetTypeFilter)
+                    ?.label ?? 'すべて',
               },
               {
                 label: '操作',
-                value: ACTION_OPTIONS.find((opt) => opt.value === actionFilter)?.label ?? 'すべて',
+                value:
+                  AUDIT_LOG_ACTION_OPTIONS.find((opt) => opt.value === actionFilter)?.label ??
+                  'すべて',
               },
               ...(actorFilter ? [{ label: '操作者', value: actorFilter }] : []),
             ]}

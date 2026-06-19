@@ -157,6 +157,55 @@ describe('/api/audit-logs GET', () => {
     );
   });
 
+  it.each([
+    ['patient', 'consent_records_viewed'],
+    ['consent_record', 'consent_record_viewed'],
+    ['consent_record', 'consent_record_created'],
+    ['consent_record', 'consent_record_updated'],
+    ['consent_record', 'consent_record_revoked'],
+    ['PatientShareCase', 'patient_share_cases_viewed'],
+    ['PatientShareCase', 'patient_share_case_created'],
+    ['PatientShareCase', 'patient_share_case_activated'],
+    ['PatientShareConsent', 'patient_share_consents_viewed'],
+    ['PatientShareConsent', 'patient_share_consent_registered'],
+    ['PatientShareConsent', 'patient_share_consent_revoked'],
+    ['patient_share_consent', 'patient_share_consent.update'],
+    ['PatientLink', 'patient_link_accepted'],
+    ['file_asset', 'file_download'],
+    ['care_report', 'care_report_print_requested'],
+  ])('supports v0.2 audit vocabulary target_type=%s action=%s', async (targetType, action) => {
+    authMock.mockResolvedValue({ user: { id: 'user_1' } });
+    membershipFindFirstMock.mockResolvedValue({ role: 'admin' });
+
+    const search = new URLSearchParams({
+      target_type: targetType,
+      action,
+      limit: '10',
+    }).toString();
+    const response = (await GET(
+      createRequest({ 'x-org-id': 'org_1' }, search),
+      emptyRouteContext,
+    )) as Response;
+
+    expect(response.status).toBe(200);
+    expect(findManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          org_id: 'org_1',
+          target_type: targetType,
+          action,
+        }),
+      }),
+    );
+    expect(countMock).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        org_id: 'org_1',
+        target_type: targetType,
+        action,
+      }),
+    });
+  });
+
   it('redacts proposal reject free text before returning audit logs', async () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'admin' });

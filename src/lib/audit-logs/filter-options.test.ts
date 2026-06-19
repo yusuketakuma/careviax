@@ -1,0 +1,49 @@
+import { describe, expect, it } from 'vitest';
+import { AUDIT_LOG_ACTION_LABEL_MAP, AUDIT_LOG_TARGET_TYPE_OPTIONS } from './filter-options';
+
+describe('audit log filter options', () => {
+  it('includes the v0.2 pharmacy partnership audit target/action vocabulary', () => {
+    expect(AUDIT_LOG_TARGET_TYPE_OPTIONS.map((option) => option.value)).toEqual(
+      expect.arrayContaining([
+        'patient',
+        'consent_record',
+        'PatientShareCase',
+        'PatientShareConsent',
+        'patient_share_consent',
+        'PatientLink',
+        'patient_link',
+        'file_asset',
+        'care_report',
+        'audit_log',
+      ]),
+    );
+
+    expect(Object.keys(AUDIT_LOG_ACTION_LABEL_MAP)).toEqual(
+      expect.arrayContaining([
+        'consent_records_viewed',
+        'consent_record_viewed',
+        'consent_record_created',
+        'consent_record_updated',
+        'consent_record_revoked',
+        'patient_share_cases_viewed',
+        'patient_share_case_created',
+        'patient_share_case_activated',
+        'patient_share_consents_viewed',
+        'patient_share_consent_registered',
+        'patient_share_consent_revoked',
+        'patient_link_base_approved',
+        'patient_link_accepted',
+        'patient_link_declined',
+        'file_download',
+        'care_report_print_requested',
+      ]),
+    );
+  });
+
+  it('uses the canonical singular patient-share consent mutation action names', () => {
+    expect(AUDIT_LOG_ACTION_LABEL_MAP).toHaveProperty('patient_share_consent_registered');
+    expect(AUDIT_LOG_ACTION_LABEL_MAP).toHaveProperty('patient_share_consent_revoked');
+    expect(AUDIT_LOG_ACTION_LABEL_MAP).not.toHaveProperty('patient_share_consents_registered');
+    expect(AUDIT_LOG_ACTION_LABEL_MAP).not.toHaveProperty('patient_share_consents_revoked');
+  });
+});

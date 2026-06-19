@@ -6,6 +6,10 @@ const MIGRATION_PATH = join(
   process.cwd(),
   'prisma/migrations/20260619110800_add_pharmacy_partnership_foundation/migration.sql',
 );
+const PATIENT_SHARE_CONSENT_AUDIT_MIGRATION_PATH = join(
+  process.cwd(),
+  'prisma/migrations/20260619173403_redact_patient_share_consent_audit/migration.sql',
+);
 
 describe('pharmacy partnership DB audit contract', () => {
   it('redacts patient-link snapshots and correction free text from trigger audit rows', () => {
@@ -27,6 +31,45 @@ describe('pharmacy partnership DB audit contract', () => {
     expect(sql).toContain("'reason_length'");
     expect(sql).toContain("'has_proposed_value'");
     expect(sql).toContain("'response_note_length'");
+  });
+
+  it('redacts patient-share consent person, scope, file, consent ids, and dates from trigger audit rows', () => {
+    const sql = readFileSync(PATIENT_SHARE_CONSENT_AUDIT_MIGRATION_PATH, 'utf8');
+
+    expect(sql).toContain('ph_os_redact_patient_share_consent_audit_row');
+    expect(sql).toContain('ph_os_write_patient_share_consent_audit_log');
+    expect(sql).toContain(
+      'FOR EACH ROW EXECUTE FUNCTION ph_os_write_patient_share_consent_audit_log()',
+    );
+
+    for (const column of [
+      'consent_person',
+      'consent_date',
+      'scope',
+      'file_asset_id',
+      'consent_record_id',
+      'valid_until',
+      'revoked_at',
+    ]) {
+      expect(sql).toContain(`- '${column}'`);
+    }
+
+    for (const summaryKey of [
+      'consent_person_length',
+      'has_consent_date',
+      'scope_key_count',
+      'scope_keys',
+      'has_file_asset',
+      'has_consent_record',
+      'has_valid_until',
+      'has_revoked_at',
+    ]) {
+      expect(sql).toContain(`'${summaryKey}'`);
+    }
+
+    expect(sql).not.toContain(
+      'CREATE TRIGGER audit_log_patient_share_consent\nAFTER INSERT OR UPDATE OR DELETE ON "PatientShareConsent"\nFOR EACH ROW EXECUTE FUNCTION ph_os_write_audit_log()',
+    );
   });
 
   it('redacts clinical visit request, partner visit record, and claim note trigger audit rows', () => {
