@@ -3096,3 +3096,50 @@ Blocked: C11 (diverged user-visible label strings — product/UX sign-off), C12 
 - Real S3/DB upload/download was not executed in this slice; behavior is covered by unit/component tests and existing file API abstractions.
 - Direct authenticated browser proof remains blocked until v0.2 migrations are approved/applied to the local e2e DB.
 - New migrations were not applied to any database in this slice.
+
+## 20260619-2140 JST - Pharmacy Invoice Lifecycle Actions
+
+### Completed
+
+- Re-read the v0.2 monthly billing requirements for invoice issue, cancellation, reissue, payment schedule, payment recording, snapshot preservation, and audit events.
+- Added `transitionPharmacyInvoice` as the request-boundary state machine for `PharmacyInvoice` lifecycle actions: issue, mark sent, mark received, schedule payment, record payment, cancel, and reissue.
+- Added `PATCH /api/pharmacy-invoices/[id]` with strict action-specific validation, Serializable transaction wrapping, safe 404/409 error mapping, sensitive no-store responses, and `canManageBilling` authorization.
+- Updated the partner-cooperation billing UI so operators can issue, send, receive, schedule payment, record payment, cancel, and reissue monthly invoice/free-report rows from the history table.
+- Added lifecycle audit actions to the audit-log filter vocabulary. Audit metadata records only IDs, status, document kind, item counts, date-presence flags, scheduled date, and reason length; it does not include item snapshots, patient names, filenames, fee JSON, or reason bodies.
+- Kept this slice migration-free. The payment scheduled date is captured in the invoice lifecycle snapshot and audit metadata because the current `PharmacyInvoice` schema has no dedicated scheduled-payment date column.
+
+### Files Changed
+
+- `src/server/services/pharmacy-invoices.ts`
+- `src/server/services/pharmacy-invoices.test.ts`
+- `src/app/api/pharmacy-invoices/[id]/route.ts`
+- `src/app/api/pharmacy-invoices/[id]/route.test.ts`
+- `src/app/api/pharmacy-invoices/route.ts`
+- `src/app/api/pharmacy-invoices/route.test.ts`
+- `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx`
+- `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx`
+- `src/lib/api/route-catalog.ts`
+- `src/lib/api/route-catalog.test.ts`
+- `src/lib/api/rate-limit.ts`
+- `src/app/api/meta/route-catalog/route.test.ts`
+- `src/lib/audit-logs/filter-options.ts`
+- `src/lib/audit-logs/filter-options.test.ts`
+- `Plans.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- Targeted Prettier over touched TS/TSX files: passed.
+- `pnpm vitest run src/server/services/pharmacy-invoices.test.ts src/app/api/pharmacy-invoices/route.test.ts 'src/app/api/pharmacy-invoices/[id]/route.test.ts' 'src/app/api/pharmacy-invoices/[id]/pdf/route.test.ts' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' src/lib/api/route-catalog.test.ts src/lib/api/rate-limit.test.ts src/app/api/meta/route-catalog/route.test.ts src/lib/audit-logs/filter-options.test.ts --reporter=dot --testTimeout=30000`: passed, 9 files / 64 tests.
+- `pnpm typecheck`: passed.
+- Targeted `pnpm exec eslint` over touched TS/TSX files: passed.
+- `pnpm lint`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Payment scheduled date remains JSON-backed rather than first-class schema because this slice intentionally avoided a migration. If operators need reporting/search by scheduled payment date, add a dedicated nullable `payment_scheduled_for @db.Date` column in a migration-aware slice.
+- Direct authenticated browser proof remains blocked until v0.2 migrations are approved/applied to the local e2e DB.
+- Real DB/S3/browser execution was not run in this slice; behavior is covered by service, route, and component tests.
