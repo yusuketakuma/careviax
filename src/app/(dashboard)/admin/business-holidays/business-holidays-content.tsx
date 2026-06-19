@@ -309,11 +309,11 @@ export function BusinessHolidaysContent() {
         <CardHeader>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <Button size="icon" variant="ghost" onClick={prevMonth}>
+              <Button size="icon" variant="ghost" aria-label="前月を表示" onClick={prevMonth}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <CardTitle className="text-base">{formatYearMonth(viewYear, viewMonth)}</CardTitle>
-              <Button size="icon" variant="ghost" onClick={nextMonth}>
+              <Button size="icon" variant="ghost" aria-label="翌月を表示" onClick={nextMonth}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>

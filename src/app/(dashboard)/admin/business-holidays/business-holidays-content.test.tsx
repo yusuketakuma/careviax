@@ -87,6 +87,8 @@ describe('BusinessHolidaysContent', () => {
     renderContent();
 
     expect(await screen.findByLabelText('店舗フィルタ')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '前月を表示' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '翌月を表示' })).toBeTruthy();
 
     fireEvent.click(
       await screen.findByRole('button', {
