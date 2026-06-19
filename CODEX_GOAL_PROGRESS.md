@@ -3744,3 +3744,92 @@ Implemented:
 ### Remaining / Next Loop
 
 - Patient-share-case transition commonality is now covered for the active v0.2 mutation routes. Broader legacy-wide state-machine modeling, DB-backed browser proof, and migration application remain follow-ups requiring either wider scope or explicit approval.
+
+## 20260619-2331 JST - Inquiry Records GET Status Filter Guard
+
+### Summary
+
+- Hardened `GET /api/inquiry-records` query parsing so `cycle_id`, `patient_id`, and `status` are trimmed before query construction.
+- Made the existing `status=resolved|unresolved` contract fail closed: unknown status filters now return 400 before any inquiry query instead of silently returning an unfiltered list.
+- Added regression coverage for resolved/unresolved filters and invalid status rejection.
+
+### Files Changed
+
+- `src/app/api/inquiry-records/route.ts`
+- `src/app/api/inquiry-records/route.test.ts`
+- `Plans.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- Read local Next.js route handler docs before editing the route.
+- `pnpm exec prettier --write src/app/api/inquiry-records/route.ts src/app/api/inquiry-records/route.test.ts`: passed unchanged.
+- `pnpm exec vitest run src/app/api/inquiry-records/route.test.ts --reporter=dot --testTimeout=30000`: passed, 1 file / 8 tests.
+- `pnpm exec eslint src/app/api/inquiry-records/route.ts src/app/api/inquiry-records/route.test.ts`: passed.
+- `pnpm typecheck`: passed.
+
+### Remaining / Next Loop
+
+- `GET /api/inquiry-records?status=unresolved` is now validated and covered. Continue with the higher-value pharmacy-cooperation notification gap identified by the read-only code mapper.
+
+## 20260619-2334 JST - Partner Visit Record Review Notifications
+
+### Summary
+
+- Added PHI-free in-app notifications for partner visit record base review results: confirm and return now dispatch dedicated notification events after the record/request updates succeed.
+- Routes notify the accepting partner-side user recorded on the visit request when available, while still allowing notification rules to add configured recipients.
+- Notification metadata is limited to IDs, decision, and next status; return reasons and patient-identifying content are not copied into notifications or audit metadata.
+
+### Files Changed
+
+- `src/app/api/partner-visit-records/[id]/review/route.ts`
+- `src/app/api/partner-visit-records/[id]/review/route.test.ts`
+- `docs/pharmacy-cooperation-v0.2-completion-audit.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/api/partner-visit-records/[id]/review/route.ts' 'src/app/api/partner-visit-records/[id]/review/route.test.ts'`: passed unchanged.
+- `pnpm exec vitest run 'src/app/api/partner-visit-records/[id]/review/route.test.ts' --reporter=dot --testTimeout=30000`: passed, 1 file / 4 tests.
+- `pnpm exec vitest run 'src/app/api/partner-visit-records/[id]/submit/route.test.ts' 'src/app/api/partner-visit-records/[id]/review/route.test.ts' src/server/services/notifications.test.ts --reporter=dot --testTimeout=30000`: passed, 3 files / 20 tests.
+- `pnpm exec eslint 'src/app/api/partner-visit-records/[id]/review/route.ts' 'src/app/api/partner-visit-records/[id]/review/route.test.ts' 'src/app/api/partner-visit-records/[id]/submit/route.test.ts' src/server/services/notifications.test.ts`: passed.
+- `pnpm typecheck`: passed.
+
+### Remaining / Next Loop
+
+- R-04 now covers message, submit, confirm, and return notification reuse in code/tests. Broader live delivery proof remains blocked by unapplied migrations/environment setup.
+
+## 20260619-2340 JST - Pharmacy Contract Status Policy
+
+### Summary
+
+- Centralized pharmacy contract and contract-version active status decisions in `src/server/services/pharmacy-partnerships.ts`.
+- Routed contract creation through the shared policy for both pharmacy approvals, active partnership, and active partner pharmacy prerequisites.
+- Routed contract-version creation through the shared policy for terminal parent contracts, active parent contract requirement, both approvals, active partnership, and active partner pharmacy prerequisites.
+- Confirmed invoice lifecycle already uses the shared `transitionPharmacyInvoice` policy in `src/server/services/pharmacy-invoices.ts`.
+
+### Files Changed
+
+- `src/server/services/pharmacy-partnerships.ts`
+- `src/server/services/pharmacy-partnerships.test.ts`
+- `src/app/api/pharmacy-contracts/route.ts`
+- `src/app/api/pharmacy-contracts/[id]/versions/route.ts`
+- `Plans.md`
+- `docs/pharmacy-cooperation-v0.2-completion-audit.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- Read local Next.js route handler docs before editing the routes.
+- `pnpm exec prettier --write src/server/services/pharmacy-partnerships.ts src/server/services/pharmacy-partnerships.test.ts src/app/api/pharmacy-contracts/route.ts 'src/app/api/pharmacy-contracts/[id]/versions/route.ts'`: passed unchanged.
+- `pnpm exec vitest run src/server/services/pharmacy-partnerships.test.ts src/app/api/pharmacy-contracts/route.test.ts 'src/app/api/pharmacy-contracts/[id]/versions/route.test.ts' --reporter=dot --testTimeout=30000`: passed, 3 files / 26 tests.
+- `pnpm exec vitest run src/server/services/pharmacy-partnerships.test.ts src/app/api/pharmacy-contracts/route.test.ts 'src/app/api/pharmacy-contracts/[id]/versions/route.test.ts' src/app/api/inquiry-records/route.test.ts 'src/app/api/partner-visit-records/[id]/review/route.test.ts' --reporter=dot --testTimeout=30000`: passed, 5 files / 38 tests.
+- Targeted ESLint over touched service/route/test files: passed.
+- `pnpm typecheck`: passed.
+
+### Remaining / Next Loop
+
+- R-07 now covers patient-share-case, visit request, partner visit record, contract, contract-version, physician-report/claim candidate transitions, and the existing invoice transition service. Broader legacy-wide state-machine modeling, DB-backed browser proof, and migration application remain follow-ups requiring explicit approval.
