@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { AppHeader, formatSyncTime } from './app-header';
@@ -10,6 +10,7 @@ setupDomTestEnv();
 const mockRouterPush = vi.fn();
 const mockSetSidebarOpen = vi.fn();
 const mockSetWorkspaceRailOpen = vi.fn();
+const toastErrorMock = vi.hoisted(() => vi.fn());
 let mockOnline = true;
 let mockLastSyncedAt: string | null = '2026-06-11T09:42:00';
 
@@ -28,6 +29,12 @@ vi.mock('next/link', () => ({
 vi.mock('next/navigation', () => ({
   usePathname: () => '/dashboard',
   useRouter: () => ({ push: mockRouterPush }),
+}));
+
+vi.mock('sonner', () => ({
+  toast: {
+    error: toastErrorMock,
+  },
 }));
 
 const mockUseUIStore = vi.fn();
@@ -103,6 +110,7 @@ describe('AppHeader', () => {
     mockRouterPush.mockClear();
     mockSetSidebarOpen.mockClear();
     mockSetWorkspaceRailOpen.mockClear();
+    toastErrorMock.mockClear();
     mockFetch.mockReset();
     mockFetch.mockResolvedValue({ ok: true });
     vi.stubGlobal('fetch', mockFetch);
@@ -113,7 +121,7 @@ describe('AppHeader', () => {
     vi.unstubAllGlobals();
   });
 
-  it('shows mode dropdown, search box, sync status, notification, help and user', () => {
+  it('shows mode dropdown, search box, sync status, notification, settings and user', () => {
     render(<AppHeader />);
 
     const trigger = screen.getByTestId('app-header-mode-trigger');
@@ -134,7 +142,7 @@ describe('AppHeader', () => {
     );
     expect(communication.className).toContain('min-w-[44px]');
     expect(screen.getByRole('button', { name: '通知 6' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'ヘルプ' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: '設定' }).getAttribute('href')).toBe('/settings');
     expect(screen.getByTestId('app-header-user-name').textContent).toBe('山田 太郎');
   });
 
@@ -224,6 +232,23 @@ describe('AppHeader', () => {
         method: 'PATCH',
         body: JSON.stringify({ care_mode: 'outpatient' }),
       }),
+    );
+  });
+
+  it('rolls back the care mode and shows feedback when preference saving fails', async () => {
+    const setCareMode = vi.fn();
+    mockFetch.mockResolvedValueOnce({ ok: false, status: 500 });
+    mockUseUIStore.mockReturnValue(uiStoreState({ careMode: 'home_visit', setCareMode }));
+    render(<AppHeader />);
+
+    fireEvent.click(screen.getByRole('button', { name: '外来モード' }));
+
+    expect(setCareMode).toHaveBeenCalledWith('outpatient');
+    await waitFor(() => {
+      expect(setCareMode).toHaveBeenLastCalledWith('home_visit');
+    });
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      'モード設定を保存できませんでした。再度お試しください。',
     );
   });
 

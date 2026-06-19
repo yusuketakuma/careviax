@@ -42,7 +42,8 @@ export function PageSection({
   return (
     <section
       aria-labelledby={titleId}
-      className={cn('space-y-4 rounded-2xl border p-4', toneClassName[tone], className)}
+      className={cn('space-y-4 rounded-xl border p-4 sm:p-5', toneClassName[tone], className)}
+      data-clinical-section="true"
       {...props}
     >
       <div
@@ -59,7 +60,9 @@ export function PageSection({
             <p className="mt-1 text-sm leading-5 text-muted-foreground">{description}</p>
           ) : null}
         </div>
-        {actions ? <div className="shrink-0">{actions}</div> : null}
+        {actions ? (
+          <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
+        ) : null}
       </div>
       <div className={contentClassName}>{children}</div>
     </section>

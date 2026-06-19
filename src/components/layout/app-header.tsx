@@ -3,14 +3,15 @@
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 import {
   ChevronDown,
-  CircleHelp,
   CloudOff,
   MessageSquareText,
   PanelLeftOpen,
   PanelRightOpen,
   Search,
+  Settings,
 } from 'lucide-react';
 import { NotificationBell } from '@/components/features/notifications/notification-bell';
 import { OfflineDraftIndicator } from '@/components/features/offline/offline-draft-indicator';
@@ -129,24 +130,26 @@ export function AppHeader() {
 
   const handleCareModeSelect = useCallback(
     (mode: CareMode) => {
+      if (mode === careMode) return;
       setCareMode(mode);
-      // fire-and-forget: サーバー側設定の保存失敗で UI を止めない
-      void fetch('/api/me/preferences', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(orgId ? { 'x-org-id': orgId } : {}),
-        },
-        body: JSON.stringify({ care_mode: mode }),
-      })
-        .then((res) => {
-          if (!res.ok) console.warn(`care_mode の保存に失敗しました (HTTP ${res.status})`);
-        })
-        .catch((err) => {
-          console.warn('care_mode の保存に失敗しました', err);
-        });
+      void (async () => {
+        try {
+          const res = await fetch('/api/me/preferences', {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(orgId ? { 'x-org-id': orgId } : {}),
+            },
+            body: JSON.stringify({ care_mode: mode }),
+          });
+          if (!res.ok) throw new Error('care_mode save failed');
+        } catch {
+          setCareMode(careMode);
+          toast.error('モード設定を保存できませんでした。再度お試しください。');
+        }
+      })();
     },
-    [orgId, setCareMode],
+    [careMode, orgId, setCareMode],
   );
 
   const goToSearch = useCallback(() => {
@@ -265,9 +268,9 @@ export function AppHeader() {
             variant="ghost"
             className="min-h-[44px] min-w-[44px] px-2 text-sm text-muted-foreground hover:text-foreground sm:min-h-9 sm:min-w-0"
           >
-            <Link href="/settings" aria-label="ヘルプ">
-              <CircleHelp className="size-4 md:hidden" aria-hidden="true" />
-              <span className="hidden md:inline">ヘルプ</span>
+            <Link href="/settings" aria-label="設定">
+              <Settings className="size-4 md:hidden" aria-hidden="true" />
+              <span className="hidden md:inline">設定</span>
             </Link>
           </Button>
           {currentUserName ? (

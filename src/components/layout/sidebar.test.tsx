@@ -12,6 +12,7 @@ let mockPathname = '/dashboard';
 let mockSidebarPinned = false;
 let mockNavBadges: NavBadgeCounts = {};
 const mockSetSidebarOpen = vi.fn();
+const signOutMock = vi.hoisted(() => vi.fn());
 
 vi.mock('next/link', () => ({
   default: ({
@@ -27,6 +28,10 @@ vi.mock('next/link', () => ({
 
 vi.mock('next/navigation', () => ({
   usePathname: () => mockPathname,
+}));
+
+vi.mock('next-auth/react', () => ({
+  signOut: signOutMock,
 }));
 
 vi.mock('@/lib/stores/ui-store', () => ({
@@ -49,6 +54,7 @@ describe('Sidebar', () => {
     mockSidebarPinned = false;
     mockNavBadges = {};
     mockSetSidebarOpen.mockClear();
+    signOutMock.mockClear();
   });
 
   it('closes the compact sidebar sheet after a navigation click', () => {
@@ -237,5 +243,14 @@ describe('Sidebar', () => {
 
     expect(screen.queryByTestId('sidebar-nav-badge--audit')).toBeNull();
     expect(screen.queryByTestId('sidebar-nav-badge--handoff')).toBeNull();
+  });
+
+  it('signs out from the sidebar logout button and closes transient navigation', () => {
+    render(<Sidebar />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'ログアウト' }));
+
+    expect(signOutMock).toHaveBeenCalledWith({ callbackUrl: '/login' });
+    expect(mockSetSidebarOpen).toHaveBeenCalledWith(false);
   });
 });

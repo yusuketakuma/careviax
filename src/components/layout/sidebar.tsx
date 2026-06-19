@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { signOut } from 'next-auth/react';
 import { LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { memberRoleLabel } from '@/lib/auth/member-roles';
@@ -90,6 +91,10 @@ export function Sidebar({ className, closeOnNavigate = false, showToggle = true 
   const currentUserName = useAuthStore((state) => state.currentUser?.name ?? null);
   const currentUserRole = useAuthStore((state) => state.currentUser?.role ?? null);
   const navBadges = useNavBadges();
+  const handleLogout = () => {
+    if (closeOnNavigate || !sidebarPinned) setSidebarOpen(false);
+    void signOut({ callbackUrl: '/login' });
+  };
 
   return (
     <aside
@@ -214,6 +219,7 @@ export function Sidebar({ className, closeOnNavigate = false, showToggle = true 
         ) : null}
         <button
           type="button"
+          onClick={handleLogout}
           className={cn(
             'flex min-h-[44px] w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring',
