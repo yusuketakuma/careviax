@@ -229,6 +229,12 @@ type PendingWorkflowAction =
   | { kind: 'baseApproveLink'; shareCase: PatientShareCaseRow }
   | { kind: 'acceptLink'; shareCase: PatientShareCaseRow; acceptForm: LinkAcceptForm }
   | { kind: 'declineLink'; shareCase: PatientShareCaseRow; declineReason: string }
+  | {
+      kind: 'revokePatientShareConsent';
+      shareCase: PatientShareCaseRow | null;
+      consent: PatientShareConsentRow;
+      reason: string;
+    }
   | { kind: 'acceptVisitRequest'; request: PharmacyVisitRequestRow }
   | { kind: 'declineVisitRequest'; request: PharmacyVisitRequestRow; declineReason: string }
   | { kind: 'submitPartnerVisitRecord'; record: PartnerVisitRecordRow }
@@ -610,6 +616,8 @@ function workflowActionTitle(action: PendingWorkflowAction) {
       return '患者リンクを協力受諾します';
     case 'declineLink':
       return '患者リンクを辞退します';
+    case 'revokePatientShareConsent':
+      return '患者共有同意を撤回します';
     case 'acceptVisitRequest':
       return '訪問依頼を受諾します';
     case 'declineVisitRequest':
@@ -637,6 +645,8 @@ function workflowActionConfirmLabel(action: PendingWorkflowAction) {
       return '協力受諾する';
     case 'declineLink':
       return '辞退する';
+    case 'revokePatientShareConsent':
+      return '撤回する';
     case 'acceptVisitRequest':
       return '受諾する';
     case 'declineVisitRequest':
@@ -654,6 +664,7 @@ function workflowActionConfirmLabel(action: PendingWorkflowAction) {
 
 function workflowActionVariant(action: PendingWorkflowAction): 'default' | 'destructive' {
   return action.kind === 'declineLink' ||
+    action.kind === 'revokePatientShareConsent' ||
     action.kind === 'declineVisitRequest' ||
     action.kind === 'returnPartnerVisitRecord'
     ? 'destructive'
@@ -663,7 +674,7 @@ function workflowActionVariant(action: PendingWorkflowAction): 'default' | 'dest
 function workflowActionDescription(action: PendingWorkflowAction) {
   const isDestructive = workflowActionVariant(action) === 'destructive';
   return isDestructive
-    ? '辞退または差戻しの理由を確認し、対象が正しい場合のみ実行してください。'
+    ? '辞退、撤回、または差戻しの理由を確認し、対象が正しい場合のみ実行してください。'
     : 'この操作は薬局間連携の状態を更新します。対象が正しいことを確認してください。';
 }
 
@@ -689,6 +700,14 @@ function workflowActionDetails(action: PendingWorkflowAction) {
         `共有ケース: ${workflowShortId(action.shareCase.id)}`,
         `協力薬局: ${action.shareCase.partnership.partner_pharmacy.name}`,
         `辞退理由: 入力済み (${action.declineReason.trim().length}文字)`,
+      ];
+    case 'revokePatientShareConsent':
+      return [
+        `共有ケース: ${workflowShortId(action.consent.share_case_id)}`,
+        `協力薬局: ${action.shareCase?.partnership.partner_pharmacy.name ?? '不明'}`,
+        `同意: ${action.consent.id}`,
+        `同意日: ${formatDate(action.consent.consent_date)}`,
+        `撤回理由: 入力済み (${action.reason.trim().length}文字)`,
       ];
     case 'acceptVisitRequest':
       return [
@@ -1122,7 +1141,7 @@ function PatientShareConsentsPanel({
   isBusy: boolean;
   onRetry: () => void;
   onCreate: () => void;
-  onRevoke: (consentId: string, reason: string) => void;
+  onRevoke: (consent: PatientShareConsentRow, reason: string) => void;
 }) {
   const selectedShareCase = shareCases.find((row) => row.id === selectedShareCaseId) ?? null;
   const canCreate =
@@ -1279,6 +1298,7 @@ function PatientShareConsentsPanel({
             <tbody>
               {consents.map((row) => {
                 const revokeReason = revokeReasons[row.id] ?? '';
+                const canRevoke = !isBusy && revokeReason.trim().length > 0;
                 return (
                   <tr key={row.id} className="border-t border-border/70 align-top">
                     <td className="px-3 py-2">
@@ -1320,9 +1340,10 @@ function PatientShareConsentsPanel({
                           <Button
                             type="button"
                             size="sm"
-                            variant="outline"
-                            disabled={isBusy}
-                            onClick={() => onRevoke(row.id, revokeReason)}
+                            variant="destructive"
+                            disabled={!canRevoke}
+                            onClick={() => onRevoke(row, revokeReason)}
+                            aria-label={`${row.id} の患者共有同意を撤回`}
                           >
                             <XCircle className="size-4" aria-hidden="true" />
                             撤回
@@ -2582,16 +2603,27 @@ export function PharmacyCooperationWorkflowContent() {
   });
 
   const revokePatientShareConsentMutation = useMutation({
-    mutationFn: async ({ consentId, reason }: { consentId: string; reason: string }) => {
+    mutationFn: async ({
+      shareCaseId,
+      consentId,
+      reason,
+    }: {
+      shareCaseId: string;
+      consentId: string;
+      reason: string;
+    }) => {
+      const trimmedReason = reason.trim();
+      if (!trimmedReason) throw new Error('撤回理由を入力してください');
+
       const response = await fetch(
-        `/api/patient-share-cases/${effectiveConsentShareCaseId}/consents/${consentId}/revoke`,
+        `/api/patient-share-cases/${shareCaseId}/consents/${consentId}/revoke`,
         {
           method: 'POST',
           headers: {
             'content-type': 'application/json',
             'x-org-id': orgId,
           },
-          body: JSON.stringify(reason.trim() ? { reason: reason.trim() } : {}),
+          body: JSON.stringify({ reason: trimmedReason }),
         },
       );
       return readApiJson<unknown>(response);
@@ -2891,6 +2923,13 @@ export function PharmacyCooperationWorkflowContent() {
           declineReason: pendingWorkflowAction.declineReason.trim(),
         });
         return;
+      case 'revokePatientShareConsent':
+        revokePatientShareConsentMutation.mutate({
+          shareCaseId: pendingWorkflowAction.consent.share_case_id,
+          consentId: pendingWorkflowAction.consent.id,
+          reason: pendingWorkflowAction.reason.trim(),
+        });
+        return;
       case 'acceptVisitRequest':
         visitRequestDecisionMutation.mutate({
           id: pendingWorkflowAction.request.id,
@@ -3053,8 +3092,13 @@ export function PharmacyCooperationWorkflowContent() {
           isBusy={isBusy}
           onRetry={() => void patientShareConsentsQuery.refetch()}
           onCreate={() => createPatientShareConsentMutation.mutate()}
-          onRevoke={(consentId, reason) =>
-            revokePatientShareConsentMutation.mutate({ consentId, reason })
+          onRevoke={(consent, reason) =>
+            setPendingWorkflowAction({
+              kind: 'revokePatientShareConsent',
+              shareCase: shareCases.find((row) => row.id === consent.share_case_id) ?? null,
+              consent,
+              reason,
+            })
           }
         />
       </SectionShell>

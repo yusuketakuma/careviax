@@ -686,10 +686,35 @@ describe('PharmacyCooperationWorkflowContent', () => {
       });
     });
 
-    fireEvent.change(screen.getByLabelText('share_consent_1 の患者共有同意撤回理由'), {
-      target: { value: '撤回連絡あり' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^撤回$/ }));
+    const consentRow = screen.getByText('share_consent_1').closest('tr');
+    expect(consentRow).toBeTruthy();
+    const revokeButton = within(consentRow as HTMLTableRowElement).getByRole('button', {
+      name: 'share_consent_1 の患者共有同意を撤回',
+    }) as HTMLButtonElement;
+    expect(revokeButton.disabled).toBe(true);
+
+    fireEvent.change(
+      within(consentRow as HTMLTableRowElement).getByLabelText(
+        'share_consent_1 の患者共有同意撤回理由',
+      ),
+      {
+        target: { value: '撤回連絡あり' },
+      },
+    );
+    expect(revokeButton.disabled).toBe(false);
+    fireEvent.click(revokeButton);
+    expect(
+      findFetchCall(
+        (input, init) =>
+          String(input) ===
+            '/api/patient-share-cases/share_case_1/consents/share_consent_1/revoke' &&
+          init?.method === 'POST',
+      ),
+    ).toBeUndefined();
+    expect(screen.getByRole('heading', { name: '患者共有同意を撤回します' })).toBeTruthy();
+    expect(screen.getByText('同意: share_consent_1')).toBeTruthy();
+    expect(screen.getByText('撤回理由: 入力済み (6文字)')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '撤回する' }));
 
     await waitFor(() => {
       const revokeConsentCall = vi
