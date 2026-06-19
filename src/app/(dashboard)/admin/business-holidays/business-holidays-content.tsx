@@ -24,14 +24,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { formatDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
@@ -95,6 +88,15 @@ function getFirstDayOfWeek(year: number, month: number) {
 function dateKey(d: Date | string) {
   const date = typeof d === 'string' ? new Date(d) : d;
   return formatDateKey(date);
+}
+
+function holidaySummary(holiday: Holiday | null) {
+  if (!holiday) return '選択中の休日設定';
+  return `${dateKey(holiday.date)} ${holiday.name}（${[
+    holiday.site?.name ?? '全店舗共通',
+    HOLIDAY_TYPE_LABELS[holiday.holiday_type] ?? holiday.holiday_type,
+    holiday.is_closed ? '休業' : '営業',
+  ].join(' / ')}）`;
 }
 
 export function BusinessHolidaysContent() {
@@ -512,7 +514,12 @@ export function BusinessHolidaysContent() {
                   <Button size="sm" variant="outline" onClick={() => openEdit(h)}>
                     編集
                   </Button>
-                  <Button size="sm" variant="destructive" onClick={() => setDeleteTarget(h)}>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => setDeleteTarget(h)}
+                    aria-label={`${holidaySummary(h)}を削除`}
+                  >
                     削除
                   </Button>
                 </div>
@@ -619,30 +626,23 @@ export function BusinessHolidaysContent() {
         </SheetContent>
       </Sheet>
 
-      {/* Delete Confirmation */}
-      <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>休日を削除</DialogTitle>
-            <DialogDescription>
-              {deleteTarget?.name}（{deleteTarget ? dateKey(deleteTarget.date) : ''}
-              ）を削除しますか？
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
-              キャンセル
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => deleteMutation.mutate()}
-              disabled={deleteMutation.isPending}
-            >
-              {deleteMutation.isPending ? '削除中...' : '削除する'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title="休日設定を削除しますか"
+        description={`${holidaySummary(
+          deleteTarget,
+        )}を削除します。この操作は取り消せません。シフト表と訪問可能日の表示にも反映されます。`}
+        confirmLabel={deleteMutation.isPending ? '削除中...' : '削除する'}
+        confirmDisabled={deleteMutation.isPending}
+        closeOnConfirm={false}
+        variant="destructive"
+        onConfirm={() => {
+          if (deleteTarget) deleteMutation.mutate();
+        }}
+      />
     </div>
   );
 }

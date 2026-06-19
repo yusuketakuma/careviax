@@ -4276,3 +4276,89 @@ Implemented:
 ### Remaining / Next Loop
 
 - UI/UX remediation remains active. Remaining candidates include shift template/holiday destructive confirmation, pharmacy-cooperation responsive table density, select accessible-name gaps outside fixed/verified screens, raw table/DataTable convergence, and expanded browser/a11y proof.
+
+## 20260620-0028 JST - Shift Workspace Delete Confirmations
+
+### Summary
+
+- Added explicit confirmation before deleting shift templates.
+- Added explicit confirmation before deleting business holidays from the shift workspace.
+- Added target-specific accessible names and confirmation copy for template user/weekday/site/availability and holiday name/date/site.
+- Added regression tests proving neither delete mutation runs until the confirmation action is clicked.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/shifts/shifts-content.tsx`
+- `src/app/(dashboard)/admin/shifts/shifts-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/shifts/shifts-content.tsx' 'src/app/(dashboard)/admin/shifts/shifts-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/shifts/shifts-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 2 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/shifts/shifts-content.tsx' 'src/app/(dashboard)/admin/shifts/shifts-content.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `pnpm typecheck`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Remaining candidates include pharmacy-cooperation responsive table density, select accessible-name gaps outside fixed/verified screens, raw table/DataTable convergence, and expanded browser/a11y proof.
+
+## 20260620-0031 JST - Contact Profile Label Associations
+
+### Summary
+
+- Associated the contact-profile kind filter Select with its visible `種別` label.
+- Associated the contact-profile search input with its visible `検索` label.
+- Associated the delivery-method Select with its visible `送付方法` label.
+- Added regression assertions that the controls are reachable by their visible labels.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.tsx`
+- `src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.tsx' 'src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 2 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.tsx' 'src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.test.tsx'`: passed.
+- `pnpm exec prettier --check 'src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.tsx' 'src/app/(dashboard)/admin/contact-profiles/contact-profiles-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Remaining candidates include pharmacy-cooperation responsive table density, select accessible-name gaps outside fixed/verified screens, raw table/DataTable convergence, and expanded browser/a11y proof.
+
+## 20260620-0029 JST - Business Holiday Delete Confirmation
+
+### Summary
+
+- Replaced the dedicated business-holiday delete dialog with the shared `ConfirmDialog`.
+- Added target-specific delete action naming and confirmation copy with date, site, holiday type, and open/closed state.
+- Added a regression test proving the DELETE request is not sent until the confirmation action is clicked.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx`
+- `src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx' src/components/ui/confirm-dialog.test.tsx --reporter=dot --testTimeout=30000`: passed, 2 files / 5 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx' src/components/ui/confirm-dialog.tsx src/components/ui/confirm-dialog.test.tsx`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `pnpm typecheck`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Remaining candidates include pharmacy-cooperation responsive table density, select accessible-name gaps outside fixed/verified screens, raw table/DataTable convergence, and expanded browser/a11y proof.

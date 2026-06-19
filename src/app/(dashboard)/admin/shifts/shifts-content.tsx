@@ -27,6 +27,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -134,6 +135,8 @@ export function ShiftsContent() {
     holiday_type: 'public_holiday' as 'public_holiday' | 'site_closure' | 'org_event',
     is_closed: 'true',
   });
+  const [deleteTemplateTarget, setDeleteTemplateTarget] = useState<ShiftTemplate | null>(null);
+  const [deleteHolidayTarget, setDeleteHolidayTarget] = useState<BusinessHoliday | null>(null);
 
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
@@ -351,6 +354,23 @@ export function ShiftsContent() {
     });
   }
 
+  function shiftTemplateSummary(template: ShiftTemplate) {
+    const availability = template.available
+      ? `${toTimeValue(template.available_from) || '--:--'} - ${
+          toTimeValue(template.available_to) || '--:--'
+        }`
+      : '勤務不可';
+    return `${template.user.name} / ${weekdayLabel(template.weekday)} / ${
+      template.site?.name ?? '店舗未設定'
+    } / ${availability}`;
+  }
+
+  function holidaySummary(holiday: BusinessHoliday) {
+    return `${holiday.name} / ${format(parseISO(holiday.date), 'yyyy年M月d日', {
+      locale: ja,
+    })} / ${holiday.site?.name ?? '組織全体'}`;
+  }
+
   function startEdit() {
     setDraftShifts(baselineShifts);
     setSelectedShiftKey(null);
@@ -510,6 +530,7 @@ export function ShiftsContent() {
     },
     onSuccess: async (holiday) => {
       toast.success(`${holiday.name} を削除しました`);
+      setDeleteHolidayTarget((current) => (current?.id === holiday.id ? null : current));
       await queryClient.invalidateQueries({ queryKey: ['business-holidays', orgId] });
     },
     onError: (error) => {
@@ -754,6 +775,7 @@ export function ShiftsContent() {
       toast.success(
         `${template.user.name}の${weekdayLabel(template.weekday)}テンプレートを削除しました`,
       );
+      setDeleteTemplateTarget((current) => (current?.id === template.id ? null : current));
       if (editingTemplateId === template.id) resetTemplateForm();
       await queryClient.invalidateQueries({ queryKey: ['pharmacist-shift-templates', orgId] });
     },
@@ -1529,8 +1551,9 @@ export function ShiftsContent() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => deleteTemplateMutation.mutate(template)}
+                            onClick={() => setDeleteTemplateTarget(template)}
                             disabled={deleteTemplateMutation.isPending}
+                            aria-label={`${shiftTemplateSummary(template)} の定型シフトを削除`}
                           >
                             削除
                           </Button>
@@ -1716,8 +1739,9 @@ export function ShiftsContent() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => deleteHolidayMutation.mutate(holiday)}
+                            onClick={() => setDeleteHolidayTarget(holiday)}
                             disabled={deleteHolidayMutation.isPending}
+                            aria-label={`${holidaySummary(holiday)} の休日設定を削除`}
                           >
                             削除
                           </Button>
@@ -2250,6 +2274,46 @@ export function ShiftsContent() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={deleteTemplateTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTemplateTarget(null);
+        }}
+        title="定型シフトを削除しますか"
+        description={
+          deleteTemplateTarget
+            ? `${shiftTemplateSummary(deleteTemplateTarget)} の定型シフトを削除します。この操作は取り消せません。対象月への反映前にテンプレート内容を確認してください。`
+            : ''
+        }
+        confirmLabel={deleteTemplateMutation.isPending ? '削除中...' : '削除する'}
+        confirmDisabled={deleteTemplateMutation.isPending}
+        closeOnConfirm={false}
+        variant="destructive"
+        onConfirm={() => {
+          if (deleteTemplateTarget) deleteTemplateMutation.mutate(deleteTemplateTarget);
+        }}
+      />
+
+      <ConfirmDialog
+        open={deleteHolidayTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteHolidayTarget(null);
+        }}
+        title="休日設定を削除しますか"
+        description={
+          deleteHolidayTarget
+            ? `${holidaySummary(deleteHolidayTarget)} の休日設定を削除します。この操作は取り消せません。シフト表と訪問可能日の表示にも反映されます。`
+            : ''
+        }
+        confirmLabel={deleteHolidayMutation.isPending ? '削除中...' : '削除する'}
+        confirmDisabled={deleteHolidayMutation.isPending}
+        closeOnConfirm={false}
+        variant="destructive"
+        onConfirm={() => {
+          if (deleteHolidayTarget) deleteHolidayMutation.mutate(deleteHolidayTarget);
+        }}
+      />
     </div>
   );
 }
