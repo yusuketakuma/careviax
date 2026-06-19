@@ -455,6 +455,9 @@ interface SectionRowProps {
 /** セクション見出し行（調剤方法 select + 服用開始日 date + 処方日数 number + 服用終了日 自動） */
 function SectionRow({ row, methodOptions, onMethod, onStart, onDays, onDrop }: SectionRowProps) {
   const allowDrop = (e: DragEvent) => e.preventDefault();
+  const startHelpId = `dispense-group-${row.gid}-start-help`;
+  const daysHelpId = `dispense-group-${row.gid}-days-help`;
+
   return (
     <div
       className={styles.gridSection}
@@ -526,6 +529,7 @@ function SectionRow({ row, methodOptions, onMethod, onStart, onDays, onDrop }: S
           value={row.start}
           onChange={(e) => onStart(e.target.value)}
           aria-label={`${row.secLabel} 服用開始日`}
+          aria-describedby={startHelpId}
           style={{
             fontSize: 11,
             color: '#173a63',
@@ -535,14 +539,20 @@ function SectionRow({ row, methodOptions, onMethod, onStart, onDays, onDrop }: S
             padding: '1px 4px',
           }}
         />
+        <span id={startHelpId} className="sr-only">
+          YYYY-MM-DD形式で入力してください。
+        </span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <span style={{ fontSize: 10.5, color: '#3a5170', fontWeight: 700 }}>処方日数</span>
         <input
           type="number"
+          min={1}
+          step={1}
           value={row.days}
           onChange={(e) => onDays(e.target.value)}
           aria-label={`${row.secLabel} 処方日数`}
+          aria-describedby={daysHelpId}
           style={{
             width: 48,
             fontSize: 11,
@@ -554,6 +564,9 @@ function SectionRow({ row, methodOptions, onMethod, onStart, onDays, onDrop }: S
             textAlign: 'right',
           }}
         />
+        <span id={daysHelpId} className="sr-only">
+          1以上の整数で入力してください。
+        </span>
         <span style={{ fontSize: 10.5, color: '#3a5170' }}>日</span>
       </div>
       <div
