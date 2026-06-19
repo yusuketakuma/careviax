@@ -399,7 +399,6 @@ export const POST = withAuthContext(
           updated_by: ctx.userId,
           patient_link: {
             create: {
-              org_id: ctx.orgId,
               base_patient_id: parsed.data.base_patient_id,
               match_status: 'pending',
               base_patient_snapshot: toPrismaJsonInput(buildBasePatientSnapshot(patient)),

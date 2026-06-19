@@ -54,6 +54,8 @@ const DEMO_IDS = {
   packaging: 'ui_demo_packaging_1',
   medication: 'ui_demo_medication_1',
   managementPlan: 'ui_demo_management_plan_1',
+  partnerPharmacy: 'ui_demo_partner_pharmacy_1',
+  pharmacyPartnership: 'ui_demo_pharmacy_partnership_1',
   task: 'ui_demo_task_1',
   grant: 'ui_demo_grant_1',
   selfReport: 'ui_demo_self_report_1',
@@ -76,6 +78,7 @@ type DemoContext = {
   contactName: string;
   medicationName: string;
   managementPlanId: string;
+  partnershipId: string;
   reportId: string;
   scheduleId: string;
   visitRecordId: string;
@@ -506,6 +509,74 @@ async function ensureUiDemoData() {
 
     await client.query(
       `
+        INSERT INTO "PartnerPharmacy" (
+          "id","org_id","pharmacy_code","name","address","tel","fax","contact_name","available_services","status","created_by","updated_by","created_at","updated_at"
+        ) VALUES ($1,$2,'UI-DEMO-PARTNER-001',$3,$4,$5,$6,$7,$8::jsonb,'active',$9,$9,NOW(),NOW())
+        ON CONFLICT ("id") DO UPDATE
+        SET "org_id" = EXCLUDED."org_id",
+            "pharmacy_code" = EXCLUDED."pharmacy_code",
+            "name" = EXCLUDED."name",
+            "address" = EXCLUDED."address",
+            "tel" = EXCLUDED."tel",
+            "fax" = EXCLUDED."fax",
+            "contact_name" = EXCLUDED."contact_name",
+            "available_services" = EXCLUDED."available_services",
+            "status" = 'active',
+            "updated_by" = EXCLUDED."updated_by",
+            "updated_at" = NOW()
+      `,
+      [
+        DEMO_IDS.partnerPharmacy,
+        base.org_id,
+        'UIデモ協力薬局',
+        '東京都千代田区丸の内2-2-2',
+        '03-1111-2222',
+        '03-1111-3333',
+        '連携 担当',
+        jsonb(['home_visit_support', 'temporary_visit']),
+        base.user_id,
+      ],
+    );
+
+    await client.query(
+      `
+        INSERT INTO "PharmacyPartnership" (
+          "id","org_id","base_site_id","partner_pharmacy_id","status","available_services","contact_snapshot","effective_from","effective_to","approved_by_base","approved_by_partner","approved_at","created_by","updated_by","created_at","updated_at"
+        ) VALUES ($1,$2,$3,$4,'active',$5::jsonb,$6::jsonb,CURRENT_DATE,$7,$8,$9,NOW(),$8,$8,NOW(),NOW())
+        ON CONFLICT ("id") DO UPDATE
+        SET "org_id" = EXCLUDED."org_id",
+            "base_site_id" = EXCLUDED."base_site_id",
+            "partner_pharmacy_id" = EXCLUDED."partner_pharmacy_id",
+            "status" = 'active',
+            "available_services" = EXCLUDED."available_services",
+            "contact_snapshot" = EXCLUDED."contact_snapshot",
+            "effective_from" = CURRENT_DATE,
+            "effective_to" = EXCLUDED."effective_to",
+            "approved_by_base" = EXCLUDED."approved_by_base",
+            "approved_by_partner" = EXCLUDED."approved_by_partner",
+            "approved_at" = NOW(),
+            "updated_by" = EXCLUDED."updated_by",
+            "updated_at" = NOW()
+      `,
+      [
+        DEMO_IDS.pharmacyPartnership,
+        base.org_id,
+        base.site_id,
+        DEMO_IDS.partnerPharmacy,
+        jsonb(['home_visit_support', 'temporary_visit']),
+        jsonb({
+          partner_pharmacy_name: 'UIデモ協力薬局',
+          contact_name: '連携 担当',
+          tel: '03-1111-2222',
+        }),
+        nextVisitDate,
+        base.user_id,
+        'UIデモ協力薬局 承認者',
+      ],
+    );
+
+    await client.query(
+      `
         INSERT INTO "CareReport" (
           "id","org_id","patient_id","case_id","report_type","status","content","created_by","created_at","updated_at"
         ) VALUES ($1,$2,$3,$4,'physician_report','response_waiting',$5::jsonb,$6,NOW(),NOW())
@@ -650,12 +721,69 @@ async function ensureUiDemoData() {
       contactName,
       medicationName,
       managementPlanId: DEMO_IDS.managementPlan,
+      partnershipId: DEMO_IDS.pharmacyPartnership,
       reportId: DEMO_IDS.careReport,
       scheduleId: DEMO_IDS.visitSchedule,
       visitRecordId: DEMO_IDS.visitRecord,
       selfReportSubject,
       externalShareName,
     } satisfies DemoContext;
+  } finally {
+    await client.end();
+  }
+}
+
+async function clearUiDemoPatientShareCases() {
+  const client = new Client({ connectionString: DB_CONNECTION_STRING });
+  await client.connect();
+
+  try {
+    await client.query(
+      `
+        DELETE FROM "PatientShareCase"
+        WHERE "base_patient_id" = $1
+          AND "partnership_id" = $2
+      `,
+      [DEMO_IDS.patient, DEMO_IDS.pharmacyPartnership],
+    );
+  } finally {
+    await client.end();
+  }
+}
+
+async function readUiDemoPatientShareCase() {
+  const client = new Client({ connectionString: DB_CONNECTION_STRING });
+  await client.connect();
+
+  try {
+    const result = await client.query<{
+      id: string;
+      status: string;
+      shared_management_plan_id: string | null;
+      shared_management_plan_version: number | null;
+      link_count: number;
+    }>(
+      `
+        SELECT
+          psc."id",
+          psc."status"::text,
+          psc."shared_management_plan_id",
+          psc."shared_management_plan_version",
+          COUNT(pl."id")::int AS link_count
+        FROM "PatientShareCase" psc
+        LEFT JOIN "PatientLink" pl
+          ON pl."share_case_id" = psc."id"
+         AND pl."org_id" = psc."org_id"
+        WHERE psc."base_patient_id" = $1
+          AND psc."partnership_id" = $2
+        GROUP BY psc."id"
+        ORDER BY psc."created_at" DESC
+        LIMIT 1
+      `,
+      [DEMO_IDS.patient, DEMO_IDS.pharmacyPartnership],
+    );
+
+    return result.rows[0] ?? null;
   } finally {
     await client.end();
   }
@@ -902,6 +1030,45 @@ test.describe('major authenticated screens', () => {
       },
     );
     await writeScreenshot(page, 'patient-share-data');
+    expect(errors).toEqual([]);
+  });
+
+  test('patient card creates a DB-backed share case with approved management-plan evidence', async ({
+    context,
+  }) => {
+    await clearUiDemoPatientShareCases();
+
+    const { page, errors } = await createInstrumentedPage(context);
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await openPatientDetailRoute(page, demoContext.patientId);
+    await dismissSheetOverlayIfPresent(page);
+
+    const panel = page.getByTestId('patient-share-case-create-panel');
+    await expect(panel).toBeVisible({ timeout: 60_000 });
+    await expect(panel.getByLabel('共有ケース作成の連携先')).toBeEnabled();
+    await panel.getByLabel('共有ケース作成の連携先').selectOption(demoContext.partnershipId);
+
+    const managementPlanSelect = panel.getByLabel('共有ケース作成の管理計画版');
+    await expect(managementPlanSelect).toBeEnabled({ timeout: 60_000 });
+    await managementPlanSelect.selectOption(demoContext.managementPlanId);
+    await expect(managementPlanSelect).toHaveValue(demoContext.managementPlanId);
+
+    const createResponse = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return url.pathname === '/api/patient-share-cases' && response.request().method() === 'POST';
+    });
+    await panel.getByRole('button', { name: '共有ケースを作成' }).click();
+    await expect((await createResponse).status()).toBe(201);
+
+    const shareCase = await readUiDemoPatientShareCase();
+    expect(shareCase).toMatchObject({
+      status: 'consent_pending',
+      shared_management_plan_id: demoContext.managementPlanId,
+      shared_management_plan_version: 1,
+      link_count: 1,
+    });
+
+    await writeScreenshot(page, 'patient-share-case-create-db-backed');
     expect(errors).toEqual([]);
   });
 

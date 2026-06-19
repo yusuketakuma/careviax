@@ -289,7 +289,6 @@ describe('/api/patient-share-cases POST', () => {
         updated_by: 'user_1',
         patient_link: {
           create: expect.objectContaining({
-            org_id: 'org_1',
             base_patient_id: 'patient_1',
             match_status: 'pending',
             base_patient_snapshot: expect.objectContaining({
@@ -305,6 +304,9 @@ describe('/api/patient-share-cases POST', () => {
       }),
       include: expect.any(Object),
     });
+    const createdPatientLink =
+      patientShareCaseCreateMock.mock.calls[0]?.[0]?.data?.patient_link?.create;
+    expect(createdPatientLink).not.toHaveProperty('org_id');
     expect(managementPlanFindFirstMock).toHaveBeenCalledWith({
       where: {
         id: 'plan_1',
