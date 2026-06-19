@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Handshake, Plus, RefreshCw } from 'lucide-react';
+import { CheckCircle2, Eye, FileText, Handshake, Plus, RefreshCw, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -65,6 +65,45 @@ type PharmacyContractRow = {
   } | null;
 };
 
+type ContractTemplateRow = {
+  id: string;
+  name: string;
+  version: number;
+  format: string;
+  is_default?: boolean;
+};
+
+type ContractDocumentRow = {
+  id: string;
+  contract_id: string;
+  version_id: string;
+  template_id: string;
+  file_id: string | null;
+  document_type: string;
+  hash_value: string;
+  signed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type ContractDocumentPreview = {
+  document_type: string;
+  hash_value: string;
+  rendered_text: string;
+  snapshot: {
+    template: { id: string; name: string; version: number; format: string };
+    version: { id: string; version_no: number; status: string };
+    fee_schedule: {
+      billing_model: string;
+      unit_price: number | null;
+      tax_category: string;
+      tax_rate_bp: number | null;
+      rounding_rule: string | null;
+    };
+    articles: Array<{ article_no: number; title: string }>;
+  };
+};
+
 type PartnerPharmacyForm = {
   name: string;
   pharmacy_code: string;
@@ -90,6 +129,14 @@ type ContractForm = {
 type ApprovalForm = {
   base_approved_by: string;
   partner_approved_by: string;
+};
+
+type ContractDocumentForm = {
+  contract_id: string;
+  template_id: string;
+  document_type: string;
+  signed_file_id: string;
+  signed_at: string;
 };
 
 function todayDateKey() {
@@ -132,6 +179,20 @@ async function fetchContracts(orgId: string) {
     headers: { 'x-org-id': orgId },
   });
   return readApiJson<CursorPage<PharmacyContractRow>>(response);
+}
+
+async function fetchContractTemplates(orgId: string) {
+  const response = await fetch('/api/templates?template_type=contract_document', {
+    headers: { 'x-org-id': orgId },
+  });
+  return readApiJson<{ data: ContractTemplateRow[] }>(response);
+}
+
+async function fetchContractDocuments(orgId: string, contractId: string) {
+  const response = await fetch(`/api/pharmacy-contracts/${contractId}/documents`, {
+    headers: { 'x-org-id': orgId },
+  });
+  return readApiJson<CursorPage<ContractDocumentRow>>(response);
 }
 
 function statusLabel(status: string) {
@@ -282,6 +343,15 @@ export function PharmacyCooperationSetupContent() {
     base_approved_by: '',
     partner_approved_by: '',
   });
+  const [documentForm, setDocumentForm] = useState<ContractDocumentForm>({
+    contract_id: '',
+    template_id: '',
+    document_type: 'basic_contract',
+    signed_file_id: '',
+    signed_at: '',
+  });
+  const [contractDocumentPreview, setContractDocumentPreview] =
+    useState<ContractDocumentPreview | null>(null);
   const enabled = Boolean(orgId);
 
   const sitesQuery = useQuery({
@@ -312,25 +382,46 @@ export function PharmacyCooperationSetupContent() {
     staleTime: 30_000,
   });
 
+  const contractTemplatesQuery = useQuery({
+    queryKey: ['pharmacy-cooperation-setup-contract-templates', orgId],
+    queryFn: () => fetchContractTemplates(orgId),
+    enabled,
+    staleTime: 60_000,
+  });
+
   const sites = sitesQuery.data?.data ?? [];
   const partners = partnersQuery.data?.data ?? [];
   const partnerships = partnershipsQuery.data?.data ?? [];
   const contracts = contractsQuery.data?.data ?? [];
+  const contractTemplates = contractTemplatesQuery.data?.data ?? [];
   const activePartnerships = partnerships.filter((partnership) => partnership.status === 'active');
   const effectiveBaseSiteId = partnershipForm.base_site_id || sites[0]?.id || '';
   const effectivePartnerPharmacyId = partnershipForm.partner_pharmacy_id || partners[0]?.id || '';
   const effectiveContractPartnershipId =
     contractForm.partnership_id || activePartnerships[0]?.id || '';
+  const effectiveDocumentContractId = documentForm.contract_id || contracts[0]?.id || '';
+  const effectiveDocumentTemplateId = documentForm.template_id || contractTemplates[0]?.id || '';
+  const contractDocumentsQuery = useQuery({
+    queryKey: ['pharmacy-cooperation-setup-contract-documents', orgId, effectiveDocumentContractId],
+    queryFn: () => fetchContractDocuments(orgId, effectiveDocumentContractId),
+    enabled: enabled && Boolean(effectiveDocumentContractId),
+    staleTime: 30_000,
+  });
+  const contractDocuments = contractDocumentsQuery.data?.data ?? [];
   const isLoading =
     sitesQuery.isLoading ||
     partnersQuery.isLoading ||
     partnershipsQuery.isLoading ||
-    contractsQuery.isLoading;
+    contractsQuery.isLoading ||
+    contractTemplatesQuery.isLoading ||
+    (contractDocumentsQuery.isLoading && Boolean(effectiveDocumentContractId));
   const isError =
     sitesQuery.isError ||
     partnersQuery.isError ||
     partnershipsQuery.isError ||
-    contractsQuery.isError;
+    contractsQuery.isError ||
+    contractTemplatesQuery.isError ||
+    contractDocumentsQuery.isError;
 
   const invalidateSetup = async () => {
     await Promise.all([
@@ -339,6 +430,9 @@ export function PharmacyCooperationSetupContent() {
         queryKey: ['pharmacy-cooperation-setup-partnerships', orgId],
       }),
       queryClient.invalidateQueries({ queryKey: ['pharmacy-cooperation-setup-contracts', orgId] }),
+      queryClient.invalidateQueries({
+        queryKey: ['pharmacy-cooperation-setup-contract-documents', orgId],
+      }),
     ]);
   };
 
@@ -468,11 +562,78 @@ export function PharmacyCooperationSetupContent() {
     },
   });
 
+  const previewContractDocumentMutation = useMutation({
+    mutationFn: async () => {
+      if (!effectiveDocumentContractId) throw new Error('契約を選択してください');
+      if (!effectiveDocumentTemplateId) throw new Error('契約書テンプレートを選択してください');
+      const response = await fetch(
+        `/api/pharmacy-contracts/${effectiveDocumentContractId}/documents`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-org-id': orgId,
+          },
+          body: JSON.stringify({
+            mode: 'preview',
+            template_id: effectiveDocumentTemplateId,
+            document_type: documentForm.document_type,
+          }),
+        },
+      );
+      return readApiJson<ContractDocumentPreview & { mode: 'preview' }>(response);
+    },
+    onSuccess: (preview) => {
+      setContractDocumentPreview(preview);
+      toast.success('契約書プレビューを作成しました');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '契約書プレビューに失敗しました');
+    },
+  });
+
+  const saveContractDocumentMutation = useMutation({
+    mutationFn: async () => {
+      if (!effectiveDocumentContractId) throw new Error('契約を選択してください');
+      if (!effectiveDocumentTemplateId) throw new Error('契約書テンプレートを選択してください');
+      const signedFileId = documentForm.signed_file_id.trim();
+      const signedAt = documentForm.signed_at.trim();
+      const response = await fetch(
+        `/api/pharmacy-contracts/${effectiveDocumentContractId}/documents`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-org-id': orgId,
+          },
+          body: JSON.stringify({
+            mode: 'save',
+            template_id: effectiveDocumentTemplateId,
+            document_type: documentForm.document_type,
+            ...(signedFileId ? { signed_file_id: signedFileId } : {}),
+            ...(signedAt ? { signed_at: signedAt } : {}),
+          }),
+        },
+      );
+      return readApiJson<ContractDocumentRow & { preview: ContractDocumentPreview }>(response);
+    },
+    onSuccess: async (document) => {
+      setContractDocumentPreview(document.preview);
+      toast.success('契約書を保存しました');
+      await invalidateSetup();
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '契約書の保存に失敗しました');
+    },
+  });
+
   const refetchAll = () => {
     void sitesQuery.refetch();
     void partnersQuery.refetch();
     void partnershipsQuery.refetch();
     void contractsQuery.refetch();
+    void contractTemplatesQuery.refetch();
+    void contractDocumentsQuery.refetch();
   };
 
   if (isLoading || isError) {
@@ -485,7 +646,9 @@ export function PharmacyCooperationSetupContent() {
             sitesQuery.error ??
             partnersQuery.error ??
             partnershipsQuery.error ??
-            contractsQuery.error
+            contractsQuery.error ??
+            contractTemplatesQuery.error ??
+            contractDocumentsQuery.error
           }
           refetch={refetchAll}
         />
@@ -829,6 +992,198 @@ export function PharmacyCooperationSetupContent() {
             <Plus className="size-4" aria-hidden="true" />
             契約登録
           </Button>
+        </div>
+      </SectionShell>
+
+      <SectionShell
+        title="契約書作成"
+        description="契約テンプレートから契約書と費用条件表を生成します。"
+      >
+        <div className="grid gap-3 xl:grid-cols-[1.2fr_1.2fr_10rem_1fr_10rem_auto_auto] xl:items-end">
+          <NativeSelect
+            label="契約"
+            value={effectiveDocumentContractId}
+            onChange={(value) => {
+              setDocumentForm((current) => ({ ...current, contract_id: value }));
+              setContractDocumentPreview(null);
+            }}
+          >
+            <option value="">契約を選択</option>
+            {contracts.map((contract) => (
+              <option key={contract.id} value={contract.id}>
+                {contract.id} / {contract.partnership.partner_pharmacy.name}
+              </option>
+            ))}
+          </NativeSelect>
+          <NativeSelect
+            label="テンプレート"
+            value={effectiveDocumentTemplateId}
+            onChange={(value) => {
+              setDocumentForm((current) => ({ ...current, template_id: value }));
+              setContractDocumentPreview(null);
+            }}
+          >
+            <option value="">テンプレートを選択</option>
+            {contractTemplates.map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.name} v{template.version}
+                {template.is_default ? ' / 既定' : ''}
+              </option>
+            ))}
+          </NativeSelect>
+          <label className="grid gap-1.5">
+            <FieldLabel>文書種別</FieldLabel>
+            <Input
+              value={documentForm.document_type}
+              onChange={(event) =>
+                setDocumentForm((current) => ({
+                  ...current,
+                  document_type: event.target.value,
+                }))
+              }
+              aria-label="契約文書種別"
+            />
+          </label>
+          <label className="grid gap-1.5">
+            <FieldLabel>署名済みPDF FileAsset ID</FieldLabel>
+            <Input
+              value={documentForm.signed_file_id}
+              onChange={(event) =>
+                setDocumentForm((current) => ({
+                  ...current,
+                  signed_file_id: event.target.value,
+                }))
+              }
+              aria-label="署名済みPDF FileAsset ID"
+              placeholder="file_..."
+            />
+          </label>
+          <label className="grid gap-1.5">
+            <FieldLabel>署名日</FieldLabel>
+            <Input
+              type="date"
+              value={documentForm.signed_at}
+              onChange={(event) =>
+                setDocumentForm((current) => ({ ...current, signed_at: event.target.value }))
+              }
+              aria-label="契約書署名日"
+            />
+          </label>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => previewContractDocumentMutation.mutate()}
+            disabled={
+              previewContractDocumentMutation.isPending ||
+              !effectiveDocumentContractId ||
+              !effectiveDocumentTemplateId
+            }
+          >
+            <Eye className="size-4" aria-hidden="true" />
+            プレビュー
+          </Button>
+          <Button
+            type="button"
+            onClick={() => saveContractDocumentMutation.mutate()}
+            disabled={
+              saveContractDocumentMutation.isPending ||
+              !effectiveDocumentContractId ||
+              !effectiveDocumentTemplateId
+            }
+          >
+            <Save className="size-4" aria-hidden="true" />
+            契約書保存
+          </Button>
+        </div>
+
+        {contractDocumentPreview ? (
+          <div className="mt-4 grid gap-3 lg:grid-cols-[18rem_1fr]">
+            <div className="rounded-md border border-border/70 bg-muted/30 p-3 text-sm">
+              <p className="font-semibold text-foreground">プレビュー</p>
+              <dl className="mt-2 grid gap-1 text-muted-foreground">
+                <div className="flex items-center justify-between gap-3">
+                  <dt>テンプレート</dt>
+                  <dd className="text-right text-foreground">
+                    {contractDocumentPreview.snapshot.template.name} v
+                    {contractDocumentPreview.snapshot.template.version}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <dt>契約版</dt>
+                  <dd className="text-right text-foreground">
+                    v{contractDocumentPreview.snapshot.version.version_no}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <dt>費用条件</dt>
+                  <dd className="text-right text-foreground">
+                    {billingModelLabel(contractDocumentPreview.snapshot.fee_schedule.billing_model)}{' '}
+                    {formatYen(contractDocumentPreview.snapshot.fee_schedule.unit_price)}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <dt>条文</dt>
+                  <dd className="text-right text-foreground">
+                    {contractDocumentPreview.snapshot.articles.length} 件
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <dt>ハッシュ</dt>
+                  <dd className="max-w-36 truncate text-right font-mono text-foreground">
+                    {contractDocumentPreview.hash_value}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+            <pre className="max-h-72 overflow-auto rounded-md border border-border/70 bg-background p-3 text-xs leading-5 text-foreground">
+              {contractDocumentPreview.rendered_text}
+            </pre>
+          </div>
+        ) : null}
+
+        <div className="mt-4">
+          {effectiveDocumentContractId && contractDocuments.length > 0 ? (
+            <div className="overflow-x-auto rounded-lg border border-border/70">
+              <table className="min-w-full text-sm" aria-label="契約書一覧">
+                <thead className="bg-muted/60 text-xs text-muted-foreground">
+                  <tr>
+                    <th scope="col" className="px-3 py-2 text-left font-medium">
+                      文書
+                    </th>
+                    <th scope="col" className="px-3 py-2 text-left font-medium">
+                      署名PDF
+                    </th>
+                    <th scope="col" className="px-3 py-2 text-left font-medium">
+                      署名日
+                    </th>
+                    <th scope="col" className="px-3 py-2 text-left font-medium">
+                      保存日時
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {contractDocuments.map((document) => (
+                    <tr key={document.id} className="border-t border-border/70">
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-2 font-medium">
+                          <FileText className="size-4 text-muted-foreground" aria-hidden="true" />
+                          {document.id}
+                        </div>
+                        <div className="mt-1 max-w-72 truncate font-mono text-xs text-muted-foreground">
+                          {document.hash_value}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">{document.file_id ? '添付済み' : '未添付'}</td>
+                      <td className="px-3 py-2 tabular-nums">{formatDate(document.signed_at)}</td>
+                      <td className="px-3 py-2 tabular-nums">{formatDate(document.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState title="保存済み契約書はまだありません" />
+          )}
         </div>
       </SectionShell>
 

@@ -143,6 +143,44 @@ describe('PharmacyCooperationSetupContent', () => {
             { status: 200 },
           );
         }
+        if (url === '/api/templates?template_type=contract_document') {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: 'template_contract_1',
+                  name: '薬局間契約書',
+                  template_type: 'contract_document',
+                  format: 'html',
+                  version: 2,
+                  is_default: true,
+                },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+        if (url === '/api/pharmacy-contracts/contract_1/documents' && init?.method !== 'POST') {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: 'contract_document_1',
+                  contract_id: 'contract_1',
+                  version_id: 'contract_version_1',
+                  template_id: 'template_contract_1',
+                  file_id: null,
+                  document_type: 'basic_contract',
+                  hash_value: 'hash_existing',
+                  signed_at: null,
+                  created_at: '2026-06-19T10:00:00.000Z',
+                  updated_at: '2026-06-19T10:00:00.000Z',
+                },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
         if (url === '/api/partner-pharmacies' && init?.method === 'POST') {
           return new Response(JSON.stringify({ id: 'partner_pharmacy_2', status: 'active' }), {
             status: 201,
@@ -162,6 +200,53 @@ describe('PharmacyCooperationSetupContent', () => {
           return new Response(JSON.stringify({ id: 'contract_2', status: 'active' }), {
             status: 201,
           });
+        }
+        if (url === '/api/pharmacy-contracts/contract_1/documents' && init?.method === 'POST') {
+          const body = JSON.parse(String(init.body));
+          const preview = {
+            document_type: 'basic_contract',
+            hash_value: body.mode === 'preview' ? 'hash_preview' : 'hash_saved',
+            rendered_text: '第1条 目的\n別紙費用条件表',
+            snapshot: {
+              template: {
+                id: 'template_contract_1',
+                name: '薬局間契約書',
+                version: 2,
+                format: 'html',
+              },
+              version: { id: 'contract_version_1', version_no: 1, status: 'active' },
+              fee_schedule: {
+                billing_model: 'fixed_per_visit',
+                unit_price: 5500,
+                tax_category: 'tax_pending',
+                tax_rate_bp: null,
+                rounding_rule: null,
+              },
+              articles: Array.from({ length: 23 }, (_value, index) => ({
+                article_no: index + 1,
+                title: `第${index + 1}条`,
+              })),
+            },
+          };
+          if (body.mode === 'preview') {
+            return new Response(JSON.stringify({ mode: 'preview', ...preview }), { status: 200 });
+          }
+          return new Response(
+            JSON.stringify({
+              id: 'contract_document_2',
+              contract_id: 'contract_1',
+              version_id: 'contract_version_1',
+              template_id: 'template_contract_1',
+              file_id: body.signed_file_id ?? null,
+              document_type: 'basic_contract',
+              hash_value: 'hash_saved',
+              signed_at: body.signed_at ?? null,
+              created_at: '2026-06-19T11:00:00.000Z',
+              updated_at: '2026-06-19T11:00:00.000Z',
+              preview,
+            }),
+            { status: 201 },
+          );
         }
 
         throw new Error(`Unexpected fetch: ${url}`);
@@ -264,6 +349,58 @@ describe('PharmacyCooperationSetupContent', () => {
           unit_price: 5500,
           tax_category: 'tax_pending',
         },
+      });
+    });
+  });
+
+  it('previews and saves a contract document from the setup screen', async () => {
+    renderContent();
+
+    await screen.findByText('契約書作成');
+    expect(screen.getByText('contract_document_1')).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('署名済みPDF FileAsset ID'), {
+      target: { value: 'file_signed_pdf_1' },
+    });
+    fireEvent.change(screen.getByLabelText('契約書署名日'), {
+      target: { value: '2026-06-19' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /プレビュー/ }));
+
+    expect(await screen.findByText(/第1条 目的/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /契約書保存/ }));
+
+    await waitFor(() => {
+      const previewCall = vi
+        .mocked(fetch)
+        .mock.calls.find(
+          ([input, init]) =>
+            String(input) === '/api/pharmacy-contracts/contract_1/documents' &&
+            init?.method === 'POST' &&
+            JSON.parse(String(init.body)).mode === 'preview',
+        );
+      expect(previewCall).toBeTruthy();
+      expect(JSON.parse(String(previewCall?.[1]?.body))).toMatchObject({
+        mode: 'preview',
+        template_id: 'template_contract_1',
+        document_type: 'basic_contract',
+      });
+
+      const saveCall = vi
+        .mocked(fetch)
+        .mock.calls.find(
+          ([input, init]) =>
+            String(input) === '/api/pharmacy-contracts/contract_1/documents' &&
+            init?.method === 'POST' &&
+            JSON.parse(String(init.body)).mode === 'save',
+        );
+      expect(saveCall).toBeTruthy();
+      expect(JSON.parse(String(saveCall?.[1]?.body))).toMatchObject({
+        mode: 'save',
+        template_id: 'template_contract_1',
+        signed_file_id: 'file_signed_pdf_1',
+        signed_at: '2026-06-19',
       });
     });
   });
