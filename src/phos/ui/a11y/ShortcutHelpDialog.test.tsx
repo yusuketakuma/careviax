@@ -18,7 +18,7 @@ describe('ShortcutHelpDialog', () => {
     const onOpenChange = vi.fn();
     render(<ShortcutHelpDialog open onOpenChange={onOpenChange} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
 
     expect(onOpenChange.mock.calls[0]?.[0]).toBe(false);
   });

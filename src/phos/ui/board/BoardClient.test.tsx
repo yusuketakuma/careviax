@@ -785,7 +785,7 @@ describe('BoardClient', () => {
 
     await waitFor(() => expect(screen.getByText('detail failed')).toBeTruthy());
     expect(document.querySelector('[data-card-id="card_1"]')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Close' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '閉じる' })).toBeTruthy();
   });
 
   it('loads selected card detail, respects visible tabs, and returns focus to the source tile', async () => {
@@ -801,7 +801,7 @@ describe('BoardClient', () => {
     expect(screen.getByRole('tab', { name: '処方' })).toBeTruthy();
     expect(screen.queryByRole('tab', { name: '算定' })).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
 
     await waitFor(() => expect(document.activeElement).toBe(cardButton));
   });
@@ -816,7 +816,7 @@ describe('BoardClient', () => {
     expect(screen.getByRole('dialog')).toBeTruthy();
     expect(window.location.search).toBe('?card=card_1');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
 
     await waitFor(() => expect(window.location.search).toBe(''));
   });
@@ -887,7 +887,7 @@ describe('BoardClient', () => {
     );
 
     await waitFor(() => expect(apiClient.getCardDetail).toHaveBeenCalledWith('external_card'));
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
 
     await waitFor(() =>
       expect(document.activeElement).toBe(
@@ -925,7 +925,7 @@ describe('BoardClient', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /患者 山田太郎/ }));
     await waitFor(() => expect(apiClient.getCardDetail).toHaveBeenCalledWith('card_1'));
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
     await waitFor(() => expect(window.location.search).toBe(''));
 
     fireEvent.click(screen.getByRole('button', { name: /患者 佐藤花子/ }));
