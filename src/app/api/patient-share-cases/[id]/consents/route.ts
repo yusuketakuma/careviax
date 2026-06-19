@@ -11,6 +11,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { dateKeySchema } from '@/lib/validations/date-key';
 import { utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { CONSENT_DOCUMENT_MIME_TYPES } from '@/server/services/consent-record-documents';
+import { resolvePatientShareCaseTransition } from '@/server/services/pharmacy-partnerships';
 
 const consentMethodSchema = z.enum(['paper_scan', 'digital']);
 const consentDateSchema = dateKeySchema('同意日が不正です（YYYY-MM-DD）');
@@ -170,11 +171,11 @@ export const POST = withAuthContext<{ id: string }>(
       });
 
       if (!shareCase) return { response: notFound('患者共有ケースが見つかりません') };
-      if (
-        shareCase.status === 'ended' ||
-        shareCase.status === 'revoked' ||
-        shareCase.status === 'declined'
-      ) {
+      const shareCaseTransition = resolvePatientShareCaseTransition({
+        currentStatus: shareCase.status,
+        action: 'register_consent',
+      });
+      if (!shareCaseTransition.allowed) {
         return {
           response: conflict('終了・撤回・辞退済みの患者共有ケースには同意を追加できません'),
         };
@@ -238,10 +239,7 @@ export const POST = withAuthContext<{ id: string }>(
         },
       });
 
-      const nextShareCaseStatus =
-        shareCase.status === 'draft' || shareCase.status === 'consent_pending'
-          ? 'partner_confirmation_pending'
-          : shareCase.status;
+      const nextShareCaseStatus = shareCaseTransition.nextStatus;
       if (nextShareCaseStatus !== shareCase.status) {
         await tx.patientShareCase.update({
           where: { id_org_id: { id, org_id: ctx.orgId } },

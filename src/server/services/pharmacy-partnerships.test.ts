@@ -4,6 +4,7 @@ import {
   evaluatePatientShareCaseActivation,
   evaluateVisitBillingCandidate,
   findActivePatientShareConsent,
+  resolvePatientShareCaseTransition,
   resolvePartnerVisitRecordTransition,
   resolvePharmacyVisitRequestTransition,
   shouldNotifyBasePharmacyOnPartnerRecordSubmit,
@@ -263,6 +264,133 @@ describe('pharmacy partnership policy guards', () => {
       allowed: false,
       nextStatus: 'claim_checked',
       allowedFrom: ['confirmed', 'physician_report_created'],
+    });
+  });
+
+  it('resolves patient share case transitions through explicit lifecycle rules', () => {
+    expect(
+      resolvePatientShareCaseTransition({
+        currentStatus: 'consent_pending',
+        action: 'register_consent',
+      }),
+    ).toMatchObject({
+      allowed: true,
+      nextStatus: 'partner_confirmation_pending',
+    });
+
+    expect(
+      resolvePatientShareCaseTransition({
+        currentStatus: 'active',
+        action: 'register_consent',
+      }),
+    ).toMatchObject({
+      allowed: true,
+      nextStatus: 'active',
+    });
+
+    expect(
+      resolvePatientShareCaseTransition({
+        currentStatus: 'draft',
+        action: 'approve_patient_link',
+        hasActiveConsent: false,
+      }),
+    ).toMatchObject({
+      allowed: true,
+      nextStatus: 'consent_pending',
+    });
+
+    expect(
+      resolvePatientShareCaseTransition({
+        currentStatus: 'draft',
+        action: 'accept_patient_link',
+        hasActiveConsent: true,
+      }),
+    ).toMatchObject({
+      allowed: true,
+      nextStatus: 'partner_confirmation_pending',
+    });
+
+    expect(
+      resolvePatientShareCaseTransition({
+        currentStatus: 'partner_confirmation_pending',
+        action: 'decline_patient_link',
+      }),
+    ).toMatchObject({
+      allowed: true,
+      nextStatus: 'declined',
+    });
+
+    expect(
+      resolvePatientShareCaseTransition({
+        currentStatus: 'active',
+        action: 'decline_patient_link',
+      }),
+    ).toMatchObject({
+      allowed: false,
+      nextStatus: 'active',
+    });
+
+    expect(
+      resolvePatientShareCaseTransition({
+        currentStatus: 'active',
+        action: 'revoke_consent',
+      }),
+    ).toMatchObject({
+      allowed: true,
+      nextStatus: 'revoked',
+    });
+
+    expect(
+      resolvePatientShareCaseTransition({
+        currentStatus: 'partner_confirmation_pending',
+        action: 'activate',
+        hasActiveConsent: false,
+        patientLinkAccepted: true,
+        hasBaseApproval: true,
+        hasPartnerApproval: true,
+      }),
+    ).toMatchObject({
+      allowed: false,
+      nextStatus: 'partner_confirmation_pending',
+    });
+
+    expect(
+      resolvePatientShareCaseTransition({
+        currentStatus: 'partner_confirmation_pending',
+        action: 'activate',
+        hasActiveConsent: true,
+        patientLinkAccepted: false,
+        hasBaseApproval: true,
+        hasPartnerApproval: true,
+      }),
+    ).toMatchObject({
+      allowed: false,
+      nextStatus: 'partner_confirmation_pending',
+    });
+
+    expect(
+      resolvePatientShareCaseTransition({
+        currentStatus: 'suspended',
+        action: 'activate',
+        hasActiveConsent: true,
+        patientLinkAccepted: true,
+        hasBaseApproval: true,
+        hasPartnerApproval: true,
+      }),
+    ).toMatchObject({
+      allowed: true,
+      nextStatus: 'active',
+      allowedFrom: ['partner_confirmation_pending', 'suspended'],
+    });
+
+    expect(
+      resolvePatientShareCaseTransition({
+        currentStatus: 'revoked',
+        action: 'register_consent',
+      }),
+    ).toMatchObject({
+      allowed: false,
+      nextStatus: 'revoked',
     });
   });
 

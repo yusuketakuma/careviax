@@ -7,7 +7,10 @@ import { conflict, notFound, success, validationError } from '@/lib/api/response
 import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { dateKeySchema } from '@/lib/validations/date-key';
-import { findActivePatientShareConsent } from '@/server/services/pharmacy-partnerships';
+import {
+  findActivePatientShareConsent,
+  resolvePatientShareCaseTransition,
+} from '@/server/services/pharmacy-partnerships';
 
 const linkDecisionSchema = z.enum(['base_approve', 'accept', 'decline']);
 const partnerPatientSnapshotSchema = z
@@ -171,11 +174,22 @@ export const PATCH = withAuthContext<{ id: string }>(
       if (!shareCase.patient_link) {
         return { response: conflict('患者リンクが作成されていません') };
       }
-      if (
-        shareCase.status === 'ended' ||
-        shareCase.status === 'revoked' ||
-        shareCase.status === 'declined'
-      ) {
+      if (parsed.data.decision === 'decline' && shareCase.status === 'active') {
+        return { response: conflict('共有中の患者リンクは辞退できません') };
+      }
+      const transitionAction =
+        parsed.data.decision === 'decline'
+          ? 'decline_patient_link'
+          : parsed.data.decision === 'accept'
+            ? 'accept_patient_link'
+            : 'approve_patient_link';
+      const hasActiveConsent = Boolean(findActivePatientShareConsent(shareCase.consents, now));
+      const shareCaseTransition = resolvePatientShareCaseTransition({
+        currentStatus: shareCase.status,
+        action: transitionAction,
+        hasActiveConsent,
+      });
+      if (!shareCaseTransition.allowed) {
         return {
           response: conflict('終了・撤回・辞退済みの患者共有ケースは更新できません'),
         };
@@ -184,9 +198,6 @@ export const PATCH = withAuthContext<{ id: string }>(
       const link = shareCase.patient_link;
       if (link.match_status !== 'pending') {
         return { response: conflict('患者リンクはすでに最終状態です') };
-      }
-      if (parsed.data.decision === 'decline' && shareCase.status === 'active') {
-        return { response: conflict('共有中の患者リンクは辞退できません') };
       }
       if (parsed.data.decision === 'base_approve') {
         if (link.approved_by_base || shareCase.base_pharmacy_approved_by) {
@@ -273,15 +284,7 @@ export const PATCH = withAuthContext<{ id: string }>(
         where: { share_case_id_org_id: { share_case_id: id, org_id: ctx.orgId } },
       });
 
-      const hasActiveConsent = Boolean(findActivePatientShareConsent(shareCase.consents, now));
-      const nextStatus =
-        parsed.data.decision === 'decline'
-          ? 'declined'
-          : shareCase.status === 'active' || shareCase.status === 'suspended'
-            ? shareCase.status
-            : hasActiveConsent
-              ? 'partner_confirmation_pending'
-              : 'consent_pending';
+      const nextStatus = shareCaseTransition.nextStatus;
       const nextShareCase = await tx.patientShareCase.update({
         where: { id_org_id: { id, org_id: ctx.orgId } },
         data: {

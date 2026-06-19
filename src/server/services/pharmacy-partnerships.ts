@@ -66,6 +66,14 @@ export type PatientShareCaseActivationResult =
   | { allowed: true; consent: PatientShareConsentForPolicy }
   | { allowed: false; blocker: PatientShareCaseActivationBlocker };
 
+export type PatientShareCaseTransitionAction =
+  | 'register_consent'
+  | 'approve_patient_link'
+  | 'accept_patient_link'
+  | 'decline_patient_link'
+  | 'revoke_consent'
+  | 'activate';
+
 export type PartnerVisitRecordForBillingPolicy = {
   status: PartnerVisitRecordLifecycleStatus;
   visit_at: Date;
@@ -127,6 +135,26 @@ const ACTIVATABLE_SHARE_CASE_STATUSES = new Set<PatientShareCaseLifecycleStatus>
   'partner_confirmation_pending',
   'suspended',
 ]);
+
+const NON_TERMINAL_SHARE_CASE_STATUSES = [
+  'draft',
+  'consent_pending',
+  'partner_confirmation_pending',
+  'active',
+  'suspended',
+] as const satisfies readonly PatientShareCaseLifecycleStatus[];
+
+const PATIENT_SHARE_CASE_TRANSITION_ALLOWED_FROM = {
+  register_consent: NON_TERMINAL_SHARE_CASE_STATUSES,
+  approve_patient_link: NON_TERMINAL_SHARE_CASE_STATUSES,
+  accept_patient_link: NON_TERMINAL_SHARE_CASE_STATUSES,
+  decline_patient_link: ['draft', 'consent_pending', 'partner_confirmation_pending', 'suspended'],
+  revoke_consent: NON_TERMINAL_SHARE_CASE_STATUSES,
+  activate: ['partner_confirmation_pending', 'suspended'],
+} as const satisfies Record<
+  PatientShareCaseTransitionAction,
+  readonly PatientShareCaseLifecycleStatus[]
+>;
 
 const SUBMITTABLE_RECORD_STATUSES = new Set<PartnerVisitRecordLifecycleStatus>([
   'draft',
@@ -256,6 +284,84 @@ export function resolvePartnerVisitRecordTransition(args: {
   action: PartnerVisitRecordTransitionAction;
 }) {
   return resolveStatusTransition(PARTNER_VISIT_RECORD_TRANSITION_RULES, args);
+}
+
+export function resolvePatientShareCaseTransition(args: {
+  currentStatus: PatientShareCaseLifecycleStatus;
+  action: PatientShareCaseTransitionAction;
+  hasActiveConsent?: boolean;
+  patientLinkAccepted?: boolean;
+  hasBaseApproval?: boolean;
+  hasPartnerApproval?: boolean;
+}): StatusTransitionResult<PatientShareCaseLifecycleStatus> {
+  const currentStatus = args.currentStatus;
+  const activeConsent = Boolean(args.hasActiveConsent);
+  const allowedFrom = PATIENT_SHARE_CASE_TRANSITION_ALLOWED_FROM[args.action];
+
+  if (!(allowedFrom as readonly PatientShareCaseLifecycleStatus[]).includes(currentStatus)) {
+    return {
+      allowed: false,
+      currentStatus,
+      nextStatus: currentStatus,
+      allowedFrom,
+    };
+  }
+
+  if (args.action === 'activate') {
+    const allowed =
+      activeConsent &&
+      Boolean(args.patientLinkAccepted) &&
+      Boolean(args.hasBaseApproval) &&
+      Boolean(args.hasPartnerApproval);
+    return {
+      allowed,
+      currentStatus,
+      nextStatus: allowed ? 'active' : currentStatus,
+      allowedFrom,
+    };
+  }
+
+  if (args.action === 'revoke_consent') {
+    return {
+      allowed: true,
+      currentStatus,
+      nextStatus: 'revoked',
+      allowedFrom,
+    };
+  }
+
+  if (args.action === 'decline_patient_link') {
+    return {
+      allowed: true,
+      currentStatus,
+      nextStatus: 'declined',
+      allowedFrom,
+    };
+  }
+
+  if (args.action === 'register_consent') {
+    return {
+      allowed: true,
+      currentStatus,
+      nextStatus:
+        currentStatus === 'draft' || currentStatus === 'consent_pending'
+          ? 'partner_confirmation_pending'
+          : currentStatus,
+      allowedFrom,
+    };
+  }
+
+  return {
+    allowed: true,
+    currentStatus,
+    nextStatus:
+      currentStatus === 'active' || currentStatus === 'suspended'
+        ? currentStatus
+        : activeConsent
+          ? 'partner_confirmation_pending'
+          : 'consent_pending',
+    allowedFrom,
+  };
 }
 
 function isDateInBillingMonth(date: Date, billingMonth: Date) {

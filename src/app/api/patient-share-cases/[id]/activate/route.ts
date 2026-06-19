@@ -4,7 +4,10 @@ import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { readJsonObject } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
-import { evaluatePatientShareCaseActivation } from '@/server/services/pharmacy-partnerships';
+import {
+  evaluatePatientShareCaseActivation,
+  resolvePatientShareCaseTransition,
+} from '@/server/services/pharmacy-partnerships';
 
 function utcDateOnlyTime(date: Date) {
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
@@ -135,10 +138,28 @@ export const POST = withAuthContext<{ id: string }>(
         };
       }
 
+      const activationTransition = resolvePatientShareCaseTransition({
+        currentStatus: shareCase.status,
+        action: 'activate',
+        hasActiveConsent: Boolean(activation.consent),
+        patientLinkAccepted:
+          shareCase.patient_link.match_status === 'accepted' &&
+          Boolean(shareCase.patient_link.accepted_at),
+        hasBaseApproval: Boolean(shareCase.patient_link.approved_by_base),
+        hasPartnerApproval: Boolean(shareCase.patient_link.approved_by_partner),
+      });
+      if (!activationTransition.allowed) {
+        return {
+          response: conflict('患者共有ケースを共有中にできません', {
+            blocker: 'invalid_status',
+          }),
+        };
+      }
+
       const activated = await tx.patientShareCase.update({
         where: { id_org_id: { id, org_id: ctx.orgId } },
         data: {
-          status: 'active',
+          status: activationTransition.nextStatus,
           consent_verified_at: now,
           activated_at: now,
           updated_by: ctx.userId,

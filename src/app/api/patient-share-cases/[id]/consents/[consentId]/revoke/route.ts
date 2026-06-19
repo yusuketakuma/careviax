@@ -6,6 +6,7 @@ import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { withOrgContext } from '@/lib/db/rls';
+import { resolvePatientShareCaseTransition } from '@/server/services/pharmacy-partnerships';
 
 const revokePatientShareConsentSchema = z.object({
   reason: z.string().trim().max(500).optional(),
@@ -93,15 +94,15 @@ export const POST = withAuthContext<{ id: string; consentId: string }>(
         },
       });
 
-      const shouldRevokeShareCase =
-        existing.share_case.status !== 'ended' &&
-        existing.share_case.status !== 'revoked' &&
-        existing.share_case.status !== 'declined';
-      const shareCase = shouldRevokeShareCase
+      const shareCaseTransition = resolvePatientShareCaseTransition({
+        currentStatus: existing.share_case.status,
+        action: 'revoke_consent',
+      });
+      const shareCase = shareCaseTransition.allowed
         ? await tx.patientShareCase.update({
             where: { id_org_id: { id, org_id: ctx.orgId } },
             data: {
-              status: 'revoked',
+              status: shareCaseTransition.nextStatus,
               revoked_at: now,
               updated_by: ctx.userId,
             },
