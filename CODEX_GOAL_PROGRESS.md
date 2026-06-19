@@ -4562,6 +4562,93 @@ Implemented:
 
 - The paid DB-backed flow is now covered through PDF/payment. Remaining v0.2 proof gaps include free cooperation report DB-backed proof, share-case message thread DB-backed proof, broader invoice search/audit browser coverage, and the existing stale patient-detail `safety-board` assertion.
 
+## 20260620-0427 JST - Drug Master Reorder Point Inline Validation
+
+### Summary
+
+- Replaced the drug-master formulary reorder-point toast-only validation path with a reusable parser and persistent inline error text.
+- Linked the reorder-point input and save button to help/error text with `aria-describedby`, and set `aria-invalid` while invalid input is present.
+- Added parser regression coverage for blank, valid integer, negative, decimal, exponent, mixed, infinity, and unsafe-integer values.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`
+- `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`: passed unchanged.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 20 tests.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `pnpm lint`: passed.
+
+### Remaining / Next Loop
+
+- Drug-master reorder-point validation now blocks malformed values locally and keeps the reason visible inline. Browser/a11y proof remains optional if the drug-master formulary page enters the UI proof queue.
+
+## 20260620-0424 JST - Patient Detail Safety Board DB-backed Seed
+
+### Summary
+
+- Reproduced the stale patient-detail E2E failure where `getByTestId('safety-board')` was absent even though the patient card and profile summary rendered.
+- Confirmed `SafetyBoard` intentionally returns `null` when all safety rows are empty, while the patient workspace derives safety rows from `Patient.allergy_info`, latest `PatientLabObservation(egfr)`, `PatientSchedulePreference.swallowing_route`, and current prescription-line handling tags.
+- Updated the UI major-screen demo seed to create deterministic allergy, eGFR, swallowing-route, medication-cycle, prescription-intake, prescription-line, dispense-task, and transition-log data for `ui_demo_patient_1`.
+- Re-ran the patient-detail representative-data E2E; the DB-backed `safety-board` and prescription section now render without relying on residual local database rows.
+
+### Files Changed
+
+- `tools/tests/ui-major-screens.spec.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write tools/tests/ui-major-screens.spec.ts`: passed.
+- `pnpm exec eslint tools/tests/ui-major-screens.spec.ts`: passed.
+- `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-major-screens.spec.ts --project=chromium --grep "patient detail screen surfaces representative backend data"`: passed, 1 Chromium test.
+- `pnpm typecheck`: passed.
+- `pnpm exec prisma validate --schema=prisma/schema/`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `pnpm lint`: passed.
+- `git diff --check -- 'src/app/(dashboard)/admin/uat/uat-content.tsx' 'src/app/(dashboard)/admin/uat/uat-content.test.tsx' tools/tests/ui-major-screens.spec.ts`: passed.
+
+### Remaining / Next Loop
+
+- Patient-detail safety board proof is now deterministic for the UI major-screen demo patient. Remaining v0.2 proof gaps include free cooperation report DB-backed proof, share-case message thread DB-backed proof, and the `pg@9` concurrent `client.query()` warning.
+
+## 20260620-0422 JST - UAT Feedback Disabled Send Reason
+
+### Summary
+
+- Added persistent helper text explaining why blank UAT feedback cannot be submitted.
+- Linked the feedback textarea and disabled submit button to the helper/error text with `aria-describedby`.
+- Replaced the old blank-submit toast path with local inline error state and regression coverage that input clears the disabled reason, enables submit, and does not call `toast.error`.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/uat/uat-content.tsx`
+- `src/app/(dashboard)/admin/uat/uat-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/uat/uat-content.tsx' 'src/app/(dashboard)/admin/uat/uat-content.test.tsx'`: passed.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/uat/uat-content.tsx' 'src/app/(dashboard)/admin/uat/uat-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/uat/uat-content.test.tsx'`: passed, 1 file / 1 test.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `pnpm lint`: passed.
+- `git diff --check -- 'src/app/(dashboard)/admin/uat/uat-content.tsx' 'src/app/(dashboard)/admin/uat/uat-content.test.tsx'`: passed.
+
+### Remaining / Next Loop
+
+- UAT feedback now exposes the disabled-send reason next to the feedback field and ties it to the submit control. Browser/a11y proof remains optional if the UAT admin page enters the UI proof queue.
+
 ## 20260620-0414 JST - Notification Escalation Inline Validation
 
 ### Summary
