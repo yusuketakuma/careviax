@@ -188,4 +188,58 @@ describe('WorkflowDashboardContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '再試行' }));
     expect(refetch).toHaveBeenCalledTimes(1);
   });
+
+  it('labels inquiry workbench edit fields without exposing patient or drug names', () => {
+    useRealtimeQueryMock.mockReturnValue({
+      data: {
+        data: {
+          ...buildWorkflowData(),
+          inquiry_workbench: [
+            {
+              id: 'inquiry_workbench_1',
+              item_type: 'inquiry',
+              inquiry_id: 'inquiry_1',
+              issue_id: 'issue_1',
+              line_id: 'line_1',
+              cycle_id: 'cycle_1',
+              case_id: 'case_1',
+              patient_id: 'patient_1',
+              patient_name: '田中太郎',
+              title: '処方内容確認',
+              summary: '用量の変更確認',
+              reason: '用量確認',
+              inquiry_to_physician: '主治医',
+              proposal_origin: 'post_inquiry',
+              residual_adjustment: false,
+              change_detail: '',
+              line: {
+                id: 'line_1',
+                drug_name: 'アムロジピン',
+                dose: '5mg',
+                frequency: '1日1回',
+                days: 14,
+              },
+              request_status: 'pending',
+              queue_state: '照会中',
+              due_at: null,
+              created_at: '2026-06-19T00:00:00.000Z',
+              can_create: true,
+            },
+          ],
+        },
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    render(<WorkflowDashboardContent />);
+
+    expect(screen.getByLabelText('疑義照会1件目の薬剤名')).toBeTruthy();
+    expect(screen.getByLabelText('疑義照会1件目の用量')).toBeTruthy();
+    expect(screen.getByLabelText('疑義照会1件目の用法')).toBeTruthy();
+    expect(screen.getByLabelText('疑義照会1件目の投与日数')).toBeTruthy();
+    expect(screen.getByLabelText('疑義照会1件目の変更内容メモ')).toBeTruthy();
+    expect(screen.queryByLabelText(/田中太郎|アムロジピン/)).toBeNull();
+  });
 });

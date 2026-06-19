@@ -549,8 +549,9 @@ export function WorkflowDashboardView({
           <p className="text-sm text-muted-foreground">未処理の疑義照会はありません</p>
         ) : (
           <div className="grid gap-3 lg:grid-cols-2">
-            {workflow?.inquiry_workbench.map((item) => {
+            {workflow?.inquiry_workbench.map((item, index) => {
               const inquiryEdit = item.item_type === 'inquiry' ? getInquiryEditState(item) : null;
+              const inquiryLabelPrefix = `疑義照会${index + 1}件目`;
               const parsedDays = inquiryEdit ? Number(inquiryEdit.days) : 0;
               const canSubmitChanged =
                 item.item_type !== 'inquiry' ||
@@ -601,6 +602,7 @@ export function WorkflowDashboardView({
                             </div>
                             <div className="grid gap-2 md:grid-cols-2">
                               <Input
+                                aria-label={`${inquiryLabelPrefix}の薬剤名`}
                                 value={inquiryEdit?.drugName ?? ''}
                                 onChange={(event) =>
                                   updateInquiryEditState(item, { drugName: event.target.value })
@@ -608,6 +610,7 @@ export function WorkflowDashboardView({
                                 placeholder="薬剤名"
                               />
                               <Input
+                                aria-label={`${inquiryLabelPrefix}の用量`}
                                 value={inquiryEdit?.dose ?? ''}
                                 onChange={(event) =>
                                   updateInquiryEditState(item, { dose: event.target.value })
@@ -615,6 +618,7 @@ export function WorkflowDashboardView({
                                 placeholder="用量"
                               />
                               <Input
+                                aria-label={`${inquiryLabelPrefix}の用法`}
                                 value={inquiryEdit?.frequency ?? ''}
                                 onChange={(event) =>
                                   updateInquiryEditState(item, { frequency: event.target.value })
@@ -622,6 +626,7 @@ export function WorkflowDashboardView({
                                 placeholder="用法"
                               />
                               <Input
+                                aria-label={`${inquiryLabelPrefix}の投与日数`}
                                 type="number"
                                 min={1}
                                 value={inquiryEdit?.days ?? ''}
@@ -638,6 +643,9 @@ export function WorkflowDashboardView({
                             {item.line ? '変更内容メモ' : '回答メモ'}
                           </p>
                           <Textarea
+                            aria-label={`${inquiryLabelPrefix}の${
+                              item.line ? '変更内容メモ' : '回答メモ'
+                            }`}
                             value={inquiryEdit?.changeDetail ?? ''}
                             onChange={(event) =>
                               updateInquiryEditState(item, { changeDetail: event.target.value })
