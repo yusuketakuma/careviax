@@ -62,4 +62,27 @@ describe('ConfirmDialog', () => {
     fireEvent.click(confirmButton);
     expect(onConfirm).not.toHaveBeenCalled();
   });
+
+  it('keeps alert dialog content within the mobile viewport', () => {
+    render(
+      <ConfirmDialog
+        open
+        onOpenChange={vi.fn()}
+        title="長い確認内容"
+        description="確認内容が多い場合でも、操作ボタンに到達できる必要があります。"
+        onConfirm={vi.fn()}
+      >
+        <div>
+          {Array.from({ length: 12 }, (_, index) => (
+            <p key={index}>確認項目 {index + 1}</p>
+          ))}
+        </div>
+      </ConfirmDialog>,
+    );
+
+    const content = document.body.querySelector('[data-slot="alert-dialog-content"]');
+    expect(content?.className).toContain('max-h-[calc(100dvh-2rem)]');
+    expect(content?.className).toContain('w-[calc(100%-2rem)]');
+    expect(content?.className).toContain('overflow-y-auto');
+  });
 });

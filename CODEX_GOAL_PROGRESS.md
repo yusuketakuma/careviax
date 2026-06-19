@@ -3926,3 +3926,29 @@ Implemented:
 ### Remaining / Next Loop
 
 - DB-backed proof for the broader v0.2 goal remains blocked until migration application is explicitly approved.
+
+## 20260619-2356 JST - Dialog Viewport Safety
+
+### Summary
+
+- Bounded alert/confirm dialog content to the mobile viewport with safe width, max-height, and scroll behavior.
+- Added a ConfirmDialog regression test that asserts long dialog content remains inside the viewport constraints.
+
+### Files Changed
+
+- `src/components/ui/alert-dialog.tsx`
+- `src/components/ui/confirm-dialog.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec vitest run src/components/ui/confirm-dialog.test.tsx --reporter=dot --testTimeout=30000`: passed, 1 file / 3 tests.
+- Targeted ESLint over touched dialog files: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- DB-backed proof for the broader v0.2 goal remains blocked until migration application is explicitly approved.
