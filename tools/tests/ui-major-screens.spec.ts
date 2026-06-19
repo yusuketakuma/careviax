@@ -1356,6 +1356,98 @@ async function readUiDemoPharmacyInvoice(invoiceId: string) {
   }
 }
 
+async function readUiDemoPharmacyCooperationMessageThread({
+  shareCaseId,
+  visitRequestId,
+}: {
+  shareCaseId: string;
+  visitRequestId: string | null;
+}) {
+  const client = new Client({ connectionString: DB_CONNECTION_STRING });
+  await client.connect();
+
+  try {
+    const result = await client.query<{
+      id: string;
+      share_case_id: string;
+      visit_request_id: string | null;
+      context_type: string;
+      status: string;
+      created_by: string;
+      has_last_message_at: boolean;
+      message_count: number;
+      latest_body: string | null;
+      latest_sender_side: string | null;
+      created_audit_count: number;
+      viewed_audit_count: number;
+    }>(
+      `
+        SELECT
+          thread."id",
+          thread."share_case_id",
+          thread."visit_request_id",
+          thread."context_type"::text,
+          thread."status"::text,
+          thread."created_by",
+          (thread."last_message_at" IS NOT NULL) AS has_last_message_at,
+          (
+            SELECT COUNT(*)::int
+            FROM "PharmacyCooperationMessage" message
+            WHERE message."thread_id" = thread."id"
+              AND message."org_id" = thread."org_id"
+          ) AS message_count,
+          (
+            SELECT message."body"
+            FROM "PharmacyCooperationMessage" message
+            WHERE message."thread_id" = thread."id"
+              AND message."org_id" = thread."org_id"
+            ORDER BY message."created_at" DESC, message."id" DESC
+            LIMIT 1
+          ) AS latest_body,
+          (
+            SELECT message."sender_side"::text
+            FROM "PharmacyCooperationMessage" message
+            WHERE message."thread_id" = thread."id"
+              AND message."org_id" = thread."org_id"
+            ORDER BY message."created_at" DESC, message."id" DESC
+            LIMIT 1
+          ) AS latest_sender_side,
+          (
+            SELECT COUNT(*)::int
+            FROM "AuditLog" audit
+            WHERE audit."org_id" = thread."org_id"
+              AND audit."action" = 'pharmacy_cooperation_message_created'
+              AND audit."target_type" = 'PharmacyCooperationMessage'
+              AND audit."changes"->>'thread_id' = thread."id"
+          ) AS created_audit_count,
+          (
+            SELECT COUNT(*)::int
+            FROM "AuditLog" audit
+            WHERE audit."org_id" = thread."org_id"
+              AND audit."action" = 'pharmacy_cooperation_messages_viewed'
+              AND audit."target_type" = 'PharmacyCooperationMessageThread'
+              AND audit."changes"->>'share_case_id' = thread."share_case_id"
+              AND COALESCE(audit."changes"->>'visit_request_id', '') =
+                  COALESCE(thread."visit_request_id", '')
+          ) AS viewed_audit_count
+        FROM "PharmacyCooperationMessageThread" thread
+        WHERE thread."share_case_id" = $1
+          AND (
+            ($2::text IS NULL AND thread."visit_request_id" IS NULL)
+            OR thread."visit_request_id" = $2
+          )
+        ORDER BY thread."created_at" DESC, thread."id" DESC
+        LIMIT 1
+      `,
+      [shareCaseId, visitRequestId],
+    );
+
+    return result.rows[0] ?? null;
+  } finally {
+    await client.end();
+  }
+}
+
 async function readUiDemoPatientShareCase(partnershipId: string = DEMO_IDS.pharmacyPartnership) {
   const client = new Client({ connectionString: DB_CONNECTION_STRING });
   await client.connect();
@@ -1802,6 +1894,163 @@ test.describe('major authenticated screens', () => {
       id: visitRequest!.id,
       status: 'accepted',
       accepted_by: demoContext.userId,
+    });
+
+    const patientMessageBody = '共有ケースの進行状況を確認しました';
+    const patientMessageResponse = await page.request.post(
+      '/api/pharmacy-cooperation-message-threads',
+      {
+        data: {
+          share_case_id: shareCase!.id,
+          body: patientMessageBody,
+        },
+      },
+    );
+    expect(patientMessageResponse.status()).toBe(201);
+    const patientMessagePayload = (await patientMessageResponse.json()) as {
+      thread: {
+        id: string;
+        share_case_id: string;
+        visit_request_id: string | null;
+        context_type: string;
+        messages: Array<{ body: string; sender_side: string }>;
+      };
+      notification_count: number;
+    };
+    expect(patientMessagePayload).toMatchObject({
+      thread: {
+        share_case_id: shareCase!.id,
+        visit_request_id: null,
+        context_type: 'patient_share_case',
+        messages: [{ body: patientMessageBody, sender_side: 'base_pharmacy' }],
+      },
+    });
+    expect(patientMessagePayload.notification_count).toEqual(expect.any(Number));
+
+    const patientMessageListResponse = await page.request.get(
+      `/api/pharmacy-cooperation-message-threads?share_case_id=${shareCase!.id}&message_limit=5`,
+    );
+    expect(patientMessageListResponse.status()).toBe(200);
+    const patientMessageList = (await patientMessageListResponse.json()) as {
+      data: Array<{
+        id: string;
+        share_case_id: string;
+        visit_request_id: string | null;
+        context_type: string;
+        messages: Array<{ body: string; sender_side: string }>;
+      }>;
+      hasMore: boolean;
+    };
+    expect(patientMessageList).toMatchObject({
+      data: [
+        {
+          id: patientMessagePayload.thread.id,
+          share_case_id: shareCase!.id,
+          visit_request_id: null,
+          context_type: 'patient_share_case',
+          messages: [{ body: patientMessageBody, sender_side: 'base_pharmacy' }],
+        },
+      ],
+      hasMore: false,
+    });
+
+    const storedPatientThread = await readUiDemoPharmacyCooperationMessageThread({
+      shareCaseId: shareCase!.id,
+      visitRequestId: null,
+    });
+    expect(storedPatientThread).toMatchObject({
+      id: patientMessagePayload.thread.id,
+      share_case_id: shareCase!.id,
+      visit_request_id: null,
+      context_type: 'patient_share_case',
+      status: 'open',
+      created_by: demoContext.userId,
+      has_last_message_at: true,
+      message_count: 1,
+      latest_body: patientMessageBody,
+      latest_sender_side: 'base_pharmacy',
+      created_audit_count: 1,
+      viewed_audit_count: 1,
+    });
+
+    const visitMessageBody = '訪問依頼の持参物を確認しました';
+    const visitMessageResponse = await page.request.post(
+      '/api/pharmacy-cooperation-message-threads',
+      {
+        data: {
+          share_case_id: shareCase!.id,
+          visit_request_id: visitRequest!.id,
+          body: visitMessageBody,
+        },
+      },
+    );
+    expect(visitMessageResponse.status()).toBe(201);
+    const visitMessagePayload = (await visitMessageResponse.json()) as {
+      thread: {
+        id: string;
+        share_case_id: string;
+        visit_request_id: string | null;
+        context_type: string;
+        messages: Array<{ body: string; sender_side: string }>;
+      };
+      notification_count: number;
+    };
+    expect(visitMessagePayload).toMatchObject({
+      thread: {
+        share_case_id: shareCase!.id,
+        visit_request_id: visitRequest!.id,
+        context_type: 'visit_request',
+        messages: [{ body: visitMessageBody, sender_side: 'base_pharmacy' }],
+      },
+    });
+    expect(visitMessagePayload.notification_count).toEqual(expect.any(Number));
+
+    const visitMessageListResponse = await page.request.get(
+      `/api/pharmacy-cooperation-message-threads?share_case_id=${shareCase!.id}&visit_request_id=${
+        visitRequest!.id
+      }&message_limit=5`,
+    );
+    expect(visitMessageListResponse.status()).toBe(200);
+    const visitMessageList = (await visitMessageListResponse.json()) as {
+      data: Array<{
+        id: string;
+        share_case_id: string;
+        visit_request_id: string | null;
+        context_type: string;
+        messages: Array<{ body: string; sender_side: string }>;
+      }>;
+      hasMore: boolean;
+    };
+    expect(visitMessageList).toMatchObject({
+      data: [
+        {
+          id: visitMessagePayload.thread.id,
+          share_case_id: shareCase!.id,
+          visit_request_id: visitRequest!.id,
+          context_type: 'visit_request',
+          messages: [{ body: visitMessageBody, sender_side: 'base_pharmacy' }],
+        },
+      ],
+      hasMore: false,
+    });
+
+    const storedVisitThread = await readUiDemoPharmacyCooperationMessageThread({
+      shareCaseId: shareCase!.id,
+      visitRequestId: visitRequest!.id,
+    });
+    expect(storedVisitThread).toMatchObject({
+      id: visitMessagePayload.thread.id,
+      share_case_id: shareCase!.id,
+      visit_request_id: visitRequest!.id,
+      context_type: 'visit_request',
+      status: 'open',
+      created_by: demoContext.userId,
+      has_last_message_at: true,
+      message_count: 1,
+      latest_body: visitMessageBody,
+      latest_sender_side: 'base_pharmacy',
+      created_audit_count: 1,
+      viewed_audit_count: 1,
     });
 
     const partnerRecordResponse = await page.request.post('/api/partner-visit-records', {
