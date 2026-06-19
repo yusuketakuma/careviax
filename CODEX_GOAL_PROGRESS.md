@@ -3516,3 +3516,32 @@ Implemented:
 ### Remaining / Next Loop
 
 - Direct patient-card browser proof and real migration application confirmation still require explicit approval to apply the pending migrations.
+
+## 20260619-2252 JST - Patient Packaging False-Empty Guard
+
+### Completed
+
+- Fixed a false-empty state in the patient detail packaging card: failed packaging-profile fetches no longer render as "未設定" with an editable empty form.
+- Added an inline shared `ErrorState` with retry, support-safe detail copy, and a destructive "取得できません" badge.
+- Stopped save affordance exposure while the existing settings failed to load, preventing accidental overwrite from an empty fallback form.
+- Added a regression test for the error state, retry action, absence of the "未設定" copy, and absence of the save button.
+
+### Files Changed
+
+- `src/app/(dashboard)/patients/[id]/patient-packaging-card.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-packaging-card.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-packaging-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-packaging-card.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-packaging-card.test.tsx'`: passed, 1 file / 2 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/patient-packaging-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-packaging-card.test.tsx'`: passed.
+- `pnpm format:check`: passed.
+- `pnpm typecheck`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Continue the false-empty audit on workflow dashboard, communications requests, report delivery analytics, and schedule proposals.
