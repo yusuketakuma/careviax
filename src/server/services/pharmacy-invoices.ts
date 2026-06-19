@@ -462,7 +462,6 @@ function buildInvoiceItem(candidate: CandidateRow, documentKind: PharmacyInvoice
     subtotal: normalizedAmount,
     taxAmount: calculateTaxAmount(normalizedAmount, snapshot.taxCategory, snapshot.taxRateBp),
     create: {
-      org_id: candidate.org_id,
       visit_billing_candidate_id: candidate.id,
       visit_date: visitDate,
       description,

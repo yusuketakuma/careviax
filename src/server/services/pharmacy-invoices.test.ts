@@ -233,6 +233,8 @@ describe('createPharmacyInvoiceDraft', () => {
         }),
       }),
     );
+    const createdItems = pharmacyInvoiceCreateMock.mock.calls[0]?.[0].data.items.create;
+    expect(createdItems[0]).not.toHaveProperty('org_id');
     expect(JSON.stringify(pharmacyInvoiceCreateMock.mock.calls)).not.toContain('患者 太郎');
     expect(JSON.stringify(auditLogCreateMock.mock.calls)).not.toContain('患者 太郎');
   });

@@ -56,6 +56,9 @@ const DEMO_IDS = {
   managementPlan: 'ui_demo_management_plan_1',
   partnerPharmacy: 'ui_demo_partner_pharmacy_1',
   pharmacyPartnership: 'ui_demo_pharmacy_partnership_1',
+  pharmacyContract: 'ui_demo_pharmacy_contract_1',
+  pharmacyContractVersion: 'ui_demo_pharmacy_contract_version_1',
+  pharmacyContractFeeRule: 'ui_demo_pharmacy_contract_fee_rule_1',
   task: 'ui_demo_task_1',
   grant: 'ui_demo_grant_1',
   selfReport: 'ui_demo_self_report_1',
@@ -79,6 +82,7 @@ type DemoContext = {
   medicationName: string;
   managementPlanId: string;
   partnershipId: string;
+  contractId: string;
   reportId: string;
   scheduleId: string;
   visitRecordId: string;
@@ -96,6 +100,10 @@ function dateKeyFromOffset(daysFromToday: number) {
   const date = new Date();
   date.setDate(date.getDate() + daysFromToday);
   return date.toISOString().slice(0, 10);
+}
+
+function billingMonthFromDateKey(dateKey: string) {
+  return `${dateKey.slice(0, 8)}01`;
 }
 
 async function ensureUiDemoData() {
@@ -583,6 +591,96 @@ async function ensureUiDemoData() {
 
     await client.query(
       `
+        INSERT INTO "PharmacyContract" (
+          "id","org_id","partnership_id","status","effective_from","effective_to","closing_day","payment_due_rule","base_approved_by","base_approved_at","partner_approved_by","partner_approved_at","created_by","updated_by","created_at","updated_at"
+        ) VALUES ($1,$2,$3,'active',CURRENT_DATE,NULL,31,$4::jsonb,$5,NOW(),$6,NOW(),$5,$5,NOW(),NOW())
+        ON CONFLICT ("id") DO UPDATE
+        SET "org_id" = EXCLUDED."org_id",
+            "partnership_id" = EXCLUDED."partnership_id",
+            "status" = 'active',
+            "effective_from" = CURRENT_DATE,
+            "effective_to" = NULL,
+            "closing_day" = EXCLUDED."closing_day",
+            "payment_due_rule" = EXCLUDED."payment_due_rule",
+            "base_approved_by" = EXCLUDED."base_approved_by",
+            "base_approved_at" = NOW(),
+            "partner_approved_by" = EXCLUDED."partner_approved_by",
+            "partner_approved_at" = NOW(),
+            "updated_by" = EXCLUDED."updated_by",
+            "updated_at" = NOW()
+      `,
+      [
+        DEMO_IDS.pharmacyContract,
+        base.org_id,
+        DEMO_IDS.pharmacyPartnership,
+        jsonb({ type: 'next_month_end', closing_day: 31 }),
+        base.user_id,
+        'UIデモ協力薬局 契約承認者',
+      ],
+    );
+
+    await client.query(
+      `
+        INSERT INTO "PharmacyContractVersion" (
+          "id","org_id","contract_id","version_no","status","effective_from","effective_to","terms_snapshot","approved_by_base","approved_by_partner","approved_at","created_by","created_at","updated_at"
+        ) VALUES ($1,$2,$3,1,'active',CURRENT_DATE,NULL,$4::jsonb,$5,$6,NOW(),$5,NOW(),NOW())
+        ON CONFLICT ("id") DO UPDATE
+        SET "org_id" = EXCLUDED."org_id",
+            "contract_id" = EXCLUDED."contract_id",
+            "version_no" = 1,
+            "status" = 'active',
+            "effective_from" = CURRENT_DATE,
+            "effective_to" = NULL,
+            "terms_snapshot" = EXCLUDED."terms_snapshot",
+            "approved_by_base" = EXCLUDED."approved_by_base",
+            "approved_by_partner" = EXCLUDED."approved_by_partner",
+            "approved_at" = NOW(),
+            "created_by" = EXCLUDED."created_by",
+            "updated_at" = NOW()
+      `,
+      [
+        DEMO_IDS.pharmacyContractVersion,
+        base.org_id,
+        DEMO_IDS.pharmacyContract,
+        jsonb({
+          scope: 'ui-demo-db-backed-cooperation',
+          fee_rule: 'fixed_per_visit',
+          invoice_snapshot_required: true,
+        }),
+        base.user_id,
+        'UIデモ協力薬局 契約承認者',
+      ],
+    );
+
+    await client.query(
+      `
+        INSERT INTO "PharmacyContractFeeRule" (
+          "id","org_id","contract_version_id","billing_model","unit_price","addon_rules","expense_rules","tax_category","tax_rate_bp","rounding_rule","is_active","created_at","updated_at"
+        ) VALUES ($1,$2,$3,'fixed_per_visit',8800,$4::jsonb,$5::jsonb,'taxable',1000,'round',true,NOW(),NOW())
+        ON CONFLICT ("id") DO UPDATE
+        SET "org_id" = EXCLUDED."org_id",
+            "contract_version_id" = EXCLUDED."contract_version_id",
+            "billing_model" = 'fixed_per_visit',
+            "unit_price" = 8800,
+            "addon_rules" = EXCLUDED."addon_rules",
+            "expense_rules" = EXCLUDED."expense_rules",
+            "tax_category" = 'taxable',
+            "tax_rate_bp" = 1000,
+            "rounding_rule" = 'round',
+            "is_active" = true,
+            "updated_at" = NOW()
+      `,
+      [
+        DEMO_IDS.pharmacyContractFeeRule,
+        base.org_id,
+        DEMO_IDS.pharmacyContractVersion,
+        jsonb([]),
+        jsonb({ travel_fee: 0 }),
+      ],
+    );
+
+    await client.query(
+      `
         INSERT INTO "CareReport" (
           "id","org_id","patient_id","case_id","report_type","status","content","created_by","created_at","updated_at"
         ) VALUES ($1,$2,$3,$4,'physician_report','response_waiting',$5::jsonb,$6,NOW(),NOW())
@@ -728,6 +826,7 @@ async function ensureUiDemoData() {
       medicationName,
       managementPlanId: DEMO_IDS.managementPlan,
       partnershipId: DEMO_IDS.pharmacyPartnership,
+      contractId: DEMO_IDS.pharmacyContract,
       reportId: DEMO_IDS.careReport,
       scheduleId: DEMO_IDS.visitSchedule,
       visitRecordId: DEMO_IDS.visitRecord,
@@ -744,6 +843,135 @@ async function clearUiDemoPatientShareCases() {
   await client.connect();
 
   try {
+    await client.query(
+      `
+        DELETE FROM "PharmacyInvoiceItem"
+        WHERE "invoice_id" IN (
+          SELECT "id"
+          FROM "PharmacyInvoice"
+          WHERE "contract_id" = $1
+        )
+      `,
+      [DEMO_IDS.pharmacyContract],
+    );
+
+    await client.query(
+      `
+        DELETE FROM "PharmacyInvoice"
+        WHERE "contract_id" = $1
+      `,
+      [DEMO_IDS.pharmacyContract],
+    );
+
+    await client.query(
+      `
+        DELETE FROM "PharmacyInvoiceItem"
+        WHERE "visit_billing_candidate_id" IN (
+          SELECT vbc."id"
+          FROM "VisitBillingCandidate" vbc
+          JOIN "PartnerVisitRecord" pvr
+            ON pvr."id" = vbc."partner_visit_record_id"
+           AND pvr."org_id" = vbc."org_id"
+          JOIN "PatientShareCase" psc
+            ON psc."id" = pvr."share_case_id"
+           AND psc."org_id" = pvr."org_id"
+          WHERE psc."base_patient_id" = $1
+            AND psc."partnership_id" = $2
+        )
+      `,
+      [DEMO_IDS.patient, DEMO_IDS.pharmacyPartnership],
+    );
+
+    await client.query(
+      `
+        DELETE FROM "VisitBillingCandidate"
+        WHERE "partner_visit_record_id" IN (
+          SELECT pvr."id"
+          FROM "PartnerVisitRecord" pvr
+          JOIN "PatientShareCase" psc
+            ON psc."id" = pvr."share_case_id"
+           AND psc."org_id" = pvr."org_id"
+          WHERE psc."base_patient_id" = $1
+            AND psc."partnership_id" = $2
+        )
+      `,
+      [DEMO_IDS.patient, DEMO_IDS.pharmacyPartnership],
+    );
+
+    await client.query(
+      `
+        DELETE FROM "CareReport"
+        WHERE "partner_visit_record_id" IN (
+          SELECT pvr."id"
+          FROM "PartnerVisitRecord" pvr
+          JOIN "PatientShareCase" psc
+            ON psc."id" = pvr."share_case_id"
+           AND psc."org_id" = pvr."org_id"
+          WHERE psc."base_patient_id" = $1
+            AND psc."partnership_id" = $2
+        )
+      `,
+      [DEMO_IDS.patient, DEMO_IDS.pharmacyPartnership],
+    );
+
+    await client.query(
+      `
+        DELETE FROM "ClaimCooperationNote"
+        WHERE "partner_visit_record_id" IN (
+          SELECT pvr."id"
+          FROM "PartnerVisitRecord" pvr
+          JOIN "PatientShareCase" psc
+            ON psc."id" = pvr."share_case_id"
+           AND psc."org_id" = pvr."org_id"
+          WHERE psc."base_patient_id" = $1
+            AND psc."partnership_id" = $2
+        )
+      `,
+      [DEMO_IDS.patient, DEMO_IDS.pharmacyPartnership],
+    );
+
+    await client.query(
+      `
+        DELETE FROM "PartnerVisitRecord"
+        WHERE "share_case_id" IN (
+          SELECT "id"
+          FROM "PatientShareCase"
+          WHERE "base_patient_id" = $1
+            AND "partnership_id" = $2
+        )
+      `,
+      [DEMO_IDS.patient, DEMO_IDS.pharmacyPartnership],
+    );
+
+    await client.query(
+      `
+        DELETE FROM "PharmacyCooperationMessage"
+        WHERE "thread_id" IN (
+          SELECT thread."id"
+          FROM "PharmacyCooperationMessageThread" thread
+          JOIN "PatientShareCase" psc
+            ON psc."id" = thread."share_case_id"
+           AND psc."org_id" = thread."org_id"
+          WHERE psc."base_patient_id" = $1
+            AND psc."partnership_id" = $2
+        )
+      `,
+      [DEMO_IDS.patient, DEMO_IDS.pharmacyPartnership],
+    );
+
+    await client.query(
+      `
+        DELETE FROM "PharmacyCooperationMessageThread"
+        WHERE "share_case_id" IN (
+          SELECT "id"
+          FROM "PatientShareCase"
+          WHERE "base_patient_id" = $1
+            AND "partnership_id" = $2
+        )
+      `,
+      [DEMO_IDS.patient, DEMO_IDS.pharmacyPartnership],
+    );
+
     await client.query(
       `
         DELETE FROM "PharmacyVisitRequest"
@@ -781,6 +1009,9 @@ async function readUiDemoPharmacyVisitRequest(shareCaseId: string) {
       status: string;
       urgency: string;
       visit_type: string | null;
+      contract_id: string | null;
+      contract_version_id: string | null;
+      estimated_amount: number | null;
       has_contract_estimate_snapshot: boolean;
       accepted_by: string | null;
     }>(
@@ -791,6 +1022,9 @@ async function readUiDemoPharmacyVisitRequest(shareCaseId: string) {
           "status"::text,
           "urgency",
           "visit_type"::text,
+          "contract_id",
+          "contract_version_id",
+          "estimated_amount",
           ("estimated_snapshot" IS NOT NULL) AS has_contract_estimate_snapshot,
           "accepted_by"
         FROM "PharmacyVisitRequest"
@@ -799,6 +1033,145 @@ async function readUiDemoPharmacyVisitRequest(shareCaseId: string) {
         LIMIT 1
       `,
       [shareCaseId],
+    );
+
+    return result.rows[0] ?? null;
+  } finally {
+    await client.end();
+  }
+}
+
+async function readUiDemoPartnerVisitRecord(visitRequestId: string) {
+  const client = new Client({ connectionString: DB_CONNECTION_STRING });
+  await client.connect();
+
+  try {
+    const result = await client.query<{
+      id: string;
+      visit_request_id: string;
+      share_case_id: string;
+      status: string;
+      source_visit_record_id: string | null;
+      has_record_content: boolean;
+      has_submitted_at: boolean;
+      has_confirmed_at: boolean;
+      confirmed_by: string | null;
+      has_base_confirmation_snapshot: boolean;
+      claim_note_count: number;
+      report_count: number;
+    }>(
+      `
+        SELECT
+          pvr."id",
+          pvr."visit_request_id",
+          pvr."share_case_id",
+          pvr."status"::text,
+          pvr."source_visit_record_id",
+          (pvr."record_content" IS NOT NULL) AS has_record_content,
+          (pvr."submitted_at" IS NOT NULL) AS has_submitted_at,
+          (pvr."confirmed_at" IS NOT NULL) AS has_confirmed_at,
+          pvr."confirmed_by",
+          (pvr."base_confirmation_snapshot" IS NOT NULL) AS has_base_confirmation_snapshot,
+          (
+            SELECT COUNT(*)::int
+            FROM "ClaimCooperationNote" note
+            WHERE note."partner_visit_record_id" = pvr."id"
+              AND note."org_id" = pvr."org_id"
+          ) AS claim_note_count,
+          (
+            SELECT COUNT(*)::int
+            FROM "CareReport" report
+            WHERE report."partner_visit_record_id" = pvr."id"
+              AND report."org_id" = pvr."org_id"
+          ) AS report_count
+        FROM "PartnerVisitRecord" pvr
+        WHERE pvr."visit_request_id" = $1
+        ORDER BY pvr."created_at" DESC
+        LIMIT 1
+      `,
+      [visitRequestId],
+    );
+
+    return result.rows[0] ?? null;
+  } finally {
+    await client.end();
+  }
+}
+
+async function readUiDemoVisitBillingCandidate(partnerVisitRecordId: string) {
+  const client = new Client({ connectionString: DB_CONNECTION_STRING });
+  await client.connect();
+
+  try {
+    const result = await client.query<{
+      id: string;
+      partner_visit_record_id: string;
+      contract_version_id: string | null;
+      billing_status: string;
+      is_billable: boolean;
+      amount: number | null;
+      billing_model: string | null;
+      tax_rate_bp: number | null;
+    }>(
+      `
+        SELECT
+          "id",
+          "partner_visit_record_id",
+          "contract_version_id",
+          "billing_status"::text,
+          "is_billable",
+          NULLIF("amount_snapshot"->>'amount', '')::int AS amount,
+          "amount_snapshot"->>'billing_model' AS billing_model,
+          NULLIF("amount_snapshot"->>'tax_rate_bp', '')::int AS tax_rate_bp
+        FROM "VisitBillingCandidate"
+        WHERE "partner_visit_record_id" = $1
+        ORDER BY "created_at" DESC
+        LIMIT 1
+      `,
+      [partnerVisitRecordId],
+    );
+
+    return result.rows[0] ?? null;
+  } finally {
+    await client.end();
+  }
+}
+
+async function readUiDemoPharmacyInvoice(invoiceId: string) {
+  const client = new Client({ connectionString: DB_CONNECTION_STRING });
+  await client.connect();
+
+  try {
+    const result = await client.query<{
+      id: string;
+      status: string;
+      subtotal: number;
+      tax_amount: number;
+      total: number;
+      invoice_no: string | null;
+      has_paid_at: boolean;
+      item_count: number;
+    }>(
+      `
+        SELECT
+          invoice."id",
+          invoice."status"::text,
+          invoice."subtotal",
+          invoice."tax_amount",
+          invoice."total",
+          invoice."invoice_no",
+          (invoice."paid_at" IS NOT NULL) AS has_paid_at,
+          (
+            SELECT COUNT(*)::int
+            FROM "PharmacyInvoiceItem" item
+            WHERE item."invoice_id" = invoice."id"
+              AND item."org_id" = invoice."org_id"
+          ) AS item_count
+        FROM "PharmacyInvoice" invoice
+        WHERE invoice."id" = $1
+        LIMIT 1
+      `,
+      [invoiceId],
     );
 
     return result.rows[0] ?? null;
@@ -1109,7 +1482,7 @@ test.describe('major authenticated screens', () => {
     expect(errors).toEqual([]);
   });
 
-  test('patient card creates an active DB-backed share case and accepted visit request', async ({
+  test('patient card drives a DB-backed share, visit, report, and billing flow', async ({
     context,
   }) => {
     await clearUiDemoPatientShareCases();
@@ -1230,6 +1603,9 @@ test.describe('major authenticated screens', () => {
       status: 'requested',
       urgency: 'normal',
       visit_type: 'regular',
+      contract_id: demoContext.contractId,
+      contract_version_id: DEMO_IDS.pharmacyContractVersion,
+      estimated_amount: 8800,
       has_contract_estimate_snapshot: true,
     });
     expect(visitRequest?.id).toEqual(expect.any(String));
@@ -1252,6 +1628,256 @@ test.describe('major authenticated screens', () => {
       accepted_by: demoContext.userId,
     });
 
+    const partnerRecordResponse = await page.request.post('/api/partner-visit-records', {
+      data: {
+        visit_request_id: visitRequest!.id,
+        pharmacist_id: demoContext.userId,
+        pharmacist_name: 'UI検証 協力薬剤師',
+        visit_at: `${visitDate}T10:45:00.000Z`,
+        source_visit_record_id: demoContext.visitRecordId,
+        record_content: {
+          medication_adherence: 'DB-backed確認済み',
+          remaining_medications: '残薬なし',
+          suspected_adverse_effects: '疑いなし',
+          storage_status: '良好',
+          proposals: '継続確認',
+        },
+      },
+    });
+    expect(partnerRecordResponse.status()).toBe(201);
+    const partnerRecord = (await partnerRecordResponse.json()) as {
+      id: string;
+      status: string;
+      source_visit_record_id: string | null;
+      has_record_content: boolean;
+    };
+    expect(partnerRecord).toMatchObject({
+      status: 'draft',
+      source_visit_record_id: demoContext.visitRecordId,
+      has_record_content: true,
+    });
+
+    let storedPartnerRecord = await readUiDemoPartnerVisitRecord(visitRequest!.id);
+    expect(storedPartnerRecord).toMatchObject({
+      id: partnerRecord.id,
+      visit_request_id: visitRequest!.id,
+      share_case_id: shareCase!.id,
+      status: 'draft',
+      source_visit_record_id: demoContext.visitRecordId,
+      has_record_content: true,
+      has_submitted_at: false,
+      has_confirmed_at: false,
+      claim_note_count: 0,
+      report_count: 0,
+    });
+
+    const submitRecordResponse = await page.request.post(
+      `/api/partner-visit-records/${partnerRecord.id}/submit`,
+    );
+    expect(submitRecordResponse.status()).toBe(200);
+    const submittedRecord = (await submitRecordResponse.json()) as {
+      partner_visit_record: {
+        id: string;
+        status: string;
+        has_record_content: boolean;
+      };
+      notify_base_pharmacy: boolean;
+    };
+    expect(submittedRecord.partner_visit_record).toMatchObject({
+      id: partnerRecord.id,
+      status: 'submitted',
+      has_record_content: true,
+    });
+    expect(submittedRecord.notify_base_pharmacy).toBe(true);
+
+    const reviewRecordResponse = await page.request.post(
+      `/api/partner-visit-records/${partnerRecord.id}/review`,
+      {
+        data: {
+          decision: 'confirm',
+          doctor_report_required: true,
+        },
+      },
+    );
+    expect(reviewRecordResponse.status()).toBe(200);
+    const reviewedRecord = (await reviewRecordResponse.json()) as {
+      id: string;
+      status: string;
+      confirmed_by: string | null;
+      has_base_confirmation_snapshot: boolean;
+      claim_note: { id: string } | null;
+    };
+    expect(reviewedRecord).toMatchObject({
+      id: partnerRecord.id,
+      status: 'confirmed',
+      confirmed_by: demoContext.userId,
+      has_base_confirmation_snapshot: true,
+    });
+    expect(reviewedRecord.claim_note?.id).toEqual(expect.any(String));
+
+    storedPartnerRecord = await readUiDemoPartnerVisitRecord(visitRequest!.id);
+    expect(storedPartnerRecord).toMatchObject({
+      id: partnerRecord.id,
+      status: 'confirmed',
+      has_submitted_at: true,
+      has_confirmed_at: true,
+      confirmed_by: demoContext.userId,
+      has_base_confirmation_snapshot: true,
+      claim_note_count: 1,
+      report_count: 0,
+    });
+
+    const reportDraftResponse = await page.request.post(
+      `/api/partner-visit-records/${partnerRecord.id}/physician-report-draft`,
+    );
+    expect(reportDraftResponse.status()).toBe(201);
+    const reportDraft = (await reportDraftResponse.json()) as {
+      reused_existing_draft: boolean;
+      report: {
+        id: string;
+        partner_visit_record_id: string | null;
+        report_type: string;
+        status: string;
+      };
+    };
+    expect(reportDraft).toMatchObject({
+      reused_existing_draft: false,
+      report: {
+        partner_visit_record_id: partnerRecord.id,
+        report_type: 'physician_report',
+        status: 'draft',
+      },
+    });
+
+    storedPartnerRecord = await readUiDemoPartnerVisitRecord(visitRequest!.id);
+    expect(storedPartnerRecord).toMatchObject({
+      id: partnerRecord.id,
+      status: 'confirmed',
+      report_count: 1,
+    });
+
+    const billingMonth = billingMonthFromDateKey(visitDate);
+    const billingCandidateResponse = await page.request.post('/api/visit-billing-candidates', {
+      data: {
+        billing_month: billingMonth,
+        share_case_id: shareCase!.id,
+      },
+    });
+    expect(billingCandidateResponse.status()).toBe(200);
+    const billingCandidateBatch = (await billingCandidateResponse.json()) as {
+      billing_month: string;
+      scanned_confirmed_records: number;
+      generated_candidates: number;
+      billable_count: number;
+      excluded_count: number;
+    };
+    expect(billingCandidateBatch).toMatchObject({
+      billing_month: billingMonth,
+      scanned_confirmed_records: 1,
+      generated_candidates: 1,
+      billable_count: 1,
+      excluded_count: 0,
+    });
+
+    const billingCandidate = await readUiDemoVisitBillingCandidate(partnerRecord.id);
+    expect(billingCandidate).toMatchObject({
+      partner_visit_record_id: partnerRecord.id,
+      contract_version_id: DEMO_IDS.pharmacyContractVersion,
+      billing_status: 'candidate',
+      is_billable: true,
+      amount: 8800,
+      billing_model: 'fixed_per_visit',
+      tax_rate_bp: 1000,
+    });
+
+    const invoiceDraftResponse = await page.request.post('/api/pharmacy-invoices', {
+      data: {
+        billing_month: billingMonth,
+        contract_id: demoContext.contractId,
+        document_kind: 'invoice',
+      },
+    });
+    expect(invoiceDraftResponse.status()).toBe(201);
+    const invoiceDraft = (await invoiceDraftResponse.json()) as {
+      id: string;
+      document_kind: string;
+      status: string;
+      subtotal: number;
+      tax_amount: number;
+      total: number;
+      item_count: number;
+      has_snapshot: boolean;
+    };
+    expect(invoiceDraft).toMatchObject({
+      document_kind: 'invoice',
+      status: 'draft',
+      subtotal: 8800,
+      tax_amount: 880,
+      total: 9680,
+      item_count: 1,
+      has_snapshot: true,
+    });
+
+    const issueInvoiceResponse = await page.request.patch(
+      `/api/pharmacy-invoices/${invoiceDraft.id}`,
+      {
+        data: {
+          action: 'issue',
+          occurred_at: visitDate,
+        },
+      },
+    );
+    expect(issueInvoiceResponse.status()).toBe(200);
+    const issuedInvoice = (await issueInvoiceResponse.json()) as {
+      id: string;
+      status: string;
+      invoice_no: string | null;
+      item_count: number;
+    };
+    expect(issuedInvoice).toMatchObject({
+      id: invoiceDraft.id,
+      status: 'issued',
+      item_count: 1,
+    });
+    expect(issuedInvoice.invoice_no).toEqual(expect.any(String));
+
+    const paidDate = dateKeyFromOffset(2);
+    const paymentResponse = await page.request.patch(`/api/pharmacy-invoices/${invoiceDraft.id}`, {
+      data: {
+        action: 'record_payment',
+        occurred_at: paidDate,
+      },
+    });
+    expect(paymentResponse.status()).toBe(200);
+    const paidInvoice = (await paymentResponse.json()) as {
+      id: string;
+      status: string;
+      paid_at: string | null;
+    };
+    expect(paidInvoice).toMatchObject({
+      id: invoiceDraft.id,
+      status: 'paid',
+    });
+    expect(paidInvoice.paid_at).toEqual(expect.any(String));
+
+    const invoicePdfResponse = await page.request.get(
+      `/api/pharmacy-invoices/${invoiceDraft.id}/pdf?purpose=db-backed-e2e-proof`,
+    );
+    expect(invoicePdfResponse.status()).toBe(200);
+    expect(invoicePdfResponse.headers()['content-type']).toContain('application/pdf');
+
+    const storedInvoice = await readUiDemoPharmacyInvoice(invoiceDraft.id);
+    expect(storedInvoice).toMatchObject({
+      id: invoiceDraft.id,
+      status: 'paid',
+      subtotal: 8800,
+      tax_amount: 880,
+      total: 9680,
+      has_paid_at: true,
+      item_count: 1,
+    });
+    expect(storedInvoice?.invoice_no).toEqual(expect.any(String));
+
     await openStableRoute(page, '/workflow/pharmacy-cooperation');
     const shareCasesTable = page.getByRole('table', { name: '患者共有ケース一覧' });
     const activatedShareCaseRow = shareCasesTable.getByRole('row').filter({
@@ -1262,8 +1888,12 @@ test.describe('major authenticated screens', () => {
     await expect(
       visitRequestsTable.getByRole('row').filter({ hasText: visitRequest!.id }),
     ).toBeVisible({ timeout: 60_000 });
+    const partnerRecordsTable = page.getByRole('table', { name: '協力訪問記録一覧' });
+    await expect(
+      partnerRecordsTable.getByRole('row').filter({ hasText: partnerRecord.id }),
+    ).toBeVisible({ timeout: 60_000 });
 
-    await writeScreenshot(page, 'patient-share-case-create-db-backed');
+    await writeScreenshot(page, 'patient-share-visit-billing-db-backed');
     expect(errors).toEqual([]);
   });
 
