@@ -8,6 +8,7 @@ const {
   partnerVisitRecordFindUniqueOrThrowMock,
   pharmacyVisitRequestUpdateManyMock,
   claimCooperationNoteUpsertMock,
+  dispatchNotificationEventMock,
   createAuditLogEntryMock,
 } = vi.hoisted(() => ({
   withOrgContextMock: vi.fn(),
@@ -16,6 +17,7 @@ const {
   partnerVisitRecordFindUniqueOrThrowMock: vi.fn(),
   pharmacyVisitRequestUpdateManyMock: vi.fn(),
   claimCooperationNoteUpsertMock: vi.fn(),
+  dispatchNotificationEventMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
 }));
 
@@ -40,6 +42,10 @@ vi.mock('@/lib/db/rls', () => ({
 
 vi.mock('@/lib/audit/audit-entry', () => ({
   createAuditLogEntry: createAuditLogEntryMock,
+}));
+
+vi.mock('@/server/services/notifications', () => ({
+  dispatchNotificationEvent: dispatchNotificationEventMock,
 }));
 
 import { POST as rawPOST } from './route';
@@ -74,6 +80,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
       owner_partner_pharmacy: { name: '協力薬局', status: 'active' },
       visit_request: {
         status: 'submitted',
+        accepted_by: 'partner_user_1',
         partnership_id: 'partnership_1',
         partnership: {
           status: 'active',
@@ -84,6 +91,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
     });
     pharmacyVisitRequestUpdateManyMock.mockResolvedValue({ count: 1 });
     claimCooperationNoteUpsertMock.mockResolvedValue({ id: 'claim_note_1' });
+    dispatchNotificationEventMock.mockResolvedValue([{ id: 'notification_1' }]);
     partnerVisitRecordUpdateManyMock.mockResolvedValue({ count: 1 });
     partnerVisitRecordFindUniqueOrThrowMock.mockResolvedValue({
       id: 'partner_visit_record_1',
@@ -172,6 +180,24 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
         }),
       }),
     );
+    expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        orgId: 'org_1',
+        eventType: 'pharmacy_partner_visit_record_confirmed',
+        type: 'business',
+        title: '協力訪問記録が確認されました',
+        message: 'アプリで協力訪問記録の確認結果を確認してください',
+        explicitUserIds: ['partner_user_1'],
+        metadata: {
+          partner_visit_record_id: 'partner_visit_record_1',
+          visit_request_id: 'visit_request_1',
+          share_case_id: 'share_case_1',
+          decision: 'confirm',
+          status: 'confirmed',
+        },
+      }),
+    );
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
@@ -183,6 +209,9 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
           status: 'confirmed',
           visit_request_status: 'confirmed',
           doctor_report_required: true,
+          notify_partner_pharmacy: true,
+          notification_count: 1,
+          notification_event_type: 'pharmacy_partner_visit_record_confirmed',
         }),
       }),
     );
@@ -233,8 +262,22 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
       data: { status: 'returned', completed_at: null },
     });
     expect(claimCooperationNoteUpsertMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        eventType: 'pharmacy_partner_visit_record_returned',
+        title: '協力訪問記録が差戻されました',
+        message: 'アプリで協力訪問記録の差戻し内容を確認してください',
+        explicitUserIds: ['partner_user_1'],
+        metadata: expect.objectContaining({
+          decision: 'return',
+          status: 'returned',
+        }),
+      }),
+    );
     const auditText = JSON.stringify(createAuditLogEntryMock.mock.calls);
     expect(auditText).toContain('return_reason_length');
+    expect(auditText).toContain('notification_count');
     expect(auditText).not.toContain('山田花子');
     expect(auditText).not.toContain('残薬数量');
   });
@@ -267,6 +310,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
     expect(pharmacyVisitRequestUpdateManyMock).not.toHaveBeenCalled();
     expect(partnerVisitRecordUpdateManyMock).not.toHaveBeenCalled();
     expect(claimCooperationNoteUpsertMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
@@ -279,6 +323,7 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
     expect(partnerVisitRecordUpdateManyMock).toHaveBeenCalled();
     expect(pharmacyVisitRequestUpdateManyMock).toHaveBeenCalled();
     expect(claimCooperationNoteUpsertMock).not.toHaveBeenCalled();
+    expect(dispatchNotificationEventMock).not.toHaveBeenCalled();
     expect(partnerVisitRecordFindUniqueOrThrowMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });

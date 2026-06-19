@@ -8,6 +8,7 @@ import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { dispatchNotificationEvent } from '@/server/services/notifications';
 import {
   resolvePartnerVisitRecordTransition,
   resolvePharmacyVisitRequestTransition,
@@ -43,6 +44,23 @@ function auditActionForDecision(decision: z.infer<typeof reviewDecisionSchema>) 
       return 'partner_visit_record_confirmed';
     case 'return':
       return 'partner_visit_record_returned';
+  }
+}
+
+function notificationForDecision(decision: z.infer<typeof reviewDecisionSchema>) {
+  switch (decision) {
+    case 'confirm':
+      return {
+        eventType: 'pharmacy_partner_visit_record_confirmed',
+        title: '協力訪問記録が確認されました',
+        message: 'アプリで協力訪問記録の確認結果を確認してください',
+      };
+    case 'return':
+      return {
+        eventType: 'pharmacy_partner_visit_record_returned',
+        title: '協力訪問記録が差戻されました',
+        message: 'アプリで協力訪問記録の差戻し内容を確認してください',
+      };
   }
 }
 
@@ -114,6 +132,7 @@ export const POST = withAuthContext<{ id: string }>(
             visit_request: {
               select: {
                 status: true,
+                accepted_by: true,
                 partnership_id: true,
                 partnership: {
                   select: {
@@ -248,6 +267,28 @@ export const POST = withAuthContext<{ id: string }>(
           });
         }
 
+        const notification = notificationForDecision(parsed.data.decision);
+        const explicitUserIds = record.visit_request.accepted_by
+          ? [record.visit_request.accepted_by]
+          : [];
+        const notifications = await dispatchNotificationEvent(tx, {
+          orgId: ctx.orgId,
+          eventType: notification.eventType,
+          type: 'business',
+          title: notification.title,
+          message: notification.message,
+          link: `/partner-visit-records/${record.id}`,
+          explicitUserIds,
+          metadata: {
+            partner_visit_record_id: record.id,
+            visit_request_id: record.visit_request_id,
+            share_case_id: record.share_case_id,
+            decision: parsed.data.decision,
+            status: recordTransition.nextStatus,
+          },
+          dedupeKey: `${notification.eventType}:${record.id}:${now.toISOString()}`,
+        });
+
         const updated = await tx.partnerVisitRecord.findUniqueOrThrow({
           where: { id_org_id: { id, org_id: ctx.orgId } },
           include: {
@@ -281,6 +322,9 @@ export const POST = withAuthContext<{ id: string }>(
             visit_request_status: requestTransition.nextStatus,
             doctor_report_required: parsed.data.doctor_report_required,
             return_reason_length: parsed.data.return_reason?.length ?? 0,
+            notify_partner_pharmacy: true,
+            notification_count: notifications.length,
+            notification_event_type: notification.eventType,
           },
         });
 
