@@ -249,6 +249,11 @@ type CreateFormState = {
   document_file: File | null;
 };
 
+type CreateFormErrors = {
+  consentType?: string;
+  obtainedDate?: string;
+};
+
 async function uploadConsentDocument(args: { file: File; patientId: string; orgId: string }) {
   const presignResponse = await fetch('/api/files/presigned-upload', {
     method: 'POST',
@@ -315,6 +320,7 @@ function CreateConsentDialog({
     expiry_date: '',
     document_file: null,
   });
+  const [formErrors, setFormErrors] = useState<CreateFormErrors>({});
   const templatesQuery = useQuery({
     queryKey: ['consent-templates', orgId],
     queryFn: async () => {
@@ -368,14 +374,23 @@ function CreateConsentDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const nextErrors: CreateFormErrors = {};
+
     if (!form.consent_type) {
-      toast.error('同意種別を選択してください');
-      return;
+      nextErrors.consentType = '同意種別を選択してください';
     }
     if (!form.obtained_date) {
-      toast.error('取得日を入力してください');
+      nextErrors.obtainedDate = '取得日を入力してください';
+    }
+
+    setFormErrors(nextErrors);
+
+    const firstError = nextErrors.consentType ?? nextErrors.obtainedDate;
+    if (firstError) {
+      toast.error(firstError);
       return;
     }
+
     mutation.mutate(form);
   };
 
@@ -384,16 +399,23 @@ function CreateConsentDialog({
       <DialogHeader>
         <DialogTitle>新規同意取得</DialogTitle>
       </DialogHeader>
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} noValidate className="space-y-4">
         <div className="space-y-1.5">
           <Label htmlFor="consent_type">
             同意種別 <span className="text-destructive">*</span>
           </Label>
           <Select
             value={form.consent_type}
-            onValueChange={(v) => setForm((f) => ({ ...f, consent_type: v ?? f.consent_type }))}
+            onValueChange={(v) => {
+              setForm((f) => ({ ...f, consent_type: v ?? f.consent_type }));
+              if (v) setFormErrors((current) => ({ ...current, consentType: undefined }));
+            }}
           >
-            <SelectTrigger id="consent_type">
+            <SelectTrigger
+              id="consent_type"
+              aria-invalid={Boolean(formErrors.consentType)}
+              aria-describedby={formErrors.consentType ? 'consent-type-error' : undefined}
+            >
               <SelectValue placeholder="選択してください" />
             </SelectTrigger>
             <SelectContent>
@@ -404,6 +426,11 @@ function CreateConsentDialog({
               ))}
             </SelectContent>
           </Select>
+          {formErrors.consentType ? (
+            <p id="consent-type-error" role="alert" className="text-xs text-destructive">
+              {formErrors.consentType}
+            </p>
+          ) : null}
         </div>
 
         <div className="space-y-1.5">
@@ -456,9 +483,21 @@ function CreateConsentDialog({
             id="obtained_date"
             type="date"
             value={form.obtained_date}
-            onChange={(e) => setForm((f) => ({ ...f, obtained_date: e.target.value }))}
+            onChange={(e) => {
+              setForm((f) => ({ ...f, obtained_date: e.target.value }));
+              if (e.target.value) {
+                setFormErrors((current) => ({ ...current, obtainedDate: undefined }));
+              }
+            }}
             required
+            aria-invalid={Boolean(formErrors.obtainedDate)}
+            aria-describedby={formErrors.obtainedDate ? 'obtained-date-error' : undefined}
           />
+          {formErrors.obtainedDate ? (
+            <p id="obtained-date-error" role="alert" className="text-xs text-destructive">
+              {formErrors.obtainedDate}
+            </p>
+          ) : null}
         </div>
 
         <div className="space-y-1.5">

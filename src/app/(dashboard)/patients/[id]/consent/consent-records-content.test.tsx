@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { PropsWithChildren, ReactNode } from 'react';
+import { toast } from 'sonner';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { ConsentRecordsContent } from './consent-records-content';
@@ -37,8 +38,19 @@ vi.mock('@/components/ui/select', async () => {
     }: PropsWithChildren<{ value?: string; onValueChange?: (value: string) => void }>) => (
       <SelectContext.Provider value={{ value, onValueChange }}>{children}</SelectContext.Provider>
     ),
-    SelectTrigger: ({ children, id }: PropsWithChildren<{ id?: string }>) => (
-      <div id={id}>{children}</div>
+    SelectTrigger: ({
+      children,
+      id,
+      'aria-invalid': ariaInvalid,
+      'aria-describedby': ariaDescribedBy,
+    }: PropsWithChildren<{
+      id?: string;
+      'aria-invalid'?: boolean;
+      'aria-describedby'?: string;
+    }>) => (
+      <div id={id} aria-invalid={ariaInvalid} aria-describedby={ariaDescribedBy}>
+        {children}
+      </div>
     ),
     SelectValue: ({ placeholder }: { placeholder?: string }) => {
       const context = React.useContext(SelectContext);
@@ -238,6 +250,43 @@ describe('ConsentRecordsContent', () => {
       document_file_id: 'file_1',
     });
     expect(createBody).not.toHaveProperty('document_url');
+  });
+
+  it('keeps required create consent validation visible inline', async () => {
+    const fetchMock = stubFetch();
+    renderContent();
+
+    const createButton = await screen.findByRole('button', { name: '新規同意取得' });
+    fireEvent.click(createButton);
+
+    fireEvent.click(screen.getByRole('button', { name: '登録' }));
+
+    expect(screen.getByRole('alert').textContent).toBe('同意種別を選択してください');
+    expect(document.getElementById('consent_type')?.getAttribute('aria-invalid')).toBe('true');
+    expect(document.getElementById('consent_type')?.getAttribute('aria-describedby')).toBe(
+      'consent-type-error',
+    );
+    expect(toast.error).toHaveBeenCalledWith('同意種別を選択してください');
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) => String(input) === '/api/consent-records' && init?.method === 'POST',
+      ),
+    ).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: '外部共有' }));
+    const obtainedDate = screen.getByLabelText('取得日 *');
+    fireEvent.change(obtainedDate, { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: '登録' }));
+
+    expect(screen.getByRole('alert').textContent).toBe('取得日を入力してください');
+    expect(obtainedDate.getAttribute('aria-invalid')).toBe('true');
+    expect(obtainedDate.getAttribute('aria-describedby')).toBe('obtained-date-error');
+    expect(toast.error).toHaveBeenLastCalledWith('取得日を入力してください');
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) => String(input) === '/api/consent-records' && init?.method === 'POST',
+      ),
+    ).toBe(false);
   });
 
   it('updates active consent records with a replacement document_file_id only', async () => {
