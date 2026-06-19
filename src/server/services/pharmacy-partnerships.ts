@@ -1,3 +1,5 @@
+import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+
 export type PatientShareCaseLifecycleStatus =
   | 'draft'
   | 'consent_pending'
@@ -241,11 +243,12 @@ export function findActivePatientShareConsent(
   consents: readonly PatientShareConsentForPolicy[],
   now: Date,
 ) {
+  const today = utcDateFromLocalKey(localDateKey(now));
   return (
     consents.find((consent) => {
       if (consent.revoked_at) return false;
-      if (consent.valid_until && !isDateOnOrAfter(consent.valid_until, now)) return false;
-      return isDateOnOrBefore(consent.consent_date, now);
+      if (consent.valid_until && !isDateOnOrAfter(consent.valid_until, today)) return false;
+      return isDateOnOrBefore(consent.consent_date, today);
     }) ?? null
   );
 }

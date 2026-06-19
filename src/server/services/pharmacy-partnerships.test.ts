@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   canEditPharmacyOwnedData,
   evaluatePatientShareCaseActivation,
@@ -14,6 +14,7 @@ import {
 } from './pharmacy-partnerships';
 
 const NOW = new Date('2026-06-19T00:00:00.000Z');
+const ORIGINAL_TZ = process.env.TZ;
 const ACTIVE_CONSENT: PatientShareConsentForPolicy = {
   consent_date: new Date('2026-06-01T00:00:00.000Z'),
   valid_until: new Date('2026-12-31T00:00:00.000Z'),
@@ -21,6 +22,18 @@ const ACTIVE_CONSENT: PatientShareConsentForPolicy = {
 };
 
 describe('pharmacy partnership policy guards', () => {
+  beforeAll(() => {
+    process.env.TZ = 'Asia/Tokyo';
+  });
+
+  afterAll(() => {
+    if (ORIGINAL_TZ === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = ORIGINAL_TZ;
+    }
+  });
+
   it('selects only current unrevoked patient-share consent', () => {
     expect(
       findActivePatientShareConsent(
@@ -67,6 +80,17 @@ describe('pharmacy partnership policy guards', () => {
         billingMonth: new Date('2026-06-01T00:00:00.000Z'),
       }),
     ).toEqual({ billable: true });
+  });
+
+  it('treats same local-day patient-share consent as active during JST morning', () => {
+    const jstMorning = new Date('2026-06-20T08:00:00+09:00');
+    const consent = {
+      consent_date: new Date('2026-06-20T00:00:00.000Z'),
+      valid_until: new Date('2026-06-20T00:00:00.000Z'),
+      revoked_at: null,
+    };
+
+    expect(findActivePatientShareConsent([consent], jstMorning)).toBe(consent);
   });
 
   it('blocks activating a patient share case without active consent', () => {

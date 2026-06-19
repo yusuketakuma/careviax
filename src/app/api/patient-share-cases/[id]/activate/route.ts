@@ -4,21 +4,18 @@ import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { readJsonObject } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
+import { localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import {
   evaluatePatientShareCaseActivation,
   resolvePatientShareCaseTransition,
 } from '@/server/services/pharmacy-partnerships';
 
-function utcDateOnlyTime(date: Date) {
-  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
-}
-
 function isDateAfter(left: Date, right: Date) {
-  return utcDateOnlyTime(left) > utcDateOnlyTime(right);
+  return left.getTime() > right.getTime();
 }
 
 function isDateBefore(left: Date, right: Date) {
-  return utcDateOnlyTime(left) < utcDateOnlyTime(right);
+  return left.getTime() < right.getTime();
 }
 
 function hasAcceptedIdentityProof(snapshot: unknown) {
@@ -41,6 +38,7 @@ export const POST = withAuthContext<{ id: string }>(
     if (!id) return validationError('患者共有ケースIDが不正です');
 
     const now = new Date();
+    const today = utcDateFromLocalKey(localDateKey(now));
     const result = await withOrgContext(ctx.orgId, async (tx) => {
       const shareCase = await tx.patientShareCase.findFirst({
         where: { id, org_id: ctx.orgId },
@@ -86,21 +84,21 @@ export const POST = withAuthContext<{ id: string }>(
       ) {
         return { response: conflict('有効な薬局間連携ではありません') };
       }
-      if (shareCase.starts_at && isDateAfter(shareCase.starts_at, now)) {
+      if (shareCase.starts_at && isDateAfter(shareCase.starts_at, today)) {
         return { response: conflict('共有開始日前の患者共有ケースは有効化できません') };
       }
-      if (shareCase.ends_at && isDateBefore(shareCase.ends_at, now)) {
+      if (shareCase.ends_at && isDateBefore(shareCase.ends_at, today)) {
         return { response: conflict('共有終了日を過ぎた患者共有ケースは有効化できません') };
       }
       if (
         shareCase.partnership.effective_from &&
-        isDateAfter(shareCase.partnership.effective_from, now)
+        isDateAfter(shareCase.partnership.effective_from, today)
       ) {
         return { response: conflict('薬局間連携の開始日前です') };
       }
       if (
         shareCase.partnership.effective_to &&
-        isDateBefore(shareCase.partnership.effective_to, now)
+        isDateBefore(shareCase.partnership.effective_to, today)
       ) {
         return { response: conflict('薬局間連携の終了日を過ぎています') };
       }

@@ -92,6 +92,12 @@ function jsonb(value: unknown) {
   return JSON.stringify(value);
 }
 
+function dateKeyFromOffset(daysFromToday: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + daysFromToday);
+  return date.toISOString().slice(0, 10);
+}
+
 async function ensureUiDemoData() {
   const client = new Client({ connectionString: DB_CONNECTION_STRING });
   await client.connect();
@@ -762,6 +768,11 @@ async function readUiDemoPatientShareCase() {
       shared_management_plan_id: string | null;
       shared_management_plan_version: number | null;
       link_count: number;
+      link_match_status: string | null;
+      has_base_approval: boolean;
+      has_partner_approval: boolean;
+      has_activated_at: boolean;
+      active_consent_count: number;
     }>(
       `
         SELECT
@@ -769,14 +780,29 @@ async function readUiDemoPatientShareCase() {
           psc."status"::text,
           psc."shared_management_plan_id",
           psc."shared_management_plan_version",
-          COUNT(pl."id")::int AS link_count
+          (
+            SELECT COUNT(*)::int
+            FROM "PatientLink" counted_pl
+            WHERE counted_pl."share_case_id" = psc."id"
+              AND counted_pl."org_id" = psc."org_id"
+          ) AS link_count,
+          pl."match_status"::text AS link_match_status,
+          (pl."approved_by_base" IS NOT NULL) AS has_base_approval,
+          (pl."approved_by_partner" IS NOT NULL) AS has_partner_approval,
+          (psc."activated_at" IS NOT NULL) AS has_activated_at,
+          (
+            SELECT COUNT(*)::int
+            FROM "PatientShareConsent" consent
+            WHERE consent."share_case_id" = psc."id"
+              AND consent."org_id" = psc."org_id"
+              AND consent."revoked_at" IS NULL
+          ) AS active_consent_count
         FROM "PatientShareCase" psc
         LEFT JOIN "PatientLink" pl
           ON pl."share_case_id" = psc."id"
          AND pl."org_id" = psc."org_id"
         WHERE psc."base_patient_id" = $1
           AND psc."partnership_id" = $2
-        GROUP BY psc."id"
         ORDER BY psc."created_at" DESC
         LIMIT 1
       `,
@@ -1033,7 +1059,7 @@ test.describe('major authenticated screens', () => {
     expect(errors).toEqual([]);
   });
 
-  test('patient card creates a DB-backed share case with approved management-plan evidence', async ({
+  test('patient card creates and activates a DB-backed share case with approved management-plan evidence', async ({
     context,
   }) => {
     await clearUiDemoPatientShareCases();
@@ -1045,7 +1071,7 @@ test.describe('major authenticated screens', () => {
 
     const panel = page.getByTestId('patient-share-case-create-panel');
     await expect(panel).toBeVisible({ timeout: 60_000 });
-    await expect(panel.getByLabel('共有ケース作成の連携先')).toBeEnabled();
+    await expect(panel.getByLabel('共有ケース作成の連携先')).toBeEnabled({ timeout: 60_000 });
     await panel.getByLabel('共有ケース作成の連携先').selectOption(demoContext.partnershipId);
 
     const managementPlanSelect = panel.getByLabel('共有ケース作成の管理計画版');
@@ -1067,6 +1093,77 @@ test.describe('major authenticated screens', () => {
       shared_management_plan_version: 1,
       link_count: 1,
     });
+    expect(shareCase?.id).toEqual(expect.any(String));
+
+    const consentResponse = await page.request.post(
+      `/api/patient-share-cases/${shareCase!.id}/consents`,
+      {
+        data: {
+          consent_date: dateKeyFromOffset(-1),
+          consent_person: 'UI検証 家族',
+          consent_method: 'paper_scan',
+          consent_record_id: DEMO_IDS.consent,
+          scope: {
+            medication_profile: true,
+            care_reports: true,
+            pdf_output: true,
+          },
+          valid_until: dateKeyFromOffset(30),
+        },
+      },
+    );
+    expect(consentResponse.status()).toBe(201);
+
+    const baseApproveResponse = await page.request.patch(
+      `/api/patient-share-cases/${shareCase!.id}/patient-link`,
+      {
+        data: {
+          decision: 'base_approve',
+        },
+      },
+    );
+    expect(baseApproveResponse.status()).toBe(200);
+
+    const partnerAcceptResponse = await page.request.patch(
+      `/api/patient-share-cases/${shareCase!.id}/patient-link`,
+      {
+        data: {
+          decision: 'accept',
+          partner_patient_id: 'ui_demo_partner_patient_1',
+          partner_patient_snapshot: {
+            name: demoContext.patientName,
+            name_kana: demoContext.patientKana,
+            birth_date: '1948-04-12',
+            address: demoContext.address,
+          },
+        },
+      },
+    );
+    expect(partnerAcceptResponse.status()).toBe(200);
+
+    const activationResponse = await page.request.post(
+      `/api/patient-share-cases/${shareCase!.id}/activate`,
+    );
+    expect(activationResponse.status()).toBe(200);
+
+    const activatedShareCase = await readUiDemoPatientShareCase();
+    expect(activatedShareCase).toMatchObject({
+      id: shareCase!.id,
+      status: 'active',
+      link_count: 1,
+      link_match_status: 'accepted',
+      has_base_approval: true,
+      has_partner_approval: true,
+      has_activated_at: true,
+      active_consent_count: 1,
+    });
+
+    await openStableRoute(page, '/workflow/pharmacy-cooperation');
+    const shareCasesTable = page.getByRole('table', { name: '患者共有ケース一覧' });
+    const activatedShareCaseRow = shareCasesTable.getByRole('row').filter({
+      hasText: shareCase!.id,
+    });
+    await expect(activatedShareCaseRow.getByText('共有中')).toBeVisible({ timeout: 60_000 });
 
     await writeScreenshot(page, 'patient-share-case-create-db-backed');
     expect(errors).toEqual([]);
