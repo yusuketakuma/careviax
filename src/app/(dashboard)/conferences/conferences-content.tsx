@@ -1296,6 +1296,7 @@ export function ConferencesContent({
                   size="icon"
                   variant="ghost"
                   className="size-8"
+                  aria-label="前月を表示"
                   onClick={() => {
                     setCalendarMonth((current) => subMonths(current, 1));
                     setSelectedCalendarDate(null);
@@ -1318,6 +1319,7 @@ export function ConferencesContent({
                   size="icon"
                   variant="ghost"
                   className="size-8"
+                  aria-label="翌月を表示"
                   onClick={() => {
                     setCalendarMonth((current) => addMonths(current, 1));
                     setSelectedCalendarDate(null);

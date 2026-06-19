@@ -140,6 +140,9 @@ describe('ConferencesContent', () => {
 
     render(<ConferencesContent initialFocus="notes" initialViewMode="calendar" />);
 
+    expect(screen.getByRole('button', { name: '前月を表示' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '翌月を表示' })).toBeTruthy();
+
     const calendarConfig = queryConfigs.find(
       (config) => config.queryKey[0] === 'conference-notes-calendar',
     );
