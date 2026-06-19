@@ -50,6 +50,7 @@ describe('PackagingMethodsContent', () => {
 
     expect(screen.getByText('配薬方法を追加')).toBeTruthy();
     expect(screen.getByText('登録済み配薬方法')).toBeTruthy();
+    expect(screen.getByRole('switch', { name: '有効' })).toBeTruthy();
     expect(screen.getByText('一包化')).toBeTruthy();
     expect(screen.getByText('1回ごとの分包')).toBeTruthy();
   });
