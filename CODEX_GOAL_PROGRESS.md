@@ -4635,6 +4635,91 @@ Implemented:
 
 - UI/UX remediation remains active. Remaining candidates include raw table/DataTable convergence, expanded browser/a11y proof, and broader legacy select/input label scans outside the fixed conference dialogs.
 
+## 20260620-0100 JST - Conference Participant Input Label Associations
+
+### Summary
+
+- Associated conference participant name, role/organization, email, and fax labels with their Input controls.
+- Extended the conferences UI test to assert all participant fields are reachable by visible labels.
+- Kept the focused conferences test run warning-free after the participant input assertions.
+
+### Files Changed
+
+- `src/app/(dashboard)/conferences/conferences-content.tsx`
+- `src/app/(dashboard)/conferences/conferences-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/conferences/conferences-content.tsx' 'src/app/(dashboard)/conferences/conferences-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/conferences/conferences-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 5 tests; rerun emitted no React `act(...)` warnings.
+- `pnpm exec eslint 'src/app/(dashboard)/conferences/conferences-content.tsx' 'src/app/(dashboard)/conferences/conferences-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Conferences participant text inputs have focused coverage. Broader remaining candidates include QR draft prescription line Input labels, wider Input/Textarea label remediation, raw table/DataTable convergence, and expanded browser/a11y proof.
+
+## 20260620-0103 JST - QR Draft Input Label Associations
+
+### Summary
+
+- Associated QR draft prescription header inputs with visible labels.
+- Associated prescription-line edit inputs for drug, code, dose, frequency, days, dosage form, start/end dates, packaging, and notes with labels.
+- Added distinct accessible names for the quantity and unit inputs inside the shared quantity/unit group.
+- Expanded the QR draft accessibility contract test and replaced the standalone quantity/unit `Label` with grouped text because each input now has its own accessible name.
+
+### Files Changed
+
+- `src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.tsx`
+- `src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.accessibility.test.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.tsx' 'src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.accessibility.test.ts'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.accessibility.test.ts' 'src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.helpers.test.ts' --reporter=dot --testTimeout=30000`: passed, 2 files / 4 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.tsx' 'src/app/(dashboard)/prescriptions/qr-drafts/[id]/page.accessibility.test.ts'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Conferences participant inputs and QR draft review inputs have focused coverage. Broader remaining candidates include wider Input/Textarea label remediation, raw table/DataTable convergence, and expanded browser/a11y proof.
+
+## 20260620-0107 JST - Patient Master Input Label Associations
+
+### Summary
+
+- Associated patient master identity, contact, residence, insurance, allergy-name, and notes fields with accessible labels.
+- Updated the local `Field` helper to bind the repo `Input` and `Textarea` components while leaving Select controls on their explicit `aria-label` path.
+- Added focused assertions that patient master fields can be reached by their visible labels.
+
+### Files Changed
+
+- `src/app/(dashboard)/patients/[id]/patient-master-card.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-master-card.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-master-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-master-card.test.tsx'`: passed, unchanged.
+- `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-master-card.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 1 test.
+- `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/patient-master-card.tsx' 'src/app/(dashboard)/patients/[id]/patient-master-card.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. QR draft, conferences, and patient master inputs have focused coverage. Broader remaining candidates include patient contacts/care-team/cases Input/Textarea labels, workflow pharmacy cooperation labels, raw table/DataTable convergence, and expanded browser/a11y proof.
+
 ## 20260620-0036 JST - Billing Rule Row Action Names
 
 ### Summary
