@@ -1490,6 +1490,7 @@ async function readUiDemoPharmacyInvoice(invoiceId: string) {
       issued_audit_count: number;
       payment_audit_count: number;
       pdf_export_audit_count: number;
+      latest_pdf_export_target_type: string | null;
       latest_pdf_export_purpose: string | null;
     }>(
       `
@@ -1536,16 +1537,36 @@ async function readUiDemoPharmacyInvoice(invoiceId: string) {
             SELECT COUNT(*)::int
             FROM "AuditLog" audit
             WHERE audit."org_id" = invoice."org_id"
-              AND audit."target_type" = 'pharmacy_invoice'
+              AND audit."target_type" = CASE invoice."document_kind"::text
+                WHEN 'free_cooperation_report' THEN 'pharmacy_free_cooperation_report'
+                ELSE 'pharmacy_invoice'
+              END
               AND audit."target_id" = invoice."id"
               AND audit."action" = 'export'
               AND audit."changes"->>'format' = 'pdf'
           ) AS pdf_export_audit_count,
           (
+            SELECT audit."target_type"
+            FROM "AuditLog" audit
+            WHERE audit."org_id" = invoice."org_id"
+              AND audit."target_type" = CASE invoice."document_kind"::text
+                WHEN 'free_cooperation_report' THEN 'pharmacy_free_cooperation_report'
+                ELSE 'pharmacy_invoice'
+              END
+              AND audit."target_id" = invoice."id"
+              AND audit."action" = 'export'
+              AND audit."changes"->>'format' = 'pdf'
+            ORDER BY audit."created_at" DESC, audit."id" DESC
+            LIMIT 1
+          ) AS latest_pdf_export_target_type,
+          (
             SELECT audit."changes"->'metadata'->>'export_purpose'
             FROM "AuditLog" audit
             WHERE audit."org_id" = invoice."org_id"
-              AND audit."target_type" = 'pharmacy_invoice'
+              AND audit."target_type" = CASE invoice."document_kind"::text
+                WHEN 'free_cooperation_report' THEN 'pharmacy_free_cooperation_report'
+                ELSE 'pharmacy_invoice'
+              END
               AND audit."target_id" = invoice."id"
               AND audit."action" = 'export'
               AND audit."changes"->>'format' = 'pdf'
@@ -2552,6 +2573,7 @@ test.describe('major authenticated screens', () => {
       issued_audit_count: 1,
       payment_audit_count: 1,
       pdf_export_audit_count: 1,
+      latest_pdf_export_target_type: 'pharmacy_invoice',
       latest_pdf_export_purpose: 'db-backed-e2e-proof',
     });
     expect(storedInvoice?.invoice_no).toEqual(expect.any(String));
@@ -2883,6 +2905,40 @@ test.describe('major authenticated screens', () => {
     expect(reportPdfResponse.status()).toBe(200);
     expect(reportPdfResponse.headers()['content-type']).toContain('application/pdf');
 
+    const reportSearchResponse = await page.request.get('/api/pharmacy-invoices', {
+      params: {
+        billing_month: billingMonth,
+        contract_id: demoContext.freeContractId,
+        document_kind: 'free_cooperation_report',
+        status: 'issued',
+        limit: '20',
+      },
+    });
+    expect(reportSearchResponse.status()).toBe(200);
+    const reportSearch = (await reportSearchResponse.json()) as {
+      data: Array<{
+        id: string;
+        contract_id: string;
+        document_kind: string;
+        status: string;
+        billing_month: string;
+        invoice_no: string | null;
+        item_count: number;
+      }>;
+    };
+    expect(
+      reportSearch.data.some(
+        (report) =>
+          report.id === reportDraft.id &&
+          report.contract_id === demoContext.freeContractId &&
+          report.document_kind === 'free_cooperation_report' &&
+          report.status === 'issued' &&
+          report.billing_month === billingMonth &&
+          report.item_count === 1 &&
+          report.invoice_no === issuedReport.invoice_no,
+      ),
+    ).toBe(true);
+
     const storedReport = await readUiDemoPharmacyInvoice(reportDraft.id);
     expect(storedReport).toMatchObject({
       id: reportDraft.id,
@@ -2893,6 +2949,12 @@ test.describe('major authenticated screens', () => {
       total: 0,
       has_paid_at: false,
       item_count: 1,
+      draft_audit_count: 1,
+      issued_audit_count: 1,
+      payment_audit_count: 0,
+      pdf_export_audit_count: 1,
+      latest_pdf_export_target_type: 'pharmacy_free_cooperation_report',
+      latest_pdf_export_purpose: 'db-backed-free-report-proof',
     });
     expect(storedReport?.invoice_no).toEqual(expect.any(String));
 
