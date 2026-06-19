@@ -3386,3 +3386,35 @@ Implemented:
 
 - Direct authenticated browser proof remains blocked until v0.2 migrations are approved/applied to the local e2e DB.
 - Remaining UI audit candidates include broader DataTable export audit routing, pharmacy-cooperation responsive table density, and expanded axe/browser coverage for reports/workflow/billing/admin pharmacy cooperation routes.
+
+## 20260619-2231 JST - Pharmacy Cooperation Message Browser Proof
+
+### Completed
+
+- Extended the route-mocked pharmacy cooperation Playwright smoke to cover the v0.2 message panel.
+- Added stateful route mocks for `GET/POST /api/pharmacy-cooperation-message-threads`.
+- Verified browser interaction for posting a patient-share-case scoped message and a visit-request scoped message from the pharmacy cooperation workflow.
+- Kept the direct patient-card browser proof blocked on unapplied local e2e DB migrations, while preserving route-mocked coverage for the workflow path that can run without DB mutation.
+
+### Files Changed
+
+- `tools/tests/ui-route-mocked-smoke.spec.ts`
+- `Plans.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write tools/tests/ui-route-mocked-smoke.spec.ts`: passed.
+- `pnpm exec eslint tools/tests/ui-route-mocked-smoke.spec.ts`: passed.
+- `git diff --check`: passed.
+- Temporary `pnpm dev:e2e:local` on `localhost:3012`: started and served the targeted smoke.
+- `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-route-mocked-smoke.spec.ts --project=chromium -g "pharmacy cooperation route-mocked browser workflow smoke"`: passed, 1 Chromium test.
+- `pnpm format:check`: passed.
+- `pnpm typecheck`: passed.
+
+### Remaining / Next Loop
+
+- Direct patient-card browser proof remains blocked until the local e2e DB is prepared with the unapplied v0.2 migrations, including `AuditLog.actor_pharmacy_id` and `ConsentRecord.document_file_id`.
+- New migrations were not applied to any database in this slice.
+- Remaining v0.2 close-out work should continue with non-DB-mutating proof or wait for explicit migration-application approval.
