@@ -3255,9 +3255,11 @@ Blocked: C11 (diverged user-visible label strings — product/UX sign-off), C12 
 - Targeted Prettier over the two touched workflow files: passed.
 - `pnpm exec vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`: passed, 1 file / 9 tests.
 - Targeted `pnpm exec eslint` over the two touched workflow files: passed.
-- `pnpm typecheck`: failed on unrelated dirty tests outside this slice: `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx` and `src/components/ui/confirm-dialog.test.tsx` use `toBeDisabled` without the current assertion type extension.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed.
+- `pnpm format:check`: passed.
 
 ### Remaining / Next Loop
 
 - Direct authenticated browser proof for message threads remains blocked until v0.2 migrations are approved/applied to the local e2e DB.
-- Repo-level typecheck currently remains blocked by unrelated dirty UI/test changes in the worktree.
+- Unrelated dirty UI changes remain in the worktree and were not included in this slice's commits.
