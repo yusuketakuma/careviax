@@ -4478,6 +4478,33 @@ Implemented:
 
 - Shift calendar edit cells are now keyboard-accessible. The monthly matrix remains a calendar-style table rather than a DataTable; future work should focus on grid semantics or browser/a11y proof.
 
+## 20260620-0250 JST - Billing Check PHI Toolbar Guard
+
+### Summary
+
+- Added regression assertions that the billing-check PHI review DataTable does not render `CSV出力` or `印刷`.
+- Kept the existing assertion that the section has no search textbox.
+- This locks the toolbar to column visibility only for patient-label review rows.
+
+### Files Changed
+
+- `src/app/(dashboard)/billing/billing-check-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/billing/billing-check-content.test.tsx'`: passed.
+- `pnpm exec eslint 'src/app/(dashboard)/billing/billing-check-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/billing/billing-check-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 7 tests.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Billing-check review rows remain protected from DataTable search, CSV export, and print toolbar affordances. Browser/mobile visual proof remains a separate follow-up.
+
 ## 20260620-0244 JST - Billing Check Review DataTable
 
 ### Summary
