@@ -612,10 +612,11 @@ export default function QrDraftReviewPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="space-y-1">
-              <Label className="text-xs">
+              <Label htmlFor="qr-draft-prescribed-date" className="text-xs">
                 処方日 <span className="text-destructive">*</span>
               </Label>
               <Input
+                id="qr-draft-prescribed-date"
                 type="date"
                 value={prescribedDate}
                 onChange={(e) =>
@@ -629,8 +630,11 @@ export default function QrDraftReviewPage() {
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">処方医師名</Label>
+              <Label htmlFor="qr-draft-prescriber-name" className="text-xs">
+                処方医師名
+              </Label>
               <Input
+                id="qr-draft-prescriber-name"
                 value={prescriberName}
                 onChange={(e) =>
                   setFormState((prev) => ({
@@ -644,8 +648,11 @@ export default function QrDraftReviewPage() {
               />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">処方医療機関</Label>
+              <Label htmlFor="qr-draft-prescriber-institution" className="text-xs">
+                処方医療機関
+              </Label>
               <Input
+                id="qr-draft-prescriber-institution"
                 value={prescriberInstitution}
                 onChange={(e) =>
                   setFormState((prev) => ({
@@ -775,13 +782,14 @@ export default function QrDraftReviewPage() {
                       {/* Drug name */}
                       <div className="space-y-1 lg:col-span-2">
                         <div className="flex items-center gap-1">
-                          <Label className="text-xs">
+                          <Label htmlFor={`qr-draft-line-${idx}-drug-name`} className="text-xs">
                             薬剤名 <span className="text-destructive">*</span>
                           </Label>
                           {isAutoName && <AutoBadge />}
                           {isDrugMissing && <RequiredMarker />}
                         </div>
                         <Input
+                          id={`qr-draft-line-${idx}-drug-name`}
                           value={line.drug_name}
                           onChange={(e) => updateLine(idx, 'drug_name', e.target.value)}
                           className={cn(
@@ -795,8 +803,11 @@ export default function QrDraftReviewPage() {
 
                       {/* Drug code */}
                       <div className="space-y-1">
-                        <Label className="text-xs">薬剤コード (YJ)</Label>
+                        <Label htmlFor={`qr-draft-line-${idx}-drug-code`} className="text-xs">
+                          薬剤コード (YJ)
+                        </Label>
                         <Input
+                          id={`qr-draft-line-${idx}-drug-code`}
                           value={line.drug_code}
                           onChange={(e) => updateLine(idx, 'drug_code', e.target.value)}
                           className={cn(mobileDenseInputClassName, 'font-mono')}
@@ -807,13 +818,14 @@ export default function QrDraftReviewPage() {
                       {/* Dose */}
                       <div className="space-y-1">
                         <div className="flex items-center gap-1">
-                          <Label className="text-xs">
+                          <Label htmlFor={`qr-draft-line-${idx}-dose`} className="text-xs">
                             用量 <span className="text-destructive">*</span>
                           </Label>
                           {isAutoDose && <AutoBadge />}
                           {isDoseMissing && <RequiredMarker />}
                         </div>
                         <Input
+                          id={`qr-draft-line-${idx}-dose`}
                           value={line.dose}
                           onChange={(e) => updateLine(idx, 'dose', e.target.value)}
                           className={cn(
@@ -828,13 +840,14 @@ export default function QrDraftReviewPage() {
                       {/* Frequency */}
                       <div className="space-y-1">
                         <div className="flex items-center gap-1">
-                          <Label className="text-xs">
+                          <Label htmlFor={`qr-draft-line-${idx}-frequency`} className="text-xs">
                             用法 <span className="text-destructive">*</span>
                           </Label>
                           {isAutoFreq && <AutoBadge />}
                           {isFreqMissing && <RequiredMarker />}
                         </div>
                         <Input
+                          id={`qr-draft-line-${idx}-frequency`}
                           value={line.frequency}
                           onChange={(e) => updateLine(idx, 'frequency', e.target.value)}
                           className={cn(
@@ -849,13 +862,14 @@ export default function QrDraftReviewPage() {
                       {/* Days */}
                       <div className="space-y-1">
                         <div className="flex items-center gap-1">
-                          <Label className="text-xs">
+                          <Label htmlFor={`qr-draft-line-${idx}-days`} className="text-xs">
                             日数 <span className="text-destructive">*</span>
                           </Label>
                           {isAutoDays && <AutoBadge />}
                           {isDaysMissing && <RequiredMarker />}
                         </div>
                         <Input
+                          id={`qr-draft-line-${idx}-days`}
                           type="number"
                           min={1}
                           value={line.days === '' ? '' : line.days}
@@ -874,9 +888,10 @@ export default function QrDraftReviewPage() {
 
                       {/* Quantity + unit */}
                       <div className="space-y-1">
-                        <Label className="text-xs">数量 / 単位</Label>
+                        <span className="block text-xs font-medium">数量 / 単位</span>
                         <div className="flex gap-2">
                           <Input
+                            aria-label={`処方明細${idx + 1}件目の数量`}
                             type="number"
                             min={0}
                             step={0.1}
@@ -889,6 +904,7 @@ export default function QrDraftReviewPage() {
                             placeholder="数量"
                           />
                           <Input
+                            aria-label={`処方明細${idx + 1}件目の単位`}
                             value={line.unit}
                             onChange={(e) => updateLine(idx, 'unit', e.target.value)}
                             className={cn(mobileDenseInputClassName, 'w-20')}
@@ -899,8 +915,11 @@ export default function QrDraftReviewPage() {
 
                       {/* Dosage form */}
                       <div className="space-y-1">
-                        <Label className="text-xs">剤形</Label>
+                        <Label htmlFor={`qr-draft-line-${idx}-dosage-form`} className="text-xs">
+                          剤形
+                        </Label>
                         <Input
+                          id={`qr-draft-line-${idx}-dosage-form`}
                           value={line.dosage_form}
                           onChange={(e) => updateLine(idx, 'dosage_form', e.target.value)}
                           className={mobileDenseInputClassName}
@@ -910,8 +929,11 @@ export default function QrDraftReviewPage() {
 
                       {/* Start date */}
                       <div className="space-y-1">
-                        <Label className="text-xs">開始日</Label>
+                        <Label htmlFor={`qr-draft-line-${idx}-start-date`} className="text-xs">
+                          開始日
+                        </Label>
                         <Input
+                          id={`qr-draft-line-${idx}-start-date`}
                           type="date"
                           value={line.start_date}
                           onChange={(e) => updateLine(idx, 'start_date', e.target.value)}
@@ -919,8 +941,11 @@ export default function QrDraftReviewPage() {
                         />
                       </div>
                       <div className="space-y-1">
-                        <Label className="text-xs">終了日</Label>
+                        <Label htmlFor={`qr-draft-line-${idx}-end-date`} className="text-xs">
+                          終了日
+                        </Label>
                         <Input
+                          id={`qr-draft-line-${idx}-end-date`}
                           type="date"
                           value={line.end_date}
                           onChange={(e) => updateLine(idx, 'end_date', e.target.value)}
@@ -930,8 +955,14 @@ export default function QrDraftReviewPage() {
                     </div>
 
                     <div className="space-y-1">
-                      <Label className="text-xs">包装指示</Label>
+                      <Label
+                        htmlFor={`qr-draft-line-${idx}-packaging-instructions`}
+                        className="text-xs"
+                      >
+                        包装指示
+                      </Label>
                       <Input
+                        id={`qr-draft-line-${idx}-packaging-instructions`}
                         value={line.packaging_instructions}
                         onChange={(e) => updateLine(idx, 'packaging_instructions', e.target.value)}
                         className={mobileDenseInputClassName}
@@ -940,8 +971,11 @@ export default function QrDraftReviewPage() {
                     </div>
 
                     <div className="space-y-1">
-                      <Label className="text-xs">備考</Label>
+                      <Label htmlFor={`qr-draft-line-${idx}-notes`} className="text-xs">
+                        備考
+                      </Label>
                       <Input
+                        id={`qr-draft-line-${idx}-notes`}
                         value={line.notes}
                         onChange={(e) => updateLine(idx, 'notes', e.target.value)}
                         className={mobileDenseInputClassName}
