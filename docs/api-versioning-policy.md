@@ -2,11 +2,14 @@
 
 ## 方針
 
-URL プレフィックス方式 `/api/v1/` を採用する。
+現行 PH-OS API は `/api` 直下の unprefixed endpoints を v1 相当として扱う。
+`/api/v1` はまだ実装しない。外部公開 API や複数クライアント互換が必要になった時点で、URL プレフィックス方式を導入する。
 
 ## バージョニング戦略
 
 ### URL プレフィックス方式
+
+将来、破壊的変更を伴う外部 API を分離するときは次の形式を使う。
 
 ```
 /api/v1/patients
@@ -21,62 +24,39 @@ URL プレフィックス方式 `/api/v1/` を採用する。
 ### 現フェーズの扱い
 
 - 既存エンドポイントは `/api/` 直下に存在し、これを **v1 相当** とみなす。
+- 新規 Route Handler は、明示的な外部 API versioning 計画が承認されるまでは `/api/v1` 配下へ作らない。
 - 現時点でリダイレクトは不要（内部システム・単一クライアント構成）。
 - 破壊的変更が発生した時点で `/api/v2/` を新設し、旧エンドポイントに非推奨マーカーを付ける。
 
 ## バージョンライフサイクル
 
-| フェーズ | 説明 |
-|---|---|
-| **Current** | 最新版。積極的に開発・維持する |
+| フェーズ       | 説明                                                   |
+| -------------- | ------------------------------------------------------ |
+| **Current**    | 最新版。積極的に開発・維持する                         |
 | **Deprecated** | 後継バージョンが存在する。最低 6ヶ月の移行猶予を設ける |
-| **Sunset** | 廃止済み。`410 Gone` を返す |
+| **Sunset**     | 廃止済み。`410 Gone` を返す                            |
 
-## 既存エンドポイント一覧（v1 相当）
+## 既存エンドポイントの確認方法
 
-### 患者管理
+この文書では手書きの全 endpoint 一覧を管理しない。実装済み route の事実は次を優先する。
 
-| メソッド | パス | 説明 |
-|---|---|---|
-| `GET` | `/api/patients` | 患者一覧 |
-| `POST` | `/api/patients` | 患者登録 |
-| `GET` | `/api/patients/{id}` | 患者詳細 |
-| `PATCH` | `/api/patients/{id}` | 患者更新 |
-| `DELETE` | `/api/patients/{id}` | 患者削除 |
-| `GET` | `/api/patients/export` | 患者一覧 CSV エクスポート |
-| `POST` | `/api/patients/{id}/qualification-check` | オンライン資格確認 |
+- `src/app/api/**/route.ts`
+- `src/app/api/__tests__/protected-get-routes.test.ts`
+- `src/app/api/__tests__/protected-patch-delete-routes.test.ts`
+- `src/lib/api/rate-limit.ts`
+- `src/lib/api/route-catalog.ts`
+- `/api/meta/route-catalog`（curated operational catalog。全 Route Handler 一覧ではない）
 
-### 処方・調剤
+代表的な現行 endpoint family:
 
-| メソッド | パス | 説明 |
-|---|---|---|
-| `GET` | `/api/patients/{id}/prescriptions` | 処方履歴 |
-| `GET` | `/api/patients/{id}/prescriptions/export` | 処方履歴 CSV エクスポート |
-| `POST` | `/api/patients/{id}/prescriptions/e-prescription` | 電子処方箋受付（非 QR） |
-
-### 訪問スケジュール
-
-| メソッド | パス | 説明 |
-|---|---|---|
-| `GET` | `/api/schedules` | スケジュール一覧 |
-| `POST` | `/api/schedules` | スケジュール作成 |
-
-### 請求・レセコン
-
-| メソッド | パス | 説明 |
-|---|---|---|
-| `GET` | `/api/billing/evidence` | 請求エビデンス |
-| `POST` | `/api/billing/candidates/finalize` | 請求候補確定 |
-
-### 管理
-
-| メソッド | パス | 説明 |
-|---|---|---|
-| `POST` | `/api/admin/organizations` | 組織プロビジョニング |
-| `GET` | `/api/admin/webhooks` | Webhook 一覧 |
-| `POST` | `/api/admin/webhooks` | Webhook 登録 |
-| `GET` | `/api/admin/facilities` | 施設マスター一覧 |
-| `POST` | `/api/admin/facilities` | 施設マスター登録 |
+- `/api/patients*`
+- `/api/prescription-intakes*`
+- `/api/dispense-*`
+- `/api/set-*`
+- `/api/visit-*`
+- `/api/care-reports*`
+- `/api/billing-candidates*`
+- `/api/admin/*`
 
 ## 破壊的変更の定義
 

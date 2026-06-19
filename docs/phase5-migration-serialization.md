@@ -9,13 +9,13 @@ Phase 5 の全スキーマ変更（P-01/P-04/P-06/P-07/P-08）は単一ブラン
 
 ## マイグレーションタイムスタンプ順序（確定）
 
-| 順序 | Phase | タイムスタンプ | 変更内容 |
-|---|---|---|---|
-| 1 | P-06 | `20260410_100000_patient_gender_enum` | `gender` を `PatientGender` enum に変更 |
-| 2 | P-01 | `20260410_110000_patient_allergy_structured` | `allergy_info Json?` → `PatientAllergy` テーブル |
-| 3 | P-04 | `20260410_120000_patient_insurance_structured` | `medical_insurance_number` → `PatientInsurance` テーブル |
-| 4 | P-07 | `20260410_130000_patient_packaging_normalized` | `packaging_preferences Json?` → `PackagingProfile` 正規化 |
-| 5 | P-08 | `20260410_140000_patient_archive` | `is_archived`, `archived_at`, `archive_reason` 追加 |
+| 順序 | Phase | タイムスタンプ                                 | 変更内容                                                  |
+| ---- | ----- | ---------------------------------------------- | --------------------------------------------------------- |
+| 1    | P-06  | `20260410_100000_patient_gender_enum`          | `gender` を `PatientGender` enum に変更                   |
+| 2    | P-01  | `20260410_110000_patient_allergy_structured`   | `allergy_info Json?` → `PatientAllergy` テーブル          |
+| 3    | P-04  | `20260410_120000_patient_insurance_structured` | `medical_insurance_number` → `PatientInsurance` テーブル  |
+| 4    | P-07  | `20260410_130000_patient_packaging_normalized` | `packaging_preferences Json?` → `PackagingProfile` 正規化 |
+| 5    | P-08  | `20260410_140000_patient_archive`              | `is_archived`, `archived_at`, `archive_reason` 追加       |
 
 > **規則**: タイムスタンプは UTC、`YYYYMMDD_HHMMSS_<slug>` 形式。スラッグはスネークケース・英語のみ。
 
@@ -52,7 +52,7 @@ main
 pnpm prisma migrate dev --create-only --name <slug>
 
 # ステージングへの適用
-pnpm db:migrate
+pnpm db:migrate:deploy
 
 # migration の状態確認
 pnpm prisma migrate status
@@ -101,6 +101,6 @@ provider = "postgresql"
 
 - [ ] 全 5 件の migration が上記タイムスタンプ順で `prisma/migrations/` に存在する
 - [ ] `pnpm prisma migrate status` でドリフトなし
-- [ ] ステージング環境で `pnpm db:migrate` が完走する
+- [ ] ステージング環境で `pnpm db:migrate:deploy` が完走する
 - [ ] `pnpm db:generate` で Prisma Client が型エラーなく生成される
 - [ ] `pnpm build` が通る
