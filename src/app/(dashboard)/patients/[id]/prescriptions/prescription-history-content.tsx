@@ -815,85 +815,92 @@ function PrescriptionIntakeCard({
 
   return (
     <Card className="overflow-hidden print:break-inside-avoid print:shadow-none print:border">
-      <CardHeader
-        className="cursor-pointer px-4 py-3 print:cursor-default"
-        onClick={() => setExpanded(!expanded)}
-        role="button"
-        aria-expanded={expanded}
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="print:hidden">
-              {expanded ? (
-                <ChevronDown className="size-4 text-muted-foreground" />
-              ) : (
-                <ChevronRight className="size-4 text-muted-foreground" />
-              )}
-            </span>
-            <FileText className="size-4 text-muted-foreground" aria-hidden="true" />
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <time
-                  dateTime={intake.prescribed_date}
-                  className="text-sm font-semibold tabular-nums"
-                >
-                  {format(new Date(intake.prescribed_date), 'yyyy年M月d日', { locale: ja })}
-                </time>
-                <span className="text-xs text-muted-foreground">
-                  {SOURCE_LABELS[intake.source_type] ?? intake.source_type}
-                </span>
-                {statusCfg && (
-                  <Badge variant={statusCfg.variant} className="h-5 text-[10px]">
-                    {statusCfg.label}
-                  </Badge>
+      <CardHeader className="px-0 py-0">
+        <button
+          type="button"
+          className="w-full cursor-pointer px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 print:cursor-default"
+          onClick={() => setExpanded((current) => !current)}
+          aria-expanded={expanded}
+          aria-label={`${format(new Date(intake.prescribed_date), 'yyyy年M月d日', {
+            locale: ja,
+          })} の処方履歴を${expanded ? '閉じる' : '開く'}`}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="print:hidden">
+                {expanded ? (
+                  <ChevronDown className="size-4 text-muted-foreground" />
+                ) : (
+                  <ChevronRight className="size-4 text-muted-foreground" />
                 )}
-                {isDo && (
-                  <span className="inline-flex items-center gap-0.5 rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-bold text-gray-700">
-                    <Copy className="size-2.5" aria-hidden="true" />
-                    Do
-                  </span>
-                )}
-              </div>
-              <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                {intake.prescriber_name && <span>{intake.prescriber_name}</span>}
-                {intake.prescriber_institution && <span>（{intake.prescriber_institution}）</span>}
-                <span>{intake.lines.length}剤</span>
-                {intake.source_type === 'refill' && (
-                  <Badge variant="outline" className="h-4 text-[9px]">
-                    薬局保管
-                  </Badge>
-                )}
-                {intake.refill_remaining_count != null && intake.refill_remaining_count > 0 && (
-                  <Badge variant="outline" className="h-4 text-[9px]">
-                    リフィル残{intake.refill_remaining_count}回
-                  </Badge>
-                )}
-                {intake.split_dispense_total != null && intake.split_dispense_current != null && (
-                  <Badge variant="outline" className="h-4 text-[9px]">
-                    分割 {intake.split_dispense_current}/{intake.split_dispense_total}
-                    {intake.split_next_dispense_date
-                      ? ` 次回 ${fmtDate(intake.split_next_dispense_date)}`
-                      : ''}
-                  </Badge>
-                )}
-                {isFax && !originalCollected ? (
-                  <Badge
-                    variant={faxOriginalOverdue ? 'destructive' : 'outline'}
-                    className="h-4 text-[9px]"
+              </span>
+              <FileText className="size-4 text-muted-foreground" aria-hidden="true" />
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <time
+                    dateTime={intake.prescribed_date}
+                    className="text-sm font-semibold tabular-nums"
                   >
-                    {faxOriginalOverdue ? 'FAX原本未回収' : 'FAX原本回収待ち'}
-                  </Badge>
-                ) : null}
-                {isFax && originalCollected ? (
-                  <Badge variant="outline" className="h-4 text-[9px]">
-                    原本回収済{' '}
-                    {intake.original_collected_at ? fmtDate(intake.original_collected_at) : ''}
-                  </Badge>
-                ) : null}
+                    {format(new Date(intake.prescribed_date), 'yyyy年M月d日', { locale: ja })}
+                  </time>
+                  <span className="text-xs text-muted-foreground">
+                    {SOURCE_LABELS[intake.source_type] ?? intake.source_type}
+                  </span>
+                  {statusCfg && (
+                    <Badge variant={statusCfg.variant} className="h-5 text-[10px]">
+                      {statusCfg.label}
+                    </Badge>
+                  )}
+                  {isDo && (
+                    <span className="inline-flex items-center gap-0.5 rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-bold text-gray-700">
+                      <Copy className="size-2.5" aria-hidden="true" />
+                      Do
+                    </span>
+                  )}
+                </div>
+                <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  {intake.prescriber_name && <span>{intake.prescriber_name}</span>}
+                  {intake.prescriber_institution && (
+                    <span>（{intake.prescriber_institution}）</span>
+                  )}
+                  <span>{intake.lines.length}剤</span>
+                  {intake.source_type === 'refill' && (
+                    <Badge variant="outline" className="h-4 text-[9px]">
+                      薬局保管
+                    </Badge>
+                  )}
+                  {intake.refill_remaining_count != null && intake.refill_remaining_count > 0 && (
+                    <Badge variant="outline" className="h-4 text-[9px]">
+                      リフィル残{intake.refill_remaining_count}回
+                    </Badge>
+                  )}
+                  {intake.split_dispense_total != null && intake.split_dispense_current != null && (
+                    <Badge variant="outline" className="h-4 text-[9px]">
+                      分割 {intake.split_dispense_current}/{intake.split_dispense_total}
+                      {intake.split_next_dispense_date
+                        ? ` 次回 ${fmtDate(intake.split_next_dispense_date)}`
+                        : ''}
+                    </Badge>
+                  )}
+                  {isFax && !originalCollected ? (
+                    <Badge
+                      variant={faxOriginalOverdue ? 'destructive' : 'outline'}
+                      className="h-4 text-[9px]"
+                    >
+                      {faxOriginalOverdue ? 'FAX原本未回収' : 'FAX原本回収待ち'}
+                    </Badge>
+                  ) : null}
+                  {isFax && originalCollected ? (
+                    <Badge variant="outline" className="h-4 text-[9px]">
+                      原本回収済{' '}
+                      {intake.original_collected_at ? fmtDate(intake.original_collected_at) : ''}
+                    </Badge>
+                  ) : null}
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        </button>
       </CardHeader>
 
       {expanded && (
