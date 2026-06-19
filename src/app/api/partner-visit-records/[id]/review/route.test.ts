@@ -131,6 +131,9 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
       },
       data: { status: 'confirmed', completed_at: new Date('2026-06-19T00:00:00.000Z') },
     });
+    expect(partnerVisitRecordUpdateManyMock.mock.invocationCallOrder[0]).toBeLessThan(
+      pharmacyVisitRequestUpdateManyMock.mock.invocationCallOrder[0],
+    );
     expect(partnerVisitRecordUpdateManyMock).toHaveBeenCalledWith({
       where: {
         id: 'partner_visit_record_1',
@@ -217,6 +220,18 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
         }),
       }),
     );
+    expect(pharmacyVisitRequestUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'visit_request_1',
+        org_id: 'org_1',
+        status: 'submitted',
+        partnership: {
+          status: 'active',
+          partner_pharmacy: { status: 'active' },
+        },
+      },
+      data: { status: 'returned', completed_at: null },
+    });
     expect(claimCooperationNoteUpsertMock).not.toHaveBeenCalled();
     const auditText = JSON.stringify(createAuditLogEntryMock.mock.calls);
     expect(auditText).toContain('return_reason_length');
@@ -252,6 +267,19 @@ describe('/api/partner-visit-records/[id]/review POST', () => {
     expect(pharmacyVisitRequestUpdateManyMock).not.toHaveBeenCalled();
     expect(partnerVisitRecordUpdateManyMock).not.toHaveBeenCalled();
     expect(claimCooperationNoteUpsertMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns conflict and skips downstream effects when the visit request transition loses the race after record update', async () => {
+    pharmacyVisitRequestUpdateManyMock.mockResolvedValueOnce({ count: 0 });
+
+    const response = await rawPOST(createRequest({ decision: 'confirm' }), routeContext);
+
+    expect(response.status).toBe(409);
+    expect(partnerVisitRecordUpdateManyMock).toHaveBeenCalled();
+    expect(pharmacyVisitRequestUpdateManyMock).toHaveBeenCalled();
+    expect(claimCooperationNoteUpsertMock).not.toHaveBeenCalled();
+    expect(partnerVisitRecordFindUniqueOrThrowMock).not.toHaveBeenCalled();
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 });

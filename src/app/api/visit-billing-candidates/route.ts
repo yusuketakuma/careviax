@@ -10,6 +10,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import {
   evaluateVisitBillingCandidate,
   findActivePatientShareConsent,
+  resolvePharmacyVisitRequestTransition,
   type VisitBillingCandidateBlocker,
 } from '@/server/services/pharmacy-partnerships';
 import {
@@ -347,17 +348,18 @@ export const POST = withAuthContext(
           skippedLockedCount += 1;
         }
         candidates.push(candidate);
-        if (
-          record.visit_request.status === 'confirmed' ||
-          record.visit_request.status === 'physician_report_created'
-        ) {
+        const claimCheckedTransition = resolvePharmacyVisitRequestTransition({
+          currentStatus: record.visit_request.status,
+          action: 'mark_claim_checked',
+        });
+        if (claimCheckedTransition.allowed) {
           await tx.pharmacyVisitRequest.updateMany({
             where: {
               id: record.visit_request.id,
               org_id: ctx.orgId,
-              status: { in: ['confirmed', 'physician_report_created'] },
+              status: { in: [...claimCheckedTransition.allowedFrom] },
             },
-            data: { status: 'claim_checked' },
+            data: { status: claimCheckedTransition.nextStatus },
           });
         }
       }

@@ -8,6 +8,10 @@ import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import {
+  resolvePartnerVisitRecordTransition,
+  resolvePharmacyVisitRequestTransition,
+} from '@/server/services/pharmacy-partnerships';
 
 const reviewDecisionSchema = z.enum(['confirm', 'return']);
 
@@ -124,14 +128,23 @@ export const POST = withAuthContext<{ id: string }>(
         });
 
         if (!record) return { response: notFound('協力訪問記録が見つかりません') };
-        if (record.status !== 'submitted') {
+        const recordTransition = resolvePartnerVisitRecordTransition({
+          currentStatus: record.status,
+          action: parsed.data.decision === 'confirm' ? 'confirm' : 'return',
+        });
+        if (!recordTransition.allowed) {
           return { response: conflict('提出済みの訪問記録のみ確認または差戻しできます') };
         }
         if (record.share_case.status !== 'active') {
           return { response: conflict('共有中の患者共有ケースに紐づく訪問記録のみ確認できます') };
         }
+        const requestTransition = resolvePharmacyVisitRequestTransition({
+          currentStatus: record.visit_request.status,
+          action:
+            parsed.data.decision === 'confirm' ? 'confirm_partner_record' : 'return_partner_record',
+        });
         if (
-          record.visit_request.status !== 'submitted' ||
+          !requestTransition.allowed ||
           record.visit_request.partnership.status !== 'active' ||
           record.visit_request.partnership.partner_pharmacy.status !== 'active' ||
           record.owner_partner_pharmacy.status !== 'active'
@@ -139,33 +152,15 @@ export const POST = withAuthContext<{ id: string }>(
           return { response: conflict('提出済みの有効な協力訪問のみ確認できます') };
         }
 
-        if (parsed.data.decision === 'confirm') {
-          const confirmedRequestCount = await tx.pharmacyVisitRequest.updateMany({
-            where: {
-              id: record.visit_request_id,
-              org_id: ctx.orgId,
-              status: 'submitted',
-              partnership: {
-                status: 'active',
-                partner_pharmacy: { status: 'active' },
-              },
-            },
-            data: { status: 'confirmed', completed_at: now },
-          });
-          if (confirmedRequestCount.count !== 1) {
-            return { response: conflict('訪問依頼はすでに更新されています') };
-          }
-        }
-
         const updatedCount = await tx.partnerVisitRecord.updateMany({
           where: {
             id,
             org_id: ctx.orgId,
-            status: 'submitted',
+            status: recordTransition.currentStatus,
             share_case: { status: 'active' },
             owner_partner_pharmacy: { status: 'active' },
             visit_request: {
-              status: 'submitted',
+              status: requestTransition.currentStatus,
               partnership: {
                 status: 'active',
                 partner_pharmacy: { status: 'active' },
@@ -175,7 +170,7 @@ export const POST = withAuthContext<{ id: string }>(
           data:
             parsed.data.decision === 'confirm'
               ? {
-                  status: 'confirmed',
+                  status: recordTransition.nextStatus,
                   confirmed_at: now,
                   confirmed_by: ctx.userId,
                   base_confirmation_snapshot: toPrismaJsonInput({
@@ -187,7 +182,7 @@ export const POST = withAuthContext<{ id: string }>(
                   }),
                 }
               : {
-                  status: 'returned',
+                  status: recordTransition.nextStatus,
                   returned_at: now,
                   returned_by: ctx.userId,
                   returned_reason: parsed.data.return_reason,
@@ -197,11 +192,23 @@ export const POST = withAuthContext<{ id: string }>(
           throw new TransactionResponse(conflict('訪問記録はすでに更新されています'));
         }
 
-        if (parsed.data.decision === 'return') {
-          await tx.pharmacyVisitRequest.updateMany({
-            where: { id: record.visit_request_id, org_id: ctx.orgId, status: 'submitted' },
-            data: { status: 'returned', completed_at: null },
-          });
+        const requestUpdateCount = await tx.pharmacyVisitRequest.updateMany({
+          where: {
+            id: record.visit_request_id,
+            org_id: ctx.orgId,
+            status: requestTransition.currentStatus,
+            partnership: {
+              status: 'active',
+              partner_pharmacy: { status: 'active' },
+            },
+          },
+          data:
+            parsed.data.decision === 'confirm'
+              ? { status: requestTransition.nextStatus, completed_at: now }
+              : { status: requestTransition.nextStatus, completed_at: null },
+        });
+        if (requestUpdateCount.count !== 1) {
+          throw new TransactionResponse(conflict('訪問依頼はすでに更新されています'));
         }
 
         if (parsed.data.decision === 'confirm') {
@@ -271,7 +278,7 @@ export const POST = withAuthContext<{ id: string }>(
             decision: parsed.data.decision,
             previous_status: record.status,
             status: updated.status,
-            visit_request_status: parsed.data.decision === 'confirm' ? 'confirmed' : 'returned',
+            visit_request_status: requestTransition.nextStatus,
             doctor_report_required: parsed.data.doctor_report_required,
             return_reason_length: parsed.data.return_reason?.length ?? 0,
           },

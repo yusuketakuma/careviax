@@ -5,6 +5,7 @@ import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
 import { findLatestPrescriberInstitutionSuggestion } from '@/lib/prescriptions/prescriber-institutions';
 import { getHomeVisitIntake, type HomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import type { BaselineContext, PhysicianReportContent } from '@/types/care-report-content';
+import { resolvePharmacyVisitRequestTransition } from '@/server/services/pharmacy-partnerships';
 
 export type PartnerVisitPhysicianReportDraftErrorCode =
   | 'PARTNER_VISIT_RECORD_NOT_FOUND'
@@ -404,6 +405,27 @@ function assertRecordCanGenerateDraft(record: PartnerVisitRecordForDraft) {
   }
 }
 
+async function markVisitRequestPhysicianReportCreated(
+  tx: Prisma.TransactionClient,
+  ctx: Pick<AuthContext, 'orgId'>,
+  record: PartnerVisitRecordForDraft,
+) {
+  const transition = resolvePharmacyVisitRequestTransition({
+    currentStatus: record.visit_request.status,
+    action: 'create_physician_report',
+  });
+  if (!transition.allowed) return;
+
+  await tx.pharmacyVisitRequest.updateMany({
+    where: {
+      id: record.visit_request.id,
+      org_id: ctx.orgId,
+      status: transition.currentStatus,
+    },
+    data: { status: transition.nextStatus },
+  });
+}
+
 export async function createPartnerVisitPhysicianReportDraft(
   tx: Prisma.TransactionClient,
   ctx: Pick<AuthContext, 'orgId' | 'userId' | 'ipAddress' | 'userAgent'>,
@@ -423,12 +445,7 @@ export async function createPartnerVisitPhysicianReportDraft(
 
   const existing = await findExistingDraft(tx, ctx.orgId, input.partnerVisitRecordId);
   if (existing) {
-    if (record.visit_request.status === 'confirmed') {
-      await tx.pharmacyVisitRequest.updateMany({
-        where: { id: record.visit_request.id, org_id: ctx.orgId, status: 'confirmed' },
-        data: { status: 'physician_report_created' },
-      });
-    }
+    await markVisitRequestPhysicianReportCreated(tx, ctx, record);
     return { reused: true, report: toSafeReport(existing) };
   }
 
@@ -487,12 +504,7 @@ export async function createPartnerVisitPhysicianReportDraft(
       },
     });
 
-    if (record.visit_request.status === 'confirmed') {
-      await tx.pharmacyVisitRequest.updateMany({
-        where: { id: record.visit_request.id, org_id: ctx.orgId, status: 'confirmed' },
-        data: { status: 'physician_report_created' },
-      });
-    }
+    await markVisitRequestPhysicianReportCreated(tx, ctx, record);
 
     return { reused: false, report: toSafeReport(report) };
   } catch (error) {

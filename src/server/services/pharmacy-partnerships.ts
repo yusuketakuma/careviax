@@ -93,6 +93,36 @@ export type VisitBillingCandidateResult =
   | { billable: true }
   | { billable: false; blockers: VisitBillingCandidateBlocker[] };
 
+export type StatusTransitionResult<Status extends string> =
+  | {
+      allowed: true;
+      currentStatus: Status;
+      nextStatus: Status;
+      allowedFrom: readonly Status[];
+    }
+  | {
+      allowed: false;
+      currentStatus: Status;
+      nextStatus: Status;
+      allowedFrom: readonly Status[];
+    };
+
+type StatusTransitionRule<Status extends string> = {
+  from: readonly Status[];
+  to: Status;
+};
+
+export type PharmacyVisitRequestTransitionAction =
+  | 'accept'
+  | 'decline'
+  | 'submit_partner_record'
+  | 'confirm_partner_record'
+  | 'return_partner_record'
+  | 'create_physician_report'
+  | 'mark_claim_checked';
+
+export type PartnerVisitRecordTransitionAction = 'submit' | 'confirm' | 'return';
+
 const ACTIVATABLE_SHARE_CASE_STATUSES = new Set<PatientShareCaseLifecycleStatus>([
   'partner_confirmation_pending',
   'suspended',
@@ -102,6 +132,43 @@ const SUBMITTABLE_RECORD_STATUSES = new Set<PartnerVisitRecordLifecycleStatus>([
   'draft',
   'returned',
 ]);
+
+const PHARMACY_VISIT_REQUEST_TRANSITION_RULES = {
+  accept: { from: ['requested'], to: 'accepted' },
+  decline: { from: ['requested'], to: 'declined' },
+  submit_partner_record: { from: ['accepted', 'recording', 'returned'], to: 'submitted' },
+  confirm_partner_record: { from: ['submitted'], to: 'confirmed' },
+  return_partner_record: { from: ['submitted'], to: 'returned' },
+  create_physician_report: { from: ['confirmed'], to: 'physician_report_created' },
+  mark_claim_checked: { from: ['confirmed', 'physician_report_created'], to: 'claim_checked' },
+} as const satisfies Record<
+  PharmacyVisitRequestTransitionAction,
+  StatusTransitionRule<PharmacyVisitRequestLifecycleStatus>
+>;
+
+const PARTNER_VISIT_RECORD_TRANSITION_RULES = {
+  submit: { from: ['draft', 'returned'], to: 'submitted' },
+  confirm: { from: ['submitted'], to: 'confirmed' },
+  return: { from: ['submitted'], to: 'returned' },
+} as const satisfies Record<
+  PartnerVisitRecordTransitionAction,
+  StatusTransitionRule<PartnerVisitRecordLifecycleStatus>
+>;
+
+function resolveStatusTransition<Status extends string, Action extends string>(
+  rules: Record<Action, StatusTransitionRule<Status>>,
+  args: { currentStatus: Status; action: Action },
+): StatusTransitionResult<Status> {
+  const rule = rules[args.action];
+  const allowed = rule.from.includes(args.currentStatus);
+
+  return {
+    allowed,
+    currentStatus: args.currentStatus,
+    nextStatus: rule.to,
+    allowedFrom: rule.from,
+  } as StatusTransitionResult<Status>;
+}
 
 function utcDateOnlyTime(date: Date) {
   return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
@@ -175,6 +242,20 @@ export function shouldNotifyBasePharmacyOnPartnerRecordSubmit(args: {
     args.previousStatus !== 'submitted' &&
     args.previousStatus !== 'confirmed'
   );
+}
+
+export function resolvePharmacyVisitRequestTransition(args: {
+  currentStatus: PharmacyVisitRequestLifecycleStatus;
+  action: PharmacyVisitRequestTransitionAction;
+}) {
+  return resolveStatusTransition(PHARMACY_VISIT_REQUEST_TRANSITION_RULES, args);
+}
+
+export function resolvePartnerVisitRecordTransition(args: {
+  currentStatus: PartnerVisitRecordLifecycleStatus;
+  action: PartnerVisitRecordTransitionAction;
+}) {
+  return resolveStatusTransition(PARTNER_VISIT_RECORD_TRANSITION_RULES, args);
 }
 
 function isDateInBillingMonth(date: Date, billingMonth: Date) {

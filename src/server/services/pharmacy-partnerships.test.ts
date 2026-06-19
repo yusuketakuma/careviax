@@ -4,6 +4,8 @@ import {
   evaluatePatientShareCaseActivation,
   evaluateVisitBillingCandidate,
   findActivePatientShareConsent,
+  resolvePartnerVisitRecordTransition,
+  resolvePharmacyVisitRequestTransition,
   shouldNotifyBasePharmacyOnPartnerRecordSubmit,
   type PatientShareConsentForPolicy,
 } from './pharmacy-partnerships';
@@ -188,6 +190,125 @@ describe('pharmacy partnership policy guards', () => {
         nextStatus: 'confirmed',
       }),
     ).toBe(false);
+  });
+
+  it('resolves visit request transitions through explicit lifecycle rules', () => {
+    expect(
+      resolvePharmacyVisitRequestTransition({
+        currentStatus: 'requested',
+        action: 'accept',
+      }),
+    ).toMatchObject({
+      allowed: true,
+      nextStatus: 'accepted',
+      allowedFrom: ['requested'],
+    });
+
+    expect(
+      resolvePharmacyVisitRequestTransition({
+        currentStatus: 'accepted',
+        action: 'accept',
+      }),
+    ).toMatchObject({
+      allowed: false,
+      nextStatus: 'accepted',
+      allowedFrom: ['requested'],
+    });
+
+    expect(
+      resolvePharmacyVisitRequestTransition({
+        currentStatus: 'returned',
+        action: 'submit_partner_record',
+      }),
+    ).toMatchObject({
+      allowed: true,
+      nextStatus: 'submitted',
+      allowedFrom: ['accepted', 'recording', 'returned'],
+    });
+
+    expect(
+      resolvePharmacyVisitRequestTransition({
+        currentStatus: 'submitted',
+        action: 'confirm_partner_record',
+      }),
+    ).toMatchObject({ allowed: true, nextStatus: 'confirmed' });
+
+    expect(
+      resolvePharmacyVisitRequestTransition({
+        currentStatus: 'submitted',
+        action: 'return_partner_record',
+      }),
+    ).toMatchObject({ allowed: true, nextStatus: 'returned' });
+
+    expect(
+      resolvePharmacyVisitRequestTransition({
+        currentStatus: 'confirmed',
+        action: 'create_physician_report',
+      }),
+    ).toMatchObject({ allowed: true, nextStatus: 'physician_report_created' });
+
+    expect(
+      resolvePharmacyVisitRequestTransition({
+        currentStatus: 'physician_report_created',
+        action: 'mark_claim_checked',
+      }),
+    ).toMatchObject({ allowed: true, nextStatus: 'claim_checked' });
+
+    expect(
+      resolvePharmacyVisitRequestTransition({
+        currentStatus: 'submitted',
+        action: 'mark_claim_checked',
+      }),
+    ).toMatchObject({
+      allowed: false,
+      nextStatus: 'claim_checked',
+      allowedFrom: ['confirmed', 'physician_report_created'],
+    });
+  });
+
+  it('resolves partner visit record transitions through explicit lifecycle rules', () => {
+    expect(
+      resolvePartnerVisitRecordTransition({
+        currentStatus: 'draft',
+        action: 'submit',
+      }),
+    ).toMatchObject({
+      allowed: true,
+      nextStatus: 'submitted',
+      allowedFrom: ['draft', 'returned'],
+    });
+
+    expect(
+      resolvePartnerVisitRecordTransition({
+        currentStatus: 'returned',
+        action: 'submit',
+      }),
+    ).toMatchObject({ allowed: true, nextStatus: 'submitted' });
+
+    expect(
+      resolvePartnerVisitRecordTransition({
+        currentStatus: 'submitted',
+        action: 'confirm',
+      }),
+    ).toMatchObject({ allowed: true, nextStatus: 'confirmed' });
+
+    expect(
+      resolvePartnerVisitRecordTransition({
+        currentStatus: 'submitted',
+        action: 'return',
+      }),
+    ).toMatchObject({ allowed: true, nextStatus: 'returned' });
+
+    expect(
+      resolvePartnerVisitRecordTransition({
+        currentStatus: 'confirmed',
+        action: 'return',
+      }),
+    ).toMatchObject({
+      allowed: false,
+      nextStatus: 'returned',
+      allowedFrom: ['submitted'],
+    });
   });
 
   it('counts only confirmed-or-later requests with confirmed partner visit records as billable', () => {

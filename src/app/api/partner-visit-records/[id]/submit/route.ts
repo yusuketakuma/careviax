@@ -4,7 +4,11 @@ import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
 import { dispatchNotificationEvent } from '@/server/services/notifications';
-import { shouldNotifyBasePharmacyOnPartnerRecordSubmit } from '@/server/services/pharmacy-partnerships';
+import {
+  resolvePartnerVisitRecordTransition,
+  resolvePharmacyVisitRequestTransition,
+  shouldNotifyBasePharmacyOnPartnerRecordSubmit,
+} from '@/server/services/pharmacy-partnerships';
 
 function attachmentCount(value: unknown) {
   return Array.isArray(value) ? value.length : value === undefined || value === null ? 0 : 1;
@@ -73,7 +77,11 @@ export const POST = withAuthContext<{ id: string }>(
       });
 
       if (!record) return { response: notFound('協力訪問記録が見つかりません') };
-      if (record.status !== 'draft' && record.status !== 'returned') {
+      const recordTransition = resolvePartnerVisitRecordTransition({
+        currentStatus: record.status,
+        action: 'submit',
+      });
+      if (!recordTransition.allowed) {
         return { response: conflict('下書きまたは差戻し中の訪問記録のみ提出できます') };
       }
       if (record.share_case.status !== 'active') {
@@ -86,28 +94,28 @@ export const POST = withAuthContext<{ id: string }>(
       ) {
         return { response: conflict('有効な薬局間連携と協力薬局に紐づく訪問記録のみ提出できます') };
       }
-      if (
-        record.visit_request.status !== 'accepted' &&
-        record.visit_request.status !== 'recording' &&
-        record.visit_request.status !== 'returned'
-      ) {
+      const requestTransition = resolvePharmacyVisitRequestTransition({
+        currentStatus: record.visit_request.status,
+        action: 'submit_partner_record',
+      });
+      if (!requestTransition.allowed) {
         return { response: conflict('受諾済みの訪問依頼に紐づく訪問記録のみ提出できます') };
       }
 
       const notifyBasePharmacy = shouldNotifyBasePharmacyOnPartnerRecordSubmit({
         previousStatus: record.status,
-        nextStatus: 'submitted',
+        nextStatus: recordTransition.nextStatus,
       });
 
       const updatedCount = await tx.partnerVisitRecord.updateMany({
         where: {
           id,
           org_id: ctx.orgId,
-          status: { in: ['draft', 'returned'] },
+          status: { in: [...recordTransition.allowedFrom] },
           share_case: { status: 'active' },
           owner_partner_pharmacy: { status: 'active' },
           visit_request: {
-            status: { in: ['accepted', 'recording', 'returned'] },
+            status: { in: [...requestTransition.allowedFrom] },
             partnership: {
               status: 'active',
               partner_pharmacy: { status: 'active' },
@@ -115,7 +123,7 @@ export const POST = withAuthContext<{ id: string }>(
           },
         },
         data: {
-          status: 'submitted',
+          status: recordTransition.nextStatus,
           submitted_at: now,
           returned_at: null,
           returned_by: null,
@@ -130,9 +138,9 @@ export const POST = withAuthContext<{ id: string }>(
         where: {
           id: record.visit_request_id,
           org_id: ctx.orgId,
-          status: { in: ['accepted', 'recording', 'returned'] },
+          status: { in: [...requestTransition.allowedFrom] },
         },
-        data: { status: 'submitted' },
+        data: { status: requestTransition.nextStatus },
       });
 
       const notifications = notifyBasePharmacy
@@ -183,7 +191,7 @@ export const POST = withAuthContext<{ id: string }>(
           previous_status: record.status,
           status: submitted.status,
           visit_request_status_before: record.visit_request.status,
-          visit_request_status_after: 'submitted',
+          visit_request_status_after: requestTransition.nextStatus,
           submitted_at: now.toISOString(),
           notify_base_pharmacy: notifyBasePharmacy,
           notification_count: notifications.length,

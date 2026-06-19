@@ -5,6 +5,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
+import { resolvePharmacyVisitRequestTransition } from '@/server/services/pharmacy-partnerships';
 
 const visitRequestDecisionSchema = z.enum(['accept', 'decline']);
 
@@ -100,7 +101,11 @@ export const POST = withAuthContext<{ id: string }>(
       });
 
       if (!visitRequest) return { response: notFound('訪問依頼が見つかりません') };
-      if (visitRequest.status !== 'requested') {
+      const transition = resolvePharmacyVisitRequestTransition({
+        currentStatus: visitRequest.status,
+        action: parsed.data.decision,
+      });
+      if (!transition.allowed) {
         return { response: conflict('依頼中の訪問依頼のみ受諾または辞退できます') };
       }
       if (visitRequest.share_case.status !== 'active') {
@@ -117,7 +122,7 @@ export const POST = withAuthContext<{ id: string }>(
         where: {
           id,
           org_id: ctx.orgId,
-          status: 'requested',
+          status: transition.currentStatus,
           share_case: { status: 'active' },
           partnership: {
             status: 'active',
@@ -127,12 +132,12 @@ export const POST = withAuthContext<{ id: string }>(
         data:
           parsed.data.decision === 'accept'
             ? {
-                status: 'accepted',
+                status: transition.nextStatus,
                 accepted_by: parsed.data.pharmacist_id ?? ctx.userId,
                 accepted_at: now,
               }
             : {
-                status: 'declined',
+                status: transition.nextStatus,
                 declined_by: parsed.data.pharmacist_id ?? ctx.userId,
                 declined_at: now,
                 decline_reason: parsed.data.decline_reason,
