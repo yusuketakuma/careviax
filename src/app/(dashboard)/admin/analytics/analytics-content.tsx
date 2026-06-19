@@ -1,5 +1,6 @@
 'use client';
 
+import type { ColumnDef } from '@tanstack/react-table';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useMemo, useState, type ElementType } from 'react';
@@ -7,6 +8,7 @@ import { AlertTriangle, CheckCircle2, FileSpreadsheet, ShieldCheck, MapPinned } 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { DataTable } from '@/components/ui/data-table';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 type AnalyticsResponse = {
@@ -76,6 +78,65 @@ type ResourceFilter =
   | 'delegate'
   | 'missing_geo';
 
+type MonthlyTrendRow = AnalyticsResponse['monthly_trend'][number];
+
+const monthlyTrendColumns: ColumnDef<MonthlyTrendRow>[] = [
+  {
+    accessorKey: 'month',
+    header: '月',
+    cell: ({ row }) => <span className="font-medium">{row.original.month}</span>,
+    meta: { label: '月' },
+  },
+  {
+    accessorKey: 'total_candidates',
+    header: '候補',
+    cell: ({ row }) => (
+      <span className="block text-right tabular-nums">{row.original.total_candidates}</span>
+    ),
+    meta: { label: '候補' },
+  },
+  {
+    accessorKey: 'review_pending',
+    header: '未レビュー',
+    cell: ({ row }) => (
+      <span className="block text-right tabular-nums">{row.original.review_pending}</span>
+    ),
+    meta: { label: '未レビュー' },
+  },
+  {
+    accessorKey: 'confirmed',
+    header: '確定',
+    cell: ({ row }) => (
+      <span className="block text-right tabular-nums">{row.original.confirmed}</span>
+    ),
+    meta: { label: '確定' },
+  },
+  {
+    accessorKey: 'exported',
+    header: '締め済み',
+    cell: ({ row }) => (
+      <span className="block text-right tabular-nums">{row.original.exported}</span>
+    ),
+    meta: { label: '締め済み' },
+  },
+  {
+    accessorKey: 'claimable_evidence',
+    header: '算定可',
+    cell: ({ row }) => (
+      <span className="block text-right tabular-nums">{row.original.claimable_evidence}</span>
+    ),
+    meta: { label: '算定可' },
+  },
+  {
+    accessorKey: 'unclaimable_evidence',
+    header: '算定不可',
+    cell: ({ row }) => (
+      <span className="block text-right tabular-nums">{row.original.unclaimable_evidence}</span>
+    ),
+    meta: { label: '算定不可' },
+  },
+];
+
 function inferAreaLabel(address: string) {
   const match = address.match(/^(.*?[都道府県].*?[市区町村])/);
   if (match?.[1]) return match[1];
@@ -105,7 +166,10 @@ export function AnalyticsContent() {
         headers: { 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('地域資源マップの取得に失敗しました');
-      return res.json() as Promise<{ data: ResourceMapResponse['data']; summary: ResourceMapResponse['summary'] }>;
+      return res.json() as Promise<{
+        data: ResourceMapResponse['data'];
+        summary: ResourceMapResponse['summary'];
+      }>;
     },
     enabled: !!orgId,
   });
@@ -197,33 +261,21 @@ export function AnalyticsContent() {
           <CardHeader>
             <CardTitle className="text-base">月次推移</CardTitle>
           </CardHeader>
-          <CardContent className="overflow-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                  <th className="px-2 py-2">月</th>
-                  <th className="px-2 py-2 text-right">候補</th>
-                  <th className="px-2 py-2 text-right">未レビュー</th>
-                  <th className="px-2 py-2 text-right">確定</th>
-                  <th className="px-2 py-2 text-right">締め済み</th>
-                  <th className="px-2 py-2 text-right">算定可</th>
-                  <th className="px-2 py-2 text-right">算定不可</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(analytics?.monthly_trend ?? []).map((row) => (
-                  <tr key={row.month} className="border-b border-border/60 last:border-0">
-                    <td className="px-2 py-2 font-medium">{row.month}</td>
-                    <td className="px-2 py-2 text-right tabular-nums">{row.total_candidates}</td>
-                    <td className="px-2 py-2 text-right tabular-nums">{row.review_pending}</td>
-                    <td className="px-2 py-2 text-right tabular-nums">{row.confirmed}</td>
-                    <td className="px-2 py-2 text-right tabular-nums">{row.exported}</td>
-                    <td className="px-2 py-2 text-right tabular-nums">{row.claimable_evidence}</td>
-                    <td className="px-2 py-2 text-right tabular-nums">{row.unclaimable_evidence}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <CardContent>
+            <DataTable
+              columns={monthlyTrendColumns}
+              data={analytics?.monthly_trend ?? []}
+              isLoading={isLoading}
+              caption="月次推移"
+              getRowId={(row) => row.month}
+              getRowA11yLabel={(row) => `${row.month} の月次推移`}
+              emptyMessage="月次推移はありません。"
+              toolbar={{
+                enableGlobalFilter: true,
+                globalFilterPlaceholder: '月次推移内検索',
+                enableColumnVisibility: true,
+              }}
+            />
           </CardContent>
         </Card>
 
@@ -237,7 +289,10 @@ export function AnalyticsContent() {
                 <p className="text-sm text-muted-foreground">算定不可の主因はありません。</p>
               ) : (
                 analytics?.blocker_reasons.map((item) => (
-                  <div key={item.reason} className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm">
+                  <div
+                    key={item.reason}
+                    className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm"
+                  >
                     <span>{item.reason}</span>
                     <span className="tabular-nums text-muted-foreground">{item.count}件</span>
                   </div>
@@ -255,7 +310,10 @@ export function AnalyticsContent() {
                 <p className="text-sm text-muted-foreground">算定コードの実績はありません。</p>
               ) : (
                 analytics?.top_codes.map((item) => (
-                  <div key={`${item.billing_code}-${item.billing_name}`} className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm">
+                  <div
+                    key={`${item.billing_code}-${item.billing_name}`}
+                    className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm"
+                  >
                     <div>
                       <p className="font-medium">{item.billing_name}</p>
                       <p className="text-xs text-muted-foreground">{item.billing_code}</p>
@@ -387,7 +445,10 @@ export function AnalyticsContent() {
                   </div>
                   {site.holiday_gap_dates.length > 0 ? (
                     <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                      空白日: {site.holiday_gap_dates.map((item) => `${item.date.slice(5, 10)} ${item.name}`).join(' / ')}
+                      空白日:{' '}
+                      {site.holiday_gap_dates
+                        .map((item) => `${item.date.slice(5, 10)} ${item.name}`)
+                        .join(' / ')}
                     </div>
                   ) : (
                     <p className="mt-3 text-xs text-emerald-700">直近の休日空白はありません。</p>
