@@ -1,6 +1,8 @@
 'use client';
 
+import type { ColumnDef } from '@tanstack/react-table';
 import { useQuery } from '@tanstack/react-query';
+import { DataTable } from '@/components/ui/data-table';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -58,6 +60,53 @@ function SummaryCard({ label, value, caption }: { label: string; value: string; 
     </div>
   );
 }
+
+const drugForecastColumns: ColumnDef<DrugForecastRow>[] = [
+  {
+    accessorKey: 'drugKey',
+    header: '薬剤',
+    cell: ({ row }) => <span className="font-medium">{row.original.drugKey}</span>,
+    meta: { label: '薬剤' },
+  },
+  {
+    id: 'requiredQty',
+    accessorFn: (row) => `${row.requiredQty}${row.unit}`,
+    header: '必要見込み',
+    cell: ({ row }) => (
+      <span className="tabular-nums">
+        {row.original.requiredQty}
+        {row.original.unit}
+      </span>
+    ),
+    meta: { label: '必要見込み' },
+  },
+  {
+    id: 'stockQty',
+    accessorFn: (row) => `${row.stockQty}${row.unit}`,
+    header: '在庫',
+    cell: ({ row }) => (
+      <span className="tabular-nums">
+        {row.original.stockQty}
+        {row.original.unit}
+      </span>
+    ),
+    meta: { label: '在庫' },
+  },
+  {
+    id: 'coverage',
+    accessorFn: (row) => coveragePercent(row),
+    header: '充足率',
+    cell: ({ row }) => <span className="tabular-nums">{coveragePercent(row.original)}%</span>,
+    meta: { label: '充足率' },
+  },
+  {
+    id: 'status',
+    accessorFn: (row) => DRUG_FORECAST_STATUS_LABELS[row.status],
+    header: '対応',
+    cell: ({ row }) => <StatusBadge status={row.original.status} />,
+    meta: { label: '対応' },
+  },
+];
 
 export function InventoryForecastContent() {
   const orgId = useOrgId();
@@ -163,50 +212,22 @@ export function InventoryForecastContent() {
               来週の訪問予定と在庫登録から計算できる薬剤がありません。
             </p>
           ) : (
-            <div className="mt-4 overflow-x-auto rounded-md border border-border/70">
-              <table
-                className="w-full min-w-[480px] text-sm"
-                data-testid="inventory-forecast-table"
-              >
-                <thead>
-                  <tr className="border-b border-border/70 bg-muted/40 text-left text-xs text-muted-foreground">
-                    <th scope="col" className="px-4 py-2.5 font-medium">
-                      薬剤
-                    </th>
-                    <th scope="col" className="px-4 py-2.5 font-medium">
-                      必要見込み
-                    </th>
-                    <th scope="col" className="px-4 py-2.5 font-medium">
-                      在庫
-                    </th>
-                    <th scope="col" className="px-4 py-2.5 font-medium">
-                      充足率
-                    </th>
-                    <th scope="col" className="px-4 py-2.5 font-medium">
-                      対応
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {forecast.drugs.map((drug) => (
-                    <tr key={drug.drugKey} className="border-b border-border/50 last:border-b-0">
-                      <td className="px-4 py-3 font-medium text-foreground">{drug.drugKey}</td>
-                      <td className="px-4 py-3 text-foreground">
-                        {drug.requiredQty}
-                        {drug.unit}
-                      </td>
-                      <td className="px-4 py-3 text-foreground">
-                        {drug.stockQty}
-                        {drug.unit}
-                      </td>
-                      <td className="px-4 py-3 text-foreground">{coveragePercent(drug)}%</td>
-                      <td className="px-4 py-3">
-                        <StatusBadge status={drug.status} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="mt-4" data-testid="inventory-forecast-table">
+              <DataTable
+                columns={drugForecastColumns}
+                data={forecast.drugs}
+                caption="来週必要になりそうな薬"
+                getRowId={(row) => row.drugKey}
+                getRowA11yLabel={(row) =>
+                  `${row.drugKey} ${DRUG_FORECAST_STATUS_LABELS[row.status]}`
+                }
+                emptyMessage="来週の訪問予定と在庫登録から計算できる薬剤がありません。"
+                toolbar={{
+                  enableGlobalFilter: true,
+                  globalFilterPlaceholder: '薬剤別必要量内検索',
+                  enableColumnVisibility: true,
+                }}
+              />
             </div>
           )}
         </section>
