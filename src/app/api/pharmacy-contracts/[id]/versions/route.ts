@@ -172,8 +172,8 @@ export const POST = withAuthContext<{ id: string }>(
       });
 
       if (!contract) return { response: notFound('薬局間契約が見つかりません') };
-      if (contract.status === 'ended' || contract.status === 'archived') {
-        return { response: conflict('終了またはアーカイブ済みの契約には版を追加できません') };
+      if (contract.status === 'expired' || contract.status === 'terminated') {
+        return { response: conflict('期限切れまたは終了済みの契約には版を追加できません') };
       }
       if (
         parsed.data.status === 'active' &&

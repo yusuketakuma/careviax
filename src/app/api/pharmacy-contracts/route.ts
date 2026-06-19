@@ -15,9 +15,9 @@ const contractStatusSchema = z.enum([
   'pending_base_approval',
   'pending_partner_approval',
   'active',
+  'expired',
+  'terminated',
   'suspended',
-  'ended',
-  'archived',
 ]);
 const creatableContractStatusSchema = z.enum([
   'draft',

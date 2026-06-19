@@ -5,12 +5,14 @@ const {
   withOrgContextMock,
   pharmacyPartnershipFindFirstMock,
   pharmacyContractFindFirstMock,
+  pharmacyContractFindManyMock,
   pharmacyContractCreateMock,
   createAuditLogEntryMock,
 } = vi.hoisted(() => ({
   withOrgContextMock: vi.fn(),
   pharmacyPartnershipFindFirstMock: vi.fn(),
   pharmacyContractFindFirstMock: vi.fn(),
+  pharmacyContractFindManyMock: vi.fn(),
   pharmacyContractCreateMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
 }));
@@ -38,9 +40,10 @@ vi.mock('@/lib/audit/audit-entry', () => ({
   createAuditLogEntry: createAuditLogEntryMock,
 }));
 
-import { POST as rawPOST } from './route';
+import { GET as rawGET, POST as rawPOST } from './route';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
+const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
 const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
 
 function createRequest(body: unknown) {
@@ -49,6 +52,10 @@ function createRequest(body: unknown) {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
+}
+
+function createGetRequest(query = '') {
+  return new NextRequest(`http://localhost/api/pharmacy-contracts${query}`);
 }
 
 describe('/api/pharmacy-contracts POST', () => {
@@ -60,6 +67,7 @@ describe('/api/pharmacy-contracts POST', () => {
       partner_pharmacy: { status: 'active' },
     });
     pharmacyContractFindFirstMock.mockResolvedValue(null);
+    pharmacyContractFindManyMock.mockResolvedValue([]);
     pharmacyContractCreateMock.mockResolvedValue({
       id: 'contract_1',
       partnership_id: 'partnership_1',
@@ -93,8 +101,28 @@ describe('/api/pharmacy-contracts POST', () => {
         },
         pharmacyContract: {
           findFirst: pharmacyContractFindFirstMock,
+          findMany: pharmacyContractFindManyMock,
           create: pharmacyContractCreateMock,
         },
+      }),
+    );
+  });
+
+  it('rejects legacy contract status filters before DB reads', async () => {
+    const response = await GET(createGetRequest('?status=ended'));
+
+    expect(response.status).toBe(400);
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(pharmacyContractFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts v0.2 terminal contract status filters', async () => {
+    const response = await GET(createGetRequest('?status=terminated'));
+
+    expect(response.status).toBe(200);
+    expect(pharmacyContractFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: 'terminated' }),
       }),
     );
   });

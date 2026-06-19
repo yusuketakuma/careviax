@@ -227,6 +227,33 @@ describe('/api/pharmacy-contracts/[id]/versions POST', () => {
     expect(createAuditLogEntryMock).not.toHaveBeenCalled();
   });
 
+  it.each(['expired', 'terminated'] as const)(
+    'rejects adding versions to %s contracts before side effects',
+    async (status) => {
+      pharmacyContractFindFirstMock.mockResolvedValue({
+        id: 'contract_1',
+        status,
+        partnership_id: 'partnership_1',
+        partnership: {
+          status: 'active',
+          partner_pharmacy: { status: 'active' },
+        },
+      });
+
+      const response = await POST(
+        createRequest({
+          status: 'draft',
+          effective_from: '2026-07-01',
+          fee_rule: { billing_model: 'free' },
+        }),
+      );
+
+      expect(response.status).toBe(409);
+      expect(pharmacyContractVersionCreateMock).not.toHaveBeenCalled();
+      expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+    },
+  );
+
   it('rejects overlapping active versions before create or audit side effects', async () => {
     pharmacyContractVersionFindFirstMock.mockReset();
     pharmacyContractVersionFindFirstMock.mockResolvedValueOnce({ id: 'contract_version_1' });

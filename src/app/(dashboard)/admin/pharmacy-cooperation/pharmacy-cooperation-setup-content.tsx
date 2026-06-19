@@ -141,6 +141,8 @@ function statusLabel(status: string) {
     archived: 'アーカイブ',
     draft: '下書き',
     suspended: '停止中',
+    expired: '期限切れ',
+    terminated: '終了',
     ended: '終了',
     pending_base_approval: '基幹承認待ち',
     pending_partner_approval: '協力承認待ち',
@@ -150,7 +152,14 @@ function statusLabel(status: string) {
 
 function statusVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
   if (status === 'active') return 'default';
-  if (status === 'archived' || status === 'ended') return 'destructive';
+  if (
+    status === 'archived' ||
+    status === 'expired' ||
+    status === 'terminated' ||
+    status === 'ended'
+  ) {
+    return 'destructive';
+  }
   if (status === 'draft') return 'secondary';
   return 'outline';
 }

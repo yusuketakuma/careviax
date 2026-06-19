@@ -61,9 +61,9 @@ enum PharmacyContractStatus {
   pending_base_approval
   pending_partner_approval
   active
+  expired
+  terminated
   suspended
-  ended
-  archived
 }
 
 enum PharmacyBillingModel {
