@@ -4959,6 +4959,37 @@ Implemented:
 
 - UI/UX remediation remains active. Next pass should run a fresh action-name/table-density scan, with pharmacy-cooperation workflow/admin/billing still the highest-priority area if new issues appear.
 
+## 20260620-0138 JST - Shared Close Button Action Names
+
+### Summary
+
+- Added static accessible names to the shared Dialog and Sheet close icon buttons.
+- Extended Dialog/Sheet component tests to assert the close controls are reachable by name.
+- Re-ran the improved `size="icon"` Button scan and cleared the remaining shared close-button hits.
+
+### Files Changed
+
+- `src/components/ui/dialog.tsx`
+- `src/components/ui/dialog.test.tsx`
+- `src/components/ui/sheet.tsx`
+- `src/components/ui/sheet.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- Targeted Prettier over Dialog/Sheet files: passed, unchanged.
+- `pnpm exec vitest run src/components/ui/dialog.test.tsx src/components/ui/sheet.test.tsx --reporter=dot --testTimeout=30000`: passed, 2 files / 3 tests.
+- Targeted ESLint over Dialog/Sheet files: passed.
+- Improved `size="icon"` Button static scan: passed, 0 unlabeled icon-sized Buttons under dashboard/components.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Input/Textarea, SelectTrigger, and icon-sized Button static scans are clean. Next pass should cover table-density and browser/a11y proof for the highest-risk pharmacy-cooperation or workflow surfaces.
+
 ## 20260620-0036 JST - Billing Rule Row Action Names
 
 ### Summary
