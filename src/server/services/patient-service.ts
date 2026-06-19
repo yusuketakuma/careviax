@@ -36,6 +36,7 @@ import {
   normalizePatientPrimaryContacts,
   selectPrimaryCareTeamCase,
 } from '@/lib/patient/care-team-contact';
+import { listActivePatientShareSummaries } from '@/server/services/patient-share-summary';
 
 const DEFAULT_PATIENT_LIST_LIMIT = 50;
 const MAX_PATIENT_LIST_LIMIT = 500;
@@ -431,9 +432,10 @@ async function enrichPatientBatch(args: {
   orgId: string;
   role: MemberRole | string;
   patients: PatientRow[];
+  referenceDate: Date;
   accessContext?: VisitScheduleAccessContext;
 }) {
-  const { prisma, orgId, role, patients, accessContext } = args;
+  const { prisma, orgId, role, patients, referenceDate, accessContext } = args;
   if (patients.length === 0) {
     return [] as MappedPatientListItem[];
   }
@@ -473,18 +475,24 @@ async function enrichPatientBatch(args: {
     ),
   );
 
-  const [riskSummaries, pharmacistNameById, visitRecords, visitSchedules, firstVisitDocuments] =
-    await Promise.all([
-      listPatientRiskSummaries(prisma, {
-        orgId,
-        patientIds,
-        caseIdsByPatient: assignedCaseIdsByPatient,
-        includeStable: true,
-      }),
-      batchResolveNames(prisma, orgId, primaryPharmacistIds),
-      assignedCaseIds.length === 0
-        ? Promise.resolve([])
-        : prisma.$queryRaw<VisitRecord[]>`
+  const [
+    riskSummaries,
+    pharmacistNameById,
+    visitRecords,
+    visitSchedules,
+    firstVisitDocuments,
+    patientShareSummaries,
+  ] = await Promise.all([
+    listPatientRiskSummaries(prisma, {
+      orgId,
+      patientIds,
+      caseIdsByPatient: assignedCaseIdsByPatient,
+      includeStable: true,
+    }),
+    batchResolveNames(prisma, orgId, primaryPharmacistIds),
+    assignedCaseIds.length === 0
+      ? Promise.resolve([])
+      : prisma.$queryRaw<VisitRecord[]>`
             SELECT DISTINCT ON (vr.patient_id)
               vr.id, vr.patient_id, vr.visit_date, vr.outcome_status, vr.created_at
             FROM "VisitRecord" vr
@@ -498,9 +506,9 @@ async function enrichPatientBatch(args: {
               AND cc.id = ANY(${assignedCaseIds}::text[])
             ORDER BY vr.patient_id, vr.visit_date DESC, vr.created_at DESC
           `,
-      latestCaseIds.length === 0
-        ? Promise.resolve([])
-        : prisma.$queryRaw<VisitSchedule[]>`
+    latestCaseIds.length === 0
+      ? Promise.resolve([])
+      : prisma.$queryRaw<VisitSchedule[]>`
             SELECT id, case_id, scheduled_date, schedule_status, priority
             FROM (
               SELECT id, case_id, scheduled_date, schedule_status, priority,
@@ -511,19 +519,24 @@ async function enrichPatientBatch(args: {
             ) ranked
             WHERE rn <= 3
           `,
-      latestCaseIds.length === 0
-        ? Promise.resolve([])
-        : prisma.firstVisitDocument.findMany({
-            where: {
-              org_id: orgId,
-              case_id: { in: latestCaseIds },
-              delivered_at: { not: null },
-            },
-            select: {
-              case_id: true,
-            },
-          }),
-    ]);
+    latestCaseIds.length === 0
+      ? Promise.resolve([])
+      : prisma.firstVisitDocument.findMany({
+          where: {
+            org_id: orgId,
+            case_id: { in: latestCaseIds },
+            delivered_at: { not: null },
+          },
+          select: {
+            case_id: true,
+          },
+        }),
+    listActivePatientShareSummaries(prisma, {
+      orgId,
+      patientIds,
+      asOf: referenceDate,
+    }),
+  ]);
 
   const riskByPatientId = new Map(riskSummaries.map((summary) => [summary.patient_id, summary]));
   const latestVisitByPatientId = new Map(
@@ -556,6 +569,7 @@ async function enrichPatientBatch(args: {
       deliveredFirstVisitCaseIds,
       privacy,
       recentVisitThreshold,
+      patientShareSummaries.get(patient.id),
     );
   });
 }
@@ -597,6 +611,7 @@ async function collectFilteredPatients(args: {
       orgId: args.orgId,
       role: args.role,
       patients: pageRows,
+      referenceDate: args.referenceDate,
       accessContext: args.accessContext,
     });
 

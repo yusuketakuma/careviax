@@ -3863,3 +3863,37 @@ Implemented:
 ### Remaining / Next Loop
 
 - B-01 management-plan version evidence is now enforced at the share-case API boundary. Direct DB-backed browser proof remains blocked until migration application is explicitly approved.
+
+## 20260619-2350 JST - Patient Share Summary Derivation
+
+### Summary
+
+- Added a shared `patient-share-summary` service that derives pharmacy-share state from active, consent-valid `PatientShareCase` rows.
+- Extended patient list items with a `pharmacy_share` summary containing only active case count, partner pharmacy count, and merged scope keys.
+- Kept patient-master state computed from share cases instead of adding or relying on a patient-level sharing flag.
+
+### Files Changed
+
+- `src/server/services/patient-share-summary.ts`
+- `src/server/services/patient-share-summary.test.ts`
+- `src/server/mappers/patient-response-mapper.ts`
+- `src/server/services/patient-service.ts`
+- `src/app/api/patients/route.test.ts`
+- `src/app/api/patients/__snapshots__/route.test.ts.snap`
+- `Plans.md`
+- `docs/pharmacy-cooperation-v0.2-completion-audit.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write src/server/services/patient-share-summary.ts src/server/services/patient-share-summary.test.ts src/server/mappers/patient-response-mapper.ts src/server/services/patient-service.ts src/app/api/patients/route.test.ts`: passed.
+- `pnpm exec vitest run src/server/services/patient-share-summary.test.ts src/app/api/patients/route.test.ts --reporter=dot --testTimeout=30000`: passed, 2 files / 20 tests. Existing mocked webhook stderr appeared during patient creation tests.
+- Targeted ESLint over touched patient-list/share-summary files: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- R-01 now has a concrete patient-list surface deriving pharmacy-share state from active share cases. Broader patient-detail and cross-app summary projection can still be hardened later, and DB-backed proof remains blocked until migration application is explicitly approved.

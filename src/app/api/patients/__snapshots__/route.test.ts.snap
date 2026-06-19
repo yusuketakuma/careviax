@@ -70,6 +70,17 @@ exports[`/api/patients GET > supports advanced patient filters and enriches risk
       "medical_insurance_number": "med-001",
       "name": "青葉 花子",
       "name_kana": "アオバ ハナコ",
+      "pharmacy_share": {
+        "active_case_count": 2,
+        "partner_pharmacy_count": 2,
+        "scope_keys": [
+          "attachments",
+          "care_reports",
+          "medication_profile",
+          "prescription_history",
+        ],
+        "status": "active",
+      },
       "phone": "090-0000-0001",
       "readiness": {
         "has_emergency_contact": true,

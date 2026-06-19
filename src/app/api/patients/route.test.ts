@@ -5,6 +5,7 @@ const {
   withAuthContextMock,
   patientFindManyMock,
   patientCreateMock,
+  patientShareCaseFindManyMock,
   careCaseFindManyMock,
   facilityFindManyMock,
   userFindManyMock,
@@ -25,6 +26,7 @@ const {
   withAuthContextMock: vi.fn(),
   patientFindManyMock: vi.fn(),
   patientCreateMock: vi.fn(),
+  patientShareCaseFindManyMock: vi.fn(),
   careCaseFindManyMock: vi.fn(),
   facilityFindManyMock: vi.fn(),
   userFindManyMock: vi.fn(),
@@ -73,6 +75,9 @@ vi.mock('@/lib/db/client', () => ({
     patient: {
       findMany: patientFindManyMock,
       create: patientCreateMock,
+    },
+    patientShareCase: {
+      findMany: patientShareCaseFindManyMock,
     },
     careCase: {
       findMany: careCaseFindManyMock,
@@ -197,6 +202,34 @@ describe('/api/patients GET', () => {
       }),
     );
     firstVisitDocumentFindManyMock.mockResolvedValue([{ case_id: 'case_1' }]);
+    patientShareCaseFindManyMock.mockResolvedValue([
+      {
+        base_patient_id: 'patient_1',
+        share_scope: {
+          prescription_history: true,
+          medication_profile: true,
+          care_reports: false,
+          attachments: true,
+          print: false,
+          pdf_output: false,
+          download: false,
+        },
+        partnership: { partner_pharmacy_id: 'partner_pharmacy_1' },
+      },
+      {
+        base_patient_id: 'patient_1',
+        share_scope: {
+          prescription_history: true,
+          medication_profile: false,
+          care_reports: true,
+          attachments: false,
+          print: false,
+          pdf_output: false,
+          download: false,
+        },
+        partnership: { partner_pharmacy_id: 'partner_pharmacy_2' },
+      },
+    ]);
     careCaseFindManyMock.mockResolvedValue([
       { id: 'case_1', patient_id: 'patient_1' },
       { id: 'case_1b', patient_id: 'patient_1' },
@@ -373,6 +406,12 @@ describe('/api/patients GET', () => {
         facility_mode: 'facility' | 'home';
         latest_case: { primary_pharmacist_name: string | null } | null;
         consent: { has_visit_medication_management: boolean };
+        pharmacy_share: {
+          status: 'none' | 'active';
+          active_case_count: number;
+          partner_pharmacy_count: number;
+          scope_keys: string[];
+        };
         risk_summary: { level: 'stable' | 'watch' | 'high' };
       }>;
       summary: {
@@ -392,6 +431,12 @@ describe('/api/patients GET', () => {
       },
       consent: {
         has_visit_medication_management: true,
+      },
+      pharmacy_share: {
+        status: 'active',
+        active_case_count: 2,
+        partner_pharmacy_count: 2,
+        scope_keys: ['attachments', 'care_reports', 'medication_profile', 'prescription_history'],
       },
       risk_summary: {
         level: 'watch',

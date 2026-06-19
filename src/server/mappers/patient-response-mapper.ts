@@ -1,5 +1,9 @@
 import type { PatientPrivacyFlags } from '@/lib/patient/privacy';
 import { maskAddressDetail, maskInsuranceNumber, maskPhoneNumber } from '@/lib/patient/privacy';
+import {
+  emptyPatientShareSummary,
+  type PatientShareSummary,
+} from '@/server/services/patient-share-summary';
 
 type PatientRiskLevel = 'stable' | 'watch' | 'high';
 
@@ -110,6 +114,7 @@ export function mapPatientListItem(
   deliveredFirstVisitCaseIds: Set<string>,
   privacy: PatientPrivacyFlags,
   recentVisitThreshold: Date,
+  patientShareSummary: PatientShareSummary = emptyPatientShareSummary(),
 ) {
   const latestCase = patient.cases[0] ?? null;
   const primaryResidence = patient.residences[0] ?? null;
@@ -159,6 +164,7 @@ export function mapPatientListItem(
       has_primary_physician: hasPrimaryPhysician,
       has_first_visit_document: hasFirstVisitDocument,
     },
+    pharmacy_share: patientShareSummary,
     risk_summary: risk,
     last_visit_bucket:
       latestVisit && latestVisit.visit_date >= recentVisitThreshold ? 'within_30_days' : 'none',
