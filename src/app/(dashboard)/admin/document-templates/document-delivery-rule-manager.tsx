@@ -324,6 +324,7 @@ export function DocumentDeliveryRuleManager() {
                     <Button
                       size="sm"
                       variant="outline"
+                      aria-label={`${deliveryRuleSummary(rule)} の送達ルールを編集`}
                       onClick={() =>
                         setForm({
                           id: rule.id,

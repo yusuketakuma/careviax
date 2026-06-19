@@ -4489,6 +4489,34 @@ Implemented:
 
 - Alert-rule, document-template, and service-area edit action names are addressed. Commit this group, then continue scanning admin actions if no blocker appears.
 
+## 20260620-0535 JST - Document Delivery Rule Edit Names
+
+### Summary
+
+- Added target-specific accessible names to document-delivery rule edit buttons.
+- Extended the focused regression to click the named edit action and verify the selected rule loads into the form.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.tsx`
+- `src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.tsx' 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 3 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.tsx' 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx'`: passed.
+- `git diff --check -- 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.tsx' 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `pnpm lint`: passed.
+
+### Remaining / Next Loop
+
+- Document-delivery rule edit action names are addressed. Commit this group, then continue scanning remaining admin action candidates if no blocker appears.
+
 ## 20260620-0525 JST - Job Rerun Action Names
 
 ### Summary

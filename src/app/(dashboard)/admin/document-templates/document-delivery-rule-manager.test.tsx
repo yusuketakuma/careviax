@@ -53,7 +53,7 @@ describe('DocumentDeliveryRuleManager', () => {
                   document_type: 'care_report',
                   target_role: 'physician',
                   channel: 'fax',
-                  fallback_channels: ['email'],
+                  fallback_channels: ['mcs'],
                   is_active: true,
                 },
               ],
@@ -110,5 +110,19 @@ describe('DocumentDeliveryRuleManager', () => {
         expect.objectContaining({ method: 'DELETE', headers: { 'x-org-id': 'org_1' } }),
       );
     });
+  });
+
+  it('names the edit action and loads the selected delivery rule into the form', async () => {
+    renderManager();
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: '報告書 / 医師 / FAX の送達ルールを編集',
+      }),
+    );
+
+    expect(screen.getByText('送達ルールを編集')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '更新する' })).toBeTruthy();
+    expect((screen.getByLabelText('フォールバック順') as HTMLInputElement).value).toBe('mcs');
   });
 });
