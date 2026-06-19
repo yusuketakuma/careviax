@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   canEditOwnedResource,
+  canExportSharedData,
   canRequestCorrection,
   getPatientShareCorrectionTargetOwner,
   oppositePharmacyOwner,
+  requiredPatientShareScopeKeysForDataOutput,
+  resolvePatientShareDataOutputPolicy,
   resolvePatientShareCorrectionRequestPolicy,
 } from '@/server/services/patient-share-policy';
 
@@ -60,5 +63,96 @@ describe('patient share policy', () => {
       targetOwner: 'partner_pharmacy',
     });
     expect(oppositePharmacyOwner('base_pharmacy')).toBe('partner_pharmacy');
+  });
+
+  it('maps shared data output actions to the required share scope keys', () => {
+    expect(requiredPatientShareScopeKeysForDataOutput('view_attachment')).toEqual(['attachments']);
+    expect(requiredPatientShareScopeKeysForDataOutput('download_attachment')).toEqual([
+      'attachments',
+      'download',
+    ]);
+    expect(requiredPatientShareScopeKeysForDataOutput('print')).toEqual(['print']);
+    expect(requiredPatientShareScopeKeysForDataOutput('pdf_output')).toEqual(['pdf_output']);
+    expect(requiredPatientShareScopeKeysForDataOutput('download_pdf')).toEqual([
+      'pdf_output',
+      'download',
+    ]);
+    expect(requiredPatientShareScopeKeysForDataOutput('download_data')).toEqual(['download']);
+  });
+
+  it('allows shared data output only when the share case is active and the scope covers the action', () => {
+    const shareScope = {
+      attachments: true,
+      print: true,
+      pdf_output: true,
+      download: true,
+    };
+
+    expect(
+      resolvePatientShareDataOutputPolicy({
+        shareCaseStatus: 'active',
+        shareScope,
+        action: 'download_attachment',
+      }),
+    ).toMatchObject({
+      allowed: true,
+      requiredScopeKeys: ['attachments', 'download'],
+      missingScopeKeys: [],
+      blocker: undefined,
+    });
+    expect(
+      canExportSharedData({
+        shareCaseStatus: 'active',
+        shareScope,
+        action: 'download_pdf',
+      }),
+    ).toBe(true);
+  });
+
+  it('fails closed for inactive share cases even when output scope is enabled', () => {
+    expect(
+      resolvePatientShareDataOutputPolicy({
+        shareCaseStatus: 'revoked',
+        shareScope: {
+          attachments: true,
+          print: true,
+          pdf_output: true,
+          download: true,
+        },
+        action: 'download_pdf',
+      }),
+    ).toMatchObject({
+      allowed: false,
+      blocker: 'inactive_share_case',
+      requiredScopeKeys: ['pdf_output', 'download'],
+      missingScopeKeys: [],
+    });
+  });
+
+  it('reports missing scope keys and does not treat non-boolean scope values as enabled', () => {
+    expect(
+      resolvePatientShareDataOutputPolicy({
+        shareCaseStatus: 'active',
+        shareScope: {
+          attachments: true,
+          pdf_output: true,
+          download: 'yes',
+        },
+        action: 'download_attachment',
+      }),
+    ).toMatchObject({
+      allowed: false,
+      blocker: 'missing_share_scope',
+      requiredScopeKeys: ['attachments', 'download'],
+      enabledScopeKeys: ['attachments', 'pdf_output'],
+      missingScopeKeys: ['download'],
+    });
+    expect(
+      canExportSharedData({
+        shareCaseStatus: 'active',
+        shareScope: { pdf_output: true },
+        action: 'download_pdf',
+      }),
+    ).toBe(false);
   });
 });
