@@ -1,0 +1,115 @@
+// @vitest-environment jsdom
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setupDomTestEnv } from '@/test/dom-test-utils';
+import ServiceAreasPage from './page';
+
+setupDomTestEnv();
+
+vi.mock('@/lib/hooks/use-org-id', () => ({
+  useOrgId: () => 'org_1',
+}));
+
+vi.mock('sonner', () => ({
+  toast: {
+    error: vi.fn(),
+    success: vi.fn(),
+  },
+}));
+
+function createWrapper() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+  };
+}
+
+function renderPage() {
+  return render(<ServiceAreasPage />, { wrapper: createWrapper() });
+}
+
+describe('ServiceAreasPage', () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+
+        if (url === '/api/pharmacy-sites') {
+          return new Response(
+            JSON.stringify({
+              data: [{ id: 'site_1', name: '本店' }],
+            }),
+            { status: 200 },
+          );
+        }
+
+        if (url === '/api/service-areas' && !init?.method) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: 'area_1',
+                  site_id: 'site_1',
+                  name: '北多摩エリア',
+                  area_type: 'radius',
+                  geo_data: { match_keywords: ['北多摩'] },
+                  notes: '16km 圏確認済み',
+                  site: { id: 'site_1', name: '本店' },
+                },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+
+        if (url === '/api/service-areas/area_1' && init?.method === 'DELETE') {
+          return new Response(JSON.stringify({ message: '訪問エリアを削除しました' }), {
+            status: 200,
+          });
+        }
+
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('requires confirmation before deleting a service area', async () => {
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: '北多摩エリア（本店）を削除' }));
+
+    expect(global.fetch).not.toHaveBeenCalledWith(
+      '/api/service-areas/area_1',
+      expect.objectContaining({ method: 'DELETE' }),
+    );
+    expect(screen.getByRole('alertdialog', { name: '訪問エリアを削除しますか' })).toBeTruthy();
+    expect(
+      screen.getByText(
+        '北多摩エリア（本店 / radius）を削除します。この操作は取り消せません。患者登録時の訪問エリア警告にも反映されます。',
+      ),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
+
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/service-areas/area_1',
+        expect.objectContaining({ method: 'DELETE', headers: { 'x-org-id': 'org_1' } }),
+      );
+    });
+  });
+});

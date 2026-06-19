@@ -7,6 +7,7 @@ import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminServiceAreasShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -30,17 +31,29 @@ type ServiceArea = {
   site: PharmacySite;
 };
 
+type ServiceAreaForm = {
+  id: string;
+  site_id: string;
+  name: string;
+  area_type: ServiceArea['area_type'];
+  geoText: string;
+  notes: string;
+};
+
+const EMPTY_SERVICE_AREA_FORM: ServiceAreaForm = {
+  id: '',
+  site_id: '',
+  name: '',
+  area_type: 'radius',
+  geoText: '{\n  "match_keywords": [],\n  "facility_ids": []\n}',
+  notes: '',
+};
+
 export default function ServiceAreasPage() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
-  const [form, setForm] = useState({
-    id: '',
-    site_id: '',
-    name: '',
-    area_type: 'radius',
-    geoText: '{\n  "match_keywords": [],\n  "facility_ids": []\n}',
-    notes: '',
-  });
+  const [form, setForm] = useState<ServiceAreaForm>(EMPTY_SERVICE_AREA_FORM);
+  const [deleteTarget, setDeleteTarget] = useState<ServiceArea | null>(null);
 
   const sitesQuery = useQuery({
     queryKey: ['service-areas-sites', orgId],
@@ -91,14 +104,7 @@ export default function ServiceAreasPage() {
     },
     onSuccess: async () => {
       toast.success(form.id ? '訪問エリアを更新しました' : '訪問エリアを登録しました');
-      setForm({
-        id: '',
-        site_id: '',
-        name: '',
-        area_type: 'radius',
-        geoText: '{\n  "match_keywords": [],\n  "facility_ids": []\n}',
-        notes: '',
-      });
+      setForm(EMPTY_SERVICE_AREA_FORM);
       await queryClient.invalidateQueries({ queryKey: ['service-areas', orgId] });
     },
   });
@@ -111,9 +117,16 @@ export default function ServiceAreasPage() {
       });
       if (!res.ok) throw new Error('訪問エリアの削除に失敗しました');
     },
-    onSuccess: async () => {
+    onSuccess: async (_data, deletedId) => {
       toast.success('訪問エリアを削除しました');
+      if (form.id === deletedId) {
+        setForm(EMPTY_SERVICE_AREA_FORM);
+      }
+      setDeleteTarget(null);
       await queryClient.invalidateQueries({ queryKey: ['service-areas', orgId] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '訪問エリアの削除に失敗しました');
     },
   });
 
@@ -222,19 +235,7 @@ export default function ServiceAreasPage() {
                 {saveMutation.isPending ? '保存中...' : form.id ? '更新する' : '登録する'}
               </Button>
               {form.id ? (
-                <Button
-                  variant="outline"
-                  onClick={() =>
-                    setForm({
-                      id: '',
-                      site_id: '',
-                      name: '',
-                      area_type: 'radius',
-                      geoText: '{\n  "match_keywords": [],\n  "facility_ids": []\n}',
-                      notes: '',
-                    })
-                  }
-                >
+                <Button variant="outline" onClick={() => setForm(EMPTY_SERVICE_AREA_FORM)}>
                   キャンセル
                 </Button>
               ) : null}
@@ -278,8 +279,9 @@ export default function ServiceAreasPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => deleteMutation.mutate(area.id)}
+                        onClick={() => setDeleteTarget(area)}
                         disabled={deleteMutation.isPending}
+                        aria-label={`${area.name}（${area.site.name}）を削除`}
                       >
                         削除
                       </Button>
@@ -297,6 +299,30 @@ export default function ServiceAreasPage() {
           </CardContent>
         </Card>
       </div>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleteMutation.isPending) {
+            setDeleteTarget(null);
+          }
+        }}
+        title="訪問エリアを削除しますか"
+        description={
+          deleteTarget
+            ? `${deleteTarget.name}（${deleteTarget.site.name} / ${deleteTarget.area_type}）を削除します。この操作は取り消せません。患者登録時の訪問エリア警告にも反映されます。`
+            : ''
+        }
+        confirmLabel={deleteMutation.isPending ? '削除中...' : '削除する'}
+        confirmDisabled={deleteMutation.isPending}
+        variant="destructive"
+        closeOnConfirm={false}
+        onConfirm={() => {
+          if (deleteTarget) {
+            deleteMutation.mutate(deleteTarget.id);
+          }
+        }}
+      />
     </PageScaffold>
   );
 }

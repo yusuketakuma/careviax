@@ -3961,8 +3961,9 @@ Implemented:
 
 ### Summary
 
-- Added an explicit destructive confirmation before deleting document templates.
+- Added an explicit destructive confirmation before deleting document templates from the admin document-template workspace.
 - Named the target template, template type, and version in the confirmation copy.
+- Added a target-specific accessible name to the template delete action.
 - Added a regression test proving the DELETE request is not sent until the confirmation action is clicked.
 
 ### Files Changed
@@ -3974,12 +3975,16 @@ Implemented:
 
 ### Validation
 
-- `pnpm exec vitest run 'src/app/(dashboard)/admin/document-templates/template-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 1 test.
-- Targeted ESLint over touched template-content files: passed.
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/document-templates/template-content.tsx' 'src/app/(dashboard)/admin/document-templates/template-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/document-templates/template-content.test.tsx' 'src/app/(dashboard)/admin/document-templates/document-delivery-rule-manager.test.tsx' src/components/ui/confirm-dialog.test.tsx --reporter=dot --testTimeout=30000`: initially failed because the responsive table renders duplicate delete actions; the test was corrected to select the first matching accessible action, then passed with 3 files / 7 tests.
+- Targeted ESLint over touched document-template and confirm-dialog files: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
 
 ### Remaining / Next Loop
 
-- DB-backed proof for the broader v0.2 goal remains blocked until migration application is explicitly approved.
+- UI/UX remediation remains active. Next candidates include service-area destructive confirmation, broader admin destructive-action consistency, pharmacy-cooperation responsive table density, select accessible-name gaps, and expanded browser/a11y proof.
 
 ## 20260619-2356 JST - Dialog Viewport Safety
 
@@ -4038,3 +4043,32 @@ Implemented:
 
 - Unrelated patient-share correction-policy worktree files were present during this slice and preserved.
 - Continue UI/UX remediation with the next high-value accessibility or destructive-action candidate; broader remaining candidates still include pharmacy-cooperation responsive table density, select accessible-name gaps, and expanded browser/a11y proof.
+
+## 20260620-0008 JST - Service Area Delete Confirmation
+
+### Summary
+
+- Added an explicit destructive confirmation before deleting service areas from the admin service-area workspace.
+- Named the target service area, site, and area type in the confirmation copy.
+- Added a target-specific accessible name to the service-area delete action.
+- Added a regression test proving the DELETE request is not sent until the confirmation action is clicked.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/service-areas/page.tsx`
+- `src/app/(dashboard)/admin/service-areas/page.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/service-areas/page.tsx' 'src/app/(dashboard)/admin/service-areas/page.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/service-areas/page.test.tsx' src/components/ui/confirm-dialog.test.tsx --reporter=dot --testTimeout=30000`: passed, 2 files / 5 tests.
+- Targeted ESLint over touched service-area and confirm-dialog files: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Next candidates include broader admin destructive-action consistency, pharmacy-cooperation responsive table density, select accessible-name gaps, raw table/DataTable convergence, and expanded browser/a11y proof.
