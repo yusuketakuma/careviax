@@ -2609,3 +2609,42 @@ Blocked: C11 (diverged user-visible label strings — product/UX sign-off), C12 
 - ConsentRecord expiry/document update UI remains absent; only the API PATCH path is covered.
 - Phase 1 still needs actor pharmacy/site context completion in remaining read audits, share-scope update/audit, patient-share-case creation UI, visit request creation UI, and stronger management-plan version evidence.
 - Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
+
+## 20260619-1813 JST - Patient Share Case Creation From Patient Card Slice
+
+### Completed
+
+- Re-read the v0.2 share-case specification around patient master creation, share scope, consent blocking, and management-plan version selection, then treated the higher-version workflow as SSOT over older workflow-only behavior.
+- Added a patient-card `薬局間共有ケース` panel immediately after `在宅運用管理` and before the first-visit document panel in both active-workspace and empty-workspace patient card paths.
+- Let operators create a draft patient share case from the patient master with active partnership selection, optional care case, optional approved management-plan version, date window, and canonical share-scope toggles.
+- Kept creation as draft-only; the patient card does not call activation and directs consent/link/start checks back to the pharmacy-cooperation workflow.
+- Kept the panel PHI-minimized: it does not render patient name, phone, address, management-plan title, raw snapshots, or free-text patient content.
+- Hardened `GET/POST /api/patient-share-cases` with `private, no-store` sensitive responses, canonical `share_scope` allowlisting, `scope_keys` response projection, and active partnership / active partner-pharmacy creation guards.
+- Tightened create audit metadata to log only enabled canonical share-scope keys and compact IDs/dates, dropping unknown share-scope keys and raw JSON from responses and audit assertions.
+
+### Files Changed
+
+- `src/app/(dashboard)/patients/[id]/card-workspace.tsx`
+- `src/app/(dashboard)/patients/[id]/card-workspace.test.tsx`
+- `src/app/api/patient-share-cases/route.ts`
+- `src/app/api/patient-share-cases/route.test.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' src/app/api/patient-share-cases/route.ts src/app/api/patient-share-cases/route.test.ts`: passed.
+- `pnpm exec vitest run src/app/api/patient-share-cases/route.test.ts 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testTimeout=30000`: passed, 2 files / 35 tests.
+- `pnpm exec eslint src/app/api/patient-share-cases/route.ts src/app/api/patient-share-cases/route.test.ts 'src/app/(dashboard)/patients/[id]/card-workspace.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm exec prisma validate --schema=prisma/schema/`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Phase 1 still needs share-scope update/audit for existing share cases and actor pharmacy/site context completion in remaining read audits.
+- Browser-level workflow proof across patient card creation, workflow consent/link/activation, visit request, partner record, billing, and report draft paths remains pending.
+- Consent document download audit still cannot directly resolve a `ConsentRecord` context because `ConsentRecord` stores only `document_url`.
+- ConsentRecord expiry/document update UI remains absent; only the API PATCH path is covered.
+- Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
