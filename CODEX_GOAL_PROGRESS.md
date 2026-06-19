@@ -2398,3 +2398,51 @@ Blocked: C11 (diverged user-visible label strings — product/UX sign-off), C12 
 - Legacy `ConsentRecord.document_url` can still expose an existing consent document URL outside the audited FileAsset download path; next security/privacy slice should either migrate it to FileAsset or suppress raw URL responses with a safe audited access path.
 - Phase 1 still needs actor pharmacy/site context completion in remaining read audits, share-scope update/audit, patient-share-case creation UI, visit request creation UI, and stronger management-plan version evidence.
 - Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
+
+## 20260619-1523 JST - Legacy Consent Document Upload Hardening Slice
+
+### Completed
+
+- Re-read the v0.2 specification and reviewed `FR-004`, `FR-019`, `P1-06`, `P1-27`, and `P1-28` against the legacy `ConsentRecord` UI/API path.
+- Replaced the patient consent UI raw `document_url` input with a FileAsset upload flow using `/api/files/presigned-upload`, direct PUT, `/api/files/complete`, then `document_file_id`.
+- Added an audited document column to the consent list so safe internal document URLs render through `/api/files/.../presigned-download?download=1`; legacy raw URLs render only as redacted metadata.
+- Added collection `GET/POST /api/consent-records` patient/case assignment checks aligned with the `[id]` routes.
+- Tightened consent document normalization so absolute external URLs are rejected even when their path looks like `/api/files/.../presigned-download`.
+- Tightened consent document FileAsset validation to require `purpose = consent-document`, uploaded status, allowed PDF/image MIME, and exact patient binding.
+- Applied the same consent document FileAsset purpose/MIME/patient checks to `PatientShareConsent.file_asset_id`.
+- Redacted raw legacy `document_url` from `POST /api/consent-records/[id]/revoke` responses.
+
+### Files Changed
+
+- `src/app/(dashboard)/patients/[id]/consent/consent-records-content.tsx`
+- `src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx`
+- `src/app/api/consent-records/route.ts`
+- `src/app/api/consent-records/route.test.ts`
+- `src/app/api/consent-records/[id]/route.ts`
+- `src/app/api/consent-records/[id]/route.test.ts`
+- `src/app/api/consent-records/[id]/revoke/route.ts`
+- `src/app/api/consent-records/[id]/revoke/route.test.ts`
+- `src/app/api/patient-share-cases/[id]/consents/route.ts`
+- `src/app/api/patient-share-cases/[id]/consents/route.test.ts`
+- `src/app/api/files/presigned-upload/route.test.ts`
+- `src/server/services/file-storage.test.ts`
+- `src/server/services/consent-record-documents.ts`
+- `src/server/services/consent-record-documents.test.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write ...`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx' src/app/api/consent-records/route.test.ts 'src/app/api/consent-records/[id]/route.test.ts' 'src/app/api/consent-records/[id]/revoke/route.test.ts' 'src/app/api/patient-share-cases/[id]/consents/route.test.ts' src/app/api/files/presigned-upload/route.test.ts src/server/services/file-storage.test.ts src/server/services/consent-record-documents.test.ts --reporter=dot --testTimeout=30000`: passed, 8 files / 130 tests.
+- `pnpm exec eslint ...`: passed for touched UI/API/service/test files.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- `ConsentRecord` list/detail/create/update still need explicit minimized audit events for `P1-27` and `FR-019`; revoke already has mutation audit and file downloads are audited.
+- Patient-share consent list/create should still be reviewed for share-case participant/read scope beyond org ownership, without breaking draft consent registration before activation.
+- Phase 1 still needs actor pharmacy/site context completion in remaining read audits, share-scope update/audit, patient-share-case creation UI, visit request creation UI, and stronger management-plan version evidence.
+- Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
