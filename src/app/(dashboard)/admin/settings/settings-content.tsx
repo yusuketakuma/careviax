@@ -284,7 +284,7 @@ function ScopePanel({
               }
             }}
           >
-            <SelectTrigger className="h-8 w-[140px] text-xs">
+            <SelectTrigger className="h-8 w-[140px] text-xs" aria-label="設定編集モード">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

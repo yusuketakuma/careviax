@@ -4365,6 +4365,33 @@ Implemented:
 
 - UI/UX remediation remains active. Remaining candidates include select accessible-name gaps in incidents, pharmacist credentials, settings, and users, plus raw table/DataTable convergence and expanded browser/a11y proof.
 
+## 20260620-0042 JST - Settings Editor Mode Label
+
+### Summary
+
+- Added an accessible label to the admin settings form/json editor mode Select.
+- Extended the existing settings test to assert the control is reachable by label.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/settings/settings-content.tsx`
+- `src/app/(dashboard)/admin/settings/settings-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/settings/settings-content.tsx' 'src/app/(dashboard)/admin/settings/settings-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/settings/settings-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 1 test.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/settings/settings-content.tsx' 'src/app/(dashboard)/admin/settings/settings-content.test.tsx'`: passed.
+- `pnpm exec prettier --check 'src/app/(dashboard)/admin/settings/settings-content.tsx' 'src/app/(dashboard)/admin/settings/settings-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Remaining candidates include select accessible-name gaps in pharmacist credentials and users, raw table/DataTable convergence, and expanded browser/a11y proof.
+
 ## 20260620-0036 JST - Billing Rule Row Action Names
 
 ### Summary

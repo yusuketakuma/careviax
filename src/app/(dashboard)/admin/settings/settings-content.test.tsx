@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
@@ -62,5 +62,6 @@ describe('SettingsContent polling policy', () => {
         refetchInterval: 60_000,
       }),
     );
+    expect(screen.getAllByLabelText('設定編集モード').length).toBeGreaterThan(0);
   });
 });
