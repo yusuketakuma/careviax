@@ -4606,6 +4606,35 @@ Implemented:
 
 - UI/UX remediation remains active. Remaining select accessible-name gaps from the latest scan are in prescriptions QR drafts and conferences. Raw table/DataTable convergence and expanded browser/a11y proof also remain.
 
+## 20260620-0058 JST - Conference Dialog Label Associations
+
+### Summary
+
+- Associated the conference participant external-professional Select with its visible `登録済み他職種` label.
+- Associated the conference report-generation Select with its visible `報告書種別` label.
+- Extended conferences UI tests to cover both dialog controls by visible labels.
+- Wrapped the direct mutation success callback in `act(...)` so the focused test run is warning-free.
+
+### Files Changed
+
+- `src/app/(dashboard)/conferences/conferences-content.tsx`
+- `src/app/(dashboard)/conferences/conferences-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/conferences/conferences-content.tsx' 'src/app/(dashboard)/conferences/conferences-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/conferences/conferences-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 5 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/conferences/conferences-content.tsx' 'src/app/(dashboard)/conferences/conferences-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Remaining candidates include raw table/DataTable convergence, expanded browser/a11y proof, and broader legacy select/input label scans outside the fixed conference dialogs.
+
 ## 20260620-0036 JST - Billing Rule Row Action Names
 
 ### Summary
