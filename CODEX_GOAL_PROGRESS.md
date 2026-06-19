@@ -2351,3 +2351,50 @@ Blocked: C11 (diverged user-visible label strings — product/UX sign-off), C12 
 - Phase 1 still needs file/attachment download audit for P1-06/P1-28, actor pharmacy/site context in read audits, share-scope update/audit, patient-share-case creation UI, visit request creation UI, and stronger management-plan version evidence.
 - Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
 - Next slice: add audited file/attachment download or add the visit request creation panel; privacy reviewers ranked download audit and revoked-share read guards as the highest risks.
+
+## 20260619-1501 JST - File Download Audit and Consent Attachment Slice
+
+### Completed
+
+- Re-read the v0.2 specification and reviewed `P1-06`, `P1-28`, and `FR-019` against the current file download routes.
+- Added fail-closed file download audit before `/api/files/[id]/download` returns a redirect.
+- Added fail-closed file download audit before `/api/files/[id]/presigned-download` returns either JSON or redirect mode.
+- Added `file_download` audit action support via `recordDataExportAudit` with `format: "file"` for searchability.
+- Added a dedicated `recordFileDownloadAudit` helper that records only PHI-minimized identifiers and file metadata: file purpose, MIME type, size, expiry seconds, route surface, and response mode.
+- Added consent attachment audit context resolution for `PatientShareConsent.file_asset_id`, recording only share-consent/share-case IDs and boolean flags, not consent person, patient name, filename, storage key, or presigned URL.
+- Fixed patient-share consent attachment validation to accept the file-storage completion status `uploaded` instead of the non-canonical `completed`.
+- Added `@@index([org_id, file_asset_id])` and migration SQL for efficient consent-attachment audit context lookup.
+
+### Files Changed
+
+- `src/app/api/files/[id]/download/route.ts`
+- `src/app/api/files/[id]/download/route.test.ts`
+- `src/app/api/files/[id]/presigned-download/route.ts`
+- `src/app/api/files/[id]/presigned-download/route.test.ts`
+- `src/app/api/patient-share-cases/[id]/consents/route.ts`
+- `src/app/api/patient-share-cases/[id]/consents/route.test.ts`
+- `src/server/services/file-download-audit.ts`
+- `src/server/services/file-download-audit.test.ts`
+- `src/server/services/export-audit.ts`
+- `src/server/services/export-audit.test.ts`
+- `prisma/schema/pharmacy-partnership.prisma`
+- `prisma/migrations/20260619150500_add_patient_share_consent_file_asset_index/migration.sql`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write ...`: TypeScript route/helper/test files passed; Prisma schema needs `prisma format` rather than Prettier.
+- `pnpm exec prisma format`: passed.
+- `pnpm exec vitest run 'src/app/api/files/[id]/download/route.test.ts' 'src/app/api/files/[id]/presigned-download/route.test.ts' src/server/services/file-download-audit.test.ts src/server/services/export-audit.test.ts 'src/app/api/patient-share-cases/[id]/consents/route.test.ts' src/__tests__/audit-log-conventions-static.test.ts --reporter=dot --testTimeout=30000`: passed, 6 files / 29 tests.
+- `pnpm exec eslint ...`: passed for touched API/helper/test files.
+- `pnpm typecheck`: passed.
+- `pnpm exec prisma validate`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Legacy `ConsentRecord.document_url` can still expose an existing consent document URL outside the audited FileAsset download path; next security/privacy slice should either migrate it to FileAsset or suppress raw URL responses with a safe audited access path.
+- Phase 1 still needs actor pharmacy/site context completion in remaining read audits, share-scope update/audit, patient-share-case creation UI, visit request creation UI, and stronger management-plan version evidence.
+- Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
