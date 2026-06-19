@@ -185,6 +185,10 @@ const NOTIFICATION_CHANNEL_LABELS = Object.fromEntries(
   NOTIFICATION_CHANNEL_OPTIONS.map((channel) => [channel.value, channel.label]),
 ) as Record<SupportedNotificationChannel, string>;
 
+const ESCALATION_THRESHOLD_ERROR_MESSAGE = 'しきい時間は 1〜720 の整数で入力してください';
+const ESCALATION_THRESHOLD_HELP_ID = 'escalation-threshold-help';
+const ESCALATION_THRESHOLD_ERROR_ID = 'escalation-threshold-error';
+
 const ESCALATION_TRIGGER_OPTIONS: Array<{
   value: EscalationRule['trigger_type'];
   label: string;
@@ -287,6 +291,9 @@ export function NotificationSettingsContent() {
   const [newEscalationRole, setNewEscalationRole] =
     useState<NonNullable<EscalationRule['notify_role']>>('admin');
   const [newEscalationThresholdHours, setNewEscalationThresholdHours] = useState('24');
+  const [newEscalationThresholdError, setNewEscalationThresholdError] = useState<string | null>(
+    null,
+  );
   const [deleteEscalationTarget, setDeleteEscalationTarget] = useState<EscalationRule | null>(null);
 
   useEffect(() => {
@@ -496,9 +503,10 @@ export function NotificationSettingsContent() {
     if (!orgId) return;
     const thresholdHours = parseEscalationThresholdHoursInput(newEscalationThresholdHours);
     if (thresholdHours === null) {
-      toast.error('しきい時間は 1〜720 の整数で入力してください');
+      setNewEscalationThresholdError(ESCALATION_THRESHOLD_ERROR_MESSAGE);
       return;
     }
+    setNewEscalationThresholdError(null);
 
     setSavingKey('escalation:new');
     try {
@@ -528,6 +536,7 @@ export function NotificationSettingsContent() {
       }
       setNewEscalationOpen(false);
       setNewEscalationThresholdHours('24');
+      setNewEscalationThresholdError(null);
       toast.success('エスカレーションルールを追加しました');
     } catch (error) {
       toast.error(
@@ -543,6 +552,13 @@ export function NotificationSettingsContent() {
     newEscalationTrigger,
     orgId,
   ]);
+
+  const handleNewEscalationOpenChange = useCallback((open: boolean) => {
+    setNewEscalationOpen(open);
+    if (!open) {
+      setNewEscalationThresholdError(null);
+    }
+  }, []);
 
   const deleteEscalationRule = useCallback(
     async (ruleId: string) => {
@@ -727,7 +743,7 @@ export function NotificationSettingsContent() {
                 停滞や失敗が一定時間続いたときに、誰へ何を起こすかを定義します。
               </CardDescription>
             </div>
-            <Button type="button" size="sm" onClick={() => setNewEscalationOpen(true)}>
+            <Button type="button" size="sm" onClick={() => handleNewEscalationOpenChange(true)}>
               ルール追加
             </Button>
           </div>
@@ -797,7 +813,7 @@ export function NotificationSettingsContent() {
         </CardContent>
       </Card>
 
-      <Dialog open={newEscalationOpen} onOpenChange={setNewEscalationOpen}>
+      <Dialog open={newEscalationOpen} onOpenChange={handleNewEscalationOpenChange}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>エスカレーションルールを追加</DialogTitle>
@@ -871,12 +887,39 @@ export function NotificationSettingsContent() {
                 id="escalation-threshold"
                 inputMode="numeric"
                 value={newEscalationThresholdHours}
-                onChange={(event) => setNewEscalationThresholdHours(event.target.value)}
+                aria-invalid={newEscalationThresholdError ? true : undefined}
+                aria-describedby={
+                  newEscalationThresholdError
+                    ? `${ESCALATION_THRESHOLD_HELP_ID} ${ESCALATION_THRESHOLD_ERROR_ID}`
+                    : ESCALATION_THRESHOLD_HELP_ID
+                }
+                onChange={(event) => {
+                  setNewEscalationThresholdHours(event.target.value);
+                  if (newEscalationThresholdError) {
+                    setNewEscalationThresholdError(null);
+                  }
+                }}
               />
+              <p id={ESCALATION_THRESHOLD_HELP_ID} className="text-xs text-muted-foreground">
+                1〜720 時間の整数で入力してください。
+              </p>
+              {newEscalationThresholdError ? (
+                <p
+                  id={ESCALATION_THRESHOLD_ERROR_ID}
+                  role="alert"
+                  className="text-sm text-destructive"
+                >
+                  {newEscalationThresholdError}
+                </p>
+              ) : null}
             </div>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setNewEscalationOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleNewEscalationOpenChange(false)}
+            >
               キャンセル
             </Button>
             <Button

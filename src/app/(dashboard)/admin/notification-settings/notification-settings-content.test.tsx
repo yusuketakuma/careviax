@@ -2,6 +2,7 @@
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { NotificationSettingsContent } from './notification-settings-content';
 
@@ -26,6 +27,7 @@ vi.mock('sonner', () => ({
 
 describe('NotificationSettingsContent', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -97,5 +99,37 @@ describe('NotificationSettingsContent', () => {
         expect.objectContaining({ method: 'DELETE', headers: { 'x-org-id': 'org_1' } }),
       );
     });
+  });
+
+  it('shows inline validation before creating an escalation rule with an invalid threshold', async () => {
+    render(<NotificationSettingsContent />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'ルール追加' }));
+    const thresholdInput = screen.getByLabelText('しきい時間');
+
+    fireEvent.change(thresholdInput, { target: { value: '0' } });
+    fireEvent.click(screen.getByRole('button', { name: '追加' }));
+
+    expect(screen.getByRole('alert').textContent).toBe(
+      'しきい時間は 1〜720 の整数で入力してください',
+    );
+    expect(thresholdInput.getAttribute('aria-invalid')).toBe('true');
+    expect(thresholdInput.getAttribute('aria-describedby')).toContain('escalation-threshold-error');
+    expect(
+      vi
+        .mocked(global.fetch)
+        .mock.calls.some(
+          ([input, init]) =>
+            String(input) === '/api/admin/escalation-rules' && init?.method === 'POST',
+        ),
+    ).toBe(false);
+    expect(toast.error).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ルール追加' }));
+
+    const reopenedThresholdInput = screen.getByLabelText('しきい時間');
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(reopenedThresholdInput.getAttribute('aria-invalid')).toBeNull();
   });
 });
