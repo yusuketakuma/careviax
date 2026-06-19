@@ -60,6 +60,14 @@ describe('PatientContactsPanel', () => {
     expect(screen.getByRole('heading', { level: 2, name: '患者・家族連絡先' }).tagName).toBe('H2');
     expect(screen.getByText('子: 山田太郎')).toBeTruthy();
     expect(screen.getByLabelText('連絡先1件目の関係')).toBeTruthy();
+    expect(screen.getByLabelText('連絡先1件目の氏名')).toBeTruthy();
+    expect(screen.getByLabelText('連絡先1件目の電話番号')).toBeTruthy();
+    expect(screen.getByLabelText('連絡先1件目のメール')).toBeTruthy();
+    expect(screen.getByLabelText('連絡先1件目の組織名')).toBeTruthy();
+    expect(screen.getByLabelText('連絡先1件目の部署')).toBeTruthy();
+    expect(screen.getByLabelText('連絡先1件目のFAX')).toBeTruthy();
+    expect(screen.getByLabelText('連絡先1件目の住所')).toBeTruthy();
+    expect(screen.getByLabelText('連絡先1件目のメモ')).toBeTruthy();
     expect(screen.getByRole('button', { name: /行追加/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
   });

@@ -210,6 +210,7 @@ export function PatientContactsPanel({
               </Field>
               <Field label="氏名">
                 <Input
+                  aria-label={`連絡先${index + 1}件目の氏名`}
                   value={contact.name}
                   onChange={(event) =>
                     setContacts((current) =>
@@ -222,6 +223,7 @@ export function PatientContactsPanel({
               </Field>
               <Field label="電話番号">
                 <Input
+                  aria-label={`連絡先${index + 1}件目の電話番号`}
                   value={contact.phone}
                   onChange={(event) =>
                     setContacts((current) =>
@@ -234,6 +236,7 @@ export function PatientContactsPanel({
               </Field>
               <Field label="メール">
                 <Input
+                  aria-label={`連絡先${index + 1}件目のメール`}
                   value={contact.email}
                   onChange={(event) =>
                     setContacts((current) =>
@@ -246,6 +249,7 @@ export function PatientContactsPanel({
               </Field>
               <Field label="組織名">
                 <Input
+                  aria-label={`連絡先${index + 1}件目の組織名`}
                   value={contact.organization_name}
                   onChange={(event) =>
                     setContacts((current) =>
@@ -260,6 +264,7 @@ export function PatientContactsPanel({
               </Field>
               <Field label="部署">
                 <Input
+                  aria-label={`連絡先${index + 1}件目の部署`}
                   value={contact.department}
                   onChange={(event) =>
                     setContacts((current) =>
@@ -272,6 +277,7 @@ export function PatientContactsPanel({
               </Field>
               <Field label="FAX">
                 <Input
+                  aria-label={`連絡先${index + 1}件目のFAX`}
                   value={contact.fax}
                   onChange={(event) =>
                     setContacts((current) =>
@@ -284,6 +290,7 @@ export function PatientContactsPanel({
               </Field>
               <Field label="住所">
                 <Input
+                  aria-label={`連絡先${index + 1}件目の住所`}
                   value={contact.address}
                   onChange={(event) =>
                     setContacts((current) =>
@@ -296,6 +303,7 @@ export function PatientContactsPanel({
               </Field>
               <Field label="メモ" className="md:col-span-2">
                 <Textarea
+                  aria-label={`連絡先${index + 1}件目のメモ`}
                   rows={2}
                   value={contact.notes}
                   onChange={(event) =>
