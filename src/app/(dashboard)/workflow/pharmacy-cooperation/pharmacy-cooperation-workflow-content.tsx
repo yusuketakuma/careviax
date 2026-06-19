@@ -1,6 +1,7 @@
 'use client';
 
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
+import type { ColumnDef } from '@tanstack/react-table';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -17,6 +18,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { DataTable } from '@/components/ui/data-table';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
@@ -601,6 +603,52 @@ function statusVariant(status: string): 'default' | 'secondary' | 'destructive' 
   }
   return 'outline';
 }
+
+const correctionRequestColumns: ColumnDef<CorrectionRequestRow>[] = [
+  {
+    id: 'request',
+    accessorFn: (row) => `${row.id} ${row.request_type === 'addition' ? '追記' : '修正'}`,
+    header: '修正依頼',
+    cell: ({ row }) => (
+      <div>
+        <div className="font-medium">{row.original.id}</div>
+        <TinyMeta>{row.original.request_type === 'addition' ? '追記' : '修正'}</TinyMeta>
+      </div>
+    ),
+    meta: { label: '修正依頼' },
+  },
+  {
+    id: 'target',
+    accessorFn: (row) =>
+      `${CORRECTION_TARGET_LABELS[row.target_type] ?? row.target_type} ${row.field_path ?? '-'}`,
+    header: '対象',
+    cell: ({ row }) => (
+      <div>
+        <div>{CORRECTION_TARGET_LABELS[row.original.target_type] ?? row.original.target_type}</div>
+        <TinyMeta>{row.original.field_path ?? '-'}</TinyMeta>
+      </div>
+    ),
+    meta: { label: '対象' },
+  },
+  {
+    id: 'status',
+    accessorFn: (row) => statusLabel(row.status),
+    header: '状態',
+    cell: ({ row }) => (
+      <Badge variant={statusVariant(row.original.status)}>{statusLabel(row.original.status)}</Badge>
+    ),
+    meta: { label: '状態' },
+  },
+  {
+    id: 'updated_at',
+    accessorFn: (row) => formatDateTime(row.updated_at),
+    header: '更新',
+    cell: ({ row }) => (
+      <span className="tabular-nums">{formatDateTime(row.original.updated_at)}</span>
+    ),
+    meta: { label: '更新' },
+  },
+];
 
 function workflowActionTitle(action: PendingWorkflowAction) {
   switch (action.kind) {
@@ -2159,42 +2207,27 @@ function CorrectionRequestsPanel({
         {correctionRequests.length === 0 ? (
           <EmptyState title="修正依頼はまだありません" />
         ) : (
-          <TableFrame label="修正依頼一覧">
-            <thead className="bg-muted/60 text-xs text-muted-foreground">
-              <tr>
-                <th scope="col" className="px-3 py-2 text-left font-medium">
-                  修正依頼
-                </th>
-                <th scope="col" className="px-3 py-2 text-left font-medium">
-                  対象
-                </th>
-                <th scope="col" className="px-3 py-2 text-left font-medium">
-                  状態
-                </th>
-                <th scope="col" className="px-3 py-2 text-left font-medium">
-                  更新
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {correctionRequests.map((row) => (
-                <tr key={row.id} className="border-t border-border/70">
-                  <td className="px-3 py-2">
-                    <div className="font-medium">{row.id}</div>
-                    <TinyMeta>{row.request_type === 'addition' ? '追記' : '修正'}</TinyMeta>
-                  </td>
-                  <td className="px-3 py-2">
-                    <div>{CORRECTION_TARGET_LABELS[row.target_type] ?? row.target_type}</div>
-                    <TinyMeta>{row.field_path ?? '-'}</TinyMeta>
-                  </td>
-                  <td className="px-3 py-2">
-                    <Badge variant={statusVariant(row.status)}>{statusLabel(row.status)}</Badge>
-                  </td>
-                  <td className="px-3 py-2 tabular-nums">{formatDateTime(row.updated_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </TableFrame>
+          <DataTable
+            columns={correctionRequestColumns}
+            data={correctionRequests}
+            caption="修正依頼一覧"
+            getRowId={(row) => row.id}
+            getRowA11yLabel={(row) =>
+              `${row.id} ${CORRECTION_TARGET_LABELS[row.target_type] ?? row.target_type} ${statusLabel(
+                row.status,
+              )}`
+            }
+            emptyMessage="修正依頼はまだありません"
+            toolbar={{
+              enableGlobalFilter: true,
+              globalFilterPlaceholder: '修正依頼内検索',
+              enableColumnVisibility: true,
+              filterFields: [
+                { columnId: 'target', label: '対象', placeholder: '対象で絞り込み' },
+                { columnId: 'status', label: '状態', placeholder: '状態で絞り込み' },
+              ],
+            }}
+          />
         )}
       </QueryFallback>
     </div>

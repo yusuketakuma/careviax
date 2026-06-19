@@ -742,7 +742,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(await screen.findByText('share_case_active')).toBeTruthy();
     expect(await screen.findByText('visit_request_1')).toBeTruthy();
     expect(await screen.findByText('partner_record_submitted')).toBeTruthy();
-    expect(await screen.findByText('correction_1')).toBeTruthy();
+    expect((await screen.findAllByText('correction_1')).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole('table', { name: '患者共有ケース一覧' }).className).toContain(
       'min-w-[72rem]',
     );
@@ -1082,7 +1082,10 @@ describe('PharmacyCooperationWorkflowContent', () => {
   it('creates and lists correction requests without rendering raw reason or proposed value', async () => {
     renderContent();
 
-    expect(await screen.findByText('correction_1')).toBeTruthy();
+    const correctionTable = await screen.findByRole('table', { name: '修正依頼一覧' });
+    expect(within(correctionTable).getByText('correction_1')).toBeTruthy();
+    expect(screen.getByLabelText('修正依頼内検索')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: '列' }).length).toBeGreaterThanOrEqual(1);
     fireEvent.change(screen.getByRole('combobox', { name: '修正依頼の項目' }), {
       target: { value: 'notes' },
     });
