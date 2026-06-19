@@ -4478,6 +4478,36 @@ Implemented:
 
 - Shift calendar edit cells are now keyboard-accessible. The monthly matrix remains a calendar-style table rather than a DataTable; future work should focus on grid semantics or browser/a11y proof.
 
+## 20260620-0253 JST - Dispense Calendar Native Cell Buttons
+
+### Summary
+
+- Replaced dispense-workbench medication calendar cell `div role="button"` controls with native buttons.
+- Removed custom keyboard activation and relied on native button semantics.
+- Added PHI-minimized cell names using day index, timing key, packet/PTP counts, and normalized state only.
+- Added regression coverage proving hold free text and owner details stay out of the button name while cell selection still fires.
+
+### Files Changed
+
+- `src/components/features/dispense-workbench/medication-calendar-grid.tsx`
+- `src/components/features/dispense-workbench/medication-calendar-grid.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write src/components/features/dispense-workbench/medication-calendar-grid.tsx src/components/features/dispense-workbench/medication-calendar-grid.test.tsx`: passed.
+- `pnpm exec eslint src/components/features/dispense-workbench/medication-calendar-grid.tsx src/components/features/dispense-workbench/medication-calendar-grid.test.tsx`: passed.
+- `pnpm exec vitest run src/components/features/dispense-workbench/medication-calendar-grid.test.tsx --reporter=dot --testTimeout=30000`: passed, 1 file / 1 test.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+- `rg -n "role=\"button\"|activateOnKey|KeyboardEvent" src/components/features/dispense-workbench/medication-calendar-grid.tsx || true`: passed, no matches.
+
+### Remaining / Next Loop
+
+- Dispense-workbench calendar cell controls now use native button semantics. Browser/mobile proof for the full workbench remains a separate follow-up.
+
 ## 20260620-0250 JST - Billing Check PHI Toolbar Guard
 
 ### Summary

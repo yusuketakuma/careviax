@@ -13,7 +13,7 @@
  * （grid 側コンポーネントと同一方針）。状態更新は連携規約どおり store の action を直接呼ぶ。
  */
 
-import type { CSSProperties, KeyboardEvent } from 'react';
+import type { CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 
 import { useWorkbenchStore } from './dispensing-workbench.store';
@@ -38,16 +38,6 @@ const PHASE_ROUTE: Record<Phase, string> = {
   setp: '/set',
   seta: '/set-audit',
 };
-
-/** クリック可能要素を Enter / Space でも発火させる（擬似ボタンの a11y 補助） */
-function activateOnKey(handler: () => void) {
-  return (e: KeyboardEvent) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      handler();
-    }
-  };
-}
 
 export function MedicationCalendarGrid({
   view,
@@ -457,15 +447,28 @@ interface CalendarCellViewProps {
   onSelect: () => void;
 }
 
+function calendarCellA11yLabel(cell: CalendarCell) {
+  const stateLabel = cell.stateLabel.split('：')[0] || cell.stateLabel;
+  return [
+    '服薬カレンダーセル',
+    `${cell.di + 1}日目`,
+    cell.tk,
+    cell.packetText,
+    cell.ptpText,
+    stateLabel,
+  ]
+    .filter(Boolean)
+    .join(' / ');
+}
+
 /** 単一カレンダーセル（包数 / 状態マーク / 追加PTP バッジ / 状態ラベル）。クリックで選択。 */
 function CalendarCellView({ cell, onSelect }: CalendarCellViewProps) {
   return (
-    <div
-      role="button"
-      tabIndex={0}
+    <button
+      type="button"
+      aria-label={calendarCellA11yLabel(cell)}
       aria-pressed={cell.selected}
       onClick={onSelect}
-      onKeyDown={activateOnKey(onSelect)}
       title={cell.title}
       style={{
         flex: 1,
@@ -480,6 +483,9 @@ function CalendarCellView({ cell, onSelect }: CalendarCellViewProps) {
         display: 'flex',
         flexDirection: 'column',
         gap: 3,
+        appearance: 'none',
+        textAlign: 'left',
+        font: 'inherit',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -508,7 +514,7 @@ function CalendarCellView({ cell, onSelect }: CalendarCellViewProps) {
       <span style={{ fontSize: 9.5, color: cell.stateColor, fontWeight: 700 }}>
         {cell.stateLabel}
       </span>
-    </div>
+    </button>
   );
 }
 
