@@ -367,6 +367,32 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   has_returned_reason: false,
                   has_base_confirmation_snapshot: true,
                 },
+                {
+                  id: 'partner_record_draft',
+                  visit_request_id: 'visit_request_record_ready',
+                  share_case_id: 'share_case_active',
+                  revision_no: 1,
+                  status: 'draft',
+                  pharmacist_name: '協力 太郎',
+                  visit_at: '2026-06-20T01:30:00.000Z',
+                  submitted_at: null,
+                  confirmed_at: null,
+                  owner_partner_pharmacy: {
+                    id: 'partner_pharmacy_1',
+                    name: '協力薬局',
+                    status: 'active',
+                  },
+                  visit_request: {
+                    id: 'visit_request_record_ready',
+                    status: 'recording',
+                    urgency: 'normal',
+                  },
+                  claim_note: null,
+                  has_record_content: true,
+                  attachment_count: 0,
+                  has_returned_reason: false,
+                  has_base_confirmation_snapshot: false,
+                },
               ],
             }),
             { status: 200 },
@@ -591,6 +617,14 @@ describe('PharmacyCooperationWorkflowContent', () => {
               status: 200,
             },
           );
+        }
+        if (
+          url === '/api/partner-visit-records/partner_record_draft/submit' &&
+          init?.method === 'POST'
+        ) {
+          return new Response(JSON.stringify({ id: 'partner_record_draft', status: 'submitted' }), {
+            status: 200,
+          });
         }
         if (url === '/api/partner-visit-records/partner_record_confirmed/physician-report-draft') {
           return new Response(
@@ -858,6 +892,48 @@ describe('PharmacyCooperationWorkflowContent', () => {
     });
   });
 
+  it('requires confirmation before declining a requested pharmacy visit request', async () => {
+    renderContent();
+
+    const visitRequestsTable = await screen.findByRole('table', {
+      name: '協力薬局訪問依頼一覧',
+    });
+    const requestedRow = within(visitRequestsTable).getByText('visit_request_1').closest('tr');
+    expect(requestedRow).toBeTruthy();
+
+    fireEvent.change(
+      within(requestedRow as HTMLTableRowElement).getByLabelText('visit_request_1 の辞退理由'),
+      {
+        target: { value: '協力薬局の訪問枠が不足しています' },
+      },
+    );
+    fireEvent.click(
+      within(requestedRow as HTMLTableRowElement).getByRole('button', { name: /^辞退$/ }),
+    );
+    expect(
+      findFetchCall(
+        (input, init) =>
+          String(input) === '/api/pharmacy-visit-requests/visit_request_1/decision' &&
+          init?.method === 'POST',
+      ),
+    ).toBeUndefined();
+    expect(screen.getByRole('heading', { name: '訪問依頼を辞退します' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '辞退する' }));
+
+    await waitFor(() => {
+      const declineCall = findFetchCall(
+        (input, init) =>
+          String(input) === '/api/pharmacy-visit-requests/visit_request_1/decision' &&
+          init?.method === 'POST',
+      );
+      expect(declineCall).toBeTruthy();
+      expect(JSON.parse(String(declineCall?.[1]?.body))).toEqual({
+        decision: 'decline',
+        decline_reason: '協力薬局の訪問枠が不足しています',
+      });
+    });
+  });
+
   it('creates a pharmacy visit request with contract-estimate fields and no raw clinical text in the list', async () => {
     renderContent();
 
@@ -1055,6 +1131,66 @@ describe('PharmacyCooperationWorkflowContent', () => {
           remaining_medications: '残薬なし',
           proposals: '継続確認',
         },
+      });
+    });
+  });
+
+  it('requires confirmation before submitting and confirming partner visit records', async () => {
+    renderContent();
+
+    const recordsTable = await screen.findByRole('table', { name: '協力訪問記録一覧' });
+    const draftRow = within(recordsTable).getByText('partner_record_draft').closest('tr');
+    const submittedRow = within(recordsTable).getByText('partner_record_submitted').closest('tr');
+    expect(draftRow).toBeTruthy();
+    expect(submittedRow).toBeTruthy();
+
+    fireEvent.click(within(draftRow as HTMLTableRowElement).getByRole('button', { name: /提出/ }));
+    expect(
+      findFetchCall(
+        (input, init) =>
+          String(input) === '/api/partner-visit-records/partner_record_draft/submit' &&
+          init?.method === 'POST',
+      ),
+    ).toBeUndefined();
+    expect(screen.getByRole('heading', { name: '協力訪問記録を提出します' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '提出する' }));
+
+    await waitFor(() => {
+      expect(
+        Boolean(
+          findFetchCall(
+            (input, init) =>
+              String(input) === '/api/partner-visit-records/partner_record_draft/submit' &&
+              init?.method === 'POST',
+          ),
+        ),
+      ).toBe(true);
+    });
+
+    fireEvent.click(
+      within(submittedRow as HTMLTableRowElement).getByRole('button', { name: /^確認$/ }),
+    );
+    const reviewCallsBeforeConfirm = vi
+      .mocked(fetch)
+      .mock.calls.filter(
+        ([input, init]) =>
+          String(input) === '/api/partner-visit-records/partner_record_submitted/review' &&
+          init?.method === 'POST',
+      );
+    expect(reviewCallsBeforeConfirm).toHaveLength(0);
+    expect(screen.getByRole('heading', { name: '協力訪問記録を確認します' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '確認する' }));
+
+    await waitFor(() => {
+      const confirmCall = findFetchCall(
+        (input, init) =>
+          String(input) === '/api/partner-visit-records/partner_record_submitted/review' &&
+          init?.method === 'POST',
+      );
+      expect(confirmCall).toBeTruthy();
+      expect(JSON.parse(String(confirmCall?.[1]?.body))).toMatchObject({
+        decision: 'confirm',
+        doctor_report_required: false,
       });
     });
   });
