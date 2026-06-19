@@ -4427,6 +4427,36 @@ Implemented:
 
 - Institution row action names are addressed. Continue with billing-rule system disabled reasons or admin jobs rerun action names.
 
+## 20260620-0533 JST - Service Area Save Blockers
+
+### Summary
+
+- Aligned the service-area form with the API schema by blocking missing site, whitespace-only names, and invalid JSON before mutation.
+- Added visible disabled-save reasons and `aria-describedby` for the save button.
+- Added a JSON field error with `aria-invalid` / `aria-describedby`.
+- Trimmed service-area name and notes before submitting.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/service-areas/page.tsx`
+- `src/app/(dashboard)/admin/service-areas/page.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/service-areas/page.tsx' 'src/app/(dashboard)/admin/service-areas/page.test.tsx'`: passed.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/service-areas/page.tsx' 'src/app/(dashboard)/admin/service-areas/page.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/service-areas/page.test.tsx' 'src/app/api/service-areas/route.test.ts' 'src/app/api/service-areas/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, 3 files / 18 tests.
+- `git diff --check -- 'src/app/(dashboard)/admin/service-areas/page.tsx' 'src/app/(dashboard)/admin/service-areas/page.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `pnpm lint`: passed.
+
+### Remaining / Next Loop
+
+- Service-area save blockers are addressed. Continue scanning disabled admin actions if no blocker appears.
+
 ## 20260620-0528 JST - Admin Edit Action Names
 
 ### Summary

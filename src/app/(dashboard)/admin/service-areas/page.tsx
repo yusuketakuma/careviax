@@ -49,11 +49,31 @@ const EMPTY_SERVICE_AREA_FORM: ServiceAreaForm = {
   notes: '',
 };
 
+const SERVICE_AREA_SAVE_BLOCKER_ID = 'service-area-save-blocker';
+const SERVICE_AREA_GEO_ERROR_ID = 'service-area-geo-error';
+
+function getServiceAreaGeoError(geoText: string) {
+  try {
+    parseJsonObjectText(geoText, 'エリア定義(JSON) の形式が不正です');
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : 'エリア定義(JSON) の形式が不正です';
+  }
+}
+
+function getServiceAreaSaveBlocker(form: ServiceAreaForm, geoError: string | null) {
+  if (!form.site_id) return '拠点を選択してください。';
+  if (form.name.trim().length === 0) return 'エリア名を入力してください。';
+  return geoError;
+}
+
 export default function ServiceAreasPage() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
   const [form, setForm] = useState<ServiceAreaForm>(EMPTY_SERVICE_AREA_FORM);
   const [deleteTarget, setDeleteTarget] = useState<ServiceArea | null>(null);
+  const geoError = getServiceAreaGeoError(form.geoText);
+  const saveBlocker = getServiceAreaSaveBlocker(form, geoError);
 
   const sitesQuery = useQuery({
     queryKey: ['service-areas-sites', orgId],
@@ -81,6 +101,9 @@ export default function ServiceAreasPage() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const blocker = getServiceAreaSaveBlocker(form, getServiceAreaGeoError(form.geoText));
+      if (blocker) throw new Error(blocker);
+
       const geoData = parseJsonObjectText(form.geoText, 'エリア定義(JSON) の形式が不正です');
 
       const res = await fetch(form.id ? `/api/service-areas/${form.id}` : '/api/service-areas', {
@@ -91,10 +114,10 @@ export default function ServiceAreasPage() {
         },
         body: JSON.stringify({
           site_id: form.site_id,
-          name: form.name,
+          name: form.name.trim(),
           area_type: form.area_type,
           geo_data: geoData,
-          notes: form.notes || undefined,
+          notes: form.notes.trim() || undefined,
         }),
       });
       if (!res.ok) {
@@ -106,6 +129,9 @@ export default function ServiceAreasPage() {
       toast.success(form.id ? '訪問エリアを更新しました' : '訪問エリアを登録しました');
       setForm(EMPTY_SERVICE_AREA_FORM);
       await queryClient.invalidateQueries({ queryKey: ['service-areas', orgId] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '訪問エリアの保存に失敗しました');
     },
   });
 
@@ -209,10 +235,17 @@ export default function ServiceAreasPage() {
                 rows={12}
                 className="font-mono text-xs"
                 value={form.geoText}
+                aria-invalid={geoError ? true : undefined}
+                aria-describedby={geoError ? SERVICE_AREA_GEO_ERROR_ID : undefined}
                 onChange={(event) =>
                   setForm((current) => ({ ...current, geoText: event.target.value }))
                 }
               />
+              {geoError ? (
+                <p id={SERVICE_AREA_GEO_ERROR_ID} className="text-xs text-destructive">
+                  {geoError}
+                </p>
+              ) : null}
             </div>
 
             <div className="space-y-2">
@@ -230,7 +263,8 @@ export default function ServiceAreasPage() {
             <div className="flex gap-2">
               <Button
                 onClick={() => saveMutation.mutate()}
-                disabled={saveMutation.isPending || !form.site_id || !form.name}
+                disabled={saveMutation.isPending || Boolean(saveBlocker)}
+                aria-describedby={saveBlocker ? SERVICE_AREA_SAVE_BLOCKER_ID : undefined}
               >
                 {saveMutation.isPending ? '保存中...' : form.id ? '更新する' : '登録する'}
               </Button>
@@ -240,6 +274,11 @@ export default function ServiceAreasPage() {
                 </Button>
               ) : null}
             </div>
+            {saveBlocker ? (
+              <p id={SERVICE_AREA_SAVE_BLOCKER_ID} className="text-xs text-destructive">
+                {saveBlocker}
+              </p>
+            ) : null}
           </CardContent>
         </Card>
 

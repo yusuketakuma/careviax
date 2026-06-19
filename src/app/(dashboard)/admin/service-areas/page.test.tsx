@@ -87,6 +87,35 @@ describe('ServiceAreasPage', () => {
     vi.unstubAllGlobals();
   });
 
+  it('explains service area save blockers before mutation', async () => {
+    renderPage();
+
+    await screen.findByRole('option', { name: '本店' });
+    const saveButton = screen.getByRole('button', { name: '登録する' }) as HTMLButtonElement;
+
+    expect(saveButton.disabled).toBe(true);
+    expect(saveButton.getAttribute('aria-describedby')).toBe('service-area-save-blocker');
+    expect(screen.getByText('拠点を選択してください。')).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('拠点'), { target: { value: 'site_1' } });
+    fireEvent.change(screen.getByLabelText('エリア名'), { target: { value: '   ' } });
+
+    expect(saveButton.disabled).toBe(true);
+    expect(screen.getByText('エリア名を入力してください。')).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('エリア名'), { target: { value: '新規エリア' } });
+    fireEvent.change(screen.getByLabelText('エリア定義(JSON)'), { target: { value: '[]' } });
+
+    expect(saveButton.disabled).toBe(true);
+    expect(screen.getByLabelText('エリア定義(JSON)').getAttribute('aria-invalid')).toBe('true');
+    expect(document.getElementById('service-area-geo-error')?.textContent).toBe(
+      'エリア定義(JSON) の形式が不正です',
+    );
+    expect(document.getElementById('service-area-save-blocker')?.textContent).toBe(
+      'エリア定義(JSON) の形式が不正です',
+    );
+  });
+
   it('requires confirmation before deleting a service area', async () => {
     renderPage();
 
