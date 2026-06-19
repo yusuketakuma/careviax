@@ -739,6 +739,10 @@ export function ScheduleWeeklyOptimizer({
         .filter((item): item is NonNullable<typeof item> => item != null),
     [selectedCellRouteDraft.currentIds, selectedCellRouteDraft.draftIds, selectedCellRouteItemById],
   );
+  const proposalGenerationCaseError = !selectedCaseId
+    ? '提案対象ケースを選択してから空き枠提案を実行してください'
+    : null;
+  const proposalGenerationCaseErrorId = 'weekly-proposal-case-required-error';
 
   const createProposalMutation = useMutation({
     mutationFn: async (payload: ProposalPayload) => {
@@ -1266,6 +1270,11 @@ export function ScheduleWeeklyOptimizer({
               </Button>
             </div>
           ) : null}
+          {proposalGenerationCaseError ? (
+            <p id={proposalGenerationCaseErrorId} role="alert" className="text-xs text-destructive">
+              {proposalGenerationCaseError}
+            </p>
+          ) : null}
 
           {caseSearchInput.trim().length >= 2 ? (
             <div className="space-y-2 rounded-2xl border border-border/70 bg-muted/10 p-3">
@@ -1498,6 +1507,9 @@ export function ScheduleWeeklyOptimizer({
                                 !selectedCaseId ||
                                 createProposalMutation.isPending
                               }
+                              aria-describedby={
+                                !selectedCaseId ? proposalGenerationCaseErrorId : undefined
+                              }
                             >
                               <CalendarClock className="mr-1.5 size-4" />
                               この枠に提案
@@ -1649,6 +1661,7 @@ export function ScheduleWeeklyOptimizer({
             )
           }
           generateDisabled={!selectedCaseId || createProposalMutation.isPending}
+          generateDisabledReasonId={!selectedCaseId ? proposalGenerationCaseErrorId : undefined}
           diagnostics={lastPlannerDiagnostics}
           onApplyTimeExpansion={() => {
             setPlannerSettings((current) => ({

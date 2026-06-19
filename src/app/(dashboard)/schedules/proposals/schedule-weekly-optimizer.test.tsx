@@ -38,6 +38,9 @@ vi.mock('./weekly-cell-inspector', () => ({
     onApplyRoute: () => void;
     applyRouteDisabled: boolean;
     applyRoutePending: boolean;
+    selectedCaseId: string;
+    generateDisabled: boolean;
+    generateDisabledReasonId?: string;
   }) => (
     <div>
       <button
@@ -46,6 +49,13 @@ vi.mock('./weekly-cell-inspector', () => ({
         disabled={props.applyRouteDisabled || props.applyRoutePending}
       >
         最適順を反映
+      </button>
+      <button
+        type="button"
+        disabled={props.generateDisabled}
+        aria-describedby={props.generateDisabledReasonId}
+      >
+        {props.selectedCaseId ? 'このセルに提案' : 'ケース選択が必要'}
       </button>
     </div>
   ),
@@ -192,6 +202,58 @@ describe('ScheduleWeeklyOptimizer', () => {
     expect(screen.getByLabelText('希望枠')).toBeTruthy();
     expect(screen.getByLabelText('希望枠 終了')).toBeTruthy();
     expect(screen.getByText('未指定なら自動割当')).toBeTruthy();
+  });
+
+  it('keeps proposal generation disabled reasons visible until a case is selected', () => {
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
+      if (queryKey[0] === 'cases' && queryKey[1] === 'weekly-optimizer') {
+        return { data: { data: [] }, isLoading: false };
+      }
+      if (queryKey[0] === 'cases' && queryKey[1] === 'weekly-optimizer-search') {
+        return { data: { data: [] }, isLoading: false };
+      }
+      if (queryKey[0] === 'pharmacist-shifts') {
+        return {
+          data: {
+            data: [
+              {
+                id: 'shift_1',
+                user_id: 'pharmacist_1',
+                site_id: 'site_1',
+                date: '2026-04-09',
+                available: true,
+                available_from: '2026-04-09T09:00:00.000Z',
+                available_to: '2026-04-09T18:00:00.000Z',
+                user: { id: 'pharmacist_1', name: '薬剤師A', name_kana: null },
+                site: { id: 'site_1', name: '本店' },
+              },
+            ],
+          },
+          isLoading: false,
+        };
+      }
+      if (queryKey[0] === 'visit-vehicle-resources') {
+        return { data: { data: [] }, isLoading: false };
+      }
+      return { data: undefined, isLoading: false };
+    });
+
+    render(
+      <ScheduleWeeklyOptimizer
+        initialDate="2026-04-09"
+        initialRoutePharmacistId="pharmacist_1"
+        initialRouteDate="2026-04-09"
+      />,
+    );
+
+    expect(
+      screen
+        .getByText('提案対象ケースを選択してから空き枠提案を実行してください')
+        .getAttribute('role'),
+    ).toBe('alert');
+    expect(
+      screen.getByRole('button', { name: 'ケース選択が必要' }).getAttribute('aria-describedby'),
+    ).toBe('weekly-proposal-case-required-error');
   });
 
   it('requires confirmation before atomically applying mixed weekly route orders', async () => {

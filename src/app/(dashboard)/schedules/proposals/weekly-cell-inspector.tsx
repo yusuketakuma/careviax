@@ -75,6 +75,7 @@ type WeeklyCellInspectorProps = {
   selectedCaseId: string;
   onGenerateForCell: () => void;
   generateDisabled: boolean;
+  generateDisabledReasonId?: string;
   diagnostics: ProposalGenerationDiagnosticsCardData | null;
   onApplyTimeExpansion: () => void;
   onSwitchToDrive: () => void;
@@ -112,6 +113,7 @@ export function WeeklyCellInspector({
   selectedCaseId,
   onGenerateForCell,
   generateDisabled,
+  generateDisabledReasonId,
   diagnostics,
   onApplyTimeExpansion,
   onSwitchToDrive,
@@ -248,6 +250,7 @@ export function WeeklyCellInspector({
                 variant="outline"
                 onClick={onGenerateForCell}
                 disabled={generateDisabled}
+                aria-describedby={generateDisabledReasonId}
               >
                 <CalendarClock className="mr-1.5 size-4" />
                 {selectedCaseId ? 'このセルに提案' : 'ケース選択が必要'}
