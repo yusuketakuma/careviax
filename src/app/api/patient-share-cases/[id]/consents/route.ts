@@ -10,6 +10,7 @@ import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { dateKeySchema } from '@/lib/validations/date-key';
 import { utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { CONSENT_DOCUMENT_MIME_TYPES } from '@/server/services/consent-record-documents';
 
 const consentMethodSchema = z.enum(['paper_scan', 'digital']);
 const consentDateSchema = dateKeySchema('同意日が不正です（YYYY-MM-DD）');
@@ -175,8 +176,10 @@ export const POST = withAuthContext<{ id: string }>(
           where: {
             id: parsed.data.file_asset_id,
             org_id: ctx.orgId,
+            purpose: 'consent-document',
             status: 'uploaded',
-            OR: [{ patient_id: null }, { patient_id: shareCase.base_patient_id }],
+            mime_type: { in: CONSENT_DOCUMENT_MIME_TYPES },
+            patient_id: shareCase.base_patient_id,
           },
           select: { id: true },
         });

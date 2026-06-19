@@ -10,6 +10,7 @@ import { prisma } from '@/lib/db/client';
 import { hasPermission } from '@/lib/auth/permissions';
 import { buildCareCaseAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { canAccessCaseScopedPatientResource } from '@/server/services/patient-access';
+import { serializeConsentRecordDocumentUrl } from '@/server/services/consent-record-documents';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import type { ConsentRecord, Prisma } from '@prisma/client';
 import type { ExceptionSeverity, ExceptionStatus } from '@/types/domain-literals';
@@ -263,7 +264,7 @@ export const POST = withAuthContext<{ id: string }>(
       return notFound('同意記録が見つかりません');
     }
 
-    return success(result.record);
+    return success(serializeConsentRecordDocumentUrl(result.record));
   },
   { permission: 'canVisit' },
 );

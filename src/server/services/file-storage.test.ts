@@ -186,7 +186,7 @@ function mockReportLinkedToVisitRecord() {
 }
 
 type AccessCase = {
-  purpose: 'visit-photo' | 'prescription' | 'report';
+  purpose: 'visit-photo' | 'prescription' | 'report' | 'consent-document';
   record: Record<string, unknown>;
   authorize: () => void;
   deny: () => void;
@@ -214,6 +214,27 @@ const fileAccessCases: AccessCase[] = [
       reportId: null,
       storageKey: 'prescriptions/org_1/patient_1/file_1-prescription.pdf',
       originalName: 'prescription.pdf',
+    },
+    authorize: () => {
+      patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
+      visitScheduleFindFirstMock.mockResolvedValue({ id: 'schedule_1' });
+      careCaseFindFirstMock.mockResolvedValue(null);
+    },
+    deny: () => {
+      patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
+      visitScheduleFindFirstMock.mockResolvedValue(null);
+      careCaseFindFirstMock.mockResolvedValue(null);
+    },
+  },
+  {
+    purpose: 'consent-document',
+    record: {
+      purpose: 'consent-document',
+      patientId: 'patient_1',
+      visitRecordId: null,
+      reportId: null,
+      storageKey: 'consent-documents/org_1/patient_1/file_1-consent.pdf',
+      originalName: 'consent.pdf',
     },
     authorize: () => {
       patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
@@ -373,8 +394,31 @@ describe('file-storage', () => {
     expect(settingUpsertMock).not.toHaveBeenCalled();
   });
 
+  it('stores consent-document uploads under patient-scoped consent document keys', async () => {
+    const result = await createPresignedUpload({
+      orgId: 'org_1',
+      purpose: 'consent-document',
+      fileName: 'consent.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+      patientId: 'patient_1',
+    });
+
+    expect(getSignedUrlMock).toHaveBeenCalledOnce();
+    const putObjectCommand = getSignedUrlMock.mock.calls[0]?.[1] as {
+      input: Record<string, unknown>;
+    };
+    expect(putObjectCommand.input).toMatchObject({
+      Bucket: 'ph-os-files',
+      Key: 'consent-documents/org_1/patient_1/file-uuid-1-consent.pdf',
+      ContentType: 'application/pdf',
+    });
+    expect(result.objectKey).toBe('consent-documents/org_1/patient_1/file-uuid-1-consent.pdf');
+  });
+
   it.each([
     ['prescription', { patientId: undefined, visitRecordId: undefined, reportId: undefined }],
+    ['consent-document', { patientId: undefined, visitRecordId: undefined, reportId: undefined }],
     ['visit-photo', { patientId: undefined, visitRecordId: undefined, reportId: undefined }],
     ['report', { patientId: undefined, visitRecordId: undefined, reportId: undefined }],
   ] as const)(

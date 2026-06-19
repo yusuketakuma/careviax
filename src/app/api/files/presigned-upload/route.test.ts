@@ -581,6 +581,51 @@ describe('/api/files/presigned-upload POST', () => {
     expect(createPresignedUploadMock).not.toHaveBeenCalled();
   });
 
+  it('returns a presigned upload url for consent document files on writable patients', async () => {
+    requireAuthContextMock.mockResolvedValue({
+      ctx: {
+        userId: 'user_1',
+        orgId: 'org_1',
+        role: 'pharmacist',
+      },
+    });
+
+    const response = await POST(
+      createRequest({
+        purpose: 'consent-document',
+        file_name: 'consent.pdf',
+        mime_type: 'application/pdf',
+        size_bytes: 1024,
+        patient_id: 'patient_1',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(201);
+    expect(assertFileUploadConstraintsMock).toHaveBeenCalledWith({
+      purpose: 'consent-document',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+    });
+    expect(patientFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'patient_1',
+        org_id: 'org_1',
+      },
+      select: { id: true, archived_at: true },
+    });
+    expect(createPresignedUploadMock).toHaveBeenCalledWith({
+      orgId: 'org_1',
+      purpose: 'consent-document',
+      fileName: 'consent.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+      patientId: 'patient_1',
+      visitRecordId: undefined,
+      reportId: undefined,
+    });
+  });
+
   it('allows prescription upload for org-wide roles without patient assignment', async () => {
     requireAuthContextMock.mockResolvedValue({
       ctx: {

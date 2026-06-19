@@ -1,11 +1,12 @@
 import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
-import { success, validationError } from '@/lib/api/response';
+import { notFound, success, validationError } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { validateOrgReferences } from '@/lib/api/org-reference';
 import { prisma } from '@/lib/db/client';
+import { canAccessCaseScopedPatientResource } from '@/server/services/patient-access';
 import {
   buildAuditedConsentDocumentUrl,
   CONSENT_DOCUMENT_MIME_TYPES,
@@ -52,9 +53,28 @@ async function validateConsentDocumentFileAsset(args: {
       purpose: 'consent-document',
       status: 'uploaded',
       mime_type: { in: CONSENT_DOCUMENT_MIME_TYPES },
-      OR: [{ patient_id: null }, { patient_id: args.patientId }],
+      patient_id: args.patientId,
     },
     select: { id: true },
+  });
+}
+
+async function canAccessConsentRecordPatient(args: {
+  orgId: string;
+  patientId: string;
+  caseId?: string | null;
+  userId: string;
+  role: Parameters<typeof canAccessCaseScopedPatientResource>[0]['accessContext']['role'];
+}) {
+  return canAccessCaseScopedPatientResource({
+    db: prisma,
+    orgId: args.orgId,
+    patientId: args.patientId,
+    caseId: args.caseId,
+    accessContext: {
+      userId: args.userId,
+      role: args.role,
+    },
   });
 }
 
@@ -116,6 +136,14 @@ export const GET = withAuthContext(
     const consentType = consentTypeResult?.success ? consentTypeResult.data : undefined;
     const isActiveParam = searchParams.get('is_active');
     const isActive = isActiveParam === 'false' ? false : true;
+
+    const canAccessPatient = await canAccessConsentRecordPatient({
+      orgId: ctx.orgId,
+      patientId,
+      userId: ctx.userId,
+      role: ctx.role,
+    });
+    if (!canAccessPatient) return notFound('同意記録が見つかりません');
 
     const { cursor, limit } = parsePaginationParams(searchParams);
 
@@ -193,6 +221,15 @@ export const POST = withAuthContext(
       ...(case_id ? { case_id } : {}),
     });
     if (!refResult.ok) return refResult.response;
+
+    const canAccessPatient = await canAccessConsentRecordPatient({
+      orgId: ctx.orgId,
+      patientId: patient_id,
+      caseId: case_id ?? null,
+      userId: ctx.userId,
+      role: ctx.role,
+    });
+    if (!canAccessPatient) return notFound('同意記録が見つかりません');
 
     if (document_file_id) {
       const fileAsset = await validateConsentDocumentFileAsset({

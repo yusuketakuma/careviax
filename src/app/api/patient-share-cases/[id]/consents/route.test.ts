@@ -162,8 +162,10 @@ describe('/api/patient-share-cases/[id]/consents', () => {
       where: {
         id: 'file_1',
         org_id: 'org_1',
+        purpose: 'consent-document',
         status: 'uploaded',
-        OR: [{ patient_id: null }, { patient_id: 'patient_1' }],
+        mime_type: { in: ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'] },
+        patient_id: 'patient_1',
       },
       select: { id: true },
     });

@@ -8,6 +8,9 @@ const {
   consentRecordCountMock,
   consentRecordFindFirstMock,
   templateFindFirstMock,
+  patientFindFirstMock,
+  careCaseFindFirstMock,
+  fileAssetFindFirstMock,
   validateOrgReferencesMock,
   consentRecordCreateMock,
   withOrgContextMock,
@@ -18,6 +21,9 @@ const {
   consentRecordCountMock: vi.fn(),
   consentRecordFindFirstMock: vi.fn(),
   templateFindFirstMock: vi.fn(),
+  patientFindFirstMock: vi.fn(),
+  careCaseFindFirstMock: vi.fn(),
+  fileAssetFindFirstMock: vi.fn(),
   validateOrgReferencesMock: vi.fn(),
   consentRecordCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
@@ -39,6 +45,15 @@ vi.mock('@/lib/db/client', () => ({
     },
     template: {
       findFirst: templateFindFirstMock,
+    },
+    patient: {
+      findFirst: patientFindFirstMock,
+    },
+    careCase: {
+      findFirst: careCaseFindFirstMock,
+    },
+    fileAsset: {
+      findFirst: fileAssetFindFirstMock,
     },
   },
 }));
@@ -85,16 +100,25 @@ describe('/api/consent-records', () => {
     authMock.mockResolvedValue({ user: { id: 'user_1' } });
     membershipFindFirstMock.mockResolvedValue({ role: 'pharmacist' });
     consentRecordFindManyMock.mockResolvedValue([
-      { id: 'consent_1', patient_id: 'patient_1', consent_type: 'external_sharing' },
+      {
+        id: 'consent_1',
+        patient_id: 'patient_1',
+        consent_type: 'external_sharing',
+        document_url: 'https://files.example.test/legacy-consent.pdf',
+      },
     ]);
     consentRecordCountMock.mockResolvedValue(1);
     consentRecordFindFirstMock.mockResolvedValue(null);
     templateFindFirstMock.mockResolvedValue({ id: 'template_1', version: 2 });
+    patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
+    careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
+    fileAssetFindFirstMock.mockResolvedValue({ id: 'file_1' });
     validateOrgReferencesMock.mockResolvedValue({ ok: true });
     consentRecordCreateMock.mockResolvedValue({
       id: 'consent_2',
       patient_id: 'patient_1',
       consent_type: 'external_sharing',
+      document_url: null,
     });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -113,6 +137,10 @@ describe('/api/consent-records', () => {
     ))!;
 
     expect(response.status).toBe(200);
+    expect(patientFindFirstMock).toHaveBeenCalledWith({
+      where: { id: 'patient_1', org_id: 'org_1' },
+      select: { id: true },
+    });
     expect(consentRecordFindManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -123,6 +151,30 @@ describe('/api/consent-records', () => {
         }),
       }),
     );
+    const body = await response.json();
+    expect(body).toMatchObject({
+      data: [
+        {
+          id: 'consent_1',
+          document_url: null,
+          has_document_url: true,
+          document_url_redacted: true,
+        },
+      ],
+    });
+    expect(JSON.stringify(body)).not.toContain('legacy-consent.pdf');
+  });
+
+  it('does not list consent records outside the patient assignment scope', async () => {
+    patientFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = (await GET(
+      createRequest('http://localhost/api/consent-records?patient_id=patient_forbidden'),
+    ))!;
+
+    expect(response.status).toBe(404);
+    expect(consentRecordFindManyMock).not.toHaveBeenCalled();
+    expect(consentRecordCountMock).not.toHaveBeenCalled();
   });
 
   it('creates a consent record when no active duplicate exists', async () => {
@@ -139,6 +191,10 @@ describe('/api/consent-records', () => {
     expect(validateOrgReferencesMock).toHaveBeenCalledWith('org_1', {
       patient_id: 'patient_1',
     });
+    expect(patientFindFirstMock).toHaveBeenCalledWith({
+      where: { id: 'patient_1', org_id: 'org_1' },
+      select: { id: true },
+    });
     expect(consentRecordCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         org_id: 'org_1',
@@ -149,6 +205,99 @@ describe('/api/consent-records', () => {
         method: 'paper_scan',
       }),
     });
+  });
+
+  it('creates a consent record with a validated consent document file asset', async () => {
+    consentRecordCreateMock.mockResolvedValueOnce({
+      id: 'consent_2',
+      patient_id: 'patient_1',
+      consent_type: 'external_sharing',
+      document_url: '/api/files/file_1/presigned-download?download=1',
+    });
+
+    const response = (await POST(
+      createRequest('http://localhost/api/consent-records', {
+        patient_id: 'patient_1',
+        consent_type: 'external_sharing',
+        method: 'paper_scan',
+        obtained_date: '2026-03-29',
+        document_file_id: 'file_1',
+      }),
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(fileAssetFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'file_1',
+        org_id: 'org_1',
+        purpose: 'consent-document',
+        status: 'uploaded',
+        mime_type: { in: ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'] },
+        patient_id: 'patient_1',
+      },
+      select: { id: true },
+    });
+    expect(consentRecordCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        document_url: '/api/files/file_1/presigned-download?download=1',
+      }),
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      document_url: '/api/files/file_1/presigned-download?download=1',
+      has_document_url: true,
+      document_url_redacted: false,
+    });
+  });
+
+  it('rejects external consent document urls before lookups or create side effects', async () => {
+    const response = (await POST(
+      createRequest('http://localhost/api/consent-records', {
+        patient_id: 'patient_1',
+        consent_type: 'external_sharing',
+        method: 'paper_scan',
+        obtained_date: '2026-03-29',
+        document_url: 'https://files.example.test/legacy-consent.pdf',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(patientFindFirstMock).not.toHaveBeenCalled();
+    expect(consentRecordCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects absolute audited-looking consent document urls before create side effects', async () => {
+    const response = (await POST(
+      createRequest('http://localhost/api/consent-records', {
+        patient_id: 'patient_1',
+        consent_type: 'external_sharing',
+        method: 'paper_scan',
+        obtained_date: '2026-03-29',
+        document_url: 'https://evil.example/api/files/file_1/presigned-download?download=1',
+      }),
+    ))!;
+
+    expect(response.status).toBe(400);
+    expect(validateOrgReferencesMock).not.toHaveBeenCalled();
+    expect(consentRecordCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('does not create consent records outside the patient assignment scope', async () => {
+    patientFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = (await POST(
+      createRequest('http://localhost/api/consent-records', {
+        patient_id: 'patient_forbidden',
+        consent_type: 'external_sharing',
+        method: 'paper_scan',
+        obtained_date: '2026-03-29',
+      }),
+    ))!;
+
+    expect(response.status).toBe(404);
+    expect(consentRecordFindFirstMock).not.toHaveBeenCalled();
+    expect(templateFindFirstMock).not.toHaveBeenCalled();
+    expect(consentRecordCreateMock).not.toHaveBeenCalled();
   });
 
   it('rejects non-object request bodies before validation lookups or create side effects', async () => {

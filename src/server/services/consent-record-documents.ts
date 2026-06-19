@@ -14,6 +14,7 @@ export function buildAuditedConsentDocumentUrl(fileId: string) {
 export function normalizeAuditedConsentDocumentUrl(value: string | null | undefined) {
   const trimmed = value?.trim();
   if (!trimmed) return null;
+  if (!trimmed.startsWith('/')) return null;
 
   let parsed: URL;
   try {

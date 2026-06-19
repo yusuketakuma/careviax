@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { format, parseISO, differenceInDays } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { Plus, ShieldOff } from 'lucide-react';
+import { FileText, Plus, ShieldOff, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
@@ -49,6 +49,9 @@ type ConsentRecord = {
   obtained_date: string;
   expiry_date: string | null;
   revoked_date: string | null;
+  document_url: string | null;
+  has_document_url: boolean;
+  document_url_redacted: boolean;
   is_active: boolean;
   access_restricted: boolean;
   created_at: string;
@@ -73,6 +76,17 @@ const METHOD_LABELS: Record<string, string> = {
   paper_scan: '紙署名スキャン',
   digital: 'デジタル',
 };
+
+const CONSENT_DOCUMENT_ACCEPT = 'application/pdf,image/jpeg,image/png,image/webp';
+
+function inferConsentDocumentMimeType(file: File) {
+  if (file.type) return file.type;
+  const lowerName = file.name.toLowerCase();
+  if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) return 'image/jpeg';
+  if (lowerName.endsWith('.png')) return 'image/png';
+  if (lowerName.endsWith('.webp')) return 'image/webp';
+  return 'application/pdf';
+}
 
 function getConsentStatus(record: ConsentRecord): 'active' | 'revoked' | 'expired' {
   if (!record.is_active && record.revoked_date) return 'revoked';
@@ -110,9 +124,7 @@ function useColumns(onRevoke: (record: ConsentRecord) => void): ColumnDef<Consen
       accessorKey: 'method',
       header: '取得方法',
       cell: ({ row }) => (
-        <span className="text-sm">
-          {METHOD_LABELS[row.original.method] ?? row.original.method}
-        </span>
+        <span className="text-sm">{METHOD_LABELS[row.original.method] ?? row.original.method}</span>
       ),
     },
     {
@@ -159,6 +171,31 @@ function useColumns(onRevoke: (record: ConsentRecord) => void): ColumnDef<Consen
       },
     },
     {
+      id: 'document',
+      header: '同意書',
+      cell: ({ row }) => {
+        const record = row.original;
+        if (record.document_url) {
+          return (
+            <Button asChild variant="outline" size="sm" className="gap-1.5">
+              <a href={record.document_url} target="_blank" rel="noreferrer">
+                <FileText className="h-3.5 w-3.5" />
+                閲覧
+              </a>
+            </Button>
+          );
+        }
+        if (record.document_url_redacted) {
+          return (
+            <Badge variant="outline" className="text-xs">
+              旧URL非表示
+            </Badge>
+          );
+        }
+        return <span className="text-sm text-muted-foreground">なし</span>;
+      },
+    },
+    {
       id: 'actions',
       header: '操作',
       cell: ({ row }) => {
@@ -188,8 +225,56 @@ type CreateFormState = {
   method: string;
   obtained_date: string;
   expiry_date: string;
-  document_url: string;
+  document_file: File | null;
 };
+
+async function uploadConsentDocument(args: { file: File; patientId: string; orgId: string }) {
+  const presignResponse = await fetch('/api/files/presigned-upload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-org-id': args.orgId },
+    body: JSON.stringify({
+      purpose: 'consent-document',
+      patient_id: args.patientId,
+      file_name: args.file.name,
+      mime_type: inferConsentDocumentMimeType(args.file),
+      size_bytes: args.file.size,
+    }),
+  });
+
+  const presignJson = await presignResponse.json().catch(() => null);
+  if (!presignResponse.ok) {
+    throw new Error(presignJson?.message ?? '同意書ファイルのアップロードURL取得に失敗しました');
+  }
+
+  const uploadResponse = await fetch(presignJson.data.uploadUrl, {
+    method: 'PUT',
+    headers: presignJson.data.headers,
+    body: args.file,
+  });
+  if (!uploadResponse.ok) {
+    throw new Error('同意書ファイルのアップロードに失敗しました');
+  }
+
+  const completeResponse = await fetch('/api/files/complete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-org-id': args.orgId },
+    body: JSON.stringify({
+      file_id: presignJson.data.id,
+      etag: uploadResponse.headers.get('etag') ?? undefined,
+    }),
+  });
+
+  const completeJson = await completeResponse.json().catch(() => null);
+  if (!completeResponse.ok) {
+    throw new Error(completeJson?.message ?? '同意書ファイルの登録に失敗しました');
+  }
+
+  if (typeof completeJson?.data?.id !== 'string') {
+    throw new Error('同意書ファイルの登録結果が不正です');
+  }
+
+  return completeJson.data.id as string;
+}
 
 function CreateConsentDialog({
   patientId,
@@ -207,7 +292,7 @@ function CreateConsentDialog({
     method: 'paper_scan',
     obtained_date: format(new Date(), 'yyyy-MM-dd'),
     expiry_date: '',
-    document_url: '',
+    document_file: null,
   });
   const templatesQuery = useQuery({
     queryKey: ['consent-templates', orgId],
@@ -225,6 +310,9 @@ function CreateConsentDialog({
 
   const mutation = useMutation({
     mutationFn: async (data: CreateFormState) => {
+      const documentFileId = data.document_file
+        ? await uploadConsentDocument({ file: data.document_file, patientId, orgId })
+        : undefined;
       const res = await fetch('/api/consent-records', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
@@ -235,7 +323,7 @@ function CreateConsentDialog({
           method: data.method,
           obtained_date: data.obtained_date,
           ...(data.expiry_date ? { expiry_date: data.expiry_date } : {}),
-          ...(data.document_url ? { document_url: data.document_url } : {}),
+          ...(documentFileId ? { document_file_id: documentFileId } : {}),
         }),
       });
       if (!res.ok) {
@@ -277,7 +365,9 @@ function CreateConsentDialog({
       </DialogHeader>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="space-y-1.5">
-          <Label htmlFor="consent_type">同意種別 <span className="text-destructive">*</span></Label>
+          <Label htmlFor="consent_type">
+            同意種別 <span className="text-destructive">*</span>
+          </Label>
           <Select
             value={form.consent_type}
             onValueChange={(v) => setForm((f) => ({ ...f, consent_type: v ?? f.consent_type }))}
@@ -317,7 +407,9 @@ function CreateConsentDialog({
         </div>
 
         <div className="space-y-1.5">
-          <Label>取得方法 <span className="text-destructive">*</span></Label>
+          <Label>
+            取得方法 <span className="text-destructive">*</span>
+          </Label>
           <div className="flex gap-4">
             {(['paper_scan', 'digital'] as const).map((m) => (
               <label key={m} className="flex cursor-pointer items-center gap-2 text-sm">
@@ -336,7 +428,9 @@ function CreateConsentDialog({
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="obtained_date">取得日 <span className="text-destructive">*</span></Label>
+          <Label htmlFor="obtained_date">
+            取得日 <span className="text-destructive">*</span>
+          </Label>
           <Input
             id="obtained_date"
             type="date"
@@ -357,14 +451,19 @@ function CreateConsentDialog({
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="document_url">文書URL（任意）</Label>
+          <Label htmlFor="document_file">同意書ファイル（任意）</Label>
           <Input
-            id="document_url"
-            type="url"
-            placeholder="https://..."
-            value={form.document_url}
-            onChange={(e) => setForm((f) => ({ ...f, document_url: e.target.value }))}
+            id="document_file"
+            type="file"
+            accept={CONSENT_DOCUMENT_ACCEPT}
+            onChange={(e) => setForm((f) => ({ ...f, document_file: e.target.files?.[0] ?? null }))}
           />
+          {form.document_file && (
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Upload className="h-3 w-3" />
+              {form.document_file.name}
+            </p>
+          )}
         </div>
 
         <DialogFooter>
@@ -414,7 +513,7 @@ function RevokeConsentDialog({
         queryClient.invalidateQueries({ queryKey: ['consent-records', record.patient_id] }),
         invalidateQueryKeys(
           queryClient,
-          getPatientCareQueryKeys({ orgId, patientId: record.patient_id })
+          getPatientCareQueryKeys({ orgId, patientId: record.patient_id }),
         ),
       ]);
       onClose();
@@ -463,10 +562,7 @@ function RevokeConsentDialog({
             checked={confirmed}
             onCheckedChange={(v) => setConfirmed(v === true)}
           />
-          <label
-            htmlFor="revoke_confirm"
-            className="cursor-pointer text-sm leading-snug"
-          >
+          <label htmlFor="revoke_confirm" className="cursor-pointer text-sm leading-snug">
             この操作は取り消せません
           </label>
         </div>
@@ -502,10 +598,9 @@ export function ConsentRecordsContent() {
   const { data, isLoading } = useQuery<ConsentListResponse>({
     queryKey: ['consent-records', patientId],
     queryFn: async () => {
-      const res = await fetch(
-        `/api/consent-records?patient_id=${patientId}&is_active=false`,
-        { headers: { 'x-org-id': orgId } }
-      );
+      const res = await fetch(`/api/consent-records?patient_id=${patientId}&is_active=false`, {
+        headers: { 'x-org-id': orgId },
+      });
       if (!res.ok) throw new Error('同意記録の取得に失敗しました');
       return res.json();
     },

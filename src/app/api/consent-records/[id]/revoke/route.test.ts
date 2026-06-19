@@ -91,6 +91,7 @@ describe('/api/consent-records/[id]/revoke', () => {
     consentRecordFindUniqueMock.mockResolvedValue({
       id: 'consent_1',
       is_active: false,
+      document_url: 'https://files.example.test/legacy-consent.pdf',
     });
     externalAccessGrantUpdateManyMock.mockResolvedValue({ count: 2 });
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
@@ -238,6 +239,12 @@ describe('/api/consent-records/[id]/revoke', () => {
           }),
         }),
       }),
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      id: 'consent_1',
+      document_url: null,
+      has_document_url: true,
+      document_url_redacted: true,
     });
   });
 

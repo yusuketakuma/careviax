@@ -6,6 +6,7 @@ const {
   consentRecordFindUniqueMock,
   patientFindFirstMock,
   careCaseFindFirstMock,
+  fileAssetFindFirstMock,
   txPatientFindFirstMock,
   txCareCaseFindFirstMock,
   consentRecordUpdateMock,
@@ -15,6 +16,7 @@ const {
   consentRecordFindUniqueMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
+  fileAssetFindFirstMock: vi.fn(),
   txPatientFindFirstMock: vi.fn(),
   txCareCaseFindFirstMock: vi.fn(),
   consentRecordUpdateMock: vi.fn(),
@@ -38,6 +40,9 @@ vi.mock('@/lib/db/client', () => ({
     },
     careCase: {
       findFirst: careCaseFindFirstMock,
+    },
+    fileAsset: {
+      findFirst: fileAssetFindFirstMock,
     },
   },
 }));
@@ -76,6 +81,7 @@ describe('/api/consent-records/[id]', () => {
     });
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
+    fileAssetFindFirstMock.mockResolvedValue({ id: 'file_1' });
     txPatientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
     txCareCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
     consentRecordUpdateMock.mockResolvedValue({ count: 1 });
@@ -192,6 +198,40 @@ describe('/api/consent-records/[id]', () => {
     });
   });
 
+  it('updates the document url from a validated consent document file id', async () => {
+    const response = (await PATCH(
+      createRequest('PATCH', {
+        document_file_id: 'file_1',
+      }),
+      {
+        params: Promise.resolve({ id: 'consent_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(fileAssetFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'file_1',
+        org_id: 'org_1',
+        purpose: 'consent-document',
+        status: 'uploaded',
+        mime_type: { in: ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'] },
+        patient_id: 'patient_1',
+      },
+      select: { id: true },
+    });
+    expect(consentRecordUpdateMock).toHaveBeenCalledWith({
+      where: {
+        id: 'consent_1',
+        org_id: 'org_1',
+        updated_at: new Date('2026-01-01T00:00:00.000Z'),
+      },
+      data: {
+        document_url: '/api/files/file_1/presigned-download?download=1',
+      },
+    });
+  });
+
   it('does not update a consent record outside the patient assignment scope', async () => {
     patientFindFirstMock.mockResolvedValue(null);
 
@@ -275,6 +315,28 @@ describe('/api/consent-records/[id]', () => {
     const response = (await PATCH(
       createRequest('PATCH', {
         document_url: 'https://example.com/consent.pdf',
+      }),
+      {
+        params: Promise.resolve({ id: 'consent_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        document_url: ['同意書文書は監査済みファイルURLまたは document_file_id で指定してください'],
+      },
+    });
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(consentRecordUpdateMock).not.toHaveBeenCalled();
+    expect(consentRecordFindUniqueMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects absolute audited-looking document urls before mutating the consent record', async () => {
+    const response = (await PATCH(
+      createRequest('PATCH', {
+        document_url: 'https://evil.example/api/files/file_1/presigned-download?download=1',
       }),
       {
         params: Promise.resolve({ id: 'consent_1' }),

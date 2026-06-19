@@ -51,7 +51,7 @@ async function validateConsentDocumentFileAsset(args: {
       purpose: 'consent-document',
       status: 'uploaded',
       mime_type: { in: CONSENT_DOCUMENT_MIME_TYPES },
-      OR: [{ patient_id: null }, { patient_id: args.patientId }],
+      patient_id: args.patientId,
     },
     select: { id: true },
   });
