@@ -26,6 +26,8 @@ import { cn } from '@/lib/utils';
 
 type CursorPage<T> = {
   data: T[];
+  hasMore?: boolean;
+  nextCursor?: string;
   next_cursor?: string | null;
 };
 
@@ -221,6 +223,37 @@ type ReportDraftResult = {
   report: { id: string; status: string; report_type: string };
 };
 
+type PharmacyCooperationMessageSenderSide = 'base_pharmacy' | 'partner_pharmacy';
+
+type PharmacyCooperationMessageRow = {
+  id: string;
+  org_id: string;
+  thread_id: string;
+  sender_user_id: string;
+  sender_side: PharmacyCooperationMessageSenderSide;
+  body: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type PharmacyCooperationMessageThreadRow = {
+  id: string;
+  org_id: string;
+  share_case_id: string;
+  visit_request_id: string | null;
+  context_type: 'patient_share_case' | 'visit_request';
+  status: string;
+  created_by: string;
+  last_message_at: string | null;
+  created_at: string;
+  updated_at: string;
+  messages: PharmacyCooperationMessageRow[];
+};
+
+type MessageForm = {
+  body: string;
+};
+
 const EMPTY_LINK_ACCEPT_FORM: LinkAcceptForm = {
   partnerPatientId: '',
   name: '',
@@ -354,6 +387,10 @@ const EMPTY_PARTNER_VISIT_RECORD_DRAFT_FORM: PartnerVisitRecordDraftForm = {
   sourceVisitRecordId: '',
 };
 
+const EMPTY_MESSAGE_FORM: MessageForm = {
+  body: '',
+};
+
 async function readApiJson<T>(response: Response): Promise<T> {
   const json = await response.json().catch(() => null);
   if (!response.ok) {
@@ -405,6 +442,24 @@ async function fetchPatientShareConsents(orgId: string, shareCaseId: string) {
     headers: { 'x-org-id': orgId },
   });
   return readApiJson<CursorPage<PatientShareConsentRow>>(response);
+}
+
+async function fetchMessageThreads(
+  orgId: string,
+  shareCaseId: string,
+  visitRequestId: string | null,
+) {
+  const params = new URLSearchParams({
+    limit: '8',
+    message_limit: '20',
+    share_case_id: shareCaseId,
+  });
+  if (visitRequestId) params.set('visit_request_id', visitRequestId);
+
+  const response = await fetch(`/api/pharmacy-cooperation-message-threads?${params.toString()}`, {
+    headers: { 'x-org-id': orgId },
+  });
+  return readApiJson<CursorPage<PharmacyCooperationMessageThreadRow>>(response);
 }
 
 function formatDate(value: string | null | undefined) {
@@ -522,6 +577,14 @@ function statusVariant(status: string): 'default' | 'secondary' | 'destructive' 
     return 'secondary';
   }
   return 'outline';
+}
+
+function messageSenderSideLabel(senderSide: PharmacyCooperationMessageSenderSide) {
+  return senderSide === 'base_pharmacy' ? '基幹薬局' : '協力薬局';
+}
+
+function messageContextLabel(thread: PharmacyCooperationMessageThreadRow) {
+  return thread.visit_request_id ? `訪問依頼 ${thread.visit_request_id}` : '患者共有ケース全体';
 }
 
 function TinyMeta({ children }: { children: ReactNode }) {
@@ -1945,6 +2008,157 @@ function CorrectionRequestsPanel({
   );
 }
 
+function MessageThreadsPanel({
+  activeShareCases,
+  visitRequests,
+  selectedShareCaseId,
+  setSelectedShareCaseId,
+  selectedVisitRequestId,
+  setSelectedVisitRequestId,
+  messageThreads,
+  form,
+  setForm,
+  isLoading,
+  isError,
+  error,
+  isBusy,
+  onRetry,
+  onCreate,
+}: {
+  activeShareCases: PatientShareCaseRow[];
+  visitRequests: PharmacyVisitRequestRow[];
+  selectedShareCaseId: string;
+  setSelectedShareCaseId: Dispatch<SetStateAction<string>>;
+  selectedVisitRequestId: string;
+  setSelectedVisitRequestId: Dispatch<SetStateAction<string>>;
+  messageThreads: PharmacyCooperationMessageThreadRow[];
+  form: MessageForm;
+  setForm: Dispatch<SetStateAction<MessageForm>>;
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+  isBusy: boolean;
+  onRetry: () => void;
+  onCreate: () => void;
+}) {
+  const visitRequestOptions = visitRequests.filter(
+    (request) => request.share_case_id === selectedShareCaseId,
+  );
+  const canCreate =
+    activeShareCases.some((shareCase) => shareCase.id === selectedShareCaseId) &&
+    form.body.trim().length > 0;
+
+  if (activeShareCases.length === 0) {
+    return <EmptyState title="共有中の患者共有ケースがありません" />;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1fr)]">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="flex flex-col gap-1">
+            <FieldLabel>共有ケース</FieldLabel>
+            <NativeSelect
+              value={selectedShareCaseId}
+              onChange={(value) => {
+                setSelectedShareCaseId(value);
+                setSelectedVisitRequestId('');
+              }}
+              disabled={isBusy}
+              ariaLabel="メッセージの共有ケース"
+            >
+              {activeShareCases.map((row) => (
+                <option key={row.id} value={row.id}>
+                  {row.id} / {row.partnership.partner_pharmacy.name}
+                </option>
+              ))}
+            </NativeSelect>
+          </label>
+          <label className="flex flex-col gap-1">
+            <FieldLabel>対象</FieldLabel>
+            <NativeSelect
+              value={selectedVisitRequestId}
+              onChange={setSelectedVisitRequestId}
+              disabled={isBusy}
+              ariaLabel="メッセージの対象"
+            >
+              <option value="">患者共有ケース全体</option>
+              {visitRequestOptions.map((row) => (
+                <option key={row.id} value={row.id}>
+                  {row.id} / {statusLabel(row.status)}
+                </option>
+              ))}
+            </NativeSelect>
+          </label>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+          <label className="flex flex-col gap-1">
+            <FieldLabel>本文</FieldLabel>
+            <Textarea
+              value={form.body}
+              onChange={(event) => setForm((current) => ({ ...current, body: event.target.value }))}
+              aria-label="薬局間連携メッセージ本文"
+              className="min-h-20"
+            />
+          </label>
+          <Button type="button" disabled={isBusy || !canCreate} onClick={onCreate}>
+            <Send className="size-4" aria-hidden="true" />
+            メッセージ送信
+          </Button>
+        </div>
+      </div>
+
+      <QueryFallback isLoading={isLoading} isError={isError} error={error} onRetry={onRetry}>
+        {messageThreads.length === 0 ? (
+          <EmptyState title="メッセージはまだありません" />
+        ) : (
+          <div className="space-y-3" aria-label="薬局間連携メッセージ一覧">
+            {messageThreads.map((thread) => (
+              <article key={thread.id} className="rounded-lg border border-border/70 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">
+                      {messageContextLabel(thread)}
+                    </h3>
+                    <TinyMeta>
+                      {thread.id} / 最終{' '}
+                      {formatDateTime(thread.last_message_at ?? thread.updated_at)}
+                    </TinyMeta>
+                  </div>
+                  <Badge variant={statusVariant(thread.status)}>{statusLabel(thread.status)}</Badge>
+                </div>
+                {thread.messages.length === 0 ? (
+                  <div className="mt-3">
+                    <TinyMeta>このスレッドのメッセージはありません</TinyMeta>
+                  </div>
+                ) : (
+                  <ol className="mt-3 space-y-2">
+                    {thread.messages.map((message) => (
+                      <li key={message.id} className="rounded-md border border-border/60 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-xs font-medium text-muted-foreground">
+                            {messageSenderSideLabel(message.sender_side)}
+                          </span>
+                          <span className="text-xs tabular-nums text-muted-foreground">
+                            {formatDateTime(message.created_at)}
+                          </span>
+                        </div>
+                        <p className="mt-2 whitespace-pre-wrap break-words text-sm text-foreground">
+                          {message.body}
+                        </p>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
+      </QueryFallback>
+    </div>
+  );
+}
+
 export function PharmacyCooperationWorkflowContent() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
@@ -1962,6 +2176,9 @@ export function PharmacyCooperationWorkflowContent() {
   const [selectedVisitRequestShareCaseId, setSelectedVisitRequestShareCaseId] = useState('');
   const [visitRequestForm, setVisitRequestForm] =
     useState<VisitRequestForm>(EMPTY_VISIT_REQUEST_FORM);
+  const [selectedMessageShareCaseId, setSelectedMessageShareCaseId] = useState('');
+  const [selectedMessageVisitRequestId, setSelectedMessageVisitRequestId] = useState('');
+  const [messageForm, setMessageForm] = useState<MessageForm>(EMPTY_MESSAGE_FORM);
   const [selectedRecordVisitRequestId, setSelectedRecordVisitRequestId] = useState('');
   const [recordDraftForm, setRecordDraftForm] = useState<PartnerVisitRecordDraftForm>(
     EMPTY_PARTNER_VISIT_RECORD_DRAFT_FORM,
@@ -2026,6 +2243,21 @@ export function PharmacyCooperationWorkflowContent() {
   const effectiveVisitRequestShareCaseId = selectedVisitRequestShareCaseStillVisible
     ? selectedVisitRequestShareCaseId
     : (activeShareCases[0]?.id ?? '');
+  const selectedMessageShareCaseStillVisible = activeShareCases.some(
+    (row) => row.id === selectedMessageShareCaseId,
+  );
+  const effectiveMessageShareCaseId = selectedMessageShareCaseStillVisible
+    ? selectedMessageShareCaseId
+    : (activeShareCases[0]?.id ?? '');
+  const messageVisitRequestOptions = visitRequests.filter(
+    (request) => request.share_case_id === effectiveMessageShareCaseId,
+  );
+  const selectedMessageVisitRequestStillVisible =
+    selectedMessageVisitRequestId === '' ||
+    messageVisitRequestOptions.some((request) => request.id === selectedMessageVisitRequestId);
+  const effectiveMessageVisitRequestId = selectedMessageVisitRequestStillVisible
+    ? selectedMessageVisitRequestId
+    : '';
 
   const correctionRequestsQuery = useQuery({
     queryKey: ['pharmacy-cooperation-correction-requests', orgId, effectiveCorrectionShareCaseId],
@@ -2039,6 +2271,23 @@ export function PharmacyCooperationWorkflowContent() {
     queryFn: () => fetchPatientShareConsents(orgId, effectiveConsentShareCaseId),
     enabled: enabled && effectiveConsentShareCaseId.length > 0,
     staleTime: 20_000,
+  });
+
+  const messageThreadsQuery = useQuery({
+    queryKey: [
+      'pharmacy-cooperation-message-threads',
+      orgId,
+      effectiveMessageShareCaseId,
+      effectiveMessageVisitRequestId,
+    ],
+    queryFn: () =>
+      fetchMessageThreads(
+        orgId,
+        effectiveMessageShareCaseId,
+        effectiveMessageVisitRequestId || null,
+      ),
+    enabled: enabled && effectiveMessageShareCaseId.length > 0,
+    staleTime: 10_000,
   });
 
   const invalidateWorkflow = async () => {
@@ -2057,6 +2306,9 @@ export function PharmacyCooperationWorkflowContent() {
       }),
       queryClient.invalidateQueries({
         queryKey: ['pharmacy-cooperation-share-consents', orgId, effectiveConsentShareCaseId],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ['pharmacy-cooperation-message-threads', orgId],
       }),
     ]);
   };
@@ -2271,6 +2523,37 @@ export function PharmacyCooperationWorkflowContent() {
     },
   });
 
+  const createMessageMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch('/api/pharmacy-cooperation-message-threads', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          share_case_id: effectiveMessageShareCaseId,
+          ...(effectiveMessageVisitRequestId
+            ? { visit_request_id: effectiveMessageVisitRequestId }
+            : {}),
+          body: messageForm.body.trim(),
+        }),
+      });
+      return readApiJson<{
+        thread: PharmacyCooperationMessageThreadRow;
+        notification_count: number;
+      }>(response);
+    },
+    onSuccess: async () => {
+      toast.success('メッセージを送信しました');
+      setMessageForm(EMPTY_MESSAGE_FORM);
+      await invalidateWorkflow();
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'メッセージの送信に失敗しました');
+    },
+  });
+
   const savePartnerVisitRecordDraftMutation = useMutation({
     mutationFn: async () => {
       const response = await fetch('/api/partner-visit-records', {
@@ -2415,6 +2698,7 @@ export function PharmacyCooperationWorkflowContent() {
     revokePatientShareConsentMutation.isPending ||
     createCorrectionRequestMutation.isPending ||
     createVisitRequestMutation.isPending ||
+    createMessageMutation.isPending ||
     savePartnerVisitRecordDraftMutation.isPending ||
     visitRequestDecisionMutation.isPending ||
     submitRecordMutation.isPending ||
@@ -2423,6 +2707,7 @@ export function PharmacyCooperationWorkflowContent() {
 
   const correctionRequests = correctionRequestsQuery.data?.data ?? [];
   const patientShareConsents = patientShareConsentsQuery.data?.data ?? [];
+  const messageThreads = messageThreadsQuery.data?.data ?? [];
   const submittedRecords = partnerVisitRecords.filter((record) => record.status === 'submitted');
   const requestedVisits = visitRequests.filter((request) => request.status === 'requested');
   const inactiveShareCases = shareCases.filter((shareCase) => shareCase.status !== 'active');
@@ -2487,6 +2772,7 @@ export function PharmacyCooperationWorkflowContent() {
             void partnerVisitRecordsQuery.refetch();
             void correctionRequestsQuery.refetch();
             void patientShareConsentsQuery.refetch();
+            if (effectiveMessageShareCaseId) void messageThreadsQuery.refetch();
           }}
         >
           <RefreshCw className="size-4" aria-hidden="true" />
@@ -2594,6 +2880,29 @@ export function PharmacyCooperationWorkflowContent() {
             }
           />
         </QueryFallback>
+      </SectionShell>
+
+      <SectionShell
+        title="薬局間連携メッセージ"
+        description="患者共有ケースまたは訪問依頼単位で連絡します。"
+      >
+        <MessageThreadsPanel
+          activeShareCases={activeShareCases}
+          visitRequests={visitRequests}
+          selectedShareCaseId={effectiveMessageShareCaseId}
+          setSelectedShareCaseId={setSelectedMessageShareCaseId}
+          selectedVisitRequestId={effectiveMessageVisitRequestId}
+          setSelectedVisitRequestId={setSelectedMessageVisitRequestId}
+          messageThreads={messageThreads}
+          form={messageForm}
+          setForm={setMessageForm}
+          isLoading={messageThreadsQuery.isLoading}
+          isError={messageThreadsQuery.isError}
+          error={messageThreadsQuery.error}
+          isBusy={isBusy}
+          onRetry={() => void messageThreadsQuery.refetch()}
+          onCreate={() => createMessageMutation.mutate()}
+        />
       </SectionShell>
 
       <SectionShell

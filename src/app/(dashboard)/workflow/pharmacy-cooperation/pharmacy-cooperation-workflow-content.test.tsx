@@ -366,6 +366,47 @@ describe('PharmacyCooperationWorkflowContent', () => {
             { status: 200 },
           );
         }
+        if (url.startsWith('/api/pharmacy-cooperation-message-threads?')) {
+          const params = new URLSearchParams(url.slice(url.indexOf('?') + 1));
+          const visitRequestId = params.get('visit_request_id');
+          const shareCaseId = params.get('share_case_id') ?? 'share_case_active';
+          const messageBody = visitRequestId ? '訪問依頼の確認事項です' : '確認事項があります';
+
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: visitRequestId ? 'message_thread_visit_request' : 'message_thread_share_case',
+                  org_id: 'org_1',
+                  share_case_id: shareCaseId,
+                  visit_request_id: visitRequestId,
+                  context_type: visitRequestId ? 'visit_request' : 'patient_share_case',
+                  status: 'open',
+                  created_by: 'base_user',
+                  last_message_at: '2026-06-20T01:40:00.000Z',
+                  created_at: '2026-06-20T01:30:00.000Z',
+                  updated_at: '2026-06-20T01:40:00.000Z',
+                  messages: [
+                    {
+                      id: visitRequestId ? 'message_visit_1' : 'message_share_1',
+                      org_id: 'org_1',
+                      thread_id: visitRequestId
+                        ? 'message_thread_visit_request'
+                        : 'message_thread_share_case',
+                      sender_user_id: 'partner_user',
+                      sender_side: 'partner_pharmacy',
+                      body: messageBody,
+                      created_at: '2026-06-20T01:40:00.000Z',
+                      updated_at: '2026-06-20T01:40:00.000Z',
+                    },
+                  ],
+                },
+              ],
+              hasMore: false,
+            }),
+            { status: 200 },
+          );
+        }
         if (
           url === '/api/patient-share-cases/share_case_activation_ready/activate' &&
           init?.method === 'POST'
@@ -469,6 +510,39 @@ describe('PharmacyCooperationWorkflowContent', () => {
               has_carry_items: true,
               has_patient_home_notes: true,
               has_decline_reason: false,
+            }),
+            { status: 201 },
+          );
+        }
+        if (url === '/api/pharmacy-cooperation-message-threads' && init?.method === 'POST') {
+          const body = JSON.parse(String(init.body));
+          return new Response(
+            JSON.stringify({
+              thread: {
+                id: 'message_thread_created',
+                org_id: 'org_1',
+                share_case_id: body.share_case_id,
+                visit_request_id: body.visit_request_id ?? null,
+                context_type: body.visit_request_id ? 'visit_request' : 'patient_share_case',
+                status: 'open',
+                created_by: 'base_user',
+                last_message_at: '2026-06-20T01:45:00.000Z',
+                created_at: '2026-06-20T01:45:00.000Z',
+                updated_at: '2026-06-20T01:45:00.000Z',
+                messages: [
+                  {
+                    id: 'message_created_1',
+                    org_id: 'org_1',
+                    thread_id: 'message_thread_created',
+                    sender_user_id: 'base_user',
+                    sender_side: 'base_pharmacy',
+                    body: body.body,
+                    created_at: '2026-06-20T01:45:00.000Z',
+                    updated_at: '2026-06-20T01:45:00.000Z',
+                  },
+                ],
+              },
+              notification_count: 1,
             }),
             { status: 201 },
           );
@@ -833,6 +907,45 @@ describe('PharmacyCooperationWorkflowContent', () => {
 
     expect(document.body.textContent).not.toContain('共有内容の確認が必要です');
     expect(document.body.textContent).not.toContain('連携先確認済み');
+  });
+
+  it('lists and posts pharmacy cooperation messages for visit request contexts', async () => {
+    renderContent();
+
+    expect(await screen.findByText('確認事項があります')).toBeTruthy();
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'メッセージの対象' }), {
+      target: { value: 'visit_request_record_ready' },
+    });
+
+    expect(await screen.findByText('訪問依頼の確認事項です')).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('薬局間連携メッセージ本文'), {
+      target: { value: '  服薬状況を共有します  ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /メッセージ送信/ }));
+
+    await waitFor(() => {
+      const messageCall = vi
+        .mocked(fetch)
+        .mock.calls.find(
+          ([input, init]) =>
+            String(input) === '/api/pharmacy-cooperation-message-threads' &&
+            init?.method === 'POST',
+        );
+      expect(messageCall).toBeTruthy();
+      expect(messageCall?.[1]?.headers).toEqual(
+        expect.objectContaining({
+          'content-type': 'application/json',
+          'x-org-id': 'org_1',
+        }),
+      );
+      expect(JSON.parse(String(messageCall?.[1]?.body))).toEqual({
+        share_case_id: 'share_case_active',
+        visit_request_id: 'visit_request_record_ready',
+        body: '服薬状況を共有します',
+      });
+    });
   });
 
   it('saves a partner visit record draft for an accepted visit request', async () => {
