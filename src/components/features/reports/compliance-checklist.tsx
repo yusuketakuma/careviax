@@ -2,7 +2,11 @@
 
 import { CheckCircle2, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import type { PhysicianReportContent, CareManagerReportContent } from '@/types/care-report-content';
+import type {
+  PhysicianReportContent,
+  CareManagerReportContent,
+  AudienceReportContent,
+} from '@/types/care-report-content';
 
 export type ReportComplianceCheckItem = {
   key: string;
@@ -92,16 +96,36 @@ function deriveCareManagerChecks(content: CareManagerReportContent): ReportCompl
     {
       key: 'next_plan',
       label: '今後の計画が記載されている',
-      passed:
-        !!content.next_visit_plan.date ||
-        content.next_visit_plan.followup_items.length > 0,
+      passed: !!content.next_visit_plan.date || content.next_visit_plan.followup_items.length > 0,
+    },
+  ];
+}
+
+function deriveAudienceChecks(content: AudienceReportContent): ReportComplianceCheckItem[] {
+  return [
+    { key: 'summary', label: '今日の要点が記載されている', passed: !!content.summary?.trim() },
+    {
+      key: 'medication',
+      label: '服薬状況が記載されている',
+      passed: !!content.medication?.trim(),
+    },
+    { key: 'residual', label: '残薬状況が記載されている', passed: !!content.residual?.trim() },
+    {
+      key: 'evaluation',
+      label: '薬剤師の評価が記載されている',
+      passed: !!content.evaluation?.trim(),
+    },
+    {
+      key: 'requests',
+      label: 'お願いしたいことが記載されている',
+      passed: !!content.requests?.trim(),
     },
   ];
 }
 
 type Props = {
   reportType: string;
-  content: PhysicianReportContent | CareManagerReportContent;
+  content: PhysicianReportContent | CareManagerReportContent | AudienceReportContent;
   warnings?: string[];
 };
 
@@ -177,11 +201,16 @@ export function ComplianceChecklist({ reportType, content, warnings = [] }: Prop
 
 export function deriveReportComplianceChecks(
   reportType: string,
-  content: PhysicianReportContent | CareManagerReportContent,
+  content: PhysicianReportContent | CareManagerReportContent | AudienceReportContent,
 ): ReportComplianceCheckItem[] {
-  return (
-    reportType === 'physician_report'
-      ? derivePhysicianChecks(content as PhysicianReportContent)
-      : deriveCareManagerChecks(content as CareManagerReportContent)
-  );
+  if (reportType === 'physician_report') {
+    return derivePhysicianChecks(content as PhysicianReportContent);
+  }
+  if (reportType === 'care_manager_report') {
+    return deriveCareManagerChecks(content as CareManagerReportContent);
+  }
+  if (reportType === 'nurse_share' || reportType === 'facility_handoff') {
+    return deriveAudienceChecks(content as AudienceReportContent);
+  }
+  return [];
 }

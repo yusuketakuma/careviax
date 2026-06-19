@@ -389,6 +389,62 @@ describe('buildBillingDocumentPdf', () => {
     expect(text).toContain('3,240円');
   });
 
+  it('rejects issued receipt exports when the collected amount is not positive', async () => {
+    billingCandidateFindFirstMock.mockResolvedValueOnce({
+      id: 'candidate_1',
+      patient_id: 'patient_1',
+      billing_domain: 'home_care',
+      billing_target_name: null,
+      billing_month: new Date('2026-06-01T00:00:00.000Z'),
+      billing_code: 'HC-001',
+      billing_name: '居宅療養管理指導',
+      source_snapshot: null,
+      calculation_breakdown: {
+        collection: {
+          status: 'collected',
+          billed_amount: 3240,
+          collected_amount: 0,
+          unpaid_amount: 3240,
+          receipt_number: 'R20260616-001',
+          receipt_issue_status: 'issued',
+          invoice_issue_status: 'issued',
+        },
+      },
+    });
+
+    await expect(buildBillingDocumentPdf('org_1', 'candidate_1', 'receipt')).rejects.toThrow(
+      'BILLING_DOCUMENT_NOT_ISSUED',
+    );
+    expect(renderToBufferMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects issued invoice exports when the billed amount is not positive', async () => {
+    billingCandidateFindFirstMock.mockResolvedValueOnce({
+      id: 'candidate_1',
+      patient_id: 'patient_1',
+      billing_domain: 'home_care',
+      billing_target_name: null,
+      billing_month: new Date('2026-06-01T00:00:00.000Z'),
+      billing_code: 'HC-001',
+      billing_name: '居宅療養管理指導',
+      source_snapshot: null,
+      calculation_breakdown: {
+        collection: {
+          status: 'billed',
+          billed_amount: 0,
+          collected_amount: 0,
+          unpaid_amount: 0,
+          invoice_issue_status: 'issued',
+        },
+      },
+    });
+
+    await expect(buildBillingDocumentPdf('org_1', 'candidate_1', 'invoice')).rejects.toThrow(
+      'BILLING_DOCUMENT_NOT_ISSUED',
+    );
+    expect(renderToBufferMock).not.toHaveBeenCalled();
+  });
+
   it('rejects unissued invoice exports', async () => {
     billingCandidateFindFirstMock.mockResolvedValueOnce({
       id: 'candidate_1',

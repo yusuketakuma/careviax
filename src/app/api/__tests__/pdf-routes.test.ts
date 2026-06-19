@@ -12,6 +12,7 @@ const {
   buildPatientVisitRecordsPdfMock,
   buildTracingReportPdfMock,
   buildVisitRecordPdfMock,
+  buildPharmacyInvoiceDocumentPdfMock,
 } = vi.hoisted(() => ({
   requireAuthContextMock: vi.fn(),
   recordDataExportAuditMock: vi.fn(),
@@ -23,6 +24,7 @@ const {
   buildPatientVisitRecordsPdfMock: vi.fn(),
   buildTracingReportPdfMock: vi.fn(),
   buildVisitRecordPdfMock: vi.fn(),
+  buildPharmacyInvoiceDocumentPdfMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -44,6 +46,10 @@ vi.mock('@/server/services/pdf-documents', () => ({
   buildVisitRecordPdf: buildVisitRecordPdfMock,
 }));
 
+vi.mock('@/server/services/pdf-pharmacy-invoice', () => ({
+  buildPharmacyInvoiceDocumentPdf: buildPharmacyInvoiceDocumentPdfMock,
+}));
+
 vi.mock('@/lib/db/client', () => ({
   prisma: {},
 }));
@@ -56,6 +62,7 @@ import { GET as medicationCalendarPdfGet } from '../patients/[id]/medication-cal
 import { GET as patientVisitRecordsPdfGet } from '../patients/[id]/visit-records/pdf/route';
 import { GET as tracingReportPdfGet } from '../tracing-reports/[id]/pdf/route';
 import { GET as visitRecordPdfGet } from '../visit-records/[id]/pdf/route';
+import { GET as pharmacyInvoicePdfGet } from '../pharmacy-invoices/[id]/pdf/route';
 
 function createRequest(url: string) {
   return new NextRequest(url, {
@@ -80,6 +87,7 @@ describe('PDF routes', () => {
     buildCareReportPdfMock.mockResolvedValue({
       buffer: Buffer.from('%PDF-care-report'),
       fileName: 'care-report.pdf',
+      reportUpdatedAt: new Date('2026-03-28T09:00:00.000Z'),
     });
 
     const response = await careReportPdfGet(
@@ -125,6 +133,39 @@ describe('PDF routes', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('application/pdf');
     expect(response.headers.get('content-disposition')).toContain('billing-receipt.pdf');
+  });
+
+  it('returns a pharmacy invoice pdf response', async () => {
+    buildPharmacyInvoiceDocumentPdfMock.mockResolvedValue({
+      buffer: Buffer.from('%PDF-pharmacy-invoice'),
+      fileName: 'pharmacy-invoice.pdf',
+      auditMetadata: {
+        document_kind: 'invoice',
+        billing_month: '2026-06-01',
+        status: 'draft',
+        item_count: 1,
+        subtotal: 5500,
+        tax_amount: 550,
+        total: 6050,
+        patient_display_mode: 'management_number',
+      },
+    });
+
+    const response = await pharmacyInvoicePdfGet(
+      createRequest('http://localhost/api/pharmacy-invoices/invoice_1/pdf?purpose=monthly'),
+      {
+        params: Promise.resolve({ id: 'invoice_1' }),
+      },
+    );
+
+    expect(response).toBeDefined();
+    if (!response) {
+      throw new Error('Expected a response from pharmacy invoice pdf GET');
+    }
+    expect(buildPharmacyInvoiceDocumentPdfMock).toHaveBeenCalledWith('org_1', 'invoice_1');
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('application/pdf');
+    expect(response.headers.get('content-disposition')).toContain('pharmacy-invoice.pdf');
   });
 
   it('returns a management plan pdf response', async () => {

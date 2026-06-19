@@ -34,11 +34,23 @@ vi.mock('@/server/services/report-generator', () => ({
 
 import { POST } from './route';
 
+const VISIT_RECORD_UPDATED_AT = '2026-06-18T01:23:45.000Z';
+const REPORT_UPDATED_AT = new Date('2026-06-18T02:30:00.000Z');
+const REPORT_UPDATED_AT_ISO = REPORT_UPDATED_AT.toISOString();
+
 function createGenerateFromVisitRequest(body: unknown) {
+  const effectiveBody =
+    body !== undefined &&
+    typeof body === 'object' &&
+    body !== null &&
+    !Array.isArray(body) &&
+    !('expected_visit_record_updated_at' in body)
+      ? { expected_visit_record_updated_at: VISIT_RECORD_UPDATED_AT, ...body }
+      : body;
   return new NextRequest('http://localhost/api/care-reports/generate-from-visit', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(effectiveBody),
   });
 }
 
@@ -57,7 +69,14 @@ describe('/api/care-reports/generate-from-visit', () => {
 
   it('generates reports from a visit record', async () => {
     generateReportsFromVisitMock.mockResolvedValue({
-      reports: [{ id: 'report_1', report_type: 'physician_report' }],
+      reports: [
+        {
+          id: 'report_1',
+          report_type: 'physician_report',
+          status: 'draft',
+          updated_at: REPORT_UPDATED_AT,
+        },
+      ],
     });
 
     const response = (await POST(
@@ -69,7 +88,14 @@ describe('/api/care-reports/generate-from-visit', () => {
 
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toMatchObject({
-      data: [{ id: 'report_1', report_type: 'physician_report' }],
+      data: [
+        {
+          id: 'report_1',
+          report_type: 'physician_report',
+          status: 'draft',
+          updated_at: REPORT_UPDATED_AT_ISO,
+        },
+      ],
     });
     expect(generateReportsFromVisitMock).toHaveBeenCalledWith(
       'org_1',
@@ -77,7 +103,145 @@ describe('/api/care-reports/generate-from-visit', () => {
       'visit_1',
       undefined,
       { userId: 'user_1', role: 'pharmacist' },
+      {
+        expectedVisitRecordUpdatedAt: new Date(VISIT_RECORD_UPDATED_AT),
+        expectedReportUpdatedAt: null,
+      },
     );
+  });
+
+  it('passes the existing draft report version when an explicit report type is regenerated', async () => {
+    generateReportsFromVisitMock.mockResolvedValue({
+      reports: [
+        {
+          id: 'report_1',
+          report_type: 'physician_report',
+          status: 'draft',
+          updated_at: REPORT_UPDATED_AT,
+        },
+      ],
+    });
+
+    const response = (await POST(
+      createGenerateFromVisitRequest({
+        visit_record_id: 'visit_1',
+        report_type: 'physician_report',
+        expected_report_updated_at: '2026-06-18T02:00:00.000Z',
+      }),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(201);
+    expect(generateReportsFromVisitMock).toHaveBeenCalledWith(
+      'org_1',
+      'user_1',
+      'visit_1',
+      'physician_report',
+      { userId: 'user_1', role: 'pharmacist' },
+      {
+        expectedVisitRecordUpdatedAt: new Date(VISIT_RECORD_UPDATED_AT),
+        expectedReportUpdatedAt: new Date('2026-06-18T02:00:00.000Z'),
+      },
+    );
+  });
+
+  it('rejects report draft version tokens without an explicit report type', async () => {
+    const response = (await POST(
+      createGenerateFromVisitRequest({
+        visit_record_id: 'visit_1',
+        expected_report_updated_at: '2026-06-18T02:00:00.000Z',
+      }),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        expected_report_updated_at: ['報告書下書きの版情報はreport_type指定時のみ使用できます'],
+      },
+    });
+    expect(generateReportsFromVisitMock).not.toHaveBeenCalled();
+  });
+
+  it('requires the visit record version before calling the generator', async () => {
+    const response = (await POST(
+      createGenerateFromVisitRequest({
+        visit_record_id: 'visit_1',
+        expected_visit_record_updated_at: undefined,
+      }),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: {
+        expected_visit_record_updated_at: expect.any(Array),
+      },
+    });
+    expect(generateReportsFromVisitMock).not.toHaveBeenCalled();
+  });
+
+  it('returns conflict when the visit record changed before generation', async () => {
+    generateReportsFromVisitMock.mockRejectedValue(
+      new Error('VISIT_RECORD_STALE_FOR_REPORT_GENERATION'),
+    );
+
+    const response = (await POST(
+      createGenerateFromVisitRequest({
+        visit_record_id: 'visit_1',
+        expected_visit_record_updated_at: '2026-06-18T01:20:00.000Z',
+      }),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '訪問記録が同時に更新されました。再読み込みしてください',
+    });
+  });
+
+  it('returns conflict when an existing report draft changed before regeneration', async () => {
+    generateReportsFromVisitMock.mockRejectedValue(
+      new Error('CARE_REPORT_DRAFT_STALE_FOR_REPORT_GENERATION'),
+    );
+
+    const response = (await POST(
+      createGenerateFromVisitRequest({
+        visit_record_id: 'visit_1',
+        report_type: 'physician_report',
+        expected_report_updated_at: '2026-06-18T02:00:00.000Z',
+      }),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '報告書下書きが同時に更新されました。再読み込みしてください',
+    });
+  });
+
+  it('returns conflict when an existing draft would be reused without a report version token', async () => {
+    generateReportsFromVisitMock.mockRejectedValue(
+      new Error('CARE_REPORT_DRAFT_VERSION_REQUIRED_FOR_REPORT_GENERATION'),
+    );
+
+    const response = (await POST(
+      createGenerateFromVisitRequest({
+        visit_record_id: 'visit_1',
+      }),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message:
+        '既存の報告書下書きがあります。下書き詳細を再読み込みしてから個別に再生成してください',
+    });
   });
 
   it('returns 404 when the visit record is missing', async () => {

@@ -55,7 +55,7 @@ vi.mock('@/lib/auth/context', () => ({
         {
           orgId: req.orgId,
           userId: req.userId,
-          role: 'pharmacist',
+          role: (req.role ?? 'pharmacist') as 'pharmacist',
         },
         routeContext,
       );
@@ -295,6 +295,46 @@ describe('/api/care-reports GET', () => {
     });
   });
 
+  it('redacts stored report file URLs from list rows when the caller cannot send reports', async () => {
+    careReportFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'report_with_file',
+        org_id: 'org_1',
+        patient_id: 'patient_1',
+        case_id: 'case_1',
+        visit_record_id: 'visit_1',
+        report_type: 'physician_report',
+        status: 'confirmed',
+        content: { summary: '訪問後報告' },
+        template_id: null,
+        pdf_url: '/api/files/file_1/download',
+        created_by: 'user_1',
+        created_at: new Date('2026-03-28T09:00:00.000Z'),
+        updated_at: new Date('2026-03-28T09:15:00.000Z'),
+        delivery_records: [],
+      },
+    ]);
+
+    const response = await getCareReports(
+      createAuthenticatedRequest('http://localhost/api/care-reports', undefined, {
+        orgId: 'org_1',
+        userId: 'clerk_1',
+        role: 'clerk',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: [
+        {
+          id: 'report_with_file',
+          pdf_url: null,
+        },
+      ],
+    });
+  });
+
   it('uses database keyset pagination for regular list pages', async () => {
     const cursorCreatedAt = new Date('2026-03-28T09:30:00.000Z');
     careReportFindFirstMock.mockResolvedValueOnce({
@@ -415,6 +455,22 @@ describe('/api/care-reports GET', () => {
     expect(payload.data[0]).not.toHaveProperty('content');
   });
 
+  it('rejects stale regular list cursors before reading list rows', async () => {
+    careReportFindFirstMock.mockResolvedValueOnce(null);
+
+    const response = await getCareReports(
+      createAuthenticatedRequest('http://localhost/api/care-reports?cursor=missing_report'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: { cursor: ['カーソルが見つかりません'] },
+    });
+    expect(careReportFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('summarizes regular list delivery state without rereading full report rows', async () => {
     careReportFindManyMock.mockResolvedValueOnce([
       {
@@ -500,6 +556,21 @@ describe('/api/care-reports GET', () => {
     });
   });
 
+  it('rejects cursor paging for body keyword searches', async () => {
+    const response = await getCareReports(
+      createAuthenticatedRequest('http://localhost/api/care-reports?keyword=眠気&cursor=report_1'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: { cursor: ['本文検索ではカーソルを指定できません'] },
+    });
+    expect(careReportFindFirstMock).not.toHaveBeenCalled();
+    expect(careReportFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('returns report content only when explicitly requested for print workflows', async () => {
     const response = await getCareReports(
       createAuthenticatedRequest('http://localhost/api/care-reports?include_content=1'),
@@ -517,6 +588,41 @@ describe('/api/care-reports GET', () => {
         visit_record_id: 'hidden_visit_record_1',
       },
     });
+  });
+
+  it('does not return report content for include_content requests without output permission', async () => {
+    const response = await getCareReports(
+      createAuthenticatedRequest('http://localhost/api/care-reports?include_content=1', undefined, {
+        orgId: 'org_1',
+        userId: 'clerk_1',
+        role: 'clerk',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(careReportFindManyMock.mock.calls[0]?.[0].select).not.toHaveProperty('content');
+    const payload = await response.json();
+    expect(payload.data[0]).not.toHaveProperty('content');
+  });
+
+  it('rejects keyword body search without report output permission', async () => {
+    const response = await getCareReports(
+      createAuthenticatedRequest('http://localhost/api/care-reports?keyword=眠気', undefined, {
+        orgId: 'org_1',
+        userId: 'clerk_1',
+        role: 'clerk',
+      }),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'AUTH_FORBIDDEN',
+      message: '報告書本文検索の権限がありません',
+    });
+    expect(careReportFindManyMock).not.toHaveBeenCalled();
+    expect(deliveryRecordCountMock).not.toHaveBeenCalled();
   });
 
   it('trims patient and visit record filters before report lookup', async () => {

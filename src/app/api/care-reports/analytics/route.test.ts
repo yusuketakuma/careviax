@@ -58,6 +58,10 @@ describe('/api/care-reports/analytics GET', () => {
     expect(getCareReportDeliveryAnalyticsMock).toHaveBeenCalledWith('org_1', {
       overdueDays: 10,
     });
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canSendCareReport',
+      message: '報告書分析の閲覧権限がありません',
+    });
     await expect(ensuredResponse.json()).resolves.toMatchObject({
       data: {
         summary: {
@@ -82,6 +86,21 @@ describe('/api/care-reports/analytics GET', () => {
         overdue_days: ['overdue_days は整数で指定してください'],
       },
     });
+    expect(getCareReportDeliveryAnalyticsMock).not.toHaveBeenCalled();
+  });
+
+  it('requires care report send permission before loading delivery contacts', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(
+        JSON.stringify({ code: 'FORBIDDEN', message: '報告書分析の閲覧権限がありません' }),
+        { status: 403 },
+      ),
+    });
+
+    const response = await GET(createRequest());
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(403);
     expect(getCareReportDeliveryAnalyticsMock).not.toHaveBeenCalled();
   });
 });

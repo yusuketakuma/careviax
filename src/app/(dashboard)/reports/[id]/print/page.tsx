@@ -2,36 +2,39 @@
 
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { getReportPrintShortcutLinks } from '@/components/features/workflow/page-shortcut-presets';
 import { PrintPageToolbar } from '@/components/features/workflow/print-page-toolbar';
 import { PrintLayout } from '@/components/features/reports/print-layout';
 import { Loading } from '@/components/ui/loading';
+import { useOrgId } from '@/lib/hooks/use-org-id';
 import type {
   PhysicianReportContent,
   CareManagerReportContent,
+  AudienceReportContent,
 } from '@/types/care-report-content';
+import type { CareReportActionPermissions } from '@/types/care-report-permissions';
 
 // ─── API response type ────────────────────────────────────────────────────────
 
 type CareReportResponse = {
   id: string;
-  report_type: 'physician_report' | 'care_manager_report';
+  report_type: 'physician_report' | 'care_manager_report' | 'nurse_share' | 'facility_handoff';
   pharmacy_name?: string;
-  content: PhysicianReportContent | CareManagerReportContent;
+  content: PhysicianReportContent | CareManagerReportContent | AudienceReportContent;
+  permissions?: CareReportActionPermissions;
 };
 
-type CareReportApiResponse = {
-  data: CareReportResponse;
+type CareReportPrintAuditApiResponse = {
+  data: {
+    audited: boolean;
+    report: CareReportResponse;
+  };
 };
 
 // ─── Physician report layout (別紙様式1準拠) ─────────────────────────────────
 
-function PhysicianReportPrint({
-  content,
-}: {
-  content: PhysicianReportContent;
-}) {
+function PhysicianReportPrint({ content }: { content: PhysicianReportContent }) {
   const reportDate = content.report_date
     ? new Date(content.report_date).toLocaleDateString('ja-JP')
     : '—';
@@ -79,9 +82,7 @@ function PhysicianReportPrint({
 
       {/* 処方内容 */}
       <section>
-        <h2 className="mb-1 bg-gray-800 px-2 py-1 text-sm font-bold text-white">
-          【処方内容】
-        </h2>
+        <h2 className="mb-1 bg-gray-800 px-2 py-1 text-sm font-bold text-white">【処方内容】</h2>
         <table className="w-full border border-gray-400 text-xs">
           <thead>
             <tr>
@@ -117,9 +118,7 @@ function PhysicianReportPrint({
               <th className="w-1/4 bg-gray-100 px-2 py-1 text-left">服薬遵守</th>
               <td className="px-2 py-1">{content.medication_management.compliance_summary}</td>
               <th className="w-1/4 bg-gray-100 px-2 py-1 text-left">アドヒアランス</th>
-              <td className="px-2 py-1">
-                {content.medication_management.adherence_score}/5
-              </td>
+              <td className="px-2 py-1">{content.medication_management.adherence_score}/5</td>
             </tr>
             <tr>
               <th className="bg-gray-100 px-2 py-1 text-left">自己管理</th>
@@ -152,9 +151,7 @@ function PhysicianReportPrint({
 
       {/* 薬学的評価（7項目） */}
       <section>
-        <h2 className="mb-1 bg-gray-800 px-2 py-1 text-sm font-bold text-white">
-          【薬学的評価】
-        </h2>
+        <h2 className="mb-1 bg-gray-800 px-2 py-1 text-sm font-bold text-white">【薬学的評価】</h2>
         <table className="w-full border border-gray-400 text-xs">
           <tbody>
             <tr>
@@ -182,9 +179,7 @@ function PhysicianReportPrint({
       {/* 残薬状況 */}
       {content.residual_medications.length > 0 && (
         <section>
-          <h2 className="mb-1 bg-gray-800 px-2 py-1 text-sm font-bold text-white">
-            【残薬状況】
-          </h2>
+          <h2 className="mb-1 bg-gray-800 px-2 py-1 text-sm font-bold text-white">【残薬状況】</h2>
           <table className="w-full border border-gray-400 text-xs">
             <thead>
               <tr>
@@ -220,9 +215,7 @@ function PhysicianReportPrint({
 
       {/* 今後の計画 */}
       <section>
-        <h2 className="mb-1 bg-gray-800 px-2 py-1 text-sm font-bold text-white">
-          【今後の計画】
-        </h2>
+        <h2 className="mb-1 bg-gray-800 px-2 py-1 text-sm font-bold text-white">【今後の計画】</h2>
         <div className="min-h-[60px] border border-gray-400 px-3 py-2 text-xs whitespace-pre-wrap">
           {content.plan}
         </div>
@@ -241,20 +234,14 @@ function PhysicianReportPrint({
       )}
 
       {/* Footer */}
-      <div className="mt-6 border-t pt-2 text-right text-xs">
-        薬剤師: {content.pharmacist_name}
-      </div>
+      <div className="mt-6 border-t pt-2 text-right text-xs">薬剤師: {content.pharmacist_name}</div>
     </div>
   );
 }
 
 // ─── Care manager report layout ───────────────────────────────────────────────
 
-function CareManagerReportPrint({
-  content,
-}: {
-  content: CareManagerReportContent;
-}) {
+function CareManagerReportPrint({ content }: { content: CareManagerReportContent }) {
   const reportDate = content.report_date
     ? new Date(content.report_date).toLocaleDateString('ja-JP')
     : '—';
@@ -303,9 +290,7 @@ function CareManagerReportPrint({
           <tbody>
             <tr>
               <th className="w-1/4 bg-gray-100 px-2 py-1 text-left">管理薬剤数</th>
-              <td className="px-2 py-1">
-                {content.medication_management_summary.total_drugs}種類
-              </td>
+              <td className="px-2 py-1">{content.medication_management_summary.total_drugs}種類</td>
               <th className="w-1/4 bg-gray-100 px-2 py-1 text-left">服薬遵守</th>
               <td className="px-2 py-1">
                 {content.medication_management_summary.compliance_summary}
@@ -313,9 +298,7 @@ function CareManagerReportPrint({
             </tr>
             <tr>
               <th className="bg-gray-100 px-2 py-1 text-left">自己管理</th>
-              <td className="px-2 py-1">
-                {content.medication_management_summary.self_management}
-              </td>
+              <td className="px-2 py-1">{content.medication_management_summary.self_management}</td>
               <th className="bg-gray-100 px-2 py-1 text-left">服薬カレンダー</th>
               <td className="px-2 py-1">
                 {content.medication_management_summary.calendar_used ? '使用あり' : '使用なし'}
@@ -355,9 +338,7 @@ function CareManagerReportPrint({
 
       {/* 残薬状況 */}
       <section>
-        <h2 className="mb-1 bg-gray-800 px-2 py-1 text-sm font-bold text-white">
-          【残薬状況】
-        </h2>
+        <h2 className="mb-1 bg-gray-800 px-2 py-1 text-sm font-bold text-white">【残薬状況】</h2>
         <div className="border border-gray-400 px-3 py-2 text-xs">
           <p>{content.residual_status.summary}</p>
           {content.residual_status.reduction_proposals.length > 0 && (
@@ -393,9 +374,7 @@ function CareManagerReportPrint({
                 {content.care_service_coordination.calendar_recommendation ? 'あり' : 'なし'}
               </td>
               <th className="bg-gray-100 px-2 py-1 text-left">その他</th>
-              <td className="px-2 py-1">
-                {content.care_service_coordination.other_items || '—'}
-              </td>
+              <td className="px-2 py-1">{content.care_service_coordination.other_items || '—'}</td>
             </tr>
           </tbody>
         </table>
@@ -403,14 +382,11 @@ function CareManagerReportPrint({
 
       {/* 今後の計画 */}
       <section>
-        <h2 className="mb-1 bg-gray-800 px-2 py-1 text-sm font-bold text-white">
-          【今後の計画】
-        </h2>
+        <h2 className="mb-1 bg-gray-800 px-2 py-1 text-sm font-bold text-white">【今後の計画】</h2>
         <div className="border border-gray-400 px-3 py-2 text-xs">
           {content.next_visit_plan.date && (
             <p className="mb-1">
-              次回訪問予定:{' '}
-              {new Date(content.next_visit_plan.date).toLocaleDateString('ja-JP')}
+              次回訪問予定: {new Date(content.next_visit_plan.date).toLocaleDateString('ja-JP')}
             </p>
           )}
           {content.next_visit_plan.followup_items.length > 0 && (
@@ -424,9 +400,60 @@ function CareManagerReportPrint({
       </section>
 
       {/* Footer */}
-      <div className="mt-6 border-t pt-2 text-right text-xs">
-        薬剤師: {content.pharmacist_name}
-      </div>
+      <div className="mt-6 border-t pt-2 text-right text-xs">薬剤師: {content.pharmacist_name}</div>
+    </div>
+  );
+}
+
+function AudienceReportPrint({ content }: { content: AudienceReportContent }) {
+  const reportDate = content.report_date
+    ? new Date(content.report_date).toLocaleDateString('ja-JP')
+    : '—';
+  const visitDate = content.visit_date
+    ? new Date(content.visit_date).toLocaleDateString('ja-JP')
+    : '—';
+  const title =
+    content.report_audience === 'visiting_nurse'
+      ? '訪問看護向け服薬情報共有'
+      : '施設向け服薬介助申し送り';
+  const sections = [
+    ['今日の要点', content.summary],
+    ['服薬状況', content.medication],
+    ['残薬', content.residual],
+    ['薬剤師の評価', content.evaluation],
+    ['お願いしたいこと', content.requests],
+  ] as const;
+
+  return (
+    <div className="space-y-4 text-sm">
+      <h1 className="border-b-2 border-black pb-2 text-center text-xl font-bold">{title}</h1>
+      <table className="w-full border border-gray-400 text-xs">
+        <tbody>
+          <tr>
+            <th className="w-1/6 bg-gray-100 px-2 py-1 text-left">報告日</th>
+            <td className="px-2 py-1">{reportDate}</td>
+            <th className="w-1/6 bg-gray-100 px-2 py-1 text-left">訪問日</th>
+            <td className="px-2 py-1">{visitDate}</td>
+          </tr>
+          <tr>
+            <th className="bg-gray-100 px-2 py-1 text-left">患者名</th>
+            <td className="px-2 py-1">{content.patient.name} 様</td>
+            <th className="bg-gray-100 px-2 py-1 text-left">担当薬剤師</th>
+            <td className="px-2 py-1">{content.pharmacist_name}</td>
+          </tr>
+        </tbody>
+      </table>
+      {sections.map(([sectionTitle, body]) => (
+        <section key={sectionTitle}>
+          <h2 className="mb-1 bg-gray-800 px-2 py-1 text-sm font-bold text-white">
+            【{sectionTitle}】
+          </h2>
+          <div className="min-h-[60px] whitespace-pre-wrap border border-gray-400 px-3 py-2 text-xs">
+            {body || '—'}
+          </div>
+        </section>
+      ))}
+      <div className="mt-6 border-t pt-2 text-right text-xs">薬剤師: {content.pharmacist_name}</div>
     </div>
   );
 }
@@ -436,40 +463,115 @@ function CareManagerReportPrint({
 export default function ReportPrintPage() {
   const params = useParams<{ id: string }>();
   const reportId = params.id;
+  const orgId = useOrgId();
+  const [auditRunId] = useState(() => `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const [manualPrintError, setManualPrintError] = useState<string | null>(null);
 
-  const { data, isLoading, isError } = useQuery<CareReportResponse>({
-    queryKey: ['care-report', reportId],
+  const printAuditQuery = useQuery<CareReportPrintAuditApiResponse>({
+    queryKey: ['care-report-print-audit', orgId, reportId, auditRunId],
     queryFn: async () => {
-      const res = await fetch(`/api/care-reports/${reportId}`);
-      if (!res.ok) throw new Error('報告書の取得に失敗しました');
-      const payload = (await res.json()) as CareReportApiResponse;
-      return payload.data;
+      const res = await fetch(`/api/care-reports/${reportId}/print-audit`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({ intent: 'preview_rendered' }),
+      });
+      if (res.status === 403) throw new Error('PRINT_FORBIDDEN');
+      if (!res.ok) throw new Error('報告書の印刷監査を記録できませんでした');
+      return res.json() as Promise<CareReportPrintAuditApiResponse>;
     },
-    enabled: !!reportId,
-    staleTime: 60_000,
+    enabled: !!orgId && !!reportId,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnMount: 'always',
+    staleTime: 0,
   });
+  const data = printAuditQuery.data?.data.report;
+  const canRenderPrintBody = printAuditQuery.data?.data.audited === true && Boolean(data);
+  const isPrintForbidden =
+    printAuditQuery.isError &&
+    printAuditQuery.error instanceof Error &&
+    printAuditQuery.error.message === 'PRINT_FORBIDDEN';
 
-  // Auto-print after data loads
+  const recordPrintRequestedAudit = useCallback(async () => {
+    const res = await fetch(`/api/care-reports/${reportId}/print-audit`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-org-id': orgId,
+      },
+      body: JSON.stringify({ intent: 'print_requested' }),
+    });
+    if (res.status === 403) {
+      setManualPrintError('印刷権限がないため、再印刷できません。');
+      return false;
+    }
+    if (!res.ok) {
+      setManualPrintError('印刷監査を記録できないため、再印刷できません。');
+      return false;
+    }
+    return true;
+  }, [orgId, reportId]);
+
+  // Auto-print after authorized data loads
   useEffect(() => {
-    if (!data) return;
+    if (!data || !canRenderPrintBody) return;
     const timer = setTimeout(() => {
-      window.print();
+      void (async () => {
+        setManualPrintError(null);
+        const audited = await recordPrintRequestedAudit();
+        if (audited) window.print();
+      })();
     }, 1000);
     return () => clearTimeout(timer);
-  }, [data]);
+  }, [canRenderPrintBody, data, recordPrintRequestedAudit]);
 
-  if (isLoading) {
+  const handleManualPrint = async () => {
+    setManualPrintError(null);
+    const audited = await recordPrintRequestedAudit();
+    if (audited) window.print();
+  };
+
+  if (printAuditQuery.isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <Loading label="報告書を読み込み中..." />
+        <Loading label="印刷監査を記録中..." />
       </div>
     );
   }
 
-  if (isError || !data) {
+  if (isPrintForbidden) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-sm text-destructive">
-        報告書の読み込みに失敗しました。
+      <div className="flex min-h-screen items-center justify-center p-6">
+        <div
+          role="alert"
+          className="max-w-md space-y-2 rounded-md border border-border/70 bg-card p-4"
+        >
+          <h1 className="text-base font-semibold text-foreground">印刷権限がありません</h1>
+          <p className="text-sm text-muted-foreground">
+            他職種送付権限がないため、この報告書の印刷ビューは表示できません。
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (printAuditQuery.isError || !data || !canRenderPrintBody) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-6">
+        <div
+          role="alert"
+          className="max-w-md space-y-2 rounded-md border border-border/70 bg-card p-4"
+        >
+          <h1 className="text-base font-semibold text-foreground">
+            印刷監査を記録できませんでした
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            監査記録を保存できないため、報告書の印刷ビューは表示できません。
+          </p>
+        </div>
       </div>
     );
   }
@@ -484,12 +586,23 @@ export default function ReportPrintPage() {
         mainWorkflowSteps={['reports']}
         mainWorkflowDescription="印刷ビューでも、報告書工程の終点として現在地を固定表示します。"
         shortcuts={getReportPrintShortcutLinks(reportId)}
+        onPrint={handleManualPrint}
       />
+      {manualPrintError ? (
+        <div
+          role="alert"
+          className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive print:hidden"
+        >
+          {manualPrintError}
+        </div>
+      ) : null}
 
       {data.report_type === 'physician_report' ? (
         <PhysicianReportPrint content={data.content as PhysicianReportContent} />
-      ) : (
+      ) : data.report_type === 'care_manager_report' ? (
         <CareManagerReportPrint content={data.content as CareManagerReportContent} />
+      ) : (
+        <AudienceReportPrint content={data.content as AudienceReportContent} />
       )}
     </PrintLayout>
   );

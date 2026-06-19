@@ -1,7 +1,7 @@
 import { withAuthContext, type AuthContext } from '@/lib/auth/context';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
-import { conflict, success, validationError } from '@/lib/api/response';
+import { conflict, forbidden, success, validationError } from '@/lib/api/response';
 import { parsePaginationParams } from '@/lib/api/pagination';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject, readJsonObjectString, toPrismaJsonInput } from '@/lib/db/json';
@@ -15,6 +15,7 @@ import {
   canAccessCareReportSource,
   getCareReportAccessScope,
 } from '@/server/services/care-report-access';
+import { canOutputCareReport } from '@/server/services/care-report-output-policy';
 
 function trimStringOrUndefined(value: unknown) {
   if (value === null || value === undefined) return undefined;
@@ -86,6 +87,7 @@ const careReportListOrderBy = [
   { created_at: 'desc' },
   { id: 'desc' },
 ] satisfies Prisma.CareReportOrderByWithRelationInput[];
+const CARE_REPORT_KEYWORD_SCAN_LIMIT = 500;
 
 const reportStatusSchema = z.nativeEnum(ReportStatus);
 const reportTypeSchema = z.nativeEnum(ReportType);
@@ -415,6 +417,15 @@ export const GET = withAuthContext(
     } = parsedQuery.data;
     const sentFrom = sentFromRaw ? new Date(`${sentFromRaw}T00:00:00.000Z`) : null;
     const sentTo = sentToRaw ? new Date(`${sentToRaw}T23:59:59.999Z`) : null;
+    const canOutputReport = canOutputCareReport(ctx.role);
+    if (keyword && !canOutputReport) {
+      return forbidden('報告書本文検索の権限がありません');
+    }
+    if (keyword && cursor) {
+      return validationError('報告書本文検索ではカーソルページングを利用できません', {
+        cursor: ['本文検索ではカーソルを指定できません'],
+      });
+    }
 
     const matchingPatients = query
       ? await prisma.patient.findMany({
@@ -492,7 +503,7 @@ export const GET = withAuthContext(
       ...(accessWhere ? { AND: [accessWhere] } : {}),
     };
     const canUseDbPagination = !keyword;
-    const shouldReadContent = Boolean(includeContent || keyword);
+    const shouldReadContent = Boolean((includeContent && canOutputReport) || keyword);
     const cursorReport =
       canUseDbPagination && cursor
         ? await prisma.careReport.findFirst({
@@ -500,6 +511,11 @@ export const GET = withAuthContext(
             select: { id: true, created_at: true },
           })
         : null;
+    if (canUseDbPagination && cursor && !cursorReport) {
+      return validationError('ページカーソルが不正です', {
+        cursor: ['カーソルが見つかりません'],
+      });
+    }
     const listWhere = cursorReport
       ? appendCareReportWhereAnd(where, buildCareReportCursorWhere(cursorReport))
       : where;
@@ -508,7 +524,7 @@ export const GET = withAuthContext(
       where: listWhere,
       orderBy: careReportListOrderBy,
       select: shouldReadContent ? careReportContentSelect : careReportBaseSelect,
-      ...(canUseDbPagination ? { take: limit + 1 } : {}),
+      ...(canUseDbPagination ? { take: limit + 1 } : { take: CARE_REPORT_KEYWORD_SCAN_LIMIT }),
     })) as CareReportListRow[];
 
     const patientIds = Array.from(new Set(reports.map((report) => report.patient_id)));
@@ -552,11 +568,13 @@ export const GET = withAuthContext(
         report_type: report.report_type,
         status: report.status,
         template_id: report.template_id,
-        pdf_url: report.pdf_url,
+        pdf_url: canOutputReport ? report.pdf_url : null,
         created_by: report.created_by,
         created_at: report.created_at,
         updated_at: report.updated_at,
-        ...(includeContent && reportContent !== null ? { content: reportContent } : {}),
+        ...(includeContent && canOutputReport && reportContent !== null
+          ? { content: reportContent }
+          : {}),
         delivery_records: report.delivery_records,
         _searchable_report_text: reportContent ? readSearchableReportText(reportContent) : '',
         patient_name: patientNameById.get(report.patient_id) ?? null,

@@ -7,6 +7,7 @@ import type {
   PhysicianReportContent,
   CareManagerReportContent,
   BaselineContext,
+  AudienceReportContent,
 } from '@/types/care-report-content';
 import type { HomeVisitIntake } from '@/lib/patient/home-visit-intake';
 import { getSoapLabel, ADHERENCE_LABELS } from '@/lib/constants/soap-options';
@@ -195,30 +196,6 @@ export type PhysicianReportContext = {
   /** intake から抽出したベースライン情報（オプション） */
   intake?: HomeVisitIntake;
   conferenceContext?: VisitWorkflowConferenceContext[];
-};
-
-// ─── 宛先別 5見出し射影コンテンツ型（訪問看護向け・施設向け） ─────────────────
-// p1_04「報告書の下書き」の5見出し（今日の要点/服薬状況/残薬/薬剤師の評価/お願い
-// したいこと）に直接対応する決定論的射影。LLM は使用しない。
-// 医師向け(PhysicianReportContent)・ケアマネ向け(CareManagerReportContent) と
-// 区別するため report_audience 判別子を持つ。
-
-export type AudienceReportAudience = 'visiting_nurse' | 'facility';
-
-export type AudienceReportContent = {
-  report_audience: AudienceReportAudience;
-  patient: { name: string; birth_date: string };
-  report_date: string;
-  visit_date: string;
-  pharmacist_name: string;
-  /** 5見出し本文（design 準拠） */
-  summary: string;
-  medication: string;
-  residual: string;
-  evaluation: string;
-  requests: string;
-  warnings: string[];
-  baseline_context?: BaselineContext;
 };
 
 // ─── BuildCareManagerReport の入力型 ─────────────────────────────────────────

@@ -5,8 +5,8 @@ import { cn } from '@/lib/utils';
 import type {
   CareManagerReportContent,
   PhysicianReportContent,
+  AudienceReportContent,
 } from '@/types/care-report-content';
-import type { AudienceReportContent } from '@/server/services/report-templates';
 
 /** p1_04 の宛先別下書きコンテンツ（医師/ケアマネ/訪問看護/施設）。 */
 export type AiDraftContent =

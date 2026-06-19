@@ -11,7 +11,7 @@ const querySchema = z.object({
 
 export async function GET(req: NextRequest) {
   const authResult = await requireAuthContext(req, {
-    permission: 'canReport',
+    permission: 'canSendCareReport',
     message: '報告書分析の閲覧権限がありません',
   });
   if ('response' in authResult) return authResult.response;

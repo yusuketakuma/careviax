@@ -47,6 +47,7 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
       recipient_label: 'ケアマネ(中島様)',
       status: 'before_visit',
       visit_record_id: null,
+      visit_record_updated_at: null,
       note: null,
       action: { label: '→ 訪問へ', href: '/visits' },
     },
@@ -57,6 +58,7 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
       recipient_label: '医師(山本先生)+ケアマネ',
       status: 'ready_to_generate',
       visit_record_id: 'vr_2',
+      visit_record_updated_at: '2026-06-11T04:45:00.000Z',
       note: '麻薬使用状況を含む',
       action: null,
     },
@@ -67,6 +69,7 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
       recipient_label: '施設(看護師長)',
       status: 'before_visit',
       visit_record_id: null,
+      visit_record_updated_at: null,
       note: '12名分を1通に集約',
       action: null,
     },
@@ -164,6 +167,7 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
   ],
   open_issues: [
     {
+      kind: 'report',
       id: 'report_draft-draft-confirmation',
       report_id: 'report_draft',
       severity: 'critical',
@@ -172,6 +176,7 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
       action: { label: '確認する', href: '/reports/report_draft' },
     },
     {
+      kind: 'report',
       id: 'report_draft-billing-context',
       report_id: 'report_draft',
       severity: 'warning',
@@ -342,6 +347,40 @@ describe('ReportShareWorkspace', () => {
     );
   });
 
+  it('renders billing candidate open issues using their own action href', async () => {
+    stubFetch({
+      ...TODAY_WORKSPACE,
+      open_issues: [
+        {
+          kind: 'billing_candidate',
+          id: 'billing-candidate-candidate_1',
+          billing_candidate_id: 'candidate_1',
+          patient_id: 'patient_1',
+          severity: 'critical',
+          title: '加藤 ミサ 様 — 算定候補の確認待ち',
+          description:
+            '在宅患者訪問薬剤管理指導料: 算定候補レビューでブロックされています。請求候補画面で根拠を確認してください。',
+          action: {
+            label: '算定候補へ',
+            href: '/billing/candidates?billing_month=2026-06-01&candidate_id=candidate_1&patient_id=patient_1',
+          },
+        },
+      ],
+      counts: { ...TODAY_WORKSPACE.counts, open_issues: 1 },
+    });
+    renderWorkspace();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('report-open-issues')).toBeTruthy();
+    });
+
+    const issueLink = screen.getByRole('link', { name: '算定候補へ' });
+    expect(issueLink.getAttribute('href')).toBe(
+      '/billing/candidates?billing_month=2026-06-01&candidate_id=candidate_1&patient_id=patient_1',
+    );
+    expect(issueLink.getAttribute('href')).not.toBe('/reports/null');
+  });
+
   it('creates a report draft from a selected not-created row and opens the draft', async () => {
     const fetchMock = stubFetch();
     renderWorkspace();
@@ -355,7 +394,10 @@ describe('ReportShareWorkspace', () => {
       expect(fetchMock).toHaveBeenCalledWith('/api/care-reports/generate-from-visit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-org-id': 'org_1' },
-        body: JSON.stringify({ visit_record_id: 'vr_2' }),
+        body: JSON.stringify({
+          visit_record_id: 'vr_2',
+          expected_visit_record_updated_at: '2026-06-11T04:45:00.000Z',
+        }),
       });
     });
     await waitFor(() => {

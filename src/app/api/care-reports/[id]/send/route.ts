@@ -20,17 +20,20 @@ import {
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
-import { z } from 'zod';
 import { upsertBillingEvidenceForVisit } from '@/server/services/billing-evidence';
 import { resolveOperationalTasks } from '@/server/services/operational-tasks';
 import { sendCareReportEmail } from '@/server/services/report-delivery';
 import { learnContactProfileFromCommunication } from '@/lib/contact-profiles';
 import { transitionCycleStatus } from '@/lib/db/cycle-transition';
-import { inferCareReportTargetRole } from '@/lib/reports/document-delivery-rules';
+import { inferCareReportTargetRole } from '@/lib/reports/care-report-target-role';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { getAuthSecret } from '@/lib/auth/secret';
 import { logger } from '@/lib/utils/logger';
-import { communicationChannelSchema } from '@/lib/validations/communication-channel';
+import {
+  normalizeCareReportRecipientRole,
+  normalizeCareReportSendPayload,
+  type CareReportSendRecipient as SendRecipient,
+} from '@/lib/reports/care-report-send-validation';
 
 function toPrimaryCommunicationEventType(reportType: string) {
   switch (reportType) {
@@ -58,33 +61,6 @@ function maskRecipientContact(channel: string, contact: string) {
 const EMAIL_DELIVERY_FAILURE_REASON = 'メール送信に失敗しました';
 const STALE_DRAFT_DELIVERY_MS = 10 * 60 * 1000;
 const STALE_SEND_REQUEST_MS = 10 * 60 * 1000;
-
-type SendRecipient = {
-  channel: 'email' | 'fax' | 'phone' | 'in_person' | 'postal' | 'ses' | 'ph_os_share';
-  recipient_name: string;
-  recipient_contact: string;
-  recipient_role: string;
-};
-
-const RECIPIENT_ROLE_ALIASES: Record<string, string> = {
-  doctor: 'physician',
-  prescriber: 'physician',
-  visiting_nurse: 'nurse',
-  facility: 'facility_staff',
-};
-
-const ALLOWED_RECIPIENT_ROLES = new Set([
-  'physician',
-  'care_manager',
-  'nurse',
-  'facility_staff',
-  'family',
-]);
-
-function normalizeRecipientRole(value: string) {
-  const normalized = value.trim();
-  return RECIPIENT_ROLE_ALIASES[normalized] ?? normalized;
-}
 
 function comparableText(value: string | null | undefined) {
   return (value ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
@@ -142,10 +118,12 @@ function buildCareReportSendIdempotencyKeyHash(args: { reportId: string; idempot
 function buildCareReportSendRequestFingerprint(args: {
   reportId: string;
   recipients: SendRecipient[];
+  expectedUpdatedAt: Date;
 }) {
   return `care-report-send-request:v2:${keyedHashJson({
     action: 'care_report.send',
     report_id: args.reportId,
+    expected_updated_at: args.expectedUpdatedAt.toISOString(),
     recipients: args.recipients.map((recipient) => ({
       channel: recipient.channel,
       recipient_name: recipient.recipient_name,
@@ -279,7 +257,9 @@ async function validateRecipientsAgainstKnownSources(args: {
     const matchesCareTeam = cases.some((careCase) =>
       careCase.care_team_links.some((link) => {
         const professional = link.external_professional;
-        const linkRole = normalizeRecipientRole(link.role || professional?.profession_type || '');
+        const linkRole = normalizeCareReportRecipientRole(
+          link.role || professional?.profession_type || '',
+        );
         if (linkRole !== recipient.recipient_role) return false;
         if (
           !recipientNameMatches(recipient.recipient_name, [
@@ -352,67 +332,6 @@ function buildDeliveryAttemptAuditChanges(args: {
       has_visit_record: Boolean(args.report.visit_record_id),
     },
   } satisfies Prisma.InputJsonValue;
-}
-
-const recipientSchema = z
-  .object({
-    channel: communicationChannelSchema,
-    recipient_name: z.string().trim().min(1, '送付先氏名は必須です'),
-    recipient_contact: z.string().trim().min(1, '送付先連絡先は必須です'),
-    recipient_role: z
-      .string()
-      .trim()
-      .min(1, '送付先区分は必須です')
-      .transform(normalizeRecipientRole)
-      .refine((value) => ALLOWED_RECIPIENT_ROLES.has(value), '送付先区分が不正です'),
-  })
-  .superRefine((value, ctx) => {
-    if (
-      (value.channel === 'email' || value.channel === 'ses') &&
-      !z.string().email().safeParse(value.recipient_contact).success
-    ) {
-      ctx.addIssue({
-        code: 'custom',
-        message: 'メール送信時は送付先連絡先にメールアドレスを指定してください',
-        path: ['recipient_contact'],
-      });
-    }
-  });
-
-// 単一送付(従来)。一括送付は recipients を持つ別スキーマで受ける。
-// 単一送付は recipients が 1 件のサブセットとして扱う。
-const singleSendSchema = recipientSchema.and(z.object({ safety_ack: z.literal(true) }));
-
-const bulkSendSchema = z.object({
-  recipients: z.array(recipientSchema).min(1, '送付先を1件以上選択してください'),
-  safety_ack: z.literal(true),
-});
-
-function normalizeSendPayload(
-  payload: Record<string, unknown>,
-):
-  | { ok: true; recipients: SendRecipient[] }
-  | { ok: false; details: Record<string, string[] | undefined> } {
-  // recipients フィールドがあれば一括送付として扱う。
-  if ('recipients' in payload) {
-    const parsed = bulkSendSchema.safeParse(payload);
-    if (!parsed.success) {
-      return { ok: false, details: parsed.error.flatten().fieldErrors };
-    }
-    return { ok: true, recipients: parsed.data.recipients };
-  }
-
-  const parsed = singleSendSchema.safeParse(payload);
-  if (!parsed.success) {
-    return { ok: false, details: parsed.error.flatten().fieldErrors };
-  }
-  const recipient: SendRecipient = {
-    channel: parsed.data.channel,
-    recipient_name: parsed.data.recipient_name,
-    recipient_contact: parsed.data.recipient_contact,
-    recipient_role: parsed.data.recipient_role,
-  };
-  return { ok: true, recipients: [recipient] };
 }
 
 function validateRecipientRoles(reportType: string, recipients: SendRecipient[]) {
@@ -637,6 +556,7 @@ type ReportRecord = {
   content: Prisma.JsonValue;
   report_type: string;
   pdf_url: string | null;
+  updated_at: Date;
 };
 
 type DeliveryOutcome = {
@@ -1305,10 +1225,7 @@ async function finalizeReportDelivery(args: {
 
           const allReportsDelivered =
             siblingReports.length > 0 &&
-            siblingReports.every(
-              (siblingReport) =>
-                siblingReport.status === 'sent' || siblingReport.status === 'confirmed',
-            );
+            siblingReports.every((siblingReport) => siblingReport.status === 'sent');
 
           if (allReportsDelivered) {
             const cycle = await tx.medicationCycle.findFirst({
@@ -1428,7 +1345,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const payload = await readJsonObjectRequestBody(req);
   if (!payload) return validationError('リクエストボディが不正です');
 
-  const normalized = normalizeSendPayload(payload);
+  const normalized = normalizeCareReportSendPayload(payload);
   if (!normalized.ok) {
     return validationError('入力値が不正です', normalized.details);
   }
@@ -1448,6 +1365,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       content: true,
       report_type: true,
       pdf_url: true,
+      updated_at: true,
     },
   });
   if (!existing) return notFound('報告書が見つかりません');
@@ -1468,6 +1386,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     ? buildCareReportSendRequestFingerprint({
         reportId: id,
         recipients,
+        expectedUpdatedAt: normalized.expectedUpdatedAt,
       })
     : null;
   const idempotencyPeek = await peekCareReportSendIdempotency({
@@ -1497,6 +1416,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return conflict('薬剤師確認済みの報告書のみ送付できます', {
       status: existing.status,
     });
+  }
+  if (existing.updated_at.getTime() !== normalized.expectedUpdatedAt.getTime()) {
+    return conflict('報告書が同時に更新されました。再読み込みしてください');
   }
   const freshness = await validateReportVisitRecordFreshness({
     orgId: ctx.orgId,

@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type {
-  CareManagerReportContent,
-  PhysicianReportContent,
-} from '@/types/care-report-content';
+import type { CareManagerReportContent, PhysicianReportContent } from '@/types/care-report-content';
 import {
   audienceKeyFromRecipientRole,
   buildAudienceShareSections,
@@ -301,7 +298,7 @@ describe('buildNextCheckTaskInput', () => {
       },
     });
 
-    expect(input.task_type).toBe('share_reply_followup');
+    expect(input.task_type).toBe('report_response_followup');
     expect(input.title).toBe('次回訪問で確認: ケアマネからの返信(加藤 ミサ 様)');
     expect(input.description).toContain('ヘルパーへ声かけ依頼済み');
     expect(input.description).toContain('出典: ケアマネ(中島 桜(ケアマネ))からの返信');

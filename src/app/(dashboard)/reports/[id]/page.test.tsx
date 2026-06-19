@@ -10,6 +10,7 @@ const useQueryMock = vi.hoisted(() => vi.fn());
 const useMutationMock = vi.hoisted(() => vi.fn());
 const useQueryClientMock = vi.hoisted(() => vi.fn());
 const sendMutateMock = vi.hoisted(() => vi.fn());
+const getReportDetailShortcutLinksMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -37,9 +38,24 @@ vi.mock('@/components/layout/page-scaffold', () => ({
 }));
 
 vi.mock('@/components/features/workflow/workflow-page-intro', () => ({
-  WorkflowPageIntro: ({ title, actions }: { title: string; actions?: React.ReactNode }) => (
+  WorkflowPageIntro: ({
+    title,
+    actions,
+    shortcuts,
+  }: {
+    title: string;
+    actions?: React.ReactNode;
+    shortcuts?: Array<{ href: string; label: string }>;
+  }) => (
     <header>
       <h1>{title}</h1>
+      <nav aria-label="ショートカット">
+        {shortcuts?.map((shortcut) => (
+          <a key={`${shortcut.href}-${shortcut.label}`} href={shortcut.href}>
+            {shortcut.label}
+          </a>
+        ))}
+      </nav>
       {actions}
     </header>
   ),
@@ -52,7 +68,7 @@ vi.mock('@/components/features/visits/visit-report-readiness-panel', () => ({
 }));
 
 vi.mock('@/components/features/workflow/page-shortcut-presets', () => ({
-  getReportDetailShortcutLinks: () => [],
+  getReportDetailShortcutLinks: getReportDetailShortcutLinksMock,
 }));
 
 vi.mock('@/components/features/reports/compliance-checklist', () => ({
@@ -73,7 +89,9 @@ vi.mock('@/components/features/reports/care-manager-report-view', () => ({
 }));
 
 vi.mock('@/components/features/reports/report-edit-form', () => ({
-  ReportEditForm: () => <form data-testid="report-edit-form" />,
+  ReportEditForm: ({ updatedAt }: { updatedAt: string }) => (
+    <form data-testid="report-edit-form" data-updated-at={updatedAt} />
+  ),
 }));
 
 import ReportDetailPage from './page';
@@ -147,6 +165,14 @@ function mockReport() {
     delivery_records: [],
     prescriber_institution_suggestion: null,
     delivery_rule_suggestion: null,
+    permissions: {
+      can_edit: true,
+      can_send: true,
+      can_create_external_share: true,
+      can_create_followup_task: true,
+      can_view_patient: true,
+      can_view_related_requests: true,
+    },
   };
 }
 
@@ -160,6 +186,12 @@ describe('ReportDetailPage send safety dialog', () => {
       mutate: sendMutateMock,
       isPending: false,
     });
+    getReportDetailShortcutLinksMock.mockReturnValue([
+      { href: '/reports', label: '報告書一覧' },
+      { href: '/patients/patient_1', label: '患者詳細' },
+      { href: '/communications/requests?related_entity_id=report_1', label: '関連依頼' },
+      { href: '/external', label: '外部連携' },
+    ]);
     useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
       const scope = options.queryKey?.[0];
       if (scope === 'care-report-external-professionals') {
@@ -218,6 +250,51 @@ describe('ReportDetailPage send safety dialog', () => {
       recipient_name: '山田 太郎',
       recipient_contact: 'doctor@example.com',
       recipient_role: 'physician',
+      expected_updated_at: '2026-05-12T00:00:00.000Z',
+      safety_ack: true,
+    });
+  });
+
+  it('resends failed reports through the same safety-checked delivery flow', () => {
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return {
+          data: { data: [] },
+          isLoading: false,
+        };
+      }
+
+      return {
+        data: { data: { ...mockReport(), status: 'failed' } },
+        isLoading: false,
+      };
+    });
+
+    render(<ReportDetailPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '再送' }));
+
+    expect(screen.getByRole('dialog', { name: '報告書を再送' })).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText('例: 山田 太郎 先生'), {
+      target: { value: '  山田 太郎  ' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('メールアドレスまたはFAX番号'), {
+      target: { value: '  doctor@example.com  ' },
+    });
+    fireEvent.click(
+      screen.getByRole('checkbox', {
+        name: '患者、訪問日、報告書種別、送付先氏名、連絡先、送付チャネルを確認しました',
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '再送する' }));
+
+    expect(sendMutateMock).toHaveBeenCalledWith({
+      channel: 'email',
+      recipient_name: '山田 太郎',
+      recipient_contact: 'doctor@example.com',
+      recipient_role: 'physician',
+      expected_updated_at: '2026-05-12T00:00:00.000Z',
       safety_ack: true,
     });
   });
@@ -262,6 +339,114 @@ describe('ReportDetailPage send safety dialog', () => {
     expect(screen.getByText('一括送付（1件）')).toBeTruthy();
   });
 
+  it('opens the report composer as a resend workspace for response-waiting reports', () => {
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return {
+          data: {
+            data: [
+              {
+                id: 'professional_1',
+                name: '鈴木 医師',
+                profession_type: 'physician',
+                organization_name: '青葉内科',
+                email: 'doctor2@example.com',
+                fax: null,
+                phone: '03-0000-0000',
+              },
+            ],
+          },
+          isLoading: false,
+        };
+      }
+
+      return {
+        data: { data: { ...mockReport(), status: 'response_waiting' } },
+        isLoading: false,
+      };
+    });
+
+    render(<ReportDetailPage />);
+
+    expect(screen.getByRole('button', { name: '再送' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '共有を作成' }));
+
+    expect(screen.getByTestId('report-composer')).toBeTruthy();
+    expect(screen.getByText('報告書を再送・共有')).toBeTruthy();
+  });
+
+  it('passes the current report version into the inline edit form', () => {
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return {
+          data: { data: [] },
+          isLoading: false,
+        };
+      }
+
+      return {
+        data: { data: { ...mockReport(), status: 'draft' } },
+        isLoading: false,
+      };
+    });
+    render(<ReportDetailPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: '編集' }));
+
+    expect(screen.getByTestId('report-edit-form').getAttribute('data-updated-at')).toBe(
+      '2026-05-12T00:00:00.000Z',
+    );
+  });
+
+  it('confirms drafts with the current report version token', async () => {
+    const mutationConfigs: Array<{ mutationFn?: () => Promise<unknown> }> = [];
+    useMutationMock.mockImplementation((config: { mutationFn?: () => Promise<unknown> }) => {
+      mutationConfigs.push(config);
+      return {
+        mutate: sendMutateMock,
+        isPending: false,
+      };
+    });
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return {
+          data: { data: [] },
+          isLoading: false,
+        };
+      }
+
+      return {
+        data: { data: { ...mockReport(), status: 'draft' } },
+        isLoading: false,
+      };
+    });
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ data: { status: 'confirmed' } }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    );
+
+    render(<ReportDetailPage />);
+
+    await mutationConfigs[0]?.mutationFn?.();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/care-reports/report_1',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({
+          expected_updated_at: '2026-05-12T00:00:00.000Z',
+          status: 'confirmed',
+        }),
+      }),
+    );
+  });
+
   it('sends report delivery mutations with idempotency headers', async () => {
     const mutationConfigs: Array<{ mutationFn?: (input: unknown) => Promise<unknown> }> = [];
     useMutationMock.mockImplementation(
@@ -288,6 +473,7 @@ describe('ReportDetailPage send safety dialog', () => {
       recipient_name: '山田 太郎',
       recipient_contact: 'doctor@example.com',
       recipient_role: 'physician',
+      expected_updated_at: '2026-05-12T00:00:00.000Z',
       safety_ack: true,
     });
     await mutationConfigs[2]?.mutationFn?.({
@@ -299,6 +485,7 @@ describe('ReportDetailPage send safety dialog', () => {
           recipient_role: 'physician',
         },
       ],
+      expected_updated_at: '2026-05-12T00:00:00.000Z',
       safety_ack: true,
     });
 
@@ -314,6 +501,9 @@ describe('ReportDetailPage send safety dialog', () => {
         }),
       }),
     );
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
+      expected_updated_at: '2026-05-12T00:00:00.000Z',
+    });
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
       '/api/care-reports/report_1/send',
@@ -326,6 +516,9 @@ describe('ReportDetailPage send safety dialog', () => {
         }),
       }),
     );
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toMatchObject({
+      expected_updated_at: '2026-05-12T00:00:00.000Z',
+    });
   });
 
   it('does not display or send legacy title/body report content', () => {
@@ -383,6 +576,200 @@ describe('ReportDetailPage send safety dialog', () => {
     expect(screen.queryByRole('button', { name: '送付' })).toBeNull();
     expect(screen.queryByRole('button', { name: '共有を作成' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'PDFを開く' })).toBeNull();
+    expect(screen.queryByRole('link', { name: '印刷ビュー' })).toBeNull();
+  });
+
+  it('hides editing, draft confirmation, and send actions when the role can only view reports', () => {
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return {
+          data: { data: [] },
+          isLoading: false,
+        };
+      }
+
+      return {
+        data: {
+          data: {
+            ...mockReport(),
+            status: 'draft',
+            permissions: {
+              can_edit: false,
+              can_send: false,
+              can_create_external_share: false,
+              can_create_followup_task: false,
+              can_view_patient: false,
+              can_view_related_requests: true,
+            },
+          },
+        },
+        isLoading: false,
+      };
+    });
+
+    render(<ReportDetailPage />);
+
+    expect(screen.queryByRole('button', { name: '編集' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '薬剤師確認済みにする' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '送付' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '共有を作成' })).toBeNull();
+    expect(screen.queryByRole('link', { name: '印刷ビュー' })).toBeNull();
+    expect(screen.queryByRole('link', { name: '他職種共有' })).toBeNull();
+    expect(screen.getByText('薬剤師確認待ちです')).toBeTruthy();
+    expect(screen.getByTestId('physician-report-view')).toBeTruthy();
+  });
+
+  it('hides confirmed report output and share shortcuts when the role cannot send reports', () => {
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return {
+          data: { data: [] },
+          isLoading: false,
+        };
+      }
+
+      return {
+        data: {
+          data: {
+            ...mockReport(),
+            status: 'confirmed',
+            external_professional_suggestions: [
+              {
+                id: 'external_professional_1',
+                name: '中島 桜',
+                profession_type: 'care_manager',
+                organization_name: 'きたきゅうケアプラン',
+                department: null,
+                phone: '090-1111-2222',
+                email: null,
+                fax: null,
+                address: null,
+                preferred_contact_method: null,
+                preferred_contact_time: null,
+                last_contacted_at: null,
+                last_success_channel: null,
+                recommended_channels: ['phone'],
+                contact_reliability: {
+                  ready: true,
+                  warnings: [],
+                  missing_channel_labels: [],
+                },
+                is_primary: true,
+                source: 'patient_care_team',
+              },
+            ],
+            permissions: {
+              can_edit: false,
+              can_send: false,
+              can_create_external_share: false,
+              can_create_followup_task: false,
+              can_view_patient: true,
+              can_view_related_requests: true,
+            },
+          },
+        },
+        isLoading: false,
+      };
+    });
+
+    render(<ReportDetailPage />);
+
+    expect(screen.queryByRole('link', { name: 'PDFを開く' })).toBeNull();
+    expect(screen.queryByRole('link', { name: '印刷ビュー' })).toBeNull();
+    expect(screen.queryByRole('link', { name: '他職種共有' })).toBeNull();
+    expect(screen.getByTestId('physician-report-view')).toBeTruthy();
+    expect(screen.queryByTestId('care-team-source')).toBeNull();
+    const externalQueryCall = useQueryMock.mock.calls.find(
+      ([options]) =>
+        (options as { queryKey?: unknown[] }).queryKey?.[0] ===
+        'care-report-external-professionals',
+    );
+    expect((externalQueryCall?.[0] as { enabled?: boolean } | undefined)?.enabled).toBe(false);
+  });
+
+  it('keeps direct send visible but hides external share entry points when external share permission is denied', () => {
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return {
+          data: {
+            data: [
+              {
+                id: 'professional_1',
+                name: '鈴木 医師',
+                profession_type: 'physician',
+                organization_name: '青葉内科',
+                email: 'doctor2@example.com',
+                fax: null,
+                phone: '03-0000-0000',
+              },
+            ],
+          },
+          isLoading: false,
+        };
+      }
+
+      return {
+        data: {
+          data: {
+            ...mockReport(),
+            permissions: {
+              can_edit: false,
+              can_send: true,
+              can_create_external_share: false,
+              can_create_followup_task: false,
+              can_view_patient: true,
+              can_view_related_requests: true,
+            },
+          },
+        },
+        isLoading: false,
+      };
+    });
+
+    render(<ReportDetailPage />);
+
+    expect(screen.getByRole('button', { name: '送付' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '共有を作成' })).toBeNull();
+    expect(screen.queryByRole('link', { name: '他職種共有' })).toBeNull();
+  });
+
+  it('filters report detail shortcuts by the route permission metadata', () => {
+    useQueryMock.mockImplementation((options: { queryKey?: unknown[] }) => {
+      const scope = options.queryKey?.[0];
+      if (scope === 'care-report-external-professionals') {
+        return {
+          data: { data: [] },
+          isLoading: false,
+        };
+      }
+
+      return {
+        data: {
+          data: {
+            ...mockReport(),
+            permissions: {
+              can_edit: false,
+              can_send: false,
+              can_create_external_share: false,
+              can_create_followup_task: false,
+              can_view_patient: false,
+              can_view_related_requests: false,
+            },
+          },
+        },
+        isLoading: false,
+      };
+    });
+
+    render(<ReportDetailPage />);
+
+    expect(screen.getByRole('link', { name: '報告書一覧' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: '外部連携' })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: '患者詳細' })).toBeNull();
+    expect(screen.queryByRole('link', { name: '関連依頼' })).toBeNull();
   });
 
   it('shows a retryable error state when the report detail query fails', () => {

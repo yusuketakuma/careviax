@@ -113,10 +113,7 @@ function CheckboxField({
 }) {
   return (
     <label className="flex min-h-11 items-center gap-2 rounded-md border border-border px-3 py-2.5 text-sm">
-      <Checkbox
-        checked={checked}
-        onCheckedChange={(value) => onChange(fieldKey, value === true)}
-      />
+      <Checkbox checked={checked} onCheckedChange={(value) => onChange(fieldKey, value === true)} />
       <span>{label}</span>
     </label>
   );
@@ -154,7 +151,8 @@ function PhysicianEditForm({
     adherence_score: initial.medication_management.adherence_score ?? 0,
     self_management: initial.medication_management.self_management ?? '',
     adverse_has_events: initial.adverse_events.has_events ?? false,
-    adverse_event_details: initial.adverse_events.details ?? initial.adverse_events.events.join('\n'),
+    adverse_event_details:
+      initial.adverse_events.details ?? initial.adverse_events.events.join('\n'),
     functional_sleep: initial.functional_assessment.sleep ?? '',
     functional_cognition: initial.functional_assessment.cognition ?? '',
     functional_diet_oral: initial.functional_assessment.diet_oral ?? '',
@@ -176,7 +174,12 @@ function PhysicianEditForm({
   return (
     <div className="space-y-3">
       <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_10rem]">
-        <EditSection label="服薬状況" fieldKey="compliance_summary" value={fields.compliance_summary} onChange={handleChange} />
+        <EditSection
+          label="服薬状況"
+          fieldKey="compliance_summary"
+          value={fields.compliance_summary}
+          onChange={handleChange}
+        />
         <NumberField
           label="服薬遵守スコア"
           fieldKey="adherence_score"
@@ -186,7 +189,12 @@ function PhysicianEditForm({
           onChange={handleChange}
         />
       </div>
-      <EditSection label="自己管理状況" fieldKey="self_management" value={fields.self_management} onChange={handleChange} />
+      <EditSection
+        label="自己管理状況"
+        fieldKey="self_management"
+        value={fields.self_management}
+        onChange={handleChange}
+      />
       <div className="grid gap-3 md:grid-cols-[14rem_minmax(0,1fr)]">
         <CheckboxField
           label="有害事象あり"
@@ -202,14 +210,49 @@ function PhysicianEditForm({
         />
       </div>
       <div className="grid gap-2 md:grid-cols-2">
-        <EditSection label="睡眠・生活リズム" fieldKey="functional_sleep" value={fields.functional_sleep} onChange={handleChange} />
-        <EditSection label="認知・理解" fieldKey="functional_cognition" value={fields.functional_cognition} onChange={handleChange} />
-        <EditSection label="食事・嚥下・口腔" fieldKey="functional_diet_oral" value={fields.functional_diet_oral} onChange={handleChange} />
-        <EditSection label="移動・排泄" fieldKey="functional_mobility" value={fields.functional_mobility} onChange={handleChange} />
+        <EditSection
+          label="睡眠・生活リズム"
+          fieldKey="functional_sleep"
+          value={fields.functional_sleep}
+          onChange={handleChange}
+        />
+        <EditSection
+          label="認知・理解"
+          fieldKey="functional_cognition"
+          value={fields.functional_cognition}
+          onChange={handleChange}
+        />
+        <EditSection
+          label="食事・嚥下・口腔"
+          fieldKey="functional_diet_oral"
+          value={fields.functional_diet_oral}
+          onChange={handleChange}
+        />
+        <EditSection
+          label="移動・排泄"
+          fieldKey="functional_mobility"
+          value={fields.functional_mobility}
+          onChange={handleChange}
+        />
       </div>
-      <EditSection label="排泄の補足" fieldKey="functional_excretion" value={fields.functional_excretion} onChange={handleChange} />
-      <EditSection label="検査値・バイタル補足" fieldKey="lab_values" value={fields.lab_values} onChange={handleChange} />
-      <EditSection label="薬学的評価" fieldKey="assessment" value={fields.assessment} onChange={handleChange} />
+      <EditSection
+        label="排泄の補足"
+        fieldKey="functional_excretion"
+        value={fields.functional_excretion}
+        onChange={handleChange}
+      />
+      <EditSection
+        label="検査値・バイタル補足"
+        fieldKey="lab_values"
+        value={fields.lab_values}
+        onChange={handleChange}
+      />
+      <EditSection
+        label="薬学的評価"
+        fieldKey="assessment"
+        value={fields.assessment}
+        onChange={handleChange}
+      />
       <EditSection label="今後の計画" fieldKey="plan" value={fields.plan} onChange={handleChange} />
       <EditSection
         label="処方提案"
@@ -295,14 +338,44 @@ function CareManagerEditForm({
           onChange={handleChange}
         />
       </div>
-      <EditSection label="自己管理状況" fieldKey="self_management" value={fields.self_management} onChange={handleChange} />
+      <EditSection
+        label="自己管理状況"
+        fieldKey="self_management"
+        value={fields.self_management}
+        onChange={handleChange}
+      />
       <div className="grid gap-2 md:grid-cols-2">
-        <EditSection label="睡眠への影響" fieldKey="sleep_impact" value={fields.sleep_impact} onChange={handleChange} />
-        <EditSection label="認知への影響" fieldKey="cognition_impact" value={fields.cognition_impact} onChange={handleChange} />
-        <EditSection label="食事への影響" fieldKey="diet_impact" value={fields.diet_impact} onChange={handleChange} />
-        <EditSection label="移動への影響" fieldKey="mobility_impact" value={fields.mobility_impact} onChange={handleChange} />
+        <EditSection
+          label="睡眠への影響"
+          fieldKey="sleep_impact"
+          value={fields.sleep_impact}
+          onChange={handleChange}
+        />
+        <EditSection
+          label="認知への影響"
+          fieldKey="cognition_impact"
+          value={fields.cognition_impact}
+          onChange={handleChange}
+        />
+        <EditSection
+          label="食事への影響"
+          fieldKey="diet_impact"
+          value={fields.diet_impact}
+          onChange={handleChange}
+        />
+        <EditSection
+          label="移動への影響"
+          fieldKey="mobility_impact"
+          value={fields.mobility_impact}
+          onChange={handleChange}
+        />
       </div>
-      <EditSection label="排泄への影響" fieldKey="excretion_impact" value={fields.excretion_impact} onChange={handleChange} />
+      <EditSection
+        label="排泄への影響"
+        fieldKey="excretion_impact"
+        value={fields.excretion_impact}
+        onChange={handleChange}
+      />
       <EditSection
         label="残薬状況（概要）"
         fieldKey="residual_summary"
@@ -359,6 +432,7 @@ function CareManagerEditForm({
 type Props = {
   reportId: string;
   reportType: string;
+  updatedAt: string;
   content: PhysicianReportContent | CareManagerReportContent;
   onSaved?: () => void;
 };
@@ -390,7 +464,11 @@ function ComplianceEditGuide({
       {missing.length > 0 ? (
         <div className="mt-3 flex flex-wrap gap-2">
           {missing.map((item) => (
-            <Badge key={item.key} variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">
+            <Badge
+              key={item.key}
+              variant="outline"
+              className="border-amber-200 bg-amber-50 text-amber-800"
+            >
               未入力: {item.label}
             </Badge>
           ))}
@@ -404,16 +482,16 @@ function ComplianceEditGuide({
   );
 }
 
-export function ReportEditForm({ reportId, reportType, content, onSaved }: Props) {
+export function ReportEditForm({ reportId, reportType, updatedAt, content, onSaved }: Props) {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
 
   // Accumulated edits from child form. Only one of the two field shapes is ever
   // populated (selected by reportType); the partial intersection lets either set
   // assign without laundering through `Record<string, unknown>`.
-  const [pendingFields, setPendingFields] = useState<
-    Partial<PhysicianFields & CareManagerFields>
-  >({});
+  const [pendingFields, setPendingFields] = useState<Partial<PhysicianFields & CareManagerFields>>(
+    {},
+  );
 
   function buildUpdatedContent(): PhysicianReportContent | CareManagerReportContent {
     if (reportType === 'physician_report') {
@@ -511,7 +589,10 @@ export function ReportEditForm({ reportId, reportType, content, onSaved }: Props
           'Content-Type': 'application/json',
           'x-org-id': orgId,
         },
-        body: JSON.stringify({ content: updatedContent }),
+        body: JSON.stringify({
+          expected_updated_at: updatedAt,
+          content: updatedContent,
+        }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => null);

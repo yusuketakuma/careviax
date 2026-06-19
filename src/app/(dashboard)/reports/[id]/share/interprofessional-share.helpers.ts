@@ -1,4 +1,5 @@
 import type { CareManagerReportContent, PhysicianReportContent } from '@/types/care-report-content';
+import type { AudienceReportContent } from '@/types/care-report-content';
 import {
   audienceKeyFromRecipientRole,
   defaultAudienceForReportType,
@@ -122,6 +123,18 @@ function isCareManagerContent(value: unknown): value is CareManagerReportContent
   return isStringRecord(value) && isStringRecord(value.medication_management_summary);
 }
 
+function isAudienceContent(value: unknown): value is AudienceReportContent {
+  return (
+    isStringRecord(value) &&
+    (value.report_audience === 'visiting_nurse' || value.report_audience === 'facility') &&
+    typeof value.summary === 'string' &&
+    typeof value.medication === 'string' &&
+    typeof value.residual === 'string' &&
+    typeof value.evaluation === 'string' &&
+    typeof value.requests === 'string'
+  );
+}
+
 /** 報告書 content から共有に使う事実(宛先非依存)を抽出する */
 export type ShareReportFacts = {
   medicationStatus: string | null;
@@ -200,6 +213,17 @@ export function extractShareReportFacts(content: unknown): ShareReportFacts {
         '\n',
       ),
       nextCheck: joinNonEmpty(followupItems),
+    };
+  }
+
+  if (isAudienceContent(content)) {
+    return {
+      ...empty,
+      medicationStatus: readString(content.medication),
+      residual: readString(content.residual),
+      careRequest: readString(content.requests),
+      nextCheck: readString(content.evaluation),
+      genericBody: readString(content.summary),
     };
   }
 
@@ -330,7 +354,7 @@ export function buildNextCheckTaskInput(args: {
   ].join('\n');
 
   return {
-    task_type: 'share_reply_followup',
+    task_type: 'report_response_followup',
     title: truncate(`次回訪問で確認: ${audienceLabel}からの返信(${patientLabel})`, TASK_TITLE_MAX),
     description: truncate(description, TASK_DESCRIPTION_MAX),
     priority: 'normal',

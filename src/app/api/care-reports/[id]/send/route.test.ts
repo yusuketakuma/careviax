@@ -131,6 +131,9 @@ vi.mock('@/lib/utils/logger', () => ({
 
 import { POST } from './route';
 
+const REPORT_UPDATED_AT = new Date('2026-05-12T00:00:00.000Z');
+const REPORT_UPDATED_AT_ISO = REPORT_UPDATED_AT.toISOString();
+
 function buildUniqueConstraintError() {
   return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
     code: 'P2002',
@@ -140,6 +143,13 @@ function buildUniqueConstraintError() {
 }
 
 function createRequest(body: unknown, headers: Record<string, string> = {}) {
+  const effectiveBody =
+    typeof body === 'object' &&
+    body !== null &&
+    !Array.isArray(body) &&
+    !('expected_updated_at' in body)
+      ? { ...body, expected_updated_at: REPORT_UPDATED_AT_ISO }
+      : body;
   return new NextRequest('http://localhost/api/care-reports/report_1/send', {
     method: 'POST',
     headers: {
@@ -147,7 +157,7 @@ function createRequest(body: unknown, headers: Record<string, string> = {}) {
       'x-org-id': 'org_1',
       ...headers,
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify(effectiveBody),
   });
 }
 
@@ -164,13 +174,21 @@ function createMalformedRequest() {
 
 function buildExpectedSendRequestFingerprint(
   recipients: unknown[],
-  secret = 'ph-os-local-auth-secret',
+  expectedUpdatedAtOrSecret: Date | string = REPORT_UPDATED_AT,
+  secretMaybe?: string,
 ) {
+  const expectedUpdatedAt =
+    expectedUpdatedAtOrSecret instanceof Date ? expectedUpdatedAtOrSecret : REPORT_UPDATED_AT;
+  const secret =
+    typeof expectedUpdatedAtOrSecret === 'string'
+      ? expectedUpdatedAtOrSecret
+      : (secretMaybe ?? 'ph-os-local-auth-secret');
   return `care-report-send-request:v2:${createHmac('sha256', secret)
     .update(
       JSON.stringify({
         action: 'care_report.send',
         report_id: 'report_1',
+        expected_updated_at: expectedUpdatedAt.toISOString(),
         recipients,
         safety_ack: true,
       }),
@@ -197,6 +215,7 @@ describe('/api/care-reports/[id]/send POST', () => {
       content: {},
       report_type: 'physician_report',
       pdf_url: 'https://example.com/report.pdf',
+      updated_at: REPORT_UPDATED_AT,
     });
     visitRecordFindFirstMock.mockResolvedValue({
       version: 1,
@@ -308,6 +327,7 @@ describe('/api/care-reports/[id]/send POST', () => {
       content: {},
       report_type: 'physician_report',
       pdf_url: 'https://example.com/report.pdf',
+      updated_at: REPORT_UPDATED_AT,
     });
 
     const response = await POST(
@@ -327,6 +347,29 @@ describe('/api/care-reports/[id]/send POST', () => {
     expect(sendCareReportEmailMock).not.toHaveBeenCalled();
   });
 
+  it('rejects stale report versions before delivery side effects', async () => {
+    const response = await POST(
+      createRequest({
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+        expected_updated_at: '2026-05-11T23:59:59.000Z',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '報告書が同時に更新されました。再読み込みしてください',
+    });
+    expect(txMock.deliveryRecord.create).not.toHaveBeenCalled();
+    expect(sendCareReportEmailMock).not.toHaveBeenCalled();
+    expect(txMock.careReportSendRequest.create).not.toHaveBeenCalled();
+  });
+
   it('rejects confirmed visit reports when the source visit record changed after generation', async () => {
     careReportFindFirstMock.mockResolvedValue({
       id: 'report_1',
@@ -343,6 +386,7 @@ describe('/api/care-reports/[id]/send POST', () => {
       },
       report_type: 'physician_report',
       pdf_url: 'https://example.com/report.pdf',
+      updated_at: REPORT_UPDATED_AT,
     });
     visitRecordFindFirstMock.mockResolvedValue({
       version: 4,
@@ -388,6 +432,7 @@ describe('/api/care-reports/[id]/send POST', () => {
       },
       report_type: 'physician_report',
       pdf_url: 'https://example.com/report.pdf',
+      updated_at: REPORT_UPDATED_AT,
     });
 
     const response = await POST(
@@ -1269,6 +1314,7 @@ describe('/api/care-reports/[id]/send POST', () => {
       content: currentContent,
       report_type: 'physician_report',
       pdf_url: 'https://example.com/report.pdf',
+      updated_at: REPORT_UPDATED_AT,
     });
     txMock.careReport.findFirst.mockResolvedValue({ content: currentContent });
 
@@ -1736,6 +1782,7 @@ describe('/api/care-reports/[id]/send POST', () => {
       content: {},
       report_type: 'physician_report',
       pdf_url: 'https://example.com/report.pdf',
+      updated_at: REPORT_UPDATED_AT,
     });
     careCaseFindFirstMock.mockResolvedValue({
       primary_pharmacist_id: 'primary_user',
@@ -1775,6 +1822,7 @@ describe('/api/care-reports/[id]/send POST', () => {
       },
       report_type: 'physician_report',
       pdf_url: 'https://example.com/report.pdf',
+      updated_at: REPORT_UPDATED_AT,
     });
     txMock.visitRecord.findFirst.mockResolvedValue({
       schedule: {
@@ -1821,6 +1869,50 @@ describe('/api/care-reports/[id]/send POST', () => {
         }),
       }),
     );
+  });
+
+  it('does not complete visit reporting while a sibling report is still only confirmed', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      status: 'confirmed',
+      visit_record_id: 'visit_record_1',
+      content: {
+        source_provenance: {
+          visit_record_id: 'visit_record_1',
+          visit_record_version: 1,
+          visit_record_updated_at: '2026-03-10T03:00:00.000Z',
+        },
+      },
+      report_type: 'physician_report',
+      pdf_url: 'https://example.com/report.pdf',
+      updated_at: REPORT_UPDATED_AT,
+    });
+    txMock.visitRecord.findFirst.mockResolvedValue({
+      schedule: {
+        cycle_id: 'cycle_1',
+      },
+    });
+    txMock.careReport.findMany.mockResolvedValue([{ status: 'sent' }, { status: 'confirmed' }]);
+
+    const response = await POST(
+      createRequest({
+        channel: 'email',
+        recipient_name: '山田 太郎',
+        recipient_contact: 'doctor@example.com',
+        recipient_role: 'physician',
+        safety_ack: true,
+      }),
+      { params: Promise.resolve({ id: 'report_1' }) },
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(200);
+    expect(txMock.medicationCycle.findFirst).not.toHaveBeenCalled();
+    expect(txMock.medicationCycle.updateMany).not.toHaveBeenCalled();
+    expect(resolveOperationalTasksMock).not.toHaveBeenCalled();
+    expect(upsertBillingEvidenceForVisitMock).not.toHaveBeenCalled();
   });
 
   it('marks the delivery as failed when SES send fails', async () => {
@@ -1954,6 +2046,7 @@ describe('/api/care-reports/[id]/send POST', () => {
       content: {},
       report_type: 'physician_report',
       pdf_url: 'https://example.com/report.pdf',
+      updated_at: REPORT_UPDATED_AT,
     });
     txMock.careReportSendRequest.findFirst.mockResolvedValueOnce({
       id: 'send_request_1',
@@ -2118,6 +2211,7 @@ describe('/api/care-reports/[id]/send POST', () => {
       content: {},
       report_type: 'care_manager_report',
       pdf_url: 'https://example.com/report.pdf',
+      updated_at: REPORT_UPDATED_AT,
     });
 
     const response = await POST(
@@ -2154,6 +2248,7 @@ describe('/api/care-reports/[id]/send POST', () => {
       content: {},
       report_type: 'facility_handoff',
       pdf_url: 'https://example.com/report.pdf',
+      updated_at: REPORT_UPDATED_AT,
     });
 
     const response = await POST(
@@ -2184,6 +2279,7 @@ describe('/api/care-reports/[id]/send POST', () => {
       },
       report_type: 'physician_report',
       pdf_url: 'https://example.com/report.pdf',
+      updated_at: REPORT_UPDATED_AT,
     });
     txMock.conferenceNote.findFirst.mockResolvedValue({
       case_id: 'case_1',

@@ -28,6 +28,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { generateCareReportFromVisit } from '@/lib/reports/generate-from-visit-client';
 import { OUTCOME_LABELS, OUTCOME_VARIANTS } from '@/lib/constants/visit';
 import type { VisitGeoLog } from '@/lib/visit-location';
 import {
@@ -49,6 +50,10 @@ import {
   buildPostVisitWorkflowActions,
   type VisitWorkflowAction,
 } from '@/lib/visits/visit-workflow-projection';
+import {
+  canUseAutomaticReportGeneration,
+  findDraftReportForType,
+} from './visit-record-report-generation';
 
 type ResidualMedication = {
   id: string;
@@ -125,6 +130,7 @@ type CareReportSummary = {
   id: string;
   report_type: string;
   status: string;
+  updated_at: string;
   latest_delivery_status?: string | null;
   latest_delivery_recipient_name?: string | null;
 };
@@ -376,19 +382,19 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
   }, []);
 
   const generateReportMutation = useMutation({
-    mutationFn: async (report_type?: string) => {
-      const body: Record<string, string> = { visit_record_id: recordId };
-      if (report_type) body.report_type = report_type;
-      const res = await fetch('/api/care-reports/generate-from-visit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
-        body: JSON.stringify(body),
+    mutationFn: async (input: {
+      reportType?: string;
+      visitRecordUpdatedAt: string;
+      expectedReportUpdatedAt?: string;
+    }) => {
+      const data = await generateCareReportFromVisit({
+        orgId,
+        visitRecordId: recordId,
+        expectedVisitRecordUpdatedAt: input.visitRecordUpdatedAt,
+        reportType: input.reportType,
+        expectedReportUpdatedAt: input.expectedReportUpdatedAt,
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => null);
-        throw new Error(err?.message ?? '報告書の生成に失敗しました');
-      }
-      return res.json() as Promise<{ data: Array<{ id: string }> }>;
+      return { data };
     },
     onSuccess: (result) => {
       toast.success('報告書を生成しました');
@@ -403,8 +409,13 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
     },
   });
 
-  function handleGenerateReport(report_type?: string) {
-    generateReportMutation.mutate(report_type);
+  function handleGenerateReport(visitRecordUpdatedAt: string, reportType?: string) {
+    const existingDraft = reportType ? findDraftReportForType(careReports, reportType) : null;
+    generateReportMutation.mutate({
+      reportType,
+      visitRecordUpdatedAt,
+      expectedReportUpdatedAt: existingDraft?.updated_at,
+    });
   }
 
   const createNextVisitMutation = useMutation({
@@ -653,6 +664,7 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
     { type: 'nurse_share', label: '看護師向け共有メモを作成' },
     { type: 'facility_handoff', label: '施設向け引継書を作成' },
   ];
+  const showAutomaticReportGeneration = canUseAutomaticReportGeneration(careReports);
   const reportGenerationActions = (
     <div className="relative" ref={menuRef}>
       <Button
@@ -676,19 +688,23 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
               key={item.type}
               role="menuitem"
               className="w-full px-3 py-2.5 text-left text-sm hover:bg-accent focus:bg-accent focus:outline-none"
-              onClick={() => handleGenerateReport(item.type)}
+              onClick={() => handleGenerateReport(record.updated_at, item.type)}
             >
               {item.label}
             </button>
           ))}
-          <div className="border-t border-border" />
-          <button
-            role="menuitem"
-            className="w-full px-3 py-2.5 text-left text-sm font-medium text-primary hover:bg-accent focus:bg-accent focus:outline-none"
-            onClick={() => handleGenerateReport()}
-          >
-            自動判定（保険種別に応じて生成）
-          </button>
+          {showAutomaticReportGeneration ? (
+            <>
+              <div className="border-t border-border" />
+              <button
+                role="menuitem"
+                className="w-full px-3 py-2.5 text-left text-sm font-medium text-primary hover:bg-accent focus:bg-accent focus:outline-none"
+                onClick={() => handleGenerateReport(record.updated_at)}
+              >
+                自動判定（保険種別に応じて生成）
+              </button>
+            </>
+          ) : null}
         </div>
       )}
     </div>

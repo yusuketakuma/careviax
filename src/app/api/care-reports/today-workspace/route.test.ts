@@ -38,43 +38,64 @@ type TxOverrides = {
   requests?: unknown[];
   responses?: unknown[];
   patients?: unknown[];
+  billingCandidates?: unknown[];
   templateCount?: number;
   deliveryCount?: number;
 };
 
 function mockTx(overrides: TxOverrides = {}) {
-  withOrgContextMock.mockImplementation(async (_orgId: string, fn: (tx: unknown) => unknown) =>
-    fn({
-      visitSchedule: {
-        findMany: vi.fn().mockResolvedValue(overrides.schedules ?? []),
-      },
-      careReport: {
-        findMany: vi.fn().mockImplementation((args?: { take?: number; orderBy?: unknown }) => {
-          if (args?.take) return Promise.resolve(overrides.recentReports ?? []);
-          return Promise.resolve(overrides.draftReports ?? []);
+  const tx = {
+    visitSchedule: {
+      findMany: vi.fn().mockResolvedValue(overrides.schedules ?? []),
+    },
+    careReport: {
+      findMany: vi.fn().mockImplementation((args?: { take?: number; orderBy?: unknown }) => {
+        if (args?.take) return Promise.resolve(overrides.recentReports ?? []);
+        return Promise.resolve(overrides.draftReports ?? []);
+      }),
+    },
+    facility: {
+      findMany: vi.fn().mockResolvedValue(overrides.facilities ?? []),
+    },
+    deliveryRecord: {
+      findMany: vi.fn().mockResolvedValue(overrides.deliveries ?? []),
+      count: vi.fn().mockResolvedValue(overrides.deliveryCount ?? 0),
+    },
+    communicationRequest: {
+      findMany: vi.fn().mockResolvedValue(overrides.requests ?? []),
+    },
+    communicationResponse: {
+      findMany: vi.fn().mockResolvedValue(overrides.responses ?? []),
+    },
+    patient: {
+      findMany: vi.fn().mockResolvedValue(overrides.patients ?? []),
+    },
+    billingCandidate: {
+      findMany: vi
+        .fn()
+        .mockImplementation((args?: { take?: number; where?: { OR?: unknown[] } }) => {
+          let rows = overrides.billingCandidates ?? [];
+          if (
+            Array.isArray(args?.where?.OR) &&
+            JSON.stringify(args.where.OR).includes('validation_layers')
+          ) {
+            rows = rows.filter((candidate) =>
+              JSON.stringify((candidate as { source_snapshot?: unknown }).source_snapshot).includes(
+                '"blocked"',
+              ),
+            );
+          }
+          return Promise.resolve(typeof args?.take === 'number' ? rows.slice(0, args.take) : rows);
         }),
-      },
-      facility: {
-        findMany: vi.fn().mockResolvedValue(overrides.facilities ?? []),
-      },
-      deliveryRecord: {
-        findMany: vi.fn().mockResolvedValue(overrides.deliveries ?? []),
-        count: vi.fn().mockResolvedValue(overrides.deliveryCount ?? 0),
-      },
-      communicationRequest: {
-        findMany: vi.fn().mockResolvedValue(overrides.requests ?? []),
-      },
-      communicationResponse: {
-        findMany: vi.fn().mockResolvedValue(overrides.responses ?? []),
-      },
-      patient: {
-        findMany: vi.fn().mockResolvedValue(overrides.patients ?? []),
-      },
-      template: {
-        count: vi.fn().mockResolvedValue(overrides.templateCount ?? 0),
-      },
-    }),
+    },
+    template: {
+      count: vi.fn().mockResolvedValue(overrides.templateCount ?? 0),
+    },
+  };
+  withOrgContextMock.mockImplementation(async (_orgId: string, fn: (tx: unknown) => unknown) =>
+    fn(tx),
   );
+  return tx;
 }
 
 describe('/api/care-reports/today-workspace', () => {
@@ -203,7 +224,10 @@ describe('/api/care-reports/today-workspace', () => {
             care_team_links: [{ role: 'care_manager', name: '中島 桜', is_primary: true }],
           },
           cycle: { prescription_intakes: [{ lines: [] }] },
-          visit_record: { id: 'visit_record_1' },
+          visit_record: {
+            id: 'visit_record_1',
+            updated_at: new Date('2026-06-11T04:45:00.000Z'),
+          },
         },
       ],
       draftReports: [],
@@ -218,6 +242,7 @@ describe('/api/care-reports/today-workspace', () => {
       id: 'sched_ready',
       status: 'ready_to_generate',
       visit_record_id: 'visit_record_1',
+      visit_record_updated_at: '2026-06-11T04:45:00.000Z',
       action: null,
     });
   });
@@ -502,6 +527,681 @@ describe('/api/care-reports/today-workspace', () => {
     expect(responseText).not.toContain('SMTP 550');
     expect(json.data.counts.created).toBe(3);
     expect(json.data.counts.open_issues).toBe(4);
+  });
+
+  it('adds same-workspace billing candidate blockers to report open issues', async () => {
+    mockTx({
+      schedules: [
+        {
+          id: 'sched_billing',
+          schedule_status: 'completed',
+          time_window_start: new Date('2026-06-11T05:00:00.000Z'),
+          facility_batch_id: null,
+          facility_batch: null,
+          case_: {
+            patient: { id: 'p_billing', name: '鈴木 次郎' },
+            care_team_links: [{ role: 'care_manager', name: '中島 桜', is_primary: true }],
+          },
+          cycle: { prescription_intakes: [{ lines: [] }] },
+          visit_record: { id: 'visit_record_billing' },
+        },
+      ],
+      patients: [{ id: 'p_billing', name: '鈴木 次郎' }],
+      billingCandidates: [
+        {
+          id: 'candidate_1',
+          patient_id: 'p_billing',
+          billing_name: '在宅患者訪問薬剤管理指導料',
+          source_snapshot: {
+            validation_layers: {
+              rule_engine: {
+                state: 'manual_review',
+                message: '初回訪問の算定条件を確認してください。',
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    const req = createRequest('http://localhost/api/care-reports/today-workspace?date=2026-06-11');
+    const res = await GET(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(200);
+    const json = await res!.json();
+
+    expect(json.data.open_issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'billing_candidate',
+          id: 'billing-candidate-candidate_1',
+          billing_candidate_id: 'candidate_1',
+          patient_id: 'p_billing',
+          severity: 'warning',
+          title: '鈴木 次郎 様 — 算定候補の確認待ち',
+          description:
+            '在宅患者訪問薬剤管理指導料: 算定候補レビューが未確定です。請求候補画面で根拠を確認してください。',
+          action: {
+            label: '算定候補へ',
+            href: '/billing/candidates?billing_month=2026-06-01&candidate_id=candidate_1&patient_id=p_billing',
+          },
+        }),
+      ]),
+    );
+    expect(json.data.counts.open_issues).toBe(1);
+    expect(JSON.stringify(json.data.open_issues)).not.toContain(
+      '初回訪問の算定条件を確認してください。',
+    );
+  });
+
+  it('uses only valid facility-batch patient ids for billing blocker scans', async () => {
+    const tx = mockTx({
+      schedules: [
+        {
+          id: 'sched_facility',
+          schedule_status: 'completed',
+          time_window_start: new Date('2026-06-11T05:00:00.000Z'),
+          facility_batch_id: 'batch_1',
+          facility_batch: {
+            id: 'batch_1',
+            facility_id: 'fac_1',
+            patient_ids: ['p_facility', '', 123, null, '   '],
+          },
+          case_: {
+            patient: { id: 'p_schedule', name: '代表患者' },
+            care_team_links: [{ role: 'care_manager', name: '中島 桜', is_primary: true }],
+          },
+          cycle: { prescription_intakes: [{ lines: [] }] },
+          visit_record: { id: 'visit_record_facility' },
+        },
+      ],
+      patients: [
+        { id: 'p_schedule', name: '代表患者' },
+        { id: 'p_facility', name: '施設患者' },
+      ],
+      billingCandidates: [
+        {
+          id: 'candidate_facility',
+          patient_id: 'p_facility',
+          billing_name: '施設一括 算定候補',
+          source_snapshot: {
+            validation_layers: {
+              close_review: { state: 'blocked', message: '締め確認待ち' },
+            },
+          },
+        },
+      ],
+    });
+
+    const req = createRequest('http://localhost/api/care-reports/today-workspace?date=2026-06-11');
+    const res = await GET(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(200);
+    const json = await res!.json();
+
+    for (const [args] of tx.billingCandidate.findMany.mock.calls) {
+      expect(args.where.patient_id.in).toEqual(
+        expect.arrayContaining(['p_schedule', 'p_facility']),
+      );
+      expect(args.where.patient_id.in).not.toEqual(expect.arrayContaining(['', 123, null, '   ']));
+    }
+    expect(json.data.open_issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'billing_candidate',
+          id: 'billing-candidate-candidate_facility',
+          patient_id: 'p_facility',
+        }),
+      ]),
+    );
+    expect(JSON.stringify(json.data.open_issues)).not.toContain('123');
+  });
+
+  it('does not expose billing candidate blockers to report-only roles', async () => {
+    membershipFindFirstMock.mockResolvedValue({ role: 'clerk' });
+    const tx = mockTx({
+      schedules: [
+        {
+          id: 'sched_billing',
+          schedule_status: 'completed',
+          time_window_start: new Date('2026-06-11T05:00:00.000Z'),
+          facility_batch_id: null,
+          facility_batch: null,
+          case_: {
+            patient: { id: 'p_billing', name: '鈴木 次郎' },
+            care_team_links: [{ role: 'care_manager', name: '中島 桜', is_primary: true }],
+          },
+          cycle: { prescription_intakes: [{ lines: [] }] },
+          visit_record: { id: 'visit_record_billing' },
+        },
+      ],
+      patients: [{ id: 'p_billing', name: '鈴木 次郎' }],
+      billingCandidates: [
+        {
+          id: 'candidate_1',
+          patient_id: 'p_billing',
+          billing_name: '在宅患者訪問薬剤管理指導料',
+          source_snapshot: {
+            validation_layers: {
+              close_review: {
+                state: 'blocked',
+                message: '鈴木次郎様の個別事情: 090-1111-2222',
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    const req = createRequest('http://localhost/api/care-reports/today-workspace?date=2026-06-11');
+    const res = await GET(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(200);
+    const json = await res!.json();
+
+    expect(tx.billingCandidate.findMany).not.toHaveBeenCalled();
+    expect(json.data.open_issues).toEqual([]);
+    const responseText = JSON.stringify(json.data);
+    expect(responseText).not.toContain('candidate_1');
+    expect(responseText).not.toContain('在宅患者訪問薬剤管理指導料');
+    expect(responseText).not.toContain('鈴木次郎様');
+    expect(responseText).not.toContain('090-1111-2222');
+  });
+
+  it('prioritizes blocked billing validation over earlier manual review layers', async () => {
+    mockTx({
+      schedules: [
+        {
+          id: 'sched_billing',
+          schedule_status: 'completed',
+          time_window_start: new Date('2026-06-11T05:00:00.000Z'),
+          facility_batch_id: null,
+          facility_batch: null,
+          case_: {
+            patient: { id: 'p_billing', name: '鈴木 次郎' },
+            care_team_links: [{ role: 'care_manager', name: '中島 桜', is_primary: true }],
+          },
+          cycle: { prescription_intakes: [{ lines: [] }] },
+          visit_record: { id: 'visit_record_billing' },
+        },
+      ],
+      patients: [{ id: 'p_billing', name: '鈴木 次郎' }],
+      billingCandidates: [
+        {
+          id: 'candidate_blocked',
+          patient_id: 'p_billing',
+          billing_name: '在宅患者訪問薬剤管理指導料',
+          source_snapshot: {
+            validation_layers: {
+              rule_engine: {
+                state: 'manual_review',
+                message: 'レビュー待ち',
+              },
+              close_review: {
+                state: 'blocked',
+                message: 'レビューで除外',
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    const req = createRequest('http://localhost/api/care-reports/today-workspace?date=2026-06-11');
+    const res = await GET(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(200);
+    const json = await res!.json();
+
+    expect(json.data.open_issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'billing_candidate',
+          id: 'billing-candidate-candidate_blocked',
+          severity: 'critical',
+          description:
+            '在宅患者訪問薬剤管理指導料: 算定候補レビューでブロックされています。請求候補画面で根拠を確認してください。',
+        }),
+      ]),
+    );
+    const responseText = JSON.stringify(json.data);
+    expect(responseText).not.toContain('レビュー待ち');
+    expect(responseText).not.toContain('レビューで除外');
+  });
+
+  it('keeps critical billing blockers when report issues exceed the open issue limit', async () => {
+    mockTx({
+      schedules: [
+        {
+          id: 'sched_billing',
+          schedule_status: 'completed',
+          time_window_start: new Date('2026-06-11T05:00:00.000Z'),
+          facility_batch_id: null,
+          facility_batch: null,
+          case_: {
+            patient: { id: 'p_billing', name: '鈴木 次郎' },
+            care_team_links: [{ role: 'care_manager', name: '中島 桜', is_primary: true }],
+          },
+          cycle: { prescription_intakes: [{ lines: [] }] },
+          visit_record: { id: 'visit_record_billing' },
+        },
+      ],
+      patients: [{ id: 'p_billing', name: '鈴木 次郎' }],
+      recentReports: Array.from({ length: 12 }, (_, index) => ({
+        id: `report_${index}`,
+        patient_id: `patient_${index}`,
+        report_type: 'care_manager_report',
+        status: 'confirmed',
+        content: {},
+        created_at: new Date(`2026-06-11T0${index % 10}:00:00.000Z`),
+        updated_at: new Date(`2026-06-11T0${index % 10}:00:00.000Z`),
+        delivery_records: [],
+      })),
+      billingCandidates: [
+        {
+          id: 'candidate_critical',
+          patient_id: 'p_billing',
+          billing_name: '在宅患者訪問薬剤管理指導料',
+          source_snapshot: {
+            validation_layers: {
+              close_review: {
+                state: 'blocked',
+                message: 'レビューで除外',
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    const req = createRequest('http://localhost/api/care-reports/today-workspace?date=2026-06-11');
+    const res = await GET(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(200);
+    const json = await res!.json();
+
+    expect(json.data.open_issues).toHaveLength(12);
+    expect(json.data.open_issues[0]).toEqual(
+      expect.objectContaining({
+        kind: 'billing_candidate',
+        id: 'billing-candidate-candidate_critical',
+        severity: 'critical',
+      }),
+    );
+  });
+
+  it('keeps warning billing candidates when same-severity report issues exceed the open issue limit', async () => {
+    mockTx({
+      schedules: [
+        {
+          id: 'sched_billing',
+          schedule_status: 'completed',
+          time_window_start: new Date('2026-06-11T05:00:00.000Z'),
+          facility_batch_id: null,
+          facility_batch: null,
+          case_: {
+            patient: { id: 'p_billing', name: '鈴木 次郎' },
+            care_team_links: [{ role: 'care_manager', name: '中島 桜', is_primary: true }],
+          },
+          cycle: { prescription_intakes: [{ lines: [] }] },
+          visit_record: { id: 'visit_record_billing' },
+        },
+      ],
+      patients: [{ id: 'p_billing', name: '鈴木 次郎' }],
+      recentReports: Array.from({ length: 12 }, (_, index) => ({
+        id: `report_warning_${index}`,
+        patient_id: `patient_${index}`,
+        report_type: 'care_manager_report',
+        status: 'confirmed',
+        content: {},
+        created_at: new Date(`2026-06-11T0${index % 10}:00:00.000Z`),
+        updated_at: new Date(`2026-06-11T0${index % 10}:00:00.000Z`),
+        delivery_records: [],
+      })),
+      billingCandidates: [
+        {
+          id: 'candidate_warning',
+          patient_id: 'p_billing',
+          billing_name: '在宅患者訪問薬剤管理指導料',
+          source_snapshot: {
+            validation_layers: {
+              rule_engine: {
+                state: 'manual_review',
+                message: 'レビュー待ち',
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    const req = createRequest('http://localhost/api/care-reports/today-workspace?date=2026-06-11');
+    const res = await GET(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(200);
+    const json = await res!.json();
+
+    expect(json.data.open_issues).toHaveLength(12);
+    expect(json.data.open_issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'billing_candidate',
+          id: 'billing-candidate-candidate_warning',
+          severity: 'warning',
+        }),
+      ]),
+    );
+  });
+
+  it('does not let lower-severity billing candidates displace critical report issues', async () => {
+    mockTx({
+      recentReports: Array.from({ length: 12 }, (_, index) => ({
+        id: `report_critical_${index}`,
+        patient_id: `patient_${index}`,
+        report_type: 'care_manager_report',
+        status: 'draft',
+        content: {
+          source_provenance: {
+            medication_cycle_id: `cycle_${index}`,
+            prescription_line_ids: [`line_${index}`],
+          },
+          billing_context: { payer_basis: 'medical' },
+        },
+        created_at: new Date(`2026-06-11T0${index % 10}:00:00.000Z`),
+        updated_at: new Date(`2026-06-11T0${index % 10}:00:00.000Z`),
+        delivery_records: [],
+      })),
+      patients: Array.from({ length: 12 }, (_, index) => ({
+        id: `patient_${index}`,
+        name: `患者 ${index}`,
+      })),
+      billingCandidates: [
+        {
+          id: 'candidate_warning',
+          patient_id: 'patient_0',
+          billing_name: '在宅患者訪問薬剤管理指導料',
+          source_snapshot: {
+            validation_layers: {
+              rule_engine: {
+                state: 'manual_review',
+                message: 'レビュー待ち',
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    const req = createRequest('http://localhost/api/care-reports/today-workspace?date=2026-06-11');
+    const res = await GET(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(200);
+    const json = await res!.json();
+
+    expect(json.data.open_issues).toHaveLength(12);
+    expect(
+      json.data.open_issues.every((issue: { severity: string }) => issue.severity === 'critical'),
+    ).toBe(true);
+    expect(json.data.open_issues).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'billing_candidate',
+          id: 'billing-candidate-candidate_warning',
+        }),
+      ]),
+    );
+  });
+
+  it('does not let lower-severity report issues displace critical billing candidates', async () => {
+    mockTx({
+      recentReports: [
+        {
+          id: 'report_warning',
+          patient_id: 'patient_0',
+          report_type: 'care_manager_report',
+          status: 'confirmed',
+          content: {
+            source_provenance: {
+              medication_cycle_id: 'cycle_1',
+              prescription_line_ids: ['line_1'],
+            },
+            billing_context: { payer_basis: 'medical' },
+          },
+          created_at: new Date('2026-06-11T04:00:00.000Z'),
+          updated_at: new Date('2026-06-11T04:30:00.000Z'),
+          delivery_records: [],
+        },
+      ],
+      patients: [{ id: 'patient_0', name: '患者 0' }],
+      billingCandidates: Array.from({ length: 13 }, (_, index) => ({
+        id: `candidate_critical_${index}`,
+        patient_id: 'patient_0',
+        billing_name: '在宅患者訪問薬剤管理指導料',
+        source_snapshot: {
+          validation_layers: {
+            close_review: {
+              state: 'blocked',
+              message: '締めレビューで除外',
+            },
+          },
+        },
+      })),
+    });
+
+    const req = createRequest('http://localhost/api/care-reports/today-workspace?date=2026-06-11');
+    const res = await GET(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(200);
+    const json = await res!.json();
+
+    expect(json.data.open_issues).toHaveLength(12);
+    expect(
+      json.data.open_issues.every((issue: { severity: string }) => issue.severity === 'critical'),
+    ).toBe(true);
+    expect(json.data.open_issues).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'report',
+          id: 'report_warning-not-reported',
+        }),
+      ]),
+    );
+  });
+
+  it('scans beyond the visible open issue limit and keeps older blocked billing blockers', async () => {
+    const tx = mockTx({
+      schedules: [
+        {
+          id: 'sched_billing',
+          schedule_status: 'completed',
+          time_window_start: new Date('2026-06-11T05:00:00.000Z'),
+          facility_batch_id: null,
+          facility_batch: null,
+          case_: {
+            patient: { id: 'p_billing', name: '鈴木 次郎' },
+            care_team_links: [{ role: 'care_manager', name: '中島 桜', is_primary: true }],
+          },
+          cycle: { prescription_intakes: [{ lines: [] }] },
+          visit_record: { id: 'visit_record_billing' },
+        },
+      ],
+      patients: [{ id: 'p_billing', name: '鈴木 次郎' }],
+      billingCandidates: [
+        ...Array.from({ length: 12 }, (_, index) => ({
+          id: `candidate_manual_${index}`,
+          patient_id: 'p_billing',
+          billing_name: '在宅患者訪問薬剤管理指導料',
+          source_snapshot: {
+            validation_layers: {
+              rule_engine: {
+                state: 'manual_review',
+                message: 'レビュー待ち',
+              },
+            },
+          },
+        })),
+        {
+          id: 'candidate_blocked_old',
+          patient_id: 'p_billing',
+          billing_name: '在宅患者訪問薬剤管理指導料',
+          source_snapshot: {
+            validation_layers: {
+              close_review: {
+                state: 'blocked',
+                message: '締めレビューで除外',
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    const req = createRequest('http://localhost/api/care-reports/today-workspace?date=2026-06-11');
+    const res = await GET(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(200);
+    const json = await res!.json();
+
+    expect(tx.billingCandidate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 36 }),
+    );
+    expect(json.data.open_issues[0]).toEqual(
+      expect.objectContaining({
+        kind: 'billing_candidate',
+        id: 'billing-candidate-candidate_blocked_old',
+        severity: 'critical',
+      }),
+    );
+  });
+
+  it('keeps blocked billing blockers even when they fall outside the recent scan cap', async () => {
+    const tx = mockTx({
+      schedules: [
+        {
+          id: 'sched_billing',
+          schedule_status: 'completed',
+          time_window_start: new Date('2026-06-11T05:00:00.000Z'),
+          facility_batch_id: null,
+          facility_batch: null,
+          case_: {
+            patient: { id: 'p_billing', name: '鈴木 次郎' },
+            care_team_links: [{ role: 'care_manager', name: '中島 桜', is_primary: true }],
+          },
+          cycle: { prescription_intakes: [{ lines: [] }] },
+          visit_record: { id: 'visit_record_billing' },
+        },
+      ],
+      patients: [{ id: 'p_billing', name: '鈴木 次郎' }],
+      billingCandidates: [
+        ...Array.from({ length: 36 }, (_, index) => ({
+          id: `candidate_manual_${index}`,
+          patient_id: 'p_billing',
+          billing_name: '在宅患者訪問薬剤管理指導料',
+          source_snapshot: {
+            validation_layers: {
+              rule_engine: {
+                state: 'manual_review',
+                message: 'レビュー待ち',
+              },
+            },
+          },
+        })),
+        {
+          id: 'candidate_blocked_outside_recent_cap',
+          patient_id: 'p_billing',
+          billing_name: '在宅患者訪問薬剤管理指導料',
+          source_snapshot: {
+            validation_layers: {
+              close_review: {
+                state: 'blocked',
+                message: '締めレビューで除外',
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    const req = createRequest('http://localhost/api/care-reports/today-workspace?date=2026-06-11');
+    const res = await GET(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(200);
+    const json = await res!.json();
+
+    expect(tx.billingCandidate.findMany).toHaveBeenCalledTimes(2);
+    expect(tx.billingCandidate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 36 }),
+    );
+    expect(tx.billingCandidate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 12,
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              source_snapshot: expect.objectContaining({
+                path: ['validation_layers', 'close_review', 'state'],
+                equals: 'blocked',
+              }),
+            }),
+          ]),
+        }),
+      }),
+    );
+    expect(json.data.open_issues[0]).toEqual(
+      expect.objectContaining({
+        kind: 'billing_candidate',
+        id: 'billing-candidate-candidate_blocked_outside_recent_cap',
+        severity: 'critical',
+      }),
+    );
+  });
+
+  it('keeps the top critical report issue when critical billing candidates fill the visible limit', async () => {
+    mockTx({
+      recentReports: [
+        {
+          id: 'report_failed',
+          patient_id: 'p_report',
+          report_type: 'physician_report',
+          status: 'failed',
+          content: {},
+          created_at: new Date('2026-06-11T04:00:00.000Z'),
+          updated_at: new Date('2026-06-11T04:30:00.000Z'),
+          delivery_records: [
+            {
+              id: 'delivery_failed',
+              channel: 'email',
+              recipient_name: 'やまもと内科',
+              status: 'failed',
+              sent_at: null,
+              failure_reason: 'SMTP 550 doctor@example.com',
+              retry_count: 1,
+              updated_at: new Date('2026-06-11T04:40:00.000Z'),
+            },
+          ],
+        },
+      ],
+      patients: [{ id: 'p_report', name: '高橋 茂' }],
+      billingCandidates: Array.from({ length: 12 }, (_, index) => ({
+        id: `candidate_critical_${index}`,
+        patient_id: 'p_report',
+        billing_name: '在宅患者訪問薬剤管理指導料',
+        source_snapshot: {
+          validation_layers: {
+            close_review: {
+              state: 'blocked',
+              message: '締めレビューで除外',
+            },
+          },
+        },
+      })),
+    });
+
+    const req = createRequest('http://localhost/api/care-reports/today-workspace?date=2026-06-11');
+    const res = await GET(req, { params: Promise.resolve({}) });
+    expect(res!.status).toBe(200);
+    const json = await res!.json();
+
+    expect(json.data.open_issues).toHaveLength(12);
+    expect(json.data.open_issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'report',
+          id: 'report_failed-delivery-failed',
+          severity: 'critical',
+        }),
+      ]),
+    );
   });
 
   it('returns 400 on invalid date param', async () => {

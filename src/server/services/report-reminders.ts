@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db/client';
 import { REPORT_TYPE_LABELS } from '@/lib/constants/status-labels';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
+import { maskContactValueForAudit } from '@/lib/privacy/contact-mask';
 
 type Tx = {
   deliveryRecord: Pick<Prisma.TransactionClient['deliveryRecord'], 'findMany'>;
@@ -25,9 +26,13 @@ function buildReportResponseReminderTaskKey(deliveryId: string) {
   return `report-response-followup:${deliveryId}`;
 }
 
+function maskDeliveryContact(value: string | null) {
+  return maskContactValueForAudit(value, { phoneLeadingDigits: 2 }) ?? '';
+}
+
 export async function getCareReportDeliveryAnalytics(
   orgId: string,
-  options: DeliveryAnalyticsOptions = {}
+  options: DeliveryAnalyticsOptions = {},
 ) {
   const now = options.now ?? new Date();
   const overdueDays = options.overdueDays ?? 7;
@@ -69,7 +74,7 @@ export async function getCareReportDeliveryAnalytics(
   });
 
   const patientIds = Array.from(
-    new Set(deliveries.map((item) => item.report.patient_id).filter(Boolean))
+    new Set(deliveries.map((item) => item.report.patient_id).filter(Boolean)),
   );
   const patients =
     patientIds.length === 0
@@ -132,7 +137,8 @@ export async function getCareReportDeliveryAnalytics(
         patient_name: patientNameById.get(item.report.patient_id) ?? '患者未登録',
         report_type: item.report.report_type,
         recipient_name: item.recipient_name,
-        recipient_contact: item.recipient_contact,
+        recipient_contact: maskDeliveryContact(item.recipient_contact),
+        recipient_contact_masked: maskDeliveryContact(item.recipient_contact),
         channel: item.channel,
         sent_at: (item.sent_at as Date).toISOString(),
         days_waiting: daysWaiting,
@@ -204,15 +210,13 @@ export async function getCareReportDeliveryAnalytics(
     .map((item) => ({
       ...item,
       success_rate:
-        item.total_count === 0
-          ? 0
-          : Math.round((item.success_count / item.total_count) * 100),
+        item.total_count === 0 ? 0 : Math.round((item.success_count / item.total_count) * 100),
     }))
     .sort(
       (left, right) =>
         right.total_count - left.total_count ||
         right.success_rate - left.success_rate ||
-        left.recipient_name.localeCompare(right.recipient_name, 'ja')
+        left.recipient_name.localeCompare(right.recipient_name, 'ja'),
     )
     .slice(0, 5);
 
@@ -220,15 +224,13 @@ export async function getCareReportDeliveryAnalytics(
     .map((item) => ({
       ...item,
       success_rate:
-        item.total_count === 0
-          ? 0
-          : Math.round((item.success_count / item.total_count) * 100),
+        item.total_count === 0 ? 0 : Math.round((item.success_count / item.total_count) * 100),
     }))
     .sort(
       (left, right) =>
         right.total_count - left.total_count ||
         right.success_rate - left.success_rate ||
-        left.channel.localeCompare(right.channel, 'ja')
+        left.channel.localeCompare(right.channel, 'ja'),
     );
 
   return {
@@ -251,7 +253,7 @@ export async function getCareReportDeliveryAnalytics(
 export async function queueOverdueReportResponseReminders(
   tx: Tx,
   orgId: string,
-  options: Pick<DeliveryAnalyticsOptions, 'overdueDays' | 'now'> = {}
+  options: Pick<DeliveryAnalyticsOptions, 'overdueDays' | 'now'> = {},
 ) {
   const now = options.now ?? new Date();
   const overdueDays = options.overdueDays ?? 7;
@@ -308,7 +310,7 @@ export async function queueOverdueReportResponseReminders(
         patient_id: delivery.report.patient_id,
         report_type: delivery.report.report_type,
         recipient_name: delivery.recipient_name,
-        recipient_contact: delivery.recipient_contact,
+        recipient_contact_masked: maskDeliveryContact(delivery.recipient_contact),
         channel: delivery.channel,
         sent_at: delivery.sent_at.toISOString(),
         days_waiting: daysWaiting,

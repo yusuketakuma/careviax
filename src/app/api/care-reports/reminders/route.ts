@@ -28,7 +28,7 @@ export const POST = withAuthContext(
     return success({ data: result }, 201);
   },
   {
-    permission: 'canReport',
+    permission: 'canSendCareReport',
     message: '報告書リマインドの作成権限がありません',
   },
 );

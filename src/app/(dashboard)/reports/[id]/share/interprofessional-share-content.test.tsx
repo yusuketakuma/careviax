@@ -27,6 +27,13 @@ const REPORT = {
   status: 'sent',
   pdf_url: null,
   patient_summary: { id: 'pt_1', name: '加藤 ミサ' },
+  permissions: {
+    can_send: true,
+    can_create_external_share: true,
+    can_create_followup_task: true,
+    can_view_patient: true,
+    can_view_related_requests: true,
+  },
   content: {
     title: 'ケアマネへの服薬状況報告',
     patient: { name: '加藤 ミサ', birth_date: '1941-02-14' },
@@ -106,11 +113,13 @@ const REQUEST_DETAIL = {
   ],
 };
 
-function stubFetch(options: { failCareTeam?: boolean } = {}) {
+function stubFetch(
+  options: { failCareTeam?: boolean; failRequests?: boolean; report?: typeof REPORT } = {},
+) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.includes('/api/care-reports/rep_1')) {
-      return new Response(JSON.stringify({ data: REPORT }), { status: 200 });
+      return new Response(JSON.stringify({ data: options.report ?? REPORT }), { status: 200 });
     }
     if (url.includes('/api/patients/pt_1/care-team')) {
       if (options.failCareTeam) {
@@ -125,6 +134,9 @@ function stubFetch(options: { failCareTeam?: boolean } = {}) {
       return new Response(JSON.stringify({ data: REQUEST_DETAIL }), { status: 200 });
     }
     if (url.includes('/api/communication-requests?')) {
+      if (options.failRequests) {
+        return new Response('server error', { status: 500 });
+      }
       return new Response(JSON.stringify({ data: REQUESTS }), { status: 200 });
     }
     if (url.includes('/api/tasks') && init?.method === 'POST') {
@@ -263,7 +275,7 @@ describe('InterprofessionalShareContent', () => {
     );
     expect(taskCall).toBeTruthy();
     const body = JSON.parse(String(taskCall?.[1]?.body));
-    expect(body.task_type).toBe('share_reply_followup');
+    expect(body.task_type).toBe('report_response_followup');
     expect(body.dedupe_key).toBe('share-reply-task:res_1');
     expect(body.related_entity_type).toBe('patient');
     expect(body.related_entity_id).toBe('pt_1');
@@ -271,5 +283,112 @@ describe('InterprofessionalShareContent', () => {
 
     // 起票済みの返信では再実行できない
     expect((screen.getByTestId('share-next-task-button') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('allows preview and replies but blocks follow-up task creation without task permission', async () => {
+    const fetchMock = stubFetch({
+      report: {
+        ...REPORT,
+        permissions: {
+          can_send: true,
+          can_create_external_share: true,
+          can_create_followup_task: false,
+          can_view_patient: true,
+          can_view_related_requests: true,
+        },
+      },
+    });
+    renderShare();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('share-preview-column')).toBeTruthy();
+      expect(screen.getByTestId('share-reply-card')).toBeTruthy();
+    });
+
+    const button = screen.getByTestId('share-next-task-button') as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(
+      screen.getByText('運用タスクの作成権限がないため、返信内容は閲覧のみできます。'),
+    ).toBeTruthy();
+    fireEvent.click(button);
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) => String(input) === '/api/tasks' && init?.method === 'POST',
+      ),
+    ).toBe(false);
+  });
+
+  it('view-only report permissions hide external share and disable follow-up task creation', async () => {
+    const fetchMock = stubFetch({
+      report: {
+        ...REPORT,
+        permissions: {
+          can_send: false,
+          can_create_external_share: false,
+          can_create_followup_task: false,
+          can_view_patient: false,
+          can_view_related_requests: false,
+        },
+      },
+    });
+    renderShare();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('share-permission-warning')).toBeTruthy();
+    });
+
+    expect(screen.queryByRole('link', { name: /外部共有リンクの発行/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: '患者詳細' })).toBeNull();
+    expect(
+      screen.getByText(
+        'この報告書の外部共有または送付権限がないため、共有プレビューと返信確認は表示できません。',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByTestId('share-preview-column')).toBeNull();
+    expect(screen.queryByTestId('share-reply-card')).toBeNull();
+    expect(screen.queryByTestId('share-next-task-button')).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/tasks', expect.anything());
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/care-team'))).toBe(
+      false,
+    );
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/contacts'))).toBe(false);
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).includes('/api/communication-requests')),
+    ).toBe(false);
+  });
+
+  it('does not manually refetch patient support queries from retry when patient viewing is denied', async () => {
+    const fetchMock = stubFetch({
+      failRequests: true,
+      report: {
+        ...REPORT,
+        permissions: {
+          can_send: true,
+          can_create_external_share: true,
+          can_create_followup_task: true,
+          can_view_patient: false,
+          can_view_related_requests: true,
+        },
+      },
+    });
+    renderShare();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('share-supporting-data-warning')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '再取得' }));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.filter(([input]) =>
+          String(input).includes('/api/communication-requests?'),
+        ).length,
+      ).toBeGreaterThan(1);
+    });
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/care-team'))).toBe(
+      false,
+    );
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/contacts'))).toBe(false);
   });
 });

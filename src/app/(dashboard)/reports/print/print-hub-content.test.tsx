@@ -109,6 +109,7 @@ describe('PrintHubContent', () => {
     renderPrintHubContent();
 
     await screen.findByTestId('print-target-first_visit_documents');
+    expect(screen.getAllByLabelText('控えを保存').length).toBeGreaterThan(0);
     const printButton = await screen.findByTestId('print-submit-button');
 
     fireEvent.click(printButton);
@@ -137,5 +138,90 @@ describe('PrintHubContent', () => {
         }),
       ),
     );
+  });
+
+  it('hides save-copy controls for print types without persisted copy support', async () => {
+    useSearchParamsMock.mockReturnValue(new URLSearchParams('type=visit_report'));
+    vi.mocked(fetch).mockImplementationOnce(async (input: RequestInfo | URL) => {
+      expect(String(input)).toBe('/api/care-reports?limit=50&status=confirmed');
+      return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    });
+
+    renderPrintHubContent();
+
+    await screen.findByTestId('print-target-visit_report');
+
+    expect(screen.queryAllByLabelText('控えを保存')).toHaveLength(0);
+    expect(screen.queryByText(/患者文書にこの印刷プレビューの控えリンクを保存/)).toBeNull();
+  });
+
+  it('loads visit report preview content through the print audit endpoint', async () => {
+    useSearchParamsMock.mockReturnValue(new URLSearchParams('type=visit_report'));
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/care-reports?limit=50&status=confirmed') {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'report_1',
+                patient_id: 'patient_1',
+                patient_name: '山田 太郎',
+                report_type: 'physician_report',
+                status: 'confirmed',
+                created_at: '2026-06-18T00:00:00.000Z',
+                delivery_records: [],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/care-reports/report_1/print-audit') {
+        expect(init?.method).toBe('POST');
+        return new Response(
+          JSON.stringify({
+            data: {
+              audited: true,
+              report: {
+                id: 'report_1',
+                report_type: 'physician_report',
+                content: {
+                  patient: { name: '山田 太郎' },
+                  report_date: '2026-06-18',
+                  assessment: '訪問報告書の監査済み本文',
+                },
+              },
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    renderPrintHubContent();
+
+    await screen.findByText('訪問報告書の監査済み本文');
+    expect(fetch).toHaveBeenCalledWith('/api/care-reports/report_1/print-audit', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-org-id': 'org_1' },
+      body: JSON.stringify({ intent: 'preview_rendered' }),
+    });
+    expect(fetch).not.toHaveBeenCalledWith(
+      '/api/care-reports?limit=50&include_content=1',
+      expect.anything(),
+    );
+
+    fireEvent.click(await screen.findByTestId('print-submit-button'));
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith('/api/care-reports/report_1/print-audit', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-org-id': 'org_1' },
+        body: JSON.stringify({ intent: 'print_requested' }),
+      }),
+    );
+    expect(window.print).toHaveBeenCalledTimes(1);
   });
 });

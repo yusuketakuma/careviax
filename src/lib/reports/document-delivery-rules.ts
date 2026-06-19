@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db/client';
+export { inferCareReportTargetRole } from '@/lib/reports/care-report-target-role';
 
 export type DeliveryRuleSuggestion = {
   document_type: string;
@@ -6,23 +7,6 @@ export type DeliveryRuleSuggestion = {
   channel: string;
   fallback_channels: string[];
 };
-
-export function inferCareReportTargetRole(reportType: string) {
-  switch (reportType) {
-    case 'physician_report':
-      return 'physician';
-    case 'care_manager_report':
-      return 'care_manager';
-    case 'facility_handoff':
-      return 'facility_staff';
-    case 'nurse_share':
-      return 'nurse';
-    case 'family_share':
-      return 'family';
-    default:
-      return 'other';
-  }
-}
 
 export async function resolveDocumentDeliveryRule(args: {
   orgId: string;

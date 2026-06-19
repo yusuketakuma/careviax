@@ -5,6 +5,7 @@ export type PdfNotFoundResource =
   | 'tracingReport'
   | 'conferenceNote'
   | 'billingCandidate'
+  | 'pharmacyInvoice'
   | 'patient';
 
 const SAFE_MESSAGES: Record<PdfNotFoundResource, string> = {
@@ -14,6 +15,7 @@ const SAFE_MESSAGES: Record<PdfNotFoundResource, string> = {
   tracingReport: 'トレーシングレポートが見つかりません',
   conferenceNote: 'カンファレンス記録が見つかりません',
   billingCandidate: '請求候補が見つかりません',
+  pharmacyInvoice: '薬局間請求書が見つかりません',
   patient: '患者が見つかりません',
 };
 

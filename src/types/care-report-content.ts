@@ -100,3 +100,20 @@ export type CareManagerReportContent = {
   };
   warnings: string[];
 };
+
+export type AudienceReportAudience = 'visiting_nurse' | 'facility';
+
+export type AudienceReportContent = {
+  report_audience: AudienceReportAudience;
+  patient: { name: string; birth_date: string };
+  report_date: string;
+  visit_date: string;
+  pharmacist_name: string;
+  summary: string;
+  medication: string;
+  residual: string;
+  evaluation: string;
+  requests: string;
+  warnings: string[];
+  baseline_context?: BaselineContext;
+};

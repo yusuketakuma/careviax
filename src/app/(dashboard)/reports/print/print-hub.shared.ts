@@ -146,7 +146,7 @@ export type CareReportForPrint = {
   patient_name?: string | null;
   report_type: string;
   status: string;
-  content: unknown;
+  content?: unknown;
   created_at: string;
   delivery_records: DeliveryRecordForPrint[];
 };

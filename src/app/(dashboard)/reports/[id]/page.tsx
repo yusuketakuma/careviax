@@ -52,7 +52,12 @@ import {
   type VisitReportReadinessItem,
 } from '@/components/features/visits/visit-report-readiness-panel';
 import { PatientCareTeamSourcePanel } from '@/components/features/visits/patient-care-team-source-panel';
-import type { PhysicianReportContent, CareManagerReportContent } from '@/types/care-report-content';
+import type {
+  PhysicianReportContent,
+  CareManagerReportContent,
+  AudienceReportContent,
+} from '@/types/care-report-content';
+import type { CareReportActionPermissions } from '@/types/care-report-permissions';
 import { ReportAiDraftReview } from './report-ai-draft-review';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { WorkflowBackLink } from '@/components/features/workflow/workflow-back-link';
@@ -61,6 +66,12 @@ import {
   readReportContentObject,
   readReportWarnings,
 } from '@/lib/reports/report-content';
+import {
+  normalizeCareReportRecipientRole,
+  validateCareReportSendRecipientForm,
+  type CareReportSendFormErrors,
+} from '@/lib/reports/care-report-send-validation';
+import { inferCareReportTargetRole } from '@/lib/reports/care-report-target-role';
 import { cn } from '@/lib/utils';
 
 // --- Types ---
@@ -91,7 +102,7 @@ type CareReport = {
   } | null;
   report_type: string;
   status: string;
-  content: PhysicianReportContent | CareManagerReportContent;
+  content: PhysicianReportContent | CareManagerReportContent | AudienceReportContent;
   pdf_url: string | null;
   created_by: string;
   created_at: string;
@@ -114,6 +125,7 @@ type CareReport = {
     channel: string;
     fallback_channels: string[];
   } | null;
+  permissions?: CareReportActionPermissions;
 };
 
 type SendFormData = {
@@ -124,12 +136,14 @@ type SendFormData = {
 };
 
 type SendRequestData = SendFormData & {
+  expected_updated_at: string;
   safety_ack: true;
 };
 
 // p0_28: 一括送付。共有先(複数)をまとめて送付する。
 type BulkSendRequestData = {
   recipients: SendFormData[];
+  expected_updated_at: string;
   safety_ack: true;
 };
 
@@ -182,43 +196,7 @@ const PROFESSION_AUDIENCE_LABELS: Record<string, string> = {
   family: '家族',
 };
 
-function inferReportTargetRole(reportType: string) {
-  switch (reportType) {
-    case 'physician_report':
-      return 'physician';
-    case 'care_manager_report':
-      return 'care_manager';
-    case 'facility_handoff':
-      return 'facility_staff';
-    case 'nurse_share':
-      return 'nurse';
-    case 'family_share':
-      return 'family';
-    default:
-      return 'other';
-  }
-}
-
-function normalizeProfessionRole(professionType: string) {
-  switch (professionType) {
-    case 'physician':
-    case 'doctor':
-      return 'physician';
-    case 'care_manager':
-      return 'care_manager';
-    case 'visiting_nurse':
-    case 'nurse':
-      return 'nurse';
-    case 'facility':
-      return 'facility_staff';
-    case 'family':
-      return 'family';
-    default:
-      return professionType;
-  }
-}
-
-type SendFormErrors = Partial<Record<keyof SendFormData | 'safety_ack', string>>;
+type SendFormErrors = CareReportSendFormErrors;
 
 type ExternalProfessionalSuggestion = {
   id: string;
@@ -329,6 +307,58 @@ function isCareManagerReportContent(content: unknown): content is CareManagerRep
   );
 }
 
+function isAudienceReportContent(content: unknown): content is AudienceReportContent {
+  const value = readReportContentObject(content);
+  return (
+    value != null &&
+    (value.report_audience === 'visiting_nurse' || value.report_audience === 'facility') &&
+    hasStringFields(value.patient, ['name', 'birth_date']) &&
+    typeof value.report_date === 'string' &&
+    typeof value.visit_date === 'string' &&
+    typeof value.pharmacist_name === 'string' &&
+    typeof value.summary === 'string' &&
+    typeof value.medication === 'string' &&
+    typeof value.residual === 'string' &&
+    typeof value.evaluation === 'string' &&
+    typeof value.requests === 'string' &&
+    hasReportWarnings(value)
+  );
+}
+
+function AudienceReportView({ content }: { content: AudienceReportContent }) {
+  const sections = [
+    ['今日の要点', content.summary],
+    ['服薬状況', content.medication],
+    ['残薬', content.residual],
+    ['薬剤師の評価', content.evaluation],
+    ['お願いしたいこと', content.requests],
+  ] as const;
+  return (
+    <Card data-testid="audience-report-view">
+      <CardHeader>
+        <CardTitle className="text-base">
+          {content.report_audience === 'visiting_nurse'
+            ? '訪問看護向け服薬情報共有'
+            : '施設向け服薬介助申し送り'}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {sections.map(([title, body]) => (
+          <section
+            key={title}
+            className="rounded-md border border-border/70 bg-background px-4 py-3"
+          >
+            <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+            <p className="mt-1 whitespace-pre-line text-sm leading-6 text-muted-foreground">
+              {body.trim() || '未入力です。'}
+            </p>
+          </section>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
 // 送付候補(処方元医療機関 / 他職種)から送付チャネルと連絡先を解決する純粋関数。
 // 単一送付ダイアログと p0_28 コンポーザーの共有先で同じ解決ロジックを使う。
 function resolveSuggestionDelivery(
@@ -426,6 +456,7 @@ export default function ReportDetailPage() {
   });
 
   const report = data?.data;
+  const canSendReportForSupportQuery = report?.permissions?.can_send === true;
   const externalProfessionalSuggestionsQuery = useQuery({
     queryKey: [
       'care-report-external-professionals',
@@ -448,16 +479,19 @@ export default function ReportDetailPage() {
       if (!res.ok) throw new Error('他職種候補の取得に失敗しました');
       return res.json() as Promise<{ data: ExternalProfessionalSuggestion[] }>;
     },
-    enabled: !!orgId && !!report?.patient_id,
+    enabled: !!orgId && !!report?.patient_id && canSendReportForSupportQuery,
   });
 
   // p1_04: AI 下書きの薬剤師確認(draft → confirmed)
   const confirmDraftMutation = useMutation({
     mutationFn: async () => {
+      if (!report?.updated_at) {
+        throw new Error('報告書の版情報を取得できませんでした。再読み込みしてください');
+      }
       const res = await fetch(`/api/care-reports/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
-        body: JSON.stringify({ status: 'confirmed' }),
+        body: JSON.stringify({ expected_updated_at: report.updated_at, status: 'confirmed' }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => null);
@@ -499,7 +533,7 @@ export default function ReportDetailPage() {
         channel: 'email',
         recipient_name: '',
         recipient_contact: '',
-        recipient_role: inferReportTargetRole(data?.data?.report_type ?? 'physician_report'),
+        recipient_role: inferCareReportTargetRole(data?.data?.report_type ?? 'physician_report'),
       });
       setSendSafetyAck(false);
       setSendFormErrors({});
@@ -539,27 +573,23 @@ export default function ReportDetailPage() {
   });
 
   function handleSend() {
+    if (!report) {
+      toast.error('報告書を読み込んでから送付してください');
+      return;
+    }
+    if (!canSendReport) {
+      toast.error('報告書の送付権限がありません');
+      return;
+    }
+
     const normalizedForm = {
       channel: sendForm.channel,
       recipient_name: sendForm.recipient_name.trim(),
       recipient_contact: sendForm.recipient_contact.trim(),
       recipient_role: sendForm.recipient_role,
     };
-    const nextErrors: SendFormErrors = {};
-
-    if (!normalizedForm.recipient_name) {
-      nextErrors.recipient_name = '送付先氏名は必須です';
-    }
-    if (!normalizedForm.recipient_contact) {
-      nextErrors.recipient_contact = '送付先連絡先は必須です';
-    }
-    if (
-      (normalizedForm.channel === 'email' || normalizedForm.channel === 'ses') &&
-      normalizedForm.recipient_contact &&
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedForm.recipient_contact)
-    ) {
-      nextErrors.recipient_contact = 'メール送信時はメールアドレスを入力してください';
-    }
+    const validation = validateCareReportSendRecipientForm(normalizedForm);
+    const nextErrors: SendFormErrors = validation.ok ? {} : validation.errors;
     if (!sendSafetyAck) {
       nextErrors.safety_ack = '患者、送付先、チャネルを確認してください';
     }
@@ -569,10 +599,24 @@ export default function ReportDetailPage() {
       toast.error('送付前の確認項目を見直してください');
       return;
     }
-    sendMutation.mutate({ ...normalizedForm, safety_ack: true });
+    if (!validation.ok) return;
+    sendMutation.mutate({
+      ...validation.recipient,
+      expected_updated_at: report.updated_at,
+      safety_ack: true,
+    });
   }
 
   function handleBulkSend(targets: ShareTarget[]) {
+    if (!report) {
+      toast.error('報告書を読み込んでから送付してください');
+      return;
+    }
+    if (!canSendReport) {
+      toast.error('報告書の送付権限がありません');
+      return;
+    }
+
     const selectedTargets = targets.filter((target) =>
       effectiveSelectedTargetIds.includes(target.id),
     );
@@ -591,6 +635,7 @@ export default function ReportDetailPage() {
         recipient_contact: target.recipient_contact,
         recipient_role: target.recipient_role,
       })),
+      expected_updated_at: report.updated_at,
       safety_ack: true,
     });
   }
@@ -636,11 +681,46 @@ export default function ReportDetailPage() {
   }
 
   const statusCfg = REPORT_STATUS_CONFIG[report.status];
+  const canEditReport = report.permissions?.can_edit === true;
+  const canSendReport = report.permissions?.can_send === true;
+  const canCreateExternalShare = report.permissions?.can_create_external_share === true;
+  const canUseDeliverySupport = canSendReport;
+  const canOutputReport = canSendReport;
+  const isShareableReport = ['confirmed', 'sent', 'failed', 'response_waiting'].includes(
+    report.status,
+  );
+  const canUseExternalShare = canSendReport && canCreateExternalShare && isShareableReport;
+  const canViewPatientShortcut = report.permissions?.can_view_patient === true;
+  const canViewRelatedRequestsShortcut = report.permissions?.can_view_related_requests === true;
+  const reportShortcutLinks = getReportDetailShortcutLinks(
+    report.patient_id ?? null,
+    report.id,
+  ).filter((shortcut) => {
+    if (report.patient_id && shortcut.href === `/patients/${report.patient_id}`) {
+      return canViewPatientShortcut;
+    }
+    if (shortcut.label === '関連依頼') {
+      return canViewRelatedRequestsShortcut;
+    }
+    return true;
+  });
   const isPhysician = report.report_type === 'physician_report';
   const isCareManager = report.report_type === 'care_manager_report';
+  const isAudienceReport =
+    report.report_type === 'nurse_share' || report.report_type === 'facility_handoff';
   const hasPhysicianContent = isPhysician && isPhysicianReportContent(report.content);
   const hasCareManagerContent = isCareManager && isCareManagerReportContent(report.content);
-  const hasContentView = hasPhysicianContent || hasCareManagerContent;
+  const hasAudienceContent = isAudienceReport && isAudienceReportContent(report.content);
+  const hasContentView = hasPhysicianContent || hasCareManagerContent || hasAudienceContent;
+  const editableReportContent: PhysicianReportContent | CareManagerReportContent | null =
+    isPhysician && isPhysicianReportContent(report.content)
+      ? report.content
+      : isCareManager && isCareManagerReportContent(report.content)
+        ? report.content
+        : null;
+  const canEditCurrentDraft =
+    canEditReport && report.status === 'draft' && editableReportContent !== null;
+  const isEditingReport = editMode && canEditCurrentDraft;
   const reportContentObject = readReportContentObject(report.content);
   const contentPatient = isStringRecord(reportContentObject?.patient)
     ? reportContentObject.patient
@@ -661,11 +741,14 @@ export default function ReportDetailPage() {
     : [];
   const complianceReady =
     hasContentView && warnings.length === 0 && complianceChecks.every((item) => item.passed);
-  const prescriberInstitutionSuggestion = report.prescriber_institution_suggestion;
-  const externalProfessionalSuggestions =
-    report.external_professional_suggestions ??
-    externalProfessionalSuggestionsQuery.data?.data ??
-    [];
+  const prescriberInstitutionSuggestion = canUseDeliverySupport
+    ? report.prescriber_institution_suggestion
+    : null;
+  const externalProfessionalSuggestions = canUseDeliverySupport
+    ? (report.external_professional_suggestions ??
+      externalProfessionalSuggestionsQuery.data?.data ??
+      [])
+    : [];
   const careTeamSuggestionContacts = externalProfessionalSuggestions.map((suggestion) => ({
     id: suggestion.id,
     role: suggestion.profession_type,
@@ -673,7 +756,9 @@ export default function ReportDetailPage() {
     organization_name: suggestion.organization_name,
     phone: suggestion.phone,
   }));
-  const deliveryRuleSuggestion = report.delivery_rule_suggestion ?? null;
+  const deliveryRuleSuggestion = canUseDeliverySupport
+    ? (report.delivery_rule_suggestion ?? null)
+    : null;
   const reportReadinessItems: VisitReportReadinessItem[] = [
     {
       key: 'content',
@@ -712,7 +797,7 @@ export default function ReportDetailPage() {
         fallback_channels: deliveryRuleSuggestion.fallback_channels,
       }
     : null;
-  const expectedRecipientRole = inferReportTargetRole(report.report_type);
+  const expectedRecipientRole = inferCareReportTargetRole(report.report_type);
 
   function applyInstitutionSuggestion() {
     if (!prescriberInstitutionSuggestion) return;
@@ -732,7 +817,7 @@ export default function ReportDetailPage() {
         'professional',
         suggestion,
         deliveryRuleForResolve,
-        normalizeProfessionRole(suggestion.profession_type),
+        normalizeCareReportRecipientRole(suggestion.profession_type),
       ),
     );
   }
@@ -764,7 +849,7 @@ export default function ReportDetailPage() {
         'professional',
         suggestion,
         deliveryRuleForResolve,
-        normalizeProfessionRole(suggestion.profession_type),
+        normalizeCareReportRecipientRole(suggestion.profession_type),
       ),
     })),
   ].filter(
@@ -780,9 +865,12 @@ export default function ReportDetailPage() {
   );
   const allPreSendChecksDone = PRE_SEND_CHECK_ITEMS.every((item) => preSendChecks[item.key]);
   const isConfirmedReport = report.status === 'confirmed';
+  const isRetryableReport = report.status === 'failed' || report.status === 'response_waiting';
+  const canSendReportStatus = isConfirmedReport || isRetryableReport;
   const canBulkSend =
     hasContentView &&
-    isConfirmedReport &&
+    canSendReportStatus &&
+    canUseExternalShare &&
     selectedShareTargets.length > 0 &&
     allPreSendChecksDone &&
     !bulkSendMutation.isPending;
@@ -791,9 +879,9 @@ export default function ReportDetailPage() {
     externalProfessionalSuggestionsQuery.isFetching;
 
   const sendReportAction =
-    hasContentView && isConfirmedReport ? (
+    hasContentView && canSendReportStatus && canSendReport ? (
       <div className="flex flex-wrap gap-2">
-        {shareTargets.length > 0 ? (
+        {canUseExternalShare && shareTargets.length > 0 ? (
           <Button
             variant="outline"
             size="sm"
@@ -828,7 +916,7 @@ export default function ReportDetailPage() {
           }}
         >
           <Send className="mr-1.5 size-3.5" aria-hidden="true" />
-          送付
+          {isRetryableReport ? '再送' : '送付'}
         </Button>
       </div>
     ) : null;
@@ -842,13 +930,13 @@ export default function ReportDetailPage() {
           backLabel="報告書一覧へ戻る"
           title={REPORT_TYPE_LABELS[report.report_type] ?? report.report_type}
           description={`作成日: ${format(new Date(report.created_at), 'yyyy年M月d日', { locale: ja })}`}
-          shortcuts={getReportDetailShortcutLinks(report.patient_id ?? null, report.id)}
+          shortcuts={reportShortcutLinks}
           mainWorkflowSteps={['reports']}
           mainWorkflowDescription="報告書詳細でも、主業務フローの終点として現在地を上部に固定表示します。"
           actions={
             <>
               {statusCfg && <Badge variant={statusCfg.variant}>{statusCfg.label}</Badge>}
-              {hasContentView && (
+              {hasContentView && canEditCurrentDraft && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -856,10 +944,10 @@ export default function ReportDetailPage() {
                   onClick={() => setEditMode((v) => !v)}
                 >
                   <Pencil className="mr-1.5 size-3.5" aria-hidden="true" />
-                  {editMode ? '表示に戻る' : '編集'}
+                  {isEditingReport ? '表示に戻る' : '編集'}
                 </Button>
               )}
-              {isConfirmedReport ? (
+              {isConfirmedReport && canOutputReport ? (
                 <a
                   href={`/api/care-reports/${id}/pdf`}
                   target="_blank"
@@ -873,19 +961,23 @@ export default function ReportDetailPage() {
                   PDFを開く
                 </a>
               ) : null}
-              <Link href={`/reports/${id}/print`}>
-                <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0">
-                  <Printer className="mr-1.5 size-3.5" aria-hidden="true" />
-                  印刷ビュー
-                </Button>
-              </Link>
+              {isConfirmedReport && canOutputReport ? (
+                <Link href={`/reports/${id}/print`}>
+                  <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0">
+                    <Printer className="mr-1.5 size-3.5" aria-hidden="true" />
+                    印刷ビュー
+                  </Button>
+                </Link>
+              ) : null}
               {/* p1_05: 他職種向け共有ページ(相手別プレビュー + 返信確認) */}
-              <Link href={`/reports/${id}/share`}>
-                <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0">
-                  <Share2 className="mr-1.5 size-3.5" aria-hidden="true" />
-                  他職種共有
-                </Button>
-              </Link>
+              {canUseExternalShare ? (
+                <Link href={`/reports/${id}/share`}>
+                  <Button variant="outline" size="sm" className="min-h-[44px] sm:min-h-0">
+                    <Share2 className="mr-1.5 size-3.5" aria-hidden="true" />
+                    他職種共有
+                  </Button>
+                </Link>
+              ) : null}
             </>
           }
         />
@@ -896,12 +988,12 @@ export default function ReportDetailPage() {
         />
 
         {/* p0_28: 報告書コンポーザー(共有先複数選択 + 報告内容 + 送付前チェック) */}
-        {composerOpen ? (
+        {composerOpen && canSendReportStatus && canUseExternalShare ? (
           <Card data-testid="report-composer">
             <CardHeader className="flex flex-row items-center justify-between gap-2">
               <CardTitle className="flex items-center gap-2 text-base">
                 <Share2 className="size-4" aria-hidden="true" />
-                報告書を作成・共有
+                {isRetryableReport ? '報告書を再送・共有' : '報告書を作成・共有'}
               </CardTitle>
               <Button
                 variant="ghost"
@@ -970,12 +1062,19 @@ export default function ReportDetailPage() {
                 <section aria-label="報告内容" className="min-w-0 space-y-3">
                   <h3 className="text-sm font-semibold text-foreground">報告内容</h3>
                   {hasContentView ? (
-                    <ReportEditForm
-                      reportId={id}
-                      reportType={report.report_type}
-                      content={report.content}
-                      onSaved={() => toast.success('報告内容を保存しました')}
-                    />
+                    <div className="space-y-3">
+                      {hasPhysicianContent && (
+                        <PhysicianReportView content={report.content as PhysicianReportContent} />
+                      )}
+                      {hasCareManagerContent && (
+                        <CareManagerReportView
+                          content={report.content as CareManagerReportContent}
+                        />
+                      )}
+                      {hasAudienceContent && (
+                        <AudienceReportView content={report.content as AudienceReportContent} />
+                      )}
+                    </div>
                   ) : (
                     <Alert>
                       <AlertTriangle className="size-4" aria-hidden="true" />
@@ -1121,11 +1220,14 @@ export default function ReportDetailPage() {
             )}
 
             {/* p1_04: 下書きは AI 下書きレビュー(5見出し+宛先別プレビュー+薬剤師確認)を先に出す */}
-            {report.status === 'draft' && !editMode ? (
+            {report.status === 'draft' && !isEditingReport && canEditReport ? (
               <ReportAiDraftReview
                 content={
-                  hasPhysicianContent || hasCareManagerContent
-                    ? (report.content as PhysicianReportContent | CareManagerReportContent)
+                  hasPhysicianContent || hasCareManagerContent || hasAudienceContent
+                    ? (report.content as
+                        | PhysicianReportContent
+                        | CareManagerReportContent
+                        | AudienceReportContent)
                     : null
                 }
                 reportType={report.report_type}
@@ -1133,11 +1235,20 @@ export default function ReportDetailPage() {
                 onConfirm={() => confirmDraftMutation.mutate()}
               />
             ) : null}
+            {report.status === 'draft' && !canEditReport ? (
+              <Alert className="border-amber-200 bg-amber-50 text-amber-950">
+                <AlertTriangle className="size-4 text-amber-700" aria-hidden="true" />
+                <AlertTitle>薬剤師確認待ちです</AlertTitle>
+                <AlertDescription className="text-amber-900">
+                  この下書きは編集・確認権限を持つ薬剤師または管理者の確認後に送付できます。
+                </AlertDescription>
+              </Alert>
+            ) : null}
 
             {/* Report content view or edit form */}
             {hasContentView ? (
               <>
-                {editMode ? (
+                {isEditingReport && editableReportContent ? (
                   <Card>
                     <CardHeader>
                       <CardTitle className="text-base">報告書を編集</CardTitle>
@@ -1146,7 +1257,8 @@ export default function ReportDetailPage() {
                       <ReportEditForm
                         reportId={id}
                         reportType={report.report_type}
-                        content={report.content}
+                        updatedAt={report.updated_at}
+                        content={editableReportContent}
                         onSaved={() => setEditMode(false)}
                       />
                     </CardContent>
@@ -1158,6 +1270,9 @@ export default function ReportDetailPage() {
                     )}
                     {hasCareManagerContent && (
                       <CareManagerReportView content={report.content as CareManagerReportContent} />
+                    )}
+                    {hasAudienceContent && (
+                      <AudienceReportView content={report.content as AudienceReportContent} />
                     )}
                   </>
                 )}
@@ -1218,7 +1333,7 @@ export default function ReportDetailPage() {
                 content={report.content}
                 warnings={warnings}
               />
-              {careTeamSuggestionContacts.length > 0 ? (
+              {canUseDeliverySupport && careTeamSuggestionContacts.length > 0 ? (
                 <PatientCareTeamSourcePanel contacts={careTeamSuggestionContacts} compact />
               ) : null}
             </div>
@@ -1238,7 +1353,7 @@ export default function ReportDetailPage() {
         >
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>報告書を送付</DialogTitle>
+              <DialogTitle>{isRetryableReport ? '報告書を再送' : '報告書を送付'}</DialogTitle>
             </DialogHeader>
 
             <div className="space-y-4 py-2">
@@ -1497,7 +1612,13 @@ export default function ReportDetailPage() {
                 disabled={sendMutation.isPending}
               >
                 <Send className="mr-1.5 size-3.5" aria-hidden="true" />
-                {sendMutation.isPending ? '送付中...' : '送付する'}
+                {sendMutation.isPending
+                  ? isRetryableReport
+                    ? '再送中...'
+                    : '送付中...'
+                  : isRetryableReport
+                    ? '再送する'
+                    : '送付する'}
               </Button>
             </DialogFooter>
           </DialogContent>

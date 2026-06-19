@@ -28,7 +28,16 @@ import {
 // CareReport.report_type は Prisma enum ReportType に対応する。
 // 訪問看護向け = nurse_share / 施設向け = facility_handoff（schema 既存値を再利用）。
 type ReportType = 'physician_report' | 'care_manager_report' | 'nurse_share' | 'facility_handoff';
-type ExistingCareReport = { id: string; report_type: ReportType; status: string };
+type ExistingCareReport = {
+  id: string;
+  report_type: ReportType;
+  status: string;
+  updated_at: Date;
+};
+type GenerateReportsFromVisitOptions = {
+  expectedVisitRecordUpdatedAt?: Date | null;
+  expectedReportUpdatedAt?: Date | null;
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -84,7 +93,10 @@ export async function generateReportsFromVisit(
   visitRecordId: string,
   reportType?: ReportType,
   accessContext?: CareReportAccessContext,
-): Promise<{ reports: Array<{ id: string; report_type: string }> }> {
+  options: GenerateReportsFromVisitOptions = {},
+): Promise<{
+  reports: Array<{ id: string; report_type: string; status: string; updated_at: Date }>;
+}> {
   // ─── 1. VisitRecord 取得 ────────────────────────────────────────────────────
   const visitRecord = await prisma.visitRecord.findFirst({
     where: { id: visitRecordId, org_id: orgId },
@@ -103,6 +115,13 @@ export async function generateReportsFromVisit(
 
   if (!visitRecord) {
     throw new Error(`VisitRecord not found: ${visitRecordId}`);
+  }
+  const expectedVisitRecordUpdatedAt = options.expectedVisitRecordUpdatedAt ?? null;
+  if (
+    expectedVisitRecordUpdatedAt &&
+    visitRecord.updated_at.getTime() !== expectedVisitRecordUpdatedAt.getTime()
+  ) {
+    throw new Error('VISIT_RECORD_STALE_FOR_REPORT_GENERATION');
   }
 
   // ─── 2. Schedule → Case 取得 ───────────────────────────────────────────────
@@ -343,7 +362,7 @@ export async function generateReportsFromVisit(
       visit_record_id: visitRecordId,
       report_type: { in: typesToGenerate },
     },
-    select: { id: true, report_type: true, status: true },
+    select: { id: true, report_type: true, status: true, updated_at: true },
   });
   const existingByType = new Map<ReportType, ExistingCareReport>();
   for (const report of existingReports) {
@@ -503,21 +522,61 @@ export async function generateReportsFromVisit(
     .map((type) => existingByType.get(type))
     .filter(
       (report): report is ExistingCareReport =>
+        report?.status === 'draft' &&
+        contentByType.has(report.report_type) &&
+        options.expectedReportUpdatedAt != null,
+    );
+  const existingDraftsRequiringVersion = typesToGenerate
+    .map((type) => existingByType.get(type))
+    .filter(
+      (report): report is ExistingCareReport =>
         report?.status === 'draft' && contentByType.has(report.report_type),
     );
+  if (existingDraftsRequiringVersion.length > 0 && options.expectedReportUpdatedAt == null) {
+    throw new Error('CARE_REPORT_DRAFT_VERSION_REQUIRED_FOR_REPORT_GENERATION');
+  }
+  if (draftReportsToRefresh.length > 0 && options.expectedReportUpdatedAt) {
+    for (const report of draftReportsToRefresh) {
+      if (report.updated_at.getTime() !== options.expectedReportUpdatedAt.getTime()) {
+        throw new Error('CARE_REPORT_DRAFT_STALE_FOR_REPORT_GENERATION');
+      }
+    }
+  }
 
   const persistedReports =
     missingTypes.length === 0 && draftReportsToRefresh.length === 0
       ? existingReports
       : await withOrgContext(orgId, async (tx) => {
-          await Promise.all(
+          if (expectedVisitRecordUpdatedAt) {
+            const currentVisitRecord = await tx.visitRecord.findFirst({
+              where: {
+                id: visitRecordId,
+                org_id: orgId,
+                updated_at: expectedVisitRecordUpdatedAt,
+              },
+              select: { id: true },
+            });
+            if (!currentVisitRecord) {
+              throw new Error('VISIT_RECORD_STALE_FOR_REPORT_GENERATION');
+            }
+          }
+
+          const refreshedDraftResults = await Promise.all(
             draftReportsToRefresh.map((report) =>
               tx.careReport.updateMany({
-                where: { id: report.id, org_id: orgId, status: 'draft' },
+                where: {
+                  id: report.id,
+                  org_id: orgId,
+                  status: 'draft',
+                  updated_at: options.expectedReportUpdatedAt ?? undefined,
+                },
                 data: { content: toPrismaJsonInput(contentByType.get(report.report_type)) },
               }),
             ),
           );
+          if (refreshedDraftResults.some((result) => result.count !== 1)) {
+            throw new Error('CARE_REPORT_DRAFT_STALE_FOR_REPORT_GENERATION');
+          }
 
           if (missingTypes.length > 0) {
             await tx.careReport.createMany({
@@ -541,7 +600,7 @@ export async function generateReportsFromVisit(
               visit_record_id: visitRecordId,
               report_type: { in: typesToGenerate },
             },
-            select: { id: true, report_type: true, status: true },
+            select: { id: true, report_type: true, status: true, updated_at: true },
           });
         });
 
@@ -553,8 +612,15 @@ export async function generateReportsFromVisit(
     });
   }
   const reports = typesToGenerate
-    .map((type) => existingByType.get(type) ?? persistedByType.get(type))
+    .map((type) => persistedByType.get(type) ?? existingByType.get(type))
     .filter((report): report is ExistingCareReport => report != null);
 
-  return { reports: reports.map((report) => ({ id: report.id, report_type: report.report_type })) };
+  return {
+    reports: reports.map((report) => ({
+      id: report.id,
+      report_type: report.report_type,
+      status: report.status,
+      updated_at: report.updated_at,
+    })),
+  };
 }

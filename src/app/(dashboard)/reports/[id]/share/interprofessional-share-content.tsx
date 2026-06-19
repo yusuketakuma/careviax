@@ -13,6 +13,7 @@ import { Loading } from '@/components/ui/loading';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
+import type { CareReportActionPermissions } from '@/types/care-report-permissions';
 import {
   buildAudienceShareSections,
   buildNextCheckTaskInput,
@@ -45,6 +46,7 @@ type ShareCareReport = {
     id: string;
     name: string | null;
   } | null;
+  permissions?: CareReportActionPermissions;
 };
 
 type ShareReplyDetail = {
@@ -77,6 +79,15 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
   });
   const report = reportQuery.data?.data ?? null;
   const patientId = report?.patient_id ?? null;
+  const canSendReport = report?.permissions?.can_send === true;
+  const canCreateExternalShare = report?.permissions?.can_create_external_share === true;
+  const isShareableReportStatus = report
+    ? ['confirmed', 'sent', 'response_waiting'].includes(report.status)
+    : false;
+  const canUseShareOutput = canSendReport && canCreateExternalShare && isShareableReportStatus;
+  const canCreateFollowupTask = report?.permissions?.can_create_followup_task === true;
+  const canViewPatient = report?.permissions?.can_view_patient === true;
+  const canLoadPatientSupport = Boolean(patientId && canViewPatient && canUseShareOutput);
 
   const careTeamQuery = useQuery({
     queryKey: ['patient-care-team', patientId, report?.case_id, orgId],
@@ -89,7 +100,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
       if (!res.ok) throw new Error('ケアチームの取得に失敗しました');
       return res.json() as Promise<{ data: CareTeamMemberSummary[] }>;
     },
-    enabled: !!orgId && !!patientId,
+    enabled: !!orgId && canLoadPatientSupport,
   });
 
   const contactsQuery = useQuery({
@@ -101,7 +112,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
       if (!res.ok) throw new Error('連絡先の取得に失敗しました');
       return res.json() as Promise<{ data: ContactPartySummary[] }>;
     },
-    enabled: !!orgId && !!patientId,
+    enabled: !!orgId && canLoadPatientSupport,
   });
 
   const requestsQuery = useQuery({
@@ -117,7 +128,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
       if (!res.ok) throw new Error('返信状況の取得に失敗しました');
       return res.json() as Promise<{ data: ShareCommunicationRequest[] }>;
     },
-    enabled: !!orgId && !!reportId,
+    enabled: !!orgId && !!reportId && canUseShareOutput,
   });
 
   const audience = selectedAudience ?? defaultAudienceForReportType(report?.report_type ?? null);
@@ -127,7 +138,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
     contactsQuery.data?.data ?? [],
   );
   const sections = buildAudienceShareSections(report?.content ?? null, audience, {
-    hasPdf: Boolean(report),
+    hasPdf: Boolean(report && canUseShareOutput),
   });
   const replyRequest = pickLatestAudienceReplyRequest(requestsQuery.data?.data ?? [], audience);
 
@@ -141,19 +152,22 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
       if (!res.ok) throw new Error('返信内容の取得に失敗しました');
       return res.json() as Promise<{ data: ShareReplyDetail }>;
     },
-    enabled: !!orgId && !!replyRequest?.id,
+    enabled: !!orgId && !!replyRequest?.id && canUseShareOutput,
   });
   const latestReply = replyDetailQuery.data?.data.responses[0] ?? null;
   const taskCreated = Boolean(latestReply && createdResponseIds.includes(latestReply.id));
   const supportingDataErrors = [
     careTeamQuery.isError ? 'ケアチーム' : null,
     contactsQuery.isError ? '患者連絡先' : null,
-    requestsQuery.isError ? '返信状況' : null,
-    replyDetailQuery.isError ? '返信内容' : null,
+    canUseShareOutput && requestsQuery.isError ? '返信状況' : null,
+    canUseShareOutput && replyDetailQuery.isError ? '返信内容' : null,
   ].filter((label): label is string => Boolean(label));
 
   const createTaskMutation = useMutation({
     mutationFn: async () => {
+      if (!canCreateFollowupTask) {
+        throw new Error('運用タスクの作成権限がありません');
+      }
       if (!report || !latestReply || !replyRequest) {
         throw new Error('タスク化できる返信がありません');
       }
@@ -229,6 +243,58 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
   }
 
   const patientName = report.patient_summary?.name ?? null;
+  const introShortcuts = [
+    { href: '/reports', label: '報告書一覧' },
+    ...(patientId && canViewPatient ? [{ href: `/patients/${patientId}`, label: '患者詳細' }] : []),
+    { href: '/external', label: '外部連携' },
+  ];
+  const externalShareAction =
+    patientId && canViewPatient && canUseShareOutput ? (
+      <Link
+        href={`/patients/${patientId}/share`}
+        className={cn(
+          buttonVariants({ variant: 'outline', size: 'sm' }),
+          'min-h-[44px] sm:min-h-0',
+        )}
+      >
+        <Share2 className="mr-1.5 size-3.5" aria-hidden="true" />
+        外部共有リンクの発行
+      </Link>
+    ) : null;
+
+  if (!canUseShareOutput) {
+    const shareBlockedMessage = !isShareableReportStatus
+      ? '下書きの報告書は外部共有できません。薬剤師確認済みまたは送付済みの状態にしてから共有してください。'
+      : 'この報告書の外部共有または送付権限がないため、共有プレビューと返信確認は表示できません。';
+    return (
+      <PageScaffold>
+        <div data-testid="interprofessional-share" className="contents">
+          <WorkflowPageIntro
+            backHref={`/reports/${report.id}`}
+            backLabel="報告書詳細へ戻る"
+            title="他職種向け共有ページ"
+            description={
+              patientName
+                ? `${patientName} 様の報告内容を相手ごとにプレビューし、返信を次回タスクへつなげます。`
+                : '報告内容を相手ごとにプレビューし、返信を次回タスクへつなげます。'
+            }
+            shortcuts={introShortcuts}
+            actions={externalShareAction}
+          />
+          <div
+            className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-950"
+            data-testid="share-permission-warning"
+          >
+            <h2 className="flex items-center gap-2 text-sm font-semibold">
+              <AlertTriangle className="size-4 text-amber-700" aria-hidden="true" />
+              共有内容を表示できません
+            </h2>
+            <p className="mt-1 text-sm text-amber-900">{shareBlockedMessage}</p>
+          </div>
+        </div>
+      </PageScaffold>
+    );
+  }
 
   return (
     <PageScaffold>
@@ -242,25 +308,8 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
               ? `${patientName} 様の報告内容を相手ごとにプレビューし、返信を次回タスクへつなげます。`
               : '報告内容を相手ごとにプレビューし、返信を次回タスクへつなげます。'
           }
-          shortcuts={[
-            { href: '/reports', label: '報告書一覧' },
-            ...(patientId ? [{ href: `/patients/${patientId}`, label: '患者詳細' }] : []),
-            { href: '/external', label: '外部連携' },
-          ]}
-          actions={
-            patientId ? (
-              <Link
-                href={`/patients/${patientId}/share`}
-                className={cn(
-                  buttonVariants({ variant: 'outline', size: 'sm' }),
-                  'min-h-[44px] sm:min-h-0',
-                )}
-              >
-                <Share2 className="mr-1.5 size-3.5" aria-hidden="true" />
-                外部共有リンクの発行
-              </Link>
-            ) : null
-          }
+          shortcuts={introShortcuts}
+          actions={externalShareAction}
         />
 
         {supportingDataErrors.length > 0 ? (
@@ -285,10 +334,16 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
                 size="sm"
                 className="min-h-[44px] bg-background sm:min-h-0"
                 onClick={() => {
-                  void careTeamQuery.refetch();
-                  void contactsQuery.refetch();
-                  void requestsQuery.refetch();
-                  void replyDetailQuery.refetch();
+                  if (canLoadPatientSupport) {
+                    void careTeamQuery.refetch();
+                    void contactsQuery.refetch();
+                  }
+                  if (canUseShareOutput) {
+                    void requestsQuery.refetch();
+                  }
+                  if (canUseShareOutput && replyRequest?.id) {
+                    void replyDetailQuery.refetch();
+                  }
                 }}
               >
                 再取得
@@ -413,7 +468,12 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
               type="button"
               data-testid="share-next-task-button"
               className="mt-4 min-h-[44px] w-full"
-              disabled={!latestReply || createTaskMutation.isPending || taskCreated}
+              disabled={
+                !canCreateFollowupTask ||
+                !latestReply ||
+                createTaskMutation.isPending ||
+                taskCreated
+              }
               onClick={() => createTaskMutation.mutate()}
             >
               {taskCreated ? (
@@ -429,7 +489,9 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
               )}
             </Button>
             <p className="mt-2 text-xs leading-5 text-muted-foreground">
-              返信内容を次回訪問の確認タスク(運用タスク)として登録します。登録後はダッシュボードのタスク一覧に表示されます。
+              {canCreateFollowupTask
+                ? '返信内容を次回訪問の確認タスク(運用タスク)として登録します。登録後はダッシュボードのタスク一覧に表示されます。'
+                : '運用タスクの作成権限がないため、返信内容は閲覧のみできます。'}
             </p>
           </section>
         </div>

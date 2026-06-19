@@ -1,9 +1,16 @@
 import { withAuthContext } from '@/lib/auth/context';
+import { hasPermission } from '@/lib/auth/permissions';
 import { success, validationError } from '@/lib/api/response';
 import { addUtcDays, localDateKey, utcDateFromLocalKey } from '@/lib/utils/date-boundary';
 import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObject, readJsonObjectString } from '@/lib/db/json';
 import { dateKeySchema } from '@/lib/validations/date-key';
+import {
+  BILLING_VALIDATION_LAYER_KEYS,
+  readBillingValidationLayers,
+  safeBillingValidationMessage,
+  summarizeBillingValidationLayers,
+} from '@/lib/billing/validation-layers';
 import { z } from 'zod';
 import type {
   ReportDraftRow,
@@ -29,6 +36,12 @@ const WAITING_LIMIT = 5;
 const RESOLVED_LIMIT = 3;
 const CREATED_REPORT_LIMIT = 12;
 const OPEN_ISSUE_LIMIT = 12;
+const BILLING_CANDIDATE_OPEN_ISSUE_SCAN_LIMIT = OPEN_ISSUE_LIMIT * 3;
+const OPEN_ISSUE_SEVERITY_RANK: Record<ReportOpenIssue['severity'], number> = {
+  critical: 0,
+  warning: 1,
+  info: 2,
+};
 
 const dateQuerySchema = z.object({
   date: dateKeySchema('日付はYYYY-MM-DD形式で指定してください').optional(),
@@ -102,7 +115,13 @@ function buildRecipientLabel(links: CareTeamLinkRow[]): string {
 }
 
 function readPatientIdsLength(value: unknown): number {
-  return Array.isArray(value) ? value.length : 0;
+  return readPatientIds(value).length;
+}
+
+function readPatientIds(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
 }
 
 function buildReportTitle(reportType: string, content: unknown): string {
@@ -123,6 +142,27 @@ type WorkspaceDeliveryRecord = {
   retry_count: number;
   updated_at: Date;
 };
+
+type BillingCandidateIssueSource = {
+  id: string;
+  patient_id: string | null;
+  billing_name: string;
+  source_snapshot: unknown;
+};
+
+const BILLING_CANDIDATE_ISSUE_SELECT = {
+  id: true,
+  patient_id: true,
+  billing_name: true,
+  source_snapshot: true,
+} as const;
+
+const BILLING_CANDIDATE_BLOCKED_LAYER_FILTERS = BILLING_VALIDATION_LAYER_KEYS.map((layerKey) => ({
+  source_snapshot: {
+    path: ['validation_layers', layerKey, 'state'],
+    equals: 'blocked',
+  },
+}));
 
 function retryLabel(retryCount: number): string {
   return retryCount > 0 ? `再送${retryCount}回` : '再送未実施';
@@ -196,6 +236,7 @@ function buildReportOpenIssues(args: {
 
   if (args.report.status === 'draft') {
     issues.push({
+      kind: 'report',
       id: `${args.report.id}-draft-confirmation`,
       report_id: args.report.id,
       severity: 'critical',
@@ -210,6 +251,7 @@ function buildReportOpenIssues(args: {
   );
   if (args.report.status === 'confirmed' && !hasDelivered) {
     issues.push({
+      kind: 'report',
       id: `${args.report.id}-not-reported`,
       report_id: args.report.id,
       severity: 'warning',
@@ -225,6 +267,7 @@ function buildReportOpenIssues(args: {
       ? buildFailedDeliverySummary(args.report.id, failedDelivery)
       : null;
     issues.push({
+      kind: 'report',
       id: `${args.report.id}-delivery-failed`,
       report_id: args.report.id,
       severity: 'critical',
@@ -242,6 +285,7 @@ function buildReportOpenIssues(args: {
     : [];
   if (!sourceProvenance?.medication_cycle_id || prescriptionLineIds.length === 0) {
     issues.push({
+      kind: 'report',
       id: `${args.report.id}-prescription-link`,
       report_id: args.report.id,
       severity: 'warning',
@@ -253,6 +297,7 @@ function buildReportOpenIssues(args: {
 
   if (!billingContext?.payer_basis) {
     issues.push({
+      kind: 'report',
       id: `${args.report.id}-billing-context`,
       report_id: args.report.id,
       severity: 'warning',
@@ -263,6 +308,95 @@ function buildReportOpenIssues(args: {
   }
 
   return issues;
+}
+
+function buildBillingCandidateOpenIssue(args: {
+  candidate: BillingCandidateIssueSource;
+  patientLabel: string;
+  billingMonthKey: string;
+}): ReportOpenIssue {
+  const validationSummary = summarizeBillingValidationLayers(
+    readBillingValidationLayers(args.candidate.source_snapshot),
+  );
+  const params = new URLSearchParams({
+    billing_month: args.billingMonthKey,
+    candidate_id: args.candidate.id,
+  });
+  if (args.candidate.patient_id) {
+    params.set('patient_id', args.candidate.patient_id);
+  }
+
+  return {
+    kind: 'billing_candidate',
+    id: `billing-candidate-${args.candidate.id}`,
+    billing_candidate_id: args.candidate.id,
+    patient_id: args.candidate.patient_id,
+    severity: validationSummary.state === 'blocked' ? 'critical' : 'warning',
+    title: `${args.patientLabel} — 算定候補の確認待ち`,
+    description: `${args.candidate.billing_name}: ${safeBillingValidationMessage(
+      validationSummary,
+    )}`,
+    action: { label: '算定候補へ', href: `/billing/candidates?${params.toString()}` },
+  };
+}
+
+function openIssueKey(issue: ReportOpenIssue) {
+  return `${issue.kind}:${issue.id}`;
+}
+
+function compareOpenIssuePriority(left: ReportOpenIssue, right: ReportOpenIssue) {
+  const severityDiff =
+    OPEN_ISSUE_SEVERITY_RANK[left.severity] - OPEN_ISSUE_SEVERITY_RANK[right.severity];
+  if (severityDiff !== 0) return severityDiff;
+  return left.kind === right.kind ? 0 : left.kind === 'billing_candidate' ? -1 : 1;
+}
+
+function mergeOpenIssues(reportIssues: ReportOpenIssue[], billingIssues: ReportOpenIssue[]) {
+  const sortedIssues = [...reportIssues, ...billingIssues].sort(compareOpenIssuePriority);
+  const selected = sortedIssues.slice(0, OPEN_ISSUE_LIMIT);
+  if (selected.length < OPEN_ISSUE_LIMIT) return selected;
+
+  const selectedKeys = new Set(selected.map(openIssueKey));
+  const selectedKinds = new Set(selected.map((issue) => issue.kind));
+  const sourceKinds = [
+    reportIssues.length > 0 ? 'report' : null,
+    billingIssues.length > 0 ? 'billing_candidate' : null,
+  ].filter((kind): kind is ReportOpenIssue['kind'] => Boolean(kind));
+  const missingKind = sourceKinds.find((kind) => !selectedKinds.has(kind));
+  if (!missingKind) return selected;
+
+  const worstSelectedSeverityRank = Math.max(
+    ...selected.map((issue) => OPEN_ISSUE_SEVERITY_RANK[issue.severity]),
+  );
+  const replacement = sortedIssues.find(
+    (issue) =>
+      issue.kind === missingKind &&
+      !selectedKeys.has(openIssueKey(issue)) &&
+      OPEN_ISSUE_SEVERITY_RANK[issue.severity] === worstSelectedSeverityRank,
+  );
+  if (!replacement) return selected;
+
+  const replaceIndex = selected.findLastIndex(
+    (issue) =>
+      issue.kind !== missingKind &&
+      OPEN_ISSUE_SEVERITY_RANK[issue.severity] === worstSelectedSeverityRank,
+  );
+  if (replaceIndex === -1) return selected;
+
+  const balanced = [...selected];
+  balanced[replaceIndex] = replacement;
+  return balanced.sort(compareOpenIssuePriority);
+}
+
+function dedupeBillingCandidateIssues(
+  candidates: BillingCandidateIssueSource[],
+): BillingCandidateIssueSource[] {
+  const seen = new Set<string>();
+  return candidates.filter((candidate) => {
+    if (seen.has(candidate.id)) return false;
+    seen.add(candidate.id);
+    return true;
+  });
 }
 
 export const GET = withAuthContext(
@@ -287,6 +421,9 @@ export const GET = withAuthContext(
     const [targetYear, targetMonth] = targetKey.split('-').map(Number);
     const monthStart = new Date(targetYear, targetMonth - 1, 1);
     const nextMonthStart = new Date(targetYear, targetMonth, 1);
+    const billingMonthKey = `${targetKey.slice(0, 7)}-01`;
+    const billingMonthStart = utcDateFromLocalKey(billingMonthKey);
+    const canManageBilling = hasPermission(ctx.role, 'canManageBilling');
 
     const data = await withOrgContext(
       ctx.orgId,
@@ -403,7 +540,7 @@ export const GET = withAuthContext(
                   },
                 },
               },
-              visit_record: { select: { id: true } },
+              visit_record: { select: { id: true, updated_at: true } },
             },
           });
 
@@ -487,6 +624,7 @@ export const GET = withAuthContext(
               recipient_label: '施設(看護師長)',
               status: 'before_visit',
               visit_record_id: null,
+              visit_record_updated_at: null,
               note: patientCount > 0 ? `${patientCount}名分を1通に集約` : null,
               action: null,
             });
@@ -501,6 +639,7 @@ export const GET = withAuthContext(
             ? (reportByRecordId.get(schedule.visit_record.id) ?? null)
             : null;
           const visitRecordId = schedule.visit_record?.id ?? null;
+          const visitRecordUpdatedAt = schedule.visit_record?.updated_at?.toISOString() ?? null;
           const canGenerateDraft =
             schedule.schedule_status === 'completed' && Boolean(visitRecordId);
           draftRows.push({
@@ -516,6 +655,7 @@ export const GET = withAuthContext(
                 ? 'ready_to_generate'
                 : 'before_visit',
             visit_record_id: visitRecordId,
+            visit_record_updated_at: visitRecordUpdatedAt,
             note: hasNarcotic ? '麻薬使用状況を含む' : null,
             action: existingReport
               ? {
@@ -531,6 +671,10 @@ export const GET = withAuthContext(
         const waitingPatientIds = [
           ...new Set(
             [
+              ...schedules.map((schedule) => schedule.case_.patient.id),
+              ...schedules.flatMap((schedule) =>
+                readPatientIds(schedule.facility_batch?.patient_ids),
+              ),
               ...waitingDeliveries.map((delivery) => delivery.report.patient_id),
               ...waitingRequests.map((request) => request.patient_id),
               ...resolvedResponses.map((response) => response.request.patient_id),
@@ -538,13 +682,47 @@ export const GET = withAuthContext(
             ].filter((id): id is string => Boolean(id)),
           ),
         ];
-        const waitingPatients =
+        const waitingPatientsPromise =
           waitingPatientIds.length === 0
-            ? []
-            : await tx.patient.findMany({
+            ? Promise.resolve([])
+            : tx.patient.findMany({
                 where: { id: { in: waitingPatientIds }, org_id: ctx.orgId },
                 select: { id: true, name: true },
               });
+        const billingCandidateIssuesPromise =
+          !canManageBilling || waitingPatientIds.length === 0
+            ? Promise.resolve([])
+            : Promise.all([
+                tx.billingCandidate.findMany({
+                  where: {
+                    org_id: ctx.orgId,
+                    patient_id: { in: waitingPatientIds },
+                    billing_month: billingMonthStart,
+                    status: 'candidate',
+                  },
+                  orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+                  take: BILLING_CANDIDATE_OPEN_ISSUE_SCAN_LIMIT,
+                  select: BILLING_CANDIDATE_ISSUE_SELECT,
+                }),
+                tx.billingCandidate.findMany({
+                  where: {
+                    org_id: ctx.orgId,
+                    patient_id: { in: waitingPatientIds },
+                    billing_month: billingMonthStart,
+                    status: 'candidate',
+                    OR: BILLING_CANDIDATE_BLOCKED_LAYER_FILTERS,
+                  },
+                  orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+                  take: OPEN_ISSUE_LIMIT,
+                  select: BILLING_CANDIDATE_ISSUE_SELECT,
+                }),
+              ]).then(([recentCandidates, blockedCandidates]) =>
+                dedupeBillingCandidateIssues([...blockedCandidates, ...recentCandidates]),
+              );
+        const [waitingPatients, billingCandidateIssues] = await Promise.all([
+          waitingPatientsPromise,
+          billingCandidateIssuesPromise,
+        ]);
         const patientNameById = new Map(
           waitingPatients.map((patient) => [patient.id, patient.name]),
         );
@@ -650,14 +828,20 @@ export const GET = withAuthContext(
           };
         });
 
-        const openIssues = recentReports
-          .flatMap((report) =>
-            buildReportOpenIssues({
-              report,
-              patientLabel: patientLabel(report.patient_id) ?? '患者未設定',
-            }),
-          )
-          .slice(0, OPEN_ISSUE_LIMIT);
+        const reportOpenIssues = recentReports.flatMap((report) =>
+          buildReportOpenIssues({
+            report,
+            patientLabel: patientLabel(report.patient_id) ?? '患者未設定',
+          }),
+        );
+        const billingOpenIssues = billingCandidateIssues.map((candidate) =>
+          buildBillingCandidateOpenIssue({
+            candidate,
+            patientLabel: patientLabel(candidate.patient_id) ?? '患者未設定',
+            billingMonthKey,
+          }),
+        );
+        const openIssues = mergeOpenIssues(reportOpenIssues, billingOpenIssues);
 
         const responseData: ReportsTodayWorkspaceResponse = {
           generated_at: now.toISOString(),

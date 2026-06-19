@@ -1,5 +1,6 @@
 import { Document, Page, StyleSheet, Text, View } from '@react-pdf/renderer';
 import type {
+  AudienceReportContent,
   BaselineContext,
   CareManagerReportContent,
   PhysicianReportContent,
@@ -76,20 +77,7 @@ type MedicationCalendarRecord = MedicationHistoryRecord & {
   month: Date;
 };
 
-type AudienceReportPdfContent = {
-  report_audience: 'visiting_nurse' | 'facility';
-  patient: { name: string; birth_date: string };
-  report_date: string;
-  visit_date: string;
-  pharmacist_name: string;
-  summary: string;
-  medication: string;
-  residual: string;
-  evaluation: string;
-  requests: string;
-  warnings: string[];
-  baseline_context?: BaselineContext;
-};
+type AudienceReportPdfContent = AudienceReportContent;
 
 type PhysicianReportPdfContent = Omit<
   PhysicianReportContent,
@@ -1460,7 +1448,7 @@ export async function buildCareReportPdf(
   orgId: string,
   reportId: string,
   accessContext?: VisitScheduleAccessContext,
-): Promise<PdfRenderResult> {
+): Promise<PdfRenderResult & { reportUpdatedAt: Date }> {
   const [branding, report] = await Promise.all([
     getPdfBranding(orgId),
     getCareReportRecord(orgId, reportId, accessContext),
@@ -1470,7 +1458,7 @@ export async function buildCareReportPdf(
   }
   const fileName = sanitizePdfFileName(`care-report-${report.id}.pdf`);
 
-  return renderPdf(
+  const rendered = await renderPdf(
     <PdfShell
       title="訪問薬剤管理指導報告書"
       subtitle={`${report.patient.name} / ${report.report_type}`}
@@ -1481,6 +1469,7 @@ export async function buildCareReportPdf(
     </PdfShell>,
     fileName,
   );
+  return { ...rendered, reportUpdatedAt: report.updated_at };
 }
 
 export async function buildBillingDocumentPdf(

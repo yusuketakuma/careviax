@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { deliveryRecordFindManyMock, patientFindManyMock, upsertOperationalTaskMock } =
-  vi.hoisted(() => ({
+const { deliveryRecordFindManyMock, patientFindManyMock, upsertOperationalTaskMock } = vi.hoisted(
+  () => ({
     deliveryRecordFindManyMock: vi.fn(),
     patientFindManyMock: vi.fn(),
     upsertOperationalTaskMock: vi.fn(),
-  }));
+  }),
+);
 
 vi.mock('@/lib/db/client', () => ({
   prisma: {
@@ -110,16 +111,19 @@ describe('report-reminders service', () => {
       expect.arrayContaining([
         expect.objectContaining({ channel: 'fax', total_count: 2, failed_count: 1 }),
         expect.objectContaining({ channel: 'email', total_count: 1, success_rate: 100 }),
-      ])
+      ]),
     );
     expect(result.overdue_waiting).toEqual([
       expect.objectContaining({
         id: 'delivery_waiting',
         patient_name: '佐藤 花子',
         report_type: 'physician_report',
+        recipient_contact: 'd***@example.com',
+        recipient_contact_masked: 'd***@example.com',
         days_waiting: 11,
       }),
     ]);
+    expect(JSON.stringify(result.overdue_waiting)).not.toContain('doctor@example.com');
   });
 
   it('creates deduplicated follow-up tasks for overdue response-waiting deliveries', async () => {
@@ -161,7 +165,13 @@ describe('report-reminders service', () => {
         dedupeKey: 'report-response-followup:delivery_waiting',
         relatedEntityType: 'delivery_record',
         relatedEntityId: 'delivery_waiting',
-      })
+        metadata: expect.objectContaining({
+          recipient_contact_masked: '03****2222',
+        }),
+      }),
+    );
+    expect(JSON.stringify(upsertOperationalTaskMock.mock.calls[0]?.[1]?.metadata)).not.toContain(
+      '03-1111-2222',
     );
     expect(result).toEqual({
       queued_count: 1,

@@ -55,6 +55,7 @@ describe('/api/care-reports/[id]/pdf', () => {
     buildCareReportPdfMock.mockResolvedValue({
       buffer: Buffer.from('pdf'),
       fileName: 'care-report.pdf',
+      reportUpdatedAt: new Date('2026-03-28T09:00:00.000Z'),
     });
 
     const response = (await GET(createRequest(), {
@@ -69,8 +70,37 @@ describe('/api/care-reports/[id]/pdf', () => {
     expect(pdfResponseMock).toHaveBeenCalledWith(expect.any(Buffer), 'care-report.pdf');
     expect(recordDataExportAuditMock).toHaveBeenCalledWith(
       expect.any(Object),
-      expect.objectContaining({ targetType: 'care_report', format: 'pdf', targetId: 'report_1' }),
+      expect.objectContaining({
+        targetType: 'care_report',
+        format: 'pdf',
+        targetId: 'report_1',
+        metadata: {
+          report_updated_at: '2026-03-28T09:00:00.000Z',
+        },
+      }),
     );
+  });
+
+  it('requires report send permission before rendering or auditing the export', async () => {
+    requireAuthContextMock.mockResolvedValueOnce({
+      response: new Response(
+        JSON.stringify({ code: 'FORBIDDEN', message: '報告書 PDF の出力権限がありません' }),
+        { status: 403 },
+      ),
+    });
+
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    }))!;
+
+    expect(response.status).toBe(403);
+    expect(requireAuthContextMock).toHaveBeenCalledWith(expect.any(NextRequest), {
+      permission: 'canSendCareReport',
+      message: '報告書 PDF の出力権限がありません',
+    });
+    expect(buildCareReportPdfMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+    expect(pdfResponseMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank report ids before rendering or auditing the export', async () => {
@@ -114,5 +144,47 @@ describe('/api/care-reports/[id]/pdf', () => {
     });
     expect(pdfResponseMock).not.toHaveBeenCalled();
     expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a generic render failure without exposing malformed PDF details or auditing', async () => {
+    buildCareReportPdfMock.mockRejectedValue(
+      new Error('Malformed physician_report content leaked patient phone 090-1234-5678'),
+    );
+
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      code: 'EXTERNAL_PDF_RENDER_FAILED',
+      message: '報告書 PDF を生成できませんでした',
+    });
+    expect(JSON.stringify(body)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(body)).not.toContain('Malformed physician_report content');
+    expect(pdfResponseMock).not.toHaveBeenCalled();
+    expect(recordDataExportAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the PDF export audit cannot be recorded', async () => {
+    buildCareReportPdfMock.mockResolvedValue({
+      buffer: Buffer.from('pdf'),
+      fileName: 'care-report.pdf',
+      reportUpdatedAt: new Date('2026-03-28T09:00:00.000Z'),
+    });
+    recordDataExportAuditMock.mockRejectedValueOnce(new Error('audit unavailable'));
+
+    const response = (await GET(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    }))!;
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'CARE_REPORT_PDF_EXPORT_AUDIT_FAILED',
+      message: '報告書 PDF 出力監査を記録できませんでした',
+    });
+    expect(recordDataExportAuditMock).toHaveBeenCalled();
+    expect(pdfResponseMock).not.toHaveBeenCalled();
   });
 });

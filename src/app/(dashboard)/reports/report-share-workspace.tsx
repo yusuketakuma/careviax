@@ -18,6 +18,7 @@ import {
 import { WorkspaceActionRail } from '@/components/features/workspace/action-rail';
 import { MainWorkflowCompactNav } from '@/components/features/workflow/main-workflow-route';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { generateCareReportFromVisit } from '@/lib/reports/generate-from-visit-client';
 import { cn } from '@/lib/utils';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type {
@@ -110,23 +111,6 @@ async function fetchOperationCockpit(orgId: string): Promise<DashboardCockpitRes
   return json.data;
 }
 
-async function generateCareReportDraftFromVisit(
-  orgId: string,
-  visitRecordId: string,
-): Promise<GeneratedCareReport[]> {
-  const res = await fetch('/api/care-reports/generate-from-visit', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
-    body: JSON.stringify({ visit_record_id: visitRecordId }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => null);
-    throw new Error((err as { message?: string } | null)?.message ?? '下書きの作成に失敗しました');
-  }
-  const json = (await res.json()) as { data?: GeneratedCareReport[] };
-  return json.data ?? [];
-}
-
 // ---------------------------------------------------------------------------
 // 今日書く報告
 // ---------------------------------------------------------------------------
@@ -138,7 +122,7 @@ function TodayDraftsCard({
   isGeneratingDraft,
 }: {
   data: ReportsTodayWorkspaceResponse;
-  onGenerateDraft: (visitRecordId: string) => void;
+  onGenerateDraft: (visitRecordId: string, visitRecordUpdatedAt: string) => void;
   generatingVisitRecordId: string | null;
   isGeneratingDraft: boolean;
 }) {
@@ -200,11 +184,15 @@ function TodayDraftsCard({
                         {row.action.label}
                       </Link>
                     ) : null}
-                    {row.status === 'ready_to_generate' && row.visit_record_id ? (
+                    {row.status === 'ready_to_generate' &&
+                    row.visit_record_id &&
+                    row.visit_record_updated_at ? (
                       <Button
                         type="button"
                         size="sm"
-                        onClick={() => onGenerateDraft(row.visit_record_id!)}
+                        onClick={() =>
+                          onGenerateDraft(row.visit_record_id!, row.visit_record_updated_at!)
+                        }
                         disabled={isGeneratingDraft}
                         aria-label={`${row.patient_label} ${row.recipient_label} の下書きを自動作成`}
                         className="px-3"
@@ -552,7 +540,15 @@ export function ReportShareWorkspace() {
     enabled: !isBootstrappingOrg && workspaceQuery.isSuccess,
   });
   const generateDraftMutation = useMutation({
-    mutationFn: (visitRecordId: string) => generateCareReportDraftFromVisit(orgId, visitRecordId),
+    mutationFn: (input: { visitRecordId: string; visitRecordUpdatedAt: string }) =>
+      generateCareReportFromVisit<GeneratedCareReport>(
+        {
+          orgId,
+          visitRecordId: input.visitRecordId,
+          expectedVisitRecordUpdatedAt: input.visitRecordUpdatedAt,
+        },
+        '下書きの作成に失敗しました',
+      ),
     onSuccess: (reports) => {
       const firstReport = reports[0];
       if (!firstReport) {
@@ -649,9 +645,13 @@ export function ReportShareWorkspace() {
             <div className="min-w-0 space-y-4">
               <TodayDraftsCard
                 data={data}
-                onGenerateDraft={(visitRecordId) => generateDraftMutation.mutate(visitRecordId)}
+                onGenerateDraft={(visitRecordId, visitRecordUpdatedAt) =>
+                  generateDraftMutation.mutate({ visitRecordId, visitRecordUpdatedAt })
+                }
                 generatingVisitRecordId={
-                  generateDraftMutation.isPending ? generateDraftMutation.variables : null
+                  generateDraftMutation.isPending
+                    ? (generateDraftMutation.variables?.visitRecordId ?? null)
+                    : null
                 }
                 isGeneratingDraft={generateDraftMutation.isPending}
               />

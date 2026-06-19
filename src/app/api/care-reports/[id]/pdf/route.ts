@@ -11,8 +11,8 @@ export const runtime = 'nodejs';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authResult = await requireAuthContext(req, {
-    permission: 'canReport',
-    message: '報告書 PDF の閲覧権限がありません',
+    permission: 'canSendCareReport',
+    message: '報告書 PDF の出力権限がありません',
   });
   if ('response' in authResult) return authResult.response;
 
@@ -20,22 +20,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const id = normalizeRequiredRouteParam(rawId);
   if (!id) return validationError('報告書IDが不正です');
 
+  let rendered: Awaited<ReturnType<typeof buildCareReportPdf>>;
   try {
-    const rendered = await buildCareReportPdf(authResult.ctx.orgId, id, {
+    rendered = await buildCareReportPdf(authResult.ctx.orgId, id, {
       userId: authResult.ctx.userId,
       role: authResult.ctx.role,
     });
-    await recordDataExportAudit(prisma, {
-      orgId: authResult.ctx.orgId,
-      actorId: authResult.ctx.userId,
-      targetType: 'care_report',
-      targetId: id,
-      format: 'pdf',
-      recordCount: 1,
-      ipAddress: authResult.ctx.ipAddress,
-      userAgent: authResult.ctx.userAgent,
-    });
-    return pdfResponse(rendered.buffer, rendered.fileName);
   } catch (cause) {
     if (cause instanceof Error && cause.message.includes('見つかりません')) {
       return notFound(cause.message);
@@ -46,4 +36,28 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     return error('EXTERNAL_PDF_RENDER_FAILED', '報告書 PDF を生成できませんでした', 500);
   }
+
+  try {
+    await recordDataExportAudit(prisma, {
+      orgId: authResult.ctx.orgId,
+      actorId: authResult.ctx.userId,
+      targetType: 'care_report',
+      targetId: id,
+      format: 'pdf',
+      recordCount: 1,
+      metadata: {
+        report_updated_at: rendered.reportUpdatedAt.toISOString(),
+      },
+      ipAddress: authResult.ctx.ipAddress,
+      userAgent: authResult.ctx.userAgent,
+    });
+  } catch {
+    return error(
+      'CARE_REPORT_PDF_EXPORT_AUDIT_FAILED',
+      '報告書 PDF 出力監査を記録できませんでした',
+      500,
+    );
+  }
+
+  return pdfResponse(rendered.buffer, rendered.fileName);
 }

@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { withOrgContextMock, queueOverdueReportResponseRemindersMock } = vi.hoisted(() => ({
-  withOrgContextMock: vi.fn(),
-  queueOverdueReportResponseRemindersMock: vi.fn(),
-}));
+const { withAuthContextMock, withOrgContextMock, queueOverdueReportResponseRemindersMock } =
+  vi.hoisted(() => ({
+    withAuthContextMock: vi.fn(),
+    withOrgContextMock: vi.fn(),
+    queueOverdueReportResponseRemindersMock: vi.fn(),
+  }));
 
 const emptyRouteContext = { params: Promise.resolve({}) };
 
@@ -15,7 +17,9 @@ vi.mock('@/lib/auth/context', () => ({
       ctx: { orgId: string; userId: string; role: 'pharmacist' },
       routeContext: typeof emptyRouteContext,
     ) => Promise<Response>,
+    options: { permission: string; message: string },
   ) => {
+    withAuthContextMock.mockImplementation(() => options);
     return (req: NextRequest, routeContext = emptyRouteContext) =>
       handler(
         req,
@@ -73,6 +77,10 @@ describe('/api/care-reports/reminders POST', () => {
     expect(ensuredResponse.status).toBe(201);
     expect(queueOverdueReportResponseRemindersMock).toHaveBeenCalledWith({ tx: true }, 'org_1', {
       overdueDays: 5,
+    });
+    expect(withAuthContextMock()).toEqual({
+      permission: 'canSendCareReport',
+      message: '報告書リマインドの作成権限がありません',
     });
     await expect(ensuredResponse.json()).resolves.toMatchObject({
       data: {

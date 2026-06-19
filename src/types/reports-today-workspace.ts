@@ -22,6 +22,8 @@ export type ReportDraftRow = {
   status: ReportDraftRowStatus;
   /** 訪問記録が確定し、報告書下書きを自動作成できる場合に入る。 */
   visit_record_id: string | null;
+  /** 下書き生成時の OCC トークン。visit_record_id が null の行は null。 */
+  visit_record_updated_at: string | null;
   /** 「麻薬使用状況を含む」「12名分を1通に集約」等の常時表示メモ。無ければ null。 */
   note: string | null;
   /** 行アクション。note がある行でも導線を隠さず併記する。 */
@@ -86,15 +88,27 @@ export type ReportCreatedRow = {
 
 export type ReportOpenIssueSeverity = 'critical' | 'warning' | 'info';
 
-export type ReportOpenIssue = {
+type ReportOpenIssueBase = {
   id: string;
-  report_id: string;
   severity: ReportOpenIssueSeverity;
   title: string;
   description: string;
-  failed_delivery?: ReportFailedDelivery | null;
   action: { label: string; href: string };
 };
+
+export type ReportCareReportOpenIssue = ReportOpenIssueBase & {
+  kind: 'report';
+  report_id: string;
+  failed_delivery?: ReportFailedDelivery | null;
+};
+
+export type ReportBillingCandidateOpenIssue = ReportOpenIssueBase & {
+  kind: 'billing_candidate';
+  billing_candidate_id: string;
+  patient_id: string | null;
+};
+
+export type ReportOpenIssue = ReportCareReportOpenIssue | ReportBillingCandidateOpenIssue;
 
 export type ReportsTodayWorkspaceResponse = {
   generated_at: string;

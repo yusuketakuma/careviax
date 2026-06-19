@@ -13,6 +13,7 @@ type PrintPageToolbarProps = {
   shortcuts: readonly PageShortcutLink[];
   mainWorkflowSteps?: MainWorkflowStepKey[];
   mainWorkflowDescription?: string;
+  onPrint?: () => void | Promise<void>;
 };
 
 export function PrintPageToolbar({
@@ -23,6 +24,7 @@ export function PrintPageToolbar({
   shortcuts,
   mainWorkflowSteps,
   mainWorkflowDescription,
+  onPrint,
 }: PrintPageToolbarProps) {
   return (
     <WorkflowPageIntro
@@ -35,7 +37,7 @@ export function PrintPageToolbar({
       className="mb-4 print:hidden"
       controls={
         <>
-          <PrintActionButton />
+          <PrintActionButton onPrint={onPrint} />
           <PageShortcutLinks links={shortcuts} />
         </>
       }

@@ -56,6 +56,15 @@ type PatientPrescriptionsResponse = {
   data: PrescriptionIntakeForPrint[];
 };
 type CareReportsResponse = { data: CareReportForPrint[] };
+type CareReportPrintAuditResponse = {
+  data: {
+    report: {
+      id: string;
+      report_type: string;
+      content: unknown;
+    };
+  };
+};
 type PatientDocumentsForPrintResponse = {
   patient: { id: string; name: string; name_kana: string };
   print_readiness: FirstVisitPrintReadinessForPrint;
@@ -134,7 +143,7 @@ function usePrintHubData(
     queryKey: ['print-hub-prescriptions', orgId, patientId],
     queryFn: async () => {
       const res = await fetch(`/api/patients/${patientId}/prescriptions?limit=20`, {
-        headers: { 'x-org-id': orgId },
+        headers: { 'content-type': 'application/json', 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('処方明細の取得に失敗しました');
       return res.json() as Promise<PatientPrescriptionsResponse>;
@@ -146,8 +155,8 @@ function usePrintHubData(
   const careReportsQuery = useQuery({
     queryKey: ['print-hub-care-reports', orgId],
     queryFn: async () => {
-      const res = await fetch('/api/care-reports?limit=50&include_content=1', {
-        headers: { 'x-org-id': orgId },
+      const res = await fetch('/api/care-reports?limit=50&status=confirmed', {
+        headers: { 'content-type': 'application/json', 'x-org-id': orgId },
       });
       if (!res.ok) throw new Error('報告書の取得に失敗しました');
       return res.json() as Promise<CareReportsResponse>;
@@ -700,11 +709,39 @@ export function PrintHubContent() {
 
   const setInstruction = useMemo(() => buildSetInstructionDocument(plan, intake), [plan, intake]);
   const calendar = useMemo(() => buildMedicationCalendarDocument(plan, intake), [plan, intake]);
-  const visitReport = useMemo(
-    () => buildVisitReportDocument(pickVisitReportForPrint(reports)),
-    [reports],
-  );
   const receiptRows = useMemo(() => buildDocumentReceiptRows(reports), [reports]);
+  const visitReportSource = useMemo(() => pickVisitReportForPrint(reports), [reports]);
+  const auditedVisitReportQuery = useQuery({
+    queryKey: ['print-hub-care-report-print-audit', orgId, visitReportSource?.id],
+    queryFn: async () => {
+      if (!visitReportSource) throw new Error('印刷対象の報告書がありません');
+      const res = await fetch(`/api/care-reports/${visitReportSource.id}/print-audit`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-org-id': orgId },
+        body: JSON.stringify({ intent: 'preview_rendered' }),
+      });
+      if (!res.ok) throw new Error('報告書の印刷監査に失敗しました');
+      return res.json() as Promise<CareReportPrintAuditResponse>;
+    },
+    enabled: !!orgId && documentType === 'visit_report' && !!visitReportSource,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    staleTime: 0,
+  });
+  const auditedVisitReport = useMemo<CareReportForPrint | null>(() => {
+    const audited = auditedVisitReportQuery.data?.data.report;
+    if (!visitReportSource || !audited) return null;
+    return {
+      ...visitReportSource,
+      report_type: audited.report_type,
+      content: audited.content,
+    };
+  }, [auditedVisitReportQuery.data, visitReportSource]);
+  const visitReport = useMemo(
+    () => buildVisitReportDocument(auditedVisitReport),
+    [auditedVisitReport],
+  );
   const labelCards = useMemo(() => buildMedicationLabelCards(plan, intake), [plan, intake]);
   const firstVisitDocumentSummary = useMemo(
     () => buildFirstVisitDocumentPrintSummary(firstVisitPatientName, firstVisitDocuments),
@@ -777,6 +814,21 @@ export function PrintHubContent() {
       window.print();
       return;
     }
+    if (documentType === 'visit_report' && visitReportSource && !auditedVisitReport) {
+      setPrintError('報告書の印刷監査が完了していません。再読み込みしてください。');
+      return;
+    }
+    if (documentType === 'visit_report' && visitReportSource) {
+      const res = await fetch(`/api/care-reports/${visitReportSource.id}/print-audit`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-org-id': orgId },
+        body: JSON.stringify({ intent: 'print_requested' }),
+      });
+      if (!res.ok) {
+        setPrintError('報告書の印刷監査を記録できませんでした。再読み込みしてください。');
+        return;
+      }
+    }
     window.print();
   };
 
@@ -793,10 +845,10 @@ export function PrintHubContent() {
   };
 
   const renderSheetBody = () => {
-    if (isLoading) {
+    if (outputIsLoading) {
       return <LoadingSheetBody title={printDocumentTypeLabel(documentType)} settings={settings} />;
     }
-    if (isError) {
+    if (outputIsError) {
       return (
         <div className="flex h-full items-center justify-center p-6 text-center text-xs text-destructive">
           帳票データの読み込みに失敗しました。再読み込みしてください。
@@ -823,19 +875,41 @@ export function PrintHubContent() {
     key: keyof PrintOutputSettings;
     id: string;
     label: string;
-  }> = [
-    { key: 'showPatientName', id: 'print-option-patient-name', label: '患者名を表示' },
-    { key: 'showFacilityName', id: 'print-option-facility-name', label: '施設名を表示' },
-    { key: 'showQr', id: 'print-option-qr', label: 'QRコードを付ける' },
-    { key: 'saveCopy', id: 'print-option-save-copy', label: '控えを保存' },
-  ];
+  }> = useMemo(() => {
+    const options: Array<{
+      key: keyof PrintOutputSettings;
+      id: string;
+      label: string;
+    }> = [
+      { key: 'showPatientName', id: 'print-option-patient-name', label: '患者名を表示' },
+      { key: 'showFacilityName', id: 'print-option-facility-name', label: '施設名を表示' },
+      { key: 'showQr', id: 'print-option-qr', label: 'QRコードを付ける' },
+    ];
+    if (documentType === 'first_visit_documents') {
+      options.push({ key: 'saveCopy', id: 'print-option-save-copy', label: '控えを保存' });
+    }
+    return options;
+  }, [documentType]);
   const isFirstVisitPrint = documentType === 'first_visit_documents';
   const shouldConfirmFirstVisitPrint = isFirstVisitPrint && firstVisitDocuments.length > 0;
   const awaitingFirstVisitPrintConfirmation =
     firstVisitPrintConfirmationKey === currentFirstVisitPrintConfirmationKey;
   const printDisabled =
     firstVisitPrintHistoryMutation.isPending ||
+    (documentType === 'visit_report' &&
+      Boolean(visitReportSource) &&
+      (auditedVisitReportQuery.isPending || auditedVisitReportQuery.isError)) ||
     (isFirstVisitPrint && Boolean(firstVisitPrintBlockMessage));
+  const outputIsLoading =
+    isLoading ||
+    (documentType === 'visit_report' &&
+      Boolean(visitReportSource) &&
+      auditedVisitReportQuery.isPending);
+  const outputIsError =
+    isError ||
+    (documentType === 'visit_report' &&
+      Boolean(visitReportSource) &&
+      auditedVisitReportQuery.isError);
 
   return (
     <div
@@ -955,7 +1029,7 @@ export function PrintHubContent() {
               {printError}
             </p>
           ) : null}
-          {settings.saveCopy && (
+          {isFirstVisitPrint && settings.saveCopy && (
             <p className="mt-2 text-xs leading-5 text-muted-foreground">
               印刷完了を記録すると、患者文書にこの印刷プレビューの控えリンクを保存します。紙控えが必要な場合は印刷ダイアログでPDF保存してください。
             </p>

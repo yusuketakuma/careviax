@@ -89,7 +89,12 @@ describe('ReportEditForm', () => {
     useOrgIdMock.mockReturnValue('org_1');
 
     render(
-      <ReportEditForm reportId="report_1" reportType="physician_report" content={physicianContent} />,
+      <ReportEditForm
+        reportId="report_1"
+        reportType="physician_report"
+        updatedAt="2026-04-21T00:00:00.000Z"
+        content={physicianContent}
+      />,
     );
 
     expect(screen.getByText('算定要件を満たすための編集ナビ')).toBeTruthy();
@@ -107,6 +112,7 @@ describe('ReportEditForm', () => {
       <ReportEditForm
         reportId="report_1"
         reportType="care_manager_report"
+        updatedAt="2026-04-21T00:00:00.000Z"
         content={careManagerContent}
       />,
     );

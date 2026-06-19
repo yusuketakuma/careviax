@@ -1,17 +1,35 @@
 import { withAuthContext } from '@/lib/auth/context';
-import { forbiddenResponse, success, validationError, notFound } from '@/lib/api/response';
+import {
+  conflict,
+  forbiddenResponse,
+  success,
+  validationError,
+  notFound,
+} from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { generateReportsFromVisit } from '@/server/services/report-generator';
 import { z } from 'zod';
 
-const generateFromVisitSchema = z.object({
-  visit_record_id: z.string().trim().min(1, '訪問記録IDは必須です'),
-  // p1_04: 主治医/ケアマネに加え、訪問看護(nurse_share)/施設(facility_handoff)の
-  // 宛先別下書きも明示要求で生成できる(report-generator が4宛先を射影する)。
-  report_type: z
-    .enum(['physician_report', 'care_manager_report', 'nurse_share', 'facility_handoff'])
-    .optional(),
-});
+const generateFromVisitSchema = z
+  .object({
+    visit_record_id: z.string().trim().min(1, '訪問記録IDは必須です'),
+    expected_visit_record_updated_at: z.string().datetime('訪問記録の版情報が不正です'),
+    expected_report_updated_at: z.string().datetime('報告書下書きの版情報が不正です').optional(),
+    // p1_04: 主治医/ケアマネに加え、訪問看護(nurse_share)/施設(facility_handoff)の
+    // 宛先別下書きも明示要求で生成できる(report-generator が4宛先を射影する)。
+    report_type: z
+      .enum(['physician_report', 'care_manager_report', 'nurse_share', 'facility_handoff'])
+      .optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.expected_report_updated_at && !value.report_type) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['expected_report_updated_at'],
+        message: '報告書下書きの版情報はreport_type指定時のみ使用できます',
+      });
+    }
+  });
 
 export const POST = withAuthContext(
   async (req, ctx) => {
@@ -23,14 +41,33 @@ export const POST = withAuthContext(
       return validationError('入力値が不正です', parsed.error.flatten().fieldErrors);
     }
 
-    const { visit_record_id, report_type } = parsed.data;
+    const {
+      visit_record_id,
+      expected_visit_record_updated_at,
+      expected_report_updated_at,
+      report_type,
+    } = parsed.data;
 
-    let result: { reports: Array<{ id: string; report_type: string }> };
+    let result: {
+      reports: Array<{ id: string; report_type: string; status: string; updated_at: Date }>;
+    };
     try {
-      result = await generateReportsFromVisit(ctx.orgId, ctx.userId, visit_record_id, report_type, {
-        userId: ctx.userId,
-        role: ctx.role,
-      });
+      result = await generateReportsFromVisit(
+        ctx.orgId,
+        ctx.userId,
+        visit_record_id,
+        report_type,
+        {
+          userId: ctx.userId,
+          role: ctx.role,
+        },
+        {
+          expectedVisitRecordUpdatedAt: new Date(expected_visit_record_updated_at),
+          expectedReportUpdatedAt: expected_report_updated_at
+            ? new Date(expected_report_updated_at)
+            : null,
+        },
+      );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (message.includes('not found')) {
@@ -48,10 +85,29 @@ export const POST = withAuthContext(
       if (message === 'MEDICATION_CYCLE_NOT_FOUND_FOR_REPORT') {
         return validationError('報告書を生成する処方サイクルが見つかりません');
       }
+      if (message === 'VISIT_RECORD_STALE_FOR_REPORT_GENERATION') {
+        return conflict('訪問記録が同時に更新されました。再読み込みしてください');
+      }
+      if (message === 'CARE_REPORT_DRAFT_STALE_FOR_REPORT_GENERATION') {
+        return conflict('報告書下書きが同時に更新されました。再読み込みしてください');
+      }
+      if (message === 'CARE_REPORT_DRAFT_VERSION_REQUIRED_FOR_REPORT_GENERATION') {
+        return conflict(
+          '既存の報告書下書きがあります。下書き詳細を再読み込みしてから個別に再生成してください',
+        );
+      }
       throw err;
     }
 
-    return success({ data: result.reports }, 201);
+    return success(
+      {
+        data: result.reports.map((report) => ({
+          ...report,
+          updated_at: report.updated_at.toISOString(),
+        })),
+      },
+      201,
+    );
   },
   {
     permission: 'canAuthorReport',
