@@ -20,6 +20,7 @@ import { PageSection } from '@/components/layout/page-section';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { HomeCareFeatureBoard } from '@/components/home-care/home-care-feature-board';
@@ -141,6 +142,7 @@ type ResolveInquiryPayload = {
 type WorkflowDashboardViewProps = {
   workflow: WorkflowData | undefined;
   isLoading: boolean;
+  isError: boolean;
   refetch: () => void;
   initialFocus?: WorkflowFocus;
   initialContext?: HomeLinkContext | null;
@@ -163,6 +165,7 @@ type WorkflowDashboardViewProps = {
 export function WorkflowDashboardView({
   workflow,
   isLoading,
+  isError,
   refetch,
   initialFocus,
   initialContext,
@@ -183,6 +186,19 @@ export function WorkflowDashboardView({
           </Card>
         ))}
       </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <ErrorState
+        variant="server"
+        title="ワークフローダッシュボードを表示できません"
+        description="主業務フロー、連絡キュー、例外対応の取得に失敗しました。再試行してください。"
+        detail="取得失敗時は、滞留や例外がないものとして扱わず、操作入口の表示を停止しています。"
+        action={{ label: '再試行', onClick: () => void refetch() }}
+        headingLevel={2}
+      />
     );
   }
 

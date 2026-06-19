@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 
@@ -146,24 +146,46 @@ describe('WorkflowDashboardContent', () => {
     useRealtimeQueryMock.mockReturnValue({
       data: { data: buildWorkflowData() },
       isLoading: false,
+      isError: false,
       refetch: vi.fn(),
     });
   });
 
   it('shows the home context banner and highlights the requested workflow section', () => {
     render(
-      <WorkflowDashboardContent
-        initialFocus="communication"
-        initialContext="dashboard_home"
-      />,
+      <WorkflowDashboardContent initialFocus="communication" initialContext="dashboard_home" />,
     );
 
     expect(screen.getByTestId('workflow-context-banner')).toBeTruthy();
-    expect(screen.getByText('ホームから連携・通知まわりにフォーカスして開いています。')).toBeTruthy();
+    expect(
+      screen.getByText('ホームから連携・通知まわりにフォーカスして開いています。'),
+    ).toBeTruthy();
     expect(screen.getByText('主業務フロー')).toBeTruthy();
     expect(screen.getByTestId('workflow-main-workflow-route')).toBeTruthy();
     expect(screen.getByTestId('workflow-integration-map')).toBeTruthy();
     expect(screen.getByText('訪問記録を報告書へ展開する')).toBeTruthy();
     expect(screen.getByTestId('workflow-communication')).toBeTruthy();
+  });
+
+  it('shows an error state instead of an empty workflow dashboard when initial loading fails', () => {
+    const refetch = vi.fn();
+    useRealtimeQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      refetch,
+    });
+
+    render(<WorkflowDashboardContent />);
+
+    expect(
+      screen.getByRole('heading', { name: 'ワークフローダッシュボードを表示できません' }),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: '再試行' })).toBeTruthy();
+    expect(screen.queryByText('主業務フロー')).toBeNull();
+    expect(screen.queryByTestId('workflow-communication')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
   });
 });

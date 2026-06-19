@@ -61,7 +61,7 @@ export function WorkflowDashboardContent({
   const queryClient = useQueryClient();
   const [inquiryEdits, setInquiryEdits] = useState<Record<string, InquiryEditState>>({});
 
-  const { data, isLoading, refetch } = useRealtimeQuery({
+  const { data, isLoading, isError, refetch } = useRealtimeQuery({
     queryKey: ['dashboard-workflow', orgId],
     queryFn: async () => {
       const res = await fetch('/api/dashboard/workflow', {
@@ -280,6 +280,7 @@ export function WorkflowDashboardContent({
     <WorkflowDashboardView
       workflow={workflow}
       isLoading={isLoading}
+      isError={isError && !workflow}
       refetch={refetch}
       initialFocus={initialFocus}
       initialContext={initialContext}
