@@ -2823,3 +2823,48 @@ Blocked: C11 (diverged user-visible label strings — product/UX sign-off), C12 
 - A direct patient-card browser step was attempted, but `/patients/pharmacy_coop_route_patient` hit Prisma P2022 because the local e2e DB is missing `ConsentRecord.document_file_id`; the earlier accidental broader E2E run also exposed missing `AuditLog.actor_pharmacy_id`. Migration application was not run because repo instructions require prior approval for migration apply or other DB mutation operations.
 - The first `pnpm test:e2e:local -- ...` invocation passed an extra `--` through the package script and began unrelated tests; it was interrupted. The failures observed there were from existing PCA/billing tests against the same stale e2e DB schema, not from the new route-mocked pharmacy-cooperation test.
 - New v0.2 migrations still need approved application against the local/live target DB before authenticated real-data browser evidence can cover patient-card SSR directly.
+
+## 20260619-2004 JST - Pharmacy Contract Document API Foundation
+
+### Completed
+
+- Re-read the higher-version v0.2 pharmacy-cooperation specification sections for contract documents, fee schedules, PDF/save handling, audit, and common API foundations.
+- Added `/api/pharmacy-contracts/[id]/documents` with:
+  - `GET` list for generated contract documents under org-scoped contract ownership.
+  - `POST mode=preview` to render a contract document preview from a `contract_document` template, the selected/latest contract version, and the active fee rule.
+  - `POST mode=save` to persist a `ContractDocument` row with template/version/file/hash metadata.
+- Added a contract-document service that requires template-managed articles 1 through 23, replaces safe contract placeholders, renders a fee schedule section, and hashes the rendered snapshot.
+- Added signed-PDF attachment validation so `signed_file_id` must be a same-org completed `FileAsset` before document creation.
+- Added minimized audit for saved contract documents: metadata only, no contract body, article body, patient data, filenames, storage keys, or signed URLs.
+- Registered the new route in API route catalog and rate-limit template catalogs.
+
+### Files Changed
+
+- `src/server/services/pharmacy-contract-documents.ts`
+- `src/app/api/pharmacy-contracts/[id]/documents/route.ts`
+- `src/app/api/pharmacy-contracts/[id]/documents/route.test.ts`
+- `src/lib/api/rate-limit.ts`
+- `src/lib/api/route-catalog.ts`
+- `src/lib/api/route-catalog.test.ts`
+- `src/app/api/meta/route-catalog/route.test.ts`
+- `Plans.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm vitest run 'src/app/api/pharmacy-contracts/[id]/documents/route.test.ts'`: passed, 1 file / 5 tests.
+- `pnpm typecheck`: passed.
+- `pnpm vitest run src/lib/api/rate-limit.test.ts src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts 'src/app/api/pharmacy-contracts/[id]/documents/route.test.ts'`: passed, 4 files / 43 tests.
+- `pnpm exec prettier --write src/server/services/pharmacy-contract-documents.ts 'src/app/api/pharmacy-contracts/[id]/documents/route.ts' 'src/app/api/pharmacy-contracts/[id]/documents/route.test.ts' src/lib/api/rate-limit.ts src/lib/api/route-catalog.ts src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts Plans.md CODEX_GOAL_PROGRESS.md`: passed.
+- `pnpm exec eslint src/server/services/pharmacy-contract-documents.ts 'src/app/api/pharmacy-contracts/[id]/documents/route.ts' 'src/app/api/pharmacy-contracts/[id]/documents/route.test.ts' src/lib/api/rate-limit.ts src/lib/api/route-catalog.ts src/lib/api/route-catalog.test.ts src/app/api/meta/route-catalog/route.test.ts`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check`: passed.
+- `pnpm lint`: passed.
+
+### Remaining / Next Loop
+
+- Operator UI for contract template preview/save/attach is not wired yet.
+- The route persists document metadata and can attach a signed PDF `FileAsset`, but a first-party binary PDF generator/storage step for contract documents remains to be added if required before full v0.2 close.
+- Existing contract status enums still use older `ended` / `archived` states in some places and should be aligned to the higher-version spec states (`expired` / `terminated`) in a separate migration-aware slice.
+- Direct authenticated browser proof remains blocked until v0.2 migrations are approved/applied to the local e2e DB.
