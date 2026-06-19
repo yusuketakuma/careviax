@@ -4306,6 +4306,38 @@ Implemented:
 
 - UI/UX remediation remains active. Remaining candidates include pharmacy-cooperation responsive table density, select accessible-name gaps outside fixed/verified screens, raw table/DataTable convergence, and expanded browser/a11y proof.
 
+## 20260620-0443 JST - Admin User Visit Constraint Guidance
+
+### Summary
+
+- Added API-aligned native constraints for admin user visit capacity fields: daily 1-20, weekly 1-100, travel 0-480 minutes.
+- Added persistent helper/error text and ARIA links for visit-limit inputs.
+- Blocked invalid visit-limit saves inline before the detail mutation can run.
+- Connected non-operational role disabled visit controls to their visible disabled reason.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/users/users-content.tsx`
+- `src/app/(dashboard)/admin/users/users-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/users/users-content.tsx' 'src/app/(dashboard)/admin/users/users-content.test.tsx'`: passed.
+- `pnpm vitest run 'src/app/(dashboard)/admin/users/users-content.test.tsx'`: initially failed on test assertion shape, then passed with 1 file / 5 tests after switching to DOM-property assertions.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/users/users-content.tsx' 'src/app/(dashboard)/admin/users/users-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `git diff --check -- 'src/app/(dashboard)/admin/users/users-content.tsx' 'src/app/(dashboard)/admin/users/users-content.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `pnpm lint`: passed.
+
+### Remaining / Next Loop
+
+- Admin user visit constraints now match the existing pharmacist API validation contract and no longer rely on server/toast feedback for invalid bounds.
+- Two unrelated dirty files, `src/app/api/patient-share-cases/route.ts` and `src/app/api/patient-share-cases/route.test.ts`, were present during this slice and were not modified here.
+- Remaining candidates from the second scan include pharmacist credential date/number validation and PCA pump rental/return disabled-reason gaps.
+
 ## 20260620-0304 JST - Local DB Apply and Patient Share Case DB-Backed Proof
 
 ### Summary

@@ -124,6 +124,17 @@ const ROLE_OPTIONS = [
   ['external_viewer', '外部連携者'],
 ] as const satisfies ReadonlyArray<readonly [ManageableMemberRole, string]>;
 
+const VISIT_LIMITS = {
+  max_daily_visits: { label: '日次上限', min: 1, max: 20, unit: '件' },
+  max_weekly_visits: { label: '週次上限', min: 1, max: 100, unit: '件' },
+  max_travel_minutes: { label: '移動上限', min: 0, max: 480, unit: '分' },
+} as const;
+
+const VISIT_CONSTRAINT_DISABLED_HELP_ID = 'detail-visit-constraints-role-help';
+const DETAIL_SAVE_BLOCKER_ID = 'detail-user-save-blocker';
+
+type VisitLimitKey = keyof typeof VISIT_LIMITS;
+
 const STATUS_MAP: Record<
   string,
   { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }
@@ -161,6 +172,44 @@ function toOptionalNumber(value: string) {
   if (!value.trim()) return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function descriptionIds(...ids: Array<string | false | null | undefined>) {
+  const value = ids.filter(Boolean).join(' ');
+  return value || undefined;
+}
+
+function validateVisitLimit(key: VisitLimitKey, value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const parsed = Number(trimmed);
+  const limit = VISIT_LIMITS[key];
+  if (!Number.isInteger(parsed) || parsed < limit.min || parsed > limit.max) {
+    return `${limit.label}は${limit.min}〜${limit.max}${limit.unit}の整数で入力してください。`;
+  }
+  return null;
+}
+
+function getVisitLimitErrors(form: DetailForm | null, enabled: boolean) {
+  if (!form || !enabled) return {};
+  return {
+    max_daily_visits: validateVisitLimit('max_daily_visits', form.max_daily_visits),
+    max_weekly_visits: validateVisitLimit('max_weekly_visits', form.max_weekly_visits),
+    max_travel_minutes: validateVisitLimit('max_travel_minutes', form.max_travel_minutes),
+  };
+}
+
+function getDetailSaveBlocker(
+  form: DetailForm | null,
+  siteRequired: boolean,
+  visitLimitError?: string,
+) {
+  if (!form) return null;
+  if (!form.name.trim()) return '氏名を入力してください。';
+  if (!form.name_kana.trim()) return 'フリガナを入力してください。';
+  if (siteRequired && !form.site_id) return '所属店舗を選択してください。';
+  return visitLimitError ?? null;
 }
 
 function buildDetailForm(user: UserItem): DetailForm {
@@ -490,6 +539,13 @@ export function UsersContent() {
 
   const operationalRole = detailForm ? isOperationalMemberRole(detailForm.role) : false;
   const siteRequired = detailForm ? roleRequiresSite(detailForm.role) : false;
+  const visitLimitErrors = getVisitLimitErrors(detailForm, operationalRole);
+  const firstVisitLimitError =
+    visitLimitErrors.max_daily_visits ??
+    visitLimitErrors.max_weekly_visits ??
+    visitLimitErrors.max_travel_minutes ??
+    undefined;
+  const detailSaveBlocker = getDetailSaveBlocker(detailForm, siteRequired, firstVisitLimitError);
 
   function openDetail(user: UserItem) {
     setDetailUser(user);
@@ -889,7 +945,10 @@ export function UsersContent() {
               <div className="space-y-3 rounded-lg border p-4">
                 <div>
                   <div className="font-medium">訪問制約</div>
-                  <p className="text-xs text-muted-foreground">
+                  <p
+                    id={VISIT_CONSTRAINT_DISABLED_HELP_ID}
+                    className="text-xs text-muted-foreground"
+                  >
                     非訪問ロールでは保存時にクリアされます。
                   </p>
                 </div>
@@ -898,6 +957,10 @@ export function UsersContent() {
                     <Input
                       id="detail-max-daily-visits"
                       type="number"
+                      min={VISIT_LIMITS.max_daily_visits.min}
+                      max={VISIT_LIMITS.max_daily_visits.max}
+                      step={1}
+                      inputMode="numeric"
                       value={detailForm.max_daily_visits}
                       onChange={(event) =>
                         setDetailForm((current) =>
@@ -905,12 +968,34 @@ export function UsersContent() {
                         )
                       }
                       disabled={!operationalRole}
+                      aria-invalid={Boolean(visitLimitErrors.max_daily_visits)}
+                      aria-describedby={descriptionIds(
+                        'detail-max-daily-visits-help',
+                        !operationalRole && VISIT_CONSTRAINT_DISABLED_HELP_ID,
+                        visitLimitErrors.max_daily_visits && 'detail-max-daily-visits-error',
+                      )}
                     />
+                    <p id="detail-max-daily-visits-help" className="text-xs text-muted-foreground">
+                      1〜20件の整数。空欄は未設定。
+                    </p>
+                    {visitLimitErrors.max_daily_visits ? (
+                      <p
+                        id="detail-max-daily-visits-error"
+                        className="text-xs text-destructive"
+                        role="alert"
+                      >
+                        {visitLimitErrors.max_daily_visits}
+                      </p>
+                    ) : null}
                   </Field>
                   <Field label="週次上限" htmlFor="detail-max-weekly-visits">
                     <Input
                       id="detail-max-weekly-visits"
                       type="number"
+                      min={VISIT_LIMITS.max_weekly_visits.min}
+                      max={VISIT_LIMITS.max_weekly_visits.max}
+                      step={1}
+                      inputMode="numeric"
                       value={detailForm.max_weekly_visits}
                       onChange={(event) =>
                         setDetailForm((current) =>
@@ -918,12 +1003,34 @@ export function UsersContent() {
                         )
                       }
                       disabled={!operationalRole}
+                      aria-invalid={Boolean(visitLimitErrors.max_weekly_visits)}
+                      aria-describedby={descriptionIds(
+                        'detail-max-weekly-visits-help',
+                        !operationalRole && VISIT_CONSTRAINT_DISABLED_HELP_ID,
+                        visitLimitErrors.max_weekly_visits && 'detail-max-weekly-visits-error',
+                      )}
                     />
+                    <p id="detail-max-weekly-visits-help" className="text-xs text-muted-foreground">
+                      1〜100件の整数。空欄は未設定。
+                    </p>
+                    {visitLimitErrors.max_weekly_visits ? (
+                      <p
+                        id="detail-max-weekly-visits-error"
+                        className="text-xs text-destructive"
+                        role="alert"
+                      >
+                        {visitLimitErrors.max_weekly_visits}
+                      </p>
+                    ) : null}
                   </Field>
                   <Field label="移動上限(分)" htmlFor="detail-max-travel-minutes">
                     <Input
                       id="detail-max-travel-minutes"
                       type="number"
+                      min={VISIT_LIMITS.max_travel_minutes.min}
+                      max={VISIT_LIMITS.max_travel_minutes.max}
+                      step={1}
+                      inputMode="numeric"
                       value={detailForm.max_travel_minutes}
                       onChange={(event) =>
                         setDetailForm((current) =>
@@ -933,7 +1040,28 @@ export function UsersContent() {
                         )
                       }
                       disabled={!operationalRole}
+                      aria-invalid={Boolean(visitLimitErrors.max_travel_minutes)}
+                      aria-describedby={descriptionIds(
+                        'detail-max-travel-minutes-help',
+                        !operationalRole && VISIT_CONSTRAINT_DISABLED_HELP_ID,
+                        visitLimitErrors.max_travel_minutes && 'detail-max-travel-minutes-error',
+                      )}
                     />
+                    <p
+                      id="detail-max-travel-minutes-help"
+                      className="text-xs text-muted-foreground"
+                    >
+                      0〜480分の整数。空欄は未設定。
+                    </p>
+                    {visitLimitErrors.max_travel_minutes ? (
+                      <p
+                        id="detail-max-travel-minutes-error"
+                        className="text-xs text-destructive"
+                        role="alert"
+                      >
+                        {visitLimitErrors.max_travel_minutes}
+                      </p>
+                    ) : null}
                   </Field>
                 </div>
                 <ToggleRow
@@ -946,6 +1074,7 @@ export function UsersContent() {
                     )
                   }
                   disabled={!operationalRole}
+                  describedBy={!operationalRole ? VISIT_CONSTRAINT_DISABLED_HELP_ID : undefined}
                 />
                 <Field label="専門分野" htmlFor="detail-visit-specialties">
                   <Textarea
@@ -958,6 +1087,9 @@ export function UsersContent() {
                     }
                     placeholder="在宅中心静脈栄養, 緩和ケア など"
                     disabled={!operationalRole}
+                    aria-describedby={
+                      !operationalRole ? VISIT_CONSTRAINT_DISABLED_HELP_ID : undefined
+                    }
                   />
                 </Field>
                 <Field label="対応エリア" htmlFor="detail-coverage-area">
@@ -971,6 +1103,9 @@ export function UsersContent() {
                     }
                     placeholder="港区, 品川区 など"
                     disabled={!operationalRole}
+                    aria-describedby={
+                      !operationalRole ? VISIT_CONSTRAINT_DISABLED_HELP_ID : undefined
+                    }
                   />
                 </Field>
               </div>
@@ -1036,14 +1171,15 @@ export function UsersContent() {
                 >
                   閉じる
                 </Button>
+                {detailSaveBlocker ? (
+                  <p id={DETAIL_SAVE_BLOCKER_ID} className="self-center text-xs text-destructive">
+                    {detailSaveBlocker}
+                  </p>
+                ) : null}
                 <Button
                   onClick={() => detailMutation.mutate()}
-                  disabled={
-                    detailMutation.isPending ||
-                    !detailForm.name.trim() ||
-                    !detailForm.name_kana.trim() ||
-                    (siteRequired && !detailForm.site_id)
-                  }
+                  disabled={detailMutation.isPending || Boolean(detailSaveBlocker)}
+                  aria-describedby={detailSaveBlocker ? DETAIL_SAVE_BLOCKER_ID : undefined}
                 >
                   {detailMutation.isPending ? '保存中...' : '変更を保存'}
                 </Button>
@@ -1143,12 +1279,14 @@ function ToggleRow({
   checked,
   onCheckedChange,
   disabled,
+  describedBy,
 }: {
   id: string;
   label: string;
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   disabled?: boolean;
+  describedBy?: string;
 }) {
   return (
     <div className="flex items-center justify-between rounded-md border px-3 py-2">
@@ -1160,6 +1298,7 @@ function ToggleRow({
         checked={checked}
         onCheckedChange={(value) => onCheckedChange(value === true)}
         disabled={disabled}
+        aria-describedby={describedBy}
       />
     </div>
   );

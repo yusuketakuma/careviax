@@ -42,6 +42,8 @@ const user = {
   monthly_visit_count: 12,
 };
 
+const defaultUser = { ...user };
+
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: () => 'org_1',
 }));
@@ -107,6 +109,7 @@ vi.mock('sonner', () => ({
 describe('UsersContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Object.assign(user, defaultUser);
   });
 
   it('associates user filters and row actions with accessible names', () => {
@@ -159,5 +162,61 @@ describe('UsersContent', () => {
     fireEvent.click(screen.getByRole('button', { name: '山田 太郎を退職処理' }));
 
     expect(screen.getByLabelText('理由')).toBeTruthy();
+  });
+
+  it('constrains visit limit inputs and blocks invalid detail saves inline', () => {
+    render(<UsersContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: '山田 太郎の詳細を開く' }));
+
+    const dailyLimit = screen.getByLabelText('日次上限') as HTMLInputElement;
+    const weeklyLimit = screen.getByLabelText('週次上限') as HTMLInputElement;
+    const travelLimit = screen.getByLabelText('移動上限(分)') as HTMLInputElement;
+
+    expect(dailyLimit.min).toBe('1');
+    expect(dailyLimit.max).toBe('20');
+    expect(dailyLimit.step).toBe('1');
+    expect(dailyLimit.inputMode).toBe('numeric');
+    expect(weeklyLimit.min).toBe('1');
+    expect(weeklyLimit.max).toBe('100');
+    expect(travelLimit.min).toBe('0');
+    expect(travelLimit.max).toBe('480');
+
+    fireEvent.change(dailyLimit, { target: { value: '21' } });
+
+    expect(screen.getAllByText('日次上限は1〜20件の整数で入力してください。')).toHaveLength(2);
+    expect(dailyLimit.getAttribute('aria-invalid')).toBe('true');
+    expect(dailyLimit.getAttribute('aria-describedby')).toContain('detail-max-daily-visits-error');
+
+    const saveButton = screen.getByRole('button', { name: '変更を保存' });
+    expect((saveButton as HTMLButtonElement).disabled).toBe(true);
+    expect(saveButton.getAttribute('aria-describedby')).toBe('detail-user-save-blocker');
+
+    fireEvent.click(saveButton);
+    expect(mutationMutateMock).not.toHaveBeenCalled();
+  });
+
+  it('describes why visit constraint controls are disabled for non-operational roles', () => {
+    Object.assign(user, {
+      role: 'external_viewer',
+      max_daily_visits: 8,
+      max_weekly_visits: 30,
+      max_travel_minutes: 90,
+    });
+
+    render(<UsersContent />);
+
+    fireEvent.click(screen.getByRole('button', { name: '山田 太郎の詳細を開く' }));
+
+    const dailyLimit = screen.getByLabelText('日次上限') as HTMLInputElement;
+    const specialties = screen.getByLabelText('専門分野') as HTMLTextAreaElement;
+
+    expect(dailyLimit.disabled).toBe(true);
+    expect(dailyLimit.getAttribute('aria-describedby')).toContain(
+      'detail-visit-constraints-role-help',
+    );
+    expect(specialties.disabled).toBe(true);
+    expect(specialties.getAttribute('aria-describedby')).toBe('detail-visit-constraints-role-help');
+    expect(screen.getByText('非訪問ロールでは保存時にクリアされます。')).toBeTruthy();
   });
 });
