@@ -4306,6 +4306,40 @@ Implemented:
 
 - UI/UX remediation remains active. Remaining candidates include pharmacy-cooperation responsive table density, select accessible-name gaps outside fixed/verified screens, raw table/DataTable convergence, and expanded browser/a11y proof.
 
+## 20260620-0451 JST - Pharmacist Credential Inline Validation
+
+### Summary
+
+- Added API-aligned inline validation to pharmacist credential registration/edit dialog.
+- Enforced credential date order (`issued_date <= expiry_date`) with native date min/max hints and visible error text.
+- Added native bounds and helper/error text for tenure years (`0-80`) and weekly work hours (`0-168`).
+- Blocked invalid saves before the credential mutation can run and tied the save button to the blocker text.
+- Added a focused jsdom regression test with a native Select mock for deterministic user selection.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx`
+- `src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- Read `docs/ui-ux-design-guidelines.md` and `node_modules/next/dist/docs/03-architecture/accessibility.md` before committing this UI/a11y slice.
+- Inspected `src/lib/validations/pharmacist-credential.ts` and confirmed the UI bounds match existing API validation.
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx' --reporter=dot --testTimeout=30000`: initially failed on an over-specific duplicate-message expectation, then passed with 1 file / 2 tests after stabilizing the Select interaction and assertion.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `git diff --check -- 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx'`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `pnpm lint`: passed.
+
+### Remaining / Next Loop
+
+- Pharmacist credential date/number validation no longer relies only on API/toast feedback for these constraints.
+- Continue with the next UI/UX hardening candidate, likely PCA pump rental/return disabled-reason gaps or remaining pharmacy-cooperation proof items.
+
 ## 20260620-0446 JST - Patient Share Transaction Query Serialization
 
 ### Summary
