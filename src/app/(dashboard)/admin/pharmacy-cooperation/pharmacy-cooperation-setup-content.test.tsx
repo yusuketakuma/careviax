@@ -288,14 +288,12 @@ describe('PharmacyCooperationSetupContent', () => {
 
     expect(await screen.findByText('協力薬局登録')).toBeTruthy();
     expect(screen.getAllByText('協力薬局').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('partnership_1')).toBeTruthy();
-    expect(screen.getByText('contract_1')).toBeTruthy();
-    expect(screen.getByRole('table', { name: '薬局間連携一覧' }).className).toContain(
-      'min-w-[72rem]',
-    );
-    expect(screen.getByRole('table', { name: '薬局間契約一覧' }).className).toContain(
-      'min-w-[64rem]',
-    );
+    expect(screen.getAllByText('partnership_1').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('contract_1').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByLabelText('薬局間連携内検索')).toBeTruthy();
+    expect(screen.getByLabelText('契約書内検索')).toBeTruthy();
+    expect(screen.getByLabelText('薬局間契約内検索')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: '列' }).length).toBeGreaterThanOrEqual(3);
     expect(document.body.textContent).not.toContain('山田');
   });
 
@@ -396,7 +394,7 @@ describe('PharmacyCooperationSetupContent', () => {
     renderContent();
 
     await screen.findByText('契約書作成');
-    expect(screen.getByText('contract_document_1')).toBeTruthy();
+    expect(screen.getAllByText('contract_document_1').length).toBeGreaterThanOrEqual(1);
 
     const signedPdf = new File(['signed'], 'signed-contract.pdf', {
       type: 'application/pdf',

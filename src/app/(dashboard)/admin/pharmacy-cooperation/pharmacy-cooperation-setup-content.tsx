@@ -1,6 +1,7 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import type { Dispatch, ReactNode, SetStateAction } from 'react';
+import type { ColumnDef } from '@tanstack/react-table';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, Eye, FileText, Handshake, Plus, RefreshCw, Save } from 'lucide-react';
@@ -8,6 +9,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { DataTable } from '@/components/ui/data-table';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
@@ -375,6 +377,308 @@ function QueryError({
       description="マスタ一覧の取得に失敗しました。"
       detail={error instanceof Error ? error.message : undefined}
       action={{ label: '再試行', onClick: refetch }}
+    />
+  );
+}
+
+function PartnershipTable({
+  partnerships,
+  approvalForms,
+  setApprovalForms,
+  isActivating,
+  onActivate,
+}: {
+  partnerships: PharmacyPartnershipRow[];
+  approvalForms: Record<string, ApprovalForm>;
+  setApprovalForms: Dispatch<SetStateAction<Record<string, ApprovalForm>>>;
+  isActivating: boolean;
+  onActivate: (id: string) => void;
+}) {
+  const columns = useMemo<ColumnDef<PharmacyPartnershipRow>[]>(
+    () => [
+      {
+        id: 'partnership',
+        accessorFn: (partnership) => `${partnership.id} ${statusLabel(partnership.status)}`,
+        header: '連携',
+        cell: ({ row }) => (
+          <div>
+            <div className="font-medium">{row.original.id}</div>
+            <Badge className="mt-1" variant={statusVariant(row.original.status)}>
+              {statusLabel(row.original.status)}
+            </Badge>
+          </div>
+        ),
+        meta: { label: '連携' },
+      },
+      {
+        id: 'partner_pharmacy',
+        accessorFn: (partnership) =>
+          `${partnership.base_site.name} ${partnership.partner_pharmacy.name}`,
+        header: '協力薬局',
+        cell: ({ row }) => (
+          <span>
+            {row.original.base_site.name} / {row.original.partner_pharmacy.name}
+          </span>
+        ),
+        meta: { label: '協力薬局' },
+      },
+      {
+        id: 'period',
+        accessorFn: (partnership) =>
+          `${formatDate(partnership.effective_from)} ${formatDate(partnership.effective_to)}`,
+        header: '有効期間',
+        cell: ({ row }) => (
+          <span className="tabular-nums">
+            {formatDate(row.original.effective_from)} - {formatDate(row.original.effective_to)}
+          </span>
+        ),
+        meta: { label: '有効期間' },
+      },
+      {
+        id: 'approval',
+        header: '承認',
+        cell: ({ row }) => {
+          const partnership = row.original;
+          const approvals = approvalForms[partnership.id] ?? {
+            base_approved_by: '',
+            partner_approved_by: '',
+          };
+          return partnership.status === 'active' ? (
+            <span className="text-xs text-muted-foreground">承認済み</span>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Input
+                value={approvals.base_approved_by}
+                onChange={(event) =>
+                  setApprovalForms((current) => ({
+                    ...current,
+                    [partnership.id]: {
+                      ...approvals,
+                      base_approved_by: event.target.value,
+                    },
+                  }))
+                }
+                placeholder="基幹承認者"
+                aria-label={`${partnership.id} の基幹承認者`}
+              />
+              <Input
+                value={approvals.partner_approved_by}
+                onChange={(event) =>
+                  setApprovalForms((current) => ({
+                    ...current,
+                    [partnership.id]: {
+                      ...approvals,
+                      partner_approved_by: event.target.value,
+                    },
+                  }))
+                }
+                placeholder="協力承認者"
+                aria-label={`${partnership.id} の協力承認者`}
+              />
+            </div>
+          );
+        },
+        enableSorting: false,
+        meta: { label: '承認' },
+      },
+      {
+        id: 'actions',
+        header: '操作',
+        cell: ({ row }) => {
+          const partnership = row.original;
+          return (
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={isActivating || partnership.status === 'active'}
+                onClick={() => onActivate(partnership.id)}
+                aria-label={`${partnership.id} ${partnership.partner_pharmacy.name} の薬局間連携を有効化`}
+              >
+                <CheckCircle2 className="size-4" aria-hidden="true" />
+                有効化
+              </Button>
+            </div>
+          );
+        },
+        enableSorting: false,
+        meta: { label: '操作', mobileLabel: '操作' },
+      },
+    ],
+    [approvalForms, isActivating, onActivate, setApprovalForms],
+  );
+
+  return (
+    <DataTable
+      columns={columns}
+      data={partnerships}
+      caption="薬局間連携一覧"
+      getRowId={(partnership) => partnership.id}
+      getRowA11yLabel={(partnership) =>
+        `${partnership.id} ${partnership.partner_pharmacy.name} ${statusLabel(partnership.status)}`
+      }
+      toolbar={{
+        enableGlobalFilter: true,
+        globalFilterPlaceholder: '薬局間連携内検索',
+        enableColumnVisibility: true,
+        filterFields: [
+          { columnId: 'partner_pharmacy', label: '協力薬局', placeholder: '協力薬局で絞り込み' },
+          { columnId: 'partnership', label: '連携状態', placeholder: '状態で絞り込み' },
+        ],
+      }}
+    />
+  );
+}
+
+function ContractDocumentTable({ documents }: { documents: ContractDocumentRow[] }) {
+  const columns = useMemo<ColumnDef<ContractDocumentRow>[]>(
+    () => [
+      {
+        id: 'document',
+        accessorFn: (document) => `${document.id} ${document.hash_value}`,
+        header: '文書',
+        cell: ({ row }) => (
+          <div>
+            <div className="flex items-center gap-2 font-medium">
+              <FileText className="size-4 text-muted-foreground" aria-hidden="true" />
+              {row.original.id}
+            </div>
+            <div className="mt-1 max-w-72 truncate font-mono text-xs text-muted-foreground">
+              {row.original.hash_value}
+            </div>
+          </div>
+        ),
+        meta: { label: '文書' },
+      },
+      {
+        id: 'file',
+        accessorFn: (document) => (document.file_id ? '添付済み' : '未添付'),
+        header: '署名PDF',
+        cell: ({ row }) => (row.original.file_id ? '添付済み' : '未添付'),
+        meta: { label: '署名PDF' },
+      },
+      {
+        id: 'signed_at',
+        accessorFn: (document) => formatDate(document.signed_at),
+        header: '署名日',
+        cell: ({ row }) => (
+          <span className="tabular-nums">{formatDate(row.original.signed_at)}</span>
+        ),
+        meta: { label: '署名日' },
+      },
+      {
+        id: 'created_at',
+        accessorFn: (document) => formatDate(document.created_at),
+        header: '保存日時',
+        cell: ({ row }) => (
+          <span className="tabular-nums">{formatDate(row.original.created_at)}</span>
+        ),
+        meta: { label: '保存日時' },
+      },
+    ],
+    [],
+  );
+
+  return (
+    <DataTable
+      columns={columns}
+      data={documents}
+      caption="契約書一覧"
+      getRowId={(document) => document.id}
+      getRowA11yLabel={(document) => `${document.id} ${document.file_id ? '添付済み' : '未添付'}`}
+      toolbar={{
+        enableGlobalFilter: true,
+        globalFilterPlaceholder: '契約書内検索',
+        enableColumnVisibility: true,
+      }}
+    />
+  );
+}
+
+function ContractTable({ contracts }: { contracts: PharmacyContractRow[] }) {
+  const columns = useMemo<ColumnDef<PharmacyContractRow>[]>(
+    () => [
+      {
+        id: 'contract',
+        accessorFn: (contract) => `${contract.id} ${statusLabel(contract.status)}`,
+        header: '契約',
+        cell: ({ row }) => (
+          <div>
+            <div className="font-medium">{row.original.id}</div>
+            <Badge className="mt-1" variant={statusVariant(row.original.status)}>
+              {statusLabel(row.original.status)}
+            </Badge>
+          </div>
+        ),
+        meta: { label: '契約' },
+      },
+      {
+        id: 'partnership',
+        accessorFn: (contract) =>
+          `${contract.partnership.base_site.name} ${contract.partnership.partner_pharmacy.name}`,
+        header: '連携',
+        cell: ({ row }) => (
+          <span>
+            {row.original.partnership.base_site.name} /{' '}
+            {row.original.partnership.partner_pharmacy.name}
+          </span>
+        ),
+        meta: { label: '連携' },
+      },
+      {
+        id: 'period',
+        accessorFn: (contract) =>
+          `${formatDate(contract.effective_from)} ${formatDate(contract.effective_to)}`,
+        header: '期間',
+        cell: ({ row }) => (
+          <span className="tabular-nums">
+            {formatDate(row.original.effective_from)} - {formatDate(row.original.effective_to)}
+          </span>
+        ),
+        meta: { label: '期間' },
+      },
+      {
+        id: 'fee_rule',
+        accessorFn: (contract) =>
+          `${billingModelLabel(contract.latest_version?.active_fee_rule?.billing_model)} ${formatYen(
+            contract.latest_version?.active_fee_rule?.unit_price,
+          )}`,
+        header: '費用条件',
+        cell: ({ row }) => (
+          <span>
+            {billingModelLabel(row.original.latest_version?.active_fee_rule?.billing_model)}
+            <span className="ml-2 tabular-nums text-muted-foreground">
+              {formatYen(row.original.latest_version?.active_fee_rule?.unit_price)}
+            </span>
+          </span>
+        ),
+        meta: { label: '費用条件' },
+      },
+    ],
+    [],
+  );
+
+  return (
+    <DataTable
+      columns={columns}
+      data={contracts}
+      caption="薬局間契約一覧"
+      getRowId={(contract) => contract.id}
+      getRowA11yLabel={(contract) =>
+        `${contract.id} ${contract.partnership.partner_pharmacy.name} ${statusLabel(
+          contract.status,
+        )}`
+      }
+      toolbar={{
+        enableGlobalFilter: true,
+        globalFilterPlaceholder: '薬局間契約内検索',
+        enableColumnVisibility: true,
+        filterFields: [
+          { columnId: 'partnership', label: '連携薬局', placeholder: '連携薬局で絞り込み' },
+          { columnId: 'contract', label: '契約状態', placeholder: '状態で絞り込み' },
+        ],
+      }}
     />
   );
 }
@@ -859,105 +1163,13 @@ export function PharmacyCooperationSetupContent() {
         {partnerships.length === 0 ? (
           <EmptyState title="薬局間連携はまだありません" />
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-border/70">
-            <table className="min-w-[72rem] text-sm" aria-label="薬局間連携一覧">
-              <thead className="bg-muted/60 text-xs text-muted-foreground">
-                <tr>
-                  <th scope="col" className="px-3 py-2 text-left font-medium">
-                    連携
-                  </th>
-                  <th scope="col" className="px-3 py-2 text-left font-medium">
-                    協力薬局
-                  </th>
-                  <th scope="col" className="px-3 py-2 text-left font-medium">
-                    有効期間
-                  </th>
-                  <th scope="col" className="px-3 py-2 text-left font-medium">
-                    承認
-                  </th>
-                  <th scope="col" className="px-3 py-2 text-right font-medium">
-                    操作
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {partnerships.map((partnership) => {
-                  const approvals = approvalForms[partnership.id] ?? {
-                    base_approved_by: '',
-                    partner_approved_by: '',
-                  };
-                  return (
-                    <tr key={partnership.id} className="border-t border-border/70">
-                      <td className="px-3 py-2">
-                        <div className="font-medium">{partnership.id}</div>
-                        <Badge className="mt-1" variant={statusVariant(partnership.status)}>
-                          {statusLabel(partnership.status)}
-                        </Badge>
-                      </td>
-                      <td className="px-3 py-2">
-                        {partnership.base_site.name} / {partnership.partner_pharmacy.name}
-                      </td>
-                      <td className="px-3 py-2 tabular-nums">
-                        {formatDate(partnership.effective_from)} -{' '}
-                        {formatDate(partnership.effective_to)}
-                      </td>
-                      <td className="min-w-72 px-3 py-2">
-                        {partnership.status === 'active' ? (
-                          <span className="text-xs text-muted-foreground">承認済み</span>
-                        ) : (
-                          <div className="grid gap-2 sm:grid-cols-2">
-                            <Input
-                              value={approvals.base_approved_by}
-                              onChange={(event) =>
-                                setApprovalForms((current) => ({
-                                  ...current,
-                                  [partnership.id]: {
-                                    ...approvals,
-                                    base_approved_by: event.target.value,
-                                  },
-                                }))
-                              }
-                              placeholder="基幹承認者"
-                              aria-label={`${partnership.id} の基幹承認者`}
-                            />
-                            <Input
-                              value={approvals.partner_approved_by}
-                              onChange={(event) =>
-                                setApprovalForms((current) => ({
-                                  ...current,
-                                  [partnership.id]: {
-                                    ...approvals,
-                                    partner_approved_by: event.target.value,
-                                  },
-                                }))
-                              }
-                              placeholder="協力承認者"
-                              aria-label={`${partnership.id} の協力承認者`}
-                            />
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={
-                            activatePartnershipMutation.isPending || partnership.status === 'active'
-                          }
-                          onClick={() => activatePartnershipMutation.mutate(partnership.id)}
-                          aria-label={`${partnership.id} ${partnership.partner_pharmacy.name} の薬局間連携を有効化`}
-                        >
-                          <CheckCircle2 className="size-4" aria-hidden="true" />
-                          有効化
-                        </Button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <PartnershipTable
+            partnerships={partnerships}
+            approvalForms={approvalForms}
+            setApprovalForms={setApprovalForms}
+            isActivating={activatePartnershipMutation.isPending}
+            onActivate={(id) => activatePartnershipMutation.mutate(id)}
+          />
         )}
       </SectionShell>
 
@@ -1223,44 +1435,7 @@ export function PharmacyCooperationSetupContent() {
 
         <div className="mt-4">
           {effectiveDocumentContractId && contractDocuments.length > 0 ? (
-            <div className="overflow-x-auto rounded-lg border border-border/70">
-              <table className="min-w-[48rem] text-sm" aria-label="契約書一覧">
-                <thead className="bg-muted/60 text-xs text-muted-foreground">
-                  <tr>
-                    <th scope="col" className="px-3 py-2 text-left font-medium">
-                      文書
-                    </th>
-                    <th scope="col" className="px-3 py-2 text-left font-medium">
-                      署名PDF
-                    </th>
-                    <th scope="col" className="px-3 py-2 text-left font-medium">
-                      署名日
-                    </th>
-                    <th scope="col" className="px-3 py-2 text-left font-medium">
-                      保存日時
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {contractDocuments.map((document) => (
-                    <tr key={document.id} className="border-t border-border/70">
-                      <td className="px-3 py-2">
-                        <div className="flex items-center gap-2 font-medium">
-                          <FileText className="size-4 text-muted-foreground" aria-hidden="true" />
-                          {document.id}
-                        </div>
-                        <div className="mt-1 max-w-72 truncate font-mono text-xs text-muted-foreground">
-                          {document.hash_value}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2">{document.file_id ? '添付済み' : '未添付'}</td>
-                      <td className="px-3 py-2 tabular-nums">{formatDate(document.signed_at)}</td>
-                      <td className="px-3 py-2 tabular-nums">{formatDate(document.created_at)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ContractDocumentTable documents={contractDocuments} />
           ) : (
             <EmptyState title="保存済み契約書はまだありません" />
           )}
@@ -1271,51 +1446,7 @@ export function PharmacyCooperationSetupContent() {
         {contracts.length === 0 ? (
           <EmptyState title="薬局間契約はまだありません" />
         ) : (
-          <div className="overflow-x-auto rounded-lg border border-border/70">
-            <table className="min-w-[64rem] text-sm" aria-label="薬局間契約一覧">
-              <thead className="bg-muted/60 text-xs text-muted-foreground">
-                <tr>
-                  <th scope="col" className="px-3 py-2 text-left font-medium">
-                    契約
-                  </th>
-                  <th scope="col" className="px-3 py-2 text-left font-medium">
-                    連携
-                  </th>
-                  <th scope="col" className="px-3 py-2 text-left font-medium">
-                    期間
-                  </th>
-                  <th scope="col" className="px-3 py-2 text-left font-medium">
-                    費用条件
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {contracts.map((contract) => (
-                  <tr key={contract.id} className="border-t border-border/70">
-                    <td className="px-3 py-2">
-                      <div className="font-medium">{contract.id}</div>
-                      <Badge className="mt-1" variant={statusVariant(contract.status)}>
-                        {statusLabel(contract.status)}
-                      </Badge>
-                    </td>
-                    <td className="px-3 py-2">
-                      {contract.partnership.base_site.name} /{' '}
-                      {contract.partnership.partner_pharmacy.name}
-                    </td>
-                    <td className="px-3 py-2 tabular-nums">
-                      {formatDate(contract.effective_from)} - {formatDate(contract.effective_to)}
-                    </td>
-                    <td className="px-3 py-2">
-                      {billingModelLabel(contract.latest_version?.active_fee_rule?.billing_model)}
-                      <span className="ml-2 tabular-nums text-muted-foreground">
-                        {formatYen(contract.latest_version?.active_fee_rule?.unit_price)}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ContractTable contracts={contracts} />
         )}
       </SectionShell>
     </div>
