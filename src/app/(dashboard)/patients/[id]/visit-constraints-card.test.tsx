@@ -66,6 +66,12 @@ describe('VisitConstraintsCard', () => {
     );
     expect(screen.getAllByText('月').length).toBeGreaterThan(0);
     expect(screen.getAllByText('水').length).toBeGreaterThan(0);
+    expect(screen.getByLabelText('訪問希望時間帯 開始')).toBeTruthy();
+    expect(screen.getByLabelText('訪問希望時間帯 終了')).toBeTruthy();
+    expect(screen.getByLabelText('電話連絡可能時間 開始')).toBeTruthy();
+    expect(screen.getByLabelText('電話連絡可能時間 終了')).toBeTruthy();
+    expect(screen.getByLabelText('施設受入時間 開始')).toBeTruthy();
+    expect(screen.getByLabelText('施設受入時間 終了')).toBeTruthy();
     expect(screen.getByDisplayValue('山田花子')).toBeTruthy();
     expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
   });

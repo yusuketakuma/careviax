@@ -431,6 +431,7 @@ export function PatientCareTeamPanel({
                 </Field>
                 <Field label="氏名">
                   <Input
+                    aria-label={`多職種連携先${index + 1}件目の氏名`}
                     list={`external-professional-suggestions-${index}`}
                     value={row.name}
                     onChange={(event) => {
@@ -462,6 +463,7 @@ export function PatientCareTeamPanel({
                 </Field>
                 <Field label="所属">
                   <Input
+                    aria-label={`多職種連携先${index + 1}件目の所属`}
                     value={row.organization_name}
                     onChange={(event) =>
                       updateRowAt(index, (item) => ({
@@ -474,6 +476,7 @@ export function PatientCareTeamPanel({
                 </Field>
                 <Field label="部署">
                   <Input
+                    aria-label={`多職種連携先${index + 1}件目の部署`}
                     value={row.department}
                     onChange={(event) =>
                       updateRowAt(index, (item) => ({
@@ -486,6 +489,7 @@ export function PatientCareTeamPanel({
                 </Field>
                 <Field label="電話番号">
                   <Input
+                    aria-label={`多職種連携先${index + 1}件目の電話番号`}
                     value={row.phone}
                     onChange={(event) =>
                       updateRowAt(index, (item) => ({
@@ -498,6 +502,7 @@ export function PatientCareTeamPanel({
                 </Field>
                 <Field label="メール">
                   <Input
+                    aria-label={`多職種連携先${index + 1}件目のメール`}
                     value={row.email}
                     onChange={(event) =>
                       updateRowAt(index, (item) => ({
@@ -510,6 +515,7 @@ export function PatientCareTeamPanel({
                 </Field>
                 <Field label="FAX">
                   <Input
+                    aria-label={`多職種連携先${index + 1}件目のFAX`}
                     value={row.fax}
                     onChange={(event) =>
                       updateRowAt(index, (item) => ({
@@ -522,6 +528,7 @@ export function PatientCareTeamPanel({
                 </Field>
                 <Field label="住所">
                   <Input
+                    aria-label={`多職種連携先${index + 1}件目の住所`}
                     value={row.address}
                     onChange={(event) =>
                       updateRowAt(index, (item) => ({
@@ -534,6 +541,7 @@ export function PatientCareTeamPanel({
                 </Field>
                 <Field label="連絡メモ" className="md:col-span-2">
                   <Textarea
+                    aria-label={`多職種連携先${index + 1}件目の連絡メモ`}
                     rows={2}
                     value={row.notes}
                     onChange={(event) =>
@@ -664,6 +672,7 @@ export function PatientCareTeamPanel({
             </Field>
             <Field label="氏名">
               <Input
+                aria-label="他職種マスター追加の氏名"
                 value={quickCreateDraft.name}
                 onChange={(event) =>
                   setQuickCreateDraft((current) => ({ ...current, name: event.target.value }))
@@ -672,6 +681,7 @@ export function PatientCareTeamPanel({
             </Field>
             <Field label="所属">
               <Input
+                aria-label="他職種マスター追加の所属"
                 value={quickCreateDraft.organization_name}
                 onChange={(event) =>
                   setQuickCreateDraft((current) => ({
@@ -683,6 +693,7 @@ export function PatientCareTeamPanel({
             </Field>
             <Field label="部署">
               <Input
+                aria-label="他職種マスター追加の部署"
                 value={quickCreateDraft.department}
                 onChange={(event) =>
                   setQuickCreateDraft((current) => ({ ...current, department: event.target.value }))
@@ -691,6 +702,7 @@ export function PatientCareTeamPanel({
             </Field>
             <Field label="電話">
               <Input
+                aria-label="他職種マスター追加の電話"
                 value={quickCreateDraft.phone}
                 onChange={(event) =>
                   setQuickCreateDraft((current) => ({ ...current, phone: event.target.value }))
@@ -699,6 +711,7 @@ export function PatientCareTeamPanel({
             </Field>
             <Field label="メール">
               <Input
+                aria-label="他職種マスター追加のメール"
                 value={quickCreateDraft.email}
                 onChange={(event) =>
                   setQuickCreateDraft((current) => ({ ...current, email: event.target.value }))
@@ -707,6 +720,7 @@ export function PatientCareTeamPanel({
             </Field>
             <Field label="FAX">
               <Input
+                aria-label="他職種マスター追加のFAX"
                 value={quickCreateDraft.fax}
                 onChange={(event) =>
                   setQuickCreateDraft((current) => ({ ...current, fax: event.target.value }))
@@ -715,6 +729,7 @@ export function PatientCareTeamPanel({
             </Field>
             <Field label="住所">
               <Input
+                aria-label="他職種マスター追加の住所"
                 value={quickCreateDraft.address}
                 onChange={(event) =>
                   setQuickCreateDraft((current) => ({ ...current, address: event.target.value }))
@@ -723,6 +738,7 @@ export function PatientCareTeamPanel({
             </Field>
             <Field label="メモ" className="md:col-span-2">
               <Textarea
+                aria-label="他職種マスター追加のメモ"
                 rows={3}
                 value={quickCreateDraft.notes}
                 onChange={(event) =>

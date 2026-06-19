@@ -72,12 +72,28 @@ describe('PatientCareTeamPanel', () => {
     expect(screen.getByLabelText('多職種連携先のケース')).toBeTruthy();
     expect(screen.getByLabelText('多職種連携先1件目の他職種マスター')).toBeTruthy();
     expect(screen.getByLabelText('多職種連携先1件目の役割')).toBeTruthy();
+    expect(screen.getByLabelText('多職種連携先1件目の氏名')).toBeTruthy();
+    expect(screen.getByLabelText('多職種連携先1件目の所属')).toBeTruthy();
+    expect(screen.getByLabelText('多職種連携先1件目の部署')).toBeTruthy();
+    expect(screen.getByLabelText('多職種連携先1件目の電話番号')).toBeTruthy();
+    expect(screen.getByLabelText('多職種連携先1件目のメール')).toBeTruthy();
+    expect(screen.getByLabelText('多職種連携先1件目のFAX')).toBeTruthy();
+    expect(screen.getByLabelText('多職種連携先1件目の住所')).toBeTruthy();
+    expect(screen.getByLabelText('多職種連携先1件目の連絡メモ')).toBeTruthy();
     expect(screen.getByRole('button', { name: /行追加/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
 
     expect(screen.getByLabelText('職種')).toBeTruthy();
+    expect(screen.getByLabelText('他職種マスター追加の氏名')).toBeTruthy();
+    expect(screen.getByLabelText('他職種マスター追加の所属')).toBeTruthy();
+    expect(screen.getByLabelText('他職種マスター追加の部署')).toBeTruthy();
+    expect(screen.getByLabelText('他職種マスター追加の電話')).toBeTruthy();
+    expect(screen.getByLabelText('他職種マスター追加のメール')).toBeTruthy();
+    expect(screen.getByLabelText('他職種マスター追加のFAX')).toBeTruthy();
+    expect(screen.getByLabelText('他職種マスター追加の住所')).toBeTruthy();
+    expect(screen.getByLabelText('他職種マスター追加のメモ')).toBeTruthy();
   });
 
   it('shows reliability warnings returned by the care-team save API', () => {

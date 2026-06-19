@@ -494,19 +494,28 @@ function TimeRange({
   fromField: keyof VisitConstraintsFormState;
   toField: keyof VisitConstraintsFormState;
 }) {
+  const fromId = `visit-constraints-${String(fromField).replace(/_/g, '-')}`;
+  const toId = `visit-constraints-${String(toField).replace(/_/g, '-')}`;
+
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <div className="space-y-1.5">
-        <Label>{label} 開始</Label>
+        <Label htmlFor={fromId}>{label} 開始</Label>
         <Input
+          id={fromId}
           type="time"
           value={from}
           onChange={(event) => onChange(fromField, event.target.value)}
         />
       </div>
       <div className="space-y-1.5">
-        <Label>{label} 終了</Label>
-        <Input type="time" value={to} onChange={(event) => onChange(toField, event.target.value)} />
+        <Label htmlFor={toId}>{label} 終了</Label>
+        <Input
+          id={toId}
+          type="time"
+          value={to}
+          onChange={(event) => onChange(toField, event.target.value)}
+        />
       </div>
     </div>
   );
