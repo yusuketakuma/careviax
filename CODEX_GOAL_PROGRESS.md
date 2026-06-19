@@ -4568,6 +4568,7 @@ Implemented:
 
 - Replaced the drug-master formulary reorder-point toast-only validation path with a reusable parser and persistent inline error text.
 - Linked the reorder-point input and save button to help/error text with `aria-describedby`, and set `aria-invalid` while invalid input is present.
+- Centralized drug-detail opening so stale reorder-point errors are cleared when selecting another drug from formulary request, usage mismatch, impact, table, drawer close, or ingredient-member paths.
 - Added parser regression coverage for blank, valid integer, negative, decimal, exponent, mixed, infinity, and unsafe-integer values.
 
 ### Files Changed
@@ -4582,6 +4583,8 @@ Implemented:
 - `pnpm exec prettier --write 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`: passed unchanged.
 - `pnpm exec eslint 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`: passed.
 - `pnpm exec vitest run 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 20 tests.
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx'`: passed unchanged for the follow-up detail-open reset.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx'`: passed for the follow-up detail-open reset.
 - `pnpm typecheck`: passed.
 - `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
 - `pnpm lint`: passed.
