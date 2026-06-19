@@ -40,6 +40,21 @@ enum PatientShareCorrectionStatus {
   cancelled
 }
 
+enum PharmacyCooperationMessageThreadStatus {
+  open
+  closed
+}
+
+enum PharmacyCooperationMessageContextType {
+  patient_share_case
+  visit_request
+}
+
+enum PharmacyCooperationMessageSenderSide {
+  base_pharmacy
+  partner_pharmacy
+}
+
 enum PharmacyVisitRequestStatus {
   draft
   requested
@@ -214,6 +229,7 @@ model PatientShareCase {
   correction_requests   PatientShareCorrectionRequest[]
   visit_requests        PharmacyVisitRequest[]
   partner_visit_records PartnerVisitRecord[]
+  message_threads       PharmacyCooperationMessageThread[]
 
   @@unique([id, org_id])
   @@index([org_id])
@@ -341,6 +357,7 @@ model PharmacyVisitRequest {
   updated_at            DateTime                   @updatedAt
 
   partner_visit_records PartnerVisitRecord[]
+  message_threads       PharmacyCooperationMessageThread[]
 
   @@unique([id, org_id])
   @@index([org_id])
@@ -349,6 +366,47 @@ model PharmacyVisitRequest {
   @@index([org_id, partner_pharmacy_id])
   @@index([status])
   @@index([desired_start_at])
+}
+
+model PharmacyCooperationMessageThread {
+  id               String                                 @id @default(cuid())
+  org_id           String
+  org              Organization                           @relation(fields: [org_id], references: [id])
+  share_case_id    String
+  share_case       PatientShareCase                       @relation(fields: [share_case_id, org_id], references: [id, org_id], onDelete: Cascade)
+  visit_request_id String?
+  visit_request    PharmacyVisitRequest?                  @relation(fields: [visit_request_id, org_id], references: [id, org_id], onDelete: Cascade)
+  context_type     PharmacyCooperationMessageContextType  @default(patient_share_case)
+  status           PharmacyCooperationMessageThreadStatus @default(open)
+  created_by       String
+  last_message_at  DateTime?
+  created_at       DateTime                               @default(now())
+  updated_at       DateTime                               @updatedAt
+  messages         PharmacyCooperationMessage[]
+
+  @@unique([id, org_id])
+  @@index([org_id])
+  @@index([org_id, share_case_id])
+  @@index([org_id, visit_request_id])
+  @@index([org_id, status])
+}
+
+model PharmacyCooperationMessage {
+  id             String                               @id @default(cuid())
+  org_id         String
+  org            Organization                         @relation(fields: [org_id], references: [id])
+  thread_id      String
+  thread         PharmacyCooperationMessageThread     @relation(fields: [thread_id, org_id], references: [id, org_id], onDelete: Cascade)
+  sender_user_id String
+  sender_side    PharmacyCooperationMessageSenderSide
+  body           String                               @db.Text
+  created_at     DateTime                             @default(now())
+  updated_at     DateTime                             @updatedAt
+
+  @@unique([id, org_id])
+  @@index([org_id])
+  @@index([org_id, thread_id, created_at])
+  @@index([org_id, sender_user_id])
 }
 
 model PartnerVisitRecord {

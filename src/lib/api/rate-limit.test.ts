@@ -202,6 +202,9 @@ describe('rate-limit', () => {
     expect(
       canonicalizeRateLimitPath('/api/patient-share-cases/share_case_1/correction-requests'),
     ).toBe('/api/patient-share-cases/:id/correction-requests');
+    expect(canonicalizeRateLimitPath('/api/pharmacy-cooperation-message-threads')).toBe(
+      '/api/pharmacy-cooperation-message-threads',
+    );
     expect(canonicalizeRateLimitPath('/api/pharmacy-visit-requests/request_1/decision')).toBe(
       '/api/pharmacy-visit-requests/:id/decision',
     );

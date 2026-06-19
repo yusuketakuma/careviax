@@ -83,6 +83,8 @@ model Organization {
   patient_links                PatientLink[]
   patient_share_corrections    PatientShareCorrectionRequest[]
   pharmacy_visit_requests      PharmacyVisitRequest[]
+  pharmacy_message_threads     PharmacyCooperationMessageThread[]
+  pharmacy_messages            PharmacyCooperationMessage[]
   partner_visit_records        PartnerVisitRecord[]
   claim_cooperation_notes      ClaimCooperationNote[]
   pharmacy_contracts           PharmacyContract[]

@@ -617,6 +617,13 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'masters',
   },
   {
+    path: '/api/pharmacy-cooperation-message-threads',
+    methods: ['GET', 'POST'],
+    permission: 'canManagePatientSharing',
+    description: '患者共有ケース・訪問依頼別の薬局間連携メッセージ',
+    area: 'patients',
+  },
+  {
     path: '/api/pharmacy-contracts/:id/documents',
     methods: ['GET'],
     permission: 'canVisit',

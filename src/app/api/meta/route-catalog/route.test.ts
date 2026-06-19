@@ -120,6 +120,12 @@ describe('/api/meta/route-catalog GET', () => {
           area: 'patients',
         }),
         expect.objectContaining({
+          path: '/api/pharmacy-cooperation-message-threads',
+          methods: ['GET', 'POST'],
+          permission: 'canManagePatientSharing',
+          area: 'patients',
+        }),
+        expect.objectContaining({
           path: '/api/pharmacy-visit-requests',
           methods: ['GET'],
           permission: 'canManagePatientSharing',

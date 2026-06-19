@@ -725,6 +725,7 @@ export const API_ROUTE_TEMPLATES = [
   '/api/pharmacy-drug-stocks/safety-follow-up',
   '/api/pharmacy-drug-stocks/template',
   '/api/pharmacy-drug-stocks/usage-mismatch',
+  '/api/pharmacy-cooperation-message-threads',
   '/api/pharmacy-contracts',
   '/api/pharmacy-contracts/:id/documents',
   '/api/pharmacy-contracts/:id/versions',
