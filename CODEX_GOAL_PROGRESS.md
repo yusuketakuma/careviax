@@ -4562,6 +4562,65 @@ Implemented:
 
 - The paid DB-backed flow is now covered through PDF/payment. Remaining v0.2 proof gaps include free cooperation report DB-backed proof, share-case message thread DB-backed proof, broader invoice search/audit browser coverage, and the existing stale patient-detail `safety-board` assertion.
 
+## 20260620-0414 JST - Notification Escalation Inline Validation
+
+### Summary
+
+- Replaced toast-only invalid escalation threshold feedback with persistent inline error text.
+- Wired the threshold input to help/error text with `aria-describedby` and `aria-invalid`.
+- Added regression coverage that invalid threshold values block the POST before creating an escalation rule, do not fall back to `toast.error`, and clear stale inline errors after cancel/reopen.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx`
+- `src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx' 'src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx'`: passed, unchanged.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx' 'src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 2 tests.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/notification-settings/escalation-threshold.test.ts'`: passed, 1 file / 11 tests.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `pnpm lint`: passed.
+- `git diff --check -- 'src/app/(dashboard)/admin/notification-settings/notification-settings-content.tsx' 'src/app/(dashboard)/admin/notification-settings/notification-settings-content.test.tsx'`: passed.
+
+### Remaining / Next Loop
+
+- Notification escalation rule creation now leaves persistent inline feedback for invalid thresholds. Browser/a11y proof remains optional if admin notification settings enters the UI proof queue.
+
+## 20260620-0414 JST - Pharmacy Invoice Search/Audit DB-backed Proof
+
+### Summary
+
+- Extended the paid DB-backed pharmacy cooperation Playwright proof to verify filtered `GET /api/pharmacy-invoices` lookup after payment.
+- Added DB readback for invoice lifecycle audit logs: draft creation, issue, payment recording, and PDF export.
+- Verified the PDF export audit stores the expected export purpose on the generated invoice ID.
+
+### Files Changed
+
+- `tools/tests/ui-major-screens.spec.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write tools/tests/ui-major-screens.spec.ts`: passed, unchanged.
+- `pnpm exec eslint tools/tests/ui-major-screens.spec.ts`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm exec prisma validate --schema=prisma/schema/`: passed.
+- `nc -z localhost 5433`: passed.
+- `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-major-screens.spec.ts --project=chromium --grep "patient card drives a DB-backed share, visit, report, and billing flow"`: passed, 1 Chromium test.
+- `pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Paid invoice search and audit readback are now covered in the DB-backed flow. Remaining v0.2 proof gaps are the stale patient-detail `safety-board` expectation and the recurring `pg@9` concurrent `client.query()` warning.
+
 ## 20260620-0406 JST - Schedule Proposal Blocking Error Feedback
 
 ### Summary
