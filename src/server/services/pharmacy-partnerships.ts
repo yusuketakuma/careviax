@@ -33,6 +33,21 @@ export type PartnerVisitRecordLifecycleStatus =
   | 'returned'
   | 'superseded';
 
+export type PartnerPharmacyLifecycleStatus = 'active' | 'inactive' | 'archived';
+
+export type PharmacyPartnershipLifecycleStatus = 'draft' | 'active' | 'suspended' | 'ended';
+
+export type PharmacyContractLifecycleStatus =
+  | 'draft'
+  | 'pending_base_approval'
+  | 'pending_partner_approval'
+  | 'active'
+  | 'expired'
+  | 'terminated'
+  | 'suspended';
+
+export type PharmacyContractVersionLifecycleStatus = 'draft' | 'active';
+
 export type PharmacyOwner = 'base_pharmacy' | 'partner_pharmacy';
 
 export type PatientShareConsentForPolicy = {
@@ -65,6 +80,18 @@ export type PatientShareCaseActivationBlocker =
 export type PatientShareCaseActivationResult =
   | { allowed: true; consent: PatientShareConsentForPolicy }
   | { allowed: false; blocker: PatientShareCaseActivationBlocker };
+
+export type PharmacyContractStatusDecisionBlocker =
+  | 'missing_base_approval'
+  | 'missing_partner_approval'
+  | 'partnership_not_active'
+  | 'partner_pharmacy_not_active'
+  | 'contract_not_active'
+  | 'terminal_contract';
+
+export type PharmacyContractStatusDecision<Status extends string> =
+  | { allowed: true; nextStatus: Status }
+  | { allowed: false; nextStatus: Status; blocker: PharmacyContractStatusDecisionBlocker };
 
 export type PatientShareCaseTransitionAction =
   | 'register_consent'
@@ -284,6 +311,62 @@ export function resolvePartnerVisitRecordTransition(args: {
   action: PartnerVisitRecordTransitionAction;
 }) {
   return resolveStatusTransition(PARTNER_VISIT_RECORD_TRANSITION_RULES, args);
+}
+
+function resolveContractActivationBlocker(args: {
+  hasBaseApproval?: boolean;
+  hasPartnerApproval?: boolean;
+  partnershipStatus: PharmacyPartnershipLifecycleStatus;
+  partnerPharmacyStatus: PartnerPharmacyLifecycleStatus;
+}): PharmacyContractStatusDecisionBlocker | null {
+  if (!args.hasBaseApproval) return 'missing_base_approval';
+  if (!args.hasPartnerApproval) return 'missing_partner_approval';
+  if (args.partnershipStatus !== 'active') return 'partnership_not_active';
+  if (args.partnerPharmacyStatus !== 'active') return 'partner_pharmacy_not_active';
+  return null;
+}
+
+export function resolvePharmacyContractCreationStatus(args: {
+  requestedStatus: PharmacyContractLifecycleStatus;
+  hasBaseApproval?: boolean;
+  hasPartnerApproval?: boolean;
+  partnershipStatus: PharmacyPartnershipLifecycleStatus;
+  partnerPharmacyStatus: PartnerPharmacyLifecycleStatus;
+}): PharmacyContractStatusDecision<PharmacyContractLifecycleStatus> {
+  if (args.requestedStatus !== 'active') {
+    return { allowed: true, nextStatus: args.requestedStatus };
+  }
+
+  const blocker = resolveContractActivationBlocker(args);
+  return blocker
+    ? { allowed: false, nextStatus: args.requestedStatus, blocker }
+    : { allowed: true, nextStatus: 'active' };
+}
+
+export function resolvePharmacyContractVersionCreationStatus(args: {
+  requestedStatus: PharmacyContractVersionLifecycleStatus;
+  contractStatus: PharmacyContractLifecycleStatus;
+  hasBaseApproval?: boolean;
+  hasPartnerApproval?: boolean;
+  partnershipStatus: PharmacyPartnershipLifecycleStatus;
+  partnerPharmacyStatus: PartnerPharmacyLifecycleStatus;
+}): PharmacyContractStatusDecision<PharmacyContractVersionLifecycleStatus> {
+  if (args.contractStatus === 'expired' || args.contractStatus === 'terminated') {
+    return { allowed: false, nextStatus: args.requestedStatus, blocker: 'terminal_contract' };
+  }
+
+  if (args.requestedStatus !== 'active') {
+    return { allowed: true, nextStatus: args.requestedStatus };
+  }
+
+  if (args.contractStatus !== 'active') {
+    return { allowed: false, nextStatus: args.requestedStatus, blocker: 'contract_not_active' };
+  }
+
+  const blocker = resolveContractActivationBlocker(args);
+  return blocker
+    ? { allowed: false, nextStatus: args.requestedStatus, blocker }
+    : { allowed: true, nextStatus: 'active' };
 }
 
 export function resolvePatientShareCaseTransition(args: {

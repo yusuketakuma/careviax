@@ -8,6 +8,7 @@ import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { dateKeySchema } from '@/lib/validations/date-key';
 import { utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { resolvePharmacyContractVersionCreationStatus } from '@/server/services/pharmacy-partnerships';
 
 const dateOnlySchema = dateKeySchema('日付形式が不正です（YYYY-MM-DD）');
 const contractVersionStatusSchema = z.enum(['draft', 'active']);
@@ -172,19 +173,25 @@ export const POST = withAuthContext<{ id: string }>(
       });
 
       if (!contract) return { response: notFound('薬局間契約が見つかりません') };
-      if (contract.status === 'expired' || contract.status === 'terminated') {
-        return { response: conflict('期限切れまたは終了済みの契約には版を追加できません') };
-      }
-      if (
-        parsed.data.status === 'active' &&
-        (contract.status !== 'active' ||
-          contract.partnership.status !== 'active' ||
-          contract.partnership.partner_pharmacy.status !== 'active')
-      ) {
-        return { response: conflict('有効な契約と薬局間連携でのみ契約版を有効化できます') };
+      const versionStatus = resolvePharmacyContractVersionCreationStatus({
+        requestedStatus: parsed.data.status,
+        contractStatus: contract.status,
+        hasBaseApproval: Boolean(parsed.data.approved_by_base),
+        hasPartnerApproval: Boolean(parsed.data.approved_by_partner),
+        partnershipStatus: contract.partnership.status,
+        partnerPharmacyStatus: contract.partnership.partner_pharmacy.status,
+      });
+      if (!versionStatus.allowed) {
+        return {
+          response: conflict(
+            versionStatus.blocker === 'terminal_contract'
+              ? '期限切れまたは終了済みの契約には版を追加できません'
+              : '有効な契約と薬局間連携でのみ契約版を有効化できます',
+          ),
+        };
       }
 
-      if (parsed.data.status === 'active') {
+      if (versionStatus.nextStatus === 'active') {
         const overlappingVersion = await tx.pharmacyContractVersion.findFirst({
           where: {
             org_id: ctx.orgId,
@@ -205,14 +212,14 @@ export const POST = withAuthContext<{ id: string }>(
         select: { version_no: true },
       });
       const nextVersionNo = (latestVersion?.version_no ?? 0) + 1;
-      const isActive = parsed.data.status === 'active';
+      const isActive = versionStatus.nextStatus === 'active';
 
       const version = await tx.pharmacyContractVersion.create({
         data: {
           org_id: ctx.orgId,
           contract_id: contractId,
           version_no: nextVersionNo,
-          status: parsed.data.status,
+          status: versionStatus.nextStatus,
           effective_from: effectiveFrom,
           effective_to: effectiveTo,
           change_reason: parsed.data.change_reason ?? null,
@@ -252,7 +259,7 @@ export const POST = withAuthContext<{ id: string }>(
           contract_id: contractId,
           partnership_id: contract.partnership_id,
           version_no: nextVersionNo,
-          status: parsed.data.status,
+          status: versionStatus.nextStatus,
           effective_from: parsed.data.effective_from,
           effective_to: parsed.data.effective_to ?? null,
           change_reason_length: parsed.data.change_reason?.length ?? 0,

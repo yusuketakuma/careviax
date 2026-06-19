@@ -8,6 +8,7 @@ import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { dateKeySchema } from '@/lib/validations/date-key';
 import { utcDateFromLocalKey } from '@/lib/utils/date-boundary';
+import { resolvePharmacyContractCreationStatus } from '@/server/services/pharmacy-partnerships';
 
 const dateOnlySchema = dateKeySchema('日付形式が不正です（YYYY-MM-DD）');
 const contractStatusSchema = z.enum([
@@ -256,14 +257,18 @@ export const POST = withAuthContext(
       });
 
       if (!partnership) return { response: notFound('薬局間連携が見つかりません') };
-      if (
-        parsed.data.status === 'active' &&
-        (partnership.status !== 'active' || partnership.partner_pharmacy.status !== 'active')
-      ) {
+      const contractStatus = resolvePharmacyContractCreationStatus({
+        requestedStatus: parsed.data.status,
+        hasBaseApproval: Boolean(parsed.data.base_approved_by),
+        hasPartnerApproval: Boolean(parsed.data.partner_approved_by),
+        partnershipStatus: partnership.status,
+        partnerPharmacyStatus: partnership.partner_pharmacy.status,
+      });
+      if (!contractStatus.allowed) {
         return { response: conflict('有効な薬局間連携でのみ契約を有効化できます') };
       }
 
-      if (parsed.data.status === 'active') {
+      if (contractStatus.nextStatus === 'active') {
         const overlappingContract = await tx.pharmacyContract.findFirst({
           where: {
             org_id: ctx.orgId,
@@ -278,12 +283,12 @@ export const POST = withAuthContext(
         }
       }
 
-      const isActive = parsed.data.status === 'active';
+      const isActive = contractStatus.nextStatus === 'active';
       const contract = await tx.pharmacyContract.create({
         data: {
           org_id: ctx.orgId,
           partnership_id: parsed.data.partnership_id,
-          status: parsed.data.status,
+          status: contractStatus.nextStatus,
           effective_from: effectiveFrom,
           effective_to: effectiveTo,
           closing_day: parsed.data.closing_day ?? null,
@@ -351,7 +356,7 @@ export const POST = withAuthContext(
         targetId: contract.id,
         changes: {
           partnership_id: parsed.data.partnership_id,
-          status: parsed.data.status,
+          status: contractStatus.nextStatus,
           version_no: 1,
           version_status: isActive ? 'active' : 'draft',
           effective_from: parsed.data.effective_from,

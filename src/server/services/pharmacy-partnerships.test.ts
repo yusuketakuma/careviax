@@ -5,6 +5,8 @@ import {
   evaluateVisitBillingCandidate,
   findActivePatientShareConsent,
   resolvePatientShareCaseTransition,
+  resolvePharmacyContractCreationStatus,
+  resolvePharmacyContractVersionCreationStatus,
   resolvePartnerVisitRecordTransition,
   resolvePharmacyVisitRequestTransition,
   shouldNotifyBasePharmacyOnPartnerRecordSubmit,
@@ -436,6 +438,126 @@ describe('pharmacy partnership policy guards', () => {
       allowed: false,
       nextStatus: 'returned',
       allowedFrom: ['submitted'],
+    });
+  });
+
+  it('resolves pharmacy contract creation status through explicit lifecycle policy', () => {
+    expect(
+      resolvePharmacyContractCreationStatus({
+        requestedStatus: 'draft',
+        partnershipStatus: 'suspended',
+        partnerPharmacyStatus: 'archived',
+      }),
+    ).toMatchObject({
+      allowed: true,
+      nextStatus: 'draft',
+    });
+
+    expect(
+      resolvePharmacyContractCreationStatus({
+        requestedStatus: 'active',
+        hasBaseApproval: true,
+        hasPartnerApproval: true,
+        partnershipStatus: 'suspended',
+        partnerPharmacyStatus: 'active',
+      }),
+    ).toMatchObject({
+      allowed: false,
+      blocker: 'partnership_not_active',
+    });
+
+    expect(
+      resolvePharmacyContractCreationStatus({
+        requestedStatus: 'active',
+        hasBaseApproval: true,
+        hasPartnerApproval: false,
+        partnershipStatus: 'active',
+        partnerPharmacyStatus: 'active',
+      }),
+    ).toMatchObject({
+      allowed: false,
+      blocker: 'missing_partner_approval',
+    });
+
+    expect(
+      resolvePharmacyContractCreationStatus({
+        requestedStatus: 'active',
+        hasBaseApproval: true,
+        hasPartnerApproval: true,
+        partnershipStatus: 'active',
+        partnerPharmacyStatus: 'active',
+      }),
+    ).toMatchObject({
+      allowed: true,
+      nextStatus: 'active',
+    });
+  });
+
+  it('resolves pharmacy contract version creation status through explicit lifecycle policy', () => {
+    expect(
+      resolvePharmacyContractVersionCreationStatus({
+        requestedStatus: 'draft',
+        contractStatus: 'terminated',
+        partnershipStatus: 'active',
+        partnerPharmacyStatus: 'active',
+      }),
+    ).toMatchObject({
+      allowed: false,
+      blocker: 'terminal_contract',
+    });
+
+    expect(
+      resolvePharmacyContractVersionCreationStatus({
+        requestedStatus: 'draft',
+        contractStatus: 'suspended',
+        partnershipStatus: 'active',
+        partnerPharmacyStatus: 'active',
+      }),
+    ).toMatchObject({
+      allowed: true,
+      nextStatus: 'draft',
+    });
+
+    expect(
+      resolvePharmacyContractVersionCreationStatus({
+        requestedStatus: 'active',
+        contractStatus: 'suspended',
+        hasBaseApproval: true,
+        hasPartnerApproval: true,
+        partnershipStatus: 'active',
+        partnerPharmacyStatus: 'active',
+      }),
+    ).toMatchObject({
+      allowed: false,
+      blocker: 'contract_not_active',
+    });
+
+    expect(
+      resolvePharmacyContractVersionCreationStatus({
+        requestedStatus: 'active',
+        contractStatus: 'active',
+        hasBaseApproval: true,
+        hasPartnerApproval: true,
+        partnershipStatus: 'active',
+        partnerPharmacyStatus: 'inactive',
+      }),
+    ).toMatchObject({
+      allowed: false,
+      blocker: 'partner_pharmacy_not_active',
+    });
+
+    expect(
+      resolvePharmacyContractVersionCreationStatus({
+        requestedStatus: 'active',
+        contractStatus: 'active',
+        hasBaseApproval: true,
+        hasPartnerApproval: true,
+        partnershipStatus: 'active',
+        partnerPharmacyStatus: 'active',
+      }),
+    ).toMatchObject({
+      allowed: true,
+      nextStatus: 'active',
     });
   });
 
