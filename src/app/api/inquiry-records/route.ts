@@ -10,12 +10,23 @@ import type { Prisma } from '@prisma/client';
 import { upsertOperationalTask } from '@/server/services/operational-tasks';
 import { buildMedicationCycleAssignmentWhere } from '@/server/services/prescription-access';
 
+function optionalSearchParam(value: string | null) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 export const GET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
-    const cycleId = searchParams.get('cycle_id') ?? undefined;
-    const patientId = searchParams.get('patient_id') ?? undefined;
-    const status = searchParams.get('status') ?? undefined;
+    const cycleId = optionalSearchParam(searchParams.get('cycle_id'));
+    const patientId = optionalSearchParam(searchParams.get('patient_id'));
+    const status = optionalSearchParam(searchParams.get('status'));
+    if (status && status !== 'unresolved' && status !== 'resolved') {
+      return validationError('検索条件が不正です', {
+        status: ['status は resolved または unresolved を指定してください'],
+      });
+    }
+
     const cycleAssignmentWhere = buildMedicationCycleAssignmentWhere(ctx);
     const cycleFilters: Prisma.MedicationCycleWhereInput[] = [
       ...(patientId ? [{ patient_id: patientId }] : []),

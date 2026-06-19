@@ -97,6 +97,54 @@ describe('/api/inquiry-records GET', () => {
       }),
     );
   });
+
+  it('filters unresolved and resolved inquiry records with explicit status contracts', async () => {
+    const unresolvedResponse = await GET(
+      createRequest('http://localhost/api/inquiry-records?status=unresolved'),
+    );
+
+    if (!unresolvedResponse) throw new Error('response is required');
+    expect(unresolvedResponse.status).toBe(200);
+    expect(inquiryRecordFindManyMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          OR: [{ result: null }, { result: 'pending' }],
+        },
+      }),
+    );
+
+    const resolvedResponse = await GET(
+      createRequest('http://localhost/api/inquiry-records?status=resolved'),
+    );
+
+    if (!resolvedResponse) throw new Error('response is required');
+    expect(resolvedResponse.status).toBe(200);
+    expect(inquiryRecordFindManyMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: {
+          org_id: 'org_1',
+          result: { in: ['changed', 'unchanged'] },
+        },
+      }),
+    );
+  });
+
+  it('rejects invalid status filters before querying inquiry records', async () => {
+    const response = await GET(
+      createRequest('http://localhost/api/inquiry-records?status=archived'),
+    );
+
+    if (!response) throw new Error('response is required');
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      message: '検索条件が不正です',
+      details: {
+        status: ['status は resolved または unresolved を指定してください'],
+      },
+    });
+    expect(inquiryRecordFindManyMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('/api/inquiry-records POST', () => {
