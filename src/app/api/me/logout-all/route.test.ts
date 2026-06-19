@@ -63,7 +63,9 @@ describe('/api/me/logout-all POST', () => {
   });
 
   it('increments the session version, records an audit event, and revokes Cognito sessions', async () => {
-    const response = await POST(new NextRequest('http://localhost/api/me/logout-all', { method: 'POST' }));
+    const response = await POST(
+      new NextRequest('http://localhost/api/me/logout-all', { method: 'POST' }),
+    );
 
     expect(response.status).toBe(200);
     expect(userUpdateMock).toHaveBeenCalledWith({
@@ -78,20 +80,22 @@ describe('/api/me/logout-all POST', () => {
         },
       },
     });
-    expect(withOrgContextMock).toHaveBeenCalledWith(
-      'org_1',
-      expect.any(Function),
-    );
+    expect(withOrgContextMock).toHaveBeenCalledWith('org_1', expect.any(Function));
     expect(auditLogCreateMock).toHaveBeenCalledWith({
       data: {
         org_id: 'org_1',
         actor_id: 'user_1',
+        actor_pharmacy_id: 'org_1',
+        actor_site_id: undefined,
+        patient_id: undefined,
         action: 'logout_all',
         target_type: 'session',
         target_id: 'user_1',
         changes: {
           scope: 'all_devices',
         },
+        ip_address: undefined,
+        user_agent: undefined,
       },
     });
     expect(globalSignOutWithAccessTokenMock).toHaveBeenCalledWith('access-token');
@@ -100,7 +104,9 @@ describe('/api/me/logout-all POST', () => {
   it('returns 401 when the session is missing', async () => {
     authMock.mockResolvedValue(null);
 
-    const response = await POST(new NextRequest('http://localhost/api/me/logout-all', { method: 'POST' }));
+    const response = await POST(
+      new NextRequest('http://localhost/api/me/logout-all', { method: 'POST' }),
+    );
 
     expect(response.status).toBe(401);
     expect(userUpdateMock).not.toHaveBeenCalled();

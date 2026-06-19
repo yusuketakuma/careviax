@@ -702,6 +702,9 @@ describe('/api/conference-notes', () => {
       data: {
         org_id: 'org_1',
         actor_id: 'user_1',
+        actor_pharmacy_id: 'org_1',
+        actor_site_id: undefined,
+        patient_id: undefined,
         action: 'conference_note.created',
         target_type: 'conference_note',
         target_id: 'note_2',
@@ -716,6 +719,8 @@ describe('/api/conference-notes', () => {
             billing_code: 'B011-6',
           },
         },
+        ip_address: undefined,
+        user_agent: undefined,
       },
     });
   });

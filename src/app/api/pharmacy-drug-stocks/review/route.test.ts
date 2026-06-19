@@ -115,6 +115,9 @@ describe('/api/pharmacy-drug-stocks/review', () => {
       data: {
         org_id: 'org_1',
         actor_id: 'user_1',
+        actor_pharmacy_id: 'org_1',
+        actor_site_id: undefined,
+        patient_id: undefined,
         action: 'pharmacy_drug_stock_reviewed',
         target_type: 'PharmacySite',
         target_id: 'site_1',

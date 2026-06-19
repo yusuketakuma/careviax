@@ -273,6 +273,9 @@ describe('/api/patient-self-reports', () => {
       data: {
         org_id: 'org_1',
         actor_id: 'user_1',
+        actor_pharmacy_id: 'org_1',
+        actor_site_id: undefined,
+        patient_id: undefined,
         action: 'patient_self_report_created',
         target_type: 'patient_self_report',
         target_id: 'report_2',
@@ -283,6 +286,8 @@ describe('/api/patient-self-reports', () => {
           relation_provided: false,
           preferred_contact_time_provided: false,
         },
+        ip_address: undefined,
+        user_agent: undefined,
       },
     });
     expectNoRawSelfReportAuditFields(

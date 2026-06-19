@@ -337,6 +337,9 @@ describe('/api/conference-notes/[id] PATCH', () => {
       data: {
         org_id: 'org_1',
         actor_id: 'user_1',
+        actor_pharmacy_id: 'org_1',
+        actor_site_id: undefined,
+        patient_id: undefined,
         action: 'conference_note.updated',
         target_type: 'conference_note',
         target_id: 'note_1',
@@ -352,6 +355,8 @@ describe('/api/conference-notes/[id] PATCH', () => {
             changed_fields: ['title', 'structured_content'],
           },
         },
+        ip_address: undefined,
+        user_agent: undefined,
       },
     });
     expect(JSON.stringify(auditLogCreateMock.mock.calls[0]?.[0])).not.toContain(
