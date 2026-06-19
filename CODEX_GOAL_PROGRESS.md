@@ -4335,6 +4335,35 @@ Implemented:
 
 - Admin analytics monthly trend convergence is addressed for this slice. UI/UX remediation remains active for raw tables in other routes, pharmacy-cooperation responsive density, and expanded browser/a11y proof.
 
+## 20260620-0228 JST - Inventory Forecast Drug DataTable
+
+### Summary
+
+- Replaced the admin inventory-forecast drug-demand raw table with the shared `DataTable`.
+- Kept affected-patient cards outside the table/search surface to avoid adding patient-name search.
+- Added a focused regression test proving the drug table has aggregate-safe search/column controls while the affected-patient list does not gain a search input.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.tsx`
+- `src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.tsx' 'src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.test.tsx'`: passed.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.tsx' 'src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.test.tsx' 'src/components/ui/data-table.test.tsx' --reporter=dot --testTimeout=30000`: initially exposed a duplicate text assertion in the new test, then passed with 2 files / 4 tests.
+- `rg -n "<table|overflow-x-auto|min-w-full|min-w-\\[" 'src/app/(dashboard)/admin/inventory-forecast/inventory-forecast-content.tsx'`: passed with no matches.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Inventory drug table convergence is addressed. Affected-patient cards intentionally remain non-DataTable to avoid patient search; remaining PHI-bearing raw tables should be handled only with search disabled or targeted action-name/accessibility fixes.
+
 ## 20260620-0057 JST - QR Draft Case Selector Label
 
 ### Summary
