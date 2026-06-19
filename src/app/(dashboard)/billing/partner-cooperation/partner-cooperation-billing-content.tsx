@@ -631,6 +631,7 @@ function InvoiceHistoryTable({
                   <a
                     href={`/api/pharmacy-invoices/${invoice.id}/pdf?purpose=${purpose}`}
                     className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
+                    aria-label={`${documentKindLabel(invoice.document_kind)} ${invoiceNumberLabel(invoice)} PDFを開く`}
                   >
                     <Download className="size-4" aria-hidden="true" />
                     PDF

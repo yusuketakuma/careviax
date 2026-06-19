@@ -271,9 +271,11 @@ describe('PartnerCooperationBillingContent', () => {
     expect(invoicesTable.className).toContain('min-w-[72rem]');
     expect(within(invoicesTable).getByText('請求書')).toBeTruthy();
     expect(within(invoicesTable).getByText('INV-001')).toBeTruthy();
-    expect(within(invoicesTable).getByRole('link', { name: /PDF/ }).getAttribute('href')).toContain(
-      '/api/pharmacy-invoices/invoice_existing/pdf?purpose=',
-    );
+    expect(
+      within(invoicesTable)
+        .getByRole('link', { name: '請求書 INV-001 PDFを開く' })
+        .getAttribute('href'),
+    ).toContain('/api/pharmacy-invoices/invoice_existing/pdf?purpose=');
     expect(JSON.stringify(document.body.textContent)).not.toContain('山田');
   });
 
