@@ -4929,6 +4929,36 @@ Implemented:
 
 - UI/UX remediation remains active. This closes the current dashboard Input/Textarea static scan. Next pass should scan SelectTrigger/action names/table density and then run browser/a11y proof for the highest-risk flows.
 
+## 20260620-0137 JST - Calendar Navigation Action Names
+
+### Summary
+
+- Added accessible names to the previous/next month buttons in the business-holiday calendar.
+- Added accessible names to the previous/next month buttons in the conference calendar.
+- Covered both changes in the existing focused UI tests.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx`
+- `src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx`
+- `src/app/(dashboard)/conferences/conferences-content.tsx`
+- `src/app/(dashboard)/conferences/conferences-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- Targeted Prettier over business-holiday and conference files: passed, unchanged.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 1 test.
+- `pnpm exec vitest run 'src/app/(dashboard)/conferences/conferences-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 5 tests.
+- Targeted ESLint over the same files: passed.
+- `pnpm typecheck`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Next pass should run a fresh action-name/table-density scan, with pharmacy-cooperation workflow/admin/billing still the highest-priority area if new issues appear.
+
 ## 20260620-0036 JST - Billing Rule Row Action Names
 
 ### Summary
