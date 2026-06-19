@@ -5019,6 +5019,55 @@ Implemented:
 
 - Notification PHI redaction is verified for the inspected paths. UI/UX remediation remains active; next pass should cover table-density/browser-a11y proof or any remaining pharmacy-cooperation action-name findings.
 
+## 20260620-0145 JST - Confirmed Partner Visit Billing Gate
+
+### Summary
+
+- Verified that visit billing candidate generation only scans partner visit records with `status: 'confirmed'` and `confirmed_at` set.
+- Verified that the monthly summary confirmed-record count uses the same confirmed/confirmed-at gate.
+- Confirmed the existing tests already lock the generation and summary query contracts, so no route code change was required.
+
+### Files Changed
+
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec vitest run 'src/app/api/visit-billing-candidates/route.test.ts' 'src/app/api/visit-billing-candidates/summary/route.test.ts' --reporter=dot --testTimeout=30000`: passed, 2 files / 7 tests.
+- `pnpm exec eslint 'src/app/api/visit-billing-candidates/route.ts' 'src/app/api/visit-billing-candidates/route.test.ts' 'src/app/api/visit-billing-candidates/summary/route.ts' 'src/app/api/visit-billing-candidates/summary/route.test.ts'`: passed.
+
+### Remaining / Next Loop
+
+- Billing candidate confirmed-record gating is verified for the inspected routes. UI/UX remediation remains active; next pass should cover table-density/browser-a11y proof or any remaining pharmacy-cooperation action-name findings.
+
+## 20260620-0148 JST - Partner Cooperation Billing DataTables
+
+### Summary
+
+- Replaced the partner-cooperation billing candidate and monthly document raw tables with the shared `DataTable`.
+- Added table search, column visibility, row labels, and typed export values while keeping the existing PDF/action names and PHI-minimized row content.
+- Updated the billing UI regression to assert the new DataTable search controls and preserved PDF link contract.
+
+### Files Changed
+
+- `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx`
+- `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx'`: passed, unchanged.
+- `pnpm exec vitest run 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 5 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Partner-cooperation billing tables now use the shared DataTable contract. UI/UX remediation remains active; next pass should run browser/a11y proof or continue scanning pharmacy-cooperation action names.
+
 ## 20260620-0036 JST - Billing Rule Row Action Names
 
 ### Summary
