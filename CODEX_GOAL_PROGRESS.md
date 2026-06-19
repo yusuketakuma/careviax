@@ -4306,6 +4306,47 @@ Implemented:
 
 - UI/UX remediation remains active. Remaining candidates include pharmacy-cooperation responsive table density, select accessible-name gaps outside fixed/verified screens, raw table/DataTable convergence, and expanded browser/a11y proof.
 
+## 20260620-0304 JST - Local DB Apply and Patient Share Case DB-Backed Proof
+
+### Summary
+
+- Applied the 18 pending Prisma migrations to the local e2e database only after explicit DB approval.
+- Re-seeded the local e2e database and verified Prisma status/validation.
+- Added DB-backed patient-card Playwright coverage that creates a pharmacy cooperation share case with an approved management-plan version and then verifies the persisted `PatientShareCase` plus `PatientLink`.
+- Fixed the API bug surfaced by that browser proof: nested `PatientLink` creation under `PatientShareCase` must not pass explicit `org_id`; Prisma infers the composite relation from the parent create.
+- Updated the v0.2 completion audit to reflect local e2e DB apply completion and partial DB-backed browser proof completion.
+
+### Files Changed
+
+- `src/app/api/patient-share-cases/route.ts`
+- `src/app/api/patient-share-cases/route.test.ts`
+- `tools/tests/ui-major-screens.spec.ts`
+- `docs/pharmacy-cooperation-v0.2-completion-audit.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `DATABASE_URL=... DIRECT_URL=... pnpm exec prisma migrate status --schema=prisma/schema/`: initially reported 18 pending migrations, then passed after deploy with schema up to date.
+- `DATABASE_URL=... DIRECT_URL=... pnpm exec prisma migrate deploy --schema=prisma/schema/`: passed for the local e2e DB.
+- `DATABASE_URL=... DIRECT_URL=... pnpm exec prisma validate --schema=prisma/schema/`: passed.
+- `DATABASE_URL=... DIRECT_URL=... pnpm exec prisma db seed`: passed.
+- `PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-major-screens.spec.ts --project=chromium -g "patient share screen exposes backend share and self-report data"`: passed.
+- `PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-route-mocked-smoke.spec.ts --project=chromium -g "pharmacy cooperation route-mocked browser workflow smoke"`: passed.
+- `PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-major-screens.spec.ts --project=chromium -g "patient detail screen renders cleanly"`: passed.
+- `PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-major-screens.spec.ts --project=chromium -g "patient card creates a DB-backed share case"`: initially failed with a Prisma `Unknown argument org_id` error in nested `patient_link.create`, then passed after the API fix.
+- `pnpm exec prettier --write src/app/api/patient-share-cases/route.ts src/app/api/patient-share-cases/route.test.ts tools/tests/ui-major-screens.spec.ts`: passed.
+- `pnpm exec eslint src/app/api/patient-share-cases/route.ts src/app/api/patient-share-cases/route.test.ts tools/tests/ui-major-screens.spec.ts`: passed.
+- `pnpm exec vitest run src/app/api/patient-share-cases/route.test.ts --reporter=dot --testTimeout=30000`: passed, 1 file / 17 tests.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Full DB-backed pharmacy cooperation workflow proof is still pending beyond the patient-card creation slice: consent/link/activation, visit request, partner record, report draft, billing candidate, invoice/payment, and message thread.
+- `patient detail screen surfaces representative backend data` was rerun after migration apply and failed on a stale `safety-board` expectation because the seeded demo case currently renders no active card/safety board; no migration/Prisma 5xx surfaced in that run.
+
 ## 20260620-0224 JST - Admin Analytics Monthly Trend DataTable
 
 ### Summary
