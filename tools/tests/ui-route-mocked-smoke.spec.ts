@@ -1,3 +1,4 @@
+import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { encode } from 'next-auth/jwt';
 import {
@@ -66,6 +67,28 @@ const PHARMACY_COOP_VISIT_MESSAGE_THREAD_ID = 'pharmacy_coop_route_visit_message
 const PHARMACY_COOP_BILLING_MONTH = '2026-06-01';
 
 test.use({ serviceWorkers: 'block' });
+
+function summarizeAxeViolations(
+  violations: Array<{
+    id: string;
+    impact?: string | null;
+    nodes: Array<{ target: unknown }>;
+  }>,
+) {
+  return violations.map((violation) => ({
+    id: violation.id,
+    impact: violation.impact ?? 'unknown',
+    targets: violation.nodes
+      .flatMap((node) => {
+        if (Array.isArray(node.target)) {
+          return node.target.map((item) => String(item));
+        }
+
+        return [String(node.target)];
+      })
+      .slice(0, 6),
+  }));
+}
 
 async function attachRouteMockSession(context: Parameters<typeof attachLocalSession>[0]) {
   const token = await encode({
@@ -3302,6 +3325,8 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
     const billingCandidatesTable = page.getByRole('table', {
       name: '薬局間協力請求候補一覧',
     });
+    await expect(page.getByLabel('請求候補内検索')).toBeVisible();
+    await page.getByLabel('請求候補内検索').fill('RouteMock協力薬局');
     const billingCandidateRow = billingCandidatesTable
       .getByRole('row')
       .filter({ hasText: 'RouteMock協力薬局' })
@@ -3310,6 +3335,7 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
       timeout: 10_000,
     });
     await expect(billingCandidateRow.getByText('有償/加算')).toBeVisible();
+    await page.getByLabel('請求候補内検索').clear();
     await page.getByRole('button', { name: /請求書ドラフト/ }).click();
     await expect
       .poll(
@@ -3327,11 +3353,32 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
       contract_id: PHARMACY_COOP_CONTRACT_ID,
       document_kind: 'invoice',
     });
-    await expect(page.getByTestId('partner-invoice-draft-result')).toBeVisible();
-    await expect(page.getByRole('link', { name: /PDFを開く/ })).toHaveAttribute(
+    const invoiceDraftResult = page.getByTestId('partner-invoice-draft-result');
+    await expect(invoiceDraftResult).toBeVisible();
+    await expect(invoiceDraftResult.getByRole('link', { name: /PDFを開く/ })).toHaveAttribute(
       'href',
       new RegExp(`/api/pharmacy-invoices/${PHARMACY_COOP_INVOICE_ID}/pdf\\?purpose=`),
     );
+    await expect(page.getByLabel('月次ドキュメント内検索')).toBeVisible();
+    await page.getByLabel('月次ドキュメント内検索').fill('RM-COOP-001');
+    await expect(
+      page
+        .getByRole('table', { name: '薬局間月次ドキュメント一覧' })
+        .getByRole('row')
+        .filter({ hasText: 'RM-COOP-001' })
+        .filter({ hasText: '9,680円' }),
+    ).toBeVisible();
+    const overflowWidth = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflowWidth).toBeLessThanOrEqual(1);
+    const axeResults = await new AxeBuilder({ page })
+      .include('[data-testid="partner-cooperation-billing"]')
+      .analyze();
+    const severeViolations = axeResults.violations.filter((violation) =>
+      ['critical', 'serious'].includes(violation.impact ?? ''),
+    );
+    expect(summarizeAxeViolations(severeViolations)).toEqual([]);
     await expect(page.getByText('薬局間RouteMock 患者')).toHaveCount(0);
     await expect(page.getByText('東京都千代田区RouteMock')).toHaveCount(0);
     expect(errors).toEqual([]);
