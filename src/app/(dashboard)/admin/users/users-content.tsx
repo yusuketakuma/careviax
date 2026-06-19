@@ -229,10 +229,10 @@ export function UsersContent() {
   const sites = useMemo(() => sitesQuery.data?.data ?? [], [sitesQuery.data]);
   const credentialOptions = useMemo(
     () =>
-      Array.from(
-        new Set(users.flatMap((user) => user.credential_types))
-      ).sort((left, right) => left.localeCompare(right, 'ja')),
-    [users]
+      Array.from(new Set(users.flatMap((user) => user.credential_types))).sort((left, right) =>
+        left.localeCompare(right, 'ja'),
+      ),
+    [users],
   );
 
   const inviteMutation = useMutation({
@@ -344,10 +344,7 @@ export function UsersContent() {
       if (roleFilter !== 'all' && user.role !== roleFilter) return false;
       if (siteFilter !== 'all' && (user.site_id ?? '') !== siteFilter) return false;
       if (statusFilter !== 'all' && user.account_status !== statusFilter) return false;
-      if (
-        credentialFilter !== 'all' &&
-        !user.credential_types.includes(credentialFilter)
-      ) {
+      if (credentialFilter !== 'all' && !user.credential_types.includes(credentialFilter)) {
         return false;
       }
       if (!keyword) return true;
@@ -438,13 +435,19 @@ export function UsersContent() {
         const user = row.original;
         return (
           <div className="flex flex-wrap gap-1">
-            <Button size="sm" variant="secondary" onClick={() => openDetail(user)}>
+            <Button
+              size="sm"
+              variant="secondary"
+              aria-label={`${user.name}の詳細を開く`}
+              onClick={() => openDetail(user)}
+            >
               詳細
             </Button>
             {user.account_status === 'invited' ? (
               <Button
                 size="sm"
                 variant="outline"
+                aria-label={`${user.name}に招待を再送`}
                 onClick={() => setActionDialog({ type: 'resend_invite', user, reason: '' })}
               >
                 再送
@@ -454,6 +457,7 @@ export function UsersContent() {
               <Button
                 size="sm"
                 variant="outline"
+                aria-label={`${user.name}を停止`}
                 onClick={() => setActionDialog({ type: 'suspend', user, reason: '' })}
               >
                 停止
@@ -463,6 +467,7 @@ export function UsersContent() {
               <Button
                 size="sm"
                 variant="outline"
+                aria-label={`${user.name}を復帰`}
                 onClick={() => setActionDialog({ type: 'reactivate', user, reason: '' })}
               >
                 復帰
@@ -479,7 +484,7 @@ export function UsersContent() {
     active: users.filter((user) => user.account_status === 'active').length,
     invited: users.filter((user) => user.account_status === 'invited').length,
     suspended: users.filter(
-      (user) => user.account_status === 'suspended' || user.account_status === 'retired'
+      (user) => user.account_status === 'suspended' || user.account_status === 'retired',
     ).length,
   };
 
@@ -505,21 +510,22 @@ export function UsersContent() {
           <CardTitle className="text-base">絞り込み</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <Field label="検索">
+          <Field label="検索" htmlFor="user-filter-search">
             <Input
+              id="user-filter-search"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
               placeholder="氏名・メール・店舗で検索"
             />
           </Field>
-          <Field label="ロール">
+          <Field label="ロール" htmlFor="user-filter-role">
             <Select
               value={roleFilter}
               onValueChange={(value) =>
                 setRoleFilter((value as 'all' | ManageableMemberRole) ?? 'all')
               }
             >
-              <SelectTrigger>
+              <SelectTrigger id="user-filter-role">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -532,12 +538,9 @@ export function UsersContent() {
               </SelectContent>
             </Select>
           </Field>
-          <Field label="所属店舗">
-            <Select
-              value={siteFilter}
-              onValueChange={(value) => setSiteFilter(value ?? 'all')}
-            >
-              <SelectTrigger>
+          <Field label="所属店舗" htmlFor="user-filter-site">
+            <Select value={siteFilter} onValueChange={(value) => setSiteFilter(value ?? 'all')}>
+              <SelectTrigger id="user-filter-site">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -550,12 +553,9 @@ export function UsersContent() {
               </SelectContent>
             </Select>
           </Field>
-          <Field label="状態">
-            <Select
-              value={statusFilter}
-              onValueChange={(value) => setStatusFilter(value ?? 'all')}
-            >
-              <SelectTrigger>
+          <Field label="状態" htmlFor="user-filter-status">
+            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value ?? 'all')}>
+              <SelectTrigger id="user-filter-status">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -568,12 +568,12 @@ export function UsersContent() {
               </SelectContent>
             </Select>
           </Field>
-          <Field label="資格">
+          <Field label="資格" htmlFor="user-filter-credential">
             <Select
               value={credentialFilter}
               onValueChange={(value) => setCredentialFilter(value ?? 'all')}
             >
-              <SelectTrigger>
+              <SelectTrigger id="user-filter-credential">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -611,16 +611,18 @@ export function UsersContent() {
             <SheetDescription>Cognito 経由で招待メールが送信されます。</SheetDescription>
           </SheetHeader>
           <div className="mt-6 space-y-4">
-            <Field label="氏名">
+            <Field label="氏名" htmlFor="invite-user-name">
               <Input
+                id="invite-user-name"
                 value={inviteForm.name}
                 onChange={(event) =>
                   setInviteForm((current) => ({ ...current, name: event.target.value }))
                 }
               />
             </Field>
-            <Field label="フリガナ">
+            <Field label="フリガナ" htmlFor="invite-user-name-kana">
               <Input
+                id="invite-user-name-kana"
                 value={inviteForm.name_kana}
                 onChange={(event) =>
                   setInviteForm((current) => ({
@@ -630,8 +632,9 @@ export function UsersContent() {
                 }
               />
             </Field>
-            <Field label="メールアドレス">
+            <Field label="メールアドレス" htmlFor="invite-user-email">
               <Input
+                id="invite-user-email"
                 type="email"
                 value={inviteForm.email}
                 onChange={(event) =>
@@ -639,15 +642,16 @@ export function UsersContent() {
                 }
               />
             </Field>
-            <Field label="電話番号">
+            <Field label="電話番号" htmlFor="invite-user-phone">
               <Input
+                id="invite-user-phone"
                 value={inviteForm.phone}
                 onChange={(event) =>
                   setInviteForm((current) => ({ ...current, phone: event.target.value }))
                 }
               />
             </Field>
-            <Field label="ロール">
+            <Field label="ロール" htmlFor="invite-user-role">
               <Select
                 value={inviteForm.role}
                 onValueChange={(value) =>
@@ -658,7 +662,7 @@ export function UsersContent() {
                   }))
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger id="invite-user-role">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -670,7 +674,7 @@ export function UsersContent() {
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="所属店舗">
+            <Field label="所属店舗" htmlFor="invite-user-site">
               <Select
                 value={inviteForm.site_id || 'unassigned'}
                 onValueChange={(value) =>
@@ -680,7 +684,7 @@ export function UsersContent() {
                   }))
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger id="invite-user-site">
                   <SelectValue placeholder="選択してください" />
                 </SelectTrigger>
                 <SelectContent>
@@ -741,40 +745,43 @@ export function UsersContent() {
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
-                <Field label="氏名">
+                <Field label="氏名" htmlFor="detail-user-name">
                   <Input
+                    id="detail-user-name"
                     value={detailForm.name}
                     onChange={(event) =>
                       setDetailForm((current) =>
-                        current ? { ...current, name: event.target.value } : current
+                        current ? { ...current, name: event.target.value } : current,
                       )
                     }
                   />
                 </Field>
-                <Field label="フリガナ">
+                <Field label="フリガナ" htmlFor="detail-user-name-kana">
                   <Input
+                    id="detail-user-name-kana"
                     value={detailForm.name_kana}
                     onChange={(event) =>
                       setDetailForm((current) =>
-                        current ? { ...current, name_kana: event.target.value } : current
+                        current ? { ...current, name_kana: event.target.value } : current,
                       )
                     }
                   />
                 </Field>
-                <Field label="メールアドレス">
-                  <Input value={detailUser.email} readOnly disabled />
+                <Field label="メールアドレス" htmlFor="detail-user-email">
+                  <Input id="detail-user-email" value={detailUser.email} readOnly disabled />
                 </Field>
-                <Field label="電話番号">
+                <Field label="電話番号" htmlFor="detail-user-phone">
                   <Input
+                    id="detail-user-phone"
                     value={detailForm.phone}
                     onChange={(event) =>
                       setDetailForm((current) =>
-                        current ? { ...current, phone: event.target.value } : current
+                        current ? { ...current, phone: event.target.value } : current,
                       )
                     }
                   />
                 </Field>
-                <Field label="ロール">
+                <Field label="ロール" htmlFor="detail-user-role">
                   <Select
                     value={detailForm.role}
                     onValueChange={(value) =>
@@ -783,14 +790,13 @@ export function UsersContent() {
                           ? {
                               ...current,
                               role: (value as ManageableMemberRole) ?? current.role,
-                              site_id:
-                                value === 'external_viewer' ? '' : current.site_id,
+                              site_id: value === 'external_viewer' ? '' : current.site_id,
                             }
-                          : current
+                          : current,
                       )
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="detail-user-role">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -802,7 +808,7 @@ export function UsersContent() {
                     </SelectContent>
                   </Select>
                 </Field>
-                <Field label="所属店舗">
+                <Field label="所属店舗" htmlFor="detail-user-site">
                   <Select
                     value={detailForm.site_id || 'unassigned'}
                     onValueChange={(value) =>
@@ -812,11 +818,11 @@ export function UsersContent() {
                               ...current,
                               site_id: value && value !== 'unassigned' ? value : '',
                             }
-                          : current
+                          : current,
                       )
                     }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="detail-user-site">
                       <SelectValue placeholder="選択してください" />
                     </SelectTrigger>
                     <SelectContent>
@@ -839,40 +845,42 @@ export function UsersContent() {
                   </p>
                 </div>
                 <ToggleRow
+                  id="detail-can-dispense"
                   label="調剤入力"
                   checked={detailForm.can_dispense}
                   onCheckedChange={(checked) =>
                     setDetailForm((current) =>
-                      current ? { ...current, can_dispense: checked } : current
+                      current ? { ...current, can_dispense: checked } : current,
                     )
                   }
                 />
                 <ToggleRow
+                  id="detail-can-audit-dispense"
                   label="調剤監査"
                   checked={detailForm.can_audit_dispense}
                   onCheckedChange={(checked) =>
                     setDetailForm((current) =>
-                      current
-                        ? { ...current, can_audit_dispense: checked }
-                        : current
+                      current ? { ...current, can_audit_dispense: checked } : current,
                     )
                   }
                 />
                 <ToggleRow
+                  id="detail-can-set"
                   label="セット作業"
                   checked={detailForm.can_set}
                   onCheckedChange={(checked) =>
                     setDetailForm((current) =>
-                      current ? { ...current, can_set: checked } : current
+                      current ? { ...current, can_set: checked } : current,
                     )
                   }
                 />
                 <ToggleRow
+                  id="detail-can-audit-set"
                   label="セット監査"
                   checked={detailForm.can_audit_set}
                   onCheckedChange={(checked) =>
                     setDetailForm((current) =>
-                      current ? { ...current, can_audit_set: checked } : current
+                      current ? { ...current, can_audit_set: checked } : current,
                     )
                   }
                 />
@@ -886,43 +894,42 @@ export function UsersContent() {
                   </p>
                 </div>
                 <div className="grid gap-4 md:grid-cols-3">
-                  <Field label="日次上限">
+                  <Field label="日次上限" htmlFor="detail-max-daily-visits">
                     <Input
+                      id="detail-max-daily-visits"
                       type="number"
                       value={detailForm.max_daily_visits}
                       onChange={(event) =>
                         setDetailForm((current) =>
-                          current
-                            ? { ...current, max_daily_visits: event.target.value }
-                            : current
+                          current ? { ...current, max_daily_visits: event.target.value } : current,
                         )
                       }
                       disabled={!operationalRole}
                     />
                   </Field>
-                  <Field label="週次上限">
+                  <Field label="週次上限" htmlFor="detail-max-weekly-visits">
                     <Input
+                      id="detail-max-weekly-visits"
                       type="number"
                       value={detailForm.max_weekly_visits}
                       onChange={(event) =>
                         setDetailForm((current) =>
-                          current
-                            ? { ...current, max_weekly_visits: event.target.value }
-                            : current
+                          current ? { ...current, max_weekly_visits: event.target.value } : current,
                         )
                       }
                       disabled={!operationalRole}
                     />
                   </Field>
-                  <Field label="移動上限(分)">
+                  <Field label="移動上限(分)" htmlFor="detail-max-travel-minutes">
                     <Input
+                      id="detail-max-travel-minutes"
                       type="number"
                       value={detailForm.max_travel_minutes}
                       onChange={(event) =>
                         setDetailForm((current) =>
                           current
                             ? { ...current, max_travel_minutes: event.target.value }
-                            : current
+                            : current,
                         )
                       }
                       disabled={!operationalRole}
@@ -930,39 +937,36 @@ export function UsersContent() {
                   </Field>
                 </div>
                 <ToggleRow
+                  id="detail-can-accept-emergency"
                   label="緊急対応可"
                   checked={detailForm.can_accept_emergency}
                   onCheckedChange={(checked) =>
                     setDetailForm((current) =>
-                      current
-                        ? { ...current, can_accept_emergency: checked }
-                        : current
+                      current ? { ...current, can_accept_emergency: checked } : current,
                     )
                   }
                   disabled={!operationalRole}
                 />
-                <Field label="専門分野">
+                <Field label="専門分野" htmlFor="detail-visit-specialties">
                   <Textarea
+                    id="detail-visit-specialties"
                     value={detailForm.visit_specialties}
                     onChange={(event) =>
                       setDetailForm((current) =>
-                        current
-                          ? { ...current, visit_specialties: event.target.value }
-                          : current
+                        current ? { ...current, visit_specialties: event.target.value } : current,
                       )
                     }
                     placeholder="在宅中心静脈栄養, 緩和ケア など"
                     disabled={!operationalRole}
                   />
                 </Field>
-                <Field label="対応エリア">
+                <Field label="対応エリア" htmlFor="detail-coverage-area">
                   <Textarea
+                    id="detail-coverage-area"
                     value={detailForm.coverage_area}
                     onChange={(event) =>
                       setDetailForm((current) =>
-                        current
-                          ? { ...current, coverage_area: event.target.value }
-                          : current
+                        current ? { ...current, coverage_area: event.target.value } : current,
                       )
                     }
                     placeholder="港区, 品川区 など"
@@ -1011,6 +1015,7 @@ export function UsersContent() {
                 {detailUser.account_status !== 'retired' ? (
                   <Button
                     variant="outline"
+                    aria-label={`${detailUser.name}を退職処理`}
                     onClick={() =>
                       setActionDialog({
                         type: 'retire',
@@ -1063,12 +1068,15 @@ export function UsersContent() {
           </DialogHeader>
           {actionDialog?.type === 'suspend' || actionDialog?.type === 'retire' ? (
             <div className="py-2">
-              <Label className="mb-1.5 block">理由</Label>
+              <Label htmlFor="user-action-reason" className="mb-1.5 block">
+                理由
+              </Label>
               <Textarea
+                id="user-action-reason"
                 value={actionDialog.reason}
                 onChange={(event) =>
                   setActionDialog((current) =>
-                    current ? { ...current, reason: event.target.value } : null
+                    current ? { ...current, reason: event.target.value } : null,
                   )
                 }
                 placeholder="停止・退職理由を入力してください"
@@ -1112,21 +1120,31 @@ function SummaryCard({ label, value }: { label: string; value: number }) {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  htmlFor?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="space-y-1.5">
-      <Label>{label}</Label>
+      <Label htmlFor={htmlFor}>{label}</Label>
       {children}
     </div>
   );
 }
 
 function ToggleRow({
+  id,
   label,
   checked,
   onCheckedChange,
   disabled,
 }: {
+  id: string;
   label: string;
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
@@ -1134,8 +1152,11 @@ function ToggleRow({
 }) {
   return (
     <div className="flex items-center justify-between rounded-md border px-3 py-2">
-      <span className="text-sm">{label}</span>
+      <Label htmlFor={id} className="text-sm">
+        {label}
+      </Label>
       <Switch
+        id={id}
         checked={checked}
         onCheckedChange={(value) => onCheckedChange(value === true)}
         disabled={disabled}

@@ -389,7 +389,7 @@ export function PharmacistCredentialsContent() {
             <DialogDescription>資格種別、番号、有効期限、在籍年数を管理します。</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2 md:grid-cols-2">
-            <Field label="対象スタッフ">
+            <Field label="対象スタッフ" htmlFor="credential-user">
               <Select
                 value={form.user_id || 'unselected'}
                 onValueChange={(value) =>
@@ -399,7 +399,7 @@ export function PharmacistCredentialsContent() {
                   }))
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger id="credential-user">
                   <SelectValue placeholder="選択してください" />
                 </SelectTrigger>
                 <SelectContent>
@@ -413,8 +413,9 @@ export function PharmacistCredentialsContent() {
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="認定種別">
+            <Field label="認定種別" htmlFor="credential-certification-type">
               <Input
+                id="credential-certification-type"
                 value={form.certification_type}
                 onChange={(event) =>
                   setForm((current) => ({
@@ -425,8 +426,9 @@ export function PharmacistCredentialsContent() {
                 placeholder="かかりつけ薬剤師研修認定"
               />
             </Field>
-            <Field label="認定番号">
+            <Field label="認定番号" htmlFor="credential-certification-number">
               <Input
+                id="credential-certification-number"
                 value={form.certification_number}
                 onChange={(event) =>
                   setForm((current) => ({
@@ -436,8 +438,9 @@ export function PharmacistCredentialsContent() {
                 }
               />
             </Field>
-            <Field label="交付日">
+            <Field label="交付日" htmlFor="credential-issued-date">
               <Input
+                id="credential-issued-date"
                 type="date"
                 value={form.issued_date}
                 onChange={(event) =>
@@ -448,8 +451,9 @@ export function PharmacistCredentialsContent() {
                 }
               />
             </Field>
-            <Field label="有効期限">
+            <Field label="有効期限" htmlFor="credential-expiry-date">
               <Input
+                id="credential-expiry-date"
                 type="date"
                 value={form.expiry_date}
                 onChange={(event) =>
@@ -460,8 +464,9 @@ export function PharmacistCredentialsContent() {
                 }
               />
             </Field>
-            <Field label="在籍年数">
+            <Field label="在籍年数" htmlFor="credential-tenure-years">
               <Input
+                id="credential-tenure-years"
                 type="number"
                 step="0.1"
                 value={form.tenure_years}
@@ -473,8 +478,9 @@ export function PharmacistCredentialsContent() {
                 }
               />
             </Field>
-            <Field label="週勤務時間">
+            <Field label="週勤務時間" htmlFor="credential-weekly-work-hours">
               <Input
+                id="credential-weekly-work-hours"
                 type="number"
                 step="0.5"
                 value={form.weekly_work_hours}
@@ -527,10 +533,18 @@ export function PharmacistCredentialsContent() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  htmlFor?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="space-y-1.5">
-      <Label>{label}</Label>
+      <Label htmlFor={htmlFor}>{label}</Label>
       {children}
     </div>
   );
