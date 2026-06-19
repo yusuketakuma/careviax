@@ -99,6 +99,16 @@ describe('permissions', () => {
     expect(hasPermission('driver', 'canViewDashboard')).toBe(false);
   });
 
+  it('limits patient-sharing lifecycle decisions to full pharmacists and admins', () => {
+    expect(hasPermission('owner', 'canManagePatientSharing')).toBe(true);
+    expect(hasPermission('admin', 'canManagePatientSharing')).toBe(true);
+    expect(hasPermission('pharmacist', 'canManagePatientSharing')).toBe(true);
+    expect(hasPermission('pharmacist_trainee', 'canManagePatientSharing')).toBe(false);
+    expect(hasPermission('clerk', 'canManagePatientSharing')).toBe(false);
+    expect(hasPermission('driver', 'canManagePatientSharing')).toBe(false);
+    expect(hasPermission('external_viewer', 'canManagePatientSharing')).toBe(false);
+  });
+
   it('denies admin permission to pharmacists', () => {
     expect(hasPermission('pharmacist', 'canAdmin')).toBe(false);
   });

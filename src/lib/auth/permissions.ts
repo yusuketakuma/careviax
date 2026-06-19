@@ -14,6 +14,7 @@ type Permission = {
   canAuthorReport: boolean;
   canSendCareReport: boolean;
   canManageBilling: boolean;
+  canManagePatientSharing: boolean;
   canViewDashboard: boolean;
   canAdmin: boolean;
 };
@@ -32,6 +33,7 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canAuthorReport: true,
     canSendCareReport: true,
     canManageBilling: true,
+    canManagePatientSharing: true,
     canViewDashboard: true,
     canAdmin: true,
   },
@@ -45,6 +47,7 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canAuthorReport: true,
     canSendCareReport: true,
     canManageBilling: true,
+    canManagePatientSharing: true,
     canViewDashboard: true,
     canAdmin: true,
   },
@@ -58,6 +61,7 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canAuthorReport: true,
     canSendCareReport: true,
     canManageBilling: true,
+    canManagePatientSharing: true,
     canViewDashboard: true,
     canAdmin: false,
   },
@@ -71,6 +75,7 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canAuthorReport: true,
     canSendCareReport: false,
     canManageBilling: false,
+    canManagePatientSharing: false,
     canViewDashboard: true,
     canAdmin: false,
   },
@@ -86,6 +91,7 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canAuthorReport: false,
     canSendCareReport: false,
     canManageBilling: false,
+    canManagePatientSharing: false,
     canViewDashboard: true,
     canAdmin: false,
   },
@@ -99,6 +105,7 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canAuthorReport: false,
     canSendCareReport: false,
     canManageBilling: false,
+    canManagePatientSharing: false,
     canViewDashboard: false,
     canAdmin: false,
   },
@@ -112,6 +119,7 @@ const ROLE_PERMISSIONS: Record<MemberRole, Permission> = {
     canAuthorReport: false,
     canSendCareReport: false,
     canManageBilling: false,
+    canManagePatientSharing: false,
     canViewDashboard: false,
     canAdmin: false,
   },

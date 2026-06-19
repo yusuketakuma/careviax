@@ -27,6 +27,20 @@ export function validationError(message: string, details?: unknown) {
   return error('VALIDATION_ERROR', message, 400, details);
 }
 
+export function compatibilityError(
+  code: string,
+  message: string,
+  status: number,
+  details?: unknown,
+  fieldErrors?: unknown,
+) {
+  return NextResponse.json({ error: message, code, message, details, fieldErrors }, { status });
+}
+
+export function validationCompatibilityError(message: string, details?: unknown) {
+  return compatibilityError('VALIDATION_ERROR', message, 400, details, details);
+}
+
 export function notFound(message = 'リソースが見つかりません') {
   return error('WORKFLOW_NOT_FOUND', message, 404);
 }
@@ -55,7 +69,7 @@ export async function localizedError(
   message: string,
   status: number,
   details?: unknown,
-  labelKey?: string
+  labelKey?: string,
 ) {
   const localizedMessage = await resolveLocalizedMessage(code, message, labelKey);
   return error(code, localizedMessage, status, details);
@@ -78,7 +92,7 @@ export async function externalError(
   message: string,
   status: number,
   details?: unknown,
-  labelKey?: string
+  labelKey?: string,
 ) {
   return localizedError(code, message, status, details, labelKey);
 }

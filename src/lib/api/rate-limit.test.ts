@@ -31,6 +31,8 @@ function routeFileToTemplate(filePath: string) {
     .slice(0, -1)
     .map((segment) => {
       if (/^\[\.\.\.[^\]]+\]$/.test(segment)) return ':path*';
+      if (segment === '[token]') return ':token';
+      if (segment === '[jobType]') return ':jobType';
       if (/^\[[^\]]+\]$/.test(segment)) return ':id';
       return segment;
     })
@@ -182,8 +184,44 @@ describe('rate-limit', () => {
     expect(canonicalizeRateLimitPath('/api/visit-schedules/schedule_1/reschedule')).toBe(
       '/api/visit-schedules/:id/reschedule',
     );
+    expect(canonicalizeRateLimitPath('/api/care-reports/report_1/print-audit')).toBe(
+      '/api/care-reports/:id/print-audit',
+    );
+    expect(canonicalizeRateLimitPath('/api/external-access/token_1/self-report')).toBe(
+      '/api/external-access/:token/self-report',
+    );
+    expect(canonicalizeRateLimitPath('/api/patient-share-cases/share_case_1/activate')).toBe(
+      '/api/patient-share-cases/:id/activate',
+    );
+    expect(canonicalizeRateLimitPath('/api/patient-share-cases/share_case_1/patient-link')).toBe(
+      '/api/patient-share-cases/:id/patient-link',
+    );
+    expect(
+      canonicalizeRateLimitPath('/api/patient-share-cases/share_case_1/correction-requests'),
+    ).toBe('/api/patient-share-cases/:id/correction-requests');
+    expect(canonicalizeRateLimitPath('/api/pharmacy-visit-requests/request_1/decision')).toBe(
+      '/api/pharmacy-visit-requests/:id/decision',
+    );
+    expect(canonicalizeRateLimitPath('/api/pharmacy-contracts/contract_1/versions')).toBe(
+      '/api/pharmacy-contracts/:id/versions',
+    );
+    expect(canonicalizeRateLimitPath('/api/pharmacy-partnerships/partnership_1/activate')).toBe(
+      '/api/pharmacy-partnerships/:id/activate',
+    );
+    expect(canonicalizeRateLimitPath('/api/partner-visit-records/record_1/submit')).toBe(
+      '/api/partner-visit-records/:id/submit',
+    );
+    expect(canonicalizeRateLimitPath('/api/partner-visit-records/record_1/review')).toBe(
+      '/api/partner-visit-records/:id/review',
+    );
+    expect(
+      canonicalizeRateLimitPath('/api/partner-visit-records/record_1/physician-report-draft'),
+    ).toBe('/api/partner-visit-records/:id/physician-report-draft');
     expect(canonicalizeRateLimitPath('/api/admin/data-explorer/Patient/patient_1')).toBe(
       '/api/admin/data-explorer/:id/:id',
+    );
+    expect(canonicalizeRateLimitPath('/api/jobs/daily-medication-check')).toBe(
+      '/api/jobs/:jobType',
     );
     expect(canonicalizeRateLimitPath('/api/patients/export')).toBe('/api/patients/export');
     expect(canonicalizeRateLimitPath('/api/patients/medications/bulk-export')).toBe(

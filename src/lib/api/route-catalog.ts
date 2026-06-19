@@ -3,7 +3,7 @@ import type { PermissionKey } from '@/lib/auth/permissions';
 export type RouteCatalogEntry = {
   path: string;
   methods: string[];
-  permission: PermissionKey | 'authenticated' | 'purpose-based' | 'canAdmin|apiKey';
+  permission: PermissionKey | 'authenticated' | 'purpose-based' | 'canAdmin|apiKey' | 'public';
   description: string;
   area:
     | 'patients'
@@ -15,6 +15,8 @@ export type RouteCatalogEntry = {
     | 'reports'
     | 'shifts'
     | 'dashboard'
+    | 'billing'
+    | 'auditing'
     | 'masters'
     | 'files'
     | 'system';
@@ -38,6 +40,76 @@ export const routeCatalog: RouteCatalogEntry[] = [
     methods: ['GET', 'PATCH'],
     permission: 'canVisit',
     description: '患者詳細取得と更新',
+    area: 'patients',
+  },
+  {
+    path: '/api/patients/:id/prescriptions/export',
+    methods: ['GET'],
+    permission: 'canVisit',
+    description: '患者別処方履歴 CSV エクスポート',
+    area: 'prescriptions',
+  },
+  {
+    path: '/api/patient-share-cases',
+    methods: ['GET'],
+    permission: 'canVisit',
+    description: '薬局間連携の患者共有ケース一覧取得',
+    area: 'patients',
+  },
+  {
+    path: '/api/patient-share-cases',
+    methods: ['POST'],
+    permission: 'canManagePatientSharing',
+    description: '薬局間連携の患者共有ケース作成',
+    area: 'patients',
+  },
+  {
+    path: '/api/patient-share-cases/:id/activate',
+    methods: ['POST'],
+    permission: 'canManagePatientSharing',
+    description: '同意・患者紐づけ・双方承認を確認した患者共有ケースの有効化',
+    area: 'patients',
+  },
+  {
+    path: '/api/patient-share-cases/:id/consents',
+    methods: ['GET'],
+    permission: 'canVisit',
+    description: '患者共有ケースの同意メタ情報一覧取得',
+    area: 'patients',
+  },
+  {
+    path: '/api/patient-share-cases/:id/consents',
+    methods: ['POST'],
+    permission: 'canManagePatientSharing',
+    description: '患者共有ケースの同意登録・添付紐づけ',
+    area: 'patients',
+  },
+  {
+    path: '/api/patient-share-cases/:id/consents/:id/revoke',
+    methods: ['POST'],
+    permission: 'canManagePatientSharing',
+    description: '患者共有同意の撤回と共有停止',
+    area: 'patients',
+  },
+  {
+    path: '/api/patient-share-cases/:id/patient-link',
+    methods: ['PATCH'],
+    permission: 'canManagePatientSharing',
+    description: '患者共有ケースの患者リンク承認・受諾・辞退',
+    area: 'patients',
+  },
+  {
+    path: '/api/patient-share-cases/:id/correction-requests',
+    methods: ['GET'],
+    permission: 'canVisit',
+    description: '患者共有ケースの修正・追記依頼一覧取得',
+    area: 'patients',
+  },
+  {
+    path: '/api/patient-share-cases/:id/correction-requests',
+    methods: ['POST'],
+    permission: 'canManagePatientSharing',
+    description: '相手薬局所有データへの修正・追記依頼作成',
     area: 'patients',
   },
   {
@@ -97,6 +169,62 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'visits',
   },
   {
+    path: '/api/pharmacy-visit-requests',
+    methods: ['GET'],
+    permission: 'canManagePatientSharing',
+    description: '薬局間協力訪問依頼一覧取得',
+    area: 'visits',
+  },
+  {
+    path: '/api/pharmacy-visit-requests',
+    methods: ['POST'],
+    permission: 'canManagePatientSharing',
+    description: '患者共有ケースに紐づく協力訪問依頼作成',
+    area: 'visits',
+  },
+  {
+    path: '/api/pharmacy-visit-requests/:id/decision',
+    methods: ['POST'],
+    permission: 'canManagePatientSharing',
+    description: '協力薬局による訪問依頼の受諾・辞退',
+    area: 'visits',
+  },
+  {
+    path: '/api/partner-visit-records',
+    methods: ['GET'],
+    permission: 'canManagePatientSharing',
+    description: '協力薬局訪問記録一覧取得',
+    area: 'visits',
+  },
+  {
+    path: '/api/partner-visit-records',
+    methods: ['POST'],
+    permission: 'canManagePatientSharing',
+    description: '協力薬局訪問記録の下書き保存',
+    area: 'visits',
+  },
+  {
+    path: '/api/partner-visit-records/:id/submit',
+    methods: ['POST'],
+    permission: 'canManagePatientSharing',
+    description: '協力薬局訪問記録の提出とレセ補助生成',
+    area: 'visits',
+  },
+  {
+    path: '/api/partner-visit-records/:id/review',
+    methods: ['POST'],
+    permission: 'canManagePatientSharing',
+    description: '基幹薬局による協力薬局訪問記録の確認・差戻し',
+    area: 'visits',
+  },
+  {
+    path: '/api/partner-visit-records/:id/physician-report-draft',
+    methods: ['POST'],
+    permission: 'canAuthorReport',
+    description: '確認済み協力薬局訪問記録から医師向け報告書ドラフトを作成',
+    area: 'reports',
+  },
+  {
     path: '/api/prescription-intakes',
     methods: ['GET', 'POST'],
     permission: 'canDispense',
@@ -139,6 +267,27 @@ export const routeCatalog: RouteCatalogEntry[] = [
     area: 'reports',
   },
   {
+    path: '/api/care-reports/:id',
+    methods: ['GET', 'PATCH'],
+    permission: 'purpose-based',
+    description: '報告書詳細取得と編集（閲覧は canReport、編集は canAuthorReport）',
+    area: 'reports',
+  },
+  {
+    path: '/api/care-reports/generate-from-visit',
+    methods: ['POST'],
+    permission: 'canAuthorReport',
+    description: '訪問記録から報告書を生成',
+    area: 'reports',
+  },
+  {
+    path: '/api/care-reports/today-workspace',
+    methods: ['GET'],
+    permission: 'canReport',
+    description: '当日報告ワークスペース取得',
+    area: 'reports',
+  },
+  {
     path: '/api/care-reports/:id/send',
     methods: ['POST'],
     permission: 'canSendCareReport',
@@ -148,8 +297,85 @@ export const routeCatalog: RouteCatalogEntry[] = [
   {
     path: '/api/care-reports/:id/pdf',
     methods: ['GET'],
-    permission: 'canReport',
+    permission: 'canSendCareReport',
     description: '報告書 PDF 出力',
+    area: 'reports',
+  },
+  {
+    path: '/api/care-reports/:id/print-audit',
+    methods: ['POST'],
+    permission: 'canSendCareReport',
+    description: '報告書印刷監査と印刷用データ取得',
+    area: 'reports',
+  },
+  {
+    path: '/api/care-reports/analytics',
+    methods: ['GET'],
+    permission: 'canSendCareReport',
+    description: '報告書送達分析',
+    area: 'reports',
+  },
+  {
+    path: '/api/care-reports/reminders',
+    methods: ['POST'],
+    permission: 'canSendCareReport',
+    description: '報告書返信リマインド作成',
+    area: 'reports',
+  },
+  {
+    path: '/api/external-access',
+    methods: ['GET', 'POST'],
+    permission: 'canReport',
+    description: '患者向け外部共有リンクの一覧取得と発行',
+    area: 'reports',
+  },
+  {
+    path: '/api/external-access/:token',
+    methods: ['GET'],
+    permission: 'public',
+    description: 'OTP付き外部共有リンクの公開閲覧',
+    area: 'reports',
+  },
+  {
+    path: '/api/external-access/:token/self-report',
+    methods: ['POST'],
+    permission: 'public',
+    description: '外部共有リンクからの患者自己申告登録',
+    area: 'reports',
+  },
+  {
+    path: '/api/communication-requests',
+    methods: ['GET', 'POST'],
+    permission: 'canReport',
+    description: '連携依頼一覧取得と作成',
+    area: 'reports',
+  },
+  {
+    path: '/api/communication-requests/:id',
+    methods: ['GET', 'PATCH'],
+    permission: 'canReport',
+    description: '連携依頼詳細取得と更新',
+    area: 'reports',
+  },
+  {
+    path: '/api/communication-requests/export',
+    methods: ['GET'],
+    permission: 'canReport',
+    description: '連携依頼 CSV エクスポート（internal は追加条件と強い権限を要求）',
+    area: 'reports',
+  },
+  {
+    path: '/api/communication-requests/:id/responses',
+    methods: ['GET', 'POST'],
+    permission: 'canReport',
+    description: '連携依頼の返信一覧取得と返信記録',
+    area: 'reports',
+  },
+  {
+    path: '/api/communication-requests/:id/resolve-followup',
+    methods: ['POST'],
+    permission: 'canReport',
+    description: '連携依頼返信のフォローアップ完了処理',
     area: 'reports',
   },
   {
@@ -165,6 +391,48 @@ export const routeCatalog: RouteCatalogEntry[] = [
     permission: 'canReport',
     description: 'トレーシングレポート PDF 出力',
     area: 'reports',
+  },
+  {
+    path: '/api/billing-candidates/export',
+    methods: ['GET'],
+    permission: 'canManageBilling',
+    description: '請求候補 CSV / CLAIMS-XML エクスポート',
+    area: 'billing',
+  },
+  {
+    path: '/api/visit-billing-candidates',
+    methods: ['GET', 'POST'],
+    permission: 'canManageBilling',
+    description: '薬局間協力訪問の請求候補一覧取得と月次生成',
+    area: 'billing',
+  },
+  {
+    path: '/api/visit-billing-candidates/summary',
+    methods: ['GET'],
+    permission: 'canManageBilling',
+    description: '薬局間協力訪問の月次実績集計',
+    area: 'billing',
+  },
+  {
+    path: '/api/pharmacy-invoices',
+    methods: ['GET', 'POST'],
+    permission: 'canManageBilling',
+    description: '薬局間請求書・無償実績報告書の一覧取得とドラフト生成',
+    area: 'billing',
+  },
+  {
+    path: '/api/pharmacy-invoices/:id/pdf',
+    methods: ['GET'],
+    permission: 'canManageBilling',
+    description: '薬局間請求書・無償実績報告書 PDF 出力',
+    area: 'billing',
+  },
+  {
+    path: '/api/audit-logs/export',
+    methods: ['GET'],
+    permission: 'canAdmin',
+    description: '監査ログ CSV / JSON エクスポート',
+    area: 'auditing',
   },
   {
     path: '/api/pharmacist-shifts',
@@ -262,6 +530,76 @@ export const routeCatalog: RouteCatalogEntry[] = [
     methods: ['GET'],
     permission: 'canAdmin',
     description: '医薬品マスタ取込履歴と失敗ログ',
+    area: 'masters',
+  },
+  {
+    path: '/api/pharmacy-drug-stocks/export',
+    methods: ['GET'],
+    permission: 'canAdmin',
+    description: '採用薬 CSV エクスポート',
+    area: 'masters',
+  },
+  {
+    path: '/api/pharmacy-drug-stocks/template',
+    methods: ['GET'],
+    permission: 'canAdmin',
+    description: '採用薬 CSV 取込テンプレート',
+    area: 'masters',
+  },
+  {
+    path: '/api/partner-pharmacies',
+    methods: ['GET'],
+    permission: 'canVisit',
+    description: '協力薬局マスタ一覧取得',
+    area: 'masters',
+  },
+  {
+    path: '/api/partner-pharmacies',
+    methods: ['POST'],
+    permission: 'canManagePatientSharing',
+    description: '協力薬局マスタ作成',
+    area: 'masters',
+  },
+  {
+    path: '/api/pharmacy-partnerships',
+    methods: ['GET'],
+    permission: 'canVisit',
+    description: '基準薬局と協力薬局の連携一覧取得',
+    area: 'masters',
+  },
+  {
+    path: '/api/pharmacy-partnerships',
+    methods: ['POST'],
+    permission: 'canManagePatientSharing',
+    description: '基準薬局と協力薬局の連携作成',
+    area: 'masters',
+  },
+  {
+    path: '/api/pharmacy-partnerships/:id/activate',
+    methods: ['POST'],
+    permission: 'canManagePatientSharing',
+    description: '基準薬局と協力薬局の連携有効化',
+    area: 'masters',
+  },
+  {
+    path: '/api/pharmacy-contracts',
+    methods: ['GET'],
+    permission: 'canVisit',
+    description: '薬局間契約マスタ一覧取得',
+    area: 'masters',
+  },
+  {
+    path: '/api/pharmacy-contracts',
+    methods: ['POST'],
+    permission: 'canManagePatientSharing',
+    description: '薬局間契約マスタ作成',
+    area: 'masters',
+  },
+  {
+    path: '/api/pharmacy-contracts/:id/versions',
+    methods: ['POST'],
+    permission: 'canManagePatientSharing',
+    description: '薬局間契約の新規契約版と費用条件作成',
     area: 'masters',
   },
   {

@@ -1,22 +1,11 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import {
-  AlertTriangle,
-  Ban,
-  CloudOff,
-  FileQuestion,
-  LockKeyhole,
-} from 'lucide-react';
+import { AlertTriangle, Ban, CloudOff, FileQuestion, LockKeyhole } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { HelpPopover } from '@/components/ui/help-popover';
 import { cn } from '@/lib/utils';
 
-type ErrorStateVariant =
-  | 'not-found'
-  | 'server'
-  | 'network'
-  | 'forbidden'
-  | 'unauthorized';
+type ErrorStateVariant = 'not-found' | 'server' | 'network' | 'forbidden' | 'unauthorized';
 
 type ErrorStateAction = {
   label: string;
@@ -34,6 +23,7 @@ type ErrorStateProps = {
   action?: ErrorStateAction;
   secondaryAction?: ErrorStateAction;
   size?: 'inline' | 'page';
+  headingLevel?: 1 | 2 | 3 | 4;
   className?: string;
 };
 
@@ -47,8 +37,7 @@ const VARIANT_META = {
   server: {
     icon: AlertTriangle,
     title: 'サーバーエラーが発生しました',
-    description:
-      '予期しないエラーが発生しました。しばらく経ってからもう一度お試しください。',
+    description: '予期しないエラーが発生しました。しばらく経ってからもう一度お試しください。',
     iconClassName: 'bg-destructive/10 text-destructive',
   },
   network: {
@@ -68,8 +57,7 @@ const VARIANT_META = {
   unauthorized: {
     icon: LockKeyhole,
     title: 'ログインが必要です',
-    description:
-      'セッションが切れているか、認証が完了していません。再度ログインしてください。',
+    description: 'セッションが切れているか、認証が完了していません。再度ログインしてください。',
     iconClassName: 'bg-blue-100 text-blue-700',
   },
 } satisfies Record<
@@ -84,7 +72,7 @@ const VARIANT_META = {
 
 function getLinkButtonClass(
   variant: NonNullable<ErrorStateAction['variant']> = 'default',
-  size: NonNullable<ErrorStateAction['size']> = 'default'
+  size: NonNullable<ErrorStateAction['size']> = 'default',
 ) {
   const base =
     'inline-flex items-center justify-center rounded-lg border border-transparent font-medium whitespace-nowrap transition-all outline-none';
@@ -113,10 +101,7 @@ function getLinkButtonClass(
 function renderAction(action: ErrorStateAction) {
   if (action.href) {
     return (
-      <Link
-        href={action.href}
-        className={getLinkButtonClass(action.variant, action.size)}
-      >
+      <Link href={action.href} className={getLinkButtonClass(action.variant, action.size)}>
         {action.label}
       </Link>
     );
@@ -134,6 +119,27 @@ function renderAction(action: ErrorStateAction) {
   );
 }
 
+function ErrorStateHeading({
+  level,
+  className,
+  children,
+}: {
+  level: 1 | 2 | 3 | 4;
+  className: string;
+  children: ReactNode;
+}) {
+  switch (level) {
+    case 1:
+      return <h1 className={className}>{children}</h1>;
+    case 2:
+      return <h2 className={className}>{children}</h2>;
+    case 3:
+      return <h3 className={className}>{children}</h3>;
+    case 4:
+      return <h4 className={className}>{children}</h4>;
+  }
+}
+
 export function ErrorState({
   variant = 'server',
   title,
@@ -142,10 +148,17 @@ export function ErrorState({
   action,
   secondaryAction,
   size = 'inline',
+  headingLevel,
   className,
 }: ErrorStateProps) {
   const meta = VARIANT_META[variant];
   const Icon = meta.icon;
+  const resolvedHeadingLevel = headingLevel ?? (size === 'page' ? 1 : 2);
+  const headingClassName = cn(
+    'font-semibold text-foreground',
+    size === 'page' ? 'text-2xl' : 'text-lg',
+  );
+  const headingText = title ?? meta.title;
 
   return (
     <div
@@ -154,36 +167,25 @@ export function ErrorState({
         size === 'page'
           ? 'min-h-screen px-8 py-12'
           : 'rounded-xl border border-dashed border-border bg-card px-6 py-10',
-        className
+        className,
       )}
     >
       <div
         className={cn(
           'flex items-center justify-center rounded-full',
           size === 'page' ? 'h-20 w-20' : 'h-14 w-14',
-          meta.iconClassName
+          meta.iconClassName,
         )}
       >
-        <Icon
-          className={size === 'page' ? 'h-10 w-10' : 'h-7 w-7'}
-          aria-hidden="true"
-        />
+        <Icon className={size === 'page' ? 'h-10 w-10' : 'h-7 w-7'} aria-hidden="true" />
       </div>
 
       <div className="space-y-2">
         <div className="flex items-center justify-center gap-2">
-          <h1
-            className={cn(
-              'font-semibold text-foreground',
-              size === 'page' ? 'text-2xl' : 'text-lg'
-            )}
-          >
-            {title ?? meta.title}
-          </h1>
-          <HelpPopover
-            title={title ?? meta.title}
-            description={description ?? meta.description}
-          />
+          <ErrorStateHeading level={resolvedHeadingLevel} className={headingClassName}>
+            {headingText}
+          </ErrorStateHeading>
+          <HelpPopover title={headingText} description={description ?? meta.description} />
         </div>
         {detail ? <div className="text-xs text-muted-foreground">{detail}</div> : null}
       </div>

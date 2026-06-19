@@ -147,7 +147,11 @@ const permissionRoutes: RouteEntry[] = [
     name: 'care-reports/[id] PATCH',
     handler: () =>
       careReportPatch(
-        createRequest('http://localhost/api/care-reports/report_1', { 'x-org-id': 'org_1' }, {}),
+        createRequest(
+          'http://localhost/api/care-reports/report_1',
+          { 'x-org-id': 'org_1' },
+          { expected_updated_at: '2026-06-18T00:00:00.000Z' },
+        ),
         { params: Promise.resolve({ id: 'report_1' }) },
       ),
   },

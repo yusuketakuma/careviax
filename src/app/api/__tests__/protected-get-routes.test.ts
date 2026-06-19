@@ -11,6 +11,7 @@ const {
   buildBillingDocumentPdfMock,
   buildPatientVisitRecordsPdfMock,
   buildVisitRecordPdfMock,
+  buildPharmacyInvoiceDocumentPdfMock,
 } = vi.hoisted(() => {
   const createRecord = () => ({
     id: 'entity_1',
@@ -66,6 +67,7 @@ const {
     buildBillingDocumentPdfMock: vi.fn(),
     buildPatientVisitRecordsPdfMock: vi.fn(),
     buildVisitRecordPdfMock: vi.fn(),
+    buildPharmacyInvoiceDocumentPdfMock: vi.fn(),
   };
 });
 
@@ -90,6 +92,10 @@ vi.mock('@/server/services/pdf-documents', () => ({
   buildBillingDocumentPdf: buildBillingDocumentPdfMock,
   buildPatientVisitRecordsPdf: buildPatientVisitRecordsPdfMock,
   buildVisitRecordPdf: buildVisitRecordPdfMock,
+}));
+
+vi.mock('@/server/services/pdf-pharmacy-invoice', () => ({
+  buildPharmacyInvoiceDocumentPdf: buildPharmacyInvoiceDocumentPdfMock,
 }));
 
 import { GET as auditLogsGet } from '../audit-logs/route';
@@ -121,6 +127,7 @@ import { GET as patientVisitRecordsPdfGet } from '../patients/[id]/visit-records
 import { GET as pharmacistsGet } from '../pharmacists/route';
 import { GET as pharmacistShiftsGet } from '../pharmacist-shifts/route';
 import { GET as pharmacistShiftsAvailableGet } from '../pharmacist-shifts/available/route';
+import { GET as pharmacyInvoicePdfGet } from '../pharmacy-invoices/[id]/pdf/route';
 import { GET as pharmacySitesGet } from '../pharmacy-sites/route';
 import { GET as prescriptionIntakesGet } from '../prescription-intakes/route';
 import { GET as prescriptionIntakeGet } from '../prescription-intakes/[id]/route';
@@ -206,6 +213,16 @@ const routes: Array<{ name: string; handler: Handler }> = [
           },
         ),
         { params: Promise.resolve({ id: 'candidate_1' }) },
+      ),
+  },
+  {
+    name: 'pharmacy-invoices/[id]/pdf GET',
+    handler: () =>
+      pharmacyInvoicePdfGet(
+        createRequest('http://localhost/api/pharmacy-invoices/invoice_1/pdf?purpose=monthly', {
+          'x-org-id': 'org_1',
+        }),
+        { params: Promise.resolve({ id: 'invoice_1' }) },
       ),
   },
   {
@@ -579,6 +596,20 @@ describe('protected GET routes auth matrix', () => {
     buildBillingDocumentPdfMock.mockResolvedValue({
       buffer: Buffer.from('%PDF-billing-receipt'),
       fileName: 'billing-receipt.pdf',
+    });
+    buildPharmacyInvoiceDocumentPdfMock.mockResolvedValue({
+      buffer: Buffer.from('%PDF-pharmacy-invoice'),
+      fileName: 'pharmacy-invoice.pdf',
+      auditMetadata: {
+        document_kind: 'invoice',
+        billing_month: '2026-06-01',
+        status: 'draft',
+        item_count: 1,
+        subtotal: 5500,
+        tax_amount: 550,
+        total: 6050,
+        patient_display_mode: 'management_number',
+      },
     });
     buildPatientVisitRecordsPdfMock.mockResolvedValue({
       buffer: Buffer.from('%PDF-patient-visits'),

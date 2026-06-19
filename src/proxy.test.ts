@@ -194,7 +194,7 @@ describe('proxy', () => {
     expect(logSecurityEventMock).toHaveBeenCalledWith(
       expect.objectContaining({
         event_type: 'csrf_rejected',
-        path: '/api/external-access/:id/self-report',
+        path: '/api/external-access/:token/self-report',
         method: 'POST',
       }),
     );
