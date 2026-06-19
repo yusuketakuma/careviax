@@ -25,8 +25,66 @@ Objective: preserve existing external behavior while maximizing maintainability,
 - Repository shape observed: Next.js App Router under `src/app`, route handlers under `src/app/api`, server services/jobs under `src/server`, shared utilities under `src/lib`, UI components under `src/components`, Playwright under `tools/tests`, split Prisma schema under `prisma/schema/*.prisma`.
 - CI gates observed: `pnpm audit --audit-level moderate`, `pnpm lint`, `pnpm format:check`, `pnpm date-slices:check`, `pnpm eventbridge-schedules:check`, `pnpm typecheck`, `pnpm test:coverage`, `pnpm phos:deploy-template:validate:artifact`, `pnpm build`, migration/RLS gates, and medical UI E2E gate.
 - Required read-only agents launched: Architecture Agent, Duplication Agent, Type & Contract Agent, Behavior/Test Agent, Dead Code Agent, and Review Agent.
-- Initial validation: pending.
-- Next loop: wait for required Agent reports, record baseline validation, then choose the highest-value non-conflicting refactor slice.
+- Initial validation:
+  - `pnpm format:check`: initially failed on this progress file after Loop 0 section insertion, then passed after targeted Prettier.
+  - `pnpm date-slices:check`: failed on six unclassified direct `toISOString().slice(0, 10)` date-key conversions in pharmacy cooperation/share/invoice/report-draft/contract document code.
+  - `pnpm eventbridge-schedules:check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm test -- --reporter=dot --testTimeout=30000`: passed with 1073 files passed / 1 skipped and 8347 tests passed / 1 skipped.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: failed because untracked local `agmsg/` tool checkout under the repo root is included by `eslint .` and violates repo lint rules.
+  - CI-like `pnpm build` with placeholder env: passed.
+- Agent findings received so far:
+  - Behavior/Test: add boundary tests around `/api/tasks/bulk`, notifications SSE recovery/throttling logs, and characterization for untested API routes before broad refactors.
+  - Type & Contract: client response contracts rely on casts; billing candidate POST routes and auth body routes have route-local validation gaps; print audit response types are duplicated.
+  - Duplication: date-key validation/formatting is duplicated; API fetch/error parsing is duplicated; route body validation boilerplate repeats; UI metric/badge components have medium-term consolidation potential.
+  - Review: root-level untracked `agmsg/` and `Plans.md.bak.1781901852` are local artifact risks and should not be allowed into product diffs.
+  - Dead Code: old dashboard/patient-detail/schedule-day subtrees and several unused barrels/helpers/components need staged cleanup, but large UI subtree deletion is blocked by product-decision and scope risk; small noUnused cleanups are actionable.
+- Next loop: wait for Architecture Agent report, then choose the highest-value non-conflicting refactor slice.
+
+### Loop 1 - Date-key Consolidation and Local Artifact Hygiene
+
+Additional agent findings received:
+
+- Architecture: large admin pharmacy-cooperation setup UI and patient/detail API route remain high-complexity long-term candidates; shared helper placement and service slicing should be preferred over adding parallel abstractions.
+- Architecture and Review: root-local agent artifacts should be kept out of source validation and product diffs before continuing broader refactors.
+- Duplication: unclassified direct UTC date-key formatting was a short-term actionable duplicate because the repository already has canonical date-key helpers and a guard command.
+
+Implemented:
+
+- Replaced six direct `toISOString().slice(0, 10)` date-key conversions with canonical UTC helpers:
+  - `formatUtcDateKey(new Date())` in admin pharmacy-cooperation UI.
+  - `formatUtcDateKey(date)` in patient-share-case API derivation.
+  - `formatNullableUtcDateKey(value)` in pharmacy invoice API/service, partner visit-report draft service, and pharmacy contract document service paths.
+- Preserved previous UTC calendar-day semantics instead of changing to local-time date formatting.
+- Added root-local artifact ignores for `agmsg/` and `*.bak.*`, and excluded `agmsg/**` from ESLint global ignores so the local cross-agent tool checkout cannot break product lint.
+- Reviewed Claude Slice B route-error-envelope changes and returned an `APPROVE / no blocking findings` review through `agmsg`; no Codex edits were made to Claude-locked files.
+
+Deleted or consolidated:
+
+- Removed six hand-rolled direct date-slice conversions from product code paths.
+- Consolidated local lint/status artifact handling into repository ignore configuration instead of deleting local artifacts.
+
+Focused validation:
+
+- `pnpm date-slices:check`: passed after the date-key helper migration, reporting seven classified direct ISO date slices.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' src/app/api/patient-share-cases/route.test.ts src/app/api/pharmacy-invoices/route.test.ts src/server/services/partner-visit-report-drafts.test.ts src/server/services/pharmacy-invoices.test.ts --reporter=dot --testTimeout=30000`: passed, 5 files / 41 tests.
+- Touched-file ESLint for the Loop 1 source/test files: passed.
+- Touched-file Prettier check for the Loop 1 source/progress files: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed after excluding root-local `agmsg/`.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check --` for Loop 1 files: passed.
+- Claude Slice B review validation: `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/auth/context.test.ts src/app/api/consent-records/route.test.ts --reporter=dot --testTimeout=30000`: passed, 2 files / 15 tests.
+
+Blocked or deferred:
+
+- Large UI/API decomposition candidates remain actionable only when they can be sliced without overlapping Claude locks or changing product behavior.
+- Large old dashboard/patient-detail/schedule-day subtree deletion remains blocked by product-decision and current behavior-preservation risk.
+- Raw internal logger error capture in Claude Slice B remains a PHI logging watchlist item, but it is not a blocker for the generic client 500 envelope because the response does not expose the thrown message.
+
+Next loop:
+
+- Continue with the next non-conflicting actionable item: prefer a small type/contract or duplication cleanup with existing tests, or accept Claude's D3 backend-reliability-dedup delegation if it can be locked away from active Claude files.
 
 ## Current Goal - 2026-06-19 JST Adjacent Feature and Consistency Loop
 
@@ -7528,3 +7586,32 @@ Collect agent findings → triage by [evidence + low-risk + spec-preserving] →
 - 累積フルテスト: 私のスライス由来失敗0。残失敗1はD2のcatalog未登録(Codex修正待ち)。
 - 監査由来の非競合ソロ項目は出尽くし(#5/#6 already-fixed確認)。残りは backend(Codex), 大型apiFetch(#1,要調整), offline sync-engine(高リスク,要調整), formatTimeOfDay(#4,D1ファイル重複回避)。
 - 次: Codex の D2修正/F レビュー/Slice B 判断を待ち、揃ったら Loop2 再監査へ。
+
+### Slice B 完了 (Claude実装) — route handler 統一エラーエンベロープ [Reliability #1]
+
+- Files: src/lib/auth/context.ts, src/lib/api/response.ts, src/lib/auth/context.test.ts
+- 根拠: withAuthContext(@preferred wrapper)内 handler の想定外throwがNextの汎用500(本文不定)になり、{code,message}エンベロープ不一致。
+- 実装:
+  (1) response.ts に internalError() 追加(固定文言の{code:'INTERNAL_ERROR'}500、生メッセージ非露出で情報漏洩防止)。
+  (2) context.ts withAuthContext で handler呼び出しを try/catch。想定外throwは logger.error(本番Sentry capture)後 internalError()返却。既存 NextResponse early-return(validationError等)は素通し維持。
+  (3) **Next制御フロー例外(redirect()/notFound()の NEXT_REDIRECT/NEXT_NOT_FOUND digest)は isNextControlFlowError で判定し必ず re-throw**(catchで潰すとredirect破壊)。
+- テスト: context.test.ts 3件(実withAuthContextを auth/prisma/logger モックで駆動)— passthrough不変, 想定外throw→500 INTERNAL_ERROR(secret非漏洩), redirect digest→re-throw。
+- Validation: eslint0, typecheck0, context.test 3 pass。累積フルテスト実行中。
+- 設計判断: FileStorageError等の status別マッピングは中期案だが、(a)それらは各handlerでcatch/return済みで通常throwで到達しない (b)生errorのstatus/message露出は情報漏洩リスク のため、今回は安全な汎用500に統一(scope: withAuthContext)。
+- Review: 高リスク(auth/error契約・全route影響)→Codex相互レビュー依頼。
+
+### Slice B 補強 + 回帰対応
+
+- unstable_rethrow 採用: 手書き isNextControlFlowError を Next公式 unstable_rethrow(next/navigation) に置換。全制御フロー digest(redirect/notFound/forbidden/unauthorized/HTTP error)を網羅、将来の Next 変更にも追従。
+- [SECURITY 回帰対応] 累積フルテストで consent-records/route.test.ts 2件回帰検出: 監査失敗時の handler throw を .rejects.toThrow で検証していたが、Slice B が throw→500エンベロープ変換するため reject せず。これはSlice Bの意図した改善。テストを status500+code INTERNAL_ERROR+(list)data非露出/(create)create試行 検証に更新。fail-closed本質(非2xx・同意データ非漏洩・監査失敗の logger.error→Sentry可視化)は維持。consent-records.test 12 pass。Codexにsecurity観点レビュー依頼。
+- Validation: context.test 3 pass, consent-records.test 12 pass, typecheck0, eslint0。最終累積フルテスト実行中。
+
+### Slice B 最終検証
+
+- 最終累積フルテスト: **1074 files passed | 8350 tests passed | 1 skipped | 0 failed (exit 0)**。consent-records回帰解消、全体グリーン。
+- Slice B は typecheck0/eslint0/フルスイート緑。Codexのsecurityレビュー待ち→承認後コミット予定。
+
+### Slice B コミット
+- Codex REVIEW: **APPROVE / no blocking findings**(15 tests pass検証)。non-blocking: 将来 route が error message に PHI を含めて throw した場合の logger 記録を PHI watchlist に(現状は redact ctx + 固定文言で client非露出のため許容)。
+- commit: fix(api) 5f617fd2(context.ts/response.ts/context.test.ts/consent-records.test.ts)。
+- 注記: worktree に私の作業でない未コミット変更が出現(.gitignore[agmsg//*.bak.*追加], eslint.config.mjs, pharmacy-invoices/patient-share-cases/partner-visit-report-drafts/pharmacy-contract-documents/pharmacy-cooperation-setup 等)。無関係差分として尊重し未コミット・未変更のまま放置。Codexに出所確認中。
