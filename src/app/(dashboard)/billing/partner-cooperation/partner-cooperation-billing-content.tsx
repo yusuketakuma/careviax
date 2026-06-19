@@ -361,7 +361,7 @@ function CandidateTable({ candidates }: { candidates: VisitBillingCandidateRow[]
 
   return (
     <div className="overflow-x-auto rounded-lg border border-border/70">
-      <table className="min-w-full text-sm" aria-label="薬局間協力請求候補一覧">
+      <table className="min-w-[56rem] text-sm" aria-label="薬局間協力請求候補一覧">
         <thead className="bg-muted/60 text-xs text-muted-foreground">
           <tr>
             <th scope="col" className="px-3 py-2 text-left font-medium">
@@ -575,7 +575,7 @@ function InvoiceHistoryTable({
 
   return (
     <div className="overflow-x-auto rounded-lg border border-border/70">
-      <table className="min-w-full text-sm" aria-label="薬局間月次ドキュメント一覧">
+      <table className="min-w-[72rem] text-sm" aria-label="薬局間月次ドキュメント一覧">
         <thead className="bg-muted/60 text-xs text-muted-foreground">
           <tr>
             <th scope="col" className="px-3 py-2 text-left font-medium">

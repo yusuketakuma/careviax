@@ -4306,6 +4306,65 @@ Implemented:
 
 - UI/UX remediation remains active. Remaining candidates include pharmacy-cooperation responsive table density, select accessible-name gaps outside fixed/verified screens, raw table/DataTable convergence, and expanded browser/a11y proof.
 
+## 20260620-0038 JST - Pharmacy Cooperation Table Density
+
+### Summary
+
+- Added explicit table min-widths to pharmacy-cooperation setup tables so dense rows preserve readable columns inside horizontal scroll containers.
+- Added explicit min-widths to partner cooperation billing candidate and invoice tables.
+- Added an explicit min-width to the shared pharmacy-cooperation workflow table frame.
+- Added regression assertions for the affected table widths.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx`
+- `src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx`
+- `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx`
+- `src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx`
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 3 files / 22 tests.
+- Targeted ESLint over the six touched pharmacy-cooperation files: passed.
+- Targeted Prettier check over the six touched pharmacy-cooperation files: passed.
+- `pnpm typecheck`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Remaining candidates include select accessible-name gaps outside fixed/verified screens, raw table/DataTable convergence, and expanded browser/a11y proof.
+
+## 20260620-0036 JST - Billing Rule Row Action Names
+
+### Summary
+
+- Changed billing-rule edit/delete icon buttons from generic names to target-specific accessible names.
+- Added a regression test proving the named delete action opens confirmation and does not call the delete mutation until confirmed.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/billing-rules/page.tsx`
+- `src/app/(dashboard)/admin/billing-rules/page.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/billing-rules/page.tsx' 'src/app/(dashboard)/admin/billing-rules/page.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/billing-rules/page.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 1 test.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/billing-rules/page.tsx' 'src/app/(dashboard)/admin/billing-rules/page.test.tsx'`: passed.
+- `pnpm exec prettier --check 'src/app/(dashboard)/admin/billing-rules/page.tsx' 'src/app/(dashboard)/admin/billing-rules/page.test.tsx'`: passed.
+- `pnpm typecheck`: initially failed on the mocked DataTable cell return type, then passed after typing it as `ReactNode`.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Remaining candidates include pharmacy-cooperation responsive table density, select accessible-name gaps outside fixed/verified screens, raw table/DataTable convergence, and expanded browser/a11y proof.
+
 ## 20260620-0033 JST - Business Holiday Label Associations
 
 ### Summary

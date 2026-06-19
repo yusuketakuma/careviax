@@ -802,7 +802,7 @@ function SectionShell({
 function TableFrame({ children, label }: { children: ReactNode; label: string }) {
   return (
     <div className="overflow-x-auto rounded-lg border border-border/70">
-      <table className="min-w-full text-sm" aria-label={label}>
+      <table className="min-w-[72rem] text-sm" aria-label={label}>
         {children}
       </table>
     </div>

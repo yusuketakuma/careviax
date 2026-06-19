@@ -261,12 +261,14 @@ describe('PartnerCooperationBillingContent', () => {
     expect(await screen.findByText(/選択中: 基幹薬局/)).toBeTruthy();
 
     const table = await screen.findByRole('table', { name: '薬局間協力請求候補一覧' });
+    expect(table.className).toContain('min-w-[56rem]');
     expect(within(table).getAllByText('協力薬局').length).toBeGreaterThanOrEqual(1);
     expect(within(table).getByText('有償/定額')).toBeTruthy();
     expect(within(table).getByText('候補')).toBeTruthy();
     const invoicesTable = await screen.findByRole('table', {
       name: '薬局間月次ドキュメント一覧',
     });
+    expect(invoicesTable.className).toContain('min-w-[72rem]');
     expect(within(invoicesTable).getByText('請求書')).toBeTruthy();
     expect(within(invoicesTable).getByText('INV-001')).toBeTruthy();
     expect(within(invoicesTable).getByRole('link', { name: /PDF/ }).getAttribute('href')).toContain(

@@ -461,7 +461,7 @@ export default function BillingRulesPage() {
           <Button
             variant="ghost"
             size="icon"
-            aria-label="編集"
+            aria-label={`${row.original.name} を編集`}
             disabled={row.original.is_system}
             onClick={() => setEditTarget(row.original)}
           >
@@ -470,7 +470,7 @@ export default function BillingRulesPage() {
           <Button
             variant="ghost"
             size="icon"
-            aria-label="削除"
+            aria-label={`${row.original.name} を削除`}
             disabled={row.original.is_system}
             onClick={() => setDeleteTarget(row.original)}
           >

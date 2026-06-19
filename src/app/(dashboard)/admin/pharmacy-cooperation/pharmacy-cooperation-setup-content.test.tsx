@@ -290,6 +290,12 @@ describe('PharmacyCooperationSetupContent', () => {
     expect(screen.getAllByText('協力薬局').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('partnership_1')).toBeTruthy();
     expect(screen.getByText('contract_1')).toBeTruthy();
+    expect(screen.getByRole('table', { name: '薬局間連携一覧' }).className).toContain(
+      'min-w-[72rem]',
+    );
+    expect(screen.getByRole('table', { name: '薬局間契約一覧' }).className).toContain(
+      'min-w-[64rem]',
+    );
     expect(document.body.textContent).not.toContain('山田');
   });
 

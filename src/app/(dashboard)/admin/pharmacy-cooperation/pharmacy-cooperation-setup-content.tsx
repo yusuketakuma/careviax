@@ -860,7 +860,7 @@ export function PharmacyCooperationSetupContent() {
           <EmptyState title="薬局間連携はまだありません" />
         ) : (
           <div className="overflow-x-auto rounded-lg border border-border/70">
-            <table className="min-w-full text-sm" aria-label="薬局間連携一覧">
+            <table className="min-w-[72rem] text-sm" aria-label="薬局間連携一覧">
               <thead className="bg-muted/60 text-xs text-muted-foreground">
                 <tr>
                   <th scope="col" className="px-3 py-2 text-left font-medium">
@@ -1223,7 +1223,7 @@ export function PharmacyCooperationSetupContent() {
         <div className="mt-4">
           {effectiveDocumentContractId && contractDocuments.length > 0 ? (
             <div className="overflow-x-auto rounded-lg border border-border/70">
-              <table className="min-w-full text-sm" aria-label="契約書一覧">
+              <table className="min-w-[48rem] text-sm" aria-label="契約書一覧">
                 <thead className="bg-muted/60 text-xs text-muted-foreground">
                   <tr>
                     <th scope="col" className="px-3 py-2 text-left font-medium">
@@ -1271,7 +1271,7 @@ export function PharmacyCooperationSetupContent() {
           <EmptyState title="薬局間契約はまだありません" />
         ) : (
           <div className="overflow-x-auto rounded-lg border border-border/70">
-            <table className="min-w-full text-sm" aria-label="薬局間契約一覧">
+            <table className="min-w-[64rem] text-sm" aria-label="薬局間契約一覧">
               <thead className="bg-muted/60 text-xs text-muted-foreground">
                 <tr>
                   <th scope="col" className="px-3 py-2 text-left font-medium">
