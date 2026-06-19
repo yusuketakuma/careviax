@@ -4306,6 +4306,37 @@ Implemented:
 
 - UI/UX remediation remains active. Remaining candidates include pharmacy-cooperation responsive table density, select accessible-name gaps outside fixed/verified screens, raw table/DataTable convergence, and expanded browser/a11y proof.
 
+## 20260620-0048 JST - Admin User and Credential Label Associations
+
+### Summary
+
+- Associated pharmacist credential dialog controls with their visible labels and added a regression test for the registration dialog.
+- Associated admin user filters, invite fields, detail fields, visit constraints, permission switches, and action reason textarea with visible labels.
+- Added target-specific accessible names for user row actions and the detail-sheet retire action.
+- Added regression assertions covering user filters, row actions, invite form labels, detail form labels, switches, and action reason labels.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx`
+- `src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx`
+- `src/app/(dashboard)/admin/users/users-content.tsx`
+- `src/app/(dashboard)/admin/users/users-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx' 'src/app/(dashboard)/admin/users/users-content.tsx' 'src/app/(dashboard)/admin/users/users-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx' 'src/app/(dashboard)/admin/users/users-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 2 files / 4 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx' 'src/app/(dashboard)/admin/users/users-content.tsx' 'src/app/(dashboard)/admin/users/users-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Remaining candidates include pharmacy-cooperation responsive table density, raw table/DataTable convergence, expanded browser/a11y proof, and broader legacy select/input label scans outside the fixed admin credential/user screens.
+
 ## 20260620-0038 JST - Pharmacy Cooperation Table Density
 
 ### Summary
@@ -4391,6 +4422,38 @@ Implemented:
 ### Remaining / Next Loop
 
 - UI/UX remediation remains active. Remaining candidates include select accessible-name gaps in pharmacist credentials and users, raw table/DataTable convergence, and expanded browser/a11y proof.
+
+## 20260620-0048 JST - Admin User And Credential Label Associations
+
+### Summary
+
+- Associated pharmacist credential dialog labels with their Select/Input controls.
+- Associated admin user filters, invite fields, detail fields, switches, and account-action reason textarea with visible labels.
+- Added target-specific accessible names for user row actions and the detail-sheet retire action.
+- Added focused mocked UI regression tests for both admin surfaces.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx`
+- `src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx`
+- `src/app/(dashboard)/admin/users/users-content.tsx`
+- `src/app/(dashboard)/admin/users/users-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx' 'src/app/(dashboard)/admin/users/users-content.tsx' 'src/app/(dashboard)/admin/users/users-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx' 'src/app/(dashboard)/admin/users/users-content.test.tsx' --reporter=dot --testTimeout=30000`: initially failed on an invalid users test interaction after the detail sheet made the background inert; after correcting the test to open the detail-sheet retire action, passed with 2 files / 4 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx' 'src/app/(dashboard)/admin/users/users-content.tsx' 'src/app/(dashboard)/admin/users/users-content.test.tsx'`: passed.
+- `pnpm exec prettier --check 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.tsx' 'src/app/(dashboard)/admin/pharmacist-credentials/pharmacist-credentials-content.test.tsx' 'src/app/(dashboard)/admin/users/users-content.tsx' 'src/app/(dashboard)/admin/users/users-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- Read-only `SelectTrigger` accessible-name rescan: no remaining pharmacist credentials or admin users hits.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Remaining select accessible-name gaps from the latest scan are in prescriptions QR drafts, conferences, advanced search, and patient detail panels. Raw table/DataTable convergence and expanded browser/a11y proof also remain.
 
 ## 20260620-0036 JST - Billing Rule Row Action Names
 
