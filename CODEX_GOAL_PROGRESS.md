@@ -4306,6 +4306,39 @@ Implemented:
 
 - UI/UX remediation remains active. Remaining candidates include pharmacy-cooperation responsive table density, select accessible-name gaps outside fixed/verified screens, raw table/DataTable convergence, and expanded browser/a11y proof.
 
+## 20260620-0054 JST - Patient Detail Label Associations
+
+### Summary
+
+- Associated case primary/backup pharmacist Select controls with visible labels.
+- Added an accessible label for the management-plan case selector and kept the no-case state as a status message.
+- Associated the care-team quick-create profession Select with its visible `職種` label.
+- Added regression assertions for case pharmacist labels, management-plan case selection, and quick-create profession labeling.
+
+### Files Changed
+
+- `src/app/(dashboard)/patients/[id]/cases-tab.tsx`
+- `src/app/(dashboard)/patients/[id]/cases-tab.test.tsx`
+- `src/app/(dashboard)/patients/[id]/management-plan-panel.tsx`
+- `src/app/(dashboard)/patients/[id]/management-plan-panel.test.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-care-team-panel.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/cases-tab.tsx' 'src/app/(dashboard)/patients/[id]/cases-tab.test.tsx' 'src/app/(dashboard)/patients/[id]/management-plan-panel.tsx' 'src/app/(dashboard)/patients/[id]/management-plan-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/cases-tab.test.tsx' 'src/app/(dashboard)/patients/[id]/management-plan-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx' --reporter=dot --testTimeout=30000`: passed, 3 files / 5 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/cases-tab.tsx' 'src/app/(dashboard)/patients/[id]/cases-tab.test.tsx' 'src/app/(dashboard)/patients/[id]/management-plan-panel.tsx' 'src/app/(dashboard)/patients/[id]/management-plan-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Remaining candidates include pharmacy-cooperation responsive table density, raw table/DataTable convergence, expanded browser/a11y proof, and broader legacy select/input label scans outside the fixed patient detail panels.
+
 ## 20260620-0051 JST - Search Advanced Filter Label Associations
 
 ### Summary
@@ -4511,6 +4544,40 @@ Implemented:
 ### Remaining / Next Loop
 
 - UI/UX remediation remains active. Remaining select accessible-name gaps from the latest scan are in prescriptions QR drafts, conferences, and patient detail panels. Raw table/DataTable convergence and expanded browser/a11y proof also remain.
+
+## 20260620-0055 JST - Patient Detail Select Label Associations
+
+### Summary
+
+- Added an accessible name to the management-plan case selector.
+- Associated case-edit primary and backup pharmacist labels with their Select triggers.
+- Associated the care-team quick-create profession label with its Select trigger.
+- Updated focused patient-detail tests to cover the new label associations and current empty-state semantics.
+
+### Files Changed
+
+- `src/app/(dashboard)/patients/[id]/management-plan-panel.tsx`
+- `src/app/(dashboard)/patients/[id]/management-plan-panel.test.tsx`
+- `src/app/(dashboard)/patients/[id]/cases-tab.tsx`
+- `src/app/(dashboard)/patients/[id]/cases-tab.test.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-care-team-panel.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- Targeted Prettier over the six touched patient files: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/management-plan-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/cases-tab.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-care-team-panel.test.tsx' --reporter=dot --testTimeout=30000`: initially failed on an obsolete management-plan empty-state button assertion; after updating it to the current `role="status"` empty state, passed with 3 files / 5 tests.
+- Targeted ESLint over search/patient touched TSX/test files: passed.
+- Targeted Prettier check over search/patient touched TSX/test files: passed.
+- `pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- Read-only `SelectTrigger` accessible-name rescan: no remaining patient-detail hits.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Remaining select accessible-name gaps from the latest scan are in prescriptions QR drafts and conferences. Raw table/DataTable convergence and expanded browser/a11y proof also remain.
 
 ## 20260620-0036 JST - Billing Rule Row Action Names
 
