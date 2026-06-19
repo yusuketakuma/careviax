@@ -2446,3 +2446,88 @@ Blocked: C11 (diverged user-visible label strings — product/UX sign-off), C12 
 - Patient-share consent list/create should still be reviewed for share-case participant/read scope beyond org ownership, without breaking draft consent registration before activation.
 - Phase 1 still needs actor pharmacy/site context completion in remaining read audits, share-scope update/audit, patient-share-case creation UI, visit request creation UI, and stronger management-plan version evidence.
 - Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
+
+## 20260619-1542 JST - ConsentRecord Minimized Audit Slice
+
+### Completed
+
+- Re-read the v0.2 specification around `FR-019`, `P1-27`, and `P1-28`, plus the Next.js route handler guide before API edits.
+- Wired `GET /api/consent-records` to record `consent_records_viewed` after patient assignment scope checks and before returning consent rows.
+- Wired `GET /api/consent-records/[id]` to record `consent_record_viewed` after detail scope checks and before returning the record.
+- Wired `POST /api/consent-records` to record `consent_record_created` inside the same org transaction as row creation.
+- Wired `PATCH /api/consent-records/[id]` to record `consent_record_updated` inside the update transaction, using the pre-update row and changed field list.
+- Added unit coverage for `src/server/services/consent-record-audit.ts` to prove raw legacy URLs, internal file URLs, and exact expiry dates do not reach `createAuditLogEntry`.
+- Added a new migration that replaces the `ConsentRecord` DB trigger with `ph_os_write_consent_record_audit_log`, redacting `document_url` and date values into compact flags.
+- Updated the audit trigger contract so `ConsentRecord` must use the dedicated redacted trigger function instead of the generic row snapshot trigger.
+
+### Files Changed
+
+- `src/app/api/consent-records/route.ts`
+- `src/app/api/consent-records/route.test.ts`
+- `src/app/api/consent-records/[id]/route.ts`
+- `src/app/api/consent-records/[id]/route.test.ts`
+- `src/server/services/consent-record-audit.test.ts`
+- `prisma/migrations/20260619153500_redact_consent_record_audit_document_url/migration.sql`
+- `src/tools/consent-record-db-contract.test.ts`
+- `tools/scripts/audit-trigger-contract.ts`
+- `tools/scripts/audit-trigger-contract.test.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write ...`: passed.
+- `pnpm exec vitest run src/server/services/consent-record-audit.test.ts src/app/api/consent-records/route.test.ts 'src/app/api/consent-records/[id]/route.test.ts' 'src/app/api/consent-records/[id]/revoke/route.test.ts' tools/scripts/audit-trigger-contract.test.ts src/tools/consent-record-db-contract.test.ts src/__tests__/audit-log-conventions-static.test.ts src/app/api/__tests__/api-conventions-static.test.ts --reporter=dot --testTimeout=30000`: passed, 8 files / 50 tests.
+- `pnpm exec eslint ...`: passed for touched API/helper/tool/test files.
+- `pnpm typecheck`: passed.
+- `pnpm exec prisma validate`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- `GET /api/patient-share-cases/[id]/consents` still needs a minimized list-view audit for the shared-case consent screen.
+- The patient consent UI is still querying `is_active=false`, so active consent records created through the UI may not appear in the list; this needs a UI fix and test.
+- Consent document file-download audit still resolves `PatientShareConsent.file_asset_id` context but cannot directly resolve a `ConsentRecord` because `ConsentRecord` stores only `document_url`.
+- Audit log search UI still lacks first-class filters for `consent_record`, `PatientShareConsent`, and `file_download` actions.
+- ConsentRecord expiry/document update UI remains absent; only the API PATCH path is covered.
+- Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
+
+## 20260619-1723 JST - Shared Consent Read Audit and Active Consent UI Slice
+
+### Completed
+
+- Re-read the PH-OS UI/UX SSOT and the Next.js route handler guide before changing UI/API code.
+- Fixed the patient consent UI list query so it loads active `ConsentRecord` rows by default instead of hardcoding `is_active=false`.
+- Added UI regression coverage proving active consent records appear in the table and the frontend no longer calls the inactive-only endpoint.
+- Added minimized `patient_share_consents_viewed` audit logging to `GET /api/patient-share-cases/[id]/consents`.
+- Kept shared-consent list audit metadata compact: target screen, role, share case id, consent ids, counts, pagination flags; no raw consent person text, free text, or file identifiers are logged.
+- Added route regression tests for successful shared-consent list audit, audit fail-closed behavior, and no audit on missing share cases.
+
+### Files Changed
+
+- `src/app/(dashboard)/patients/[id]/consent/consent-records-content.tsx`
+- `src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx`
+- `src/app/api/patient-share-cases/[id]/consents/route.ts`
+- `src/app/api/patient-share-cases/[id]/consents/route.test.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write ...`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx' 'src/app/api/patient-share-cases/[id]/consents/route.test.ts' src/server/services/consent-record-audit.test.ts src/app/api/consent-records/route.test.ts 'src/app/api/consent-records/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, 5 files / 36 tests.
+- `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/consent/consent-records-content.test.tsx' src/app/api/consent-records/route.test.ts 'src/app/api/consent-records/[id]/route.test.ts' 'src/app/api/consent-records/[id]/revoke/route.test.ts' 'src/app/api/patient-share-cases/[id]/consents/route.test.ts' 'src/app/api/patient-share-cases/[id]/consents/[consentId]/revoke/route.test.ts' src/server/services/consent-record-audit.test.ts src/server/services/consent-record-documents.test.ts src/app/api/files/presigned-upload/route.test.ts src/server/services/file-storage.test.ts tools/scripts/audit-trigger-contract.test.ts src/tools/consent-record-db-contract.test.ts src/__tests__/audit-log-conventions-static.test.ts src/app/api/__tests__/api-conventions-static.test.ts --reporter=dot --testTimeout=30000`: passed, 14 files / 151 tests.
+- `pnpm exec eslint ...`: passed for touched UI/API/helper/tool/test files.
+- `pnpm typecheck`: passed.
+- `pnpm exec prisma validate`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Consent document download audit still cannot directly resolve a `ConsentRecord` context because `ConsentRecord` stores only `document_url`; a stronger file-id linkage or resolver remains needed.
+- Audit log search UI still lacks first-class filters for `consent_record`, `PatientShareConsent`, and `file_download` actions.
+- ConsentRecord expiry/document update UI remains absent; only the API PATCH path is covered.
+- Phase 1 still needs actor pharmacy/site context completion in remaining read audits, share-scope update/audit, patient-share-case creation UI, visit request creation UI, and stronger management-plan version evidence.
+- Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
