@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import {
   type AdvancedFilterState,
@@ -106,7 +107,12 @@ export function AdvancedFilterModal({
         <div className="space-y-4">
           {/* 1. 訪問日 */}
           <div className="flex items-center gap-4">
-            <span className="w-28 shrink-0 text-sm font-medium text-foreground">訪問日</span>
+            <Label
+              htmlFor="advanced-filter-visit-date-range"
+              className="w-28 shrink-0 text-sm font-medium text-foreground"
+            >
+              訪問日
+            </Label>
             <div className="flex-1">
               <Select
                 value={filter.visitDateRange ?? ''}
@@ -114,7 +120,7 @@ export function AdvancedFilterModal({
                   setField('visitDateRange', value ? (value as VisitDateRangePreset) : null)
                 }
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="advanced-filter-visit-date-range" className="w-full">
                   <SelectValue placeholder="今日 〜 今週" />
                 </SelectTrigger>
                 <SelectContent>
@@ -130,13 +136,18 @@ export function AdvancedFilterModal({
 
           {/* 2. 担当者 */}
           <div className="flex items-center gap-4">
-            <span className="w-28 shrink-0 text-sm font-medium text-foreground">担当者</span>
+            <Label
+              htmlFor="advanced-filter-assignee"
+              className="w-28 shrink-0 text-sm font-medium text-foreground"
+            >
+              担当者
+            </Label>
             <div className="flex-1">
               <Select
                 value={filter.assigneeId ?? ''}
                 onValueChange={(value) => setField('assigneeId', value || null)}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="advanced-filter-assignee" className="w-full">
                   <SelectValue placeholder="山田 花子" />
                 </SelectTrigger>
                 <SelectContent>
@@ -152,7 +163,12 @@ export function AdvancedFilterModal({
 
           {/* 3. 現在の工程 */}
           <div className="flex items-center gap-4">
-            <span className="w-28 shrink-0 text-sm font-medium text-foreground">現在の工程</span>
+            <Label
+              htmlFor="advanced-filter-cycle-status"
+              className="w-28 shrink-0 text-sm font-medium text-foreground"
+            >
+              現在の工程
+            </Label>
             <div className="flex-1">
               <Select
                 value={filter.cycleStatus ?? ''}
@@ -160,7 +176,7 @@ export function AdvancedFilterModal({
                   setField('cycleStatus', value ? (value as CycleStatusOption) : null)
                 }
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="advanced-filter-cycle-status" className="w-full">
                   <SelectValue placeholder="セット監査待ち / セット監査済み" />
                 </SelectTrigger>
                 <SelectContent>
@@ -204,7 +220,12 @@ export function AdvancedFilterModal({
 
           {/* 5. 予定の状態 — /api/visit-schedule-proposals?status= に接続 */}
           <div className="flex items-center gap-4">
-            <span className="w-28 shrink-0 text-sm font-medium text-foreground">予定の状態</span>
+            <Label
+              htmlFor="advanced-filter-proposal-status"
+              className="w-28 shrink-0 text-sm font-medium text-foreground"
+            >
+              予定の状態
+            </Label>
             <div className="flex-1">
               <Select
                 value={filter.proposalStatus ?? ''}
@@ -212,7 +233,7 @@ export function AdvancedFilterModal({
                   setField('proposalStatus', value ? (value as ProposalStatusOption) : null)
                 }
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="advanced-filter-proposal-status" className="w-full">
                   <SelectValue placeholder="患者確認待ち / 正式決定" />
                 </SelectTrigger>
                 <SelectContent>
@@ -228,7 +249,12 @@ export function AdvancedFilterModal({
 
           {/* 6. 薬切れ */}
           <div className="flex items-center gap-4">
-            <span className="w-28 shrink-0 text-sm font-medium text-foreground">薬切れ</span>
+            <Label
+              htmlFor="advanced-filter-medication-deadline"
+              className="w-28 shrink-0 text-sm font-medium text-foreground"
+            >
+              薬切れ
+            </Label>
             <div className="flex-1">
               <Select
                 value={
@@ -243,7 +269,7 @@ export function AdvancedFilterModal({
                   )
                 }
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="advanced-filter-medication-deadline" className="w-full">
                   <SelectValue placeholder="3日以内" />
                 </SelectTrigger>
                 <SelectContent>
