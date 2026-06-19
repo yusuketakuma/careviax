@@ -471,6 +471,11 @@ type FormularyTemplateItem = {
   created_at: string;
 };
 
+function formatFormularyTemplateSummary(template: FormularyTemplateItem | null) {
+  if (!template) return '選択中の採用品テンプレート';
+  return `${template.name}（${template.item_count.toLocaleString()}件）`;
+}
+
 type PharmacyDrugStockHistoryItem = {
   id: string;
   actor_id: string;
@@ -827,6 +832,7 @@ function DrugMasterOperationalContent({
   const [impactQueue, setImpactQueue] = useState<ImpactQueueKey>('action_required');
   const [formularyRequestDecisionTarget, setFormularyRequestDecisionTarget] =
     useState<FormularyRequestDecisionTarget | null>(null);
+  const [deleteTemplateConfirmOpen, setDeleteTemplateConfirmOpen] = useState(false);
   const [expiryReferenceTime] = useState(() => Date.now());
   const reorderPointInputRef = useRef<HTMLInputElement | null>(null);
   const debouncedSearchQuery = useDebouncedValue(
@@ -1600,6 +1606,7 @@ function DrugMasterOperationalContent({
     onSuccess: async () => {
       toast.success('採用品テンプレートを削除しました');
       setSelectedTemplateId('');
+      setDeleteTemplateConfirmOpen(false);
       setTemplatePreview(null);
       await queryClient.invalidateQueries({ queryKey: ['pharmacy-drug-stock-templates'] });
     },
@@ -1793,6 +1800,8 @@ function DrugMasterOperationalContent({
   const drugs = data?.data ?? [];
   const sites = sitesData?.data ?? [];
   const formularyTemplates = formularyTemplatesQuery.data?.data ?? [];
+  const selectedTemplate =
+    formularyTemplates.find((template) => template.id === selectedTemplateId) ?? null;
   const { copySourceSites, headerTitle, headerDescription } = buildDrugMasterSiteHeaderViewModel({
     variant,
     effectiveSelectedSiteId,
@@ -2769,6 +2778,7 @@ function DrugMasterOperationalContent({
                     value={selectedTemplateId}
                     onChange={(event) => {
                       setSelectedTemplateId(event.target.value);
+                      setDeleteTemplateConfirmOpen(false);
                       setTemplatePreview(null);
                     }}
                     className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
@@ -2807,8 +2817,12 @@ function DrugMasterOperationalContent({
                     size="icon"
                     variant="outline"
                     disabled={!selectedTemplateId || deleteTemplateMutation.isPending}
-                    onClick={() => deleteTemplateMutation.mutate()}
-                    aria-label="採用品テンプレートを削除"
+                    onClick={() => setDeleteTemplateConfirmOpen(true)}
+                    aria-label={
+                      selectedTemplate
+                        ? `${formatFormularyTemplateSummary(selectedTemplate)} を削除`
+                        : '採用品テンプレートを削除'
+                    }
                     title="採用品テンプレートを削除"
                   >
                     <Trash2 className="size-3.5" aria-hidden="true" />
@@ -3452,6 +3466,23 @@ function DrugMasterOperationalContent({
                 ? '申請内容を確認して却下'
                 : null,
           });
+        }}
+      />
+
+      <ConfirmDialog
+        open={deleteTemplateConfirmOpen}
+        onOpenChange={setDeleteTemplateConfirmOpen}
+        title="採用品テンプレートを削除しますか"
+        description={`${formatFormularyTemplateSummary(
+          selectedTemplate,
+        )} を削除します。この操作は取り消せません。拠点への適用やコピー前にテンプレート内容を確認してください。`}
+        confirmLabel={deleteTemplateMutation.isPending ? '削除中...' : '削除する'}
+        confirmDisabled={!selectedTemplateId || deleteTemplateMutation.isPending}
+        closeOnConfirm={false}
+        variant="destructive"
+        onConfirm={() => {
+          if (!selectedTemplateId) return;
+          deleteTemplateMutation.mutate();
         }}
       />
 

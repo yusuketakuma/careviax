@@ -398,6 +398,29 @@ describe('DrugMasterContent', () => {
     expect(screen.getByRole('button', { name: '却下' })).toBeTruthy();
   });
 
+  it('requires confirmation before deleting a formulary template', () => {
+    render(<DrugMasterContent variant="formulary" />);
+
+    fireEvent.change(screen.getByLabelText('適用する採用品テンプレート'), {
+      target: { value: 'template_1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '在宅内科 標準セット（12件） を削除' }));
+
+    expect(mutationMutateMock).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole('alertdialog', { name: '採用品テンプレートを削除しますか' }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        '在宅内科 標準セット（12件） を削除します。この操作は取り消せません。拠点への適用やコピー前にテンプレート内容を確認してください。',
+      ),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
+
+    expect(mutationMutateMock.mock.calls).toEqual([[]]);
+  });
+
   it('requires confirmation before deciding pending formulary requests', () => {
     pendingRequestsMock.mockReturnValue([
       {

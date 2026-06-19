@@ -4247,3 +4247,32 @@ Implemented:
 ### Remaining / Next Loop
 
 - UI/UX remediation remains active. Remaining candidates include broader admin destructive-action consistency, pharmacy-cooperation responsive table density, select accessible-name gaps outside fixed screens, raw table/DataTable convergence, and expanded browser/a11y proof.
+
+## 20260620-0025 JST - Formulary Template Delete Confirmation
+
+### Summary
+
+- Added explicit confirmation before deleting drug-master formulary templates.
+- Added target-specific accessible names for the template delete action using template name and item count.
+- Reused the existing `ConfirmDialog` pattern already used by formulary request decisions.
+- Added a regression test proving the delete mutation is not called until the confirmation action is clicked.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx`
+- `src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 9 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`: passed.
+- `pnpm exec prettier --check 'src/app/(dashboard)/admin/drug-masters/drug-master-content.tsx' 'src/app/(dashboard)/admin/drug-masters/drug-master-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Remaining candidates include shift template/holiday destructive confirmation, pharmacy-cooperation responsive table density, select accessible-name gaps outside fixed/verified screens, raw table/DataTable convergence, and expanded browser/a11y proof.
