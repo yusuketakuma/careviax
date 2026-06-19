@@ -616,3 +616,116 @@ CREATE POLICY tenant_isolation ON "CycleHold"
   USING ("org_id" = public.app_enforced_org_id())
   WITH CHECK ("org_id" = public.app_enforced_org_id());
 ALTER TABLE "CycleHold" FORCE ROW LEVEL SECURITY;
+
+-- ─── Pharmacy Partnership / Patient Share Foundation ───────────────────────
+ALTER TABLE "PartnerPharmacy" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "PartnerPharmacy";
+CREATE POLICY tenant_isolation ON "PartnerPharmacy"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "PartnerPharmacy" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "PharmacyPartnership" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "PharmacyPartnership";
+CREATE POLICY tenant_isolation ON "PharmacyPartnership"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "PharmacyPartnership" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "PatientShareCase" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "PatientShareCase";
+CREATE POLICY tenant_isolation ON "PatientShareCase"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "PatientShareCase" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "PatientShareConsent" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "PatientShareConsent";
+CREATE POLICY tenant_isolation ON "PatientShareConsent"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "PatientShareConsent" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "PatientLink" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "PatientLink";
+CREATE POLICY tenant_isolation ON "PatientLink"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "PatientLink" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "PatientShareCorrectionRequest" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "PatientShareCorrectionRequest";
+CREATE POLICY tenant_isolation ON "PatientShareCorrectionRequest"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "PatientShareCorrectionRequest" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "PharmacyVisitRequest" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "PharmacyVisitRequest";
+CREATE POLICY tenant_isolation ON "PharmacyVisitRequest"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "PharmacyVisitRequest" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "PartnerVisitRecord" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "PartnerVisitRecord";
+CREATE POLICY tenant_isolation ON "PartnerVisitRecord"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "PartnerVisitRecord" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "ClaimCooperationNote" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "ClaimCooperationNote";
+CREATE POLICY tenant_isolation ON "ClaimCooperationNote"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "ClaimCooperationNote" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "PharmacyContract" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "PharmacyContract";
+CREATE POLICY tenant_isolation ON "PharmacyContract"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "PharmacyContract" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "PharmacyContractVersion" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "PharmacyContractVersion";
+CREATE POLICY tenant_isolation ON "PharmacyContractVersion"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "PharmacyContractVersion" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "PharmacyContractFeeRule" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "PharmacyContractFeeRule";
+CREATE POLICY tenant_isolation ON "PharmacyContractFeeRule"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "PharmacyContractFeeRule" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "VisitBillingCandidate" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "VisitBillingCandidate";
+CREATE POLICY tenant_isolation ON "VisitBillingCandidate"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "VisitBillingCandidate" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "PharmacyInvoice" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "PharmacyInvoice";
+CREATE POLICY tenant_isolation ON "PharmacyInvoice"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "PharmacyInvoice" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "PharmacyInvoiceItem" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "PharmacyInvoiceItem";
+CREATE POLICY tenant_isolation ON "PharmacyInvoiceItem"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "PharmacyInvoiceItem" FORCE ROW LEVEL SECURITY;
+
+ALTER TABLE "ContractDocument" ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "ContractDocument";
+CREATE POLICY tenant_isolation ON "ContractDocument"
+  USING ("org_id" = public.app_enforced_org_id())
+  WITH CHECK ("org_id" = public.app_enforced_org_id());
+ALTER TABLE "ContractDocument" FORCE ROW LEVEL SECURITY;

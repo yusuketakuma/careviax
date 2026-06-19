@@ -132,7 +132,9 @@ model Patient {
   lab_observations           PatientLabObservation[]
   jahis_supplemental_records JahisSupplementalRecord[]
   workflow_exceptions        WorkflowException[]
+  share_cases_as_base        PatientShareCase[]         @relation("PatientShareCaseBasePatient")
 
+  @@unique([id, org_id])
   @@index([org_id])
   @@index([name_kana])
 }
@@ -189,7 +191,9 @@ model CareCase {
   visit_schedules          VisitSchedule[]
   visit_schedule_proposals VisitScheduleProposal[]
   care_reports             CareReport[]
+  patient_share_cases      PatientShareCase[]      @relation("PatientShareCaseBaseCareCase")
 
+  @@unique([id, org_id])
   @@index([org_id])
   @@index([patient_id])
   @@index([status])
@@ -282,6 +286,9 @@ model ConsentRecord {
   created_at        DateTime      @default(now())
   updated_at        DateTime      @updatedAt
 
+  patient_share_consents PatientShareConsent[]
+
+  @@unique([id, org_id])
   @@index([org_id])
   @@index([patient_id])
 }

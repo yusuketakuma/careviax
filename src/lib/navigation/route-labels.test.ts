@@ -11,8 +11,11 @@ describe('route labels', () => {
     expect(labelForPath('/admin/settings')).toBe('管理設定');
     expect(labelForPath('/admin/performance')).toBe('パフォーマンス');
     expect(labelForPath('/admin/realtime')).toBe('リアルタイム監視');
+    expect(labelForPath('/admin/pharmacy-cooperation')).toBe('薬局間協力設定');
     expect(labelForPath('/patients/p1/edit')).toBe('患者情報編集');
     expect(labelForPath('/patients/p1/mcs')).toBe('MCS連携');
+    expect(labelForPath('/billing/partner-cooperation')).toBe('薬局間協力');
+    expect(labelForPath('/workflow/pharmacy-cooperation')).toBe('薬局間協力');
   });
 
   it('labels utility segments used by breadcrumb navigation', () => {
@@ -24,6 +27,9 @@ describe('route labels', () => {
     expect(labelForSegment('settings', 'admin')).toBe('管理設定');
     expect(labelForSegment('mcs', 'patients')).toBe('MCS連携');
     expect(labelForSegment('collaboration')).toBe('今だれが見ているか');
+    expect(labelForSegment('partner-cooperation', 'billing')).toBe('薬局間協力');
+    expect(labelForSegment('pharmacy-cooperation', 'workflow')).toBe('薬局間協力');
+    expect(labelForSegment('pharmacy-cooperation', 'admin')).toBe('薬局間協力設定');
   });
 
   it('labels the renamed dispensing workbench segments (audit/set/set-audit)', () => {

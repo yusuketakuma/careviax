@@ -120,29 +120,40 @@ model CommunicationResponse {
 }
 
 model CareReport {
-  id              String       @id @default(cuid())
-  org_id          String
-  visit_record_id String?
-  patient_id      String
-  case_id         String?
-  case_           CareCase?    @relation(fields: [case_id], references: [id])
-  report_type     ReportType
-  status          ReportStatus @default(draft)
-  content         Json
-  template_id     String?
-  pdf_url         String? // S3
-  created_by      String // User ID
-  created_at      DateTime     @default(now())
-  updated_at      DateTime     @updatedAt
+  id                      String              @id @default(cuid())
+  org_id                  String
+  visit_record_id         String?
+  partner_visit_record_id String?
+  partner_visit_record    PartnerVisitRecord? @relation("CareReportPartnerVisitRecord", fields: [partner_visit_record_id, org_id], references: [id, org_id])
+  patient_id              String
+  case_id                 String?
+  case_                   CareCase?           @relation(fields: [case_id], references: [id])
+  report_type             ReportType
+  status                  ReportStatus        @default(draft)
+  content                 Json
+  template_id             String?
+  pdf_url                 String? // S3
+  created_by              String // User ID
+  created_at              DateTime            @default(now())
+  updated_at              DateTime            @updatedAt
 
   delivery_records DeliveryRecord[]
   send_requests    CareReportSendRequest[]
 
+  // DB contract: migration 20260512021000_add_care_report_visit_type_unique_index
+  // creates the partial unique index
+  // CareReport_org_visit_record_report_type_unique_idx on
+  // (org_id, visit_record_id, report_type) for non-null visit_record_id
+  // so one visit cannot produce duplicate report drafts for the same report_type.
+  // Partner-visit source reports are similarly guarded by
+  // CareReport_org_partner_visit_report_type_key.
   @@unique([id, org_id])
+  @@unique([org_id, partner_visit_record_id, report_type], map: "CareReport_org_partner_visit_report_type_key")
   @@index([org_id])
   @@index([patient_id])
   @@index([status])
   @@index([case_id])
+  @@index([org_id, partner_visit_record_id])
 }
 
 model CareReportSendRequest {

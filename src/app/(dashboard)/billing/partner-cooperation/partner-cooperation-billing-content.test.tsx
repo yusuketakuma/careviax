@@ -1,0 +1,274 @@
+// @vitest-environment jsdom
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setupDomTestEnv } from '@/test/dom-test-utils';
+import { PartnerCooperationBillingContent } from './partner-cooperation-billing-content';
+
+vi.mock('@/lib/hooks/use-org-id', () => ({
+  useOrgId: () => 'org_1',
+}));
+
+vi.mock('sonner', () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+  },
+}));
+
+setupDomTestEnv();
+
+function createWrapper() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+  };
+}
+
+function renderContent() {
+  return render(<PartnerCooperationBillingContent />, { wrapper: createWrapper() });
+}
+
+describe('PartnerCooperationBillingContent', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date('2026-06-19T00:00:00.000Z'));
+    vi.clearAllMocks();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.startsWith('/api/visit-billing-candidates/summary?')) {
+          return new Response(
+            JSON.stringify({
+              billing_month: '2026-06-01',
+              visit_record_count: 4,
+              confirmed_visit_record_count: 3,
+              unconfirmed_visit_record_count: 1,
+              generated_candidate_count: 2,
+              billable_candidate_count: 2,
+              excluded_candidate_count: 0,
+              invoiced_candidate_count: 0,
+              free_candidate_count: 1,
+              paid_candidate_count: 1,
+              planned_invoice_amount: 5500,
+              pending_candidate_generation_count: 1,
+            }),
+            { status: 200 },
+          );
+        }
+        if (url.startsWith('/api/pharmacy-contracts?')) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: 'contract_1',
+                  status: 'active',
+                  effective_from: '2026-06-01T00:00:00.000Z',
+                  effective_to: null,
+                  partnership: {
+                    base_site: { name: '基幹薬局' },
+                    partner_pharmacy: { name: '協力薬局', status: 'active' },
+                  },
+                  latest_version: {
+                    version_no: 2,
+                    active_fee_rule: {
+                      billing_model: 'fixed_per_visit',
+                      unit_price: 5500,
+                      tax_category: 'taxable',
+                    },
+                  },
+                },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+        if (url.startsWith('/api/visit-billing-candidates?')) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: 'candidate_1',
+                  billing_month: '2026-06-01T00:00:00.000Z',
+                  billing_status: 'candidate',
+                  is_billable: true,
+                  exclusion_reason: null,
+                  amount_summary: {
+                    billing_model: 'fixed_per_visit',
+                    amount: 5500,
+                    tax_category: 'taxable',
+                    blocker_codes: [],
+                  },
+                  partner_visit_record: {
+                    id: 'partner_visit_record_1',
+                    visit_at: '2026-06-18T01:30:00.000Z',
+                    status: 'confirmed',
+                    confirmed_at: '2026-06-18T03:00:00.000Z',
+                    owner_partner_pharmacy: { name: '協力薬局', status: 'active' },
+                  },
+                  contract_version: {
+                    id: 'contract_version_1',
+                    version_no: 2,
+                    effective_from: '2026-06-01T00:00:00.000Z',
+                  },
+                },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+        if (url.startsWith('/api/pharmacy-invoices?')) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  id: 'invoice_existing',
+                  contract_id: 'contract_1',
+                  document_kind: 'invoice',
+                  invoice_no: 'INV-001',
+                  billing_month: '2026-06-01',
+                  subtotal: 5500,
+                  tax_amount: 550,
+                  total: 6050,
+                  status: 'draft',
+                  issued_at: null,
+                  sent_at: null,
+                  paid_at: null,
+                  item_count: 1,
+                  partnership: {
+                    base_site: { id: 'site_1', name: '基幹薬局' },
+                    partner_pharmacy: {
+                      id: 'partner_pharmacy_1',
+                      name: '協力薬局',
+                      status: 'active',
+                    },
+                  },
+                },
+              ],
+            }),
+            { status: 200 },
+          );
+        }
+        if (url === '/api/visit-billing-candidates' && init?.method === 'POST') {
+          return new Response(
+            JSON.stringify({
+              message: '2026-06-01 の薬局間協力訪問請求候補を生成しました',
+              billing_month: '2026-06-01',
+              scanned_confirmed_records: 3,
+              generated_candidates: 3,
+              billable_count: 2,
+              excluded_count: 1,
+              skipped_locked_count: 0,
+            }),
+            { status: 200 },
+          );
+        }
+        if (url === '/api/pharmacy-invoices' && init?.method === 'POST') {
+          return new Response(
+            JSON.stringify({
+              message: '薬局間請求書ドラフトを作成しました',
+              id: 'invoice_1',
+              contract_id: 'contract_1',
+              document_kind: 'invoice',
+              billing_month: '2026-06-01',
+              subtotal: 5500,
+              tax_amount: 550,
+              total: 6050,
+              status: 'draft',
+              reused_existing_draft: false,
+              item_count: 1,
+              items: [],
+            }),
+            { status: 201 },
+          );
+        }
+
+        throw new Error(`Unexpected fetch: ${url}`);
+      }),
+    );
+  });
+
+  it('renders monthly summary, contract selection, and PHI-minimized candidate rows', async () => {
+    renderContent();
+
+    expect(await screen.findByText('協力訪問記録')).toBeTruthy();
+    expect(screen.getByText('確認済み 3 / 未確認 1')).toBeTruthy();
+    expect(screen.getByText('予定請求額')).toBeTruthy();
+    expect(screen.getAllByText('5,500円').length).toBeGreaterThanOrEqual(1);
+    expect(await screen.findByText(/選択中: 基幹薬局/)).toBeTruthy();
+
+    const table = await screen.findByRole('table', { name: '薬局間協力請求候補一覧' });
+    expect(within(table).getAllByText('協力薬局').length).toBeGreaterThanOrEqual(1);
+    expect(within(table).getByText('有償/定額')).toBeTruthy();
+    expect(within(table).getByText('候補')).toBeTruthy();
+    const invoicesTable = await screen.findByRole('table', {
+      name: '薬局間月次ドキュメント一覧',
+    });
+    expect(within(invoicesTable).getByText('請求書')).toBeTruthy();
+    expect(within(invoicesTable).getByText('INV-001')).toBeTruthy();
+    expect(within(invoicesTable).getByRole('link', { name: /PDF/ }).getAttribute('href')).toContain(
+      '/api/pharmacy-invoices/invoice_existing/pdf?purpose=',
+    );
+    expect(JSON.stringify(document.body.textContent)).not.toContain('山田');
+  });
+
+  it('posts the selected billing month when generating visit billing candidates', async () => {
+    renderContent();
+
+    await screen.findByText(/選択中: 基幹薬局/);
+    fireEvent.click(screen.getByRole('button', { name: /候補を生成/ }));
+
+    await waitFor(() => {
+      const postCall = vi
+        .mocked(fetch)
+        .mock.calls.find(
+          ([input, init]) =>
+            String(input) === '/api/visit-billing-candidates' && init?.method === 'POST',
+        );
+      expect(postCall).toBeTruthy();
+      expect(JSON.parse(String(postCall?.[1]?.body))).toEqual({ billing_month: '2026-06-01' });
+    });
+  });
+
+  it('creates a paid invoice draft for the selected active contract and exposes the PDF link', async () => {
+    renderContent();
+
+    await screen.findByText(/選択中: 基幹薬局/);
+    fireEvent.click(screen.getByRole('button', { name: /請求書ドラフト/ }));
+
+    const result = await screen.findByTestId('partner-invoice-draft-result');
+    expect(within(result).getByText(/請求書ドラフト: invoice_1/)).toBeTruthy();
+    expect(within(result).getByText(/合計 6,050円/)).toBeTruthy();
+    expect(
+      within(result)
+        .getByRole('link', { name: /PDFを開く/ })
+        .getAttribute('href'),
+    ).toContain('/api/pharmacy-invoices/invoice_1/pdf?purpose=');
+
+    const postCall = vi
+      .mocked(fetch)
+      .mock.calls.find(
+        ([input, init]) => String(input) === '/api/pharmacy-invoices' && init?.method === 'POST',
+      );
+    expect(postCall).toBeTruthy();
+    expect(JSON.parse(String(postCall?.[1]?.body))).toMatchObject({
+      billing_month: '2026-06-01',
+      contract_id: 'contract_1',
+      document_kind: 'invoice',
+    });
+  });
+});

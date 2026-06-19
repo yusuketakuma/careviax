@@ -76,6 +76,22 @@ model Organization {
   drug_alert_rules             DrugAlertRule[]
   file_assets                  FileAsset[]
   visitScheduleProposalBatches VisitScheduleProposalBatch[]
+  partner_pharmacies           PartnerPharmacy[]
+  pharmacy_partnerships        PharmacyPartnership[]
+  patient_share_cases          PatientShareCase[]
+  patient_share_consents       PatientShareConsent[]
+  patient_links                PatientLink[]
+  patient_share_corrections    PatientShareCorrectionRequest[]
+  pharmacy_visit_requests      PharmacyVisitRequest[]
+  partner_visit_records        PartnerVisitRecord[]
+  claim_cooperation_notes      ClaimCooperationNote[]
+  pharmacy_contracts           PharmacyContract[]
+  pharmacy_contract_versions   PharmacyContractVersion[]
+  pharmacy_contract_fee_rules  PharmacyContractFeeRule[]
+  visit_billing_candidates     VisitBillingCandidate[]
+  pharmacy_invoices            PharmacyInvoice[]
+  pharmacy_invoice_items       PharmacyInvoiceItem[]
+  contract_documents           ContractDocument[]
 
   @@index([name])
 }
@@ -111,6 +127,7 @@ model PharmacySite {
   service_areas                ServiceArea[]
   visit_vehicle_resources      VisitVehicleResource[]
   visitScheduleProposalBatches VisitScheduleProposalBatch[]
+  base_pharmacy_partnerships   PharmacyPartnership[]          @relation("BaseSitePharmacyPartnerships")
 
   @@unique([id, org_id])
   @@index([org_id])

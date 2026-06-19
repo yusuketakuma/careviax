@@ -213,8 +213,10 @@ model VisitRecord {
   created_at                 DateTime      @default(now())
   updated_at                 DateTime      @updatedAt
 
-  handoff_extraction VisitHandoffExtraction?
+  handoff_extraction    VisitHandoffExtraction?
+  partner_visit_records PartnerVisitRecord[]    @relation("PartnerVisitRecordSourceVisit")
 
+  @@unique([id, org_id])
   @@index([org_id])
   @@index([patient_id])
   @@index([visit_date])

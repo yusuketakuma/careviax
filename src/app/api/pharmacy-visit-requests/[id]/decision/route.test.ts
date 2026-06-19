@@ -1,0 +1,176 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { NextRequest } from 'next/server';
+
+const {
+  withOrgContextMock,
+  pharmacyVisitRequestFindFirstMock,
+  pharmacyVisitRequestUpdateManyMock,
+  pharmacyVisitRequestFindUniqueOrThrowMock,
+  createAuditLogEntryMock,
+} = vi.hoisted(() => ({
+  withOrgContextMock: vi.fn(),
+  pharmacyVisitRequestFindFirstMock: vi.fn(),
+  pharmacyVisitRequestUpdateManyMock: vi.fn(),
+  pharmacyVisitRequestFindUniqueOrThrowMock: vi.fn(),
+  createAuditLogEntryMock: vi.fn(),
+}));
+
+vi.mock('@/lib/auth/context', () => ({
+  withAuthContext: (handler: (...args: unknown[]) => Promise<Response>) => {
+    return (req: NextRequest, routeContext?: unknown) =>
+      handler(
+        req,
+        {
+          orgId: 'org_1',
+          userId: 'user_1',
+          role: 'pharmacist',
+        },
+        routeContext,
+      );
+  },
+}));
+
+vi.mock('@/lib/db/rls', () => ({
+  withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/lib/audit/audit-entry', () => ({
+  createAuditLogEntry: createAuditLogEntryMock,
+}));
+
+import { POST as rawPOST } from './route';
+
+const routeContext = { params: Promise.resolve({ id: 'visit_request_1' }) };
+
+function createRequest(body: unknown) {
+  return new NextRequest('http://localhost/api/pharmacy-visit-requests/visit_request_1/decision', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+describe('/api/pharmacy-visit-requests/[id]/decision POST', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-19T00:00:00.000Z'));
+    vi.clearAllMocks();
+    pharmacyVisitRequestFindFirstMock.mockResolvedValue({
+      id: 'visit_request_1',
+      status: 'requested',
+      share_case_id: 'share_case_1',
+      partnership_id: 'partnership_1',
+      partner_pharmacy_id: 'partner_pharmacy_1',
+      share_case: { status: 'active' },
+      partnership: {
+        status: 'active',
+        partner_pharmacy: { status: 'active' },
+      },
+    });
+    pharmacyVisitRequestUpdateManyMock.mockResolvedValue({ count: 1 });
+    pharmacyVisitRequestFindUniqueOrThrowMock.mockResolvedValue({
+      id: 'visit_request_1',
+      status: 'accepted',
+      accepted_by: 'pharmacist_1',
+      accepted_at: new Date('2026-06-19T00:00:00.000Z'),
+    });
+    createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
+    withOrgContextMock.mockImplementation(async (_orgId, callback) =>
+      callback({
+        pharmacyVisitRequest: {
+          findFirst: pharmacyVisitRequestFindFirstMock,
+          updateMany: pharmacyVisitRequestUpdateManyMock,
+          findUniqueOrThrow: pharmacyVisitRequestFindUniqueOrThrowMock,
+        },
+      }),
+    );
+  });
+
+  it('accepts a requested visit request with a guarded status update', async () => {
+    const response = await rawPOST(
+      createRequest({ decision: 'accept', pharmacist_id: ' pharmacist_1 ' }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(200);
+    expect(pharmacyVisitRequestUpdateManyMock).toHaveBeenCalledWith({
+      where: {
+        id: 'visit_request_1',
+        org_id: 'org_1',
+        status: 'requested',
+        share_case: { status: 'active' },
+        partnership: {
+          status: 'active',
+          partner_pharmacy: { status: 'active' },
+        },
+      },
+      data: {
+        status: 'accepted',
+        accepted_by: 'pharmacist_1',
+        accepted_at: new Date('2026-06-19T00:00:00.000Z'),
+      },
+    });
+    expect(createAuditLogEntryMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ orgId: 'org_1', userId: 'user_1' }),
+      expect.objectContaining({
+        action: 'pharmacy_visit_request_accepted',
+        changes: expect.objectContaining({
+          decision: 'accept',
+          previous_status: 'requested',
+          actor_id: 'pharmacist_1',
+        }),
+      }),
+    );
+  });
+
+  it('records decline metadata without raw decline reason in audit', async () => {
+    pharmacyVisitRequestFindUniqueOrThrowMock.mockResolvedValue({
+      id: 'visit_request_1',
+      status: 'declined',
+    });
+
+    const response = await rawPOST(
+      createRequest({
+        decision: 'decline',
+        decline_reason: '患者名 山田花子: スケジュール都合で不可',
+      }),
+      routeContext,
+    );
+
+    expect(response.status).toBe(200);
+    expect(pharmacyVisitRequestUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'declined',
+          declined_by: 'user_1',
+          decline_reason: '患者名 山田花子: スケジュール都合で不可',
+        }),
+      }),
+    );
+    const auditText = JSON.stringify(createAuditLogEntryMock.mock.calls);
+    expect(auditText).toContain('decline_reason_length');
+    expect(auditText).not.toContain('山田花子');
+  });
+
+  it('rejects already decided visit requests before update or audit side effects', async () => {
+    pharmacyVisitRequestFindFirstMock.mockResolvedValue({
+      id: 'visit_request_1',
+      status: 'accepted',
+      share_case_id: 'share_case_1',
+      partnership_id: 'partnership_1',
+      partner_pharmacy_id: 'partner_pharmacy_1',
+      share_case: { status: 'active' },
+      partnership: {
+        status: 'active',
+        partner_pharmacy: { status: 'active' },
+      },
+    });
+
+    const response = await rawPOST(createRequest({ decision: 'accept' }), routeContext);
+
+    expect(response.status).toBe(409);
+    expect(pharmacyVisitRequestUpdateManyMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+});

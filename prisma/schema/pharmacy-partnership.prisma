@@ -1,0 +1,610 @@
+enum PartnerPharmacyStatus {
+  active
+  inactive
+  archived
+}
+
+enum PharmacyPartnershipStatus {
+  draft
+  active
+  suspended
+  ended
+}
+
+enum PatientShareCaseStatus {
+  draft
+  pending_partner
+  active
+  suspended
+  revoked
+  ended
+}
+
+enum PatientLinkStatus {
+  pending
+  accepted
+  declined
+}
+
+enum PatientShareCorrectionTargetOwner {
+  base_pharmacy
+  partner_pharmacy
+}
+
+enum PatientShareCorrectionStatus {
+  open
+  responded
+  resolved
+  cancelled
+}
+
+enum PharmacyVisitRequestStatus {
+  draft
+  requested
+  accepted
+  declined
+  cancelled
+  completed
+  expired
+}
+
+enum PartnerVisitRecordStatus {
+  draft
+  submitted
+  confirmed
+  returned
+  superseded
+}
+
+enum PharmacyContractStatus {
+  draft
+  pending_base_approval
+  pending_partner_approval
+  active
+  suspended
+  ended
+  archived
+}
+
+enum PharmacyBillingModel {
+  free
+  fixed_per_visit
+  per_visit_with_addon
+  expense_reimbursement
+}
+
+enum PharmacyTaxCategory {
+  taxable
+  tax_exempt
+  non_taxable
+  out_of_scope
+  tax_pending
+}
+
+enum VisitBillingStatus {
+  candidate
+  confirmed
+  excluded
+  invoiced
+  voided
+}
+
+enum PharmacyInvoiceStatus {
+  draft
+  issued
+  sent
+  received
+  payment_scheduled
+  paid
+  voided
+  cancelled
+}
+
+enum PharmacyInvoiceDocumentKind {
+  invoice
+  free_cooperation_report
+}
+
+model PartnerPharmacy {
+  id                 String                @id @default(cuid())
+  org_id             String
+  org                Organization          @relation(fields: [org_id], references: [id])
+  pharmacy_code      String?
+  name               String
+  address            String?
+  tel                String?
+  fax                String?
+  emergency_tel      String?
+  on_call_tel        String?
+  contact_name       String?
+  contact_channels   Json?
+  available_services Json                  @default("[]")
+  service_hours      Json?
+  status             PartnerPharmacyStatus @default(active)
+  created_by         String?
+  updated_by         String?
+  created_at         DateTime              @default(now())
+  updated_at         DateTime              @updatedAt
+
+  partnerships          PharmacyPartnership[]
+  visit_requests        PharmacyVisitRequest[]
+  partner_visit_records PartnerVisitRecord[]
+
+  @@unique([id, org_id])
+  @@unique([org_id, pharmacy_code])
+  @@index([org_id])
+  @@index([status])
+}
+
+model PharmacyPartnership {
+  id                  String                    @id @default(cuid())
+  org_id              String
+  org                 Organization              @relation(fields: [org_id], references: [id])
+  base_site_id        String
+  base_site           PharmacySite              @relation("BaseSitePharmacyPartnerships", fields: [base_site_id, org_id], references: [id, org_id])
+  partner_pharmacy_id String
+  partner_pharmacy    PartnerPharmacy           @relation(fields: [partner_pharmacy_id, org_id], references: [id, org_id])
+  status              PharmacyPartnershipStatus @default(draft)
+  available_services  Json                      @default("[]")
+  contact_snapshot    Json?
+  effective_from      DateTime?                 @db.Date
+  effective_to        DateTime?                 @db.Date
+  approved_by_base    String?
+  approved_by_partner String?
+  approved_at         DateTime?
+  ended_at            DateTime?
+  ended_reason        String?
+  created_by          String?
+  updated_by          String?
+  created_at          DateTime                  @default(now())
+  updated_at          DateTime                  @updatedAt
+
+  share_cases    PatientShareCase[]
+  visit_requests PharmacyVisitRequest[]
+  contracts      PharmacyContract[]
+
+  @@unique([id, org_id])
+  @@index([org_id])
+  @@index([org_id, base_site_id])
+  @@index([org_id, partner_pharmacy_id])
+  @@index([status])
+}
+
+model PatientShareCase {
+  id                             String                 @id @default(cuid())
+  org_id                         String
+  org                            Organization           @relation(fields: [org_id], references: [id])
+  partnership_id                 String
+  partnership                    PharmacyPartnership    @relation(fields: [partnership_id, org_id], references: [id, org_id])
+  base_patient_id                String
+  base_patient                   Patient                @relation("PatientShareCaseBasePatient", fields: [base_patient_id, org_id], references: [id, org_id])
+  base_case_id                   String?
+  base_case                      CareCase?              @relation("PatientShareCaseBaseCareCase", fields: [base_case_id, org_id], references: [id, org_id])
+  status                         PatientShareCaseStatus @default(draft)
+  share_scope                    Json                   @default("{}")
+  shared_management_plan_id      String?
+  shared_management_plan_version Int?
+  consent_verified_at            DateTime?
+  starts_at                      DateTime?              @db.Date
+  ends_at                        DateTime?              @db.Date
+  base_pharmacy_approved_by      String?
+  base_pharmacy_approved_at      DateTime?
+  partner_pharmacy_approved_by   String?
+  partner_pharmacy_approved_at   DateTime?
+  activated_at                   DateTime?
+  suspended_at                   DateTime?
+  revoked_at                     DateTime?
+  ended_at                       DateTime?
+  created_by                     String
+  updated_by                     String?
+  created_at                     DateTime               @default(now())
+  updated_at                     DateTime               @updatedAt
+
+  consents              PatientShareConsent[]
+  patient_link          PatientLink?
+  correction_requests   PatientShareCorrectionRequest[]
+  visit_requests        PharmacyVisitRequest[]
+  partner_visit_records PartnerVisitRecord[]
+
+  @@unique([id, org_id])
+  @@index([org_id])
+  @@index([org_id, partnership_id])
+  @@index([org_id, base_patient_id])
+  @@index([org_id, base_case_id])
+  @@index([status])
+}
+
+model PatientShareConsent {
+  id                String           @id @default(cuid())
+  org_id            String
+  org               Organization     @relation(fields: [org_id], references: [id])
+  share_case_id     String
+  share_case        PatientShareCase @relation(fields: [share_case_id, org_id], references: [id, org_id], onDelete: Cascade)
+  consent_record_id String?
+  consent_record    ConsentRecord?   @relation(fields: [consent_record_id, org_id], references: [id, org_id])
+  consent_date      DateTime         @db.Date
+  consent_person    String
+  consent_method    ConsentMethod
+  scope             Json             @default("{}")
+  file_asset_id     String?
+  valid_until       DateTime?        @db.Date
+  revoked_at        DateTime?
+  revoked_by        String?
+  created_by        String
+  created_at        DateTime         @default(now())
+  updated_at        DateTime         @updatedAt
+
+  @@unique([id, org_id])
+  @@index([org_id])
+  @@index([org_id, share_case_id])
+  @@index([org_id, consent_record_id])
+  @@index([revoked_at])
+}
+
+model PatientLink {
+  id                       String            @id @default(cuid())
+  org_id                   String
+  org                      Organization      @relation(fields: [org_id], references: [id])
+  share_case_id            String
+  share_case               PatientShareCase  @relation(fields: [share_case_id, org_id], references: [id, org_id], onDelete: Cascade)
+  base_patient_id          String
+  partner_patient_id       String?
+  match_status             PatientLinkStatus @default(pending)
+  base_patient_snapshot    Json
+  partner_patient_snapshot Json?
+  approved_by_base         String?
+  approved_by_partner      String?
+  accepted_at              DateTime?
+  declined_at              DateTime?
+  decline_reason           String?
+  created_at               DateTime          @default(now())
+  updated_at               DateTime          @updatedAt
+
+  @@unique([id, org_id])
+  @@unique([share_case_id, org_id])
+  @@index([org_id])
+  @@index([org_id, base_patient_id])
+  @@index([match_status])
+}
+
+model PatientShareCorrectionRequest {
+  id             String                            @id @default(cuid())
+  org_id         String
+  org            Organization                      @relation(fields: [org_id], references: [id])
+  share_case_id  String
+  share_case     PatientShareCase                  @relation(fields: [share_case_id, org_id], references: [id, org_id], onDelete: Cascade)
+  target_owner   PatientShareCorrectionTargetOwner
+  target_type    String
+  target_id      String?
+  field_path     String?
+  request_type   String                            @default("correction")
+  reason         String
+  proposed_value Json?
+  status         PatientShareCorrectionStatus      @default(open)
+  requested_by   String
+  responded_by   String?
+  response_note  String?
+  resolved_by    String?
+  resolved_at    DateTime?
+  created_at     DateTime                          @default(now())
+  updated_at     DateTime                          @updatedAt
+
+  @@unique([id, org_id])
+  @@index([org_id])
+  @@index([org_id, share_case_id])
+  @@index([target_owner])
+  @@index([status])
+}
+
+model PharmacyVisitRequest {
+  id                    String                     @id @default(cuid())
+  org_id                String
+  org                   Organization               @relation(fields: [org_id], references: [id])
+  share_case_id         String
+  share_case            PatientShareCase           @relation(fields: [share_case_id, org_id], references: [id, org_id])
+  partnership_id        String
+  partnership           PharmacyPartnership        @relation(fields: [partnership_id, org_id], references: [id, org_id])
+  partner_pharmacy_id   String
+  partner_pharmacy      PartnerPharmacy            @relation(fields: [partner_pharmacy_id, org_id], references: [id, org_id])
+  requested_by          String
+  urgency               String                     @default("normal")
+  desired_start_at      DateTime?
+  desired_end_at        DateTime?
+  visit_type            VisitType?
+  status                PharmacyVisitRequestStatus @default(draft)
+  request_reason        String
+  physician_instruction String?
+  carry_items           Json?
+  patient_home_notes    String?
+  contract_id           String?
+  contract_version_id   String?
+  estimated_amount      Int?
+  estimated_snapshot    Json?
+  accepted_by           String?
+  accepted_at           DateTime?
+  declined_by           String?
+  declined_at           DateTime?
+  decline_reason        String?
+  cancelled_at          DateTime?
+  completed_at          DateTime?
+  created_at            DateTime                   @default(now())
+  updated_at            DateTime                   @updatedAt
+
+  partner_visit_records PartnerVisitRecord[]
+
+  @@unique([id, org_id])
+  @@index([org_id])
+  @@index([org_id, share_case_id])
+  @@index([org_id, partnership_id])
+  @@index([org_id, partner_pharmacy_id])
+  @@index([status])
+  @@index([desired_start_at])
+}
+
+model PartnerVisitRecord {
+  id                         String                   @id @default(cuid())
+  org_id                     String
+  org                        Organization             @relation(fields: [org_id], references: [id])
+  visit_request_id           String
+  visit_request              PharmacyVisitRequest     @relation(fields: [visit_request_id, org_id], references: [id, org_id])
+  share_case_id              String
+  share_case                 PatientShareCase         @relation(fields: [share_case_id, org_id], references: [id, org_id])
+  owner_partner_pharmacy_id  String
+  owner_partner_pharmacy     PartnerPharmacy          @relation(fields: [owner_partner_pharmacy_id, org_id], references: [id, org_id])
+  source_visit_record_id     String?
+  source_visit_record        VisitRecord?             @relation("PartnerVisitRecordSourceVisit", fields: [source_visit_record_id, org_id], references: [id, org_id])
+  revision_no                Int                      @default(1)
+  status                     PartnerVisitRecordStatus @default(draft)
+  pharmacist_id              String?
+  pharmacist_name            String?
+  visit_at                   DateTime
+  record_content             Json
+  attachments                Json?
+  submitted_at               DateTime?
+  confirmed_at               DateTime?
+  confirmed_by               String?
+  returned_at                DateTime?
+  returned_by                String?
+  returned_reason            String?
+  base_confirmation_snapshot Json?
+  created_at                 DateTime                 @default(now())
+  updated_at                 DateTime                 @updatedAt
+
+  claim_note         ClaimCooperationNote?
+  billing_candidates VisitBillingCandidate[]
+  physician_reports  CareReport[]            @relation("CareReportPartnerVisitRecord")
+
+  @@unique([id, org_id])
+  @@unique([org_id, visit_request_id, revision_no])
+  @@index([org_id])
+  @@index([org_id, share_case_id])
+  @@index([org_id, owner_partner_pharmacy_id])
+  @@index([status])
+  @@index([visit_at])
+}
+
+model ClaimCooperationNote {
+  id                       String             @id @default(cuid())
+  org_id                   String
+  org                      Organization       @relation(fields: [org_id], references: [id])
+  partner_visit_record_id  String
+  partner_visit_record     PartnerVisitRecord @relation(fields: [partner_visit_record_id, org_id], references: [id, org_id])
+  partner_pharmacy_name    String
+  visit_date               DateTime           @db.Date
+  prescription_received_by String?
+  dispensing_pharmacy_id   String?
+  dispensing_pharmacy_name String?
+  claim_status             String             @default("pending")
+  claim_note_text          String?
+  confirmed_by             String?
+  confirmed_at             DateTime?
+  created_at               DateTime           @default(now())
+  updated_at               DateTime           @updatedAt
+
+  @@unique([id, org_id])
+  @@unique([partner_visit_record_id, org_id])
+  @@index([org_id])
+  @@index([claim_status])
+  @@index([visit_date])
+}
+
+model PharmacyContract {
+  id                  String                 @id @default(cuid())
+  org_id              String
+  org                 Organization           @relation(fields: [org_id], references: [id])
+  partnership_id      String
+  partnership         PharmacyPartnership    @relation(fields: [partnership_id, org_id], references: [id, org_id])
+  status              PharmacyContractStatus @default(draft)
+  effective_from      DateTime?              @db.Date
+  effective_to        DateTime?              @db.Date
+  closing_day         Int?
+  payment_due_rule    Json?
+  base_approved_by    String?
+  base_approved_at    DateTime?
+  partner_approved_by String?
+  partner_approved_at DateTime?
+  ended_at            DateTime?
+  ended_reason        String?
+  created_by          String
+  updated_by          String?
+  created_at          DateTime               @default(now())
+  updated_at          DateTime               @updatedAt
+
+  versions  PharmacyContractVersion[]
+  invoices  PharmacyInvoice[]
+  documents ContractDocument[]
+
+  @@unique([id, org_id])
+  @@index([org_id])
+  @@index([org_id, partnership_id])
+  @@index([status])
+  @@index([effective_from, effective_to])
+}
+
+model PharmacyContractVersion {
+  id                  String           @id @default(cuid())
+  org_id              String
+  org                 Organization     @relation(fields: [org_id], references: [id])
+  contract_id         String
+  contract            PharmacyContract @relation(fields: [contract_id, org_id], references: [id, org_id], onDelete: Cascade)
+  version_no          Int
+  status              String           @default("draft")
+  effective_from      DateTime         @db.Date
+  effective_to        DateTime?        @db.Date
+  document_file_id    String?
+  change_reason       String?
+  terms_snapshot      Json             @default("{}")
+  approved_by_base    String?
+  approved_by_partner String?
+  approved_at         DateTime?
+  created_by          String
+  created_at          DateTime         @default(now())
+  updated_at          DateTime         @updatedAt
+
+  fee_rules          PharmacyContractFeeRule[]
+  billing_candidates VisitBillingCandidate[]
+  documents          ContractDocument[]
+
+  @@unique([id, org_id])
+  @@unique([org_id, contract_id, version_no])
+  @@index([org_id])
+  @@index([org_id, contract_id])
+  @@index([effective_from, effective_to])
+}
+
+model PharmacyContractFeeRule {
+  id                  String                  @id @default(cuid())
+  org_id              String
+  org                 Organization            @relation(fields: [org_id], references: [id])
+  contract_version_id String
+  contract_version    PharmacyContractVersion @relation(fields: [contract_version_id, org_id], references: [id, org_id], onDelete: Cascade)
+  billing_model       PharmacyBillingModel    @default(free)
+  unit_price          Int?
+  addon_rules         Json?
+  expense_rules       Json?
+  tax_category        PharmacyTaxCategory     @default(tax_pending)
+  tax_rate_bp         Int?
+  rounding_rule       String?
+  is_active           Boolean                 @default(true)
+  created_at          DateTime                @default(now())
+  updated_at          DateTime                @updatedAt
+
+  @@unique([id, org_id])
+  @@index([org_id])
+  @@index([org_id, contract_version_id])
+  @@index([billing_model])
+  @@index([is_active])
+}
+
+model VisitBillingCandidate {
+  id                      String                   @id @default(cuid())
+  org_id                  String
+  org                     Organization             @relation(fields: [org_id], references: [id])
+  partner_visit_record_id String
+  partner_visit_record    PartnerVisitRecord       @relation(fields: [partner_visit_record_id, org_id], references: [id, org_id])
+  contract_version_id     String?
+  contract_version        PharmacyContractVersion? @relation(fields: [contract_version_id, org_id], references: [id, org_id])
+  billing_month           DateTime                 @db.Date
+  billing_status          VisitBillingStatus       @default(candidate)
+  is_billable             Boolean                  @default(false)
+  exclusion_reason        String?
+  amount_snapshot         Json                     @default("{}")
+  confirmed_by            String?
+  confirmed_at            DateTime?
+  created_at              DateTime                 @default(now())
+  updated_at              DateTime                 @updatedAt
+
+  invoice_items PharmacyInvoiceItem[]
+
+  @@unique([id, org_id])
+  @@unique([org_id, partner_visit_record_id])
+  @@index([org_id])
+  @@index([org_id, billing_month])
+  @@index([org_id, contract_version_id])
+  @@index([billing_status])
+}
+
+model PharmacyInvoice {
+  id                 String                      @id @default(cuid())
+  org_id             String
+  org                Organization                @relation(fields: [org_id], references: [id])
+  contract_id        String
+  contract           PharmacyContract            @relation(fields: [contract_id, org_id], references: [id, org_id])
+  document_kind      PharmacyInvoiceDocumentKind @default(invoice)
+  invoice_no         String?
+  billing_month      DateTime                    @db.Date
+  issuer_snapshot    Json                        @default("{}")
+  recipient_snapshot Json                        @default("{}")
+  subtotal           Int                         @default(0)
+  tax_amount         Int                         @default(0)
+  total              Int                         @default(0)
+  status             PharmacyInvoiceStatus       @default(draft)
+  pdf_file_id        String?
+  issued_at          DateTime?
+  sent_at            DateTime?
+  received_at        DateTime?
+  paid_at            DateTime?
+  snapshot           Json                        @default("{}")
+  created_by         String
+  created_at         DateTime                    @default(now())
+  updated_at         DateTime                    @updatedAt
+
+  items PharmacyInvoiceItem[]
+
+  @@unique([id, org_id])
+  @@unique([org_id, invoice_no])
+  @@index([org_id])
+  @@index([org_id, contract_id])
+  @@index([org_id, billing_month])
+  @@index([status])
+}
+
+model PharmacyInvoiceItem {
+  id                         String                 @id @default(cuid())
+  org_id                     String
+  org                        Organization           @relation(fields: [org_id], references: [id])
+  invoice_id                 String
+  invoice                    PharmacyInvoice        @relation(fields: [invoice_id, org_id], references: [id, org_id], onDelete: Cascade)
+  visit_billing_candidate_id String?
+  visit_billing_candidate    VisitBillingCandidate? @relation(fields: [visit_billing_candidate_id, org_id], references: [id, org_id])
+  visit_date                 DateTime?              @db.Date
+  description                String
+  quantity                   Int                    @default(1)
+  unit_price                 Int                    @default(0)
+  amount                     Int                    @default(0)
+  tax_category               PharmacyTaxCategory    @default(tax_pending)
+  snapshot                   Json                   @default("{}")
+  created_at                 DateTime               @default(now())
+  updated_at                 DateTime               @updatedAt
+
+  @@unique([id, org_id])
+  @@unique([org_id, visit_billing_candidate_id])
+  @@index([org_id])
+  @@index([org_id, invoice_id])
+  @@index([org_id, visit_billing_candidate_id])
+  @@index([visit_date])
+}
+
+model ContractDocument {
+  id            String                   @id @default(cuid())
+  org_id        String
+  org           Organization             @relation(fields: [org_id], references: [id])
+  contract_id   String
+  contract      PharmacyContract         @relation(fields: [contract_id, org_id], references: [id, org_id], onDelete: Cascade)
+  version_id    String?
+  version       PharmacyContractVersion? @relation(fields: [version_id, org_id], references: [id, org_id])
+  template_id   String?
+  file_id       String?
+  document_type String                   @default("basic_contract")
+  hash_value    String?
+  signed_at     DateTime?
+  created_by    String
+  created_at    DateTime                 @default(now())
+  updated_at    DateTime                 @updatedAt
+
+  @@unique([id, org_id])
+  @@index([org_id])
+  @@index([org_id, contract_id])
+  @@index([org_id, version_id])
+  @@index([document_type])
+}

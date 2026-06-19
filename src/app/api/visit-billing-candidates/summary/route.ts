@@ -1,0 +1,131 @@
+import { withAuthContext } from '@/lib/auth/context';
+import { validationError, success } from '@/lib/api/response';
+import { readJsonObject } from '@/lib/db/json';
+import { withOrgContext } from '@/lib/db/rls';
+import {
+  BILLING_MONTH_FORMAT_MESSAGE,
+  parseStrictBillingMonth,
+} from '../../billing-candidates/billing-month';
+
+function optionalSearchParam(value: string | null) {
+  const trimmed = value?.trim() ?? '';
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function readAmountSnapshot(value: unknown) {
+  const object = readJsonObject(value);
+  const amount = object?.amount;
+  const billingModel = object?.billing_model;
+  return {
+    amount: typeof amount === 'number' && Number.isFinite(amount) ? amount : null,
+    billingModel: typeof billingModel === 'string' ? billingModel : null,
+  };
+}
+
+export const GET = withAuthContext(
+  async (req, ctx) => {
+    const { searchParams } = new URL(req.url);
+    const billingMonthInput = searchParams.get('billing_month');
+    if (!billingMonthInput) return validationError('billing_month は必須です');
+    const billingMonth = parseStrictBillingMonth(billingMonthInput);
+    if (!billingMonth) return validationError(BILLING_MONTH_FORMAT_MESSAGE);
+
+    const shareCaseId = optionalSearchParam(searchParams.get('share_case_id'));
+    const partnerPharmacyId = optionalSearchParam(searchParams.get('partner_pharmacy_id'));
+    const recordFilter =
+      shareCaseId || partnerPharmacyId
+        ? {
+            ...(shareCaseId ? { share_case_id: shareCaseId } : {}),
+            ...(partnerPharmacyId ? { owner_partner_pharmacy_id: partnerPharmacyId } : {}),
+          }
+        : {};
+
+    const result = await withOrgContext(ctx.orgId, async (tx) => {
+      const [totalVisitRecords, confirmedVisitRecords, candidateRows] = await Promise.all([
+        tx.partnerVisitRecord.count({
+          where: {
+            org_id: ctx.orgId,
+            visit_at: { gte: billingMonth.start, lt: billingMonth.nextStart },
+            ...recordFilter,
+          },
+        }),
+        tx.partnerVisitRecord.count({
+          where: {
+            org_id: ctx.orgId,
+            status: 'confirmed',
+            confirmed_at: { not: null },
+            visit_at: { gte: billingMonth.start, lt: billingMonth.nextStart },
+            ...recordFilter,
+          },
+        }),
+        tx.visitBillingCandidate.findMany({
+          where: {
+            org_id: ctx.orgId,
+            billing_month: billingMonth.start,
+            ...(shareCaseId || partnerPharmacyId
+              ? {
+                  partner_visit_record: recordFilter,
+                }
+              : {}),
+          },
+          select: {
+            id: true,
+            billing_status: true,
+            is_billable: true,
+            amount_snapshot: true,
+          },
+        }),
+      ]);
+
+      let freeCount = 0;
+      let paidCount = 0;
+      let plannedAmount = 0;
+      let billableCount = 0;
+      let excludedCount = 0;
+      let invoicedCount = 0;
+
+      for (const candidate of candidateRows) {
+        if (candidate.billing_status === 'excluded') excludedCount += 1;
+        if (candidate.billing_status === 'invoiced') invoicedCount += 1;
+        if (!candidate.is_billable) continue;
+
+        billableCount += 1;
+        const snapshot = readAmountSnapshot(candidate.amount_snapshot);
+        if (snapshot.billingModel === 'free') {
+          freeCount += 1;
+          continue;
+        }
+        paidCount += 1;
+        plannedAmount += snapshot.amount ?? 0;
+      }
+
+      return {
+        billing_month: billingMonth.canonical,
+        filters: {
+          share_case_id: shareCaseId ?? null,
+          partner_pharmacy_id: partnerPharmacyId ?? null,
+        },
+        visit_record_count: totalVisitRecords,
+        confirmed_visit_record_count: confirmedVisitRecords,
+        unconfirmed_visit_record_count: Math.max(totalVisitRecords - confirmedVisitRecords, 0),
+        generated_candidate_count: candidateRows.length,
+        billable_candidate_count: billableCount,
+        excluded_candidate_count: excludedCount,
+        invoiced_candidate_count: invoicedCount,
+        free_candidate_count: freeCount,
+        paid_candidate_count: paidCount,
+        planned_invoice_amount: plannedAmount,
+        pending_candidate_generation_count: Math.max(
+          confirmedVisitRecords - candidateRows.length,
+          0,
+        ),
+      };
+    });
+
+    return success(result);
+  },
+  {
+    permission: 'canManageBilling',
+    message: '薬局間協力訪問の月次実績閲覧権限がありません',
+  },
+);

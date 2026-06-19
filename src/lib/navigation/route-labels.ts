@@ -1,9 +1,11 @@
 export const PATH_LABELS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /^\/dashboard$/, label: 'ホーム' },
   { pattern: /^\/my-day(\/.*)?$/, label: 'My Day' },
+  { pattern: /^\/workflow\/pharmacy-cooperation(\/.*)?$/, label: '薬局間協力' },
   { pattern: /^\/workflow(\/.*)?$/, label: 'ワークフロー' },
   { pattern: /^\/tasks(\/.*)?$/, label: 'タスク' },
   { pattern: /^\/communications\/requests(\/.*)?$/, label: '依頼・照会' },
+  { pattern: /^\/billing\/partner-cooperation(\/.*)?$/, label: '薬局間協力' },
   { pattern: /^\/billing\/candidates(\/.*)?$/, label: '請求候補' },
   { pattern: /^\/billing(\/.*)?$/, label: '請求' },
   { pattern: /^\/patients\/new$/, label: '患者新規登録' },
@@ -47,6 +49,7 @@ export const PATH_LABELS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /^\/admin\/operations-insights(\/.*)?$/, label: '在宅業務の動きを見る' },
   { pattern: /^\/admin\/notification-settings(\/.*)?$/, label: '通知設定' },
   { pattern: /^\/admin\/performance(\/.*)?$/, label: 'パフォーマンス' },
+  { pattern: /^\/admin\/pharmacy-cooperation(\/.*)?$/, label: '薬局間協力設定' },
   { pattern: /^\/admin\/analytics(\/.*)?$/, label: 'KPI分析' },
   { pattern: /^\/admin\/professionals(\/.*)?$/, label: '他職種' },
   { pattern: /^\/admin\/realtime(\/.*)?$/, label: 'リアルタイム監視' },
@@ -105,7 +108,10 @@ const SEGMENT_LABELS: Record<string, string> = {
   'notification-settings': '通知設定',
   'operations-insights': '在宅業務の動きを見る',
   patients: '患者',
+  'partner-cooperation': '薬局間協力',
   performance: '性能',
+  'pharmacy-cooperation': '薬局間協力',
+  'pharmacy-cooperation-setup': '薬局間協力設定',
   pharmacists: '薬剤師',
   'pharmacist-credentials': '薬剤師資格',
   'pharmacy-sites': '薬局情報',
@@ -138,6 +144,7 @@ export function labelForPath(pathname: string) {
 
 export function labelForSegment(segment: string, previous?: string): string {
   if (segment === 'analytics' && previous === 'reports') return '送達分析';
+  if (segment === 'pharmacy-cooperation' && previous === 'admin') return '薬局間協力設定';
   if (segment === 'prescriptions') {
     return previous === 'patients' ? '処方履歴' : '処方受付';
   }

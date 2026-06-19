@@ -29,7 +29,8 @@ export default async function WorkflowDashboardPage({ searchParams }: WorkflowDa
           <div className="space-y-1">
             <p className="text-sm font-medium text-foreground">確認順序</p>
             <p className="text-sm text-muted-foreground">
-              まず 8 工程の本流を確認し、その後に工程別の滞留件数と例外を見て、各ワークベンチや連携画面へ進みます。
+              まず 8
+              工程の本流を確認し、その後に工程別の滞留件数と例外を見て、各ワークベンチや連携画面へ進みます。
             </p>
           </div>
         }
@@ -37,6 +38,7 @@ export default async function WorkflowDashboardPage({ searchParams }: WorkflowDa
       >
         <PageShortcutLinks
           links={[
+            { href: '/workflow/pharmacy-cooperation', label: '薬局間協力' },
             { href: '/conferences', label: '多職種連携' },
             { href: '/communications/requests', label: '依頼・照会' },
             { href: '/notifications', label: '通知' },
