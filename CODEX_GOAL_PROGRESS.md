@@ -4131,3 +4131,32 @@ Implemented:
 
 - Direct DB-backed proof and migration application remain explicit-approval blocked.
 - Next non-DB candidates include wiring the shared output policy into concrete output routes where share-case context is available, broader role-matrix browser proof after DB apply, and pharmacy-cooperation responsive/a11y hardening.
+
+## 20260620-0015 JST - Alert Rule Delete Confirmation
+
+### Summary
+
+- Added an explicit destructive confirmation before deleting prescription safety alert rules.
+- Named the target alert type and severity in the confirmation copy.
+- Added a target-specific accessible name to the alert-rule delete action.
+- Added a regression test proving the DELETE request is not sent until the confirmation action is clicked.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/alert-rules/page.tsx`
+- `src/app/(dashboard)/admin/alert-rules/page.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/alert-rules/page.tsx' 'src/app/(dashboard)/admin/alert-rules/page.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/alert-rules/page.test.tsx' src/components/ui/confirm-dialog.test.tsx --reporter=dot --testTimeout=30000`: passed, 2 files / 5 tests.
+- Targeted ESLint over touched alert-rule and confirm-dialog files: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Remaining candidates include broader admin destructive-action consistency, pharmacy-cooperation responsive table density, select accessible-name gaps outside the touched admin forms, raw table/DataTable convergence, and expanded browser/a11y proof.

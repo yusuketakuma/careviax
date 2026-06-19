@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminAlertRulesShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -52,6 +53,7 @@ export default function AlertRulesPage() {
     conditionText: '{}',
   });
   const [testCycleId, setTestCycleId] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<DrugAlertRule | null>(null);
 
   const rulesQuery = useQuery({
     queryKey: ['drug-alert-rules', orgId],
@@ -123,9 +125,23 @@ export default function AlertRulesPage() {
       });
       if (!res.ok) throw new Error('削除に失敗しました');
     },
-    onSuccess: async () => {
+    onSuccess: async (_data, deletedId) => {
       toast.success('処方安全アラートルールを削除しました');
+      if (form.id === deletedId) {
+        setForm({
+          id: '',
+          alert_type: 'interaction',
+          severity: 'warning',
+          is_active: true,
+          message: '',
+          conditionText: '{}',
+        });
+      }
+      setDeleteTarget(null);
       await queryClient.invalidateQueries({ queryKey: ['drug-alert-rules', orgId] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '削除に失敗しました');
     },
   });
 
@@ -341,8 +357,11 @@ export default function AlertRulesPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => deleteMutation.mutate(rule.id)}
+                            onClick={() => setDeleteTarget(rule)}
                             disabled={deleteMutation.isPending}
+                            aria-label={`${
+                              ALERT_TYPE_LABELS[rule.alert_type] ?? rule.alert_type
+                            } の処方安全アラートルールを削除`}
                           >
                             削除
                           </Button>
@@ -363,6 +382,32 @@ export default function AlertRulesPage() {
 
       {/* p1_14: 気になる処方の表示設定(強く表示/標準+カードプレビュー) */}
       <SignalTuningPanel />
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleteMutation.isPending) {
+            setDeleteTarget(null);
+          }
+        }}
+        title="処方安全アラートルールを削除しますか"
+        description={
+          deleteTarget
+            ? `${
+                ALERT_TYPE_LABELS[deleteTarget.alert_type] ?? deleteTarget.alert_type
+              }（${deleteTarget.severity}）の組織ルールを削除します。この操作は取り消せません。処方安全チェックの表示に反映されます。`
+            : ''
+        }
+        confirmLabel={deleteMutation.isPending ? '削除中...' : '削除する'}
+        confirmDisabled={deleteMutation.isPending}
+        variant="destructive"
+        closeOnConfirm={false}
+        onConfirm={() => {
+          if (deleteTarget) {
+            deleteMutation.mutate(deleteTarget.id);
+          }
+        }}
+      />
     </PageScaffold>
   );
 }
