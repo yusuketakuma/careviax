@@ -4478,6 +4478,63 @@ Implemented:
 
 - Shift calendar edit cells are now keyboard-accessible. The monthly matrix remains a calendar-style table rather than a DataTable; future work should focus on grid semantics or browser/a11y proof.
 
+## 20260620-0244 JST - Billing Check Review DataTable
+
+### Summary
+
+- Replaced the billing-check review raw table with the shared `DataTable`.
+- Kept the toolbar limited to column visibility because the rows contain patient labels.
+- Added regression coverage that the review table has a captioned table, a column control, and no search textbox.
+
+### Files Changed
+
+- `src/app/(dashboard)/billing/billing-check-content.tsx`
+- `src/app/(dashboard)/billing/billing-check-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/billing/billing-check-content.tsx' 'src/app/(dashboard)/billing/billing-check-content.test.tsx'`: passed.
+- `pnpm exec eslint 'src/app/(dashboard)/billing/billing-check-content.tsx' 'src/app/(dashboard)/billing/billing-check-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/billing/billing-check-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 7 tests.
+- `if rg -n '<table|overflow-x-auto|min-w-full' 'src/app/(dashboard)/billing/billing-check-content.tsx'; then exit 1; else echo 'no raw billing check review table'; fi`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Billing-check review list now uses the shared DataTable shell without global search, CSV, or print output. Remaining PHI-bearing raw tables should follow the same search-disabled pattern if converted.
+
+## 20260620-0245 JST - Prescription History Native Toggles
+
+### Summary
+
+- Replaced the prescription-intake card header's click/role behavior with a native button.
+- Added date-only open/close accessible names and kept patient/drug names out of the toggle name.
+- Added regression coverage for the native button tag, `aria-expanded`, and PHI-minimized label.
+
+### Files Changed
+
+- `src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx`
+- `src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/billing/billing-check-content.tsx' 'src/app/(dashboard)/billing/billing-check-content.test.tsx' 'src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx' 'src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.test.tsx'`: passed.
+- `pnpm exec eslint 'src/app/(dashboard)/billing/billing-check-content.tsx' 'src/app/(dashboard)/billing/billing-check-content.test.tsx' 'src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.tsx' 'src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/billing/billing-check-content.test.tsx' 'src/app/(dashboard)/patients/[id]/prescriptions/prescription-history-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 2 files / 9 tests.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Prescription history card toggles are now native buttons. Broader prescription-history raw table and print surfaces remain separate candidates.
+
 ## 20260620-0057 JST - QR Draft Case Selector Label
 
 ### Summary
