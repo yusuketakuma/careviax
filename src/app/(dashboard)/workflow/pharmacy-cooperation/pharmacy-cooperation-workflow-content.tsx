@@ -124,6 +124,35 @@ type PatientShareConsentForm = {
   allowAttachments: boolean;
 };
 
+type VisitRequestUrgency = 'normal' | 'urgent' | 'emergency';
+type VisitRequestVisitType =
+  | ''
+  | 'initial'
+  | 'regular'
+  | 'temporary'
+  | 'revisit'
+  | 'delivery_only'
+  | 'emergency'
+  | 'physician_co_visit';
+
+type VisitRequestForm = {
+  urgency: VisitRequestUrgency;
+  visitType: VisitRequestVisitType;
+  desiredStartAt: string;
+  desiredEndAt: string;
+  requestReason: string;
+  physicianInstruction: string;
+  carryItems: string;
+  patientHomeNotes: string;
+};
+
+type VisitRequestEstimateSnapshot = {
+  estimate_status?: string | null;
+  billing_model?: string | null;
+  unit_price?: number | null;
+  tax_category?: string | null;
+};
+
 type PartnerVisitRecordDraftForm = {
   pharmacistId: string;
   pharmacistName: string;
@@ -144,7 +173,10 @@ type PharmacyVisitRequestRow = {
   desired_end_at: string | null;
   visit_type: string | null;
   status: string;
+  contract_id: string | null;
+  contract_version_id: string | null;
   estimated_amount: number | null;
+  estimated_snapshot: VisitRequestEstimateSnapshot | null;
   accepted_at: string | null;
   declined_at: string | null;
   completed_at: string | null;
@@ -286,6 +318,30 @@ const EMPTY_PATIENT_SHARE_CONSENT_FORM: PatientShareConsentForm = {
   allowAttachments: false,
 };
 
+const VISIT_REQUEST_VISIT_TYPE_OPTIONS: Array<{
+  value: Exclude<VisitRequestVisitType, ''>;
+  label: string;
+}> = [
+  { value: 'initial', label: '初回' },
+  { value: 'regular', label: '定期' },
+  { value: 'temporary', label: '臨時' },
+  { value: 'revisit', label: '再訪' },
+  { value: 'delivery_only', label: '配達のみ' },
+  { value: 'emergency', label: '緊急' },
+  { value: 'physician_co_visit', label: '医師同行' },
+];
+
+const EMPTY_VISIT_REQUEST_FORM: VisitRequestForm = {
+  urgency: 'normal',
+  visitType: 'regular',
+  desiredStartAt: '',
+  desiredEndAt: '',
+  requestReason: '',
+  physicianInstruction: '',
+  carryItems: '',
+  patientHomeNotes: '',
+};
+
 const EMPTY_PARTNER_VISIT_RECORD_DRAFT_FORM: PartnerVisitRecordDraftForm = {
   pharmacistId: '',
   pharmacistName: '',
@@ -366,9 +422,40 @@ function formatYen(value: number | null | undefined) {
   return `${Math.round(value).toLocaleString('ja-JP')}円`;
 }
 
+function billingModelLabel(value: string | null | undefined) {
+  const labels: Record<string, string> = {
+    free: '無償',
+    fixed_per_visit: '1訪問固定',
+    per_visit_with_addon: '1訪問+加算',
+    actual_cost: '実費',
+    monthly_fixed: '月額固定',
+    tiered_by_count: '件数段階',
+    custom_quote: '個別見積',
+  };
+  return value ? (labels[value] ?? value) : '費用条件未確定';
+}
+
+function estimateStatusLabel(value: string | null | undefined) {
+  const labels: Record<string, string> = {
+    estimated: '見積済み',
+    missing_active_contract: '有効契約なし',
+    missing_active_contract_version: '有効契約版なし',
+    missing_fee_rule: '費用条件なし',
+    manual_estimate_required: '手動見積',
+  };
+  return value ? (labels[value] ?? value) : '見積未確定';
+}
+
 function datetimeLocalToIso(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toISOString();
+}
+
+function multilineItems(value: string) {
+  return value
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
 }
 
 function buildPartnerVisitRecordContent(form: PartnerVisitRecordDraftForm) {
@@ -1069,6 +1156,26 @@ function VisitRequestsTable({
               </td>
               <td className="px-3 py-2 text-right tabular-nums">
                 {formatYen(row.estimated_amount)}
+                <div className="mt-1">
+                  <TinyMeta>
+                    {row.contract_id ? `契約 ${row.contract_id}` : '契約未確定'}
+                    {row.contract_version_id ? ` / 版 ${row.contract_version_id}` : ''}
+                  </TinyMeta>
+                </div>
+                <div className="mt-1">
+                  <TinyMeta>
+                    {billingModelLabel(row.estimated_snapshot?.billing_model)}
+                    {row.estimated_snapshot?.unit_price !== null &&
+                    row.estimated_snapshot?.unit_price !== undefined
+                      ? ` / 単価 ${formatYen(row.estimated_snapshot.unit_price)}`
+                      : ''}
+                  </TinyMeta>
+                </div>
+                <div className="mt-1">
+                  <TinyMeta>
+                    {estimateStatusLabel(row.estimated_snapshot?.estimate_status)}
+                  </TinyMeta>
+                </div>
               </td>
               <td className="min-w-72 px-3 py-2">
                 {row.status === 'requested' ? (
@@ -1115,6 +1222,177 @@ function VisitRequestsTable({
         })}
       </tbody>
     </TableFrame>
+  );
+}
+
+function VisitRequestCreatePanel({
+  activeShareCases,
+  selectedShareCaseId,
+  setSelectedShareCaseId,
+  form,
+  setForm,
+  isBusy,
+  onCreate,
+}: {
+  activeShareCases: PatientShareCaseRow[];
+  selectedShareCaseId: string;
+  setSelectedShareCaseId: (id: string) => void;
+  form: VisitRequestForm;
+  setForm: Dispatch<SetStateAction<VisitRequestForm>>;
+  isBusy: boolean;
+  onCreate: () => void;
+}) {
+  const selectedShareCase = activeShareCases.find((row) => row.id === selectedShareCaseId) ?? null;
+  const hasOrderedWindow =
+    !form.desiredStartAt.trim() ||
+    !form.desiredEndAt.trim() ||
+    form.desiredEndAt > form.desiredStartAt;
+  const canCreate =
+    Boolean(selectedShareCase) &&
+    hasOrderedWindow &&
+    form.desiredStartAt.trim().length > 0 &&
+    form.requestReason.trim().length > 0;
+
+  return (
+    <div className="mb-4 rounded-md border border-border/60 bg-muted/30 p-3">
+      <div className="grid gap-3 lg:grid-cols-[minmax(12rem,18rem)_1fr]">
+        <label className="flex flex-col gap-1">
+          <FieldLabel>共有ケース</FieldLabel>
+          <NativeSelect
+            value={selectedShareCaseId}
+            onChange={setSelectedShareCaseId}
+            disabled={activeShareCases.length === 0}
+            ariaLabel="訪問依頼作成の共有ケース"
+          >
+            {activeShareCases.length === 0 ? <option value="">未選択</option> : null}
+            {activeShareCases.map((row) => (
+              <option key={row.id} value={row.id}>
+                {row.id} / {row.partnership.partner_pharmacy.name}
+              </option>
+            ))}
+          </NativeSelect>
+        </label>
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <label className="flex flex-col gap-1">
+            <FieldLabel>緊急度</FieldLabel>
+            <NativeSelect
+              value={form.urgency}
+              onChange={(value) =>
+                setForm((current) => ({ ...current, urgency: value as VisitRequestUrgency }))
+              }
+              ariaLabel="訪問依頼の緊急度"
+            >
+              <option value="normal">通常</option>
+              <option value="urgent">急ぎ</option>
+              <option value="emergency">緊急</option>
+            </NativeSelect>
+          </label>
+          <label className="flex flex-col gap-1">
+            <FieldLabel>訪問区分</FieldLabel>
+            <NativeSelect
+              value={form.visitType}
+              onChange={(value) =>
+                setForm((current) => ({
+                  ...current,
+                  visitType: value as VisitRequestVisitType,
+                }))
+              }
+              ariaLabel="訪問依頼の訪問区分"
+            >
+              <option value="">未指定</option>
+              {VISIT_REQUEST_VISIT_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </NativeSelect>
+          </label>
+          <label className="flex flex-col gap-1">
+            <FieldLabel>希望開始</FieldLabel>
+            <Input
+              type="datetime-local"
+              value={form.desiredStartAt}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, desiredStartAt: event.target.value }))
+              }
+              aria-label="訪問依頼の希望開始"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <FieldLabel>希望終了</FieldLabel>
+            <Input
+              type="datetime-local"
+              value={form.desiredEndAt}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, desiredEndAt: event.target.value }))
+              }
+              aria-label="訪問依頼の希望終了"
+            />
+          </label>
+          <label className="flex flex-col gap-1 sm:col-span-2">
+            <FieldLabel>依頼理由</FieldLabel>
+            <Textarea
+              value={form.requestReason}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, requestReason: event.target.value }))
+              }
+              aria-label="訪問依頼の依頼理由"
+              className="min-h-20"
+            />
+          </label>
+          <label className="flex flex-col gap-1 sm:col-span-2">
+            <FieldLabel>医師指示</FieldLabel>
+            <Textarea
+              value={form.physicianInstruction}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  physicianInstruction: event.target.value,
+                }))
+              }
+              aria-label="訪問依頼の医師指示"
+              className="min-h-20"
+            />
+          </label>
+          <label className="flex flex-col gap-1 sm:col-span-2">
+            <FieldLabel>持参薬・物品</FieldLabel>
+            <Textarea
+              value={form.carryItems}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, carryItems: event.target.value }))
+              }
+              aria-label="訪問依頼の持参薬・物品"
+              className="min-h-20"
+            />
+          </label>
+          <label className="flex flex-col gap-1 sm:col-span-2">
+            <FieldLabel>居宅注意事項</FieldLabel>
+            <Textarea
+              value={form.patientHomeNotes}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, patientHomeNotes: event.target.value }))
+              }
+              aria-label="訪問依頼の居宅注意事項"
+              className="min-h-20"
+            />
+          </label>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <Button type="button" disabled={isBusy || !canCreate} onClick={onCreate}>
+          <Send className="size-4" aria-hidden="true" />
+          訪問依頼を作成
+        </Button>
+        <TinyMeta>
+          {selectedShareCase
+            ? `${selectedShareCase.partnership.partner_pharmacy.name} / ${formatDate(
+                selectedShareCase.starts_at,
+              )} - ${formatDate(selectedShareCase.ends_at)}`
+            : '共有中ケースなし'}
+        </TinyMeta>
+        {!hasOrderedWindow ? <TinyMeta>希望終了は開始より後にしてください</TinyMeta> : null}
+      </div>
+    </div>
   );
 }
 
@@ -1661,6 +1939,9 @@ export function PharmacyCooperationWorkflowContent() {
   const [consentRevokeReasons, setConsentRevokeReasons] = useState<Record<string, string>>({});
   const [selectedCorrectionShareCaseId, setSelectedCorrectionShareCaseId] = useState('');
   const [correctionForm, setCorrectionForm] = useState<CorrectionForm>(EMPTY_CORRECTION_FORM);
+  const [selectedVisitRequestShareCaseId, setSelectedVisitRequestShareCaseId] = useState('');
+  const [visitRequestForm, setVisitRequestForm] =
+    useState<VisitRequestForm>(EMPTY_VISIT_REQUEST_FORM);
   const [selectedRecordVisitRequestId, setSelectedRecordVisitRequestId] = useState('');
   const [recordDraftForm, setRecordDraftForm] = useState<PartnerVisitRecordDraftForm>(
     EMPTY_PARTNER_VISIT_RECORD_DRAFT_FORM,
@@ -1692,6 +1973,7 @@ export function PharmacyCooperationWorkflowContent() {
   const shareCases = shareCasesQuery.data?.data ?? [];
   const visitRequests = visitRequestsQuery.data?.data ?? [];
   const partnerVisitRecords = partnerVisitRecordsQuery.data?.data ?? [];
+  const activeShareCases = shareCases.filter((shareCase) => shareCase.status === 'active');
   const draftableVisitRequests = visitRequests.filter(
     (request) => request.status === 'accepted' || request.status === 'completed',
   );
@@ -1715,6 +1997,12 @@ export function PharmacyCooperationWorkflowContent() {
   const effectiveCorrectionShareCaseId = selectedCorrectionShareCaseStillVisible
     ? selectedCorrectionShareCaseId
     : (correctionDefaultShareCase?.id ?? '');
+  const selectedVisitRequestShareCaseStillVisible = activeShareCases.some(
+    (row) => row.id === selectedVisitRequestShareCaseId,
+  );
+  const effectiveVisitRequestShareCaseId = selectedVisitRequestShareCaseStillVisible
+    ? selectedVisitRequestShareCaseId
+    : (activeShareCases[0]?.id ?? '');
 
   const correctionRequestsQuery = useQuery({
     queryKey: ['pharmacy-cooperation-correction-requests', orgId, effectiveCorrectionShareCaseId],
@@ -1921,6 +2209,45 @@ export function PharmacyCooperationWorkflowContent() {
     },
   });
 
+  const createVisitRequestMutation = useMutation({
+    mutationFn: async () => {
+      const carryItems = multilineItems(visitRequestForm.carryItems);
+      const response = await fetch('/api/pharmacy-visit-requests', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-org-id': orgId,
+        },
+        body: JSON.stringify({
+          share_case_id: effectiveVisitRequestShareCaseId,
+          urgency: visitRequestForm.urgency,
+          ...(visitRequestForm.visitType ? { visit_type: visitRequestForm.visitType } : {}),
+          desired_start_at: datetimeLocalToIso(visitRequestForm.desiredStartAt),
+          ...(visitRequestForm.desiredEndAt.trim()
+            ? { desired_end_at: datetimeLocalToIso(visitRequestForm.desiredEndAt) }
+            : {}),
+          request_reason: visitRequestForm.requestReason.trim(),
+          ...(visitRequestForm.physicianInstruction.trim()
+            ? { physician_instruction: visitRequestForm.physicianInstruction.trim() }
+            : {}),
+          ...(carryItems.length > 0 ? { carry_items: carryItems } : {}),
+          ...(visitRequestForm.patientHomeNotes.trim()
+            ? { patient_home_notes: visitRequestForm.patientHomeNotes.trim() }
+            : {}),
+        }),
+      });
+      return readApiJson<PharmacyVisitRequestRow>(response);
+    },
+    onSuccess: async () => {
+      toast.success('訪問依頼を作成しました');
+      setVisitRequestForm(EMPTY_VISIT_REQUEST_FORM);
+      await invalidateWorkflow();
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : '訪問依頼の作成に失敗しました');
+    },
+  });
+
   const savePartnerVisitRecordDraftMutation = useMutation({
     mutationFn: async () => {
       const response = await fetch('/api/partner-visit-records', {
@@ -2064,6 +2391,7 @@ export function PharmacyCooperationWorkflowContent() {
     createPatientShareConsentMutation.isPending ||
     revokePatientShareConsentMutation.isPending ||
     createCorrectionRequestMutation.isPending ||
+    createVisitRequestMutation.isPending ||
     savePartnerVisitRecordDraftMutation.isPending ||
     visitRequestDecisionMutation.isPending ||
     submitRecordMutation.isPending ||
@@ -2211,8 +2539,17 @@ export function PharmacyCooperationWorkflowContent() {
 
       <SectionShell
         title="協力薬局への訪問依頼"
-        description="受諾・辞退に必要な依頼状態を確認します。"
+        description="訪問依頼を作成し、受諾・辞退に必要な状態を確認します。"
       >
+        <VisitRequestCreatePanel
+          activeShareCases={activeShareCases}
+          selectedShareCaseId={effectiveVisitRequestShareCaseId}
+          setSelectedShareCaseId={setSelectedVisitRequestShareCaseId}
+          form={visitRequestForm}
+          setForm={setVisitRequestForm}
+          isBusy={isBusy}
+          onCreate={() => createVisitRequestMutation.mutate()}
+        />
         <QueryFallback
           isLoading={visitRequestsQuery.isLoading}
           isError={visitRequestsQuery.isError}

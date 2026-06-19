@@ -231,7 +231,15 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   desired_end_at: null,
                   visit_type: 'regular',
                   status: 'requested',
+                  contract_id: 'contract_1',
+                  contract_version_id: 'contract_version_1',
                   estimated_amount: 5500,
+                  estimated_snapshot: {
+                    estimate_status: 'estimated',
+                    billing_model: 'fixed_per_visit',
+                    unit_price: 5500,
+                    tax_category: 'taxable',
+                  },
                   accepted_at: null,
                   declined_at: null,
                   completed_at: null,
@@ -258,7 +266,15 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   desired_end_at: null,
                   visit_type: 'regular',
                   status: 'accepted',
+                  contract_id: 'contract_1',
+                  contract_version_id: 'contract_version_1',
                   estimated_amount: 5500,
+                  estimated_snapshot: {
+                    estimate_status: 'estimated',
+                    billing_model: 'fixed_per_visit',
+                    unit_price: 5500,
+                    tax_category: 'taxable',
+                  },
                   accepted_at: '2026-06-20T00:30:00.000Z',
                   declined_at: null,
                   completed_at: null,
@@ -416,6 +432,46 @@ describe('PharmacyCooperationWorkflowContent', () => {
           return new Response(JSON.stringify({ id: 'visit_request_1', status: 'accepted' }), {
             status: 200,
           });
+        }
+        if (url === '/api/pharmacy-visit-requests' && init?.method === 'POST') {
+          return new Response(
+            JSON.stringify({
+              id: 'visit_request_created',
+              share_case_id: 'share_case_active',
+              urgency: 'emergency',
+              desired_start_at: '2026-06-20T01:30:00.000Z',
+              desired_end_at: '2026-06-20T02:30:00.000Z',
+              visit_type: 'physician_co_visit',
+              status: 'requested',
+              contract_id: 'contract_1',
+              contract_version_id: 'contract_version_1',
+              estimated_amount: 8800,
+              estimated_snapshot: {
+                estimate_status: 'estimated',
+                billing_model: 'per_visit_with_addon',
+                unit_price: 8800,
+                tax_category: 'taxable',
+              },
+              accepted_at: null,
+              declined_at: null,
+              completed_at: null,
+              partner_pharmacy: {
+                id: 'partner_pharmacy_1',
+                name: '協力薬局',
+                status: 'active',
+              },
+              partnership: {
+                id: 'partnership_1',
+                base_site: { id: 'site_1', name: '基幹薬局' },
+              },
+              has_request_reason: true,
+              has_physician_instruction: true,
+              has_carry_items: true,
+              has_patient_home_notes: true,
+              has_decline_reason: false,
+            }),
+            { status: 201 },
+          );
         }
         if (url === '/api/partner-visit-records' && init?.method === 'POST') {
           return new Response(
@@ -665,6 +721,81 @@ describe('PharmacyCooperationWorkflowContent', () => {
         }),
       );
     });
+  });
+
+  it('creates a pharmacy visit request with contract-estimate fields and no raw clinical text in the list', async () => {
+    renderContent();
+
+    await screen.findByText('share_case_active');
+
+    const createButton = screen.getByRole('button', { name: /訪問依頼を作成/ });
+    expect((createButton as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.change(screen.getByRole('combobox', { name: '訪問依頼作成の共有ケース' }), {
+      target: { value: 'share_case_active' },
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: '訪問依頼の緊急度' }), {
+      target: { value: 'emergency' },
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: '訪問依頼の訪問区分' }), {
+      target: { value: 'physician_co_visit' },
+    });
+    fireEvent.change(screen.getByLabelText('訪問依頼の希望開始'), {
+      target: { value: '2026-06-20T10:30' },
+    });
+    fireEvent.change(screen.getByLabelText('訪問依頼の希望終了'), {
+      target: { value: '2026-06-20T11:30' },
+    });
+    fireEvent.change(screen.getByLabelText('訪問依頼の依頼理由'), {
+      target: { value: '  退院直後の服薬確認が必要です  ' },
+    });
+    fireEvent.change(screen.getByLabelText('訪問依頼の医師指示'), {
+      target: { value: '  血圧と副作用を確認  ' },
+    });
+    fireEvent.change(screen.getByLabelText('訪問依頼の持参薬・物品'), {
+      target: { value: '分包済み一包\n\n残薬バッグ' },
+    });
+    fireEvent.change(screen.getByLabelText('訪問依頼の居宅注意事項'), {
+      target: { value: '  玄関暗証番号は家族へ確認  ' },
+    });
+
+    expect((createButton as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(createButton);
+
+    await waitFor(() => {
+      const createVisitRequestCall = vi
+        .mocked(fetch)
+        .mock.calls.find(
+          ([input, init]) =>
+            String(input) === '/api/pharmacy-visit-requests' && init?.method === 'POST',
+        );
+      expect(createVisitRequestCall).toBeTruthy();
+      expect(createVisitRequestCall?.[1]?.headers).toEqual(
+        expect.objectContaining({
+          'content-type': 'application/json',
+          'x-org-id': 'org_1',
+        }),
+      );
+      expect(JSON.parse(String(createVisitRequestCall?.[1]?.body))).toEqual({
+        share_case_id: 'share_case_active',
+        urgency: 'emergency',
+        visit_type: 'physician_co_visit',
+        desired_start_at: new Date('2026-06-20T10:30').toISOString(),
+        desired_end_at: new Date('2026-06-20T11:30').toISOString(),
+        request_reason: '退院直後の服薬確認が必要です',
+        physician_instruction: '血圧と副作用を確認',
+        carry_items: ['分包済み一包', '残薬バッグ'],
+        patient_home_notes: '玄関暗証番号は家族へ確認',
+      });
+    });
+
+    expect(document.body.textContent).not.toContain('退院直後の服薬確認が必要です');
+    expect(document.body.textContent).not.toContain('血圧と副作用を確認');
+    expect(document.body.textContent).not.toContain('玄関暗証番号');
+    expect(screen.getAllByText(/契約 contract_1/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/1訪問固定/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/単価 5,500円/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/見積済み/).length).toBeGreaterThan(0);
   });
 
   it('creates and lists correction requests without rendering raw reason or proposed value', async () => {
