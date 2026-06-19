@@ -4807,6 +4807,34 @@ Implemented:
 
 - UI/UX remediation remains active. Patient detail input/select label coverage now includes master, contacts, cases, care team, and visit constraints. Broader remaining candidates include workflow pharmacy cooperation labels, raw table/DataTable convergence, and expanded browser/a11y proof.
 
+## 20260620-0121 JST - Inquiry Workbench Input Label Associations
+
+### Summary
+
+- Added row-scoped accessible labels to inquiry workbench edit fields for drug name, dose, frequency, days, and memo.
+- Kept patient and drug values out of the control labels, matching the no-PHI-in-notification/accessibility-name constraint.
+- Added a focused regression test proving the labels exist and do not include patient or drug names.
+
+### Files Changed
+
+- `src/app/(dashboard)/workflow/workflow-dashboard-view.tsx`
+- `src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/workflow/workflow-dashboard-view.tsx' 'src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx'`: passed, unchanged.
+- `pnpm exec vitest run 'src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 3 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/workflow/workflow-dashboard-view.tsx' 'src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- In-home cooperation goal remains active. UI label hardening has covered current patient-detail surfaces and the workflow inquiry workbench. Next candidates include pharmacy-cooperation workflow/admin/billing forms, raw table/DataTable convergence, and browser/a11y proof.
+
 ## 20260620-0036 JST - Billing Rule Row Action Names
 
 ### Summary
