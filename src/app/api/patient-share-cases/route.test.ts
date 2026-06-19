@@ -6,6 +6,7 @@ const {
   pharmacyPartnershipFindFirstMock,
   patientFindFirstMock,
   careCaseFindFirstMock,
+  managementPlanFindFirstMock,
   patientShareCaseFindManyMock,
   patientShareCaseCreateMock,
   createAuditLogEntryMock,
@@ -14,6 +15,7 @@ const {
   pharmacyPartnershipFindFirstMock: vi.fn(),
   patientFindFirstMock: vi.fn(),
   careCaseFindFirstMock: vi.fn(),
+  managementPlanFindFirstMock: vi.fn(),
   patientShareCaseFindManyMock: vi.fn(),
   patientShareCaseCreateMock: vi.fn(),
   createAuditLogEntryMock: vi.fn(),
@@ -81,6 +83,13 @@ describe('/api/patient-share-cases POST', () => {
       ],
     });
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_1', patient_id: 'patient_1' });
+    managementPlanFindFirstMock.mockResolvedValue({
+      id: 'plan_1',
+      case_id: 'case_1',
+      status: 'approved',
+      version: 2,
+      case_: { patient_id: 'patient_1' },
+    });
     patientShareCaseCreateMock.mockResolvedValue({
       id: 'share_case_1',
       status: 'consent_pending',
@@ -150,6 +159,9 @@ describe('/api/patient-share-cases POST', () => {
         },
         careCase: {
           findFirst: careCaseFindFirstMock,
+        },
+        managementPlan: {
+          findFirst: managementPlanFindFirstMock,
         },
         patientShareCase: {
           findMany: patientShareCaseFindManyMock,
@@ -293,6 +305,19 @@ describe('/api/patient-share-cases POST', () => {
       }),
       include: expect.any(Object),
     });
+    expect(managementPlanFindFirstMock).toHaveBeenCalledWith({
+      where: {
+        id: 'plan_1',
+        org_id: 'org_1',
+      },
+      select: {
+        id: true,
+        case_id: true,
+        status: true,
+        version: true,
+        case_: { select: { patient_id: true } },
+      },
+    });
     expect(createAuditLogEntryMock).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ orgId: 'org_1', userId: 'user_1', actorSiteId: 'site_1' }),
@@ -314,6 +339,8 @@ describe('/api/patient-share-cases POST', () => {
           ],
           starts_at: '2026-06-01',
           ends_at: '2026-12-31',
+          shared_management_plan_id: 'plan_1',
+          shared_management_plan_version: 2,
         },
       }),
     );
@@ -408,6 +435,112 @@ describe('/api/patient-share-cases POST', () => {
         partnership_id: 'partnership_1',
         base_patient_id: 'patient_1',
         base_case_id: 'case_1',
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(patientShareCaseCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'missing management plan version',
+      {
+        partnership_id: 'partnership_1',
+        base_patient_id: 'patient_1',
+        base_case_id: 'case_1',
+        shared_management_plan_id: 'plan_1',
+      },
+    ],
+    [
+      'missing management plan id',
+      {
+        partnership_id: 'partnership_1',
+        base_patient_id: 'patient_1',
+        base_case_id: 'case_1',
+        shared_management_plan_version: 2,
+      },
+    ],
+    [
+      'missing care case id for management plan sharing',
+      {
+        partnership_id: 'partnership_1',
+        base_patient_id: 'patient_1',
+        shared_management_plan_id: 'plan_1',
+        shared_management_plan_version: 2,
+      },
+    ],
+  ])('rejects %s before transaction side effects', async (_label, body) => {
+    const response = await POST(createPostRequest(body));
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
+    expect(withOrgContextMock).not.toHaveBeenCalled();
+    expect(patientShareCaseCreateMock).not.toHaveBeenCalled();
+    expect(createAuditLogEntryMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'unapproved management plan',
+      {
+        plan: {
+          id: 'plan_1',
+          case_id: 'case_1',
+          status: 'draft',
+          version: 2,
+          case_: { patient_id: 'patient_1' },
+        },
+      },
+    ],
+    [
+      'management plan for another care case',
+      {
+        plan: {
+          id: 'plan_1',
+          case_id: 'case_other',
+          status: 'approved',
+          version: 2,
+          case_: { patient_id: 'patient_1' },
+        },
+      },
+    ],
+    [
+      'management plan for another patient',
+      {
+        plan: {
+          id: 'plan_1',
+          case_id: 'case_1',
+          status: 'approved',
+          version: 2,
+          case_: { patient_id: 'patient_other' },
+        },
+      },
+    ],
+    [
+      'stale management plan version',
+      {
+        plan: {
+          id: 'plan_1',
+          case_id: 'case_1',
+          status: 'approved',
+          version: 3,
+          case_: { patient_id: 'patient_1' },
+        },
+      },
+    ],
+  ])('rejects %s before create or audit side effects', async (_label, setup) => {
+    managementPlanFindFirstMock.mockResolvedValue(setup.plan);
+
+    const response = await POST(
+      createPostRequest({
+        partnership_id: 'partnership_1',
+        base_patient_id: 'patient_1',
+        base_case_id: 'case_1',
+        shared_management_plan_id: 'plan_1',
+        shared_management_plan_version: 2,
       }),
     );
 

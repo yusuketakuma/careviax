@@ -51,6 +51,27 @@ const createPatientShareCaseSchema = z
         message: '終了日は開始日以降を指定してください',
       });
     }
+    if (value.shared_management_plan_id && !value.shared_management_plan_version) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['shared_management_plan_version'],
+        message: '共有する管理計画版を指定してください',
+      });
+    }
+    if (value.shared_management_plan_version && !value.shared_management_plan_id) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['shared_management_plan_id'],
+        message: '管理計画版を指定する場合は管理計画IDも指定してください',
+      });
+    }
+    if (value.shared_management_plan_id && !value.base_case_id) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['base_case_id'],
+        message: '管理計画書を共有する場合は患者ケースIDを指定してください',
+      });
+    }
   });
 
 type PatientForSnapshot = {
@@ -318,6 +339,49 @@ export const POST = withAuthContext(
           }),
         };
       }
+      const managementPlan = parsed.data.shared_management_plan_id
+        ? await tx.managementPlan.findFirst({
+            where: {
+              id: parsed.data.shared_management_plan_id,
+              org_id: ctx.orgId,
+            },
+            select: {
+              id: true,
+              case_id: true,
+              status: true,
+              version: true,
+              case_: { select: { patient_id: true } },
+            },
+          })
+        : null;
+      if (parsed.data.shared_management_plan_id && !managementPlan) {
+        return { response: notFound('管理計画書が見つかりません') };
+      }
+      if (
+        managementPlan &&
+        (managementPlan.case_id !== parsed.data.base_case_id ||
+          managementPlan.case_.patient_id !== parsed.data.base_patient_id)
+      ) {
+        return {
+          response: validationError('入力値が不正です', {
+            shared_management_plan_id: ['指定した管理計画書は対象患者ケースに紐づいていません'],
+          }),
+        };
+      }
+      if (managementPlan && managementPlan.status !== 'approved') {
+        return {
+          response: validationError('入力値が不正です', {
+            shared_management_plan_id: ['承認済みの管理計画書のみ共有できます'],
+          }),
+        };
+      }
+      if (managementPlan && managementPlan.version !== parsed.data.shared_management_plan_version) {
+        return {
+          response: validationError('入力値が不正です', {
+            shared_management_plan_version: ['管理計画書の版が最新の取得結果と一致しません'],
+          }),
+        };
+      }
 
       const shareCase = await tx.patientShareCase.create({
         data: {
@@ -377,6 +441,8 @@ export const POST = withAuthContext(
           share_scope_keys: enabledPatientShareScopeKeys(parsed.data.share_scope).sort(),
           starts_at: parsed.data.starts_at ?? null,
           ends_at: parsed.data.ends_at ?? null,
+          shared_management_plan_id: managementPlan?.id ?? null,
+          shared_management_plan_version: managementPlan?.version ?? null,
         },
       });
 

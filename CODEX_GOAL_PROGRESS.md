@@ -3829,7 +3829,37 @@ Implemented:
 - `pnpm exec vitest run src/server/services/pharmacy-partnerships.test.ts src/app/api/pharmacy-contracts/route.test.ts 'src/app/api/pharmacy-contracts/[id]/versions/route.test.ts' src/app/api/inquiry-records/route.test.ts 'src/app/api/partner-visit-records/[id]/review/route.test.ts' --reporter=dot --testTimeout=30000`: passed, 5 files / 38 tests.
 - Targeted ESLint over touched service/route/test files: passed.
 - `pnpm typecheck`: passed.
+- `pnpm format:check`: passed, no changed files required Prettier check.
+- `git diff --check`: passed.
 
 ### Remaining / Next Loop
 
 - R-07 now covers patient-share-case, visit request, partner visit record, contract, contract-version, physician-report/claim candidate transitions, and the existing invoice transition service. Broader legacy-wide state-machine modeling, DB-backed browser proof, and migration application remain follow-ups requiring explicit approval.
+
+## 20260619-2342 JST - Management Plan Version Evidence Guard
+
+### Summary
+
+- Hardened `POST /api/patient-share-cases` so a shared management plan can only be attached when plan ID, version, and base case are provided together.
+- Validated the management plan before share-case creation: same org, same care case, same patient, approved status, and version match.
+- Extended audit metadata with only `shared_management_plan_id` and `shared_management_plan_version`; no plan content or patient-identifying details are copied into the audit payload.
+
+### Files Changed
+
+- `src/app/api/patient-share-cases/route.ts`
+- `src/app/api/patient-share-cases/route.test.ts`
+- `docs/pharmacy-cooperation-v0.2-completion-audit.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write src/app/api/patient-share-cases/route.ts src/app/api/patient-share-cases/route.test.ts`: passed unchanged.
+- `pnpm exec vitest run src/app/api/patient-share-cases/route.test.ts --reporter=dot --testTimeout=30000`: passed, 1 file / 17 tests.
+- `pnpm exec vitest run src/app/api/patient-share-cases/route.test.ts 'src/app/api/patient-share-cases/[id]/route.test.ts' 'src/app/api/patient-share-cases/[id]/activate/route.test.ts' 'src/app/api/patient-share-cases/[id]/consents/route.test.ts' 'src/app/api/patient-share-cases/[id]/patient-link/route.test.ts' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testTimeout=30000`: passed, 6 files / 66 tests.
+- Targeted ESLint over patient-share route/card workspace files: passed.
+- `pnpm typecheck`: passed.
+
+### Remaining / Next Loop
+
+- B-01 management-plan version evidence is now enforced at the share-case API boundary. Direct DB-backed browser proof remains blocked until migration application is explicitly approved.
