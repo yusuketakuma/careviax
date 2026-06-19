@@ -4748,6 +4748,34 @@ Implemented:
 
 - UI/UX remediation remains active. Patient contacts, patient master, QR draft, and conferences inputs have focused coverage. Broader remaining candidates include care-team/cases Input/Textarea labels, workflow pharmacy cooperation labels, raw table/DataTable convergence, and expanded browser/a11y proof.
 
+## 20260620-0113 JST - Patient Case Input Label Associations
+
+### Summary
+
+- Added row-specific accessible names to patient case referral source/date, start/end dates, end reason, and notes fields.
+- Extended the cases tab test to assert the first case's editable fields are reachable by label.
+- Preserved the existing case save payload, pharmacist assignment controls, status transitions, and layout.
+
+### Files Changed
+
+- `src/app/(dashboard)/patients/[id]/cases-tab.tsx`
+- `src/app/(dashboard)/patients/[id]/cases-tab.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/cases-tab.tsx' 'src/app/(dashboard)/patients/[id]/cases-tab.test.tsx'`: passed, unchanged.
+- `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/cases-tab.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 1 test.
+- `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/cases-tab.tsx' 'src/app/(dashboard)/patients/[id]/cases-tab.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Patient cases, patient contacts, patient master, QR draft, and conferences inputs have focused coverage. Broader remaining candidates include care-team Input/Textarea labels, workflow pharmacy cooperation labels, raw table/DataTable convergence, and expanded browser/a11y proof.
+
 ## 20260620-0036 JST - Billing Rule Row Action Names
 
 ### Summary
