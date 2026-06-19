@@ -13,37 +13,18 @@ import {
   EXCRETION_OPTIONS,
   ADVERSE_EVENT_OPTIONS,
 } from '@/lib/constants/soap-options';
-import type { SoapObjective, FunctionalAssessment, ResidualMedicationEntry } from '@/types/structured-soap';
+import type {
+  SoapObjective,
+  FunctionalAssessment,
+  ResidualMedicationEntry,
+} from '@/types/structured-soap';
+import { ToggleButton } from './toggle-button';
 
 interface FunctionalAssessmentStepProps {
   data: SoapObjective;
   residualMedications: ResidualMedicationEntry[];
   onChange: (data: SoapObjective) => void;
   onResidualMedicationsChange: (entries: ResidualMedicationEntry[]) => void;
-}
-
-function ToggleButton({
-  selected,
-  label,
-  onToggle,
-}: {
-  selected: boolean;
-  label: string;
-  onToggle: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className={`min-h-[44px] rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-        selected
-          ? 'border-primary bg-primary/10 text-primary'
-          : 'border-input bg-background text-foreground hover:bg-accent'
-      }`}
-    >
-      {label}
-    </button>
-  );
 }
 
 type AccordionCategory = 'sleep' | 'cognition' | 'diet_oral' | 'mobility' | 'excretion';
@@ -156,9 +137,7 @@ export function FunctionalAssessmentStep({
 
   function toggleAdverseEvent(value: string) {
     const current = adverseEvents.events;
-    const next = current.includes(value)
-      ? current.filter((v) => v !== value)
-      : [...current, value];
+    const next = current.includes(value) ? current.filter((v) => v !== value) : [...current, value];
     onChange({ ...data, adverse_events: { ...adverseEvents, events: next } });
   }
 
@@ -175,7 +154,7 @@ export function FunctionalAssessmentStep({
 
   function updateResidualEntry(index: number, patch: Partial<ResidualMedicationEntry>) {
     onResidualMedicationsChange(
-      residualMedications.map((entry, i) => (i === index ? { ...entry, ...patch } : entry))
+      residualMedications.map((entry, i) => (i === index ? { ...entry, ...patch } : entry)),
     );
   }
 
@@ -321,7 +300,10 @@ export function FunctionalAssessmentStep({
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor={`residual-name-${index}`} className="text-xs">
-                    薬剤名 <span className="text-destructive" aria-label="必須">*</span>
+                    薬剤名{' '}
+                    <span className="text-destructive" aria-label="必須">
+                      *
+                    </span>
                   </Label>
                   <Input
                     id={`residual-name-${index}`}

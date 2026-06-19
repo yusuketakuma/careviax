@@ -4,41 +4,17 @@ import { useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { PROBLEM_CHECK_OPTIONS, SEVERITY_OPTIONS } from '@/lib/constants/soap-options';
 import type { SoapAssessment } from '@/types/structured-soap';
+import { ToggleButton } from './toggle-button';
 
 interface AssessmentStepProps {
   data: SoapAssessment;
   onChange: (data: SoapAssessment) => void;
 }
 
-function ToggleButton({
-  selected,
-  label,
-  onToggle,
-}: {
-  selected: boolean;
-  label: string;
-  onToggle: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className={`min-h-[44px] rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-        selected
-          ? 'border-primary bg-primary/10 text-primary'
-          : 'border-input bg-background text-foreground hover:bg-accent'
-      }`}
-    >
-      {label}
-    </button>
-  );
-}
-
 export function AssessmentStep({ data, onChange }: AssessmentStepProps) {
   const [showFreeText, setShowFreeText] = useState(!!data.free_text);
 
-  const hasProblems =
-    data.problem_checks.length > 0 && !data.problem_checks.includes('no_issues');
+  const hasProblems = data.problem_checks.length > 0 && !data.problem_checks.includes('no_issues');
 
   function toggleProblem(value: string) {
     const current = data.problem_checks;

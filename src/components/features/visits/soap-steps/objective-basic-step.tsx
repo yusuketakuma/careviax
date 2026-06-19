@@ -10,34 +10,11 @@ import {
   SELF_MANAGEMENT_OPTIONS,
 } from '@/lib/constants/soap-options';
 import type { SoapObjective, VitalSigns, LabValues } from '@/types/structured-soap';
+import { ToggleButton } from './toggle-button';
 
 interface ObjectiveBasicStepProps {
   data: SoapObjective;
   onChange: (data: SoapObjective) => void;
-}
-
-function ToggleButton({
-  selected,
-  label,
-  onToggle,
-}: {
-  selected: boolean;
-  label: string;
-  onToggle: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className={`min-h-[44px] rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-        selected
-          ? 'border-primary bg-primary/10 text-primary'
-          : 'border-input bg-background text-foreground hover:bg-accent'
-      }`}
-    >
-      {label}
-    </button>
-  );
 }
 
 function VitalInput({
@@ -81,10 +58,7 @@ function VitalInput({
 
 export function ObjectiveBasicStep({ data, onChange }: ObjectiveBasicStepProps) {
   const [showLabValues, setShowLabValues] = useState(
-    !!(
-      data.lab_values &&
-      Object.values(data.lab_values).some((v) => v != null && v !== '')
-    )
+    !!(data.lab_values && Object.values(data.lab_values).some((v) => v != null && v !== '')),
   );
 
   function updateVitals(patch: Partial<VitalSigns>) {
@@ -261,9 +235,7 @@ export function ObjectiveBasicStep({ data, onChange }: ObjectiveBasicStepProps) 
                 type="text"
                 placeholder="その他検査値を入力"
                 value={labs.free_text ?? ''}
-                onChange={(e) =>
-                  updateLabValues({ free_text: e.target.value || undefined })
-                }
+                onChange={(e) => updateLabValues({ free_text: e.target.value || undefined })}
                 className="h-10 text-sm"
               />
             </div>

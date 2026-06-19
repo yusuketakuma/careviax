@@ -6,34 +6,11 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { INTERVENTION_OPTIONS } from '@/lib/constants/soap-options';
 import type { SoapPlan } from '@/types/structured-soap';
+import { ToggleButton } from './toggle-button';
 
 interface PlanStepProps {
   data: SoapPlan;
   onChange: (data: SoapPlan) => void;
-}
-
-function ToggleButton({
-  selected,
-  label,
-  onToggle,
-}: {
-  selected: boolean;
-  label: string;
-  onToggle: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className={`min-h-[44px] rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-        selected
-          ? 'border-primary bg-primary/10 text-primary'
-          : 'border-input bg-background text-foreground hover:bg-accent'
-      }`}
-    >
-      {label}
-    </button>
-  );
 }
 
 function OptionalTextarea({
@@ -119,9 +96,7 @@ export function PlanStep({ data, onChange }: PlanStepProps) {
           id="next-visit-date"
           type="date"
           value={data.next_visit_date ?? ''}
-          onChange={(e) =>
-            onChange({ ...data, next_visit_date: e.target.value || undefined })
-          }
+          onChange={(e) => onChange({ ...data, next_visit_date: e.target.value || undefined })}
           className="h-10 text-sm"
         />
       </div>

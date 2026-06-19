@@ -11,6 +11,7 @@ export function ToggleButton({ selected, label, onToggle }: ToggleButtonProps) {
     <button
       type="button"
       onClick={onToggle}
+      aria-pressed={selected}
       className={`min-h-[44px] rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
         selected
           ? 'border-primary bg-primary/10 text-primary'
