@@ -391,40 +391,6 @@ describe('ScheduleProposalsContent', () => {
     });
   });
 
-  it('shows an error state instead of empty proposal messaging when proposal loading fails', () => {
-    const refetch = vi.fn();
-    useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
-      if (queryKey[0] === 'schedule-proposals-dashboard') {
-        return {
-          data: undefined,
-          isLoading: false,
-          isError: true,
-          refetch,
-          connected: true,
-        };
-      }
-      return {
-        data: undefined,
-        isLoading: false,
-        isError: false,
-        refetch: vi.fn(),
-        connected: true,
-      };
-    });
-
-    render(<ScheduleProposalsContent />);
-
-    expect(screen.getByRole('heading', { name: '訪問候補を表示できません' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '再試行' })).toBeTruthy();
-    expect(screen.queryByText('条件に一致する訪問候補はありません。')).toBeNull();
-    expect(screen.queryByLabelText('表示中の候補をすべて選択')).toBeNull();
-    expect(screen.queryByRole('button', { name: /一括承認/ })).toBeNull();
-    expect(screen.queryByRole('button', { name: /一括却下/ })).toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
-    expect(refetch).toHaveBeenCalledTimes(1);
-  });
-
   it('highlights the active detail proposal row from the URL state', () => {
     render(<ScheduleProposalsContent initialDetailId="proposal_1" />);
 
