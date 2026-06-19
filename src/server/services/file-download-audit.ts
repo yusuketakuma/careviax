@@ -1,5 +1,6 @@
 import type { recordDataExportAudit } from '@/server/services/export-audit';
 import { recordDataExportAudit as writeDataExportAudit } from '@/server/services/export-audit';
+import { buildAuditedConsentDocumentUrl } from '@/server/services/consent-record-documents';
 
 type AuditClient = Parameters<typeof recordDataExportAudit>[0];
 type FileDownloadContextClient = {
@@ -15,6 +16,7 @@ type FileDownloadContextClient = {
         consent_record_id: true;
         valid_until: true;
         revoked_at: true;
+        share_case: { select: { base_patient_id: true } };
       };
       orderBy: { created_at: 'desc' };
     }) => Promise<{
@@ -23,6 +25,32 @@ type FileDownloadContextClient = {
       consent_record_id: string | null;
       valid_until: Date | null;
       revoked_at: Date | null;
+      share_case: { base_patient_id: string };
+    } | null>;
+  };
+  consentRecord: {
+    findFirst: (args: {
+      where:
+        | {
+            org_id: string;
+            document_file_id: string;
+          }
+        | {
+            org_id: string;
+            document_url: string;
+          };
+      select: {
+        id: true;
+        patient_id: true;
+        expiry_date: true;
+        revoked_date: true;
+      };
+      orderBy: { updated_at: 'desc' };
+    }) => Promise<{
+      id: string;
+      patient_id: string;
+      expiry_date: Date | null;
+      revoked_date: Date | null;
     } | null>;
   };
 };
@@ -35,6 +63,16 @@ export type FileDownloadConsentAttachmentContext = {
   hasValidUntil: boolean;
   consentRevoked: boolean;
 };
+export type FileDownloadConsentRecordDocumentContext = {
+  consentRecordId: string;
+  hasExpiryDate: boolean;
+  consentRevoked: boolean;
+};
+export type ResolvedFileDownloadAuditContext = {
+  patientId?: string;
+  consentAttachmentContext?: FileDownloadConsentAttachmentContext;
+  consentRecordDocumentContext?: FileDownloadConsentRecordDocumentContext;
+};
 
 export async function resolveFileDownloadAuditContext(
   db: FileDownloadContextClient,
@@ -42,7 +80,7 @@ export async function resolveFileDownloadAuditContext(
     orgId: string;
     fileId: string;
   },
-): Promise<FileDownloadConsentAttachmentContext | undefined> {
+): Promise<ResolvedFileDownloadAuditContext | undefined> {
   const consent = await db.patientShareConsent.findFirst({
     where: {
       org_id: args.orgId,
@@ -54,17 +92,60 @@ export async function resolveFileDownloadAuditContext(
       consent_record_id: true,
       valid_until: true,
       revoked_at: true,
+      share_case: { select: { base_patient_id: true } },
     },
     orderBy: { created_at: 'desc' },
   });
 
-  if (!consent) return undefined;
+  if (!consent) {
+    const consentRecord =
+      (await db.consentRecord.findFirst({
+        where: {
+          org_id: args.orgId,
+          document_file_id: args.fileId,
+        },
+        select: {
+          id: true,
+          patient_id: true,
+          expiry_date: true,
+          revoked_date: true,
+        },
+        orderBy: { updated_at: 'desc' },
+      })) ??
+      (await db.consentRecord.findFirst({
+        where: {
+          org_id: args.orgId,
+          document_url: buildAuditedConsentDocumentUrl(args.fileId),
+        },
+        select: {
+          id: true,
+          patient_id: true,
+          expiry_date: true,
+          revoked_date: true,
+        },
+        orderBy: { updated_at: 'desc' },
+      }));
+
+    if (!consentRecord) return undefined;
+    return {
+      patientId: consentRecord.patient_id,
+      consentRecordDocumentContext: {
+        consentRecordId: consentRecord.id,
+        hasExpiryDate: Boolean(consentRecord.expiry_date),
+        consentRevoked: Boolean(consentRecord.revoked_date),
+      },
+    };
+  }
+
   return {
-    patientShareConsentId: consent.id,
-    shareCaseId: consent.share_case_id,
-    hasConsentRecord: Boolean(consent.consent_record_id),
-    hasValidUntil: Boolean(consent.valid_until),
-    consentRevoked: Boolean(consent.revoked_at),
+    patientId: consent.share_case.base_patient_id,
+    consentAttachmentContext: {
+      patientShareConsentId: consent.id,
+      shareCaseId: consent.share_case_id,
+      hasConsentRecord: Boolean(consent.consent_record_id),
+      hasValidUntil: Boolean(consent.valid_until),
+      consentRevoked: Boolean(consent.revoked_at),
+    },
   };
 }
 
@@ -84,6 +165,7 @@ export async function recordFileDownloadAudit(
     surface: 'files_download' | 'files_presigned_download';
     responseMode: FileDownloadAuditResponseMode;
     consentAttachmentContext?: FileDownloadConsentAttachmentContext;
+    consentRecordDocumentContext?: FileDownloadConsentRecordDocumentContext;
     ipAddress?: string;
     userAgent?: string;
   },
@@ -115,7 +197,14 @@ export async function recordFileDownloadAudit(
             has_valid_until: args.consentAttachmentContext.hasValidUntil,
             consent_revoked: args.consentAttachmentContext.consentRevoked,
           }
-        : {}),
+        : args.consentRecordDocumentContext
+          ? {
+              context_type: 'consent_record_document',
+              consent_record_id: args.consentRecordDocumentContext.consentRecordId,
+              has_expiry_date: args.consentRecordDocumentContext.hasExpiryDate,
+              consent_revoked: args.consentRecordDocumentContext.consentRevoked,
+            }
+          : {}),
     },
     ipAddress: args.ipAddress,
     userAgent: args.userAgent,

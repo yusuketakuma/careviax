@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { format, parseISO, differenceInDays } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { FileText, Plus, ShieldOff, Upload } from 'lucide-react';
+import { FileText, Pencil, Plus, ShieldOff, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { DataTable } from '@/components/ui/data-table';
 import { Badge } from '@/components/ui/badge';
@@ -94,9 +94,19 @@ function getConsentStatus(record: ConsentRecord): 'active' | 'revoked' | 'expire
   return 'active';
 }
 
+function toDateInputValue(value: string | null) {
+  if (!value) return '';
+  const trimmed = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return trimmed.slice(0, 10);
+  return '';
+}
+
 // --- Columns ---
 
-function useColumns(onRevoke: (record: ConsentRecord) => void): ColumnDef<ConsentRecord>[] {
+function useColumns(args: {
+  onEdit: (record: ConsentRecord) => void;
+  onRevoke: (record: ConsentRecord) => void;
+}): ColumnDef<ConsentRecord>[] {
   return [
     {
       accessorKey: 'consent_type',
@@ -202,15 +212,26 @@ function useColumns(onRevoke: (record: ConsentRecord) => void): ColumnDef<Consen
         const status = getConsentStatus(row.original);
         if (status !== 'active') return null;
         return (
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5 text-destructive hover:text-destructive"
-            onClick={() => onRevoke(row.original)}
-          >
-            <ShieldOff className="h-3.5 w-3.5" />
-            撤回
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => args.onEdit(row.original)}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              更新
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-destructive hover:text-destructive"
+              onClick={() => args.onRevoke(row.original)}
+            >
+              <ShieldOff className="h-3.5 w-3.5" />
+              撤回
+            </Button>
+          </div>
         );
       },
     },
@@ -479,6 +500,123 @@ function CreateConsentDialog({
   );
 }
 
+// --- Edit Dialog ---
+
+type EditFormState = {
+  expiry_date: string;
+  document_file: File | null;
+};
+
+function EditConsentDialog({
+  record,
+  orgId,
+  onClose,
+}: {
+  record: ConsentRecord;
+  orgId: string;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const originalExpiryDate = toDateInputValue(record.expiry_date);
+  const [form, setForm] = useState<EditFormState>({
+    expiry_date: originalExpiryDate,
+    document_file: null,
+  });
+
+  const mutation = useMutation({
+    mutationFn: async (data: EditFormState) => {
+      const body: { expiry_date?: string | null; document_file_id?: string } = {};
+      if (data.expiry_date !== originalExpiryDate) {
+        body.expiry_date = data.expiry_date || null;
+      }
+      if (data.document_file) {
+        body.document_file_id = await uploadConsentDocument({
+          file: data.document_file,
+          patientId: record.patient_id,
+          orgId,
+        });
+      }
+      if (Object.keys(body).length === 0) {
+        throw new Error('更新内容がありません');
+      }
+
+      const res = await fetch(`/api/consent-records/${record.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message ?? '同意記録の更新に失敗しました');
+      }
+      return res.json();
+    },
+    onSuccess: async () => {
+      toast.success('同意記録を更新しました');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['consent-records', record.patient_id] }),
+        invalidateQueryKeys(
+          queryClient,
+          getPatientCareQueryKeys({ orgId, patientId: record.patient_id }),
+        ),
+      ]);
+      onClose();
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    mutation.mutate(form);
+  };
+
+  return (
+    <DialogContent className="sm:max-w-md">
+      <DialogHeader>
+        <DialogTitle>同意記録の更新</DialogTitle>
+      </DialogHeader>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="edit_expiry_date">有効期限</Label>
+          <Input
+            id="edit_expiry_date"
+            type="date"
+            value={form.expiry_date}
+            onChange={(e) => setForm((f) => ({ ...f, expiry_date: e.target.value }))}
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="edit_document_file">同意書ファイル差し替え</Label>
+          <Input
+            id="edit_document_file"
+            type="file"
+            accept={CONSENT_DOCUMENT_ACCEPT}
+            onChange={(e) => setForm((f) => ({ ...f, document_file: e.target.files?.[0] ?? null }))}
+          />
+          {form.document_file && (
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Upload className="h-3 w-3" />
+              {form.document_file.name}
+            </p>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose} disabled={mutation.isPending}>
+            キャンセル
+          </Button>
+          <Button type="submit" disabled={mutation.isPending}>
+            {mutation.isPending ? '更新中...' : '更新'}
+          </Button>
+        </DialogFooter>
+      </form>
+    </DialogContent>
+  );
+}
+
 // --- Revoke Dialog ---
 
 function RevokeConsentDialog({
@@ -593,6 +731,7 @@ export function ConsentRecordsContent() {
   const orgId = useOrgId();
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<ConsentRecord | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<ConsentRecord | null>(null);
 
   const { data, isLoading } = useQuery<ConsentListResponse>({
@@ -607,7 +746,10 @@ export function ConsentRecordsContent() {
     enabled: !!orgId && !!patientId,
   });
 
-  const columns = useColumns((record) => setRevokeTarget(record));
+  const columns = useColumns({
+    onEdit: (record) => setEditTarget(record),
+    onRevoke: (record) => setRevokeTarget(record),
+  });
 
   return (
     <div className="space-y-4">
@@ -632,6 +774,16 @@ export function ConsentRecordsContent() {
             patientId={patientId}
             orgId={orgId}
             onClose={() => setCreateOpen(false)}
+          />
+        )}
+      </Dialog>
+
+      <Dialog open={!!editTarget} onOpenChange={(open) => !open && setEditTarget(null)}>
+        {editTarget && (
+          <EditConsentDialog
+            record={editTarget}
+            orgId={orgId}
+            onClose={() => setEditTarget(null)}
           />
         )}
       </Dialog>

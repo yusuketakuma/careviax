@@ -40,4 +40,19 @@ describe('consent-record-documents', () => {
       document_url_redacted: true,
     });
   });
+
+  it('serializes document_file_id as the canonical audited document url', () => {
+    expect(
+      serializeConsentRecordDocumentUrl({
+        id: 'consent_1',
+        document_url: 'https://files.example.test/legacy-consent.pdf',
+        document_file_id: 'file_1',
+      }),
+    ).toMatchObject({
+      id: 'consent_1',
+      document_url: '/api/files/file_1/presigned-download?download=1',
+      has_document_url: true,
+      document_url_redacted: false,
+    });
+  });
 });

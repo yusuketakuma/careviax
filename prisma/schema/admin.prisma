@@ -281,6 +281,8 @@ model FileAsset {
   created_at           DateTime     @default(now())
   updated_at           DateTime     @updatedAt
 
+  consent_records ConsentRecord[]
+
   @@index([org_id])
   @@index([org_id, purpose])
   @@index([org_id, status])

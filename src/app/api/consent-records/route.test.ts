@@ -130,6 +130,7 @@ describe('/api/consent-records', () => {
       patient_id: 'patient_1',
       consent_type: 'external_sharing',
       document_url: null,
+      document_file_id: null,
     });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
@@ -251,6 +252,8 @@ describe('/api/consent-records', () => {
         template_version: 2,
         consent_type: 'external_sharing',
         method: 'paper_scan',
+        document_url: null,
+        document_file_id: null,
       }),
     });
     expect(recordConsentRecordCreatedAuditMock).toHaveBeenCalledWith(
@@ -268,6 +271,7 @@ describe('/api/consent-records', () => {
         id: 'consent_2',
         patient_id: 'patient_1',
         document_url: null,
+        document_file_id: null,
       }),
     );
   });
@@ -278,6 +282,7 @@ describe('/api/consent-records', () => {
       patient_id: 'patient_1',
       consent_type: 'external_sharing',
       document_url: '/api/files/file_1/presigned-download?download=1',
+      document_file_id: 'file_1',
     });
 
     const response = (await POST(
@@ -305,6 +310,7 @@ describe('/api/consent-records', () => {
     expect(consentRecordCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         document_url: '/api/files/file_1/presigned-download?download=1',
+        document_file_id: 'file_1',
       }),
     });
     expect(recordConsentRecordCreatedAuditMock).toHaveBeenCalled();

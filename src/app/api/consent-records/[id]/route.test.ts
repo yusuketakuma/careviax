@@ -90,6 +90,7 @@ describe('/api/consent-records/[id]', () => {
       is_active: true,
       expiry_date: new Date('2026-12-31T00:00:00.000Z'),
       document_url: 'https://example.com/consent.pdf',
+      document_file_id: null,
       template_id: 'template_1',
       template_version: 2,
       updated_at: new Date('2026-01-01T00:00:00.000Z'),
@@ -109,6 +110,7 @@ describe('/api/consent-records/[id]', () => {
       is_active: true,
       expiry_date: new Date('2026-12-31T00:00:00.000Z'),
       document_url: '/api/files/file_1/presigned-download?download=1',
+      document_file_id: null,
       template_id: 'template_1',
       template_version: 2,
     });
@@ -241,6 +243,7 @@ describe('/api/consent-records/[id]', () => {
         is_active: true,
         expiry_date: true,
         document_url: true,
+        document_file_id: true,
         template_id: true,
         template_version: true,
         updated_at: true,
@@ -290,6 +293,20 @@ describe('/api/consent-records/[id]', () => {
   });
 
   it('updates the document url from a validated consent document file id', async () => {
+    consentRecordFindUniqueMock.mockResolvedValueOnce({
+      id: 'consent_1',
+      patient_id: 'patient_1',
+      case_id: null,
+      consent_type: 'external_sharing',
+      method: 'paper_scan',
+      is_active: true,
+      expiry_date: new Date('2026-12-31T00:00:00.000Z'),
+      document_url: '/api/files/file_1/presigned-download?download=1',
+      document_file_id: 'file_1',
+      template_id: 'template_1',
+      template_version: 2,
+    });
+
     const response = (await PATCH(
       createRequest('PATCH', {
         document_file_id: 'file_1',
@@ -319,6 +336,7 @@ describe('/api/consent-records/[id]', () => {
       },
       data: {
         document_url: '/api/files/file_1/presigned-download?download=1',
+        document_file_id: 'file_1',
       },
     });
     expect(recordConsentRecordUpdatedAuditMock).toHaveBeenCalledWith(
@@ -328,6 +346,30 @@ describe('/api/consent-records/[id]', () => {
         changedFields: ['document_url'],
       }),
     );
+  });
+
+  it('clears both the audited document url and file asset link', async () => {
+    const response = (await PATCH(
+      createRequest('PATCH', {
+        document_url: null,
+      }),
+      {
+        params: Promise.resolve({ id: 'consent_1' }),
+      },
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(consentRecordUpdateMock).toHaveBeenCalledWith({
+      where: {
+        id: 'consent_1',
+        org_id: 'org_1',
+        updated_at: new Date('2026-01-01T00:00:00.000Z'),
+      },
+      data: {
+        document_url: null,
+        document_file_id: null,
+      },
+    });
   });
 
   it('does not update a consent record outside the patient assignment scope', async () => {
@@ -357,6 +399,7 @@ describe('/api/consent-records/[id]', () => {
         is_active: true,
         expiry_date: true,
         document_url: true,
+        document_file_id: true,
         template_id: true,
         template_version: true,
         updated_at: true,

@@ -97,21 +97,65 @@ describe('recordFileDownloadAudit', () => {
     expect(JSON.stringify(recordDataExportAuditMock.mock.calls)).not.toContain('山田');
   });
 
+  it('adds consent record document context without urls or names', async () => {
+    const db = { auditLog: { create: vi.fn() } };
+
+    await recordFileDownloadAudit(db, {
+      orgId: 'org_1',
+      actorId: 'user_1',
+      actorSiteId: 'site_1',
+      patientId: 'patient_1',
+      fileId: 'file_1',
+      purpose: 'consent-document',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+      expiresIn: 900,
+      surface: 'files_presigned_download',
+      responseMode: 'json',
+      consentRecordDocumentContext: {
+        consentRecordId: 'consent_1',
+        hasExpiryDate: true,
+        consentRevoked: false,
+      },
+    });
+
+    expect(recordDataExportAuditMock).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({
+        actorSiteId: 'site_1',
+        patientId: 'patient_1',
+        metadata: expect.objectContaining({
+          context_type: 'consent_record_document',
+          consent_record_id: 'consent_1',
+          has_expiry_date: true,
+          consent_revoked: false,
+        }),
+      }),
+    );
+    expect(JSON.stringify(recordDataExportAuditMock.mock.calls)).not.toContain('downloadUrl');
+    expect(JSON.stringify(recordDataExportAuditMock.mock.calls)).not.toContain('山田');
+  });
+
   it('resolves consent attachment context from file asset id without selecting PHI fields', async () => {
-    const findFirst = vi.fn().mockResolvedValue({
+    const patientShareConsentFindFirst = vi.fn().mockResolvedValue({
       id: 'share_consent_1',
       share_case_id: 'share_case_1',
       consent_record_id: 'consent_record_1',
       valid_until: new Date('2026-12-31T00:00:00.000Z'),
       revoked_at: null,
+      share_case: { base_patient_id: 'patient_1' },
     });
+    const consentRecordFindFirst = vi.fn();
 
     const context = await resolveFileDownloadAuditContext(
-      { patientShareConsent: { findFirst } },
+      {
+        patientShareConsent: { findFirst: patientShareConsentFindFirst },
+        consentRecord: { findFirst: consentRecordFindFirst },
+      },
       { orgId: 'org_1', fileId: 'file_1' },
     );
 
-    expect(findFirst).toHaveBeenCalledWith({
+    expect(patientShareConsentFindFirst).toHaveBeenCalledWith({
       where: { org_id: 'org_1', file_asset_id: 'file_1' },
       select: {
         id: true,
@@ -119,15 +163,111 @@ describe('recordFileDownloadAudit', () => {
         consent_record_id: true,
         valid_until: true,
         revoked_at: true,
+        share_case: { select: { base_patient_id: true } },
       },
       orderBy: { created_at: 'desc' },
     });
     expect(context).toEqual({
-      patientShareConsentId: 'share_consent_1',
-      shareCaseId: 'share_case_1',
-      hasConsentRecord: true,
-      hasValidUntil: true,
-      consentRevoked: false,
+      patientId: 'patient_1',
+      consentAttachmentContext: {
+        patientShareConsentId: 'share_consent_1',
+        shareCaseId: 'share_case_1',
+        hasConsentRecord: true,
+        hasValidUntil: true,
+        consentRevoked: false,
+      },
+    });
+    expect(consentRecordFindFirst).not.toHaveBeenCalled();
+  });
+
+  it('falls back to ConsentRecord document_file_id context for consent documents', async () => {
+    const patientShareConsentFindFirst = vi.fn().mockResolvedValue(null);
+    const consentRecordFindFirst = vi.fn().mockResolvedValue({
+      id: 'consent_1',
+      patient_id: 'patient_1',
+      expiry_date: new Date('2026-12-31T00:00:00.000Z'),
+      revoked_date: null,
+    });
+
+    const context = await resolveFileDownloadAuditContext(
+      {
+        patientShareConsent: { findFirst: patientShareConsentFindFirst },
+        consentRecord: { findFirst: consentRecordFindFirst },
+      },
+      { orgId: 'org_1', fileId: 'file_1' },
+    );
+
+    expect(consentRecordFindFirst).toHaveBeenCalledWith({
+      where: { org_id: 'org_1', document_file_id: 'file_1' },
+      select: {
+        id: true,
+        patient_id: true,
+        expiry_date: true,
+        revoked_date: true,
+      },
+      orderBy: { updated_at: 'desc' },
+    });
+    expect(context).toEqual({
+      patientId: 'patient_1',
+      consentRecordDocumentContext: {
+        consentRecordId: 'consent_1',
+        hasExpiryDate: true,
+        consentRevoked: false,
+      },
+    });
+  });
+
+  it('falls back to canonical audited ConsentRecord document_url only', async () => {
+    const patientShareConsentFindFirst = vi.fn().mockResolvedValue(null);
+    const consentRecordFindFirst = vi
+      .fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'consent_legacy_url',
+        patient_id: 'patient_1',
+        expiry_date: null,
+        revoked_date: new Date('2026-01-01T00:00:00.000Z'),
+      });
+
+    const context = await resolveFileDownloadAuditContext(
+      {
+        patientShareConsent: { findFirst: patientShareConsentFindFirst },
+        consentRecord: { findFirst: consentRecordFindFirst },
+      },
+      { orgId: 'org_1', fileId: 'file_1' },
+    );
+
+    expect(consentRecordFindFirst).toHaveBeenNthCalledWith(1, {
+      where: { org_id: 'org_1', document_file_id: 'file_1' },
+      select: {
+        id: true,
+        patient_id: true,
+        expiry_date: true,
+        revoked_date: true,
+      },
+      orderBy: { updated_at: 'desc' },
+    });
+    expect(consentRecordFindFirst).toHaveBeenNthCalledWith(2, {
+      where: {
+        org_id: 'org_1',
+        document_url: '/api/files/file_1/presigned-download?download=1',
+      },
+      select: {
+        id: true,
+        patient_id: true,
+        expiry_date: true,
+        revoked_date: true,
+      },
+      orderBy: { updated_at: 'desc' },
+    });
+    expect(JSON.stringify(consentRecordFindFirst.mock.calls)).not.toContain('https://');
+    expect(context).toEqual({
+      patientId: 'patient_1',
+      consentRecordDocumentContext: {
+        consentRecordId: 'consent_legacy_url',
+        hasExpiryDate: false,
+        consentRevoked: true,
+      },
     });
   });
 });

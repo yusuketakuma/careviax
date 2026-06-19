@@ -33,13 +33,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     });
 
     try {
-      const consentAttachmentContext = await resolveFileDownloadAuditContext(prisma, {
+      const auditContext = await resolveFileDownloadAuditContext(prisma, {
         orgId: authResult.ctx.orgId,
         fileId: data.id,
       });
       await recordFileDownloadAudit(prisma, {
         orgId: authResult.ctx.orgId,
         actorId: authResult.ctx.userId,
+        ...(authResult.ctx.actorPharmacyId
+          ? { actorPharmacyId: authResult.ctx.actorPharmacyId }
+          : {}),
+        ...(authResult.ctx.actorSiteId ? { actorSiteId: authResult.ctx.actorSiteId } : {}),
+        ...(auditContext?.patientId ? { patientId: auditContext.patientId } : {}),
         fileId: data.id,
         purpose: data.purpose,
         mimeType: data.mimeType,
@@ -47,7 +52,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         expiresIn: data.expiresIn,
         surface: 'files_download',
         responseMode: 'redirect',
-        consentAttachmentContext,
+        ...(auditContext?.consentAttachmentContext
+          ? { consentAttachmentContext: auditContext.consentAttachmentContext }
+          : {}),
+        ...(auditContext?.consentRecordDocumentContext
+          ? { consentRecordDocumentContext: auditContext.consentRecordDocumentContext }
+          : {}),
         ipAddress: authResult.ctx.ipAddress,
         userAgent: authResult.ctx.userAgent,
       });

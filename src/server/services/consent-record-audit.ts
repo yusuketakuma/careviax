@@ -10,6 +10,7 @@ type ConsentRecordAuditContext = Pick<
 
 type ConsentRecordDocumentSubject = {
   document_url?: string | null;
+  document_file_id?: string | null;
 };
 
 type ConsentRecordAuditSubject = ConsentRecordDocumentSubject & {
@@ -25,13 +26,23 @@ type ConsentRecordAuditSubject = ConsentRecordDocumentSubject & {
 };
 
 function documentAuditFlags(record: ConsentRecordDocumentSubject) {
-  const safeDocumentUrl = normalizeAuditedConsentDocumentUrl(record.document_url);
+  const hasDocumentFile = Boolean(record.document_file_id);
+  const safeDocumentUrl = hasDocumentFile
+    ? true
+    : Boolean(normalizeAuditedConsentDocumentUrl(record.document_url));
   const hasDocumentUrl = Boolean(record.document_url);
+  const hasDocument = hasDocumentFile || hasDocumentUrl;
   return {
-    has_document_url: hasDocumentUrl,
-    document_url_audited: Boolean(safeDocumentUrl),
-    document_url_redacted: Boolean(hasDocumentUrl && !safeDocumentUrl),
-    document_source: !hasDocumentUrl ? 'none' : safeDocumentUrl ? 'audited_url' : 'legacy_redacted',
+    has_document_url: hasDocument,
+    document_url_audited: safeDocumentUrl,
+    document_url_redacted: Boolean(!hasDocumentFile && hasDocumentUrl && !safeDocumentUrl),
+    document_source: !hasDocument
+      ? 'none'
+      : hasDocumentFile
+        ? 'file_asset'
+        : safeDocumentUrl
+          ? 'audited_url'
+          : 'legacy_redacted',
   };
 }
 
@@ -150,7 +161,7 @@ export function recordConsentRecordUpdatedAudit(
       expiry_date_changed: args.changedFields.includes('expiry_date'),
       document_url_changed: args.changedFields.includes('document_url'),
       has_expiry_date_after: Boolean(args.after.expiry_date),
-      has_document_url_after: Boolean(args.after.document_url),
+      has_document_url_after: Boolean(args.after.document_file_id || args.after.document_url),
       document_source: documentAuditFlags(args.after).document_source,
       before: {
         has_expiry_date: Boolean(args.before.expiry_date),

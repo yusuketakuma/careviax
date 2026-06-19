@@ -75,35 +75,53 @@ function renderContent() {
   return render(<ConsentRecordsContent />, { wrapper: createWrapper() });
 }
 
-function stubFetch() {
+type TestConsentRecord = {
+  id: string;
+  patient_id: string;
+  template_id: string | null;
+  template_version: number | null;
+  template: { id: string; name: string; version: number } | null;
+  consent_type: string;
+  method: string;
+  obtained_date: string;
+  expiry_date: string | null;
+  revoked_date: string | null;
+  document_url: string | null;
+  has_document_url: boolean;
+  document_url_redacted: boolean;
+  is_active: boolean;
+  access_restricted: boolean;
+  created_at: string;
+};
+
+const defaultConsentRecord: TestConsentRecord = {
+  id: 'consent_1',
+  patient_id: 'patient_1',
+  template_id: null,
+  template_version: null,
+  template: null,
+  consent_type: 'external_sharing',
+  method: 'paper_scan',
+  obtained_date: '2026-06-19T00:00:00.000Z',
+  expiry_date: null,
+  revoked_date: null,
+  document_url: null,
+  has_document_url: false,
+  document_url_redacted: false,
+  is_active: true,
+  access_restricted: false,
+  created_at: '2026-06-19T00:00:00.000Z',
+};
+
+function stubFetch(records: TestConsentRecord[] = [defaultConsentRecord]) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    void init;
     const url = String(input);
     if (url === '/api/consent-records?patient_id=patient_1') {
       return new Response(
         JSON.stringify({
-          data: [
-            {
-              id: 'consent_1',
-              patient_id: 'patient_1',
-              template_id: null,
-              template_version: null,
-              template: null,
-              consent_type: 'external_sharing',
-              method: 'paper_scan',
-              obtained_date: '2026-06-19T00:00:00.000Z',
-              expiry_date: null,
-              revoked_date: null,
-              document_url: null,
-              has_document_url: false,
-              document_url_redacted: false,
-              is_active: true,
-              access_restricted: false,
-              created_at: '2026-06-19T00:00:00.000Z',
-            },
-          ],
+          data: records,
           hasMore: false,
-          totalCount: 1,
+          totalCount: records.length,
         }),
         {
           status: 200,
@@ -141,6 +159,9 @@ function stubFetch() {
     }
     if (url === '/api/consent-records') {
       return new Response(JSON.stringify({ id: 'consent_1' }), { status: 201 });
+    }
+    if (url === '/api/consent-records/consent_1' && init?.method === 'PATCH') {
+      return new Response(JSON.stringify({ id: 'consent_1' }), { status: 200 });
     }
     return new Response('not found', { status: 404 });
   });
@@ -217,6 +238,93 @@ describe('ConsentRecordsContent', () => {
       document_file_id: 'file_1',
     });
     expect(createBody).not.toHaveProperty('document_url');
+  });
+
+  it('updates active consent records with a replacement document_file_id only', async () => {
+    const fetchMock = stubFetch();
+    renderContent();
+
+    fireEvent.click((await screen.findAllByRole('button', { name: '更新' }))[0]);
+
+    fireEvent.change(screen.getByLabelText('有効期限'), {
+      target: { value: '2026-12-31' },
+    });
+    const fileInput = screen.getByLabelText('同意書ファイル差し替え') as HTMLInputElement;
+    fireEvent.change(fileInput, {
+      target: {
+        files: [new File(['replacement'], 'replacement.pdf', { type: 'application/pdf' })],
+      },
+    });
+    const updateButtons = screen.getAllByRole('button', { name: '更新' });
+    fireEvent.click(updateButtons[updateButtons.length - 1]);
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input) === '/api/consent-records/consent_1' && init?.method === 'PATCH',
+        ),
+      ).toBe(true);
+    });
+
+    const presignCall = fetchMock.mock.calls.find(
+      ([input, init]) => String(input) === '/api/files/presigned-upload' && init?.method === 'POST',
+    );
+    expect(JSON.parse(String(presignCall?.[1]?.body))).toMatchObject({
+      purpose: 'consent-document',
+      patient_id: 'patient_1',
+      file_name: 'replacement.pdf',
+      mime_type: 'application/pdf',
+      size_bytes: 11,
+    });
+
+    const patchCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        String(input) === '/api/consent-records/consent_1' && init?.method === 'PATCH',
+    );
+    const patchBody = JSON.parse(String(patchCall?.[1]?.body));
+    expect(patchBody).toEqual({
+      expiry_date: '2026-12-31',
+      document_file_id: 'file_1',
+    });
+    expect(patchBody).not.toHaveProperty('document_url');
+  });
+
+  it('does not show mutation actions for expired or revoked consent records', async () => {
+    stubFetch([
+      {
+        ...defaultConsentRecord,
+        id: 'consent_expired',
+        expiry_date: '2026-01-01T00:00:00.000Z',
+      },
+      {
+        ...defaultConsentRecord,
+        id: 'consent_revoked',
+        consent_type: 'photo_capture',
+        is_active: false,
+        revoked_date: '2026-02-01T00:00:00.000Z',
+      },
+    ]);
+    renderContent();
+
+    expect((await screen.findAllByText('期限切れ')).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('撤回済')).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: '更新' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '撤回' })).toBeNull();
+  });
+
+  it('does not expose legacy redacted consent document urls as links', async () => {
+    stubFetch([
+      {
+        ...defaultConsentRecord,
+        has_document_url: true,
+        document_url_redacted: true,
+      },
+    ]);
+    renderContent();
+
+    expect((await screen.findAllByText('旧URL非表示')).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('link', { name: /閲覧/ })).toBeNull();
   });
 
   it('loads active consent records by default', async () => {

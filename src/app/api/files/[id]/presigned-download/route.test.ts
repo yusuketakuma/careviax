@@ -63,6 +63,7 @@ describe('/api/files/[id]/presigned-download GET', () => {
         userId: 'user_1',
         orgId: 'org_1',
         role: 'admin',
+        actorSiteId: 'site_1',
         ipAddress: '203.0.113.10',
         userAgent: 'TestBrowser/1.0',
       },
@@ -78,11 +79,14 @@ describe('/api/files/[id]/presigned-download GET', () => {
     });
     recordFileDownloadAuditMock.mockResolvedValue(undefined);
     resolveFileDownloadAuditContextMock.mockResolvedValue({
-      patientShareConsentId: 'share_consent_1',
-      shareCaseId: 'share_case_1',
-      hasConsentRecord: true,
-      hasValidUntil: false,
-      consentRevoked: false,
+      patientId: 'patient_1',
+      consentAttachmentContext: {
+        patientShareConsentId: 'share_consent_1',
+        shareCaseId: 'share_case_1',
+        hasConsentRecord: true,
+        hasValidUntil: false,
+        consentRevoked: false,
+      },
     });
   });
 
@@ -130,6 +134,8 @@ describe('/api/files/[id]/presigned-download GET', () => {
     expect(recordFileDownloadAuditMock).toHaveBeenCalledWith(prismaMock, {
       orgId: 'org_1',
       actorId: 'user_1',
+      actorSiteId: 'site_1',
+      patientId: 'patient_1',
       fileId: 'file_1',
       purpose: 'report',
       mimeType: 'application/pdf',

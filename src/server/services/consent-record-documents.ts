@@ -29,14 +29,17 @@ export function normalizeAuditedConsentDocumentUrl(value: string | null | undefi
   return buildAuditedConsentDocumentUrl(decodeURIComponent(match[1]));
 }
 
-export function serializeConsentRecordDocumentUrl<T extends { document_url: string | null }>(
-  record: T,
-) {
-  const safeDocumentUrl = normalizeAuditedConsentDocumentUrl(record.document_url);
+export function serializeConsentRecordDocumentUrl<
+  T extends { document_url: string | null; document_file_id?: string | null },
+>(record: T) {
+  const safeDocumentUrl = record.document_file_id
+    ? buildAuditedConsentDocumentUrl(record.document_file_id)
+    : normalizeAuditedConsentDocumentUrl(record.document_url);
+  const hasDocumentUrl = Boolean(record.document_file_id || record.document_url);
   return {
     ...record,
     document_url: safeDocumentUrl,
-    has_document_url: Boolean(record.document_url),
-    document_url_redacted: Boolean(record.document_url && !safeDocumentUrl),
+    has_document_url: hasDocumentUrl,
+    document_url_redacted: Boolean(hasDocumentUrl && !safeDocumentUrl),
   };
 }

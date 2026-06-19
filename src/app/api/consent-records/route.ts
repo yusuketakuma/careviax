@@ -325,6 +325,7 @@ export const POST = withAuthContext(
           obtained_date: new Date(obtained_date),
           expiry_date: expiry_date ? new Date(expiry_date) : null,
           document_url: documentInput.documentUrl ?? null,
+          document_file_id: document_file_id ?? null,
           is_active: true,
           access_restricted: false,
         },

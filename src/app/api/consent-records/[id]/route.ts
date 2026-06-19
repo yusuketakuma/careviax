@@ -165,6 +165,7 @@ export const PATCH = withAuthContext<{ id: string }>(
         is_active: true,
         expiry_date: true,
         document_url: true,
+        document_file_id: true,
         template_id: true,
         template_version: true,
         updated_at: true,
@@ -206,7 +207,12 @@ export const PATCH = withAuthContext<{ id: string }>(
         ? { expiry_date: expiry_date ? new Date(expiry_date) : null }
         : {}),
       ...(documentInput.documentUrl !== undefined
-        ? { document_url: documentInput.documentUrl }
+        ? {
+            document_url: documentInput.documentUrl,
+            ...(document_file_id !== undefined || documentInput.documentUrl === null
+              ? { document_file_id: document_file_id ?? null }
+              : {}),
+          }
         : {}),
     };
     const changedFields = [
