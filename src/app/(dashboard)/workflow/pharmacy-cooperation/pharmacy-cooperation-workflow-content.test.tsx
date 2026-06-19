@@ -37,6 +37,12 @@ function renderContent() {
   return render(<PharmacyCooperationWorkflowContent />, { wrapper: createWrapper() });
 }
 
+function findFetchCall(
+  predicate: (input: RequestInfo | URL, init: RequestInit | undefined) => boolean,
+) {
+  return vi.mocked(fetch).mock.calls.find(([input, init]) => predicate(input, init));
+}
+
 describe('PharmacyCooperationWorkflowContent', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -694,18 +700,45 @@ describe('PharmacyCooperationWorkflowContent', () => {
     fireEvent.click(
       within(activationReadyRow as HTMLTableRowElement).getByRole('button', { name: /共有開始/ }),
     );
-    fireEvent.click(screen.getByRole('button', { name: /^受諾$/ }));
+    expect(
+      findFetchCall(
+        (input, init) =>
+          String(input) === '/api/patient-share-cases/share_case_activation_ready/activate' &&
+          init?.method === 'POST',
+      ),
+    ).toBeUndefined();
+    expect(screen.getByRole('heading', { name: '患者共有ケースを共有開始します' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '共有開始する' }));
 
     await waitFor(() => {
       expect(
-        vi
-          .mocked(fetch)
-          .mock.calls.some(
-            ([input, init]) =>
+        Boolean(
+          findFetchCall(
+            (input, init) =>
               String(input) === '/api/patient-share-cases/share_case_activation_ready/activate' &&
               init?.method === 'POST',
           ),
+        ),
       ).toBe(true);
+    });
+
+    await waitFor(() => {
+      expect((screen.getByRole('button', { name: /^受諾$/ }) as HTMLButtonElement).disabled).toBe(
+        false,
+      );
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^受諾$/ }));
+    expect(
+      findFetchCall(
+        (input, init) =>
+          String(input) === '/api/pharmacy-visit-requests/visit_request_1/decision' &&
+          init?.method === 'POST',
+      ),
+    ).toBeUndefined();
+    expect(screen.getByRole('heading', { name: '訪問依頼を受諾します' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '受諾する' }));
+
+    await waitFor(() => {
       const decisionCall = vi
         .mocked(fetch)
         .mock.calls.find(
@@ -732,6 +765,15 @@ describe('PharmacyCooperationWorkflowContent', () => {
     fireEvent.click(
       within(baseRow as HTMLTableRowElement).getByRole('button', { name: /基幹承認/ }),
     );
+    expect(
+      findFetchCall(
+        (input, init) =>
+          String(input) === '/api/patient-share-cases/share_case_1/patient-link' &&
+          init?.method === 'PATCH',
+      ),
+    ).toBeUndefined();
+    expect(screen.getByRole('heading', { name: '患者リンクを基幹承認します' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '基幹承認する' }));
     await waitFor(() => {
       const baseApprovalCall = vi
         .mocked(fetch)
@@ -748,6 +790,16 @@ describe('PharmacyCooperationWorkflowContent', () => {
       target: { value: '同一患者として扱えません' },
     });
     fireEvent.click(within(baseRow as HTMLTableRowElement).getByRole('button', { name: /^辞退$/ }));
+    expect(
+      findFetchCall(
+        (input, init) =>
+          String(input) === '/api/patient-share-cases/share_case_1/patient-link' &&
+          init?.method === 'PATCH' &&
+          JSON.parse(String(init.body)).decision === 'decline',
+      ),
+    ).toBeUndefined();
+    expect(screen.getByRole('heading', { name: '患者リンクを辞退します' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '辞退する' }));
     await waitFor(() => {
       const declineCall = vi
         .mocked(fetch)
@@ -775,6 +827,15 @@ describe('PharmacyCooperationWorkflowContent', () => {
     fireEvent.click(
       within(acceptReadyRow as HTMLTableRowElement).getByRole('button', { name: /協力受諾/ }),
     );
+    expect(
+      findFetchCall(
+        (input, init) =>
+          String(input) === '/api/patient-share-cases/share_case_accept_ready/patient-link' &&
+          init?.method === 'PATCH',
+      ),
+    ).toBeUndefined();
+    expect(screen.getByRole('heading', { name: '患者リンクを協力受諾します' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '協力受諾する' }));
 
     await waitFor(() => {
       const acceptCall = vi
@@ -998,6 +1059,44 @@ describe('PharmacyCooperationWorkflowContent', () => {
     });
   });
 
+  it('requires confirmation before confirming a submitted partner record with a report draft flag', async () => {
+    renderContent();
+
+    const recordsTable = await screen.findByRole('table', { name: '協力訪問記録一覧' });
+    const submittedRow = within(recordsTable).getByText('partner_record_submitted').closest('tr');
+    expect(submittedRow).toBeTruthy();
+
+    fireEvent.click(
+      within(submittedRow as HTMLTableRowElement).getByRole('button', { name: /確認\+報告/ }),
+    );
+    expect(
+      findFetchCall(
+        (input, init) =>
+          String(input) === '/api/partner-visit-records/partner_record_submitted/review' &&
+          init?.method === 'POST',
+      ),
+    ).toBeUndefined();
+    expect(
+      screen.getByRole('heading', {
+        name: '協力訪問記録を確認し報告書ドラフトを作成します',
+      }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '確認+報告する' }));
+
+    await waitFor(() => {
+      const confirmCall = findFetchCall(
+        (input, init) =>
+          String(input) === '/api/partner-visit-records/partner_record_submitted/review' &&
+          init?.method === 'POST',
+      );
+      expect(confirmCall).toBeTruthy();
+      expect(JSON.parse(String(confirmCall?.[1]?.body))).toMatchObject({
+        decision: 'confirm',
+        doctor_report_required: true,
+      });
+    });
+  });
+
   it('returns a submitted partner record with reason and creates a report draft for confirmed records', async () => {
     renderContent();
 
@@ -1006,7 +1105,15 @@ describe('PharmacyCooperationWorkflowContent', () => {
       target: { value: '記録の確認が必要です' },
     });
     fireEvent.click(within(recordsTable).getByRole('button', { name: /差戻し/ }));
-    fireEvent.click(within(recordsTable).getByRole('button', { name: /報告書ドラフト/ }));
+    expect(
+      findFetchCall(
+        (input, init) =>
+          String(input) === '/api/partner-visit-records/partner_record_submitted/review' &&
+          init?.method === 'POST',
+      ),
+    ).toBeUndefined();
+    expect(screen.getByRole('heading', { name: '協力訪問記録を差戻しします' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '差戻しする' }));
 
     await waitFor(() => {
       const returnCall = vi
@@ -1021,6 +1128,32 @@ describe('PharmacyCooperationWorkflowContent', () => {
         decision: 'return',
         return_reason: '記録の確認が必要です',
       });
+    });
+
+    fireEvent.click(within(recordsTable).getByRole('button', { name: /報告書ドラフト/ }));
+    expect(
+      findFetchCall(
+        (input, init) =>
+          String(input) ===
+            '/api/partner-visit-records/partner_record_confirmed/physician-report-draft' &&
+          init?.method === 'POST',
+      ),
+    ).toBeUndefined();
+    expect(
+      screen.getByRole('heading', { name: '医師向け報告書ドラフトを作成します' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '報告書ドラフトを作成する' }));
+
+    await waitFor(() => {
+      const reportCall = vi
+        .mocked(fetch)
+        .mock.calls.find(
+          ([input, init]) =>
+            String(input) ===
+              '/api/partner-visit-records/partner_record_confirmed/physician-report-draft' &&
+            init?.method === 'POST',
+        );
+      expect(reportCall).toBeTruthy();
     });
 
     expect(await screen.findByTestId('pharmacy-cooperation-report-result')).toBeTruthy();

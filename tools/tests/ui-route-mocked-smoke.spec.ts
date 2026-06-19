@@ -3043,6 +3043,8 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
     await expect(shareCaseRow.getByText('協力薬局確認待ち')).toBeVisible({ timeout: 10_000 });
 
     await shareCaseRow.getByRole('button', { name: /基幹承認/ }).click();
+    await expect(page.getByRole('heading', { name: '患者リンクを基幹承認します' })).toBeVisible();
+    await page.getByRole('button', { name: '基幹承認する' }).click();
     await expect
       .poll(
         () =>
@@ -3065,6 +3067,8 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
       .getByLabel(`${PHARMACY_COOP_SHARE_CASE_ID} の協力側生年月日`)
       .fill('1942-04-12');
     await shareCaseRow.getByRole('button', { name: /協力受諾/ }).click();
+    await expect(page.getByRole('heading', { name: '患者リンクを協力受諾します' })).toBeVisible();
+    await page.getByRole('button', { name: '協力受諾する' }).click();
     await expect
       .poll(
         () =>
@@ -3079,6 +3083,10 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
 
     await expect(shareCaseRow.getByText('承認済み')).toBeVisible({ timeout: 10_000 });
     await shareCaseRow.getByRole('button', { name: /共有開始/ }).click();
+    await expect(
+      page.getByRole('heading', { name: '患者共有ケースを共有開始します' }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: '共有開始する' }).click();
     await expect
       .poll(() => requests.shareCaseActivations.length, {
         message: 'workflow should activate the patient share case',
@@ -3169,6 +3177,8 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
     await expect(page.getByText('訪問依頼の確認事項です')).toBeVisible({ timeout: 10_000 });
 
     await visitRequestsTable.getByRole('button', { name: /^受諾$/ }).click();
+    await expect(page.getByRole('heading', { name: '訪問依頼を受諾します' })).toBeVisible();
+    await page.getByRole('button', { name: '受諾する' }).click();
     await expect
       .poll(
         () =>
@@ -3225,12 +3235,20 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
     });
     await expect(partnerRecordRow).toBeVisible({ timeout: 10_000 });
     await partnerRecordRow.getByRole('button', { name: /提出/ }).click();
+    await expect(page.getByRole('heading', { name: '協力訪問記録を提出します' })).toBeVisible();
+    await page.getByRole('button', { name: '提出する' }).click();
     await expect
       .poll(() => requests.partnerVisitRecordSubmits.length, {
         message: 'workflow should submit the partner visit record',
       })
       .toBe(1);
     await partnerRecordRow.getByRole('button', { name: /確認\+報告/ }).click();
+    await expect(
+      page.getByRole('heading', {
+        name: '協力訪問記録を確認し報告書ドラフトを作成します',
+      }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: '確認+報告する' }).click();
     await expect
       .poll(
         () =>
@@ -3247,6 +3265,10 @@ test.describe('pharmacy cooperation route-mocked browser workflow smoke', () => 
       .toBe(true);
 
     await partnerRecordRow.getByRole('button', { name: /報告書ドラフト/ }).click();
+    await expect(
+      page.getByRole('heading', { name: '医師向け報告書ドラフトを作成します' }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: '報告書ドラフトを作成する' }).click();
     await expect
       .poll(() => requests.reportDrafts.length, {
         message: 'workflow should create a physician report draft',

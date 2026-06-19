@@ -16,6 +16,7 @@ import {
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
@@ -222,6 +223,22 @@ type ReportDraftResult = {
   reused_existing_draft: boolean;
   report: { id: string; status: string; report_type: string };
 };
+
+type PendingWorkflowAction =
+  | { kind: 'activateShareCase'; shareCase: PatientShareCaseRow }
+  | { kind: 'baseApproveLink'; shareCase: PatientShareCaseRow }
+  | { kind: 'acceptLink'; shareCase: PatientShareCaseRow; acceptForm: LinkAcceptForm }
+  | { kind: 'declineLink'; shareCase: PatientShareCaseRow; declineReason: string }
+  | { kind: 'acceptVisitRequest'; request: PharmacyVisitRequestRow }
+  | { kind: 'declineVisitRequest'; request: PharmacyVisitRequestRow; declineReason: string }
+  | { kind: 'submitPartnerVisitRecord'; record: PartnerVisitRecordRow }
+  | {
+      kind: 'confirmPartnerVisitRecord';
+      record: PartnerVisitRecordRow;
+      doctorReportRequired: boolean;
+    }
+  | { kind: 'returnPartnerVisitRecord'; record: PartnerVisitRecordRow; returnReason: string }
+  | { kind: 'createReportDraft'; record: PartnerVisitRecordRow };
 
 type PharmacyCooperationMessageSenderSide = 'base_pharmacy' | 'partner_pharmacy';
 
@@ -579,6 +596,145 @@ function statusVariant(status: string): 'default' | 'secondary' | 'destructive' 
   return 'outline';
 }
 
+function workflowShortId(id: string) {
+  return id.length <= 14 ? id : `...${id.slice(-14)}`;
+}
+
+function workflowActionTitle(action: PendingWorkflowAction) {
+  switch (action.kind) {
+    case 'activateShareCase':
+      return '患者共有ケースを共有開始します';
+    case 'baseApproveLink':
+      return '患者リンクを基幹承認します';
+    case 'acceptLink':
+      return '患者リンクを協力受諾します';
+    case 'declineLink':
+      return '患者リンクを辞退します';
+    case 'acceptVisitRequest':
+      return '訪問依頼を受諾します';
+    case 'declineVisitRequest':
+      return '訪問依頼を辞退します';
+    case 'submitPartnerVisitRecord':
+      return '協力訪問記録を提出します';
+    case 'confirmPartnerVisitRecord':
+      return action.doctorReportRequired
+        ? '協力訪問記録を確認し報告書ドラフトを作成します'
+        : '協力訪問記録を確認します';
+    case 'returnPartnerVisitRecord':
+      return '協力訪問記録を差戻しします';
+    case 'createReportDraft':
+      return '医師向け報告書ドラフトを作成します';
+  }
+}
+
+function workflowActionConfirmLabel(action: PendingWorkflowAction) {
+  switch (action.kind) {
+    case 'activateShareCase':
+      return '共有開始する';
+    case 'baseApproveLink':
+      return '基幹承認する';
+    case 'acceptLink':
+      return '協力受諾する';
+    case 'declineLink':
+      return '辞退する';
+    case 'acceptVisitRequest':
+      return '受諾する';
+    case 'declineVisitRequest':
+      return '辞退する';
+    case 'submitPartnerVisitRecord':
+      return '提出する';
+    case 'confirmPartnerVisitRecord':
+      return action.doctorReportRequired ? '確認+報告する' : '確認する';
+    case 'returnPartnerVisitRecord':
+      return '差戻しする';
+    case 'createReportDraft':
+      return '報告書ドラフトを作成する';
+  }
+}
+
+function workflowActionVariant(action: PendingWorkflowAction): 'default' | 'destructive' {
+  return action.kind === 'declineLink' ||
+    action.kind === 'declineVisitRequest' ||
+    action.kind === 'returnPartnerVisitRecord'
+    ? 'destructive'
+    : 'default';
+}
+
+function workflowActionDescription(action: PendingWorkflowAction) {
+  const isDestructive = workflowActionVariant(action) === 'destructive';
+  return isDestructive
+    ? '辞退または差戻しの理由を確認し、対象が正しい場合のみ実行してください。'
+    : 'この操作は薬局間連携の状態を更新します。対象が正しいことを確認してください。';
+}
+
+function workflowActionDetails(action: PendingWorkflowAction) {
+  switch (action.kind) {
+    case 'activateShareCase':
+    case 'baseApproveLink':
+      return [
+        `共有ケース: ${workflowShortId(action.shareCase.id)}`,
+        `協力薬局: ${action.shareCase.partnership.partner_pharmacy.name}`,
+        `現在の共有状態: ${statusLabel(action.shareCase.status)}`,
+        `患者リンク: ${statusLabel(action.shareCase.patient_link?.match_status ?? 'pending')}`,
+      ];
+    case 'acceptLink':
+      return [
+        `共有ケース: ${workflowShortId(action.shareCase.id)}`,
+        `協力薬局: ${action.shareCase.partnership.partner_pharmacy.name}`,
+        `協力側ID: ${action.acceptForm.partnerPatientId}`,
+        `照合補足: ${action.acceptForm.overrideReason.trim() ? '入力済み' : '未入力'}`,
+      ];
+    case 'declineLink':
+      return [
+        `共有ケース: ${workflowShortId(action.shareCase.id)}`,
+        `協力薬局: ${action.shareCase.partnership.partner_pharmacy.name}`,
+        `辞退理由: 入力済み (${action.declineReason.trim().length}文字)`,
+      ];
+    case 'acceptVisitRequest':
+      return [
+        `訪問依頼: ${workflowShortId(action.request.id)}`,
+        `協力薬局: ${action.request.partner_pharmacy.name}`,
+        `希望日時: ${formatDateTime(action.request.desired_start_at)}`,
+        `見込額: ${formatYen(action.request.estimated_amount)}`,
+      ];
+    case 'declineVisitRequest':
+      return [
+        `訪問依頼: ${workflowShortId(action.request.id)}`,
+        `協力薬局: ${action.request.partner_pharmacy.name}`,
+        `辞退理由: 入力済み (${action.declineReason.trim().length}文字)`,
+      ];
+    case 'submitPartnerVisitRecord':
+      return [
+        `訪問記録: ${workflowShortId(action.record.id)}`,
+        `協力薬局: ${action.record.owner_partner_pharmacy.name}`,
+        `訪問日時: ${formatDateTime(action.record.visit_at)}`,
+        `版: rev.${action.record.revision_no}`,
+      ];
+    case 'confirmPartnerVisitRecord':
+      return [
+        `訪問記録: ${workflowShortId(action.record.id)}`,
+        `協力薬局: ${action.record.owner_partner_pharmacy.name}`,
+        `訪問日時: ${formatDateTime(action.record.visit_at)}`,
+        action.doctorReportRequired
+          ? '医師向け報告書ドラフト: 作成する'
+          : '医師向け報告書ドラフト: 作成しない',
+      ];
+    case 'returnPartnerVisitRecord':
+      return [
+        `訪問記録: ${workflowShortId(action.record.id)}`,
+        `協力薬局: ${action.record.owner_partner_pharmacy.name}`,
+        `差戻し理由: 入力済み (${action.returnReason.trim().length}文字)`,
+      ];
+    case 'createReportDraft':
+      return [
+        `訪問記録: ${workflowShortId(action.record.id)}`,
+        `協力薬局: ${action.record.owner_partner_pharmacy.name}`,
+        `訪問日時: ${formatDateTime(action.record.visit_at)}`,
+        `現在の状態: ${statusLabel(action.record.status)}`,
+      ];
+  }
+}
+
 function messageSenderSideLabel(senderSide: PharmacyCooperationMessageSenderSide) {
   return senderSide === 'base_pharmacy' ? '基幹薬局' : '協力薬局';
 }
@@ -666,6 +822,11 @@ function QueryFallback({
   onRetry: () => void;
   children: ReactNode;
 }) {
+  const fallbackDetail =
+    error instanceof Error
+      ? '詳細は内部ログで確認できます。再試行しても解消しない場合は管理者へ連絡してください。'
+      : '通信状態を確認してから再試行してください。';
+
   if (isLoading) return <Skeleton className="h-60 rounded-lg" />;
   if (isError) {
     return (
@@ -673,7 +834,7 @@ function QueryFallback({
         variant="server"
         title="薬局間協力ワークフローを表示できません"
         description="状態一覧の取得に失敗しました。再試行してください。"
-        detail={error instanceof Error ? error.message : undefined}
+        detail={fallbackDetail}
         action={{ label: '再試行', onClick: onRetry }}
       />
     );
@@ -700,10 +861,10 @@ function ShareCasesTable({
   linkDeclineReasons: Record<string, string>;
   setLinkDeclineReasons: Dispatch<SetStateAction<Record<string, string>>>;
   isBusy: boolean;
-  onActivate: (id: string) => void;
-  onBaseApprove: (id: string) => void;
-  onAcceptLink: (id: string, form: LinkAcceptForm) => void;
-  onDeclineLink: (id: string, reason: string) => void;
+  onActivate: (row: PatientShareCaseRow) => void;
+  onBaseApprove: (row: PatientShareCaseRow) => void;
+  onAcceptLink: (row: PatientShareCaseRow, form: LinkAcceptForm) => void;
+  onDeclineLink: (row: PatientShareCaseRow, reason: string) => void;
   onSelectCorrectionCase: (id: string) => void;
 }) {
   if (rows.length === 0) {
@@ -785,7 +946,7 @@ function ShareCasesTable({
                       size="sm"
                       variant="outline"
                       disabled={isBusy || !canActivate}
-                      onClick={() => onActivate(row.id)}
+                      onClick={() => onActivate(row)}
                     >
                       <CheckCircle2 className="size-4" aria-hidden="true" />
                       共有開始
@@ -795,7 +956,7 @@ function ShareCasesTable({
                       size="sm"
                       variant="secondary"
                       disabled={isBusy || !isPendingLink || baseApproved}
-                      onClick={() => onBaseApprove(row.id)}
+                      onClick={() => onBaseApprove(row)}
                     >
                       <Link2 className="size-4" aria-hidden="true" />
                       基幹承認
@@ -888,7 +1049,7 @@ function ShareCasesTable({
                           type="button"
                           size="sm"
                           disabled={isBusy || !canAccept}
-                          onClick={() => onAcceptLink(row.id, acceptForm)}
+                          onClick={() => onAcceptLink(row, acceptForm)}
                         >
                           <CheckCircle2 className="size-4" aria-hidden="true" />
                           協力受諾
@@ -910,7 +1071,7 @@ function ShareCasesTable({
                           size="sm"
                           variant="outline"
                           disabled={isBusy || declineReason.trim().length === 0}
-                          onClick={() => onDeclineLink(row.id, declineReason)}
+                          onClick={() => onDeclineLink(row, declineReason)}
                         >
                           <XCircle className="size-4" aria-hidden="true" />
                           辞退
@@ -1192,8 +1353,8 @@ function VisitRequestsTable({
   declineReasons: Record<string, string>;
   setDeclineReasons: Dispatch<SetStateAction<Record<string, string>>>;
   isBusy: boolean;
-  onAccept: (id: string) => void;
-  onDecline: (id: string, reason: string) => void;
+  onAccept: (row: PharmacyVisitRequestRow) => void;
+  onDecline: (row: PharmacyVisitRequestRow, reason: string) => void;
 }) {
   if (rows.length === 0) {
     return <EmptyState title="協力薬局への訪問依頼はまだありません" />;
@@ -1268,7 +1429,7 @@ function VisitRequestsTable({
                         type="button"
                         size="sm"
                         disabled={isBusy}
-                        onClick={() => onAccept(row.id)}
+                        onClick={() => onAccept(row)}
                       >
                         <CheckCircle2 className="size-4" aria-hidden="true" />
                         受諾
@@ -1278,7 +1439,7 @@ function VisitRequestsTable({
                         size="sm"
                         variant="outline"
                         disabled={isBusy || declineReason.trim().length === 0}
-                        onClick={() => onDecline(row.id, declineReason)}
+                        onClick={() => onDecline(row, declineReason)}
                       >
                         <XCircle className="size-4" aria-hidden="true" />
                         辞退
@@ -1665,10 +1826,10 @@ function PartnerVisitRecordsTable({
   returnReasons: Record<string, string>;
   setReturnReasons: Dispatch<SetStateAction<Record<string, string>>>;
   isBusy: boolean;
-  onSubmit: (id: string) => void;
-  onConfirm: (id: string, doctorReportRequired: boolean) => void;
-  onReturn: (id: string, reason: string) => void;
-  onCreateReport: (id: string) => void;
+  onSubmit: (row: PartnerVisitRecordRow) => void;
+  onConfirm: (row: PartnerVisitRecordRow, doctorReportRequired: boolean) => void;
+  onReturn: (row: PartnerVisitRecordRow, reason: string) => void;
+  onCreateReport: (row: PartnerVisitRecordRow) => void;
 }) {
   if (rows.length === 0) {
     return <EmptyState title="協力訪問記録はまだありません" />;
@@ -1721,12 +1882,7 @@ function PartnerVisitRecordsTable({
               </td>
               <td className="min-w-[24rem] px-3 py-2">
                 {row.status === 'draft' || row.status === 'returned' ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={isBusy}
-                    onClick={() => onSubmit(row.id)}
-                  >
+                  <Button type="button" size="sm" disabled={isBusy} onClick={() => onSubmit(row)}>
                     <Send className="size-4" aria-hidden="true" />
                     提出
                   </Button>
@@ -1737,7 +1893,7 @@ function PartnerVisitRecordsTable({
                         type="button"
                         size="sm"
                         disabled={isBusy}
-                        onClick={() => onConfirm(row.id, false)}
+                        onClick={() => onConfirm(row, false)}
                       >
                         <CheckCircle2 className="size-4" aria-hidden="true" />
                         確認
@@ -1747,7 +1903,7 @@ function PartnerVisitRecordsTable({
                         size="sm"
                         variant="secondary"
                         disabled={isBusy}
-                        onClick={() => onConfirm(row.id, true)}
+                        onClick={() => onConfirm(row, true)}
                       >
                         <FileText className="size-4" aria-hidden="true" />
                         確認+報告
@@ -1757,7 +1913,7 @@ function PartnerVisitRecordsTable({
                         size="sm"
                         variant="outline"
                         disabled={isBusy || returnReason.trim().length === 0}
-                        onClick={() => onReturn(row.id, returnReason)}
+                        onClick={() => onReturn(row, returnReason)}
                       >
                         <RotateCcw className="size-4" aria-hidden="true" />
                         差戻し
@@ -1781,7 +1937,7 @@ function PartnerVisitRecordsTable({
                     size="sm"
                     variant="outline"
                     disabled={isBusy}
-                    onClick={() => onCreateReport(row.id)}
+                    onClick={() => onCreateReport(row)}
                   >
                     <FileText className="size-4" aria-hidden="true" />
                     報告書ドラフト
@@ -2184,6 +2340,9 @@ export function PharmacyCooperationWorkflowContent() {
     EMPTY_PARTNER_VISIT_RECORD_DRAFT_FORM,
   );
   const [lastReportDraft, setLastReportDraft] = useState<ReportDraftResult | null>(null);
+  const [pendingWorkflowAction, setPendingWorkflowAction] = useState<PendingWorkflowAction | null>(
+    null,
+  );
   const enabled = Boolean(orgId);
 
   const shareCasesQuery = useQuery({
@@ -2705,6 +2864,69 @@ export function PharmacyCooperationWorkflowContent() {
     reviewRecordMutation.isPending ||
     createReportDraftMutation.isPending;
 
+  const executePendingWorkflowAction = () => {
+    if (!pendingWorkflowAction || isBusy) return;
+
+    switch (pendingWorkflowAction.kind) {
+      case 'activateShareCase':
+        activateShareCaseMutation.mutate(pendingWorkflowAction.shareCase.id);
+        return;
+      case 'baseApproveLink':
+        patientLinkMutation.mutate({
+          id: pendingWorkflowAction.shareCase.id,
+          decision: 'base_approve',
+        });
+        return;
+      case 'acceptLink':
+        patientLinkMutation.mutate({
+          id: pendingWorkflowAction.shareCase.id,
+          decision: 'accept',
+          acceptForm: pendingWorkflowAction.acceptForm,
+        });
+        return;
+      case 'declineLink':
+        patientLinkMutation.mutate({
+          id: pendingWorkflowAction.shareCase.id,
+          decision: 'decline',
+          declineReason: pendingWorkflowAction.declineReason.trim(),
+        });
+        return;
+      case 'acceptVisitRequest':
+        visitRequestDecisionMutation.mutate({
+          id: pendingWorkflowAction.request.id,
+          decision: 'accept',
+        });
+        return;
+      case 'declineVisitRequest':
+        visitRequestDecisionMutation.mutate({
+          id: pendingWorkflowAction.request.id,
+          decision: 'decline',
+          declineReason: pendingWorkflowAction.declineReason.trim(),
+        });
+        return;
+      case 'submitPartnerVisitRecord':
+        submitRecordMutation.mutate(pendingWorkflowAction.record.id);
+        return;
+      case 'confirmPartnerVisitRecord':
+        reviewRecordMutation.mutate({
+          id: pendingWorkflowAction.record.id,
+          decision: 'confirm',
+          doctorReportRequired: pendingWorkflowAction.doctorReportRequired,
+        });
+        return;
+      case 'returnPartnerVisitRecord':
+        reviewRecordMutation.mutate({
+          id: pendingWorkflowAction.record.id,
+          decision: 'return',
+          returnReason: pendingWorkflowAction.returnReason.trim(),
+        });
+        return;
+      case 'createReportDraft':
+        createReportDraftMutation.mutate(pendingWorkflowAction.record.id);
+        return;
+    }
+  };
+
   const correctionRequests = correctionRequestsQuery.data?.data ?? [];
   const patientShareConsents = patientShareConsentsQuery.data?.data ?? [];
   const messageThreads = messageThreadsQuery.data?.data ?? [];
@@ -2794,13 +3016,21 @@ export function PharmacyCooperationWorkflowContent() {
             linkDeclineReasons={linkDeclineReasons}
             setLinkDeclineReasons={setLinkDeclineReasons}
             isBusy={isBusy}
-            onActivate={(id) => activateShareCaseMutation.mutate(id)}
-            onBaseApprove={(id) => patientLinkMutation.mutate({ id, decision: 'base_approve' })}
-            onAcceptLink={(id, acceptForm) =>
-              patientLinkMutation.mutate({ id, decision: 'accept', acceptForm })
+            onActivate={(shareCase) =>
+              setPendingWorkflowAction({ kind: 'activateShareCase', shareCase })
             }
-            onDeclineLink={(id, declineReason) =>
-              patientLinkMutation.mutate({ id, decision: 'decline', declineReason })
+            onBaseApprove={(shareCase) =>
+              setPendingWorkflowAction({ kind: 'baseApproveLink', shareCase })
+            }
+            onAcceptLink={(shareCase, acceptForm) =>
+              setPendingWorkflowAction({
+                kind: 'acceptLink',
+                shareCase,
+                acceptForm: { ...acceptForm },
+              })
+            }
+            onDeclineLink={(shareCase, declineReason) =>
+              setPendingWorkflowAction({ kind: 'declineLink', shareCase, declineReason })
             }
             onSelectCorrectionCase={setSelectedCorrectionShareCaseId}
           />
@@ -2870,11 +3100,13 @@ export function PharmacyCooperationWorkflowContent() {
             declineReasons={declineReasons}
             setDeclineReasons={setDeclineReasons}
             isBusy={isBusy}
-            onAccept={(id) => visitRequestDecisionMutation.mutate({ id, decision: 'accept' })}
-            onDecline={(id, declineReason) =>
-              visitRequestDecisionMutation.mutate({
-                id,
-                decision: 'decline',
+            onAccept={(request) =>
+              setPendingWorkflowAction({ kind: 'acceptVisitRequest', request })
+            }
+            onDecline={(request, declineReason) =>
+              setPendingWorkflowAction({
+                kind: 'declineVisitRequest',
+                request,
                 declineReason,
               })
             }
@@ -2931,21 +3163,56 @@ export function PharmacyCooperationWorkflowContent() {
             returnReasons={returnReasons}
             setReturnReasons={setReturnReasons}
             isBusy={isBusy}
-            onSubmit={(id) => submitRecordMutation.mutate(id)}
-            onConfirm={(id, doctorReportRequired) =>
-              reviewRecordMutation.mutate({
-                id,
-                decision: 'confirm',
+            onSubmit={(record) =>
+              setPendingWorkflowAction({ kind: 'submitPartnerVisitRecord', record })
+            }
+            onConfirm={(record, doctorReportRequired) =>
+              setPendingWorkflowAction({
+                kind: 'confirmPartnerVisitRecord',
+                record,
                 doctorReportRequired,
               })
             }
-            onReturn={(id, returnReason) =>
-              reviewRecordMutation.mutate({ id, decision: 'return', returnReason })
+            onReturn={(record, returnReason) =>
+              setPendingWorkflowAction({ kind: 'returnPartnerVisitRecord', record, returnReason })
             }
-            onCreateReport={(id) => createReportDraftMutation.mutate(id)}
+            onCreateReport={(record) =>
+              setPendingWorkflowAction({ kind: 'createReportDraft', record })
+            }
           />
         </QueryFallback>
       </SectionShell>
+
+      <ConfirmDialog
+        open={pendingWorkflowAction !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingWorkflowAction(null);
+        }}
+        title={
+          pendingWorkflowAction
+            ? workflowActionTitle(pendingWorkflowAction)
+            : '薬局間連携を更新します'
+        }
+        description={
+          pendingWorkflowAction
+            ? workflowActionDescription(pendingWorkflowAction)
+            : '対象が正しいことを確認してください。'
+        }
+        confirmLabel={
+          pendingWorkflowAction ? workflowActionConfirmLabel(pendingWorkflowAction) : '実行する'
+        }
+        variant={pendingWorkflowAction ? workflowActionVariant(pendingWorkflowAction) : 'default'}
+        confirmDisabled={isBusy}
+        onConfirm={executePendingWorkflowAction}
+      >
+        {pendingWorkflowAction ? (
+          <ul className="space-y-1 rounded-md border border-border/70 bg-muted/30 p-3 text-sm text-foreground">
+            {workflowActionDetails(pendingWorkflowAction).map((detail) => (
+              <li key={detail}>{detail}</li>
+            ))}
+          </ul>
+        ) : null}
+      </ConfirmDialog>
     </div>
   );
 }
