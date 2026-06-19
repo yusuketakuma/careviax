@@ -188,12 +188,18 @@ export function InstitutionsContent() {
       header: '操作',
       cell: ({ row }) => (
         <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={() => openEdit(row.original)}>
+          <Button
+            size="sm"
+            variant="outline"
+            aria-label={`${row.original.name} を編集`}
+            onClick={() => openEdit(row.original)}
+          >
             編集
           </Button>
           <Button
             size="sm"
             variant="outline"
+            aria-label={`${row.original.name} を削除`}
             onClick={() => setDeleteTarget(row.original)}
             disabled={deleteMutation.isPending}
           >

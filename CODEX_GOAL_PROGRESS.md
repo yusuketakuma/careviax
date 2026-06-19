@@ -4399,6 +4399,34 @@ Implemented:
 - Pharmacy-site insurance config date ranges now match the existing API validation at the form boundary, and repeated site/config actions have target-specific accessible names.
 - Continue with the next small UI/UX candidate from the scan, likely admin institutions row action names, billing-rule disabled reasons, or admin jobs rerun action names.
 
+## 20260620-0517 JST - Institution Row Action Names
+
+### Summary
+
+- Added target-specific accessible names for admin institution edit/delete row actions.
+- Added a focused regression test proving deletion remains behind confirmation and targets the selected institution.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/institutions/institutions-content.tsx`
+- `src/app/(dashboard)/admin/institutions/institutions-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/institutions/institutions-content.tsx' 'src/app/(dashboard)/admin/institutions/institutions-content.test.tsx'`: passed.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/institutions/institutions-content.tsx' 'src/app/(dashboard)/admin/institutions/institutions-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/institutions/institutions-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 1 test.
+- `git diff --check -- 'src/app/(dashboard)/admin/institutions/institutions-content.tsx' 'src/app/(dashboard)/admin/institutions/institutions-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `pnpm lint`: passed.
+
+### Remaining / Next Loop
+
+- Institution row action names are addressed. Continue with billing-rule system disabled reasons or admin jobs rerun action names.
+
 ## 20260620-0451 JST - Pharmacist Credential Inline Validation
 
 ### Summary
