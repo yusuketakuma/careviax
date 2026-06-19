@@ -130,14 +130,26 @@ describe('ConferencesContent', () => {
       'alert',
     );
     expect(screen.getByLabelText('タイトル').getAttribute('aria-invalid')).toBe('true');
+    expect(screen.getByLabelText('タイトル').getAttribute('aria-describedby')).toBe(
+      'conf-title-error',
+    );
     expect(screen.getByLabelText('開催日時').getAttribute('aria-describedby')).toBe(
       'conf-date-error',
     );
     expect(screen.getByLabelText('内容').getAttribute('aria-describedby')).toBe(
       'conf-content-error',
     );
+    expect(screen.getByLabelText('会議要約').getAttribute('aria-describedby')).toBe(
+      'conf-content-error',
+    );
     expect(toast.error).toHaveBeenCalledWith('タイトルを入力してください');
     expect(mutationMocks[0]).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('会議要約'), {
+      target: { value: '決定事項を共有した' },
+    });
+
+    expect(screen.queryByText('内容または構造化項目を入力してください')).toBeNull();
   });
 
   it('keeps community activity required validation visible inline', () => {
@@ -150,6 +162,9 @@ describe('ConferencesContent', () => {
     expect(screen.getByText('実施日時を入力してください').getAttribute('role')).toBe('alert');
     expect(screen.getByText('タイトルを入力してください').getAttribute('role')).toBe('alert');
     expect(screen.getByLabelText('活動種別').getAttribute('aria-invalid')).toBe('true');
+    expect(screen.getByLabelText('活動種別').getAttribute('aria-describedby')).toBe(
+      'activity-type-error',
+    );
     expect(screen.getByLabelText('実施日時').getAttribute('aria-describedby')).toBe(
       'activity-date-error',
     );
@@ -158,6 +173,11 @@ describe('ConferencesContent', () => {
     );
     expect(toast.error).toHaveBeenCalledWith('活動種別を入力してください');
     expect(mutationMocks[1]).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+    fireEvent.click(screen.getByRole('button', { name: '活動登録' }));
+
+    expect(screen.queryByText('活動種別を入力してください')).toBeNull();
   });
 
   it('shows patient-detail context and refreshes patient home operations after creating a note', () => {

@@ -1916,6 +1916,8 @@ export function ConferencesContent({
                       }}
                       placeholder={section.placeholder}
                       rows={section.rows ?? 3}
+                      aria-invalid={Boolean(noteFormErrors.content)}
+                      aria-describedby={noteFormErrors.content ? 'conf-content-error' : undefined}
                     />
                   </div>
                 ))}
@@ -1949,7 +1951,15 @@ export function ConferencesContent({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={newActivityOpen} onOpenChange={setNewActivityOpen}>
+      <Dialog
+        open={newActivityOpen}
+        onOpenChange={(open) => {
+          setNewActivityOpen(open);
+          if (!open) {
+            resetActivityForm();
+          }
+        }}
+      >
         <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle>地域活動の登録</DialogTitle>
