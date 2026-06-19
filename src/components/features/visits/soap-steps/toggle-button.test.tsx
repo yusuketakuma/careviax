@@ -11,9 +11,13 @@ describe('SOAP ToggleButton', () => {
   it('exposes the selected state and dispatches toggle actions', () => {
     const onToggle = vi.fn();
 
-    render(<ToggleButton selected label="眠気" onToggle={onToggle} />);
+    const { rerender } = render(<ToggleButton selected={false} label="眠気" onToggle={onToggle} />);
 
     const button = screen.getByRole('button', { name: '眠気' });
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+
+    rerender(<ToggleButton selected label="眠気" onToggle={onToggle} />);
+
     expect(button.getAttribute('aria-pressed')).toBe('true');
 
     fireEvent.click(button);
