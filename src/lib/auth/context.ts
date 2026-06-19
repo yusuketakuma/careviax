@@ -1,9 +1,11 @@
 import { prisma } from '@/lib/db/client';
 import { NextRequest, NextResponse } from 'next/server';
+import { unstable_rethrow } from 'next/navigation';
 import { MemberRole } from '@prisma/client';
 import { hasPermission, type PermissionKey } from './permissions';
 import { resolveLocalUserByIdentity } from './user-resolution';
-import { authNoOrg, forbiddenResponse, unauthorized } from '@/lib/api/response';
+import { authNoOrg, forbiddenResponse, internalError, unauthorized } from '@/lib/api/response';
+import { logger } from '@/lib/utils/logger';
 import {
   clearRequestAuthContext,
   runWithRequestAuthContext,
@@ -313,6 +315,11 @@ export async function requireAuthContext(
  *
  * Keeps authenticated request metadata in an explicit `ctx` argument and
  * preserves `routeContext` for App Router params.
+ *
+ * ハンドラ内の想定外 throw は Next の汎用 500(本文不定)になり、クライアントが
+ * 期待する {code,message} エンベロープと不一致になる。ここで捕捉して標準 500
+ * エンベロープに変換し、観測性のため logger.error(本番は Sentry capture)へ記録する。
+ * 既存の早期 return(validationError 等の NextResponse)はそのまま素通しする。
  */
 export function withAuthContext<TParams extends Record<string, string>>(
   handler: (
@@ -327,9 +334,21 @@ export function withAuthContext<TParams extends Record<string, string>>(
       const authResult = await requireAuthContext(req, options);
       if ('response' in authResult) return authResult.response;
 
-      return runWithRequestAuthContext(authResult.ctx, () =>
-        handler(req, authResult.ctx, routeContext),
-      );
+      return runWithRequestAuthContext(authResult.ctx, async () => {
+        try {
+          return await handler(req, authResult.ctx, routeContext);
+        } catch (err) {
+          // redirect()/notFound()/forbidden()/unauthorized() 等の Next 制御フロー例外は
+          // フレームワークに委ねる(該当時のみ再 throw、それ以外は何もしない)
+          unstable_rethrow(err);
+          logger.error('route handler unhandled error', err, {
+            event: 'route_handler_unhandled_error',
+            route: req.nextUrl?.pathname,
+            method: req.method,
+          });
+          return internalError();
+        }
+      });
     });
   };
 }
