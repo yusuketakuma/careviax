@@ -2443,6 +2443,40 @@ Blocked: C11 (diverged user-visible label strings — product/UX sign-off), C12 
 - Phase 1 still needs actor pharmacy/site context completion in remaining read audits, share-scope update/audit, patient-share-case creation UI, visit request creation UI, and stronger management-plan version evidence.
 - Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
 
+## 20260619-1752 JST - Pharmacy Visit Request Creation UI Slice
+
+### Completed
+
+- Re-read the v0.2 specification requirements for `FR-008`, `AC-005`, `P1-14`, and `P1-15` against the current pharmacy cooperation workflow.
+- Added a visit-request creation panel to `/workflow/pharmacy-cooperation` using active patient share cases only.
+- The creation payload now captures urgency, visit type, desired start/end datetime, request reason, physician instruction, carry items, and patient home notes through the existing `/api/pharmacy-visit-requests` endpoint.
+- The UI blocks incomplete requests and rejects a desired end datetime that is not after the desired start datetime before issuing the POST.
+- The visit request list now shows the active contract id/version, estimated amount, billing model, unit price, and estimate status returned by the API.
+- Added UI regression coverage proving the POST body is trimmed/normalized, carry items are line-normalized, org headers are sent, and raw request reason / physician instruction / home-note text is not rendered back into the list.
+
+### Files Changed
+
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' src/app/api/pharmacy-visit-requests/route.test.ts --reporter=dot --testTimeout=30000`: passed, 2 files / 11 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' src/app/api/pharmacy-visit-requests/route.test.ts`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm exec prisma validate`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Phase 1 still needs patient-share-case creation UI, share-scope update/audit, actor pharmacy/site context completion in remaining read audits, and stronger management-plan version evidence.
+- Browser-level workflow proof for the pharmacy cooperation screen remains pending after the current component/API regression coverage.
+- Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
+
 ## 20260619-1523 JST - Legacy Consent Document Upload Hardening Slice
 
 ### Completed
