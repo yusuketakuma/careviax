@@ -13,6 +13,10 @@ import {
   normalizeAuditedConsentDocumentUrl,
   serializeConsentRecordDocumentUrl,
 } from '@/server/services/consent-record-documents';
+import {
+  recordConsentRecordCreatedAudit,
+  recordConsentRecordsViewedAudit,
+} from '@/server/services/consent-record-audit';
 
 function optionalTrimmedString(value: unknown) {
   if (value === null || value === undefined) return value;
@@ -174,10 +178,24 @@ export const GET = withAuthContext(
     ]);
 
     const hasMore = records.length > limit;
-    const data = (hasMore ? records.slice(0, limit) : records).map(
-      serializeConsentRecordDocumentUrl,
-    );
+    const pageRecords = hasMore ? records.slice(0, limit) : records;
+    const data = pageRecords.map(serializeConsentRecordDocumentUrl);
     const nextCursor = hasMore ? data[data.length - 1].id : undefined;
+
+    await recordConsentRecordsViewedAudit(prisma, ctx, {
+      patientId,
+      caseId: null,
+      consentType: consentType ?? null,
+      isActive,
+      limit,
+      hasCursor: Boolean(cursor),
+      hasMore,
+      totalCount,
+      records: pageRecords.map((record) => ({
+        id: record.id,
+        document_url: record.document_url,
+      })),
+    });
 
     return success({ data, nextCursor, hasMore, totalCount });
   },
@@ -295,7 +313,7 @@ export const POST = withAuthContext(
     }
 
     const record = await withOrgContext(ctx.orgId, async (tx) => {
-      return tx.consentRecord.create({
+      const createdRecord = await tx.consentRecord.create({
         data: {
           org_id: ctx.orgId,
           patient_id,
@@ -311,6 +329,8 @@ export const POST = withAuthContext(
           access_restricted: false,
         },
       });
+      await recordConsentRecordCreatedAudit(tx, ctx, createdRecord);
+      return createdRecord;
     });
 
     return success(serializeConsentRecordDocumentUrl(record), 201);

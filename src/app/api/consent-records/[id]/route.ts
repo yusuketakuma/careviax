@@ -14,6 +14,10 @@ import {
   normalizeAuditedConsentDocumentUrl,
   serializeConsentRecordDocumentUrl,
 } from '@/server/services/consent-record-documents';
+import {
+  recordConsentRecordUpdatedAudit,
+  recordConsentRecordViewedAudit,
+} from '@/server/services/consent-record-audit';
 import type { ConsentRecord } from '@prisma/client';
 
 function optionalTrimmedString(value: unknown) {
@@ -125,6 +129,8 @@ export const GET = withAuthContext<{ id: string }>(
     });
     if (!visibleRecord) return notFound('同意記録が見つかりません');
 
+    await recordConsentRecordViewedAudit(prisma, ctx, visibleRecord);
+
     return success(serializeConsentRecordDocumentUrl(visibleRecord));
   },
   { permission: 'canVisit' },
@@ -150,7 +156,19 @@ export const PATCH = withAuthContext<{ id: string }>(
 
     const existing = await prisma.consentRecord.findFirst({
       where: { id, org_id: ctx.orgId },
-      select: { id: true, patient_id: true, case_id: true, updated_at: true },
+      select: {
+        id: true,
+        patient_id: true,
+        case_id: true,
+        consent_type: true,
+        method: true,
+        is_active: true,
+        expiry_date: true,
+        document_url: true,
+        template_id: true,
+        template_version: true,
+        updated_at: true,
+      },
     });
     if (!existing) return notFound('同意記録が見つかりません');
 
@@ -191,6 +209,10 @@ export const PATCH = withAuthContext<{ id: string }>(
         ? { document_url: documentInput.documentUrl }
         : {}),
     };
+    const changedFields = [
+      ...(expiry_date !== undefined ? ['expiry_date'] : []),
+      ...(documentInput.documentUrl !== undefined ? ['document_url'] : []),
+    ];
 
     const result = await withOrgContext(ctx.orgId, async (tx): Promise<ConsentPatchResult> => {
       const canStillAccessConsent = await canAccessCaseScopedPatientResource({
@@ -220,6 +242,11 @@ export const PATCH = withAuthContext<{ id: string }>(
         where: { id },
       });
       if (!record) return { error: 'not_found' as const };
+      await recordConsentRecordUpdatedAudit(tx, ctx, {
+        before: existing,
+        after: record,
+        changedFields,
+      });
       return { record };
     }).catch((error): ConsentPatchResult => {
       if (error instanceof ConsentPatchConflictError) {

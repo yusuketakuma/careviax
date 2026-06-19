@@ -14,6 +14,8 @@ const {
   validateOrgReferencesMock,
   consentRecordCreateMock,
   withOrgContextMock,
+  recordConsentRecordsViewedAuditMock,
+  recordConsentRecordCreatedAuditMock,
 } = vi.hoisted(() => ({
   authMock: vi.fn(),
   membershipFindFirstMock: vi.fn(),
@@ -27,6 +29,8 @@ const {
   validateOrgReferencesMock: vi.fn(),
   consentRecordCreateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  recordConsentRecordsViewedAuditMock: vi.fn(),
+  recordConsentRecordCreatedAuditMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/config', () => ({
@@ -64,6 +68,11 @@ vi.mock('@/lib/api/org-reference', () => ({
 
 vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
+}));
+
+vi.mock('@/server/services/consent-record-audit', () => ({
+  recordConsentRecordsViewedAudit: recordConsentRecordsViewedAuditMock,
+  recordConsentRecordCreatedAudit: recordConsentRecordCreatedAuditMock,
 }));
 
 import { GET as rawGET, POST as rawPOST } from './route';
@@ -114,6 +123,8 @@ describe('/api/consent-records', () => {
     careCaseFindFirstMock.mockResolvedValue({ id: 'case_1' });
     fileAssetFindFirstMock.mockResolvedValue({ id: 'file_1' });
     validateOrgReferencesMock.mockResolvedValue({ ok: true });
+    recordConsentRecordsViewedAuditMock.mockResolvedValue(undefined);
+    recordConsentRecordCreatedAuditMock.mockResolvedValue(undefined);
     consentRecordCreateMock.mockResolvedValue({
       id: 'consent_2',
       patient_id: 'patient_1',
@@ -163,6 +174,42 @@ describe('/api/consent-records', () => {
       ],
     });
     expect(JSON.stringify(body)).not.toContain('legacy-consent.pdf');
+    expect(recordConsentRecordsViewedAuditMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        consentRecord: expect.objectContaining({
+          findMany: consentRecordFindManyMock,
+        }),
+      }),
+      expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+      expect.objectContaining({
+        patientId: 'patient_1',
+        caseId: null,
+        consentType: 'external_sharing',
+        isActive: true,
+        limit: expect.any(Number),
+        hasCursor: false,
+        hasMore: false,
+        totalCount: 1,
+        records: [
+          {
+            id: 'consent_1',
+            document_url: 'https://files.example.test/legacy-consent.pdf',
+          },
+        ],
+      }),
+    );
+  });
+
+  it('fails closed when consent list view audit cannot be recorded', async () => {
+    recordConsentRecordsViewedAuditMock.mockRejectedValueOnce(new Error('audit unavailable'));
+
+    await expect(
+      GET(createRequest('http://localhost/api/consent-records?patient_id=patient_1')),
+    ).rejects.toThrow('audit unavailable');
   });
 
   it('does not list consent records outside the patient assignment scope', async () => {
@@ -175,6 +222,7 @@ describe('/api/consent-records', () => {
     expect(response.status).toBe(404);
     expect(consentRecordFindManyMock).not.toHaveBeenCalled();
     expect(consentRecordCountMock).not.toHaveBeenCalled();
+    expect(recordConsentRecordsViewedAuditMock).not.toHaveBeenCalled();
   });
 
   it('creates a consent record when no active duplicate exists', async () => {
@@ -205,6 +253,23 @@ describe('/api/consent-records', () => {
         method: 'paper_scan',
       }),
     });
+    expect(recordConsentRecordCreatedAuditMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        consentRecord: expect.objectContaining({
+          create: consentRecordCreateMock,
+        }),
+      }),
+      expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+      expect.objectContaining({
+        id: 'consent_2',
+        patient_id: 'patient_1',
+        document_url: null,
+      }),
+    );
   });
 
   it('creates a consent record with a validated consent document file asset', async () => {
@@ -242,6 +307,7 @@ describe('/api/consent-records', () => {
         document_url: '/api/files/file_1/presigned-download?download=1',
       }),
     });
+    expect(recordConsentRecordCreatedAuditMock).toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       document_url: '/api/files/file_1/presigned-download?download=1',
       has_document_url: true,
@@ -264,6 +330,7 @@ describe('/api/consent-records', () => {
     expect(validateOrgReferencesMock).not.toHaveBeenCalled();
     expect(patientFindFirstMock).not.toHaveBeenCalled();
     expect(consentRecordCreateMock).not.toHaveBeenCalled();
+    expect(recordConsentRecordCreatedAuditMock).not.toHaveBeenCalled();
   });
 
   it('rejects absolute audited-looking consent document urls before create side effects', async () => {
@@ -280,6 +347,7 @@ describe('/api/consent-records', () => {
     expect(response.status).toBe(400);
     expect(validateOrgReferencesMock).not.toHaveBeenCalled();
     expect(consentRecordCreateMock).not.toHaveBeenCalled();
+    expect(recordConsentRecordCreatedAuditMock).not.toHaveBeenCalled();
   });
 
   it('does not create consent records outside the patient assignment scope', async () => {
@@ -298,6 +366,24 @@ describe('/api/consent-records', () => {
     expect(consentRecordFindFirstMock).not.toHaveBeenCalled();
     expect(templateFindFirstMock).not.toHaveBeenCalled();
     expect(consentRecordCreateMock).not.toHaveBeenCalled();
+    expect(recordConsentRecordCreatedAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when consent create audit cannot be recorded', async () => {
+    recordConsentRecordCreatedAuditMock.mockRejectedValueOnce(new Error('audit unavailable'));
+
+    await expect(
+      POST(
+        createRequest('http://localhost/api/consent-records', {
+          patient_id: 'patient_1',
+          consent_type: 'external_sharing',
+          method: 'paper_scan',
+          obtained_date: '2026-03-29',
+        }),
+      ),
+    ).rejects.toThrow('audit unavailable');
+
+    expect(consentRecordCreateMock).toHaveBeenCalled();
   });
 
   it('rejects non-object request bodies before validation lookups or create side effects', async () => {

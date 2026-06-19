@@ -11,6 +11,8 @@ const {
   txCareCaseFindFirstMock,
   consentRecordUpdateMock,
   withOrgContextMock,
+  recordConsentRecordViewedAuditMock,
+  recordConsentRecordUpdatedAuditMock,
 } = vi.hoisted(() => ({
   consentRecordFindFirstMock: vi.fn(),
   consentRecordFindUniqueMock: vi.fn(),
@@ -21,6 +23,8 @@ const {
   txCareCaseFindFirstMock: vi.fn(),
   consentRecordUpdateMock: vi.fn(),
   withOrgContextMock: vi.fn(),
+  recordConsentRecordViewedAuditMock: vi.fn(),
+  recordConsentRecordUpdatedAuditMock: vi.fn(),
 }));
 
 vi.mock('@/lib/auth/context', () => ({
@@ -51,6 +55,11 @@ vi.mock('@/lib/db/rls', () => ({
   withOrgContext: withOrgContextMock,
 }));
 
+vi.mock('@/server/services/consent-record-audit', () => ({
+  recordConsentRecordViewedAudit: recordConsentRecordViewedAuditMock,
+  recordConsentRecordUpdatedAudit: recordConsentRecordUpdatedAuditMock,
+}));
+
 import { GET, PATCH } from './route';
 
 function createRequest(method: 'GET' | 'PATCH', body?: unknown) {
@@ -77,6 +86,12 @@ describe('/api/consent-records/[id]', () => {
       patient_id: 'patient_1',
       case_id: null,
       consent_type: 'external_sharing',
+      method: 'paper_scan',
+      is_active: true,
+      expiry_date: new Date('2026-12-31T00:00:00.000Z'),
+      document_url: 'https://example.com/consent.pdf',
+      template_id: 'template_1',
+      template_version: 2,
       updated_at: new Date('2026-01-01T00:00:00.000Z'),
     });
     patientFindFirstMock.mockResolvedValue({ id: 'patient_1' });
@@ -87,8 +102,18 @@ describe('/api/consent-records/[id]', () => {
     consentRecordUpdateMock.mockResolvedValue({ count: 1 });
     consentRecordFindUniqueMock.mockResolvedValue({
       id: 'consent_1',
-      document_url: 'https://example.com/consent.pdf',
+      patient_id: 'patient_1',
+      case_id: null,
+      consent_type: 'external_sharing',
+      method: 'paper_scan',
+      is_active: true,
+      expiry_date: new Date('2026-12-31T00:00:00.000Z'),
+      document_url: '/api/files/file_1/presigned-download?download=1',
+      template_id: 'template_1',
+      template_version: 2,
     });
+    recordConsentRecordViewedAuditMock.mockResolvedValue(undefined);
+    recordConsentRecordUpdatedAuditMock.mockResolvedValue(undefined);
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
       callback({
         consentRecord: {
@@ -128,6 +153,33 @@ describe('/api/consent-records/[id]', () => {
     expect(consentRecordFindFirstMock).toHaveBeenNthCalledWith(2, {
       where: { id: 'consent_1', org_id: 'org_1' },
     });
+    expect(recordConsentRecordViewedAuditMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        consentRecord: expect.objectContaining({
+          findFirst: consentRecordFindFirstMock,
+        }),
+      }),
+      expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+      expect.objectContaining({
+        id: 'consent_1',
+        patient_id: 'patient_1',
+        document_url: 'https://example.com/consent.pdf',
+      }),
+    );
+  });
+
+  it('fails closed when consent detail view audit cannot be recorded', async () => {
+    recordConsentRecordViewedAuditMock.mockRejectedValueOnce(new Error('audit unavailable'));
+
+    await expect(
+      GET(createRequest('GET'), {
+        params: Promise.resolve({ id: 'consent_1' }),
+      }),
+    ).rejects.toThrow('audit unavailable');
   });
 
   it('rejects blank consent record ids before loading the record on GET', async () => {
@@ -142,6 +194,7 @@ describe('/api/consent-records/[id]', () => {
     expect(consentRecordFindFirstMock).not.toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(consentRecordUpdateMock).not.toHaveBeenCalled();
+    expect(recordConsentRecordViewedAuditMock).not.toHaveBeenCalled();
   });
 
   it('does not return a consent record outside the patient assignment scope', async () => {
@@ -162,6 +215,7 @@ describe('/api/consent-records/[id]', () => {
     expect(patientFindFirstMock).toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(consentRecordUpdateMock).not.toHaveBeenCalled();
+    expect(recordConsentRecordViewedAuditMock).not.toHaveBeenCalled();
   });
 
   it('updates expiry date and audited document url', async () => {
@@ -178,7 +232,19 @@ describe('/api/consent-records/[id]', () => {
     expect(response.status).toBe(200);
     expect(consentRecordFindFirstMock).toHaveBeenCalledWith({
       where: { id: 'consent_1', org_id: 'org_1' },
-      select: { id: true, patient_id: true, case_id: true, updated_at: true },
+      select: {
+        id: true,
+        patient_id: true,
+        case_id: true,
+        consent_type: true,
+        method: true,
+        is_active: true,
+        expiry_date: true,
+        document_url: true,
+        template_id: true,
+        template_version: true,
+        updated_at: true,
+      },
     });
     expect(patientFindFirstMock).toHaveBeenCalled();
     expect(txPatientFindFirstMock).toHaveBeenCalled();
@@ -196,6 +262,31 @@ describe('/api/consent-records/[id]', () => {
     expect(consentRecordFindUniqueMock).toHaveBeenCalledWith({
       where: { id: 'consent_1' },
     });
+    expect(recordConsentRecordUpdatedAuditMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        consentRecord: expect.objectContaining({
+          updateMany: consentRecordUpdateMock,
+          findUnique: consentRecordFindUniqueMock,
+        }),
+      }),
+      expect.objectContaining({
+        orgId: 'org_1',
+        userId: 'user_1',
+        role: 'pharmacist',
+      }),
+      {
+        before: expect.objectContaining({
+          id: 'consent_1',
+          expiry_date: new Date('2026-12-31T00:00:00.000Z'),
+          document_url: 'https://example.com/consent.pdf',
+        }),
+        after: expect.objectContaining({
+          id: 'consent_1',
+          document_url: '/api/files/file_1/presigned-download?download=1',
+        }),
+        changedFields: ['expiry_date', 'document_url'],
+      },
+    );
   });
 
   it('updates the document url from a validated consent document file id', async () => {
@@ -230,6 +321,13 @@ describe('/api/consent-records/[id]', () => {
         document_url: '/api/files/file_1/presigned-download?download=1',
       },
     });
+    expect(recordConsentRecordUpdatedAuditMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.any(Object),
+      expect.objectContaining({
+        changedFields: ['document_url'],
+      }),
+    );
   });
 
   it('does not update a consent record outside the patient assignment scope', async () => {
@@ -250,12 +348,25 @@ describe('/api/consent-records/[id]', () => {
     });
     expect(consentRecordFindFirstMock).toHaveBeenCalledWith({
       where: { id: 'consent_1', org_id: 'org_1' },
-      select: { id: true, patient_id: true, case_id: true, updated_at: true },
+      select: {
+        id: true,
+        patient_id: true,
+        case_id: true,
+        consent_type: true,
+        method: true,
+        is_active: true,
+        expiry_date: true,
+        document_url: true,
+        template_id: true,
+        template_version: true,
+        updated_at: true,
+      },
     });
     expect(patientFindFirstMock).toHaveBeenCalled();
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(consentRecordUpdateMock).not.toHaveBeenCalled();
     expect(consentRecordFindUniqueMock).not.toHaveBeenCalled();
+    expect(recordConsentRecordUpdatedAuditMock).not.toHaveBeenCalled();
   });
 
   it('does not update when consent assignment changes inside the transaction', async () => {
@@ -279,6 +390,7 @@ describe('/api/consent-records/[id]', () => {
     expect(txPatientFindFirstMock).toHaveBeenCalled();
     expect(consentRecordUpdateMock).not.toHaveBeenCalled();
     expect(consentRecordFindUniqueMock).not.toHaveBeenCalled();
+    expect(recordConsentRecordUpdatedAuditMock).not.toHaveBeenCalled();
   });
 
   it('returns conflict without a stale update when the consent record changed after loading', async () => {
@@ -309,6 +421,24 @@ describe('/api/consent-records/[id]', () => {
       },
     });
     expect(consentRecordFindUniqueMock).not.toHaveBeenCalled();
+    expect(recordConsentRecordUpdatedAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when consent update audit cannot be recorded', async () => {
+    recordConsentRecordUpdatedAuditMock.mockRejectedValueOnce(new Error('audit unavailable'));
+
+    await expect(
+      PATCH(
+        createRequest('PATCH', {
+          expiry_date: '2026-12-31',
+        }),
+        {
+          params: Promise.resolve({ id: 'consent_1' }),
+        },
+      ),
+    ).rejects.toThrow('audit unavailable');
+
+    expect(consentRecordUpdateMock).toHaveBeenCalled();
   });
 
   it('rejects external document urls before mutating the consent record', async () => {
@@ -331,6 +461,7 @@ describe('/api/consent-records/[id]', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(consentRecordUpdateMock).not.toHaveBeenCalled();
     expect(consentRecordFindUniqueMock).not.toHaveBeenCalled();
+    expect(recordConsentRecordUpdatedAuditMock).not.toHaveBeenCalled();
   });
 
   it('rejects absolute audited-looking document urls before mutating the consent record', async () => {
@@ -353,6 +484,7 @@ describe('/api/consent-records/[id]', () => {
     expect(withOrgContextMock).not.toHaveBeenCalled();
     expect(consentRecordUpdateMock).not.toHaveBeenCalled();
     expect(consentRecordFindUniqueMock).not.toHaveBeenCalled();
+    expect(recordConsentRecordUpdatedAuditMock).not.toHaveBeenCalled();
   });
 
   it('rejects blank consent record ids before parsing or updating the record', async () => {

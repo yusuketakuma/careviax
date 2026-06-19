@@ -2,7 +2,11 @@ export const EXPECTED_AUDIT_TRIGGER_CONTRACTS = [
   { name: 'audit_log_patient', tableName: 'Patient' },
   { name: 'audit_log_patient_insurance', tableName: 'PatientInsurance' },
   { name: 'audit_log_care_case', tableName: 'CareCase' },
-  { name: 'audit_log_consent_record', tableName: 'ConsentRecord' },
+  {
+    name: 'audit_log_consent_record',
+    tableName: 'ConsentRecord',
+    functionName: 'ph_os_write_consent_record_audit_log',
+  },
   { name: 'audit_log_management_plan', tableName: 'ManagementPlan' },
   { name: 'audit_log_visit_schedule', tableName: 'VisitSchedule' },
   { name: 'audit_log_visit_preparation', tableName: 'VisitPreparation' },
@@ -91,10 +95,12 @@ export function validateAuditTriggerContracts(
         reason: `table=${row.table_name}, expected=${expected.tableName}`,
       });
     }
-    if (row.function_name !== 'ph_os_write_audit_log') {
+    const expectedFunctionName =
+      'functionName' in expected ? expected.functionName : 'ph_os_write_audit_log';
+    if (row.function_name !== expectedFunctionName) {
       issues.push({
         triggerName: expected.name,
-        reason: `function=${row.function_name}`,
+        reason: `function=${row.function_name}, expected=${expectedFunctionName}`,
       });
     }
     if (row.tgenabled !== 'O') {

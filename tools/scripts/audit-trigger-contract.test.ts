@@ -9,7 +9,7 @@ function makeValidRows(): AuditTriggerCatalogRow[] {
   return EXPECTED_AUDIT_TRIGGER_CONTRACTS.map((contract) => ({
     tgname: contract.name,
     table_name: contract.tableName,
-    function_name: 'ph_os_write_audit_log',
+    function_name: 'functionName' in contract ? contract.functionName : 'ph_os_write_audit_log',
     tgenabled: 'O',
     is_row_trigger: true,
     is_before_trigger: false,
@@ -23,6 +23,19 @@ function makeValidRows(): AuditTriggerCatalogRow[] {
 describe('validateAuditTriggerContracts', () => {
   it('accepts the expected PH-OS audit trigger contract', () => {
     expect(validateAuditTriggerContracts(makeValidRows())).toEqual([]);
+  });
+
+  it('requires ConsentRecord to use the redacted audit trigger function', () => {
+    const rows = makeValidRows().map((row) =>
+      row.tgname === 'audit_log_consent_record'
+        ? { ...row, function_name: 'ph_os_write_audit_log' }
+        : row,
+    );
+
+    expect(validateAuditTriggerContracts(rows)).toContainEqual({
+      triggerName: 'audit_log_consent_record',
+      reason: 'function=ph_os_write_audit_log, expected=ph_os_write_consent_record_audit_log',
+    });
   });
 
   it('rejects missing audit triggers', () => {
@@ -60,7 +73,10 @@ describe('validateAuditTriggerContracts', () => {
 
     expect(validateAuditTriggerContracts(rows)).toEqual(
       expect.arrayContaining([
-        { triggerName: 'audit_log_task', reason: 'function=unsafe_audit_function' },
+        {
+          triggerName: 'audit_log_task',
+          reason: 'function=unsafe_audit_function, expected=ph_os_write_audit_log',
+        },
         { triggerName: 'audit_log_task', reason: 'enabled=D' },
         { triggerName: 'audit_log_task', reason: 'not row-level' },
         { triggerName: 'audit_log_task', reason: 'not AFTER trigger' },
