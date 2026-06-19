@@ -2648,3 +2648,46 @@ Blocked: C11 (diverged user-visible label strings — product/UX sign-off), C12 
 - Consent document download audit still cannot directly resolve a `ConsentRecord` context because `ConsentRecord` stores only `document_url`.
 - ConsentRecord expiry/document update UI remains absent; only the API PATCH path is covered.
 - Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
+
+## 20260619-1821 JST - Patient Share Scope Update Audit Slice
+
+### Completed
+
+- Added `PATCH /api/patient-share-cases/:id` for existing patient share-case scope updates, keeping the response PHI-minimized and no-store.
+- Moved canonical patient share-scope keys/defaults/normalization into `src/server/services/patient-share-scope.ts` and reused it from the collection route and new detail route.
+- Kept unknown or non-boolean scope keys out of persisted `PatientShareCase.share_scope`, responses, and audits.
+- Added fail-closed active-share protection: active share cases can only move to a scope covered by an active, unrevoked patient-share consent.
+- Added compact `patient_share_case_scope_updated` audit metadata with previous/current enabled scope keys and counts only.
+- Registered the new PATCH route in the operational route catalog and rate-limit canonicalization templates.
+
+### Files Changed
+
+- `src/app/api/patient-share-cases/[id]/route.ts`
+- `src/app/api/patient-share-cases/[id]/route.test.ts`
+- `src/app/api/patient-share-cases/route.ts`
+- `src/server/services/patient-share-scope.ts`
+- `src/lib/api/route-catalog.ts`
+- `src/lib/api/route-catalog.test.ts`
+- `src/lib/api/rate-limit.ts`
+- `src/lib/api/rate-limit.test.ts`
+- `src/app/api/meta/route-catalog/route.test.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write src/server/services/patient-share-scope.ts 'src/app/api/patient-share-cases/[id]/route.ts' 'src/app/api/patient-share-cases/[id]/route.test.ts' src/app/api/patient-share-cases/route.ts src/lib/api/route-catalog.ts src/lib/api/route-catalog.test.ts src/lib/api/rate-limit.ts src/lib/api/rate-limit.test.ts src/app/api/meta/route-catalog/route.test.ts`: passed.
+- `pnpm exec vitest run 'src/app/api/patient-share-cases/[id]/route.test.ts' src/app/api/patient-share-cases/route.test.ts src/lib/api/route-catalog.test.ts src/lib/api/rate-limit.test.ts src/app/api/meta/route-catalog/route.test.ts --reporter=dot --testTimeout=30000`: passed, 5 files / 53 tests.
+- `pnpm exec eslint src/server/services/patient-share-scope.ts 'src/app/api/patient-share-cases/[id]/route.ts' 'src/app/api/patient-share-cases/[id]/route.test.ts' src/app/api/patient-share-cases/route.ts src/app/api/patient-share-cases/route.test.ts src/lib/api/route-catalog.ts src/lib/api/route-catalog.test.ts src/lib/api/rate-limit.ts src/lib/api/rate-limit.test.ts src/app/api/meta/route-catalog/route.test.ts`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm exec prisma validate --schema=prisma/schema/`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Phase 1 still needs actor pharmacy/site context completion in remaining read audits.
+- Browser-level workflow proof across patient card creation, consent/link/activation, visit request, partner record, billing, and report draft paths remains pending.
+- Consent document download audit still cannot directly resolve a `ConsentRecord` context because `ConsentRecord` stores only `document_url`.
+- ConsentRecord expiry/document update UI remains absent; only the API PATCH path is covered.
+- Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
