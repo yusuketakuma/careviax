@@ -746,12 +746,62 @@ async function clearUiDemoPatientShareCases() {
   try {
     await client.query(
       `
+        DELETE FROM "PharmacyVisitRequest"
+        WHERE "share_case_id" IN (
+          SELECT "id"
+          FROM "PatientShareCase"
+          WHERE "base_patient_id" = $1
+            AND "partnership_id" = $2
+        )
+      `,
+      [DEMO_IDS.patient, DEMO_IDS.pharmacyPartnership],
+    );
+
+    await client.query(
+      `
         DELETE FROM "PatientShareCase"
         WHERE "base_patient_id" = $1
           AND "partnership_id" = $2
       `,
       [DEMO_IDS.patient, DEMO_IDS.pharmacyPartnership],
     );
+  } finally {
+    await client.end();
+  }
+}
+
+async function readUiDemoPharmacyVisitRequest(shareCaseId: string) {
+  const client = new Client({ connectionString: DB_CONNECTION_STRING });
+  await client.connect();
+
+  try {
+    const result = await client.query<{
+      id: string;
+      share_case_id: string;
+      status: string;
+      urgency: string;
+      visit_type: string | null;
+      has_contract_estimate_snapshot: boolean;
+      accepted_by: string | null;
+    }>(
+      `
+        SELECT
+          "id",
+          "share_case_id",
+          "status"::text,
+          "urgency",
+          "visit_type"::text,
+          ("estimated_snapshot" IS NOT NULL) AS has_contract_estimate_snapshot,
+          "accepted_by"
+        FROM "PharmacyVisitRequest"
+        WHERE "share_case_id" = $1
+        ORDER BY "created_at" DESC
+        LIMIT 1
+      `,
+      [shareCaseId],
+    );
+
+    return result.rows[0] ?? null;
   } finally {
     await client.end();
   }
@@ -1059,7 +1109,7 @@ test.describe('major authenticated screens', () => {
     expect(errors).toEqual([]);
   });
 
-  test('patient card creates and activates a DB-backed share case with approved management-plan evidence', async ({
+  test('patient card creates an active DB-backed share case and accepted visit request', async ({
     context,
   }) => {
     await clearUiDemoPatientShareCases();
@@ -1158,12 +1208,60 @@ test.describe('major authenticated screens', () => {
       active_consent_count: 1,
     });
 
+    const visitDate = dateKeyFromOffset(1);
+    const visitRequestResponse = await page.request.post('/api/pharmacy-visit-requests', {
+      data: {
+        share_case_id: shareCase!.id,
+        urgency: 'normal',
+        desired_start_at: `${visitDate}T10:30:00.000Z`,
+        desired_end_at: `${visitDate}T11:30:00.000Z`,
+        visit_type: 'regular',
+        request_reason: 'DB-backed訪問依頼の確認',
+        physician_instruction: '血圧と副作用を確認',
+        carry_items: ['分包済み一包', '残薬バッグ'],
+        patient_home_notes: '家族同席予定',
+      },
+    });
+    expect(visitRequestResponse.status()).toBe(201);
+
+    const visitRequest = await readUiDemoPharmacyVisitRequest(shareCase!.id);
+    expect(visitRequest).toMatchObject({
+      share_case_id: shareCase!.id,
+      status: 'requested',
+      urgency: 'normal',
+      visit_type: 'regular',
+      has_contract_estimate_snapshot: true,
+    });
+    expect(visitRequest?.id).toEqual(expect.any(String));
+
+    const visitAcceptResponse = await page.request.post(
+      `/api/pharmacy-visit-requests/${visitRequest!.id}/decision`,
+      {
+        data: {
+          decision: 'accept',
+          pharmacist_id: demoContext.userId,
+        },
+      },
+    );
+    expect(visitAcceptResponse.status()).toBe(200);
+
+    const acceptedVisitRequest = await readUiDemoPharmacyVisitRequest(shareCase!.id);
+    expect(acceptedVisitRequest).toMatchObject({
+      id: visitRequest!.id,
+      status: 'accepted',
+      accepted_by: demoContext.userId,
+    });
+
     await openStableRoute(page, '/workflow/pharmacy-cooperation');
     const shareCasesTable = page.getByRole('table', { name: '患者共有ケース一覧' });
     const activatedShareCaseRow = shareCasesTable.getByRole('row').filter({
       hasText: shareCase!.id,
     });
     await expect(activatedShareCaseRow.getByText('共有中')).toBeVisible({ timeout: 60_000 });
+    const visitRequestsTable = page.getByRole('table', { name: '協力薬局訪問依頼一覧' });
+    await expect(
+      visitRequestsTable.getByRole('row').filter({ hasText: visitRequest!.id }),
+    ).toBeVisible({ timeout: 60_000 });
 
     await writeScreenshot(page, 'patient-share-case-create-db-backed');
     expect(errors).toEqual([]);
