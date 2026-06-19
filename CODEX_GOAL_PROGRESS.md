@@ -4720,6 +4720,34 @@ Implemented:
 
 - UI/UX remediation remains active. QR draft, conferences, and patient master inputs have focused coverage. Broader remaining candidates include patient contacts/care-team/cases Input/Textarea labels, workflow pharmacy cooperation labels, raw table/DataTable convergence, and expanded browser/a11y proof.
 
+## 20260620-0110 JST - Patient Contact Input Label Associations
+
+### Summary
+
+- Added row-specific accessible names to patient contact name, phone, email, organization, department, fax, address, and notes fields.
+- Extended the patient contacts test to assert each repeated-row input is reachable by label.
+- Preserved the existing contact save payload, reliability warning handling, and panel layout.
+
+### Files Changed
+
+- `src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx`
+- `src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx'`: passed, unchanged.
+- `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 2 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.tsx' 'src/app/(dashboard)/patients/[id]/patient-contacts-panel.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Patient contacts, patient master, QR draft, and conferences inputs have focused coverage. Broader remaining candidates include care-team/cases Input/Textarea labels, workflow pharmacy cooperation labels, raw table/DataTable convergence, and expanded browser/a11y proof.
+
 ## 20260620-0036 JST - Billing Rule Row Action Names
 
 ### Summary
