@@ -743,9 +743,15 @@ describe('PharmacyCooperationWorkflowContent', () => {
     expect(await screen.findByText('visit_request_1')).toBeTruthy();
     expect(await screen.findByText('partner_record_submitted')).toBeTruthy();
     expect((await screen.findAllByText('correction_1')).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByRole('table', { name: '患者共有ケース一覧' }).className).toContain(
-      'min-w-[72rem]',
-    );
+    const shareCasesRegion = screen.getByRole('region', {
+      name: '患者共有ケース一覧 横スクロール領域',
+    });
+    expect(shareCasesRegion.getAttribute('tabindex')).toBe('0');
+    shareCasesRegion.focus();
+    expect(document.activeElement).toBe(shareCasesRegion);
+    expect(
+      within(shareCasesRegion).getByRole('table', { name: '患者共有ケース一覧' }).className,
+    ).toContain('min-w-[72rem]');
     expect(screen.getAllByText('協力薬局').length).toBeGreaterThanOrEqual(1);
     expect(document.body.textContent).not.toContain('山田');
     expect(document.body.textContent).not.toContain('訪問本文');

@@ -864,7 +864,12 @@ function SectionShell({
 
 function TableFrame({ children, label }: { children: ReactNode; label: string }) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-border/70">
+    <div
+      role="region"
+      aria-label={`${label} 横スクロール領域`}
+      tabIndex={0}
+      className="overflow-x-auto rounded-lg border border-border/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
       <table className="min-w-[72rem] text-sm" aria-label={label}>
         {children}
       </table>
