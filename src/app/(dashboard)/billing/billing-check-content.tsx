@@ -1,7 +1,9 @@
 'use client';
 
+import type { ColumnDef } from '@tanstack/react-table';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { DataTable } from '@/components/ui/data-table';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { FilterChipBar } from '@/components/features/workspace/filter-chip-bar';
@@ -129,39 +131,59 @@ function KpiStrip({ data }: { data: BillingCheckResponse }) {
 // 疑義テーブル(根拠とセットでしか出さない)
 // ---------------------------------------------------------------------------
 
-function ReviewRow({ row }: { row: BillingCheckReviewRow }) {
-  return (
-    <tr className="border-b border-card bg-amber-50/70" data-testid="billing-check-review-row">
-      <td className="px-3 py-3 text-sm font-medium text-foreground">
-        {row.patient_href ? (
-          <a href={row.patient_href} className="hover:underline">
-            {row.patient_label}
-          </a>
-        ) : (
-          row.patient_label
-        )}
-      </td>
-      <td className="px-3 py-3 text-sm text-foreground">{row.billing_name}</td>
-      <td className="px-3 py-3 text-sm leading-5 text-foreground">{row.confirm_text}</td>
-      <td className="px-3 py-3">
-        <a
-          href={row.evidence_href}
-          className="inline-flex items-center whitespace-nowrap rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-primary hover:bg-sky-100"
-        >
-          {row.evidence_label} →
+const reviewColumns: ColumnDef<BillingCheckReviewRow>[] = [
+  {
+    id: 'patient',
+    header: '患者',
+    cell: ({ row }) =>
+      row.original.patient_href ? (
+        <a href={row.original.patient_href} className="font-medium hover:underline">
+          {row.original.patient_label}
         </a>
-      </td>
-      <td className="px-3 py-3 text-right">
-        <a
-          href={row.action_href}
-          className="inline-flex min-h-8 items-center whitespace-nowrap rounded-md border border-primary/30 bg-card px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/5"
-        >
-          {row.action_label}
-        </a>
-      </td>
-    </tr>
-  );
-}
+      ) : (
+        <span className="font-medium">{row.original.patient_label}</span>
+      ),
+    meta: { label: '患者' },
+  },
+  {
+    id: 'billing_name',
+    header: '算定項目',
+    cell: ({ row }) => row.original.billing_name,
+    meta: { label: '算定項目' },
+  },
+  {
+    id: 'confirm_text',
+    header: '確認すること',
+    cell: ({ row }) => <span className="leading-5">{row.original.confirm_text}</span>,
+    meta: { label: '確認すること' },
+  },
+  {
+    id: 'evidence',
+    header: '根拠',
+    cell: ({ row }) => (
+      <a
+        href={row.original.evidence_href}
+        className="inline-flex min-h-[44px] items-center whitespace-nowrap rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-medium text-primary hover:bg-sky-100 sm:min-h-8"
+      >
+        {row.original.evidence_label} →
+      </a>
+    ),
+    meta: { label: '根拠' },
+  },
+  {
+    id: 'action',
+    header: () => <span className="sr-only">戻り先</span>,
+    cell: ({ row }) => (
+      <a
+        href={row.original.action_href}
+        className="inline-flex min-h-[44px] items-center whitespace-nowrap rounded-md border border-primary/30 bg-card px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/5 sm:min-h-8"
+      >
+        {row.original.action_label}
+      </a>
+    ),
+    meta: { label: '戻り先' },
+  },
+];
 
 function ReviewTableSection({ data }: { data: BillingCheckResponse }) {
   return (
@@ -183,33 +205,17 @@ function ReviewTableSection({ data }: { data: BillingCheckResponse }) {
           疑義はありません — 自動チェックをすべて通過しています
         </p>
       ) : (
-        <div className="mt-3 overflow-x-auto">
-          <table className="min-w-full">
-            <thead>
-              <tr className="text-left text-xs text-muted-foreground">
-                <th scope="col" className="px-3 py-2 font-medium">
-                  患者
-                </th>
-                <th scope="col" className="px-3 py-2 font-medium">
-                  算定項目
-                </th>
-                <th scope="col" className="px-3 py-2 font-medium">
-                  確認すること
-                </th>
-                <th scope="col" className="px-3 py-2 font-medium">
-                  根拠
-                </th>
-                <th scope="col" className="px-3 py-2">
-                  <span className="sr-only">戻り先</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.review_rows.map((row) => (
-                <ReviewRow key={row.id} row={row} />
-              ))}
-            </tbody>
-          </table>
+        <div className="mt-3">
+          <DataTable
+            columns={reviewColumns}
+            data={data.review_rows}
+            caption="算定チェック疑義一覧"
+            getRowId={(row) => row.id}
+            getRowA11yLabel={(row) => `${row.patient_label} / ${row.billing_name} / ${row.id}`}
+            toolbar={{
+              enableColumnVisibility: true,
+            }}
+          />
         </div>
       )}
     </section>

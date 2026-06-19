@@ -153,27 +153,29 @@ describe('BillingCheckContent', () => {
   it('renders 疑義 rows with evidence pills and return-path actions', () => {
     render(<BillingCheckContent />);
 
-    const table = screen.getByTestId('billing-check-review-table');
-    expect(within(table).getByText('疑義 — 根拠とセットでしか出さない')).toBeTruthy();
+    const section = screen.getByTestId('billing-check-review-table');
+    expect(within(section).getByText('疑義 — 根拠とセットでしか出さない')).toBeTruthy();
     expect(
-      within(table).getByText('自動チェックを通らなかったものだけが人に届きます'),
+      within(section).getByText('自動チェックを通らなかったものだけが人に届きます'),
     ).toBeTruthy();
 
-    const rows = within(table).getAllByTestId('billing-check-review-row');
-    expect(rows).toHaveLength(3);
+    const table = within(section).getByRole('table', { name: '算定チェック疑義一覧' });
+    expect(within(table).getAllByRole('row')).toHaveLength(4);
+    expect(within(section).getByRole('button', { name: /列/ })).toBeTruthy();
+    expect(within(section).queryByRole('textbox')).toBeNull();
 
-    expect(within(rows[0]).getByText('新規 鈴木 様')).toBeTruthy();
-    expect(within(rows[0]).getByText('在宅移行初期管理料')).toBeTruthy();
-    expect(within(rows[0]).getByText('受入確定が前提 — 本日17:00の判断待ち')).toBeTruthy();
-    expect(within(rows[0]).getByRole('link', { name: '告示第69号 →' })).toBeTruthy();
-    expect(within(rows[0]).getByRole('link', { name: '→ ダッシュボードへ' })).toBeTruthy();
+    expect(within(table).getByText('新規 鈴木 様')).toBeTruthy();
+    expect(within(table).getByText('在宅移行初期管理料')).toBeTruthy();
+    expect(within(table).getByText('受入確定が前提 — 本日17:00の判断待ち')).toBeTruthy();
+    expect(within(table).getByRole('link', { name: '告示第69号 →' })).toBeTruthy();
+    expect(within(table).getByRole('link', { name: '→ ダッシュボードへ' })).toBeTruthy();
 
-    expect(within(rows[1]).getByText('吉田 進 様(入院中)')).toBeTruthy();
-    expect(within(rows[1]).getByRole('link', { name: '病院へ確認' })).toBeTruthy();
+    expect(within(table).getByText('吉田 進 様(入院中)')).toBeTruthy();
+    expect(within(table).getByRole('link', { name: '病院へ確認' })).toBeTruthy();
 
     // 危険語(麻薬)を隠さない
-    expect(within(rows[2]).getByText('麻薬管理指導加算')).toBeTruthy();
-    expect(within(rows[2]).getByRole('link', { name: '→ 訪問へ' })).toBeTruthy();
+    expect(within(table).getByText('麻薬管理指導加算')).toBeTruthy();
+    expect(within(table).getByRole('link', { name: '→ 訪問へ' })).toBeTruthy();
 
     expect(
       screen.getByText(
