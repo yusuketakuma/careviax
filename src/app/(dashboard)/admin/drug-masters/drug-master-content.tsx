@@ -650,6 +650,31 @@ const CATEGORY_OPTIONS = [
   { value: '7', label: '7: 治療を主目的としない医薬品' },
 ] as const;
 
+const REORDER_POINT_ERROR_MESSAGE = '在庫下限は 0 以上の整数で入力してください';
+const REORDER_POINT_HELP_ID = 'drug-master-reorder-point-help';
+const REORDER_POINT_ERROR_ID = 'drug-master-reorder-point-error';
+
+type ParsedReorderPointInput =
+  | {
+      ok: true;
+      value: number | null;
+    }
+  | {
+      ok: false;
+    };
+
+export function parseReorderPointInput(rawValue: string): ParsedReorderPointInput {
+  const value = rawValue.trim();
+  if (!value) {
+    return { ok: true, value: null };
+  }
+  if (!/^\d+$/.test(value)) {
+    return { ok: false };
+  }
+  const parsedValue = Number.parseInt(value, 10);
+  return Number.isSafeInteger(parsedValue) ? { ok: true, value: parsedValue } : { ok: false };
+}
+
 const INTERACTION_SEVERITY_LABEL: Record<
   DrugMasterDetail['interactions_as_a'][number]['severity'],
   string
@@ -833,6 +858,7 @@ function DrugMasterOperationalContent({
   const [formularyRequestDecisionTarget, setFormularyRequestDecisionTarget] =
     useState<FormularyRequestDecisionTarget | null>(null);
   const [deleteTemplateConfirmOpen, setDeleteTemplateConfirmOpen] = useState(false);
+  const [reorderPointError, setReorderPointError] = useState<string | null>(null);
   const [expiryReferenceTime] = useState(() => Date.now());
   const reorderPointInputRef = useRef<HTMLInputElement | null>(null);
   const debouncedSearchQuery = useDebouncedValue(
@@ -3423,6 +3449,7 @@ function DrugMasterOperationalContent({
         onRowClick={(index) => {
           setSelectedDrugId(drugs[index]?.id ?? null);
           setPreferredGenericId(null);
+          setReorderPointError(null);
         }}
         selectedRowIndex={selectedRowIndex}
         errorMessage={
@@ -3492,6 +3519,7 @@ function DrugMasterOperationalContent({
           if (!open) {
             setSelectedDrugId(null);
             setPreferredGenericId(null);
+            setReorderPointError(null);
           }
         }}
       >
@@ -3807,9 +3835,26 @@ function DrugMasterOperationalContent({
                               type="number"
                               min={0}
                               defaultValue={stockConfig?.reorder_point ?? ''}
+                              aria-invalid={reorderPointError ? true : undefined}
+                              aria-describedby={
+                                reorderPointError
+                                  ? `${REORDER_POINT_HELP_ID} ${REORDER_POINT_ERROR_ID}`
+                                  : REORDER_POINT_HELP_ID
+                              }
+                              onChange={() => {
+                                if (reorderPointError) {
+                                  setReorderPointError(null);
+                                }
+                              }}
                               placeholder="例: 10"
                               className="w-32"
                             />
+                            <span
+                              id={REORDER_POINT_HELP_ID}
+                              className="block text-xs text-muted-foreground"
+                            >
+                              0以上の整数、または空欄で未設定にします。
+                            </span>
                           </label>
                           <LoadingButton
                             type="button"
@@ -3818,27 +3863,39 @@ function DrugMasterOperationalContent({
                             loading={stockMutation.isPending}
                             loadingLabel="保存中"
                             disabled={!effectiveSelectedSiteId}
+                            aria-describedby={
+                              reorderPointError ? REORDER_POINT_ERROR_ID : undefined
+                            }
                             onClick={() => {
                               const rawValue = reorderPointInputRef.current?.value?.trim() ?? '';
-                              const parsedValue =
-                                rawValue.length === 0 ? null : Number.parseInt(rawValue, 10);
-                              if (rawValue.length > 0 && Number.isNaN(parsedValue)) {
-                                toast.error('在庫下限は 0 以上の整数で入力してください');
+                              const parsedValue = parseReorderPointInput(rawValue);
+                              if (!parsedValue.ok) {
+                                setReorderPointError(REORDER_POINT_ERROR_MESSAGE);
                                 return;
                               }
+                              setReorderPointError(null);
 
                               stockMutation.mutate({
                                 site_id: effectiveSelectedSiteId,
                                 drug_master_id: detailQuery.data.id,
                                 is_stocked: stockConfig?.is_stocked ?? true,
                                 preferred_generic_id: effectivePreferredGenericId || null,
-                                reorder_point: parsedValue,
+                                reorder_point: parsedValue.value,
                               });
                             }}
                           >
                             アラート閾値を保存
                           </LoadingButton>
                         </div>
+                        {reorderPointError ? (
+                          <p
+                            id={REORDER_POINT_ERROR_ID}
+                            role="alert"
+                            className="text-sm text-destructive"
+                          >
+                            {reorderPointError}
+                          </p>
+                        ) : null}
                         <p className="text-xs text-muted-foreground">
                           現在値:{' '}
                           {stockConfig?.reorder_point != null

@@ -4,7 +4,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { MasterEditorView } from '../master-editor-view';
-import { DrugMasterContent } from './drug-master-content';
+import { DrugMasterContent, parseReorderPointInput } from './drug-master-content';
 
 setupDomTestEnv();
 
@@ -485,4 +485,23 @@ describe('DrugMasterContent', () => {
       decision_note: '申請内容を確認して却下',
     });
   });
+});
+
+describe('parseReorderPointInput', () => {
+  it.each([
+    ['', null],
+    ['  ', null],
+    ['0', 0],
+    ['10', 10],
+    [' 720 ', 720],
+  ])('accepts blank or non-negative integer input %s', (input, expected) => {
+    expect(parseReorderPointInput(input)).toEqual({ ok: true, value: expected });
+  });
+
+  it.each(['-1', '10.5', '10abc', '1e2', 'Infinity', '9007199254740992'])(
+    'rejects malformed reorder point input %s',
+    (input) => {
+      expect(parseReorderPointInput(input)).toEqual({ ok: false });
+    },
+  );
 });
