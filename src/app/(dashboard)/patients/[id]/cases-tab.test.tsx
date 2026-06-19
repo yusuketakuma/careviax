@@ -70,8 +70,14 @@ describe('CasesTab', () => {
     expect(screen.getByRole('heading', { level: 2, name: 'ケース #ABCDEF' }).tagName).toBe('H2');
     expect(screen.getByRole('heading', { level: 3, name: 'ケース情報' }).tagName).toBe('H3');
     expect(screen.getByRole('button', { name: 'ケース情報を保存' })).toBeTruthy();
+    expect(screen.getByLabelText('ケース1件目の紹介元')).toBeTruthy();
+    expect(screen.getByLabelText('ケース1件目の紹介日')).toBeTruthy();
+    expect(screen.getByLabelText('ケース1件目の開始日')).toBeTruthy();
+    expect(screen.getByLabelText('ケース1件目の終了日')).toBeTruthy();
     expect(screen.getByLabelText('主担当薬剤師')).toBeTruthy();
     expect(screen.getByLabelText('代替薬剤師')).toBeTruthy();
+    expect(screen.getByLabelText('ケース1件目の終了理由')).toBeTruthy();
+    expect(screen.getByLabelText('ケース1件目のケースメモ')).toBeTruthy();
     expect(screen.getByText('居宅介護支援事業所')).toBeTruthy();
   });
 });

@@ -223,7 +223,7 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
           description="「ケース追加」ボタンで新しいケースを作成できます"
         />
       ) : (
-        patient.cases.map((c) => {
+        patient.cases.map((c, index) => {
           const status = c.status as CaseStatus;
           const nextStatuses = caseStatusTransitions[status] ?? [];
           const draft = caseDrafts[c.id] ?? buildCaseDraft(c);
@@ -320,6 +320,7 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-muted-foreground">紹介元</label>
                       <Input
+                        aria-label={`ケース${index + 1}件目の紹介元`}
                         value={draft.referral_source}
                         onChange={(event) =>
                           setCaseDrafts((current) => ({
@@ -335,6 +336,7 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-muted-foreground">紹介日</label>
                       <Input
+                        aria-label={`ケース${index + 1}件目の紹介日`}
                         type="date"
                         value={draft.referral_date}
                         onChange={(event) =>
@@ -351,6 +353,7 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-muted-foreground">開始日</label>
                       <Input
+                        aria-label={`ケース${index + 1}件目の開始日`}
                         type="date"
                         value={draft.start_date}
                         onChange={(event) =>
@@ -367,6 +370,7 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-muted-foreground">終了日</label>
                       <Input
+                        aria-label={`ケース${index + 1}件目の終了日`}
                         type="date"
                         value={draft.end_date}
                         onChange={(event) =>
@@ -447,6 +451,7 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
                     <div className="space-y-1.5 md:col-span-2">
                       <label className="text-xs font-medium text-muted-foreground">終了理由</label>
                       <Input
+                        aria-label={`ケース${index + 1}件目の終了理由`}
                         value={draft.end_reason}
                         onChange={(event) =>
                           setCaseDrafts((current) => ({
@@ -465,6 +470,7 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
                         ケースメモ
                       </label>
                       <Textarea
+                        aria-label={`ケース${index + 1}件目のケースメモ`}
                         rows={3}
                         value={draft.notes}
                         onChange={(event) =>
