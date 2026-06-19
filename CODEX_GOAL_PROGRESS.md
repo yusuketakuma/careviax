@@ -2911,3 +2911,56 @@ Blocked: C11 (diverged user-visible label strings — product/UX sign-off), C12 
 - Migration was generated and validated but not applied to any database, per repository DB mutation rules.
 - Broader v0.2 lifecycle statuses for patient share cases and visit requests still differ from the full specification and should be reviewed in separate migration-aware slices.
 - Direct authenticated browser proof remains blocked until v0.2 migrations are approved/applied to the local e2e DB.
+
+## 20260619-2034 JST - Patient Share Case Status Alignment
+
+### Completed
+
+- Re-read the v0.2 patient-share-case lifecycle requirement and treated it as the higher-version SSOT over the existing `pending_partner` flow.
+- Updated `PatientShareCaseStatus` to `draft`, `consent_pending`, `partner_confirmation_pending`, `active`, `suspended`, `ended`, `revoked`, and `declined`.
+- Added a migration that adds `consent_pending` / `declined` and renames existing `pending_partner` values to `partner_confirmation_pending` without applying it to a database.
+- Changed create/consent/link/activation behavior so new share cases start at `consent_pending`, consent registration advances to `partner_confirmation_pending`, activation is allowed only from partner confirmation or suspended states with active consent and accepted link, and patient-link decline closes the share case as `declined`.
+- Updated workflow labels, terminal-state guards, consent create availability, policy tests, route tests, and route-mocked browser proof to follow the v0.2 order: consent, base approval, partner acceptance, activation.
+
+### Files Changed
+
+- `prisma/schema/pharmacy-partnership.prisma`
+- `prisma/migrations/20260619202000_align_patient_share_case_statuses/migration.sql`
+- `src/server/services/pharmacy-partnerships.ts`
+- `src/server/services/pharmacy-partnerships.test.ts`
+- `src/app/api/patient-share-cases/route.ts`
+- `src/app/api/patient-share-cases/route.test.ts`
+- `src/app/api/patient-share-cases/[id]/route.ts`
+- `src/app/api/patient-share-cases/[id]/activate/route.test.ts`
+- `src/app/api/patient-share-cases/[id]/consents/route.ts`
+- `src/app/api/patient-share-cases/[id]/consents/route.test.ts`
+- `src/app/api/patient-share-cases/[id]/consents/[consentId]/revoke/route.ts`
+- `src/app/api/patient-share-cases/[id]/patient-link/route.ts`
+- `src/app/api/patient-share-cases/[id]/patient-link/route.test.ts`
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`
+- `tools/tests/ui-route-mocked-smoke.spec.ts`
+- `Plans.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prisma format --schema=prisma/schema/`: passed.
+- `pnpm exec prisma validate --schema=prisma/schema/`: passed.
+- `pnpm db:generate`: passed.
+- `pnpm vitest run src/server/services/pharmacy-partnerships.test.ts src/app/api/patient-share-cases/route.test.ts 'src/app/api/patient-share-cases/[id]/activate/route.test.ts' 'src/app/api/patient-share-cases/[id]/patient-link/route.test.ts' 'src/app/api/patient-share-cases/[id]/consents/route.test.ts' 'src/app/api/patient-share-cases/[id]/consents/[consentId]/revoke/route.test.ts' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`: passed, 7 files / 48 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed.
+- `pnpm exec prettier --write tools/tests/ui-route-mocked-smoke.spec.ts`: passed.
+- `pnpm exec eslint tools/tests/ui-route-mocked-smoke.spec.ts`: passed.
+- Initial route-mocked Playwright rerun failed because the existing proof still activated before registering consent; after updating the proof to the v0.2 order, rerun passed.
+- `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-route-mocked-smoke.spec.ts --project=chromium -g "pharmacy cooperation route-mocked browser workflow smoke"`: passed, 1 Chromium test.
+- `pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Migration was generated and validated but not applied to any database, per repository DB mutation rules.
+- Visit request lifecycle statuses still need a separate migration-aware v0.2 alignment slice.
+- Direct authenticated browser proof remains blocked until v0.2 migrations are approved/applied to the local e2e DB.
