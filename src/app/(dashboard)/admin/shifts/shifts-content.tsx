@@ -371,6 +371,16 @@ export function ShiftsContent() {
     })} / ${holiday.site?.name ?? '組織全体'}`;
   }
 
+  function shiftCellSummary(shift: ShiftCell, isHoliday: boolean) {
+    const dateLabel = format(parseISO(shift.date), 'yyyy年M月d日(E)', { locale: ja });
+    const availability = isHoliday
+      ? '休日'
+      : shift.available
+        ? `出勤可 ${shift.available_from}-${shift.available_to}`
+        : '出勤不可';
+    return `${shift.user_name} / ${dateLabel} / ${shift.site_name ?? '所属店舗未設定'} / ${availability}`;
+  }
+
   function startEdit() {
     setDraftShifts(baselineShifts);
     setSelectedShiftKey(null);
@@ -998,34 +1008,47 @@ export function ShiftsContent() {
                           );
                           const isHoliday = matchingHolidays.length > 0;
                           const isSelected = selectedShiftKey === shift.key;
+                          const cellContent = isHoliday ? (
+                            <div className="space-y-0.5">
+                              <div className="text-[10px] font-medium text-rose-700">休</div>
+                              <div className="text-[9px] text-rose-600">
+                                {matchingHolidays[0]?.site?.name ?? '全体'}
+                              </div>
+                            </div>
+                          ) : shift.available ? (
+                            <div className="flex flex-col items-center gap-0.5">
+                              <Check className="size-3.5 text-emerald-600" />
+                              <span className="text-[9px] text-muted-foreground">
+                                {shift.available_from}
+                              </span>
+                            </div>
+                          ) : (
+                            <X className="mx-auto size-3.5 text-slate-300" />
+                          );
 
                           return (
                             <td
                               key={shift.key}
                               className={[
-                                'px-1.5 py-2 text-center',
+                                editMode ? 'p-0' : 'px-1.5 py-2',
+                                'text-center',
                                 editMode ? 'cursor-pointer hover:bg-muted/50' : '',
                                 isHoliday ? 'bg-rose-50/70' : '',
                                 isSelected ? 'ring-2 ring-inset ring-primary' : '',
                               ].join(' ')}
-                              onClick={() => editMode && setSelectedShiftKey(shift.key)}
                             >
-                              {isHoliday ? (
-                                <div className="space-y-0.5">
-                                  <div className="text-[10px] font-medium text-rose-700">休</div>
-                                  <div className="text-[9px] text-rose-600">
-                                    {matchingHolidays[0]?.site?.name ?? '全体'}
-                                  </div>
-                                </div>
-                              ) : shift.available ? (
-                                <div className="flex flex-col items-center gap-0.5">
-                                  <Check className="size-3.5 text-emerald-600" />
-                                  <span className="text-[9px] text-muted-foreground">
-                                    {shift.available_from}
-                                  </span>
-                                </div>
+                              {editMode ? (
+                                <button
+                                  type="button"
+                                  className="flex min-h-[44px] w-full items-center justify-center px-1.5 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                  onClick={() => setSelectedShiftKey(shift.key)}
+                                  aria-label={`${shiftCellSummary(shift, isHoliday)} を編集`}
+                                  aria-pressed={isSelected}
+                                >
+                                  {cellContent}
+                                </button>
                               ) : (
-                                <X className="mx-auto size-3.5 text-slate-300" />
+                                cellContent
                               )}
                             </td>
                           );

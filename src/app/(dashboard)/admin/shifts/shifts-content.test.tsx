@@ -170,4 +170,21 @@ describe('ShiftsContent', () => {
 
     expect(mutationMutateMock).toHaveBeenCalledWith(expect.objectContaining({ id: 'holiday_1' }));
   });
+
+  it('renders monthly shift cells as keyboard-accessible buttons in edit mode', async () => {
+    render(<ShiftsContent />);
+
+    expect(screen.queryByText(/山田 太郎 \/ \d{4}年\d+月\d+日\(.+\)/)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'シフト編集' }));
+    const editableCells = await screen.findAllByRole('button', {
+      name: /山田 太郎 \/ \d{4}年\d+月\d+日\(.+\) \/ 本店 \/ .* を編集/,
+    });
+
+    expect(editableCells[0].tagName).toBe('BUTTON');
+    expect(editableCells[0].getAttribute('aria-label')).not.toContain('患者');
+    fireEvent.click(editableCells[0]);
+
+    expect(await screen.findByText(/山田 太郎 \/ \d{4}年\d+月\d+日\(.+\)/)).toBeTruthy();
+  });
 });
