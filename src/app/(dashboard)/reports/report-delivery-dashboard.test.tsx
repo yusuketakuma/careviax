@@ -107,8 +107,12 @@ describe('ReportDeliveryDashboard', () => {
       ),
     ).toBeTruthy();
     expect(screen.getByText('67%')).toBeTruthy();
-    expect(screen.getByText('2026-04')).toBeTruthy();
-    expect(screen.getByText('田中医師')).toBeTruthy();
+    expect(screen.getAllByText('2026-04').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('田中医師').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByLabelText('月別送達成功率内検索')).toBeTruthy();
+    expect(screen.getByLabelText('医師別送達内検索')).toBeTruthy();
+    expect(screen.getByLabelText('チャネル別送達内検索')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: '列' }).length).toBeGreaterThanOrEqual(3);
     expect(screen.getByText('患者A')).toBeTruthy();
     expect(screen.getByText('8日経過')).toBeTruthy();
     expect(screen.getByLabelText('未確認報告の超過日数')).toBeTruthy();

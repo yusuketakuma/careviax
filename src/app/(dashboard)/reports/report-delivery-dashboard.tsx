@@ -1,12 +1,14 @@
 'use client';
 
 import Link from 'next/link';
+import type { ColumnDef } from '@tanstack/react-table';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { DataTable } from '@/components/ui/data-table';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -67,6 +69,11 @@ type DeliveryAnalyticsResponse = {
       days_waiting: number;
     }>;
   };
+};
+
+type AnalyticsTableRow = {
+  id: string;
+  values: string[];
 };
 
 export function ReportDeliveryDashboard({ highlighted = false }: { highlighted?: boolean }) {
@@ -368,6 +375,22 @@ function AnalyticsTableCard({
   rows: string[][];
   emptyMessage: string;
 }) {
+  const tableRows = useMemo<AnalyticsTableRow[]>(
+    () => rows.map((row, index) => ({ id: `${title}-${index}`, values: row })),
+    [rows, title],
+  );
+  const columns = useMemo<ColumnDef<AnalyticsTableRow>[]>(
+    () =>
+      headers.map((header, index) => ({
+        id: `column_${index}`,
+        accessorFn: (row) => row.values[index] ?? '',
+        header,
+        cell: ({ row }) => row.original.values[index] ?? '',
+        meta: { label: header },
+      })),
+    [headers],
+  );
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -375,33 +398,18 @@ function AnalyticsTableCard({
       </CardHeader>
       <CardContent>
         {rows.length ? (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b border-border/70 text-left text-muted-foreground">
-                  {headers.map((header) => (
-                    <th key={header} className="px-2 py-2 font-medium">
-                      {header}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, index) => (
-                  <tr
-                    key={`${title}-${index}`}
-                    className="border-b border-border/40 last:border-b-0"
-                  >
-                    {row.map((value, valueIndex) => (
-                      <td key={`${title}-${index}-${valueIndex}`} className="px-2 py-2 align-top">
-                        {value}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            columns={columns}
+            data={tableRows}
+            caption={title}
+            getRowId={(row) => row.id}
+            getRowA11yLabel={(row) => `${title} ${row.values.join(' ')}`}
+            toolbar={{
+              enableGlobalFilter: true,
+              globalFilterPlaceholder: `${title}内検索`,
+              enableColumnVisibility: true,
+            }}
+          />
         ) : (
           <p className="text-sm text-muted-foreground">{emptyMessage}</p>
         )}
