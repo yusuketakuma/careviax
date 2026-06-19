@@ -4338,6 +4338,33 @@ Implemented:
 
 - UI/UX remediation remains active. Remaining candidates include select accessible-name gaps outside fixed/verified screens, raw table/DataTable convergence, and expanded browser/a11y proof.
 
+## 20260620-0040 JST - Data Explorer Control Labels
+
+### Summary
+
+- Added accessible labels to the model search, category filter, row search, and JSON editor controls.
+- Added a focused regression test proving those high-power admin controls are reachable by label.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/data-explorer/data-explorer-content.tsx`
+- `src/app/(dashboard)/admin/data-explorer/data-explorer-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/data-explorer/data-explorer-content.tsx' 'src/app/(dashboard)/admin/data-explorer/data-explorer-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/data-explorer/data-explorer-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 1 test.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/data-explorer/data-explorer-content.tsx' 'src/app/(dashboard)/admin/data-explorer/data-explorer-content.test.tsx'`: passed.
+- `pnpm exec prettier --check 'src/app/(dashboard)/admin/data-explorer/data-explorer-content.tsx' 'src/app/(dashboard)/admin/data-explorer/data-explorer-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Remaining candidates include select accessible-name gaps in incidents, pharmacist credentials, settings, and users, plus raw table/DataTable convergence and expanded browser/a11y proof.
+
 ## 20260620-0036 JST - Billing Rule Row Action Names
 
 ### Summary

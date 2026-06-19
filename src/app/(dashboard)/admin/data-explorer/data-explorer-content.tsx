@@ -241,6 +241,7 @@ export function DataExplorerContent() {
             <div className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3">
               <Search className="size-4 text-muted-foreground" aria-hidden="true" />
               <Input
+                aria-label="モデル検索"
                 value={modelFilter}
                 onChange={(event) => setModelFilter(event.target.value)}
                 placeholder="モデル名で検索"
@@ -252,7 +253,7 @@ export function DataExplorerContent() {
               value={categoryFilter}
               onValueChange={(value) => setCategoryFilter(value as 'all' | CoverageCategory)}
             >
-              <SelectTrigger>
+              <SelectTrigger aria-label="カテゴリフィルタ">
                 <SelectValue placeholder="カテゴリ" />
               </SelectTrigger>
               <SelectContent>
@@ -311,6 +312,7 @@ export function DataExplorerContent() {
             <div className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3">
               <Search className="size-4 text-muted-foreground" aria-hidden="true" />
               <Input
+                aria-label="行検索"
                 value={rowSearch}
                 onChange={(event) => setRowSearch(event.target.value)}
                 placeholder="行内容を全文検索"
@@ -387,6 +389,7 @@ export function DataExplorerContent() {
                     </div>
                   ) : null}
                   <Textarea
+                    aria-label="許可フィールド JSON"
                     value={editorValue}
                     onChange={(event) => {
                       if (!editorKey) return;
