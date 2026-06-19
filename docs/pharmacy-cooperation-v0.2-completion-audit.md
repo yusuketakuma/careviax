@@ -41,7 +41,7 @@ This document is the current-state audit for the attached v0.2 in-home cooperati
 | R-04       | Notification commonality            | Implemented for messages/record submit             | existing notification service reused; PHI-free message text                                                             | Broader notification delivery proof optional                            | Reused service                                              | P1       |
 | R-05       | Billing calculation commonality     | Implemented for cooperation billing                | contract estimate, billing candidate snapshots, invoice item snapshots                                                  | Broader unification with all legacy billing engines remains future work | Started                                                     | P1       |
 | R-06       | PDF/file generation commonality     | Implemented for contract/invoice/report/file audit | shared PDF/FileAsset services                                                                                           | Real S3 proof pending                                                   | Reused services                                             | P0       |
-| R-07       | State transition commonality        | Partially implemented                              | route guards, enum migrations, UI confirmation gates                                                                    | Dedicated state-machine modules remain future hardening                 | Route-level rules now explicit                              | P1       |
+| R-07       | State transition commonality        | Implemented for visit/record/report/claim paths    | `pharmacy-partnerships.ts` transition helpers; decision/submit/review/report/claim routes                               | Patient-share-case transition helper remains broader hardening          | Visit request / partner record rules centralized            | P1       |
 
 ## Completion Criteria Audit
 
@@ -147,4 +147,4 @@ Rollback decision criteria:
 
 - Apply pending migrations after explicit approval.
 - Run the direct DB-backed patient-card browser proof.
-- Keep broader legacy-wide refactors open as follow-up hardening: patient summary resolver, dedicated state-machine modules, full role-matrix browser proof, and wider table/accessibility polish.
+- Keep broader legacy-wide refactors open as follow-up hardening: patient summary resolver, patient-share-case transition helper, full role-matrix browser proof, and wider table/accessibility polish.

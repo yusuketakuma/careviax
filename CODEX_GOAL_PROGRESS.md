@@ -3609,3 +3609,105 @@ Implemented:
 ### Remaining / Next Loop
 
 - Continue false-empty hardening for communications requests and schedule proposals, then return to the pharmacy cooperation R-07 transition-commonality gap.
+
+## 20260619-2308 JST - Communication Requests False-Empty Guard
+
+### Completed
+
+- Fixed the communication requests follow-up workspace failure path: failed request-list fetches no longer render "返信待ちの依頼はありません" or the empty selected-item prompt.
+- Added a shared `ErrorState` with retry and support-safe detail text for the request-list panel.
+- Hid the reply-follow-up list, the empty selected-item prompt, and the "対応済みにする" action while the initial request-list state is loading or failed.
+- Added regression tests for the error state, retry callback, initial loading state, absence of the reply-follow-up list, absence of empty follow-up text, and absence of the resolve action.
+
+### Files Changed
+
+- `src/app/(dashboard)/communications/requests/requests-content.tsx`
+- `src/app/(dashboard)/communications/requests/requests-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/communications/requests/requests-content.tsx' 'src/app/(dashboard)/communications/requests/requests-content.test.tsx'`: passed unchanged.
+- `pnpm exec vitest run 'src/app/(dashboard)/communications/requests/requests-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 6 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/communications/requests/requests-content.tsx' 'src/app/(dashboard)/communications/requests/requests-content.test.tsx'`: passed.
+- Verifier follow-up: the read-only verifier found no blocker and one low loading-state gap; added the initial loading regression, then reran focused communication/schedule Vitest and targeted ESLint successfully.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Continue false-empty hardening for schedule proposals.
+
+## 20260619-2313 JST - Schedule Proposals False-Empty Guard
+
+### Completed
+
+- Fixed the schedule proposal dashboard failure path: failed proposal fetches no longer render empty candidate controls or "条件に一致する訪問候補はありません。"
+- Added a shared `ErrorState` with retry and support-safe detail text.
+- Hid bulk approve/reject actions, selection controls, diagnostics, and proposal cards while proposal state is unknown.
+- Added a regression test for the error state, retry callback, absence of empty-candidate text, and absence of bulk approval controls.
+- Removed a duplicate schedule proposal error-state test while keeping the stronger workspace-level regression.
+
+### Files Changed
+
+- `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx`
+- `src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx' 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx'`: passed unchanged.
+- `pnpm exec vitest run 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 32 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.tsx' 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx'`: passed.
+- Combined false-empty focused rerun: `pnpm exec vitest run 'src/app/(dashboard)/communications/requests/requests-content.test.tsx' 'src/app/(dashboard)/schedules/proposals/schedule-proposals-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 2 files / 38 tests.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Continue with pharmacy cooperation R-07 transition-commonality gap.
+
+## 20260619-2312 JST - Pharmacy Cooperation Visit Status Transition Commonality
+
+### Completed
+
+- Added explicit service-level transition rules for pharmacy visit requests and partner visit records in `pharmacy-partnerships.ts`.
+- Routed visit request accept/decline, partner record submit/confirm/return, physician report creation, and claim-check marking through helper-derived `nextStatus`.
+- Added unit coverage for allowed and denied visit request / partner visit record transitions.
+- Fixed a verifier-identified high risk in partner visit record confirmation: the route now updates the partner record before moving the linked visit request from `submitted` to `confirmed`, avoiding a self-conflict in the same transaction.
+- Added review-route tests for update ordering, return-side request status update, and request-transition race handling.
+
+### Files Changed
+
+- `src/server/services/pharmacy-partnerships.ts`
+- `src/server/services/pharmacy-partnerships.test.ts`
+- `src/app/api/pharmacy-visit-requests/[id]/decision/route.ts`
+- `src/app/api/partner-visit-records/[id]/submit/route.ts`
+- `src/app/api/partner-visit-records/[id]/review/route.ts`
+- `src/app/api/partner-visit-records/[id]/review/route.test.ts`
+- `src/server/services/partner-visit-report-drafts.ts`
+- `src/app/api/visit-billing-candidates/route.ts`
+- `docs/pharmacy-cooperation-v0.2-completion-audit.md`
+- `Plans.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- Read local Next.js route handler docs: `node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md` and `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/route.md`.
+- Read attached v0.2 R-07 spec sections.
+- `pnpm exec prettier --write` over touched R-07 files: passed.
+- `pnpm exec vitest run src/server/services/pharmacy-partnerships.test.ts 'src/app/api/pharmacy-visit-requests/[id]/decision/route.test.ts' 'src/app/api/partner-visit-records/[id]/submit/route.test.ts' 'src/app/api/partner-visit-records/[id]/review/route.test.ts' src/server/services/partner-visit-report-drafts.test.ts 'src/app/api/visit-billing-candidates/route.test.ts' --reporter=dot --testTimeout=30000`: passed, 6 files / 29 tests after the verifier follow-up fix.
+- Targeted ESLint over touched R-07 files/tests: passed.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- `git diff --check`: passed.
+- Verifier follow-up: initially found a high transaction-ordering risk in the partner visit review confirm path; fixed and revalidated.
+
+### Remaining / Next Loop
+
+- R-07 is now implemented for visit request / partner visit record / physician report / claim-check transitions. Patient-share-case transition helper remains broader future hardening; DB-backed browser proof and migration application still require explicit approval.
