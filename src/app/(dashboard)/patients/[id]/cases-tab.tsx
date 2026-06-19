@@ -381,7 +381,10 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-muted-foreground">
+                      <label
+                        htmlFor={`case-${c.id}-primary-pharmacist`}
+                        className="text-xs font-medium text-muted-foreground"
+                      >
                         主担当薬剤師
                       </label>
                       <Select
@@ -396,7 +399,7 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
                           }))
                         }
                       >
-                        <SelectTrigger>
+                        <SelectTrigger id={`case-${c.id}-primary-pharmacist`}>
                           <SelectValue placeholder="主担当薬剤師を選択" />
                         </SelectTrigger>
                         <SelectContent>
@@ -410,7 +413,10 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
                       </Select>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-muted-foreground">
+                      <label
+                        htmlFor={`case-${c.id}-backup-pharmacist`}
+                        className="text-xs font-medium text-muted-foreground"
+                      >
                         代替薬剤師
                       </label>
                       <Select
@@ -425,7 +431,7 @@ export function CasesTab({ patient, orgId }: CasesTabProps) {
                           }))
                         }
                       >
-                        <SelectTrigger>
+                        <SelectTrigger id={`case-${c.id}-backup-pharmacist`}>
                           <SelectValue placeholder="代替薬剤師を選択" />
                         </SelectTrigger>
                         <SelectContent>

@@ -70,6 +70,8 @@ describe('CasesTab', () => {
     expect(screen.getByRole('heading', { level: 2, name: 'ケース #ABCDEF' }).tagName).toBe('H2');
     expect(screen.getByRole('heading', { level: 3, name: 'ケース情報' }).tagName).toBe('H3');
     expect(screen.getByRole('button', { name: 'ケース情報を保存' })).toBeTruthy();
+    expect(screen.getByLabelText('主担当薬剤師')).toBeTruthy();
+    expect(screen.getByLabelText('代替薬剤師')).toBeTruthy();
     expect(screen.getByText('居宅介護支援事業所')).toBeTruthy();
   });
 });

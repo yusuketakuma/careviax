@@ -469,7 +469,7 @@ export function ManagementPlanPanel({
               value={resolvedSelectedCaseId}
               onValueChange={(value) => setSelectedCaseId(value ?? fallbackCaseId)}
             >
-              <SelectTrigger>
+              <SelectTrigger aria-label="管理計画書のケース">
                 <SelectValue placeholder="ケースを選択" />
               </SelectTrigger>
               <SelectContent>

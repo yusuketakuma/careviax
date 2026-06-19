@@ -74,6 +74,10 @@ describe('PatientCareTeamPanel', () => {
     expect(screen.getByLabelText('多職種連携先1件目の役割')).toBeTruthy();
     expect(screen.getByRole('button', { name: /行追加/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '新規登録' }));
+
+    expect(screen.getByLabelText('職種')).toBeTruthy();
   });
 
   it('shows reliability warnings returned by the care-team save API', () => {

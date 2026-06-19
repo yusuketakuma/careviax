@@ -640,7 +640,7 @@ export function PatientCareTeamPanel({
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 md:grid-cols-2">
-            <Field label="職種">
+            <Field label="職種" htmlFor="care-team-quick-create-profession">
               <Select
                 value={quickCreateDraft.profession_type}
                 onValueChange={(value) =>
@@ -650,7 +650,7 @@ export function PatientCareTeamPanel({
                   }))
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger id="care-team-quick-create-profession">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -751,16 +751,20 @@ export function PatientCareTeamPanel({
 
 function Field({
   label,
+  htmlFor,
   children,
   className,
 }: {
   label: string;
+  htmlFor?: string;
   children: ReactNode;
   className?: string;
 }) {
   return (
     <div className={className}>
-      <Label className="mb-1.5 block">{label}</Label>
+      <Label htmlFor={htmlFor} className="mb-1.5 block">
+        {label}
+      </Label>
       {children}
     </div>
   );
