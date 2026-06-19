@@ -4427,6 +4427,38 @@ Implemented:
 
 - Institution row action names are addressed. Continue with billing-rule system disabled reasons or admin jobs rerun action names.
 
+## 20260620-0528 JST - Admin Edit Action Names
+
+### Summary
+
+- Added target-specific accessible names to remaining small admin edit actions in alert rules, document templates, and service areas.
+- Extended focused regressions to click each named edit action and verify the selected row data loads into the edit form.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/alert-rules/page.tsx`
+- `src/app/(dashboard)/admin/alert-rules/page.test.tsx`
+- `src/app/(dashboard)/admin/document-templates/template-content.tsx`
+- `src/app/(dashboard)/admin/document-templates/template-content.test.tsx`
+- `src/app/(dashboard)/admin/service-areas/page.tsx`
+- `src/app/(dashboard)/admin/service-areas/page.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/alert-rules/page.tsx' 'src/app/(dashboard)/admin/alert-rules/page.test.tsx' 'src/app/(dashboard)/admin/document-templates/template-content.tsx' 'src/app/(dashboard)/admin/document-templates/template-content.test.tsx' 'src/app/(dashboard)/admin/service-areas/page.tsx' 'src/app/(dashboard)/admin/service-areas/page.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/alert-rules/page.test.tsx' 'src/app/(dashboard)/admin/document-templates/template-content.test.tsx' 'src/app/(dashboard)/admin/service-areas/page.test.tsx' --reporter=dot --testTimeout=30000`: passed, 3 files / 6 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/alert-rules/page.tsx' 'src/app/(dashboard)/admin/alert-rules/page.test.tsx' 'src/app/(dashboard)/admin/document-templates/template-content.tsx' 'src/app/(dashboard)/admin/document-templates/template-content.test.tsx' 'src/app/(dashboard)/admin/service-areas/page.tsx' 'src/app/(dashboard)/admin/service-areas/page.test.tsx'`: passed.
+- `git diff --check -- 'src/app/(dashboard)/admin/alert-rules/page.tsx' 'src/app/(dashboard)/admin/alert-rules/page.test.tsx' 'src/app/(dashboard)/admin/document-templates/template-content.tsx' 'src/app/(dashboard)/admin/document-templates/template-content.test.tsx' 'src/app/(dashboard)/admin/service-areas/page.tsx' 'src/app/(dashboard)/admin/service-areas/page.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `pnpm lint`: passed.
+
+### Remaining / Next Loop
+
+- Alert-rule, document-template, and service-area edit action names are addressed. Commit this group, then continue scanning admin actions if no blocker appears.
+
 ## 20260620-0525 JST - Job Rerun Action Names
 
 ### Summary

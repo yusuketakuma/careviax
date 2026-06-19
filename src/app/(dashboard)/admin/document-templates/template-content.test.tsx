@@ -119,4 +119,19 @@ describe('DocumentTemplateContent', () => {
       );
     });
   });
+
+  it('names the edit action and loads the selected template into the form', async () => {
+    renderContent();
+
+    const [editButton] = await screen.findAllByRole('button', {
+      name: '主治医報告 基本 を編集',
+    });
+    fireEvent.click(editButton);
+
+    expect(screen.getByRole('button', { name: '更新する' })).toBeTruthy();
+    expect((screen.getByLabelText('テンプレート名') as HTMLInputElement).value).toBe(
+      '主治医報告 基本',
+    );
+    expect((screen.getByLabelText('版') as HTMLInputElement).value).toBe('2');
+  });
 });

@@ -290,7 +290,12 @@ export function DocumentTemplateContent() {
       header: '操作',
       cell: ({ row }) => (
         <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={() => loadTemplate(row.original)}>
+          <Button
+            size="sm"
+            variant="outline"
+            aria-label={`${row.original.name} を編集`}
+            onClick={() => loadTemplate(row.original)}
+          >
             <Pencil className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
             編集
           </Button>

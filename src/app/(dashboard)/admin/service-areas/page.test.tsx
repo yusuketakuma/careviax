@@ -112,4 +112,15 @@ describe('ServiceAreasPage', () => {
       );
     });
   });
+
+  it('names edit actions by service area and loads that row into the form', async () => {
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('button', { name: '北多摩エリア（本店）を編集' }));
+
+    expect(screen.getByText('訪問エリアを編集')).toBeTruthy();
+    expect((screen.getByLabelText('エリア名') as HTMLInputElement).value).toBe('北多摩エリア');
+    expect((screen.getByLabelText('エリア種別') as HTMLSelectElement).value).toBe('radius');
+    expect((screen.getByLabelText('備考') as HTMLTextAreaElement).value).toBe('16km 圏確認済み');
+  });
 });

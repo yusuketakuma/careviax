@@ -263,6 +263,7 @@ export default function ServiceAreasPage() {
                       <Button
                         size="sm"
                         variant="outline"
+                        aria-label={`${area.name}（${area.site.name}）を編集`}
                         onClick={() =>
                           setForm({
                             id: area.id,

@@ -341,6 +341,9 @@ export default function AlertRulesPage() {
                           <Button
                             size="sm"
                             variant="outline"
+                            aria-label={`${
+                              ALERT_TYPE_LABELS[rule.alert_type] ?? rule.alert_type
+                            } の処方安全アラートルールを編集`}
                             onClick={() =>
                               setForm({
                                 id: rule.id,

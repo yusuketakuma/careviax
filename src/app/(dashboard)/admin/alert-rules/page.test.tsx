@@ -112,4 +112,20 @@ describe('AlertRulesPage', () => {
       );
     });
   });
+
+  it('names the edit action and loads the selected alert rule into the form', async () => {
+    renderPage();
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: '相互作用 の処方安全アラートルールを編集' }),
+    );
+
+    expect(screen.getByRole('button', { name: '更新する' })).toBeTruthy();
+    expect((screen.getByLabelText('表示メッセージ') as HTMLInputElement).value).toBe(
+      '併用禁忌候補を再確認してください',
+    );
+    expect((screen.getByLabelText('条件(JSON)') as HTMLTextAreaElement).value).toContain(
+      '"severity": "high"',
+    );
+  });
 });
