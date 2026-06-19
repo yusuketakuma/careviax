@@ -4306,6 +4306,34 @@ Implemented:
 
 - UI/UX remediation remains active. Remaining candidates include pharmacy-cooperation responsive table density, select accessible-name gaps outside fixed/verified screens, raw table/DataTable convergence, and expanded browser/a11y proof.
 
+## 20260620-0051 JST - Search Advanced Filter Label Associations
+
+### Summary
+
+- Replaced visual-only advanced filter row text for Select controls with associated `Label` components.
+- Added stable trigger IDs for visit date, assignee, cycle status, proposal status, and medication-deadline filters.
+- Added a regression test proving those Select filters are reachable by their visible labels.
+
+### Files Changed
+
+- `src/app/(dashboard)/search/advanced-filter-modal.tsx`
+- `src/app/(dashboard)/search/advanced-filter-modal.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/search/advanced-filter-modal.tsx' 'src/app/(dashboard)/search/advanced-filter-modal.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/search/advanced-filter-modal.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 1 test.
+- `pnpm exec eslint 'src/app/(dashboard)/search/advanced-filter-modal.tsx' 'src/app/(dashboard)/search/advanced-filter-modal.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Remaining candidates include pharmacy-cooperation responsive table density, raw table/DataTable convergence, expanded browser/a11y proof, and broader legacy select/input label scans outside the fixed search advanced-filter controls.
+
 ## 20260620-0048 JST - Admin User and Credential Label Associations
 
 ### Summary
@@ -4454,6 +4482,35 @@ Implemented:
 ### Remaining / Next Loop
 
 - UI/UX remediation remains active. Remaining select accessible-name gaps from the latest scan are in prescriptions QR drafts, conferences, advanced search, and patient detail panels. Raw table/DataTable convergence and expanded browser/a11y proof also remain.
+
+## 20260620-0051 JST - Advanced Search Filter Label Associations
+
+### Summary
+
+- Replaced advanced search modal Select row label spans with associated `Label htmlFor` controls.
+- Added stable ids to visit date, assignee, cycle status, proposal status, and medication deadline Select triggers.
+- Added a modal-only regression test proving all five Select filters are reachable by their visible labels.
+
+### Files Changed
+
+- `src/app/(dashboard)/search/advanced-filter-modal.tsx`
+- `src/app/(dashboard)/search/advanced-filter-modal.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/search/advanced-filter-modal.tsx' 'src/app/(dashboard)/search/advanced-filter-modal.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/search/advanced-filter-modal.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 1 test.
+- Targeted ESLint over search/admin touched TSX/test files: passed.
+- Targeted Prettier check over search/admin touched TSX/test files: passed.
+- `pnpm typecheck`: passed.
+- `git diff --check`: passed.
+- Read-only `SelectTrigger` accessible-name rescan: no remaining advanced search hits.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Remaining select accessible-name gaps from the latest scan are in prescriptions QR drafts, conferences, and patient detail panels. Raw table/DataTable convergence and expanded browser/a11y proof also remain.
 
 ## 20260620-0036 JST - Billing Rule Row Action Names
 
