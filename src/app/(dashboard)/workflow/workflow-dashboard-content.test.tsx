@@ -242,4 +242,45 @@ describe('WorkflowDashboardContent', () => {
     expect(screen.getByLabelText('疑義照会1件目の変更内容メモ')).toBeTruthy();
     expect(screen.queryByLabelText(/田中太郎|アムロジピン/)).toBeNull();
   });
+
+  it('names refill proposal actions by row context without exposing patient names', () => {
+    useRealtimeQueryMock.mockReturnValue({
+      data: {
+        data: {
+          ...buildWorkflowData(),
+          refill_upcoming: [
+            {
+              id: 'refill_upcoming_1',
+              cycle_id: 'cycle_1',
+              case_id: 'case_1',
+              upcoming_kind: 'refill',
+              remaining_count: 2,
+              refill_remaining_count: 2,
+              split_dispense_total: null,
+              split_dispense_current: null,
+              prescribed_date: '2026-06-01',
+              refill_next_dispense_date: '2026-06-24',
+              split_next_dispense_date: null,
+              next_dispense_date: '2026-06-24',
+              suggested_start_date: '2026-06-24',
+              has_existing_route: false,
+              cycle: {
+                patient_id: 'patient_1',
+                case_: { patient: { id: 'patient_1', name: '佐藤花子' } },
+              },
+            },
+          ],
+        },
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    render(<WorkflowDashboardContent />);
+
+    expect(screen.getByText('佐藤花子')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'リフィル1件目の再訪候補を生成' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /佐藤花子/ })).toBeNull();
+  });
 });

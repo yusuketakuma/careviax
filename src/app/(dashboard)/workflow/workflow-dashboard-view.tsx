@@ -1403,6 +1403,9 @@ export function WorkflowDashboardView({
                         <Button
                           size="sm"
                           variant="outline"
+                          aria-label={`${
+                            item.upcoming_kind === 'refill' ? 'リフィル' : '分割調剤'
+                          }${index + 1}件目の再訪候補を生成`}
                           onClick={() => generateRefillProposalMutation.mutate(item)}
                           disabled={
                             !item.case_id ||
