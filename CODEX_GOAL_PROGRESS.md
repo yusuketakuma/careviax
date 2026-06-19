@@ -3541,7 +3541,71 @@ Implemented:
 - `pnpm format:check`: passed.
 - `pnpm typecheck`: passed.
 - `git diff --check`: passed.
+- Verifier follow-up: expanded the success-path test to assert rendered summary/table/overdue values and the reminder action, then reran focused Vitest, targeted ESLint, `pnpm format:check`, and `git diff --check`; all passed.
+- Verifier follow-up: no blocking/high/medium findings. Low test-quality note only: the report delivery analytics failure test mocks React Query's `isError` state directly rather than driving a fetch rejection, which is sufficient for this narrow component-branch regression.
+- Verifier follow-up: added a click assertion for the `再試行` action and reran `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-packaging-card.test.tsx'`, targeted ESLint, `pnpm format:check`, and `git diff --check`; all passed.
 
 ### Remaining / Next Loop
 
 - Continue the false-empty audit on workflow dashboard, communications requests, report delivery analytics, and schedule proposals.
+
+## 20260619-2257 JST - Report Delivery Analytics False-Empty Guard
+
+### Completed
+
+- Fixed the report delivery analytics panel false-empty state: failed analytics fetches no longer render as empty trend tables or "未確認報告はありません" messaging.
+- Added a shared `ErrorState` with retry and support-safe detail text.
+- Hid the reminder task action while analytics failed to load, so operators cannot queue follow-up work from an unknown stale/failed state.
+- Added a regression test that asserts the error state, retry callback, absence of empty analytics text, absence of empty overdue message, and absence of the reminder action.
+- Strengthened the existing success-path test with non-empty analytics fixtures for summary, monthly trend, physician breakdown, overdue rows, and the reminder action.
+
+### Files Changed
+
+- `src/app/(dashboard)/reports/report-delivery-dashboard.tsx`
+- `src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/reports/report-delivery-dashboard.tsx' 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-packaging-card.test.tsx'`: passed unchanged.
+- `pnpm exec vitest run 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-packaging-card.test.tsx' --reporter=dot --testTimeout=30000`: passed, 2 files / 4 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/reports/report-delivery-dashboard.tsx' 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-packaging-card.test.tsx'`: passed.
+- Follow-up positive-path test validation: `pnpm exec vitest run 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx' --reporter=dot --testTimeout=30000` passed, 1 file / 2 tests; `pnpm exec eslint 'src/app/(dashboard)/reports/report-delivery-dashboard.test.tsx'` passed.
+- `pnpm format:check`: passed.
+- `pnpm typecheck`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Continue false-empty hardening for communications requests and schedule proposals.
+
+## 20260619-2302 JST - Workflow Dashboard False-Empty Guard
+
+### Completed
+
+- Fixed the workflow dashboard initial-load failure path: failed realtime dashboard fetches no longer render zero/empty workflow queues as if no operational work exists.
+- Threaded `isError` from `useRealtimeQuery` into `WorkflowDashboardView` and show a shared `ErrorState` only when there is no usable workflow snapshot.
+- Preserved stale-data rendering when a previous workflow snapshot still exists.
+- Added a regression test that asserts the error state, retry callback, absence of the main workflow section, and absence of the communication workflow section.
+
+### Files Changed
+
+- `src/app/(dashboard)/workflow/workflow-dashboard-content.tsx`
+- `src/app/(dashboard)/workflow/workflow-dashboard-view.tsx`
+- `src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/workflow/workflow-dashboard-content.tsx' 'src/app/(dashboard)/workflow/workflow-dashboard-view.tsx' 'src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 2 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/workflow/workflow-dashboard-content.tsx' 'src/app/(dashboard)/workflow/workflow-dashboard-view.tsx' 'src/app/(dashboard)/workflow/workflow-dashboard-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed after targeted Prettier.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Continue false-empty hardening for communications requests and schedule proposals, then return to the pharmacy cooperation R-07 transition-commonality gap.
