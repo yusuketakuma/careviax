@@ -76,6 +76,11 @@ type ManagementPlanFormState = {
   contentText: string;
 };
 
+type ManagementPlanFormErrors = {
+  title?: string;
+  contentText?: string;
+};
+
 const managementPlanStatusLabel: Record<ManagementPlan['status'], string> = {
   draft: '下書き',
   approved: '承認済',
@@ -165,18 +170,27 @@ function ManagementPlanEditorForm({
   isPending: boolean;
 }) {
   const [form, setForm] = useState<ManagementPlanFormState>(() => toEditorFormState(plan));
+  const [formErrors, setFormErrors] = useState<ManagementPlanFormErrors>({});
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const nextErrors: ManagementPlanFormErrors = {};
+
     if (!form.title.trim()) {
-      toast.error('タイトルを入力してください');
-      return;
+      nextErrors.title = 'タイトルを入力してください';
     }
 
     try {
       parseContentValue(form.contentText);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '本文の形式が不正です');
+      nextErrors.contentText = error instanceof Error ? error.message : '本文の形式が不正です';
+    }
+
+    setFormErrors(nextErrors);
+
+    const firstError = nextErrors.title ?? nextErrors.contentText;
+    if (firstError) {
+      toast.error(firstError);
       return;
     }
 
@@ -198,13 +212,23 @@ function ManagementPlanEditorForm({
             <Input
               id="management_plan_title"
               value={form.title}
-              onChange={(event) =>
+              onChange={(event) => {
                 setForm((current) => ({
                   ...current,
                   title: event.target.value,
-                }))
-              }
+                }));
+                if (event.target.value.trim()) {
+                  setFormErrors((current) => ({ ...current, title: undefined }));
+                }
+              }}
+              aria-invalid={Boolean(formErrors.title)}
+              aria-describedby={formErrors.title ? 'management-plan-title-error' : undefined}
             />
+            {formErrors.title ? (
+              <p id="management-plan-title-error" role="alert" className="text-xs text-destructive">
+                {formErrors.title}
+              </p>
+            ) : null}
           </div>
 
           <div className="space-y-1.5">
@@ -259,13 +283,27 @@ function ManagementPlanEditorForm({
               rows={14}
               className="font-mono text-xs"
               value={form.contentText}
-              onChange={(event) =>
+              onChange={(event) => {
                 setForm((current) => ({
                   ...current,
                   contentText: event.target.value,
-                }))
+                }));
+                setFormErrors((current) => ({ ...current, contentText: undefined }));
+              }}
+              aria-invalid={Boolean(formErrors.contentText)}
+              aria-describedby={
+                formErrors.contentText ? 'management-plan-content-error' : undefined
               }
             />
+            {formErrors.contentText ? (
+              <p
+                id="management-plan-content-error"
+                role="alert"
+                className="text-xs text-destructive"
+              >
+                {formErrors.contentText}
+              </p>
+            ) : null}
           </div>
         </div>
 
