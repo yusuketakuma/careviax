@@ -4160,3 +4160,29 @@ Implemented:
 ### Remaining / Next Loop
 
 - UI/UX remediation remains active. Remaining candidates include broader admin destructive-action consistency, pharmacy-cooperation responsive table density, select accessible-name gaps outside the touched admin forms, raw table/DataTable convergence, and expanded browser/a11y proof.
+
+## 20260620-0017 JST - Packaging Method Switch A11y Regression
+
+### Summary
+
+- Verified the packaging method active Switch already receives the accessible name "有効" from its wrapping label.
+- Recorded that the runtime UI did not need an additional label change for this control.
+- Added the progress record for the already-committed regression test that protects the active/inactive control name.
+
+### Files Changed
+
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+- Previously committed in `22d5bb7e`: `src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.test.tsx`
+
+### Validation
+
+- HEAD commit `22d5bb7e` records these passing checks:
+  - `pnpm exec vitest run 'src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.test.tsx' --reporter=dot --testTimeout=30000`
+  - `pnpm exec eslint 'src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.test.tsx'`
+  - `git diff --check -- 'src/app/(dashboard)/admin/packaging-methods/packaging-methods-content.test.tsx'`
+- Follow-up ledger validation will run after this record update.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Remaining candidates include broader admin destructive-action consistency, pharmacy-cooperation responsive table density, select accessible-name gaps outside fixed/verified screens, raw table/DataTable convergence, and expanded browser/a11y proof.
