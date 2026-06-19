@@ -2691,3 +2691,54 @@ Blocked: C11 (diverged user-visible label strings — product/UX sign-off), C12 
 - Consent document download audit still cannot directly resolve a `ConsentRecord` context because `ConsentRecord` stores only `document_url`.
 - ConsentRecord expiry/document update UI remains absent; only the API PATCH path is covered.
 - Migration application remains unattempted; prior `prisma migrate diff --from-migrations` is still blocked by missing `datasource.shadowDatabaseUrl` in `prisma.config.ts`.
+
+## 20260619-1845 JST - Audit Actor Pharmacy/Site Context Slice
+
+### Completed
+
+- Re-checked the v0.2 audit contract for `actor_user_id`, `actor_pharmacy_id`, patient linkage, and shared-case read events against the current PH-OS `AuditLog` model.
+- Added structured `AuditLog.actor_pharmacy_id`, `AuditLog.actor_site_id`, and `AuditLog.patient_id` columns plus an append-only migration with backfill and index coverage.
+- Documented and implemented `actor_pharmacy_id` as the current PH-OS tenant pharmacy (`org_id`) while keeping `actor_site_id` as a nullable validated `PharmacySite` context.
+- Propagated `defaultSiteId` through NextAuth JWT/session and resolved `AuthContext.actorSiteId` only after verifying the site belongs to the org and the actor has site or universal membership.
+- Added RLS session settings for `app.current_actor_pharmacy_id` and `app.current_actor_site_id`, and updated the generic DB audit trigger to persist these actor fields plus row-level `patient_id` when available.
+- Updated app audit helpers, data export audit, file-download audit, audit-log filters, audit-log API, and audit-log CSV export to write/search/export actor pharmacy, actor site, and patient context.
+- Added patient linkage to patient-share-case create/list/scope, shared consent list/register, and correction request create/list audit events.
+- Added fail-closed `patient_share_correction_requests_viewed` read audit coverage to `GET /api/patient-share-cases/:id/correction-requests`.
+
+### Files Changed
+
+- `prisma/schema/admin.prisma`
+- `prisma/migrations/20260619190000_add_audit_actor_context/migration.sql`
+- `src/lib/auth/context.ts`
+- `src/lib/auth/config.ts`
+- `src/types/next-auth.d.ts`
+- `src/lib/auth/request-context.ts`
+- `src/lib/db/rls.ts`
+- `src/lib/audit/audit-entry.ts`
+- `src/server/services/export-audit.ts`
+- `src/server/services/file-download-audit.ts`
+- `src/lib/api/audit-log-filters.ts`
+- `src/app/api/audit-logs/route.ts`
+- `src/app/api/audit-logs/export/route.ts`
+- `src/app/api/patient-share-cases/route.ts`
+- `src/app/api/patient-share-cases/[id]/route.ts`
+- `src/app/api/patient-share-cases/[id]/consents/route.ts`
+- `src/app/api/patient-share-cases/[id]/correction-requests/route.ts`
+- Related unit tests for the files above.
+
+### Validation
+
+- `pnpm db:generate`: passed.
+- `pnpm exec prisma validate --schema=prisma/schema/`: passed.
+- `pnpm exec vitest run src/lib/audit/audit-entry.test.ts src/server/services/export-audit.test.ts src/server/services/file-download-audit.test.ts src/lib/db/__tests__/rls.test.ts src/lib/auth/__tests__/context.test.ts src/lib/auth/config.test.ts src/app/api/audit-logs/route.test.ts src/app/api/audit-logs/export/route.test.ts src/app/api/patient-share-cases/route.test.ts 'src/app/api/patient-share-cases/[id]/route.test.ts' 'src/app/api/patient-share-cases/[id]/consents/route.test.ts' 'src/app/api/patient-share-cases/[id]/correction-requests/route.test.ts' --reporter=dot --testTimeout=30000`: passed, 12 files / 107 tests.
+- `pnpm typecheck`: passed.
+- `pnpm lint`: passed.
+- `pnpm format:check`: passed after targeted Prettier.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- Browser-level workflow proof across patient card creation, consent/link/activation, visit request, partner record, billing, and report draft paths remains pending.
+- Consent document download audit still cannot directly resolve a `ConsentRecord` context because `ConsentRecord` stores only `document_url`.
+- ConsentRecord expiry/document update UI remains absent; only the API PATCH path is covered.
+- The new migration was generated and schema-validated but not applied to a live database in this turn.
