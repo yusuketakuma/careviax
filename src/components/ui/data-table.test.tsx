@@ -76,6 +76,8 @@ describe('DataTable', () => {
     );
 
     expect(screen.getByRole('alert').textContent).toContain('一覧を取得できませんでした');
+    expect(screen.queryByText('データがありません')).toBeNull();
+    expect(screen.getAllByText('取得エラーのため一覧を表示できません').length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
 
@@ -88,6 +90,9 @@ describe('DataTable', () => {
 
     expectButtonDisabled('CSV出力', true);
     expectButtonDisabled('印刷', true);
+    expect(screen.getByRole('button', { name: 'CSV出力' }).getAttribute('aria-describedby')).toBe(
+      screen.getByText('出力できる行がありません').id,
+    );
 
     rerender(
       <DataTable
@@ -121,5 +126,26 @@ describe('DataTable', () => {
 
     expectButtonDisabled('CSV出力', false);
     expectButtonDisabled('印刷', false);
+  });
+
+  it('names clickable desktop and mobile rows from the row accessibility label', () => {
+    const onRowClick = vi.fn();
+
+    render(
+      <DataTable
+        columns={columns}
+        data={[{ id: 'draft-1', name: 'QR下書き 1件目' }]}
+        getRowId={(row) => row.id}
+        getRowA11yLabel={(row) => row.name}
+        onRowClick={onRowClick}
+      />,
+    );
+
+    const rowButtons = screen.getAllByRole('button', { name: 'QR下書き 1件目 の詳細を表示' });
+    expect(rowButtons.length).toBeGreaterThanOrEqual(2);
+
+    fireEvent.keyDown(rowButtons[0], { key: 'Enter', code: 'Enter' });
+
+    expect(onRowClick).toHaveBeenCalledWith(0);
   });
 });

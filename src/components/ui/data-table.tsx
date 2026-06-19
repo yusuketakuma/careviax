@@ -15,7 +15,7 @@ import {
   getSortedRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   ChevronDown,
   ChevronUp,
@@ -139,9 +139,14 @@ export function DataTable<TData>({
   const [expanded, setExpanded] = useState<ExpandedState>({});
   const [globalFilter, setGlobalFilter] = useState('');
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const toolbarDisabledReasonId = useId();
   const getResolvedRowA11yLabel = useCallback(
     (row: Row<TData>) => getRowA11yLabel?.(row.original, row.index) ?? row.id,
     [getRowA11yLabel],
+  );
+  const getRowActivationA11yLabel = useCallback(
+    (row: Row<TData>) => `${getResolvedRowA11yLabel(row)} の詳細を表示`,
+    [getResolvedRowA11yLabel],
   );
 
   const effectiveColumns = useMemo<ColumnDef<TData>[]>(() => {
@@ -281,6 +286,9 @@ export function DataTable<TData>({
       : table.getRowModel().rows.length === 0
         ? '出力できる行がありません'
         : undefined;
+  const displayedEmptyMessage = errorMessage
+    ? '取得エラーのため一覧を表示できません'
+    : emptyMessage;
 
   function handleExport() {
     if (toolbarActionsDisabled) return;
@@ -406,6 +414,11 @@ export function DataTable<TData>({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {toolbarDisabledReason ? (
+              <p id={toolbarDisabledReasonId} className="sr-only">
+                {toolbarDisabledReason}
+              </p>
+            ) : null}
             {toolbar.enableColumnVisibility && visibleLeafColumns.length > 0 && (
               <DropdownMenu>
                 <DropdownMenuTrigger
@@ -439,6 +452,7 @@ export function DataTable<TData>({
                 className="min-h-[44px] sm:min-h-0"
                 disabled={toolbarActionsDisabled}
                 title={toolbarDisabledReason}
+                aria-describedby={toolbarActionsDisabled ? toolbarDisabledReasonId : undefined}
                 onClick={handleExport}
               >
                 <Download className="mr-1.5 size-3.5" aria-hidden="true" />
@@ -452,6 +466,7 @@ export function DataTable<TData>({
                 className="min-h-[44px] sm:min-h-0"
                 disabled={toolbarActionsDisabled}
                 title={toolbarDisabledReason}
+                aria-describedby={toolbarActionsDisabled ? toolbarDisabledReasonId : undefined}
                 onClick={() => window.print()}
               >
                 <Printer className="mr-1.5 size-3.5" aria-hidden="true" />
@@ -501,7 +516,7 @@ export function DataTable<TData>({
                     colSpan={table.getVisibleLeafColumns().length}
                     className="px-4 py-12 text-center text-sm text-muted-foreground"
                   >
-                    {emptyMessage}
+                    {displayedEmptyMessage}
                   </td>
                 </tr>
               ) : (
@@ -525,6 +540,7 @@ export function DataTable<TData>({
                       }}
                       role={onRowClick ? 'button' : undefined}
                       tabIndex={onRowClick ? 0 : undefined}
+                      aria-label={onRowClick ? getRowActivationA11yLabel(row) : undefined}
                     >
                       {row.getVisibleCells().map((cell) => {
                         const meta = getColumnMeta(cell.column.columnDef);
@@ -569,7 +585,7 @@ export function DataTable<TData>({
             </div>
           ))
         ) : table.getRowModel().rows.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">{emptyMessage}</p>
+          <p className="py-8 text-center text-sm text-muted-foreground">{displayedEmptyMessage}</p>
         ) : (
           table.getRowModel().rows.map((row) => {
             const visibleCells = row
@@ -595,6 +611,7 @@ export function DataTable<TData>({
                 }}
                 role={onRowClick ? 'button' : undefined}
                 tabIndex={onRowClick ? 0 : undefined}
+                aria-label={onRowClick ? getRowActivationA11yLabel(row) : undefined}
               >
                 {(enableRowSelection || renderExpandedRow) && (
                   <div className="mb-2 flex items-center justify-end gap-2">
