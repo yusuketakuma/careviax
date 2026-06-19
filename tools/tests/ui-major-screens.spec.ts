@@ -59,6 +59,11 @@ const DEMO_IDS = {
   pharmacyContract: 'ui_demo_pharmacy_contract_1',
   pharmacyContractVersion: 'ui_demo_pharmacy_contract_version_1',
   pharmacyContractFeeRule: 'ui_demo_pharmacy_contract_fee_rule_1',
+  freePartnerPharmacy: 'ui_demo_free_partner_pharmacy_1',
+  freePharmacyPartnership: 'ui_demo_free_pharmacy_partnership_1',
+  freePharmacyContract: 'ui_demo_free_pharmacy_contract_1',
+  freePharmacyContractVersion: 'ui_demo_free_pharmacy_contract_version_1',
+  freePharmacyContractFeeRule: 'ui_demo_free_pharmacy_contract_fee_rule_1',
   task: 'ui_demo_task_1',
   grant: 'ui_demo_grant_1',
   selfReport: 'ui_demo_self_report_1',
@@ -83,6 +88,8 @@ type DemoContext = {
   managementPlanId: string;
   partnershipId: string;
   contractId: string;
+  freePartnershipId: string;
+  freeContractId: string;
   reportId: string;
   scheduleId: string;
   visitRecordId: string;
@@ -681,6 +688,165 @@ async function ensureUiDemoData() {
 
     await client.query(
       `
+        INSERT INTO "PartnerPharmacy" (
+          "id","org_id","pharmacy_code","name","address","tel","fax","contact_name","available_services","status","created_by","updated_by","created_at","updated_at"
+        ) VALUES ($1,$2,'UI-DEMO-PARTNER-FREE-001',$3,$4,$5,$6,$7,$8::jsonb,'active',$9,$9,NOW(),NOW())
+        ON CONFLICT ("id") DO UPDATE
+        SET "org_id" = EXCLUDED."org_id",
+            "pharmacy_code" = EXCLUDED."pharmacy_code",
+            "name" = EXCLUDED."name",
+            "address" = EXCLUDED."address",
+            "tel" = EXCLUDED."tel",
+            "fax" = EXCLUDED."fax",
+            "contact_name" = EXCLUDED."contact_name",
+            "available_services" = EXCLUDED."available_services",
+            "status" = 'active',
+            "updated_by" = EXCLUDED."updated_by",
+            "updated_at" = NOW()
+      `,
+      [
+        DEMO_IDS.freePartnerPharmacy,
+        base.org_id,
+        'UIデモ無償協力薬局',
+        '東京都千代田区丸の内3-3-3',
+        '03-2222-3333',
+        '03-2222-4444',
+        '無償連携 担当',
+        jsonb(['home_visit_support', 'temporary_visit']),
+        base.user_id,
+      ],
+    );
+
+    await client.query(
+      `
+        INSERT INTO "PharmacyPartnership" (
+          "id","org_id","base_site_id","partner_pharmacy_id","status","available_services","contact_snapshot","effective_from","effective_to","approved_by_base","approved_by_partner","approved_at","created_by","updated_by","created_at","updated_at"
+        ) VALUES ($1,$2,$3,$4,'active',$5::jsonb,$6::jsonb,CURRENT_DATE,$7,$8,$9,NOW(),$8,$8,NOW(),NOW())
+        ON CONFLICT ("id") DO UPDATE
+        SET "org_id" = EXCLUDED."org_id",
+            "base_site_id" = EXCLUDED."base_site_id",
+            "partner_pharmacy_id" = EXCLUDED."partner_pharmacy_id",
+            "status" = 'active',
+            "available_services" = EXCLUDED."available_services",
+            "contact_snapshot" = EXCLUDED."contact_snapshot",
+            "effective_from" = CURRENT_DATE,
+            "effective_to" = EXCLUDED."effective_to",
+            "approved_by_base" = EXCLUDED."approved_by_base",
+            "approved_by_partner" = EXCLUDED."approved_by_partner",
+            "approved_at" = NOW(),
+            "updated_by" = EXCLUDED."updated_by",
+            "updated_at" = NOW()
+      `,
+      [
+        DEMO_IDS.freePharmacyPartnership,
+        base.org_id,
+        base.site_id,
+        DEMO_IDS.freePartnerPharmacy,
+        jsonb(['home_visit_support', 'temporary_visit']),
+        jsonb({
+          partner_pharmacy_name: 'UIデモ無償協力薬局',
+          contact_name: '無償連携 担当',
+          tel: '03-2222-3333',
+        }),
+        nextVisitDate,
+        base.user_id,
+        'UIデモ無償協力薬局 承認者',
+      ],
+    );
+
+    await client.query(
+      `
+        INSERT INTO "PharmacyContract" (
+          "id","org_id","partnership_id","status","effective_from","effective_to","closing_day","payment_due_rule","base_approved_by","base_approved_at","partner_approved_by","partner_approved_at","created_by","updated_by","created_at","updated_at"
+        ) VALUES ($1,$2,$3,'active',CURRENT_DATE,NULL,31,$4::jsonb,$5,NOW(),$6,NOW(),$5,$5,NOW(),NOW())
+        ON CONFLICT ("id") DO UPDATE
+        SET "org_id" = EXCLUDED."org_id",
+            "partnership_id" = EXCLUDED."partnership_id",
+            "status" = 'active',
+            "effective_from" = CURRENT_DATE,
+            "effective_to" = NULL,
+            "closing_day" = EXCLUDED."closing_day",
+            "payment_due_rule" = EXCLUDED."payment_due_rule",
+            "base_approved_by" = EXCLUDED."base_approved_by",
+            "base_approved_at" = NOW(),
+            "partner_approved_by" = EXCLUDED."partner_approved_by",
+            "partner_approved_at" = NOW(),
+            "updated_by" = EXCLUDED."updated_by",
+            "updated_at" = NOW()
+      `,
+      [
+        DEMO_IDS.freePharmacyContract,
+        base.org_id,
+        DEMO_IDS.freePharmacyPartnership,
+        jsonb({ type: 'free_report_only', closing_day: 31 }),
+        base.user_id,
+        'UIデモ無償協力薬局 契約承認者',
+      ],
+    );
+
+    await client.query(
+      `
+        INSERT INTO "PharmacyContractVersion" (
+          "id","org_id","contract_id","version_no","status","effective_from","effective_to","terms_snapshot","approved_by_base","approved_by_partner","approved_at","created_by","created_at","updated_at"
+        ) VALUES ($1,$2,$3,1,'active',CURRENT_DATE,NULL,$4::jsonb,$5,$6,NOW(),$5,NOW(),NOW())
+        ON CONFLICT ("id") DO UPDATE
+        SET "org_id" = EXCLUDED."org_id",
+            "contract_id" = EXCLUDED."contract_id",
+            "version_no" = 1,
+            "status" = 'active',
+            "effective_from" = CURRENT_DATE,
+            "effective_to" = NULL,
+            "terms_snapshot" = EXCLUDED."terms_snapshot",
+            "approved_by_base" = EXCLUDED."approved_by_base",
+            "approved_by_partner" = EXCLUDED."approved_by_partner",
+            "approved_at" = NOW(),
+            "created_by" = EXCLUDED."created_by",
+            "updated_at" = NOW()
+      `,
+      [
+        DEMO_IDS.freePharmacyContractVersion,
+        base.org_id,
+        DEMO_IDS.freePharmacyContract,
+        jsonb({
+          scope: 'ui-demo-db-backed-free-cooperation',
+          fee_rule: 'free',
+          free_cooperation_report_required: true,
+          invoice_snapshot_required: true,
+        }),
+        base.user_id,
+        'UIデモ無償協力薬局 契約承認者',
+      ],
+    );
+
+    await client.query(
+      `
+        INSERT INTO "PharmacyContractFeeRule" (
+          "id","org_id","contract_version_id","billing_model","unit_price","addon_rules","expense_rules","tax_category","tax_rate_bp","rounding_rule","is_active","created_at","updated_at"
+        ) VALUES ($1,$2,$3,'free',NULL,$4::jsonb,$5::jsonb,'out_of_scope',NULL,'round',true,NOW(),NOW())
+        ON CONFLICT ("id") DO UPDATE
+        SET "org_id" = EXCLUDED."org_id",
+            "contract_version_id" = EXCLUDED."contract_version_id",
+            "billing_model" = 'free',
+            "unit_price" = NULL,
+            "addon_rules" = EXCLUDED."addon_rules",
+            "expense_rules" = EXCLUDED."expense_rules",
+            "tax_category" = 'out_of_scope',
+            "tax_rate_bp" = NULL,
+            "rounding_rule" = 'round',
+            "is_active" = true,
+            "updated_at" = NOW()
+      `,
+      [
+        DEMO_IDS.freePharmacyContractFeeRule,
+        base.org_id,
+        DEMO_IDS.freePharmacyContractVersion,
+        jsonb([]),
+        jsonb({ travel_fee: 0 }),
+      ],
+    );
+
+    await client.query(
+      `
         INSERT INTO "CareReport" (
           "id","org_id","patient_id","case_id","report_type","status","content","created_by","created_at","updated_at"
         ) VALUES ($1,$2,$3,$4,'physician_report','response_waiting',$5::jsonb,$6,NOW(),NOW())
@@ -827,6 +993,8 @@ async function ensureUiDemoData() {
       managementPlanId: DEMO_IDS.managementPlan,
       partnershipId: DEMO_IDS.pharmacyPartnership,
       contractId: DEMO_IDS.pharmacyContract,
+      freePartnershipId: DEMO_IDS.freePharmacyPartnership,
+      freeContractId: DEMO_IDS.freePharmacyContract,
       reportId: DEMO_IDS.careReport,
       scheduleId: DEMO_IDS.visitSchedule,
       visitRecordId: DEMO_IDS.visitRecord,
@@ -838,7 +1006,13 @@ async function ensureUiDemoData() {
   }
 }
 
-async function clearUiDemoPatientShareCases() {
+async function clearUiDemoPatientShareCases({
+  partnershipId = DEMO_IDS.pharmacyPartnership,
+  contractId = DEMO_IDS.pharmacyContract,
+}: {
+  partnershipId?: string;
+  contractId?: string;
+} = {}) {
   const client = new Client({ connectionString: DB_CONNECTION_STRING });
   await client.connect();
 
@@ -852,7 +1026,7 @@ async function clearUiDemoPatientShareCases() {
           WHERE "contract_id" = $1
         )
       `,
-      [DEMO_IDS.pharmacyContract],
+      [contractId],
     );
 
     await client.query(
@@ -860,7 +1034,7 @@ async function clearUiDemoPatientShareCases() {
         DELETE FROM "PharmacyInvoice"
         WHERE "contract_id" = $1
       `,
-      [DEMO_IDS.pharmacyContract],
+      [contractId],
     );
 
     await client.query(
@@ -879,7 +1053,7 @@ async function clearUiDemoPatientShareCases() {
             AND psc."partnership_id" = $2
         )
       `,
-      [DEMO_IDS.patient, DEMO_IDS.pharmacyPartnership],
+      [DEMO_IDS.patient, partnershipId],
     );
 
     await client.query(
@@ -895,7 +1069,7 @@ async function clearUiDemoPatientShareCases() {
             AND psc."partnership_id" = $2
         )
       `,
-      [DEMO_IDS.patient, DEMO_IDS.pharmacyPartnership],
+      [DEMO_IDS.patient, partnershipId],
     );
 
     await client.query(
@@ -911,7 +1085,7 @@ async function clearUiDemoPatientShareCases() {
             AND psc."partnership_id" = $2
         )
       `,
-      [DEMO_IDS.patient, DEMO_IDS.pharmacyPartnership],
+      [DEMO_IDS.patient, partnershipId],
     );
 
     await client.query(
@@ -927,7 +1101,7 @@ async function clearUiDemoPatientShareCases() {
             AND psc."partnership_id" = $2
         )
       `,
-      [DEMO_IDS.patient, DEMO_IDS.pharmacyPartnership],
+      [DEMO_IDS.patient, partnershipId],
     );
 
     await client.query(
@@ -940,7 +1114,7 @@ async function clearUiDemoPatientShareCases() {
             AND "partnership_id" = $2
         )
       `,
-      [DEMO_IDS.patient, DEMO_IDS.pharmacyPartnership],
+      [DEMO_IDS.patient, partnershipId],
     );
 
     await client.query(
@@ -956,7 +1130,7 @@ async function clearUiDemoPatientShareCases() {
             AND psc."partnership_id" = $2
         )
       `,
-      [DEMO_IDS.patient, DEMO_IDS.pharmacyPartnership],
+      [DEMO_IDS.patient, partnershipId],
     );
 
     await client.query(
@@ -969,7 +1143,7 @@ async function clearUiDemoPatientShareCases() {
             AND "partnership_id" = $2
         )
       `,
-      [DEMO_IDS.patient, DEMO_IDS.pharmacyPartnership],
+      [DEMO_IDS.patient, partnershipId],
     );
 
     await client.query(
@@ -982,7 +1156,7 @@ async function clearUiDemoPatientShareCases() {
             AND "partnership_id" = $2
         )
       `,
-      [DEMO_IDS.patient, DEMO_IDS.pharmacyPartnership],
+      [DEMO_IDS.patient, partnershipId],
     );
 
     await client.query(
@@ -991,7 +1165,7 @@ async function clearUiDemoPatientShareCases() {
         WHERE "base_patient_id" = $1
           AND "partnership_id" = $2
       `,
-      [DEMO_IDS.patient, DEMO_IDS.pharmacyPartnership],
+      [DEMO_IDS.patient, partnershipId],
     );
   } finally {
     await client.end();
@@ -1144,6 +1318,7 @@ async function readUiDemoPharmacyInvoice(invoiceId: string) {
   try {
     const result = await client.query<{
       id: string;
+      document_kind: string;
       status: string;
       subtotal: number;
       tax_amount: number;
@@ -1155,6 +1330,7 @@ async function readUiDemoPharmacyInvoice(invoiceId: string) {
       `
         SELECT
           invoice."id",
+          invoice."document_kind"::text,
           invoice."status"::text,
           invoice."subtotal",
           invoice."tax_amount",
@@ -1180,7 +1356,7 @@ async function readUiDemoPharmacyInvoice(invoiceId: string) {
   }
 }
 
-async function readUiDemoPatientShareCase() {
+async function readUiDemoPatientShareCase(partnershipId: string = DEMO_IDS.pharmacyPartnership) {
   const client = new Client({ connectionString: DB_CONNECTION_STRING });
   await client.connect();
 
@@ -1229,7 +1405,7 @@ async function readUiDemoPatientShareCase() {
         ORDER BY psc."created_at" DESC
         LIMIT 1
       `,
-      [DEMO_IDS.patient, DEMO_IDS.pharmacyPartnership],
+      [DEMO_IDS.patient, partnershipId],
     );
 
     return result.rows[0] ?? null;
@@ -1894,6 +2070,346 @@ test.describe('major authenticated screens', () => {
     ).toBeVisible({ timeout: 60_000 });
 
     await writeScreenshot(page, 'patient-share-visit-billing-db-backed');
+    expect(errors).toEqual([]);
+  });
+
+  test('patient share flow produces a DB-backed free cooperation report', async ({ context }) => {
+    await clearUiDemoPatientShareCases({
+      partnershipId: demoContext.freePartnershipId,
+      contractId: demoContext.freeContractId,
+    });
+
+    const { page, errors } = await createInstrumentedPage(context);
+    await page.setViewportSize({ width: 1600, height: 900 });
+
+    const createShareCaseResponse = await page.request.post('/api/patient-share-cases', {
+      data: {
+        partnership_id: demoContext.freePartnershipId,
+        base_patient_id: demoContext.patientId,
+        base_case_id: DEMO_IDS.caseId,
+        share_scope: {
+          medication_profile: true,
+          care_reports: true,
+          visit_records: true,
+        },
+        starts_at: dateKeyFromOffset(0),
+        ends_at: dateKeyFromOffset(30),
+        shared_management_plan_id: demoContext.managementPlanId,
+        shared_management_plan_version: 1,
+      },
+    });
+    expect(createShareCaseResponse.status()).toBe(201);
+
+    const shareCase = await readUiDemoPatientShareCase(demoContext.freePartnershipId);
+    expect(shareCase).toMatchObject({
+      status: 'consent_pending',
+      shared_management_plan_id: demoContext.managementPlanId,
+      shared_management_plan_version: 1,
+      link_count: 1,
+    });
+    expect(shareCase?.id).toEqual(expect.any(String));
+
+    const consentResponse = await page.request.post(
+      `/api/patient-share-cases/${shareCase!.id}/consents`,
+      {
+        data: {
+          consent_date: dateKeyFromOffset(-1),
+          consent_person: 'UI検証 無償家族',
+          consent_method: 'paper_scan',
+          consent_record_id: DEMO_IDS.consent,
+          scope: {
+            medication_profile: true,
+            care_reports: true,
+            visit_records: true,
+          },
+          valid_until: dateKeyFromOffset(30),
+        },
+      },
+    );
+    expect(consentResponse.status()).toBe(201);
+
+    const baseApproveResponse = await page.request.patch(
+      `/api/patient-share-cases/${shareCase!.id}/patient-link`,
+      {
+        data: {
+          decision: 'base_approve',
+        },
+      },
+    );
+    expect(baseApproveResponse.status()).toBe(200);
+
+    const partnerAcceptResponse = await page.request.patch(
+      `/api/patient-share-cases/${shareCase!.id}/patient-link`,
+      {
+        data: {
+          decision: 'accept',
+          partner_patient_id: 'ui_demo_free_partner_patient_1',
+          partner_patient_snapshot: {
+            name: demoContext.patientName,
+            name_kana: demoContext.patientKana,
+            birth_date: '1948-04-12',
+            address: demoContext.address,
+          },
+        },
+      },
+    );
+    expect(partnerAcceptResponse.status()).toBe(200);
+
+    const activationResponse = await page.request.post(
+      `/api/patient-share-cases/${shareCase!.id}/activate`,
+    );
+    expect(activationResponse.status()).toBe(200);
+
+    const activatedShareCase = await readUiDemoPatientShareCase(demoContext.freePartnershipId);
+    expect(activatedShareCase).toMatchObject({
+      id: shareCase!.id,
+      status: 'active',
+      link_count: 1,
+      link_match_status: 'accepted',
+      has_base_approval: true,
+      has_partner_approval: true,
+      has_activated_at: true,
+      active_consent_count: 1,
+    });
+
+    const visitDate = dateKeyFromOffset(2);
+    const visitRequestResponse = await page.request.post('/api/pharmacy-visit-requests', {
+      data: {
+        share_case_id: shareCase!.id,
+        urgency: 'normal',
+        desired_start_at: `${visitDate}T09:00:00.000Z`,
+        desired_end_at: `${visitDate}T10:00:00.000Z`,
+        visit_type: 'temporary',
+        request_reason: 'DB-backed無償協力訪問の確認',
+        physician_instruction: '服薬状況のみ確認',
+        carry_items: ['服薬カレンダー'],
+        patient_home_notes: '短時間訪問',
+      },
+    });
+    expect(visitRequestResponse.status()).toBe(201);
+
+    const visitRequest = await readUiDemoPharmacyVisitRequest(shareCase!.id);
+    expect(visitRequest).toMatchObject({
+      share_case_id: shareCase!.id,
+      status: 'requested',
+      urgency: 'normal',
+      visit_type: 'temporary',
+      contract_id: demoContext.freeContractId,
+      contract_version_id: DEMO_IDS.freePharmacyContractVersion,
+      estimated_amount: 0,
+      has_contract_estimate_snapshot: true,
+    });
+    expect(visitRequest?.id).toEqual(expect.any(String));
+
+    const visitAcceptResponse = await page.request.post(
+      `/api/pharmacy-visit-requests/${visitRequest!.id}/decision`,
+      {
+        data: {
+          decision: 'accept',
+          pharmacist_id: demoContext.userId,
+        },
+      },
+    );
+    expect(visitAcceptResponse.status()).toBe(200);
+
+    const acceptedVisitRequest = await readUiDemoPharmacyVisitRequest(shareCase!.id);
+    expect(acceptedVisitRequest).toMatchObject({
+      id: visitRequest!.id,
+      status: 'accepted',
+      accepted_by: demoContext.userId,
+    });
+
+    const partnerRecordResponse = await page.request.post('/api/partner-visit-records', {
+      data: {
+        visit_request_id: visitRequest!.id,
+        pharmacist_id: demoContext.userId,
+        pharmacist_name: 'UI検証 無償協力薬剤師',
+        visit_at: `${visitDate}T09:15:00.000Z`,
+        source_visit_record_id: demoContext.visitRecordId,
+        record_content: {
+          medication_adherence: '無償協力訪問で確認済み',
+          remaining_medications: '残薬少量',
+          suspected_adverse_effects: '疑いなし',
+          storage_status: '問題なし',
+          proposals: '次回通常訪問で再確認',
+        },
+      },
+    });
+    expect(partnerRecordResponse.status()).toBe(201);
+    const partnerRecord = (await partnerRecordResponse.json()) as {
+      id: string;
+      status: string;
+      source_visit_record_id: string | null;
+      has_record_content: boolean;
+    };
+    expect(partnerRecord).toMatchObject({
+      status: 'draft',
+      source_visit_record_id: demoContext.visitRecordId,
+      has_record_content: true,
+    });
+
+    const submitRecordResponse = await page.request.post(
+      `/api/partner-visit-records/${partnerRecord.id}/submit`,
+    );
+    expect(submitRecordResponse.status()).toBe(200);
+
+    const reviewRecordResponse = await page.request.post(
+      `/api/partner-visit-records/${partnerRecord.id}/review`,
+      {
+        data: {
+          decision: 'confirm',
+          doctor_report_required: false,
+        },
+      },
+    );
+    expect(reviewRecordResponse.status()).toBe(200);
+    const reviewedRecord = (await reviewRecordResponse.json()) as {
+      id: string;
+      status: string;
+      confirmed_by: string | null;
+      has_base_confirmation_snapshot: boolean;
+      claim_note: { id: string } | null;
+    };
+    expect(reviewedRecord).toMatchObject({
+      id: partnerRecord.id,
+      status: 'confirmed',
+      confirmed_by: demoContext.userId,
+      has_base_confirmation_snapshot: true,
+    });
+    expect(reviewedRecord.claim_note?.id).toEqual(expect.any(String));
+
+    const storedPartnerRecord = await readUiDemoPartnerVisitRecord(visitRequest!.id);
+    expect(storedPartnerRecord).toMatchObject({
+      id: partnerRecord.id,
+      status: 'confirmed',
+      has_submitted_at: true,
+      has_confirmed_at: true,
+      confirmed_by: demoContext.userId,
+      has_base_confirmation_snapshot: true,
+      claim_note_count: 1,
+      report_count: 0,
+    });
+
+    const billingMonth = billingMonthFromDateKey(visitDate);
+    const billingCandidateResponse = await page.request.post('/api/visit-billing-candidates', {
+      data: {
+        billing_month: billingMonth,
+        share_case_id: shareCase!.id,
+      },
+    });
+    expect(billingCandidateResponse.status()).toBe(200);
+    const billingCandidateBatch = (await billingCandidateResponse.json()) as {
+      billing_month: string;
+      scanned_confirmed_records: number;
+      generated_candidates: number;
+      billable_count: number;
+      excluded_count: number;
+    };
+    expect(billingCandidateBatch).toMatchObject({
+      billing_month: billingMonth,
+      scanned_confirmed_records: 1,
+      generated_candidates: 1,
+      billable_count: 1,
+      excluded_count: 0,
+    });
+
+    const billingCandidate = await readUiDemoVisitBillingCandidate(partnerRecord.id);
+    expect(billingCandidate).toMatchObject({
+      partner_visit_record_id: partnerRecord.id,
+      contract_version_id: DEMO_IDS.freePharmacyContractVersion,
+      billing_status: 'candidate',
+      is_billable: true,
+      amount: 0,
+      billing_model: 'free',
+      tax_rate_bp: null,
+    });
+
+    const reportDraftResponse = await page.request.post('/api/pharmacy-invoices', {
+      data: {
+        billing_month: billingMonth,
+        contract_id: demoContext.freeContractId,
+        document_kind: 'free_cooperation_report',
+      },
+    });
+    expect(reportDraftResponse.status()).toBe(201);
+    const reportDraft = (await reportDraftResponse.json()) as {
+      id: string;
+      document_kind: string;
+      status: string;
+      subtotal: number;
+      tax_amount: number;
+      total: number;
+      item_count: number;
+      has_snapshot: boolean;
+    };
+    expect(reportDraft).toMatchObject({
+      document_kind: 'free_cooperation_report',
+      status: 'draft',
+      subtotal: 0,
+      tax_amount: 0,
+      total: 0,
+      item_count: 1,
+      has_snapshot: true,
+    });
+
+    const issueReportResponse = await page.request.patch(
+      `/api/pharmacy-invoices/${reportDraft.id}`,
+      {
+        data: {
+          action: 'issue',
+          occurred_at: visitDate,
+        },
+      },
+    );
+    expect(issueReportResponse.status()).toBe(200);
+    const issuedReport = (await issueReportResponse.json()) as {
+      id: string;
+      status: string;
+      invoice_no: string | null;
+      item_count: number;
+    };
+    expect(issuedReport).toMatchObject({
+      id: reportDraft.id,
+      status: 'issued',
+      item_count: 1,
+    });
+    expect(issuedReport.invoice_no).toEqual(expect.any(String));
+
+    const reportPdfResponse = await page.request.get(
+      `/api/pharmacy-invoices/${reportDraft.id}/pdf?purpose=db-backed-free-report-proof`,
+    );
+    expect(reportPdfResponse.status()).toBe(200);
+    expect(reportPdfResponse.headers()['content-type']).toContain('application/pdf');
+
+    const storedReport = await readUiDemoPharmacyInvoice(reportDraft.id);
+    expect(storedReport).toMatchObject({
+      id: reportDraft.id,
+      document_kind: 'free_cooperation_report',
+      status: 'issued',
+      subtotal: 0,
+      tax_amount: 0,
+      total: 0,
+      has_paid_at: false,
+      item_count: 1,
+    });
+    expect(storedReport?.invoice_no).toEqual(expect.any(String));
+
+    await openStableRoute(page, '/workflow/pharmacy-cooperation');
+    const shareCasesTable = page.getByRole('table', { name: '患者共有ケース一覧' });
+    const activatedShareCaseRow = shareCasesTable.getByRole('row').filter({
+      hasText: shareCase!.id,
+    });
+    await expect(activatedShareCaseRow.getByText('共有中')).toBeVisible({ timeout: 60_000 });
+    const visitRequestsTable = page.getByRole('table', { name: '協力薬局訪問依頼一覧' });
+    await expect(
+      visitRequestsTable.getByRole('row').filter({ hasText: visitRequest!.id }),
+    ).toBeVisible({ timeout: 60_000 });
+    const partnerRecordsTable = page.getByRole('table', { name: '協力訪問記録一覧' });
+    await expect(
+      partnerRecordsTable.getByRole('row').filter({ hasText: partnerRecord.id }),
+    ).toBeVisible({ timeout: 60_000 });
+
+    await writeScreenshot(page, 'patient-share-free-report-db-backed');
     expect(errors).toEqual([]);
   });
 
