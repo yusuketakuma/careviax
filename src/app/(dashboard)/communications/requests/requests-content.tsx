@@ -9,6 +9,7 @@ import { PageSection } from '@/components/layout/page-section';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { StateBadge } from '@/components/ui/state-badge';
 import { Button } from '@/components/ui/button';
+import { ErrorState } from '@/components/ui/error-state';
 import { ActionRail } from '@/components/ui/action-rail';
 import { FilterSummaryBar } from '@/components/ui/filter-summary-bar';
 import { Label } from '@/components/ui/label';
@@ -198,7 +199,7 @@ export function CommunicationRequestsContent({
     },
   });
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: [
       'communication-requests',
       orgId,
@@ -228,6 +229,7 @@ export function CommunicationRequestsContent({
     },
     enabled: !!orgId,
   });
+  const isInitialLoading = isLoading && !data;
 
   // フォーカスモード: 未完了の返信待ち依頼のみ（期限の近い順）
   const focusedRequests = useMemo(() => {
@@ -331,115 +333,140 @@ export function CommunicationRequestsContent({
         title="返信待ち・フォロー"
         description="返信待ちの依頼を1件ずつ確認し、返信内容と次回カードへ残すことを記録して対応済みにします。"
         tone="subtle"
-        contentClassName="grid gap-4 lg:grid-cols-[minmax(0,22rem)_1fr]"
+        contentClassName={
+          isError || isInitialLoading ? undefined : 'grid gap-4 lg:grid-cols-[minmax(0,22rem)_1fr]'
+        }
       >
-        <div
-          className="space-y-2"
-          role="listbox"
-          aria-label="返信待ちの依頼"
-          data-testid="reply-followup-list"
-        >
-          <h3 className="px-1 text-sm font-semibold text-foreground">返信待ち</h3>
-          {isLoading ? (
-            <p className="px-1 text-sm text-muted-foreground">読み込み中...</p>
-          ) : focusedRequests.length === 0 ? (
-            <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
-              返信待ちの依頼はありません。
-            </p>
-          ) : (
-            focusedRequests.map((item) => {
-              const due = resolveFollowupDueDisplay(item);
-              const isSelected = focusedSelected?.id === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  role="option"
-                  aria-selected={isSelected}
-                  onClick={() => selectFocusedRequest(item)}
-                  className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
-                    isSelected
-                      ? 'border-primary bg-primary/5 ring-1 ring-primary'
-                      : 'border-border bg-card hover:border-primary/40 hover:bg-muted/40'
-                  }`}
-                >
-                  <p className="text-sm font-semibold text-foreground">
-                    {formatRecipientLabel(item)}
-                  </p>
-                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{item.subject}</p>
-                  <div className="mt-2">
-                    <StateBadge role={due.role}>{due.label}</StateBadge>
-                  </div>
-                </button>
-              );
-            })
-          )}
-        </div>
-
-        <div className="rounded-lg border border-border bg-card p-4">
-          {focusedSelected ? (
-            <div className="space-y-5">
-              <div>
-                <h3 className="text-sm font-semibold text-foreground">返信内容と次の対応</h3>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {formatRecipientLabel(focusedSelected)} / {focusedSelected.subject}
+        {isError ? (
+          <ErrorState
+            variant="server"
+            title="依頼一覧を表示できません"
+            description="返信待ち、対応中、患者文脈の依頼取得に失敗しました。通信状態を確認して再試行してください。"
+            detail="取得失敗時は、返信待ちがないものとして扱わず、対応済み操作を停止しています。"
+            action={{ label: '再試行', onClick: () => void refetch() }}
+            headingLevel={3}
+          />
+        ) : isInitialLoading ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="rounded-xl border border-dashed border-border bg-card px-6 py-10 text-center text-sm text-muted-foreground"
+          >
+            依頼一覧を読み込み中...
+          </div>
+        ) : (
+          <>
+            <div
+              className="space-y-2"
+              role="listbox"
+              aria-label="返信待ちの依頼"
+              data-testid="reply-followup-list"
+            >
+              <h3 className="px-1 text-sm font-semibold text-foreground">返信待ち</h3>
+              {isLoading ? (
+                <p className="px-1 text-sm text-muted-foreground">読み込み中...</p>
+              ) : focusedRequests.length === 0 ? (
+                <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
+                  返信待ちの依頼はありません。
                 </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="focused_response_content">返信内容</Label>
-                <Textarea
-                  id="focused_response_content"
-                  rows={5}
-                  placeholder="返信内容を記録します（任意）"
-                  value={focusedForm.content}
-                  onChange={(event) =>
-                    setFocusedForm((current) => ({ ...current, content: event.target.value }))
-                  }
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="focused_followup">次回カードへ残すこと</Label>
-                <Textarea
-                  id="focused_followup"
-                  rows={3}
-                  placeholder="例: 夕食後薬の飲み忘れを確認"
-                  aria-describedby="focused_followup_help"
-                  className="bg-state-done/5"
-                  value={focusedForm.followup}
-                  onChange={(event) =>
-                    setFocusedForm((current) => ({ ...current, followup: event.target.value }))
-                  }
-                />
-                <p id="focused_followup_help" className="text-xs text-muted-foreground">
-                  入力すると報告返信待ちフォローの運用タスクとして残します。
-                </p>
-              </div>
-
-              <div className="flex justify-start pt-1">
-                <Button
-                  className="bg-state-done text-white hover:bg-state-done/90"
-                  onClick={() =>
-                    resolveFocusedMutation.mutate({
-                      item: focusedSelected,
-                      responderName: focusedForm.responder_name.trim(),
-                      content: focusedForm.content.trim(),
-                      followup: focusedForm.followup.trim(),
-                    })
-                  }
-                  disabled={resolveFocusedMutation.isPending}
-                >
-                  対応済みにする
-                </Button>
-              </div>
+              ) : (
+                focusedRequests.map((item) => {
+                  const due = resolveFollowupDueDisplay(item);
+                  const isSelected = focusedSelected?.id === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      role="option"
+                      aria-selected={isSelected}
+                      onClick={() => selectFocusedRequest(item)}
+                      className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
+                        isSelected
+                          ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                          : 'border-border bg-card hover:border-primary/40 hover:bg-muted/40'
+                      }`}
+                    >
+                      <p className="text-sm font-semibold text-foreground">
+                        {formatRecipientLabel(item)}
+                      </p>
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {item.subject}
+                      </p>
+                      <div className="mt-2">
+                        <StateBadge role={due.role}>{due.label}</StateBadge>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
             </div>
-          ) : (
-            <p className="py-12 text-center text-sm text-muted-foreground">
-              左の返信待ちリストから依頼を選択してください。
-            </p>
-          )}
-        </div>
+
+            <div className="rounded-lg border border-border bg-card p-4">
+              {focusedSelected ? (
+                <div className="space-y-5">
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">返信内容と次の対応</h3>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {formatRecipientLabel(focusedSelected)} / {focusedSelected.subject}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="focused_response_content">返信内容</Label>
+                    <Textarea
+                      id="focused_response_content"
+                      rows={5}
+                      placeholder="返信内容を記録します（任意）"
+                      value={focusedForm.content}
+                      onChange={(event) =>
+                        setFocusedForm((current) => ({ ...current, content: event.target.value }))
+                      }
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="focused_followup">次回カードへ残すこと</Label>
+                    <Textarea
+                      id="focused_followup"
+                      rows={3}
+                      placeholder="例: 夕食後薬の飲み忘れを確認"
+                      aria-describedby="focused_followup_help"
+                      className="bg-state-done/5"
+                      value={focusedForm.followup}
+                      onChange={(event) =>
+                        setFocusedForm((current) => ({ ...current, followup: event.target.value }))
+                      }
+                    />
+                    <p id="focused_followup_help" className="text-xs text-muted-foreground">
+                      入力すると報告返信待ちフォローの運用タスクとして残します。
+                    </p>
+                  </div>
+
+                  <div className="flex justify-start pt-1">
+                    <Button
+                      className="bg-state-done text-white hover:bg-state-done/90"
+                      onClick={() =>
+                        resolveFocusedMutation.mutate({
+                          item: focusedSelected,
+                          responderName: focusedForm.responder_name.trim(),
+                          content: focusedForm.content.trim(),
+                          followup: focusedForm.followup.trim(),
+                        })
+                      }
+                      disabled={resolveFocusedMutation.isPending}
+                    >
+                      対応済みにする
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="py-12 text-center text-sm text-muted-foreground">
+                  左の返信待ちリストから依頼を選択してください。
+                </p>
+              )}
+            </div>
+          </>
+        )}
       </PageSection>
     </div>
   );

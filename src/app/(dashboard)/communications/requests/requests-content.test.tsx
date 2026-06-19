@@ -51,6 +51,8 @@ describe('CommunicationRequestsContent', () => {
     useQueryMock.mockReturnValue({
       data: { data: [] },
       isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
     });
   });
 
@@ -143,6 +145,45 @@ describe('CommunicationRequestsContent', () => {
     expect(screen.getByText('絞り込みと文脈')).toBeTruthy();
     expect(screen.queryByRole('group', { name: '表示モード' })).toBeNull();
     expect(screen.queryByText('連携ログ一覧')).toBeNull();
+  });
+
+  it('shows an error state instead of an empty follow-up workspace when request loading fails', () => {
+    const refetch = vi.fn();
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      refetch,
+    });
+
+    render(<CommunicationRequestsContent />);
+
+    expect(screen.getByRole('heading', { name: '依頼一覧を表示できません' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '再試行' })).toBeTruthy();
+    expect(screen.queryByTestId('reply-followup-list')).toBeNull();
+    expect(screen.queryByText('返信待ちの依頼はありません。')).toBeNull();
+    expect(screen.queryByText('左の返信待ちリストから依頼を選択してください。')).toBeNull();
+    expect(screen.queryByRole('button', { name: '対応済みにする' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '再試行' }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides the empty follow-up workspace while the initial request list is loading', () => {
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    render(<CommunicationRequestsContent />);
+
+    expect(screen.getByRole('status').textContent).toContain('依頼一覧を読み込み中...');
+    expect(screen.queryByTestId('reply-followup-list')).toBeNull();
+    expect(screen.queryByText('返信待ちの依頼はありません。')).toBeNull();
+    expect(screen.queryByText('左の返信待ちリストから依頼を選択してください。')).toBeNull();
+    expect(screen.queryByRole('button', { name: '対応済みにする' })).toBeNull();
   });
 
   it('sends reply, follow-up, and the OCC token through one resolve action', async () => {
