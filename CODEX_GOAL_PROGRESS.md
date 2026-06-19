@@ -4562,6 +4562,63 @@ Implemented:
 
 - The paid DB-backed flow is now covered through PDF/payment. Remaining v0.2 proof gaps include free cooperation report DB-backed proof, share-case message thread DB-backed proof, broader invoice search/audit browser coverage, and the existing stale patient-detail `safety-board` assertion.
 
+## 20260620-0433 JST - Free Cooperation Report Search/Audit Proof
+
+### Summary
+
+- Extended the free cooperation report E2E to search `/api/pharmacy-invoices` after PDF generation with `document_kind=free_cooperation_report`, `status=issued`, `contract_id`, and `billing_month`.
+- Strengthened DB readback for PDF export audits by resolving the expected export `target_type` from `document_kind`: `pharmacy_invoice` for paid invoices and `pharmacy_free_cooperation_report` for free reports.
+- Added assertions for free report draft, issue, and PDF export audit counts plus latest export purpose and target type.
+
+### Files Changed
+
+- `tools/tests/ui-major-screens.spec.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write tools/tests/ui-major-screens.spec.ts`: passed unchanged.
+- `pnpm exec eslint tools/tests/ui-major-screens.spec.ts`: passed.
+- `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-major-screens.spec.ts --project=chromium --grep "patient card drives a DB-backed share, visit, report, and billing flow|patient share flow produces a DB-backed free cooperation report"`: passed, 2 Chromium tests.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `pnpm lint`: passed.
+
+### Remaining / Next Loop
+
+- Free cooperation report proof now covers draft, issue, search, PDF, and audit readback. Remaining v0.2 proof gaps include any message-thread browser/readback gap not already covered and the `pg@9` concurrent `client.query()` warning.
+
+## 20260620-0433 JST - Dispense Grid Period Input Guidance
+
+### Summary
+
+- Added screen-reader helper text for dispense-workbench group start-date and prescription-days inputs.
+- Linked group period inputs with stable `aria-describedby` IDs.
+- Constrained prescription-days input with `min=1` and `step=1` to match the write-handler validation contract.
+- Added focused regression coverage for the accessible descriptions and numeric constraints.
+
+### Files Changed
+
+- `src/components/features/dispense-workbench/prescription-grid.tsx`
+- `src/components/features/dispense-workbench/prescription-grid.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write src/components/features/dispense-workbench/prescription-grid.tsx src/components/features/dispense-workbench/prescription-grid.test.tsx`: passed.
+- `pnpm exec eslint src/components/features/dispense-workbench/prescription-grid.tsx src/components/features/dispense-workbench/prescription-grid.test.tsx`: passed.
+- `pnpm vitest run src/components/features/dispense-workbench/prescription-grid.test.tsx`: passed, 1 file / 1 test.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `pnpm lint`: passed.
+- `git diff --check -- src/components/features/dispense-workbench/prescription-grid.tsx src/components/features/dispense-workbench/prescription-grid.test.tsx`: passed.
+
+### Remaining / Next Loop
+
+- Dispense grid period controls now expose their expected formats and positive-day constraint to assistive tech. The deeper real-data write-handler toast paths still require a broader state/error surface if fully replacing transient validation toasts.
+
 ## 20260620-0427 JST - Drug Master Reorder Point Inline Validation
 
 ### Summary
