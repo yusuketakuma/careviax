@@ -319,7 +319,7 @@ export function BusinessHolidaysContent() {
             </div>
             <div className="flex items-center gap-2">
               <Select value={filterSiteId} onValueChange={(v) => setFilterSiteId(v ?? '')}>
-                <SelectTrigger className="w-40">
+                <SelectTrigger className="w-40" aria-label="店舗フィルタ">
                   <SelectValue placeholder="全店舗" />
                 </SelectTrigger>
                 <SelectContent>
@@ -426,16 +426,17 @@ export function BusinessHolidaysContent() {
                 ))}
             </div>
             <div className="grid gap-4 md:grid-cols-3">
-              <Field label="休日名">
+              <Field label="休日名" htmlFor="bulk-holiday-name">
                 <Input
+                  id="bulk-holiday-name"
                   value={bulkName}
                   onChange={(e) => setBulkName(e.target.value)}
                   placeholder="例: 年末年始休業"
                 />
               </Field>
-              <Field label="種別">
+              <Field label="種別" htmlFor="bulk-holiday-type">
                 <Select value={bulkType} onValueChange={(v) => setBulkType(v ?? '')}>
-                  <SelectTrigger>
+                  <SelectTrigger id="bulk-holiday-type">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -447,9 +448,9 @@ export function BusinessHolidaysContent() {
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="対象店舗">
+              <Field label="対象店舗" htmlFor="bulk-holiday-site">
                 <Select value={bulkSiteId} onValueChange={(v) => setBulkSiteId(v ?? '')}>
-                  <SelectTrigger>
+                  <SelectTrigger id="bulk-holiday-site">
                     <SelectValue placeholder="全店舗共通" />
                   </SelectTrigger>
                   <SelectContent>
@@ -546,26 +547,28 @@ export function BusinessHolidaysContent() {
             <SheetDescription>休日情報を入力してください。</SheetDescription>
           </SheetHeader>
           <div className="mt-6 space-y-4">
-            <Field label="日付">
+            <Field label="日付" htmlFor="holiday-form-date">
               <Input
+                id="holiday-form-date"
                 type="date"
                 value={form.date}
                 onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
               />
             </Field>
-            <Field label="休日名">
+            <Field label="休日名" htmlFor="holiday-form-name">
               <Input
+                id="holiday-form-name"
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                 placeholder="例: 元日"
               />
             </Field>
-            <Field label="種別">
+            <Field label="種別" htmlFor="holiday-form-type">
               <Select
                 value={form.holiday_type}
                 onValueChange={(v) => setForm((f) => ({ ...f, holiday_type: v ?? '' }))}
               >
-                <SelectTrigger>
+                <SelectTrigger id="holiday-form-type">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -577,14 +580,14 @@ export function BusinessHolidaysContent() {
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="対象店舗">
+            <Field label="対象店舗" htmlFor="holiday-form-site">
               <Select
                 value={form.site_id}
                 onValueChange={(v) =>
                   setForm((f) => ({ ...f, site_id: v === '__all' ? '' : (v ?? '') }))
                 }
               >
-                <SelectTrigger>
+                <SelectTrigger id="holiday-form-site">
                   <SelectValue placeholder="全店舗共通" />
                 </SelectTrigger>
                 <SelectContent>
@@ -658,10 +661,20 @@ function SummaryCard({ label, value }: { label: string; value: number }) {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  htmlFor?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
-      <Label className="mb-1.5 block">{label}</Label>
+      <Label htmlFor={htmlFor} className="mb-1.5 block">
+        {label}
+      </Label>
       {children}
     </div>
   );

@@ -86,6 +86,8 @@ describe('BusinessHolidaysContent', () => {
   it('requires confirmation before deleting a business holiday', async () => {
     renderContent();
 
+    expect(await screen.findByLabelText('店舗フィルタ')).toBeTruthy();
+
     fireEvent.click(
       await screen.findByRole('button', {
         name: '2026-01-01 年始休業（本店 / 薬局休業日 / 休業）を削除',

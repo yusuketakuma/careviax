@@ -4306,6 +4306,36 @@ Implemented:
 
 - UI/UX remediation remains active. Remaining candidates include pharmacy-cooperation responsive table density, select accessible-name gaps outside fixed/verified screens, raw table/DataTable convergence, and expanded browser/a11y proof.
 
+## 20260620-0033 JST - Business Holiday Label Associations
+
+### Summary
+
+- Added an accessible label to the business-holiday calendar site filter.
+- Extended the local `Field` helper to wire visible labels to inputs and Select triggers.
+- Associated bulk holiday name/type/site controls with labels.
+- Associated add/edit holiday date/name/type/site controls with labels.
+- Added a regression assertion that the site filter is reachable by label.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx`
+- `src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 1 test.
+- `pnpm exec eslint 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx'`: passed.
+- `pnpm exec prettier --check 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.tsx' 'src/app/(dashboard)/admin/business-holidays/business-holidays-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Remaining candidates include pharmacy-cooperation responsive table density, select accessible-name gaps outside fixed/verified screens, raw table/DataTable convergence, and expanded browser/a11y proof.
+
 ## 20260620-0031 JST - Contact Profile Label Associations
 
 ### Summary
