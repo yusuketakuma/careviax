@@ -4072,3 +4072,62 @@ Implemented:
 ### Remaining / Next Loop
 
 - UI/UX remediation remains active. Next candidates include broader admin destructive-action consistency, pharmacy-cooperation responsive table density, select accessible-name gaps, raw table/DataTable convergence, and expanded browser/a11y proof.
+
+## 20260620-0011 JST - Pharmacy Site Form Label Associations
+
+### Summary
+
+- Associated visible labels with pharmacy site edit inputs: name, address, phone, and FAX.
+- Associated visible labels with insurance config controls: insurance type, revision, effective dates, and dynamic medical config selects.
+- Added regression tests proving the pharmacy site and insurance config fields can be found by their visible labels.
+
+### Files Changed
+
+- `src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.tsx`
+- `src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.tsx' 'src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 2 tests.
+- Targeted ESLint over touched pharmacy-site files: passed.
+- `pnpm typecheck`: initially found one dynamic insurance config `Field` without `htmlFor`; after adding field-key-based ids, passed.
+- `pnpm exec prettier --check 'src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.tsx' 'src/app/(dashboard)/admin/pharmacy-sites/pharmacy-sites-content.test.tsx'`: passed.
+- `git diff --check`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: blocked by unrelated dirty `src/server/services/patient-share-policy.ts`; touched pharmacy-site files are formatted.
+
+### Remaining / Next Loop
+
+- UI/UX remediation remains active. Full format check needs the unrelated patient-share-policy dirty file to be formatted or committed by its owning slice. Remaining candidates include broader admin destructive-action consistency, pharmacy-cooperation responsive table density, select accessible-name gaps outside pharmacy-sites, raw table/DataTable convergence, and expanded browser/a11y proof.
+
+## 20260620-0011 JST - Patient Share Output Policy
+
+### Summary
+
+- Added a shared patient-share data output policy for v0.2 R2 permission commonality.
+- Mapped attachment view, attachment download, print, PDF output, PDF download, and shared data download actions to required `share_scope` keys.
+- Made attachment downloads require both `attachments` and `download`, and PDF downloads require both `pdf_output` and `download`.
+- Added fail-closed tests for inactive share cases and non-boolean scope values.
+
+### Files Changed
+
+- `src/server/services/patient-share-policy.ts`
+- `src/server/services/patient-share-policy.test.ts`
+- `Plans.md`
+- `docs/pharmacy-cooperation-v0.2-completion-audit.md`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write src/server/services/patient-share-policy.ts src/server/services/patient-share-policy.test.ts`: passed.
+- `pnpm exec vitest run src/server/services/patient-share-policy.test.ts --reporter=dot --testTimeout=30000`: passed, 1 file / 8 tests.
+- Targeted ESLint over touched patient-share policy files: passed.
+- `pnpm typecheck`: passed.
+
+### Remaining / Next Loop
+
+- Direct DB-backed proof and migration application remain explicit-approval blocked.
+- Next non-DB candidates include wiring the shared output policy into concrete output routes where share-case context is available, broader role-matrix browser proof after DB apply, and pharmacy-cooperation responsive/a11y hardening.
