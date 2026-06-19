@@ -1326,6 +1326,11 @@ async function readUiDemoPharmacyInvoice(invoiceId: string) {
       invoice_no: string | null;
       has_paid_at: boolean;
       item_count: number;
+      draft_audit_count: number;
+      issued_audit_count: number;
+      payment_audit_count: number;
+      pdf_export_audit_count: number;
+      latest_pdf_export_purpose: string | null;
     }>(
       `
         SELECT
@@ -1342,7 +1347,51 @@ async function readUiDemoPharmacyInvoice(invoiceId: string) {
             FROM "PharmacyInvoiceItem" item
             WHERE item."invoice_id" = invoice."id"
               AND item."org_id" = invoice."org_id"
-          ) AS item_count
+          ) AS item_count,
+          (
+            SELECT COUNT(*)::int
+            FROM "AuditLog" audit
+            WHERE audit."org_id" = invoice."org_id"
+              AND audit."target_type" = 'PharmacyInvoice'
+              AND audit."target_id" = invoice."id"
+              AND audit."action" = 'pharmacy_invoice_draft_created'
+          ) AS draft_audit_count,
+          (
+            SELECT COUNT(*)::int
+            FROM "AuditLog" audit
+            WHERE audit."org_id" = invoice."org_id"
+              AND audit."target_type" = 'PharmacyInvoice'
+              AND audit."target_id" = invoice."id"
+              AND audit."action" = 'pharmacy_invoice_issued'
+          ) AS issued_audit_count,
+          (
+            SELECT COUNT(*)::int
+            FROM "AuditLog" audit
+            WHERE audit."org_id" = invoice."org_id"
+              AND audit."target_type" = 'PharmacyInvoice'
+              AND audit."target_id" = invoice."id"
+              AND audit."action" = 'pharmacy_invoice_payment_recorded'
+          ) AS payment_audit_count,
+          (
+            SELECT COUNT(*)::int
+            FROM "AuditLog" audit
+            WHERE audit."org_id" = invoice."org_id"
+              AND audit."target_type" = 'pharmacy_invoice'
+              AND audit."target_id" = invoice."id"
+              AND audit."action" = 'export'
+              AND audit."changes"->>'format' = 'pdf'
+          ) AS pdf_export_audit_count,
+          (
+            SELECT audit."changes"->'metadata'->>'export_purpose'
+            FROM "AuditLog" audit
+            WHERE audit."org_id" = invoice."org_id"
+              AND audit."target_type" = 'pharmacy_invoice'
+              AND audit."target_id" = invoice."id"
+              AND audit."action" = 'export'
+              AND audit."changes"->>'format' = 'pdf'
+            ORDER BY audit."created_at" DESC, audit."id" DESC
+            LIMIT 1
+          ) AS latest_pdf_export_purpose
         FROM "PharmacyInvoice" invoice
         WHERE invoice."id" = $1
         LIMIT 1
@@ -2291,6 +2340,45 @@ test.describe('major authenticated screens', () => {
     expect(invoicePdfResponse.status()).toBe(200);
     expect(invoicePdfResponse.headers()['content-type']).toContain('application/pdf');
 
+    const invoiceSearchResponse = await page.request.get('/api/pharmacy-invoices', {
+      params: {
+        billing_month: billingMonth,
+        contract_id: demoContext.contractId,
+        document_kind: 'invoice',
+        status: 'paid',
+        limit: '20',
+      },
+    });
+    expect(invoiceSearchResponse.status()).toBe(200);
+    const invoiceSearch = (await invoiceSearchResponse.json()) as {
+      data: Array<{
+        id: string;
+        contract_id: string;
+        document_kind: string;
+        status: string;
+        billing_month: string;
+        invoice_no: string | null;
+        item_count: number;
+        partnership?: {
+          partner_pharmacy?: {
+            name?: string;
+          };
+        };
+      }>;
+    };
+    expect(
+      invoiceSearch.data.some(
+        (invoice) =>
+          invoice.id === invoiceDraft.id &&
+          invoice.contract_id === demoContext.contractId &&
+          invoice.document_kind === 'invoice' &&
+          invoice.status === 'paid' &&
+          invoice.billing_month === billingMonth &&
+          invoice.item_count === 1 &&
+          invoice.invoice_no === issuedInvoice.invoice_no,
+      ),
+    ).toBe(true);
+
     const storedInvoice = await readUiDemoPharmacyInvoice(invoiceDraft.id);
     expect(storedInvoice).toMatchObject({
       id: invoiceDraft.id,
@@ -2300,6 +2388,11 @@ test.describe('major authenticated screens', () => {
       total: 9680,
       has_paid_at: true,
       item_count: 1,
+      draft_audit_count: 1,
+      issued_audit_count: 1,
+      payment_audit_count: 1,
+      pdf_export_audit_count: 1,
+      latest_pdf_export_purpose: 'db-backed-e2e-proof',
     });
     expect(storedInvoice?.invoice_no).toEqual(expect.any(String));
 
