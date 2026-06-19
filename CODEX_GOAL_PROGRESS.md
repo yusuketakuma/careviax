@@ -4437,6 +4437,131 @@ Implemented:
 - DB-backed proof still needs partner visit record draft/submit/review, physician report draft, billing candidate, invoice/payment, and message thread coverage.
 - UI/UX remediation remains active for pharmacy-cooperation responsive table density, raw workflow table convergence, toast-only form validation, and expanded browser/a11y proof.
 
+## 20260620-0326 JST - SOAP ToggleButton Shared Accessibility
+
+### Summary
+
+- Removed duplicate local `ToggleButton` implementations from SOAP step components and reused the shared SOAP step toggle.
+- Added `aria-pressed` to the shared SOAP toggle so symptom/problem/intervention option state is exposed programmatically.
+- Added regression coverage for selected and unselected pressed states plus click dispatch.
+
+### Files Changed
+
+- `src/components/features/visits/soap-steps/toggle-button.tsx`
+- `src/components/features/visits/soap-steps/toggle-button.test.tsx`
+- `src/components/features/visits/soap-steps/subjective-step.tsx`
+- `src/components/features/visits/soap-steps/objective-basic-step.tsx`
+- `src/components/features/visits/soap-steps/functional-assessment-step.tsx`
+- `src/components/features/visits/soap-steps/assessment-step.tsx`
+- `src/components/features/visits/soap-steps/plan-step.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write` over SOAP step toggle files: passed.
+- `pnpm exec eslint` over SOAP step toggle files: passed.
+- `pnpm exec vitest run src/components/features/visits/soap-steps/toggle-button.test.tsx src/components/features/visits/visit-medication-management-section.test.tsx --reporter=dot --testTimeout=30000`: passed, 2 files / 2 tests.
+- `git diff --check -- src/components/features/visits/soap-steps/...`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- `pnpm lint`: passed.
+- Verifier subagent reported no blocking findings for the SOAP toggle shared-component slice.
+
+### Remaining / Next Loop
+
+- SOAP toggle duplication is addressed for the inspected step components. Remaining UI/UX remediation candidates include pharmacy-cooperation responsive table density, raw workflow table convergence, toast-only form validation, and expanded browser/a11y proof.
+
+## 20260620-0330 JST - Pharmacy Cooperation TableFrame Keyboard Access
+
+### Summary
+
+- Made pharmacy-cooperation workflow horizontal table frames keyboard-focusable scroll regions.
+- Kept the existing table `aria-label` and `min-w-[72rem]` layout while adding a separate scroll-region label.
+- Added regression coverage that the share-case table region is focusable and still contains the named table.
+
+### Files Changed
+
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx`
+- `src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec prettier --write 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`: passed.
+- `pnpm exec eslint 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`: passed.
+- `pnpm exec vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 12 tests.
+- `git diff --check -- 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `pnpm format:check`: passed.
+- Verifier subagent reported no findings for the TableFrame keyboard accessibility slice.
+
+### Remaining / Next Loop
+
+- This improves keyboard access to the existing responsive table wrapper without changing table data or PHI projections. Remaining UI/UX remediation candidates include deeper responsive row-card conversion, raw workflow table convergence, toast-only form validation, and expanded browser/a11y proof.
+
+## 20260620-0335 JST - External Share Inline Validation
+
+### Summary
+
+- Replaced toast-only validation for `/patients/:id/share` external share setup with inline, persistent form errors.
+- Added `aria-invalid` and error description wiring to the required share-recipient name input.
+- Added a named scope checkbox group and inline error message when every share scope is unchecked.
+
+### Files Changed
+
+- `src/app/(dashboard)/patients/[id]/share/external-share-content.tsx`
+- `src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 2 tests.
+- `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/share/external-share-content.tsx' 'src/app/(dashboard)/patients/[id]/share/external-share-content.test.tsx'`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `pnpm lint`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- External share setup validation is now visible inline. Broader UI/UX remediation remains active for remaining toast-only form validation and expanded browser/a11y proof.
+
+## 20260620-0336 JST - DB-backed Pharmacy Cooperation Completion Proof
+
+### Summary
+
+- Extended the local e2e DB-backed patient-card pharmacy cooperation proof from visit request acceptance through partner visit record draft, submit, base confirmation, claim note creation, physician report draft, billing candidate generation, invoice draft, invoice issue, payment recording, and invoice PDF export.
+- Added deterministic UI-demo pharmacy contract, active version, and fixed-per-visit fee-rule seed data so billing candidate and invoice generation use the same contract/version path as production code.
+- Fixed `createPharmacyInvoiceDraft` for Prisma 7 nested invoice item creation by removing the invalid nested `org_id`; Prisma infers it through the parent invoice composite relation.
+- Hardened invoice service unit coverage so nested invoice item creation does not regress to passing `org_id`.
+
+### Files Changed
+
+- `src/server/services/pharmacy-invoices.ts`
+- `src/server/services/pharmacy-invoices.test.ts`
+- `tools/tests/ui-major-screens.spec.ts`
+- `CODEX_GOAL_PROGRESS.md`
+- `.codex/ralph-state.md`
+
+### Validation
+
+- `pnpm exec vitest run src/server/services/pharmacy-invoices.test.ts --reporter=dot --testTimeout=30000`: passed, 1 file / 7 tests.
+- `pnpm exec vitest run src/server/services/pharmacy-invoices.test.ts src/app/api/pharmacy-invoices/route.test.ts 'src/app/api/pharmacy-invoices/[id]/route.test.ts' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 4 files / 28 tests.
+- `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-major-screens.spec.ts --project=chromium --grep "patient card drives a DB-backed share, visit, report, and billing flow"`: passed, 1 Chromium test.
+- `pnpm exec eslint src/server/services/pharmacy-invoices.ts src/server/services/pharmacy-invoices.test.ts tools/tests/ui-major-screens.spec.ts`: passed.
+- `pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm format:check`: passed.
+- `pnpm lint`: passed.
+- `pnpm exec prisma validate --schema=prisma/schema/`: passed.
+- `git diff --check`: passed.
+
+### Remaining / Next Loop
+
+- The paid DB-backed flow is now covered through PDF/payment. Remaining v0.2 proof gaps include free cooperation report DB-backed proof, share-case message thread DB-backed proof, broader invoice search/audit browser coverage, and the existing stale patient-detail `safety-board` assertion.
+
 ## 20260620-0224 JST - Admin Analytics Monthly Trend DataTable
 
 ### Summary
