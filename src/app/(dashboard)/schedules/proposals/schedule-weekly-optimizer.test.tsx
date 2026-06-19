@@ -189,6 +189,8 @@ describe('ScheduleWeeklyOptimizer', () => {
     render(<ScheduleWeeklyOptimizer />);
 
     expect(screen.getByLabelText('社用車')).toBeTruthy();
+    expect(screen.getByLabelText('希望枠')).toBeTruthy();
+    expect(screen.getByLabelText('希望枠 終了')).toBeTruthy();
     expect(screen.getByText('未指定なら自動割当')).toBeTruthy();
   });
 

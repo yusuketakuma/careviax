@@ -3802,6 +3802,7 @@ function DrugMasterOperationalContent({
                               下限数量
                             </span>
                             <Input
+                              id="drug-master-reorder-point"
                               ref={reorderPointInputRef}
                               type="number"
                               min={0}

@@ -1230,6 +1230,8 @@ export function ScheduleWeeklyOptimizer({
                 />
                 <span className="text-sm text-muted-foreground">-</span>
                 <Input
+                  id="weekly-time-to"
+                  aria-label="希望枠 終了"
                   type="time"
                   value={plannerSettings.preferred_time_to}
                   onChange={(event) => {

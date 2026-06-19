@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
@@ -26,6 +28,11 @@ vi.mock('sonner', () => ({
 import { SettingsContent } from './settings-content';
 
 setupDomTestEnv();
+
+const SOURCE = readFileSync(
+  join(process.cwd(), 'src/app/(dashboard)/admin/settings/settings-content.tsx'),
+  'utf8',
+);
 
 describe('SettingsContent polling policy', () => {
   beforeEach(() => {
@@ -63,5 +70,9 @@ describe('SettingsContent polling policy', () => {
       }),
     );
     expect(screen.getAllByLabelText('設定編集モード').length).toBeGreaterThan(0);
+  });
+
+  it('labels the JSON settings editor', () => {
+    expect(SOURCE).toContain('aria-label="設定JSON"');
   });
 });

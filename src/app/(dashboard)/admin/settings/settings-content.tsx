@@ -315,6 +315,7 @@ function ScopePanel({
                 現在の scope 値を JSON として編集できます。保存時に設定キー単位で反映します。
               </p>
               <Textarea
+                aria-label="設定JSON"
                 value={jsonDraft}
                 onChange={(event) => setJsonDraft(event.target.value)}
                 className="min-h-[320px] font-mono text-xs"
