@@ -7,6 +7,7 @@ import { ActionRail } from '@/components/ui/action-rail';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -73,7 +74,7 @@ export function PatientPackagingCard({ patientId, orgId }: { patientId: string; 
   const queryClient = useQueryClient();
   const [draftForm, setDraftForm] = useState<PackagingFormState | null>(null);
 
-  const { data, isLoading } = useQuery<PackagingResponse>({
+  const { data, isLoading, isError, refetch } = useQuery<PackagingResponse>({
     queryKey: ['patient-packaging', orgId, patientId],
     queryFn: async () => {
       const res = await fetch(`/api/patients/${patientId}/packaging`, {
@@ -132,27 +133,29 @@ export function PatientPackagingCard({ patientId, orgId }: { patientId: string; 
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-center gap-2">
-          {data?.data.packaging_profile?.default_packaging_method ? (
+          {isError ? (
+            <Badge variant="destructive">取得できません</Badge>
+          ) : data?.data.packaging_profile?.default_packaging_method ? (
             <Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">
               {PACKAGING_METHOD_LABELS[data.data.packaging_profile.default_packaging_method]}
             </Badge>
           ) : (
             <span className="text-sm text-muted-foreground">既定の配薬方法は未設定です</span>
           )}
-          {data?.data.packaging_profile?.medication_box_color ? (
+          {!isError && data?.data.packaging_profile?.medication_box_color ? (
             <Badge variant="outline">
               BOX色 {data.data.packaging_profile.medication_box_color}
             </Badge>
           ) : null}
         </div>
 
-        {data?.data.effective_summary ? (
+        {!isError && data?.data.effective_summary ? (
           <div className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-sm">
             {data.data.effective_summary}
           </div>
         ) : null}
 
-        {data?.data.packaging_profile?.updated_at ? (
+        {!isError && data?.data.packaging_profile?.updated_at ? (
           <p className="text-xs text-muted-foreground">
             最終更新: {data.data.packaging_profile.updated_at.slice(0, 16).replace('T', ' ')}
           </p>
@@ -160,6 +163,15 @@ export function PatientPackagingCard({ patientId, orgId }: { patientId: string; 
 
         {isLoading ? (
           <div className="h-28 animate-pulse rounded-lg bg-muted" />
+        ) : isError ? (
+          <ErrorState
+            variant="server"
+            title="配薬設定を表示できません"
+            description="患者固有の配薬方法と特記事項の取得に失敗しました。再試行してください。"
+            detail="未設定として保存すると既存情報を上書きする可能性があるため、取得できるまで編集を停止しています。"
+            action={{ label: '再試行', onClick: () => void refetch() }}
+            headingLevel={3}
+          />
         ) : (
           <div className="grid gap-4 md:grid-cols-[220px_1fr]">
             <div className="space-y-1.5">

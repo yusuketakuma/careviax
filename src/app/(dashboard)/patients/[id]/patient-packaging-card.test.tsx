@@ -53,4 +53,23 @@ describe('PatientPackagingCard', () => {
     expect(screen.getByText('BOX色 赤')).toBeTruthy();
     expect(screen.getByRole('button', { name: '保存' })).toBeTruthy();
   });
+
+  it('shows an error state instead of an empty editable form when settings fail to load', () => {
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useQueryMock.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      refetch: vi.fn(),
+    });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+
+    render(<PatientPackagingCard patientId="patient_1" orgId="org_1" />);
+
+    expect(screen.getByText('取得できません')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '配薬設定を表示できません' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '再試行' })).toBeTruthy();
+    expect(screen.queryByText('既定の配薬方法は未設定です')).toBeNull();
+    expect(screen.queryByRole('button', { name: '保存' })).toBeNull();
+  });
 });
