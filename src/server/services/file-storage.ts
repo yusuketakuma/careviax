@@ -1520,6 +1520,19 @@ export async function cleanupExpiredGeneratedFiles(args?: {
     if (settings.length < batchSize) break;
   }
 
+  // 保持期限切れファイルの削除に失敗が残った場合、呼び出し側の検査有無に依らず観測可能にする
+  // (PHI 隣接の bulk-export が保持期間を過ぎても削除されない=コンプライアンス上の retention gap)。
+  if (errors.length > 0) {
+    logger.warn('expired generated file cleanup completed with deletion failures', {
+      event: 'file_storage.expired_cleanup_partial_failure',
+      orgId: args?.orgId,
+      entityType: 'file_asset',
+      failed_count: errors.length,
+      processed_count: processedCount,
+      scanned_count: scannedCount,
+    });
+  }
+
   return { processedCount, scannedCount, errors };
 }
 

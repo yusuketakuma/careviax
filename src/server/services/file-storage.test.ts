@@ -22,6 +22,7 @@ const {
   randomUuidMock,
   s3ClientMock,
   s3SendMock,
+  loggerWarnMock,
 } = vi.hoisted(() => ({
   getSignedUrlMock: vi.fn(),
   settingUpsertMock: vi.fn(),
@@ -44,6 +45,11 @@ const {
   randomUuidMock: vi.fn(),
   s3ClientMock: vi.fn(),
   s3SendMock: vi.fn(),
+  loggerWarnMock: vi.fn(),
+}));
+
+vi.mock('@/lib/utils/logger', () => ({
+  logger: { warn: loggerWarnMock, info: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
 vi.mock('node:crypto', () => ({
@@ -898,6 +904,35 @@ describe('file-storage', () => {
         key: 'file_asset:expired_file',
       },
     });
+  });
+
+  it('records and logs a partial failure when an expired file deletion fails', async () => {
+    const expiredRecord = buildStoredFileRecord({
+      id: 'expired_file',
+      purpose: 'bulk-export',
+      storageKey: 'bulk-exports/org_1/job_1/expired_file-medication-history.zip',
+      jobId: 'job_1',
+      expiresAt: '2026-03-27T23:59:59.000Z',
+    });
+    settingFindManyMock.mockResolvedValue([{ value: expiredRecord }]);
+    s3SendMock.mockRejectedValueOnce(new Error('s3 delete failed'));
+
+    const result = await cleanupExpiredGeneratedFiles({
+      orgId: 'org_1',
+      now: new Date('2026-03-28T00:00:00.000Z'),
+    });
+
+    // 失敗が握り潰されず errors に積まれ、呼び出し側の検査有無に依らず warn で観測できる
+    expect(result.processedCount).toBe(0);
+    expect(result.errors).toHaveLength(1);
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      'expired generated file cleanup completed with deletion failures',
+      expect.objectContaining({
+        event: 'file_storage.expired_cleanup_partial_failure',
+        failed_count: 1,
+        orgId: 'org_1',
+      }),
+    );
   });
 
   it('continues scanning later pages for expired generated bulk export files', async () => {
