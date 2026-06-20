@@ -26,21 +26,26 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function createWrapper() {
-  const queryClient = new QueryClient({
+function createTestQueryClient() {
+  return new QueryClient({
     defaultOptions: {
       queries: { retry: false },
       mutations: { retry: false },
     },
   });
+}
 
+function createWrapper(queryClient: QueryClient = createTestQueryClient()) {
   return function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
   };
 }
 
-function renderPrintHubContent() {
-  return render(<PrintHubContent />, { wrapper: createWrapper() });
+function renderPrintHubContent(queryClient: QueryClient = createTestQueryClient()) {
+  return {
+    queryClient,
+    ...render(<PrintHubContent />, { wrapper: createWrapper(queryClient) }),
+  };
 }
 
 describe('PrintHubContent', () => {
@@ -262,5 +267,185 @@ describe('PrintHubContent', () => {
       }),
     );
     expect(window.print).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not show cached visit report content before the current preview audit resolves', async () => {
+    useSearchParamsMock.mockReturnValue(new URLSearchParams('type=visit_report'));
+    const queryClient = createTestQueryClient();
+    queryClient.setQueryData(['print-hub-care-report-print-audit', 'org_1', 'report_1'], {
+      data: {
+        audited: true,
+        report: {
+          id: 'report_1',
+          report_type: 'physician_report',
+          content: {
+            patient: { name: '山田 太郎' },
+            report_date: '2026-06-17',
+            assessment: 'キャッシュ済みの古い監査本文',
+          },
+        },
+      },
+    });
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/care-reports?limit=50&status=confirmed') {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'report_1',
+                patient_id: 'patient_1',
+                patient_name: '山田 太郎',
+                report_type: 'physician_report',
+                status: 'confirmed',
+                created_at: '2026-06-18T00:00:00.000Z',
+                delivery_records: [],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/care-reports/report_1/print-audit') {
+        return new Promise<Response>(() => {});
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    renderPrintHubContent(queryClient);
+
+    expect(
+      await screen.findByText(
+        '帳票の明細を確認しています。完了するとこのプレビューに反映されます。',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('キャッシュ済みの古い監査本文')).toBeNull();
+    expect(await screen.findByTestId('print-submit-button')).toHaveProperty('disabled', true);
+
+    fireEvent.click(screen.getByTestId('print-submit-button'));
+
+    expect(window.print).not.toHaveBeenCalled();
+  });
+
+  it('does not show cached visit report content when the current preview audit fails', async () => {
+    useSearchParamsMock.mockReturnValue(new URLSearchParams('type=visit_report'));
+    const queryClient = createTestQueryClient();
+    queryClient.setQueryData(['print-hub-care-report-print-audit', 'org_1', 'report_1'], {
+      data: {
+        audited: true,
+        report: {
+          id: 'report_1',
+          report_type: 'physician_report',
+          content: {
+            patient: { name: '山田 太郎' },
+            report_date: '2026-06-17',
+            assessment: 'キャッシュ済みの失敗時本文',
+          },
+        },
+      },
+    });
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/care-reports?limit=50&status=confirmed') {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'report_1',
+                patient_id: 'patient_1',
+                patient_name: '山田 太郎',
+                report_type: 'physician_report',
+                status: 'confirmed',
+                created_at: '2026-06-18T00:00:00.000Z',
+                delivery_records: [],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/care-reports/report_1/print-audit') {
+        return new Response(JSON.stringify({ error: 'audit failed' }), { status: 500 });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    renderPrintHubContent(queryClient);
+
+    expect(
+      await screen.findByText('帳票データの読み込みに失敗しました。再読み込みしてください。'),
+    ).toBeTruthy();
+    expect(screen.queryByText('キャッシュ済みの失敗時本文')).toBeNull();
+    expect(screen.getByTestId('print-submit-button')).toHaveProperty('disabled', true);
+
+    fireEvent.click(screen.getByTestId('print-submit-button'));
+
+    expect(window.print).not.toHaveBeenCalled();
+  });
+
+  it('uses only the current preview audit success for visit report content', async () => {
+    useSearchParamsMock.mockReturnValue(new URLSearchParams('type=visit_report'));
+    const queryClient = createTestQueryClient();
+    queryClient.setQueryData(['print-hub-care-report-print-audit', 'org_1', 'report_1'], {
+      data: {
+        audited: true,
+        report: {
+          id: 'report_1',
+          report_type: 'physician_report',
+          content: {
+            patient: { name: '山田 太郎' },
+            report_date: '2026-06-17',
+            assessment: 'キャッシュ済みの旧本文',
+          },
+        },
+      },
+    });
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/care-reports?limit=50&status=confirmed') {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'report_1',
+                patient_id: 'patient_1',
+                patient_name: '山田 太郎',
+                report_type: 'physician_report',
+                status: 'confirmed',
+                created_at: '2026-06-18T00:00:00.000Z',
+                delivery_records: [],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/care-reports/report_1/print-audit') {
+        expect(init?.method).toBe('POST');
+        return new Response(
+          JSON.stringify({
+            data: {
+              audited: true,
+              report: {
+                id: 'report_1',
+                report_type: 'physician_report',
+                content: {
+                  patient: { name: '山田 太郎' },
+                  report_date: '2026-06-18',
+                  assessment: '現在の監査済み本文',
+                },
+              },
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    renderPrintHubContent(queryClient);
+
+    expect(await screen.findByText('現在の監査済み本文')).toBeTruthy();
+    expect(screen.queryByText('キャッシュ済みの旧本文')).toBeNull();
   });
 });

@@ -687,6 +687,9 @@ export function PrintHubContent() {
   const searchParams = useSearchParams();
   const documentType = parsePrintDocumentType(searchParams.get('type'));
   const explicitPatientId = searchParams.get('patient_id');
+  const [visitReportAuditRunId] = useState(
+    () => `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
   const [settings, setSettings] = useState<PrintOutputSettings>(DEFAULT_PRINT_OUTPUT_SETTINGS);
   const [printError, setPrintError] = useState<string | null>(null);
   const [firstVisitPrintConfirmationKey, setFirstVisitPrintConfirmationKey] = useState<
@@ -709,7 +712,12 @@ export function PrintHubContent() {
   const receiptRows = useMemo(() => buildDocumentReceiptRows(reports), [reports]);
   const visitReportSource = useMemo(() => pickVisitReportForPrint(reports), [reports]);
   const auditedVisitReportQuery = useQuery({
-    queryKey: ['print-hub-care-report-print-audit', orgId, visitReportSource?.id],
+    queryKey: [
+      'print-hub-care-report-print-audit',
+      orgId,
+      visitReportSource?.id,
+      visitReportAuditRunId,
+    ],
     queryFn: async () => {
       if (!visitReportSource) throw new Error('印刷対象の報告書がありません');
       const res = await fetch(`/api/care-reports/${visitReportSource.id}/print-audit`, {
@@ -726,17 +734,21 @@ export function PrintHubContent() {
     retry: false,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
+    refetchOnMount: 'always',
     staleTime: 0,
   });
+  const auditedVisitReportPayload = auditedVisitReportQuery.data?.data;
+  const canRenderAuditedVisitReport =
+    auditedVisitReportPayload?.audited === true && Boolean(auditedVisitReportPayload.report);
   const auditedVisitReport = useMemo<CareReportForPrint | null>(() => {
-    const audited = auditedVisitReportQuery.data?.data.report;
-    if (!visitReportSource || !audited) return null;
+    const audited = auditedVisitReportPayload?.report;
+    if (!visitReportSource || !canRenderAuditedVisitReport || !audited) return null;
     return {
       ...visitReportSource,
       report_type: audited.report_type,
       content: audited.content,
     };
-  }, [auditedVisitReportQuery.data, visitReportSource]);
+  }, [auditedVisitReportPayload, canRenderAuditedVisitReport, visitReportSource]);
   const visitReport = useMemo(
     () => buildVisitReportDocument(auditedVisitReport),
     [auditedVisitReport],
@@ -897,16 +909,24 @@ export function PrintHubContent() {
     isLoading ||
     (documentType === 'visit_report' &&
       Boolean(visitReportSource) &&
-      auditedVisitReportQuery.isPending);
+      !canRenderAuditedVisitReport &&
+      (auditedVisitReportQuery.isPending || auditedVisitReportQuery.isFetching));
   const outputIsError =
     isError ||
     (documentType === 'visit_report' &&
       Boolean(visitReportSource) &&
-      auditedVisitReportQuery.isError);
+      (auditedVisitReportQuery.isError ||
+        (auditedVisitReportQuery.isSuccess && !canRenderAuditedVisitReport)));
   const printDisabledReason =
-    documentType === 'visit_report' && visitReportSource && auditedVisitReportQuery.isPending
+    documentType === 'visit_report' &&
+    visitReportSource &&
+    !canRenderAuditedVisitReport &&
+    (auditedVisitReportQuery.isPending || auditedVisitReportQuery.isFetching)
       ? '報告書の印刷監査を確認しています。'
-      : documentType === 'visit_report' && visitReportSource && auditedVisitReportQuery.isError
+      : documentType === 'visit_report' &&
+          visitReportSource &&
+          !canRenderAuditedVisitReport &&
+          (auditedVisitReportQuery.isError || auditedVisitReportQuery.isSuccess)
         ? '報告書の印刷監査が完了していません。再読み込みしてください。'
         : isFirstVisitPrint
           ? firstVisitPrintBlockMessage

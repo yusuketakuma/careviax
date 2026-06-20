@@ -8087,3 +8087,59 @@ Next loop:
   - API response envelope type hardening remains open.
   - `readApiJson` schema validation call-site migration remains partially open in UI/dashboard-facing call sites.
   - Re-audit agents must run again after this ledger sync and current generated state classification.
+
+### Codex Loop 9 Addendum — Re-audit API Contract Follow-up
+
+- Coordination:
+  - Drained agmsg before implementation and before each commit; no new Claude messages were pending.
+  - Kept `.harness-mem/state/continuity.json` unstaged as generated local state.
+- Implemented by Codex:
+  - `207adeed` `refactor(reports): harden report api contracts`
+    - Added a shared generated-report response contract and reused it from the generation route, client helper, and report workspace caller.
+    - Hardened successful generated-report and print-audit client responses with `readApiJson` + Zod schemas while preserving existing missing-`data` fallback behavior.
+    - Passed `patientId` and `actorSiteId` into print-audit recording so audit rows keep patient/site scope for both preview and print intents.
+    - Mapped SavedView create/update `P2002` races to the existing duplicate-name `409` response and prevented audit writes when the DB create/update fails.
+  - `1932cccd` `test: cover route order and coverage config contracts`
+    - Added route-order helper coverage for multi-id exclusions and schedule-over-proposal conflict precedence.
+    - Added a static Vitest config contract test to keep `src/lib/**/*.ts` inside the coverage gate.
+  - `69a4b091` `chore(docs): fix branch diff whitespace`
+    - Removed trailing whitespace in `docs/plans-archive.md` that made `git diff --check main..HEAD` fail.
+- Validation:
+  - Focused Vitest: `8` files / `53` tests passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - Targeted Prettier check for changed files: passed.
+  - `CODEX_GOAL_PROGRESS.md` Prettier check: passed.
+  - `.codex/ralph-state.md` Prettier check: blocked by Node heap OOM even with `NODE_OPTIONS=--max-old-space-size=8192`; `git diff --check` passed for the Ralph ledger diff.
+  - `git diff --check`: passed.
+  - `git diff --check main..HEAD`: passed after `69a4b091`.
+- Remaining actionable candidates before Zero Audit can count:
+  - API response envelope type hardening remains a broad candidate; actionability still needs a narrower route family to avoid behavior drift.
+  - `readApiJson` schema validation call-site migration remains partially open in UI/dashboard-facing call sites.
+  - Bulk task completion UI still drops server failure details and is a UI/UX/API-message follow-up candidate.
+  - Re-audit agents must run again after this ledger sync; two consecutive zero-actionable audits have not been reached.
+
+### Codex Loop 10 Addendum — Print Hub Fresh Audit Gate
+
+- Coordination:
+  - Drained agmsg before implementation. Claude held `.agent-loop/*`, `CLAUDE.md`, `AGENTS.md`, and codex prompt locks for the GBrain schema integration; Codex ACKed and left those paths untouched.
+  - Sent `LOCK:` for `src/app/(dashboard)/reports/print/print-hub-content.tsx`, `src/app/(dashboard)/reports/print/print-hub-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and `.codex/ralph-state.md`; no conflict messages were received before editing.
+  - The change is audit/PHI-adjacent, so it is ready for Claude mutual review before an owned commit is created.
+- Implemented by Codex:
+  - Added a per-mount audit run id to the print hub visit-report preview query key, matching the direct print page's fresh audit pattern.
+  - Changed visit-report preview rendering and print button enablement so cached React Query data is not treated as the current `preview_rendered` audit success.
+  - Required `data.audited === true` and a report payload before rendering the `VisitReportSheet`; pending/refetch and failed audit states keep the preview in loading/error UI and keep printing disabled.
+  - Added regression coverage that seeds the old cache key with report body text, then verifies pending, failing, and fresh-success current audit paths never expose stale cached body text.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `7` tests.
+  - Print-audit focused bundle: `4` files / `28` tests passed.
+  - Targeted ESLint for print hub files: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - Targeted `git diff --check`: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude mutual review for this print hub audit-gate fix is pending.
+  - API response envelope type hardening and broader `readApiJson` schema call-site migration remain candidates requiring narrower scoping.
+  - Bulk task completion UI failure-detail display remains a follow-up candidate.
+  - Re-audit agents must run again after this ledger sync; two consecutive zero-actionable audits have not been reached.
