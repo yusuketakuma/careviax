@@ -78,4 +78,54 @@ describe('/api/facilities', () => {
     expect(body.data).toHaveLength(1);
     expect(body.data[0].patient_count).toBe(5);
   });
+
+  it('returns the minimal bounded search projection', async () => {
+    facilityFindManyMock.mockResolvedValue([
+      {
+        id: 'fac_1',
+        name: 'テスト施設',
+        facility_type: 'nursing_home',
+        address: '東京都千代田区',
+        phone: '03-0000-0000',
+        fax: '03-0000-0001',
+        notes: 'search should not leak notes',
+        contacts: [{ name: '担当者' }],
+      },
+    ]);
+
+    const response = (await GET(
+      createRequest('http://localhost/api/facilities?q=%E3%83%86%E3%82%B9%E3%83%88&limit=8'),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(facilityFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: {
+          id: true,
+          name: true,
+          facility_type: true,
+          address: true,
+        },
+        take: 9,
+      }),
+    );
+    const body = await response.json();
+    expect(body).toEqual({
+      data: [
+        {
+          id: 'fac_1',
+          name: 'テスト施設',
+          facility_type: 'nursing_home',
+          address: '東京都千代田区',
+          patient_count: 5,
+        },
+      ],
+      hasMore: false,
+    });
+    expect(body.data[0]).not.toHaveProperty('contacts');
+    expect(body.data[0]).not.toHaveProperty('phone');
+    expect(body.data[0]).not.toHaveProperty('fax');
+    expect(body.data[0]).not.toHaveProperty('notes');
+  });
 });

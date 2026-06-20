@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-const { listContactProfilesMock } = vi.hoisted(() => ({
+const { listContactProfilesMock, listContactProfileSearchSummariesMock } = vi.hoisted(() => ({
   listContactProfilesMock: vi.fn(),
+  listContactProfileSearchSummariesMock: vi.fn(),
 }));
 
 const emptyRouteContext = { params: Promise.resolve({}) };
@@ -28,6 +29,7 @@ vi.mock('@/lib/contact-profiles', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/contact-profiles')>();
   return {
     ...actual,
+    listContactProfileSearchSummaries: listContactProfileSearchSummariesMock,
     listContactProfiles: listContactProfilesMock,
   };
 });
@@ -64,6 +66,23 @@ describe('/api/contact-profiles', () => {
         pending_response_count: 2,
       },
     ]);
+    listContactProfileSearchSummariesMock.mockResolvedValue({
+      data: [
+        {
+          id: 'contact_1',
+          kind: 'external_professional',
+          name: '山田 ケアマネ',
+          subtitle: '居宅支援A',
+          phone: '03-1111-2222',
+          email: 'care@example.com',
+          fax: '03-1111-3333',
+          preferred_contact_method: 'fax',
+          pending_response_count: 2,
+          last_contacted_at: new Date('2026-03-30T00:00:00.000Z'),
+        },
+      ],
+      hasMore: false,
+    });
   });
 
   it('lists aggregated contact profiles by kind and query', async () => {
@@ -95,5 +114,40 @@ describe('/api/contact-profiles', () => {
         },
       ],
     });
+  });
+
+  it('uses the bounded minimal search projection when limit is present', async () => {
+    const response = (await GET(
+      createAuthRequest(
+        'http://localhost/api/contact-profiles?kind=external_professional&q=%E5%B1%B1%E7%94%B0&limit=8',
+      ),
+      emptyRouteContext,
+    ))!;
+
+    expect(response.status).toBe(200);
+    expect(listContactProfileSearchSummariesMock).toHaveBeenCalledWith(expect.anything(), 'org_1', {
+      kind: 'external_professional',
+      query: '山田',
+      limit: 8,
+    });
+    expect(listContactProfilesMock).not.toHaveBeenCalled();
+    const body = await response.json();
+    expect(body).toEqual({
+      data: [
+        {
+          id: 'contact_1',
+          kind: 'external_professional',
+          name: '山田 ケアマネ',
+          subtitle: '居宅支援A',
+          last_contacted_at: '2026-03-30T00:00:00.000Z',
+        },
+      ],
+      hasMore: false,
+    });
+    expect(body.data[0]).not.toHaveProperty('phone');
+    expect(body.data[0]).not.toHaveProperty('email');
+    expect(body.data[0]).not.toHaveProperty('fax');
+    expect(body.data[0]).not.toHaveProperty('preferred_contact_method');
+    expect(body.data[0]).not.toHaveProperty('pending_response_count');
   });
 });

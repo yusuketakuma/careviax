@@ -1,4 +1,5 @@
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import { parseBoundedInteger } from '@/lib/api/pagination';
 import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
 import { toPrismaJsonInput } from '@/lib/db/json';
@@ -7,8 +8,78 @@ import { prisma } from '@/lib/db/client';
 import { createFacilitySchema } from '@/lib/validations/facility';
 import { serializeFacilityResponse, toFacilityTimeValue } from '@/lib/facilities/facility-api';
 
+function normalizeSearchQuery(value: string | null) {
+  const trimmed = value?.trim() ?? '';
+  if (!trimmed) return null;
+  return trimmed.slice(0, 100);
+}
+
 export const GET = withAuthContext(
-  async (_req, ctx) => {
+  async (req, ctx) => {
+    const { searchParams } = new URL(req.url);
+    const isSearchMode = searchParams.has('q') || searchParams.has('limit');
+
+    if (isSearchMode) {
+      const query = normalizeSearchQuery(searchParams.get('q'));
+      const limit = parseBoundedInteger(searchParams.get('limit'), 8, 1, 50);
+      const facilities = await prisma.facility.findMany({
+        where: {
+          org_id: ctx.orgId,
+          ...(query
+            ? {
+                OR: [
+                  { name: { contains: query, mode: 'insensitive' as const } },
+                  { address: { contains: query, mode: 'insensitive' as const } },
+                ],
+              }
+            : {}),
+        },
+        select: {
+          id: true,
+          name: true,
+          facility_type: true,
+          address: true,
+        },
+        take: limit + 1,
+        orderBy: [{ name: 'asc' }],
+      });
+      const hasMore = facilities.length > limit;
+      const data = hasMore ? facilities.slice(0, limit) : facilities;
+      const facilityIds = data.map((facility) => facility.id);
+      const residenceCounts =
+        facilityIds.length === 0
+          ? []
+          : await prisma.residence.groupBy({
+              by: ['facility_id'],
+              where: {
+                org_id: ctx.orgId,
+                is_primary: true,
+                facility_id: {
+                  in: facilityIds,
+                },
+              },
+              _count: {
+                _all: true,
+              },
+            });
+      const patientCountByFacilityId = new Map(
+        residenceCounts
+          .filter((item) => item.facility_id)
+          .map((item) => [item.facility_id as string, item._count._all]),
+      );
+
+      return success({
+        data: data.map((facility) => ({
+          id: facility.id,
+          name: facility.name,
+          facility_type: facility.facility_type,
+          address: facility.address,
+          patient_count: patientCountByFacilityId.get(facility.id) ?? 0,
+        })),
+        hasMore,
+      });
+    }
+
     const [facilities, residenceCounts] = await Promise.all([
       prisma.facility.findMany({
         where: { org_id: ctx.orgId },
