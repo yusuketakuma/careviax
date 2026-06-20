@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { ErrorState } from '@/components/ui/error-state';
 import { listEvidenceDraftSummaries } from '@/lib/offline/evidence-drafts';
 import { cn } from '@/lib/utils';
 import {
@@ -66,7 +67,12 @@ export function EvidenceGalleryContent() {
     React.useState<EvidenceCategoryId>('residual_photo');
   const [demoItems, setDemoItems] = React.useState<EvidenceGalleryItem[] | null>(null);
 
-  const { data: serverItems, isLoading } = useQuery({
+  const {
+    data: serverItems,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: ['visit-evidence-gallery', orgId],
     enabled: !!orgId,
     queryFn: async () =>
@@ -198,6 +204,16 @@ export function EvidenceGalleryContent() {
               <p className="py-10 text-center text-sm text-muted-foreground">
                 画像を読み込んでいます...
               </p>
+            ) : isError && visibleItems.length === 0 ? (
+              // 取得失敗を「画像はまだありません」(空)に倒さない。オフライン下書き等で
+              // 表示できるものがある場合はそちらを優先し、何も無いときだけ ErrorState。
+              <ErrorState
+                variant="server"
+                size="inline"
+                title="画像・証跡を取得できませんでした"
+                description="時間をおいて再試行してください。"
+                action={{ label: '再試行', onClick: () => refetch() }}
+              />
             ) : visibleItems.length === 0 ? (
               <div className="rounded-lg border border-dashed border-border bg-muted/20 px-4 py-10 text-center">
                 <p className="text-sm leading-6 text-muted-foreground">
