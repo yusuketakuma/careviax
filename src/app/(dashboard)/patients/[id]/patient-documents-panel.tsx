@@ -7,6 +7,7 @@ import { ja } from 'date-fns/locale';
 import { FileCheck2, FileDown, FilePlus2, FileQuestion, Printer, Save } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -14,11 +15,17 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { readApiJson } from '@/lib/api/client-json';
+import { apiDataSchema } from '@/lib/api/response-schemas';
 import type { PatientDocumentsSnapshot, PatientOverview } from './patient-detail.types';
 
 type FirstVisitDocumentItem = PatientDocumentsSnapshot['first_visit_documents'][number];
 type FirstVisitDocumentStatus = PatientDocumentsSnapshot['document_statuses'][number];
 type FirstVisitPrintReadiness = PatientDocumentsSnapshot['print_readiness'];
+
+// §10 fail-closed: validate the minimal mutation success envelope ({ data: { id } }).
+// Unknown fields are stripped, so the raw FirstVisitDocument row never reaches the client.
+const firstVisitDocumentMutationResponseSchema = apiDataSchema(z.object({ id: z.string() }));
 
 const DOCUMENT_ACTION_LABELS: Record<string, string> = {
   generated: '作成',
@@ -340,11 +347,10 @@ function MissingFirstVisitDocumentsCreatePanel({
               template_id: template?.template_id,
             }),
           });
-          if (!response.ok) {
-            const errorBody = await response.json().catch(() => ({}));
-            throw new Error(errorBody.message ?? `${status.label}の作成に失敗しました`);
-          }
-          return response.json();
+          return readApiJson(response, {
+            schema: firstVisitDocumentMutationResponseSchema,
+            fallbackMessage: '初回訪問書類の作成に失敗しました',
+          });
         }),
       );
       return results;
@@ -650,11 +656,10 @@ function FirstVisitDocumentStatusForm({
           },
         }),
       });
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
-        throw new Error(errorBody.message ?? '初回訪問文書の更新に失敗しました');
-      }
-      return response.json();
+      return readApiJson(response, {
+        schema: firstVisitDocumentMutationResponseSchema,
+        fallbackMessage: '初回訪問文書の更新に失敗しました',
+      });
     },
     onSuccess: async () => {
       toast.success('初回訪問文書の状態を更新しました');
