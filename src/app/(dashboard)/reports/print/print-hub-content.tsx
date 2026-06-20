@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import type { CareReportPrintAuditResponse } from '@/lib/reports/care-report-print-audit-contract';
 import { cn } from '@/lib/utils';
 import {
   buildDocumentReceiptRows,
@@ -57,15 +58,6 @@ type PatientPrescriptionsResponse = {
   data: PrescriptionIntakeForPrint[];
 };
 type CareReportsResponse = { data: CareReportForPrint[] };
-type CareReportPrintAuditResponse = {
-  data: {
-    report: {
-      id: string;
-      report_type: string;
-      content: unknown;
-    };
-  };
-};
 type PatientDocumentsForPrintResponse = {
   patient: { id: string; name: string; name_kana: string };
   print_readiness: FirstVisitPrintReadinessForPrint;

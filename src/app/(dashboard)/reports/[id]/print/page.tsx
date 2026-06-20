@@ -13,24 +13,10 @@ import type {
   CareManagerReportContent,
   AudienceReportContent,
 } from '@/types/care-report-content';
-import type { CareReportActionPermissions } from '@/types/care-report-permissions';
-
-// ─── API response type ────────────────────────────────────────────────────────
-
-type CareReportResponse = {
-  id: string;
-  report_type: 'physician_report' | 'care_manager_report' | 'nurse_share' | 'facility_handoff';
-  pharmacy_name?: string;
-  content: PhysicianReportContent | CareManagerReportContent | AudienceReportContent;
-  permissions?: CareReportActionPermissions;
-};
-
-type CareReportPrintAuditApiResponse = {
-  data: {
-    audited: boolean;
-    report: CareReportResponse;
-  };
-};
+import type {
+  CareReportPrintAuditPrintableReport,
+  CareReportPrintAuditResponse,
+} from '@/lib/reports/care-report-print-audit-contract';
 
 // ─── Physician report layout (別紙様式1準拠) ─────────────────────────────────
 
@@ -467,7 +453,9 @@ export default function ReportPrintPage() {
   const [auditRunId] = useState(() => `${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const [manualPrintError, setManualPrintError] = useState<string | null>(null);
 
-  const printAuditQuery = useQuery<CareReportPrintAuditApiResponse>({
+  const printAuditQuery = useQuery<
+    CareReportPrintAuditResponse<CareReportPrintAuditPrintableReport>
+  >({
     queryKey: ['care-report-print-audit', orgId, reportId, auditRunId],
     queryFn: async () => {
       const res = await fetch(`/api/care-reports/${reportId}/print-audit`, {
@@ -480,7 +468,9 @@ export default function ReportPrintPage() {
       });
       if (res.status === 403) throw new Error('PRINT_FORBIDDEN');
       if (!res.ok) throw new Error('報告書の印刷監査を記録できませんでした');
-      return res.json() as Promise<CareReportPrintAuditApiResponse>;
+      return res.json() as Promise<
+        CareReportPrintAuditResponse<CareReportPrintAuditPrintableReport>
+      >;
     },
     enabled: !!orgId && !!reportId,
     retry: false,
