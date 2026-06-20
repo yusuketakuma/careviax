@@ -441,14 +441,14 @@ old tasks unless they are actively being edited for another reason.
 
 ```yaml
 - task_id: F-20260620-010
-  status: queued # backend handoff from F-009 MVP; must be opened before F-009 done (codex condition #5)
+  status: done # commit 721ce32d; F-010A narrowed backend search slice approved by claude-lead and landed. F-010B deferred for aggregate/new entities/search-index work.
   owner: codex-lead
   reviewer: claude-lead
   origin_agent: claude-lead
   type: feature
   risk_level: medium
   priority: P2
-  feature_name: Backend search expansion for global palette (server q+limit, new entities, aggregate)
+  feature_name: Backend search expansion for global palette (F-010A server q+limit + minimal projections)
   background: >
     F-009 (global search palette) は UI-only スライスのため、検索バックエンドの不足を本タスクへ分離。
     現状: /api/facilities は q/limit 無視(take なし findMany=payload 非bounded)、/api/prescription-intakes は
@@ -460,15 +460,22 @@ old tasks unless they are actively being edited for another reason.
   acceptance_criteria:
     - /api/facilities が q + limit を server-side で適用(全件 fetch を解消、F-009 でパレット復帰可能に)。
     - /api/prescription-intakes が server-side q 検索に対応(client 補完を解消)。
-    - /api/contact-profiles に limit/pagination を追加。
-    - 追加エンティティ(Task/Staff/Incident/Billing 等)の検索 or 集約 /api/search aggregator の採否を決定し実装。
+    - /api/contact-profiles に bounded limit summary mode を追加(cursor pagination は F-010A では不要と判断)。
+    - 追加エンティティ(Task/Staff/Incident/Billing 等)の検索 or 集約 /api/search aggregator は F-010B へ延期。
     - 全エンドポイントが org スコープ(RLS/withAuthContext)と permission gate を維持。検索 payload に識別子以上の PHI を出さない。
   constraints:
     - backend lane(codex)。RLS/permission/§9/§10 を弱めない。CJK/カナ検索は pg_trgm/bigram 等の方針を調査(拡張追加は infra/migration=人間承認/BLOCKED 対象)。
+    - q-only /api/contact-profiles は /admin/contact-profiles の詳細表示・編集互換のため full payload を維持。パレット再有効化時は limit=8 付きの minimal summary mode を使う。
+  follow_up:
+    - F-010B: aggregate /api/search, Task/Staff/Incident/Billing/PartnerPharmacy search, and pg_trgm/bigram/FTS/generated-column/index decisions (migration/extension work is human-gated).
+    - F-009 follow-up: after F-010A, re-enable prescription/contact categories against the minimal backend contracts; contact endpoint must include limit=8.
   verification:
     - pnpm typecheck
     - pnpm lint
     - pnpm test
     - pnpm build
-  gbrain_memory_used: []
+  gbrain_memory_used:
+    - projects/careviax/decisions/2026-06-21/bounded-search-minimal-projections
+    - projects/careviax/gates/2026-06-21/f-20260620-010-721ce32d
+    - projects/careviax/performance-findings/2026-06-21/contact-summary-sequential-bounded-scan
 ```

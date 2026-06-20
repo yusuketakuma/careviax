@@ -24,17 +24,17 @@ end. It is the first file consulted on resume and the last file written on a har
 
 ```yaml
 current_run_id: RUN-20260620-001
-current_cycle: 4 # Cycle 4: F-20260620-008 Control Plane MVP completed; F-20260620-009 global-search plan review active.
+current_cycle: 4 # Cycle 4: F-010A backend search expansion landed; F-009 global-search patch review remains active.
 cycle_start_time: 2026-06-20T00:00:00+09:00 # ISO8601 Asia/Tokyo; reset at each run start. elapsed = now − cycle_start_time, checked at every cycle boundary vs §14 90-min hard-stop
-active_task_id: F-20260620-009 # Claude-owned global search command-palette plan is in review; F-008 docs/config slice is approved and ready to commit/release.
-current_cycle_note: 'Cycle 4: F-008 Control Plane MVP docs/config patch passed prettier/diff/YAML checks and claude CODE_REVIEW_RESULT=approved. Codex returned CHANGES_REQUESTED on F-009 rev1 for shortcut ownership, API wire-shape, permission no-fetch, and combobox/a11y contract gaps.'
-files_changed_count: 18 # F-008 .agent-loop docs/config/template paths only; under §14 >20-file hard-stop. machine .harness-mem excluded.
-claude_status: planning # Claude is revising F-009 global search after codex CHANGES_REQUESTED.
-codex_status: committing # Codex is committing approved F-008 .agent-loop docs/config slice, then releases locks.
+active_task_id: F-20260620-009 # Claude-owned global search command-palette patch review is active; Codex-owned F-010A backend slice is committed.
+current_cycle_note: 'Cycle 4: Codex landed F-010A backend search expansion in 721ce32d (facilities q+limit, prescription q minimal projection, contact limit-mode minimal summaries). Codex returned CHANGES_REQUESTED on F-009 rev2 for short-query stale Enter, Escape handling, and deferred-category copy mismatch; Claude accepted and is preparing rev3.'
+files_changed_count: 18 # Shared worktree still has Claude-owned F-009 FE/search dirty paths plus machine .harness-mem; F-010A code paths are committed.
+claude_status: implementing # Claude is revising F-009 global search rev3 after codex CHANGES_REQUESTED.
+codex_status: reviewing # Codex committed F-010A and is waiting for F-009 rev3 PATCH_REVIEW_REQUEST.
 last_memory_bootstrap: 2026-06-20 # Cycle 2 real gbrain recall (CLI). Classified in MEMORY_REVIEW.md; §9/§10 → LOOP_POLICY ApplyNow (codex-approved). `mcp__gbrain__*` after restart.
 zero_actionable_count: 1 # queue dry after F-003; idle/backoff per FEATURE_QUEUE intake
-last_gate_result: pass # F-008 prettier/diff/YAML checks GREEN and claude CODE_REVIEW_RESULT=approved; F-009 rev1 PLAN_REVIEW_RESULT=changes_requested.
-next_action: commit F-008 .agent-loop docs/config slice with explicit path staging, release F-008 locks, then wait for F-009 rev2 PLAN_REVIEW_REQUEST.
+last_gate_result: pass # F-010A focused tests/typecheck/no-unused/scoped eslint/scoped prettier/diff-check/build GREEN; F-009 rev2 returned CHANGES_REQUESTED.
+next_action: wait for F-009 rev3 PATCH_REVIEW_REQUEST; review stale/actionability, Escape handling, deferred-copy alignment, no-fetch/PHI safety, and gates.
 ```
 
 ## gbrain memory (this run)
@@ -58,6 +58,9 @@ next_action: commit F-008 .agent-loop docs/config slice with explicit path stagi
 - CandidateLesson: projects/careviax/lessons/candidates/api-response-validation-and-consolidation (F-007 2a4780d0 confirmation; times_confirmed=2, promotion_status=candidate)
 - FixPattern: projects/careviax/fix-patterns/route-wire-shape-schema-parity-tests (F-007 2a4780d0; align client schema/test mocks to real route wire shape)
 - ImplementationDecision: projects/careviax/decisions/2026-06-20/control-plane-mvp-advisory-and-date-partitioned-gbrain (F-008 ebeacee6; advisory Control Plane MVP + dated new-memory slug layout)
+- ImplementationDecision: projects/careviax/decisions/2026-06-21/bounded-search-minimal-projections (F-010A 721ce32d; bounded backend search + minimal projections)
+- GateResult: projects/careviax/gates/2026-06-21/f-20260620-010-721ce32d (F-010A 721ce32d; focused tests/typecheck/no-unused/eslint/prettier/diff-check/build GREEN)
+- PerformanceFinding: projects/careviax/performance-findings/2026-06-21/contact-summary-sequential-bounded-scan (F-010A 721ce32d; avoid redundant per-kind contact scans)
 
 ## Resume point
 
