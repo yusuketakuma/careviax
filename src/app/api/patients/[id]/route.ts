@@ -1444,11 +1444,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       },
     }),
   ]);
-  const homeCareFeatureSummary = await getPatientHomeCareFeatureSummary(prisma, {
-    orgId: ctx.orgId,
-    patientId: id,
-  });
-
   const prescriptionIntakeIds = prescriptionIntakes.map((item) => item.id);
   const firstVisitDocumentIds = firstVisitDocuments.map((item) => item.id);
   const billingCandidateIds = billingCandidates.map((item) => item.id);
@@ -1461,23 +1456,51 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     conferenceNoteIds,
     canManageBilling,
   });
-  const operationHistory = await prisma.auditLog.findMany({
-    where: {
-      org_id: ctx.orgId,
-      OR: operationHistoryFilters,
-    },
-    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-    take: 20,
-    select: {
-      id: true,
-      action: true,
-      target_type: true,
-      target_id: true,
-      actor_id: true,
-      changes: true,
-      created_at: true,
-    },
-  });
+
+  // homeCareFeatureSummary / operationHistory / labRows は互いに独立した読み取りのため
+  // 並列化して RTT を削減(actorNameMap は operationHistory に依存するため後段で逐次実行)。
+  const [homeCareFeatureSummary, operationHistory, labRows] = await Promise.all([
+    getPatientHomeCareFeatureSummary(prisma, {
+      orgId: ctx.orgId,
+      patientId: id,
+    }),
+    prisma.auditLog.findMany({
+      where: {
+        org_id: ctx.orgId,
+        OR: operationHistoryFilters,
+      },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      take: 20,
+      select: {
+        id: true,
+        action: true,
+        target_type: true,
+        target_id: true,
+        actor_id: true,
+        changes: true,
+        created_at: true,
+      },
+    }),
+    // Lab summary: most recent value per analyte for key analytes
+    prisma.patientLabObservation.findMany({
+      where: {
+        org_id: ctx.orgId,
+        patient_id: id,
+        analyte_code: { in: [...KEY_LAB_ANALYTE_CODES] },
+      },
+      orderBy: [{ measured_at: 'desc' }],
+      take: 50,
+      select: {
+        id: true,
+        analyte_code: true,
+        measured_at: true,
+        value_numeric: true,
+        value_text: true,
+        unit: true,
+        abnormal_flag: true,
+      },
+    }),
+  ]);
 
   const actorNameMap = await batchResolveNames(
     prisma,
@@ -1500,27 +1523,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     ),
   );
 
-  // Lab summary: most recent value per analyte for key analytes
-  const labRows = await prisma.patientLabObservation.findMany({
-    where: {
-      org_id: ctx.orgId,
-      patient_id: id,
-      analyte_code: { in: [...KEY_LAB_ANALYTE_CODES] },
-    },
-    orderBy: [{ measured_at: 'desc' }],
-    take: 50,
-    select: {
-      id: true,
-      analyte_code: true,
-      measured_at: true,
-      value_numeric: true,
-      value_text: true,
-      unit: true,
-      abnormal_flag: true,
-    },
-  });
-
-  // Latest per analyte
+  // Latest per analyte (labRows は上の Promise.all で並列取得済み)
   const labSummaryMap = new Map<string, (typeof labRows)[number]>();
   for (const row of labRows) {
     if (!labSummaryMap.has(row.analyte_code)) {
