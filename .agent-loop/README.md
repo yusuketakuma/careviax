@@ -26,26 +26,28 @@ inbox: ~/.agents/skills/agmsg/scripts/inbox.sh phos <name>
 
 ## 2. File map (`.agent-loop/`)
 
-| File                        | Purpose                                                                                   |
-| --------------------------- | ----------------------------------------------------------------------------------------- |
-| `README.md`                 | This operator guide — system overview, loops, hard-stops, rollout status.                 |
-| `STATE.md`                  | Single source of truth for the current run/cycle; resume point on hard-stop.              |
-| `FEATURE_QUEUE.md`          | Feature intake queue (task_id, status, owner/reviewer, acceptance criteria).              |
-| `LOCKS.md`                  | Edit-conflict ledger mirroring the live agmsg LOCK discipline.                            |
-| `LOOP_POLICY.md`            | Per-run policy distilled from gbrain (ApplyNow / Consider / Ignore / BlockedContext).     |
-| `MEMORY_REVIEW.md`          | Classification of gbrain search results (gbrain connected 2026-06-20).                    |
-| `PROMOTION_QUEUE.md`        | CandidateLesson → AGENTS.md/CLAUDE.md/Skill promotion candidates (§13 criteria).          |
-| `MESSAGE_PROTOCOL.md`       | The AGLOOP v5 agmsg envelope + message types + transport (§8).                            |
-| `SUBAGENT_JOBS.md`          | Registry of subagent job types (explorer/dup-scanner/verifier/…).                         |
-| `REVIEW_LOG.md`             | Append-only peer-review (PLAN/PATCH) results log.                                         |
-| `VERIFY_LOG.md`             | Append-only objective-gate results log.                                                   |
-| `PATCH_INBOX.md`            | Changes-requested items awaiting the owner.                                               |
-| `BLOCKED.md`                | Items needing human/external input (auth/billing/security/destructive/prod).              |
-| `GATE_CONFIG.md`            | Objective gate definition with real `pnpm` commands + wired/TODO status.                  |
-| `METRICS.md`                | Per-run quality/speed/memory/safety/cost metrics template.                                |
-| `prompts/claude-lead.md`    | Supervisor prompt for the Claude Code main-implementer lane (§9).                         |
-| `prompts/codex-lead.md`     | Supervisor prompt for the Codex peer-reviewer lane (§10).                                 |
-| `prompts/feature-intake.md` | Reusable feature-intake prompt (§11); paste to either side to register + route a feature. |
+| File                        | Purpose                                                                                                                                                                              |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `README.md`                 | This operator guide — system overview, loops, hard-stops, rollout status.                                                                                                            |
+| `STATE.md`                  | Single source of truth for the current run/cycle; resume point on hard-stop.                                                                                                         |
+| `FEATURE_QUEUE.md`          | Feature intake queue (task_id, status, owner/reviewer, acceptance criteria).                                                                                                         |
+| `LOCKS.md`                  | Edit-conflict ledger mirroring the live agmsg LOCK discipline.                                                                                                                       |
+| `LOOP_POLICY.md`            | Per-run policy distilled from gbrain (ApplyNow / Consider / Ignore / BlockedContext).                                                                                                |
+| `MEMORY_REVIEW.md`          | Classification of gbrain search results (gbrain connected 2026-06-20).                                                                                                               |
+| `PROMOTION_QUEUE.md`        | CandidateLesson → AGENTS.md/CLAUDE.md/Skill promotion candidates (§13 criteria).                                                                                                     |
+| `GBRAIN_SCHEMA.md`          | **SSOT for gbrain memory**: 26 memory types, common metadata, slug/type design, graph edges, save timing, redaction, quality score, Claude/Codex split, writeback rule, MVP phasing. |
+| `templates/gbrain/`         | Fill-in `gbrain put`-ready page templates for the MVP memory types (loop-run, gate-result, decision, …).                                                                             |
+| `MESSAGE_PROTOCOL.md`       | The AGLOOP v5 agmsg envelope + message types + transport (§8).                                                                                                                       |
+| `SUBAGENT_JOBS.md`          | Registry of subagent job types (explorer/dup-scanner/verifier/…).                                                                                                                    |
+| `REVIEW_LOG.md`             | Append-only peer-review (PLAN/PATCH) results log.                                                                                                                                    |
+| `VERIFY_LOG.md`             | Append-only objective-gate results log.                                                                                                                                              |
+| `PATCH_INBOX.md`            | Changes-requested items awaiting the owner.                                                                                                                                          |
+| `BLOCKED.md`                | Items needing human/external input (auth/billing/security/destructive/prod).                                                                                                         |
+| `GATE_CONFIG.md`            | Objective gate definition with real `pnpm` commands + wired/TODO status.                                                                                                             |
+| `METRICS.md`                | Per-run quality/speed/memory/safety/cost metrics template.                                                                                                                           |
+| `prompts/claude-lead.md`    | Supervisor prompt for the Claude Code main-implementer lane (§9).                                                                                                                    |
+| `prompts/codex-lead.md`     | Supervisor prompt for the Codex peer-reviewer lane (§10).                                                                                                                            |
+| `prompts/feature-intake.md` | Reusable feature-intake prompt (§11); paste to either side to register + route a feature.                                                                                            |
 
 > All state files are seeded at initial run id `RUN-20260620-001`, cycle 0, idle, `next_action: bootstrap`, and are maintained by the supervisors during the loop.
 
@@ -55,6 +57,8 @@ inbox: ~/.agents/skills/agmsg/scripts/inbox.sh phos <name>
 
 Each cycle, the supervisors consider these loops. Not all run every cycle — the classifier (§7 intake) and LOOP_POLICY decide which are active.
 
+> **Primary loops vs meta-phases.** Q1–Q4 (Refactor / Stability / Product-adjacent / UI-UX) are the **four primary discovery/implement loops** — what the SPEC means by "the four loops". Q5 Verification and Q6 Memory Writeback are **always-present meta-phases, not peers of Q1–Q4**: Q5 (Verification) gates any/all of the primary loops, and Q6 (Memory Writeback) runs post-verify. So SPEC's "four loops" = Q1–Q4; Q5/Q6 are the meta-loops that wrap them every cycle.
+
 | ID     | Loop             | Focus                                                                                                                                                                                                                                   | Primary owner                                     |
 | ------ | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
 | **Q1** | Refactor         | Remove duplication, simplify, raise cohesion; no behavior change.                                                                                                                                                                       | claude-lead implements, codex-lead scans for dup. |
@@ -63,6 +67,16 @@ Each cycle, the supervisors consider these loops. Not all run every cycle — th
 | **Q4** | UI/UX            | Conformance to `docs/ui-ux-design-guidelines.md` (state colors, hierarchy, density, a11y/WCAG AA).                                                                                                                                      | claude-lead.                                      |
 | **Q5** | Verification     | Objective gate: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`; targeted `pnpm test:e2e` / `pnpm test:e2e:audit`.                                                                                                             | codex-lead verifies, claude-lead supplies.        |
 | **Q6** | Memory Writeback | Persist verified decisions/learnings; correct stale gbrain entries against live repo. **STATUS: gbrain connected (2026-06-20)** — careviax indexed (read-write); writeback can target gbrain (CLI now; `mcp__gbrain__*` after restart). | both.                                             |
+
+### 3.1 Loop behavior per cycle
+
+Each **primary loop (Q1–Q4)** runs the same three-step shape per cycle:
+
+1. **Candidate-discovery** — scan the active scope for actionable candidates (duplication, stability gaps, UX-complete gaps, UI/UX conformance drift) within the loop's focus.
+2. **Implement IF actionable** — if a candidate is actionable **and** its scope is contained (within hard-stop limits, §6), implement it in-lane.
+3. **ELSE record "0 found"** — if nothing is actionable or scope is not contained, write `0 found` to `STATE.md` (`zero_actionable_count`) and **move to the next loop**.
+
+No primary loop forces a large refactor: when the contained-scope candidate set is empty, the loop records zero and yields rather than expanding scope. Q5 (Verification) and Q6 (Memory Writeback) wrap the cycle as meta-phases (§3).
 
 ---
 
@@ -104,6 +118,7 @@ Stop the loop and write a **resume point** (current state, what's done, what's p
 - **More than 20 files** would be touched.
 - **The same gate fails 3 times** in a row.
 - The work reaches **auth / billing / payments / security / destructive (irreversible) migration / production deploy** — stop, write the resume point, and request human approval. Do not proceed autonomously.
+- **Memory/policy conflict unresolved** — when the two supervisors cannot agree on a LOOP_POLICY delta, or a gbrain `MemoryConflict` cannot be peer-resolved (recall contradicts live repo with no agreed resolution), stop, write the resume point, and escalate to a human.
 
 A resume point is a short block the next session (or human) can pick up from without re-deriving context.
 
@@ -132,13 +147,16 @@ A resume point is a short block the next session (or human) can pick up from wit
 | 4     | Full automated intake → review → gate cycle hardening    | Pending.                                                                                                                                                                |
 | 5     | Memory-driven continuous loop (gbrain-informed planning) | Pending.                                                                                                                                                                |
 
-**CURRENT STATUS:** Phase 1 scaffold complete; Phase 2 agmsg live (claude/codex on team phos); Phase 3 gbrain connected (local postgres, careviax imported — **keyword search works now; natural-language `gbrain query` is empty until embeddings are generated, which needs an API key + a data-egress decision — see `BLOCKED.md` gbrain-embeddings**; restart Claude Code for `mcp__gbrain__*` tools); Phase 4–5 pending. See CLAUDE.md `## GBrain Configuration`.
+**CURRENT STATUS:** Phase 1 scaffold complete; Phase 2 agmsg live (claude/codex on team phos); Phase 3 gbrain connected (local postgres, careviax imported — **keyword AND semantic search both work now; embeddings generated via local `ollama:mxbai-embed-large` (1024d, no external egress) as of 2026-06-20, default source embed 100% — `BLOCKED.md` gbrain-embeddings is RESOLVED**; restart Claude Code for `mcp__gbrain__*` tools); Phase 4–5 pending. See CLAUDE.md `## GBrain Configuration`.
 
 ---
 
 ## 9. Quick start for an operator
 
+**Canonical startup procedure → `STARTUP_RUNBOOK.md`** (Claude Code-originated, Codex joins via agmsg as
+auditor/assistant; team `phos` / agents `claude`+`codex`; the exact paste-ready prompts for both sessions).
+
 1. Confirm agmsg reachable: `~/.agents/skills/agmsg/scripts/inbox.sh phos claude`.
-2. Open `prompts/claude-lead.md` in the Claude Code session and `prompts/codex-lead.md` in the Codex session.
-3. To add work, paste `prompts/feature-intake.md` with the feature description.
+2. Follow `STARTUP_RUNBOOK.md` §1–§3: start Claude (`/agmsg` → `/effort ultracode` → loop prompt), then Codex (`$agmsg` → `/goal`).
+3. To add work, paste the feature-intake block (`STARTUP_RUNBOOK.md` §5 or `prompts/feature-intake.md`).
 4. Watch for hard-stops (§6) and the resume point if the loop pauses.

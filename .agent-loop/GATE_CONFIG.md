@@ -84,3 +84,34 @@ evidence to the RUN ledger.
   a TODO and, once done, this table's `Wired` column is updated.
 - **Evidence:** every gate run records command + result (pass/fail) into the run ledger;
   a green slice carries the list of gates it passed.
+
+---
+
+## Done Condition (§2.5)
+
+A slice is **Done** only when ALL of the following hold — this is the single canonical
+"done" definition for the loop. Partial satisfaction is **not** done; keep working.
+
+1. **Peer review APPROVED.** The maker/checker split is honored (implementer never
+   self-completes): the peer supervisor (Claude↔Codex) has returned `APPROVED`. Docs-only
+   slices that touch no `src/`, config, or schema may skip review — state "docs-only, no
+   review needed" explicitly.
+2. **All applicable gates green with recorded evidence.** Every gate selected for the
+   slice's impacted area (per the table above) passed, and each carries command + result
+   in the run ledger. No "assumed green".
+3. **Unwired gates never claimed as passing.** Not-yet-wired gates (secret scan, SAST) and
+   advisory checks (`pnpm audit`) are reported honestly — referenced as TODO, never counted
+   as a pass (reaffirms §2.4).
+4. **STATE.md updated.** `.agent-loop/STATE.md` reflects the new cycle/status/next_action
+   and the slice outcome.
+5. **gbrain writeback complete.** Per `GBRAIN_SCHEMA.md` §15 (redact → evidence →
+   confidence/evidence_level/validity_scope → tag → link → dedupe). The resulting
+   `memory_id` (slug) is appended to `STATE.md`. If writeback is BLOCKED (e.g. embeddings),
+   note the block explicitly instead of silently skipping.
+6. **next_action clear.** The next concrete action (or "idle — slice closed") is stated in
+   `STATE.md` so the following cycle can start without rediscovery.
+7. **Ledgers record the verdict.** `REVIEW_LOG.md` carries the peer verdict and
+   `VERIFY_LOG.md` carries the gate results for this slice.
+
+If any item is unmet, the slice is **partial**, not done — record what remains in
+`next_action` and continue the loop.

@@ -21,9 +21,10 @@ of work is a task with a stable `task_id` and a status that advances through the
 
 ```yaml
 - task_id: F-YYYYMMDD-NNN # stable id, e.g. F-20260620-001
-  status: queued # queued | planning | reviewing | implementing | verifying | done | blocked
+  status: queued # draft | intake_seen | deduped | owner_decided | queued | planning | plan_ready | peer_plan_review | approved_to_implement | lock_acquired | reviewing | implementing | patch_ready | peer_patch_review | changes_requested | verifying | done | blocked
   owner: claude-lead # claude-lead (UI lane) | codex-lead (backend lane)
   reviewer: codex-lead # the opposite lane reviews
+  origin_agent: claude-lead # who submitted this feature request; may differ from owner
   priority: P2 # P0 (now) | P1 | P2 | P3
   feature_name: ''
   background: '' # why this exists; link to docs/spec section if any
@@ -37,6 +38,41 @@ of work is a task with a stable `task_id` and a status that advances through the
     - pnpm typecheck
   gbrain_memory_used: [] # memory keys/queries consulted (gbrain connected — fill from `gbrain search`/`query` hits)
 ```
+
+**Agent roles.** `origin_agent` = who submitted the request (may differ from `owner`);
+`owner` (= owner_agent) = the lane that implements; `reviewer` (= reviewer_agent) = the opposite
+lane that reviews. `origin_agent` need not equal `owner` — a request raised in one lane can be
+owned by the other.
+
+**Status glossary.** (intake/routing)
+
+- `draft` — captured, not yet routed.
+- `intake_seen` — supervisors confirmed receipt/priority.
+- `deduped` — gbrain prior-art search performed, confirmed not a duplicate.
+- `owner_decided` — owner_agent/reviewer_agent confirmed.
+- `queued` — accepted, awaiting selection.
+
+(plan-review loop, distinct from patch-review)
+
+- `planning` — owner is drafting the plan.
+- `plan_ready` — owner drafted plan, ready to send.
+- `peer_plan_review` — awaiting `PLAN_REVIEW_RESULT` from the reviewer lane.
+- `approved_to_implement` — plan approved; may request LOCKs.
+- `lock_acquired` — all required paths LOCKed, edit may begin.
+
+(implement/patch-review loop)
+
+- `implementing` — edits in progress under held LOCKs.
+- `patch_ready` — change complete, ready to send for review.
+- `peer_patch_review` — awaiting patch review from the reviewer lane.
+- `changes_requested` — reviewer requested changes; see `PATCH_INBOX.md` for the items.
+- Flow: `implementing → patch_ready → peer_patch_review → (changes_requested → implementing) | approved_to_implement`.
+
+(close-out)
+
+- `verifying` — `verification[]` gates running.
+- `done` — only after `verification[]` passes.
+- `blocked` — parked per `BLOCKED.md`.
 
 ## Queue
 

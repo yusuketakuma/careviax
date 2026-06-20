@@ -23,8 +23,8 @@ inbox: ~/.agents/skills/agmsg/scripts/inbox.sh phos claude
 ## Boot sequence
 
 1. **Read the loop docs**: `.agent-loop/README.md`, `.agent-loop/prompts/codex-lead.md`, `.agent-loop/prompts/feature-intake.md`. Internalize the six loops Q1–Q6, the intake flow, maker/checker rules, hard-stops (§14), and security prohibitions (§15).
-2. **Memory Bootstrap**: attempt a gbrain recall for the objective (prior decisions, prior art, known pitfalls).
-   - **STATUS: gbrain connected 2026-06-20** (careviax indexed read-write). Run `gbrain search "<terms>"` / `gbrain query "<question>"` and record real hits. (`mcp__gbrain__*` tools need a Claude Code restart; the `gbrain` CLI works now.) Always also read the live repo + `docs/`; gbrain recall is subordinate to current repo state.
+2. **Memory Bootstrap**: attempt a gbrain recall for the objective (prior decisions, prior art, known pitfalls). The memory model is defined in **`.agent-loop/GBRAIN_SCHEMA.md`** — search the project memory first (brain-first protocol), classify hits into `MEMORY_REVIEW.md` buckets, and copy only `ApplyNow` into `LOOP_POLICY.md` (§14).
+   - **STATUS: gbrain connected 2026-06-20** (careviax indexed read-write). Run `gbrain search "<terms>"` and `gbrain list --type <Type> --tag <tag>` for recall (e.g. `--type FailurePattern`, `--type DuplicateMap`, `--type RejectedApproach`, `--type ImplementationDecision`). `gbrain query` (semantic) **works now** — embeddings generated via local `ollama:mxbai-embed-large` (1024d, no external egress; 2026-06-20). (`mcp__gbrain__*` tools need a Claude Code restart; the `gbrain` CLI works now.) Always also read the live repo + `docs/`; gbrain recall is subordinate to current repo state — on conflict, file a `StaleMemory` (§4.14).
 3. **Classify** the objective: which of Q1–Q6 apply, scope, risk tier, and the exact paths likely touched.
 4. **Propose a LOOP_POLICY patch** to codex-lead over agmsg: which loops are active this cycle, scope bounds, and your intended LOCK paths. **Wait for codex-lead's reply** (approval or adjustment) before implementing anything non-trivial.
 5. **Run the loop** (below).
@@ -52,7 +52,7 @@ For each cycle (max 4 — see hard-stops):
    Also self-check: 正常系 / 異常系 / 空状態 (empty) / 権限不足 (insufficient permission) / responsive.
 6. **Hand off to codex-lead** over agmsg with a short diff summary + gate results. Request review.
 7. **On `CHANGES_REQUESTED`**: address every point, re-run gates, hand back. On `APPROVED`: proceed to writeback.
-8. **Writeback (Q6)**: stage the verified decision/learning in `REVIEW_LOG.md` / `VERIFY_LOG.md` (and `PROMOTION_QUEUE.md` if it's a candidate lesson). **gbrain connected** — you may also write a page via the `gbrain` CLI. Do not permanently codify unverified memory.
+8. **Writeback (Q6)**: stage the verified decision/learning in `REVIEW_LOG.md` / `VERIFY_LOG.md` (and `PROMOTION_QUEUE.md` if it's a candidate lesson). **gbrain connected** — write durable memory per **`.agent-loop/GBRAIN_SCHEMA.md`** (the SSOT for _what_ and _how_ to store). Follow its **§15 Writeback Rule**: classify → redact secrets/PHI → attach evidence → set confidence/evidence_level/validity_scope → tag → link → dedupe; then append the `memory_id` (slug) to `STATE.md`. Use the fill-in templates in `.agent-loop/templates/gbrain/`. As claude-lead you mainly write **FeatureIntake · UIUXDecision · FormUXPattern · StateDisplayPattern · AccessibilityFinding · ResponsiveFinding · ProductDecision · UserFlowDecision** (§12), plus the shared **LoopRun · ReviewFinding · CandidateLesson · BlockedContext · StaleMemory**. Do not permanently codify unverified memory; never auto-promote a CandidateLesson to a StableRule.
 9. **Commit discipline**: drain inbox again, stage **only your own files**, commit. Commit messages in English, ending with the required Co-Authored-By trailer.
 
 ---
