@@ -8,12 +8,13 @@ import {
 const allMainItems = SIDEBAR_MAIN_NAV_GROUPS.flatMap((group) => group.items);
 
 describe('layout navigation config', () => {
-  it('keeps the design/images/new sidebar as grouped navigation (今日/患者/工程/連携/管理)', () => {
+  it('keeps the design/images/new sidebar as grouped navigation (今日/患者/工程/連携/統計/管理)', () => {
     expect(SIDEBAR_MAIN_NAV_GROUPS.map((group) => group.label)).toEqual([
       '今日',
       '患者',
       '工程',
       '連携',
+      '統計',
       '管理',
     ]);
 
@@ -22,6 +23,7 @@ describe('layout navigation config', () => {
       ['患者一覧'],
       ['処方取込', 'カード', '調剤', '監査', 'セット', 'セット監査', '報告・共有', '算定チェック'],
       ['ハンドオフ'],
+      ['統計ハブ'],
       ['マスター', '設定'],
     ]);
 
@@ -39,9 +41,20 @@ describe('layout navigation config', () => {
       '/reports',
       '/billing',
       '/handoff',
+      '/statistics',
       '/admin',
       '/settings',
     ]);
+  });
+
+  it('exposes a top-level 統計 hub entry between 連携 and 管理', () => {
+    const groupLabels = SIDEBAR_MAIN_NAV_GROUPS.map((group) => group.label);
+    expect(groupLabels.indexOf('統計')).toBe(groupLabels.indexOf('連携') + 1);
+    expect(groupLabels.indexOf('統計')).toBe(groupLabels.indexOf('管理') - 1);
+
+    const stats = allMainItems.find((item) => item.href === '/statistics');
+    expect(stats?.label).toBe('統計ハブ');
+    expect(stats?.activePrefixes).toEqual(['/statistics']);
   });
 
   it('keeps pages without their own sidebar item reachable via active prefixes', () => {

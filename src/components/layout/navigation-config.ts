@@ -145,6 +145,17 @@ export const SIDEBAR_MAIN_NAV_GROUPS: readonly LayoutNavGroup[] = [
     ],
   },
   {
+    label: '統計',
+    items: [
+      {
+        label: '統計ハブ',
+        href: '/statistics',
+        icon: BarChart3,
+        activePrefixes: ['/statistics'],
+      },
+    ],
+  },
+  {
     label: '管理',
     items: [
       {
