@@ -1,8 +1,9 @@
 # METRICS — Per-Run Loop Metrics
 
-**Purpose.** Tracks the health of the careviax (PH-OS Pharmacy) agent loop across four
-dimensions — quality, speed, memory, safety, cost (spec §16). Supervisors update these
-values per run so trends (regressions, drift, cost creep) are visible over time.
+**Purpose.** Tracks the health of the careviax (PH-OS Pharmacy) agent loop across six
+dimensions — quality, speed, memory, loop engineering, safety, cost (spec §16). Supervisors
+update these values per run so trends (regressions, drift, cost creep, process improvement) are
+visible over time.
 
 **How it is used in the loop.**
 
@@ -53,6 +54,15 @@ memory: # STATUS: gbrain connected 2026-06-20 — populate once cycles issue rea
   lesson_promotion_rate: null # share of candidate lessons promoted to long-term memory
   lesson_rejection_rate: null # share of candidate lessons rejected
 
+loop_engineering:
+  pdca_experiments_started: 0 # bounded process-improvement hypotheses started this run
+  pdca_experiments_checked: 0 # experiments with a measured Check result
+  method_pattern_memories_written: 0 # useful methods saved as reusable gbrain memories
+  anti_pattern_memories_written: 0 # improvable methods saved as FailurePattern/RejectedApproach/ReviewFinding
+  review_gate_miss_count: 0 # issues gates missed but peer review caught
+  post_approval_rework_count: 0 # changes needed after an APPROVED review/gate
+  candidate_lessons_created: 0 # loop-engineering CandidateLessons created this run
+
 safety:
   blocked_dangerous_actions: 0 # count of destructive actions blocked (e.g. by /careful, guards)
   permission_escalation_requests: 0 # count of permission-elevation requests rejected or requiring human approval
@@ -92,6 +102,8 @@ Who populates what, and when:
 - **`recurrence_rate`**: fed by **codex-lead** post-gate gbrain `FailurePattern` queries —
   matching this run's regressions against prior-run FailurePatterns. Stays null until gbrain
   queries populate (see STATUS note and Memory block).
+- **`loop_engineering.*`**: fed at cycle close from REVIEW_LOG / PATCH_INBOX / VERIFY_LOG / gbrain
+  writeback. Count only evidence-backed PDCA work; do not count raw brainstorming.
 
 ---
 
@@ -122,6 +134,16 @@ Who populates what, and when:
 - `stale_memory_rate` — share of retrieved memories found stale/wrong.
 - `lesson_promotion_rate` — share of candidate lessons promoted to long-term memory.
 - `lesson_rejection_rate` — share of candidate lessons rejected.
+
+**Loop Engineering**
+
+- `pdca_experiments_started` — bounded process-improvement hypotheses started this run.
+- `pdca_experiments_checked` — PDCA experiments with a measured Check result.
+- `method_pattern_memories_written` — useful loop methods saved as reusable gbrain memories.
+- `anti_pattern_memories_written` — improvable methods saved as FailurePattern / RejectedApproach / ReviewFinding.
+- `review_gate_miss_count` — issues that objective gates missed but peer review caught.
+- `post_approval_rework_count` — changes required after a prior APPROVED review/gate.
+- `candidate_lessons_created` — loop-engineering CandidateLessons created this run.
 
 **Safety**
 

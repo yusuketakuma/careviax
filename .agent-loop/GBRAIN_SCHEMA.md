@@ -284,8 +284,45 @@ gbrain extracts them when `auto_link` is on, and the explicit `gbrain link` call
 | Plan       | Save **drafts** (`status: proposed`): FeatureIntake, ImplementationDecision, RejectedApproach, RiskArea ref.                                                                 |
 | Patch done | Save: ReviewFinding, GateResult, DuplicateMap, FixPattern, finalized Decision.                                                                                               |
 | Run end    | Save: LoopRun, CandidateLesson, BlockedContext, StaleMemory, MetricSnapshot.                                                                                                 |
+| LE-PDCA    | Analyze past LoopRun / ReviewFinding / GateResult patterns; save useful loop methods and anti-patterns as reusable memories, then check them against `METRICS.md`.           |
 
 ---
+
+### 7.1 Loop-Engineering PDCA writeback
+
+Loop engineering is a separate improvement track for the Claude × Codex process itself. It must be
+recorded as reusable knowledge, not as a raw retrospective log.
+
+Use existing memory types instead of inventing one-off pages:
+
+- **Useful methods** → `ImplementationDecision`, `FixPattern`, or `CandidateLesson`.
+  Examples: a review checklist that reliably catches green-gate contract mismatches; a lock/commit
+  split that prevents dirty-tree collisions; a gbrain query pattern that improves duplicate
+  detection.
+- **Methods to improve** → `FailurePattern`, `RejectedApproach`, or `ReviewFinding`.
+  Examples: a subagent fan-out that missed stale-data behavior; a validation subset that produced a
+  false sense of safety; a policy patch promoted without enough provenance.
+- **Evidence / measurement** → link to `LoopRun`, `GateResult`, `REVIEW_LOG.md`, `VERIFY_LOG.md`,
+  `PATCH_INBOX.md`, and `METRICS.md` entries. Store paths, commit ids, command names, and short
+  findings; never store full command output or conversation text.
+
+PDCA mapping:
+
+1. **Plan** — formulate one bounded method hypothesis from prior patterns.
+2. **Do** — apply it in one cycle without widening product scope.
+3. **Check** — compare against review turnaround, recurrence, gate misses, stale-memory rate,
+   candidate lesson conversion, and rework after approval.
+4. **Act** — write a `CandidateLesson` or `RejectedApproach`; promote only through
+   `PROMOTION_QUEUE.md` / `LOOP_POLICY.md` with peer agreement and human approval where required.
+
+Recommended tags:
+
+```yaml
+tags: [loop-engineering, pdca, review-quality, validation, gbrain, agent-loop]
+```
+
+These memories are still subordinate to live repo state. If a later cycle shows the method no
+longer applies, file `StaleMemory` or `MemoryConflict` rather than continuing to ApplyNow it.
 
 ## 8. Retrieval metadata (tags)
 
@@ -295,7 +332,17 @@ Tag generously at write time (`gbrain tag <slug> <tag>` or `tags:` in frontmatte
 tags:
   domain: [items, auth, billing, dispense, audit, report, ...] # careviax: dispense/audit/report/patient/...
   layer: [ui, api, db, test, infra]
-  concern: [duplicate-removal, performance, stability, accessibility, validation, state-color]
+  concern:
+    [
+      duplicate-removal,
+      performance,
+      stability,
+      accessibility,
+      validation,
+      state-color,
+      loop-engineering,
+      pdca,
+    ]
   technology: [react, nextjs, typescript, prisma, rls, tanstack-query, zustand, dexie, serwist]
   risk: [security, destructive-migration, flaky-test, phi]
   agent: [claude, codex]

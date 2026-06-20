@@ -53,11 +53,18 @@ inbox: ~/.agents/skills/agmsg/scripts/inbox.sh phos <name>
 
 ---
 
-## 3. The six quality loops (Q1–Q6, §6)
+## 3. Quality Loops + Loop-Engineering PDCA
 
-Each cycle, the supervisors consider these loops. Not all run every cycle — the classifier (§7 intake) and LOOP_POLICY decide which are active.
+Each cycle, the supervisors consider the product/code quality loops plus a separate
+loop-engineering improvement track. Not all run every cycle — the classifier (§7 intake),
+LOOP_POLICY, and current user priority decide which are active.
 
-> **Primary loops vs meta-phases.** Q1–Q4 (Refactor / Stability / Product-adjacent / UI-UX) are the **four primary discovery/implement loops** — what the SPEC means by "the four loops". Q5 Verification and Q6 Memory Writeback are **always-present meta-phases, not peers of Q1–Q4**: Q5 (Verification) gates any/all of the primary loops, and Q6 (Memory Writeback) runs post-verify. So SPEC's "four loops" = Q1–Q4; Q5/Q6 are the meta-loops that wrap them every cycle.
+> **Primary loops vs meta-phases.** Q1–Q4 (Refactor / Stability / Product-adjacent / UI-UX) are the
+> **four primary discovery/implement loops** — what the SPEC means by "the four loops". Q5
+> Verification and Q6 Memory Writeback are **always-present meta-phases, not peers of Q1–Q4**: Q5
+> (Verification) gates any/all of the primary loops, and Q6 (Memory Writeback) runs post-verify.
+> Loop-Engineering PDCA is a **parallel process-improvement track**, not product work and not a
+> bypass around the maker/checker gate.
 
 | ID     | Loop             | Focus                                                                                                                                                                                                                                   | Primary owner                                     |
 | ------ | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
@@ -67,6 +74,7 @@ Each cycle, the supervisors consider these loops. Not all run every cycle — th
 | **Q4** | UI/UX            | Conformance to `docs/ui-ux-design-guidelines.md` (state colors, hierarchy, density, a11y/WCAG AA).                                                                                                                                      | claude-lead.                                      |
 | **Q5** | Verification     | Objective gate: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`; targeted `pnpm test:e2e` / `pnpm test:e2e:audit`.                                                                                                             | codex-lead verifies, claude-lead supplies.        |
 | **Q6** | Memory Writeback | Persist verified decisions/learnings; correct stale gbrain entries against live repo. **STATUS: gbrain connected (2026-06-20)** — careviax indexed (read-write); writeback can target gbrain (CLI now; `mcp__gbrain__*` after restart). | both.                                             |
+| **LE** | Loop Engineering | Improve the loop itself: extract useful methods and anti-patterns from past implementations/reviews, store them in gbrain, analyze recurrence/efficiency, and run bounded PDCA experiments in parallel with coding.                     | both; codex leads analysis/check metrics.         |
 
 ### 3.1 Loop behavior per cycle
 
@@ -77,6 +85,27 @@ Each **primary loop (Q1–Q4)** runs the same three-step shape per cycle:
 3. **ELSE record "0 found"** — if nothing is actionable or scope is not contained, write `0 found` to `STATE.md` (`zero_actionable_count`) and **move to the next loop**.
 
 No primary loop forces a large refactor: when the contained-scope candidate set is empty, the loop records zero and yields rather than expanding scope. Q5 (Verification) and Q6 (Memory Writeback) wrap the cycle as meta-phases (§3).
+
+### 3.2 Parallel Loop-Engineering PDCA
+
+The loop must improve its own engineering method while product coding continues. This is a
+separate PDCA track, not a reason to delay an active user-priority implementation or review.
+
+- **Plan** — at cycle close or idle time, choose one narrow process question from evidence: review
+  blind spots, recurring `CHANGES_REQUESTED`, validation misses, lock/commit friction, duplicate
+  implementation recurrence, or stale-memory drift.
+- **Do** — record the method or anti-method in gbrain using the existing memory types: useful
+  methods become `ImplementationDecision`, `FixPattern`, or `CandidateLesson`; methods to improve
+  become `FailurePattern`, `RejectedApproach`, or `ReviewFinding`. Link them to the relevant
+  `LoopRun` / `GateResult`.
+- **Check** — compare against `METRICS.md`: review turnaround, recurrence, stale-memory rate,
+  candidate lesson conversion, gate misses caught by review, and rework after approval.
+- **Act** — if the method proves useful across independent cycles, propose a `PROMOTION_QUEUE.md`
+  entry or a `LOOP_POLICY.md` patch. Never auto-promote; require the normal peer/human gate.
+
+Guardrails: no raw conversation, full command output, PHI, secrets, `.env` values, or unverified
+speculation enters gbrain. LE work still drains agmsg, respects LOCKs, stages explicit paths, and
+uses maker/checker separation.
 
 ---
 

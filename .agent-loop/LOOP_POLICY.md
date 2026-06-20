@@ -82,6 +82,15 @@ Proven, in-effect-now discipline. Apply on every cycle without re-deciding.
     and explicit-path staging. Do not use idle time to start broad rewrites, unreviewed product
     features, cross-lane edits, auth/billing/payments/security/destructive migration/deploy work, or
     speculative gbrain writes.
+13. **Loop-engineering PDCA track.** In parallel with coding, run a bounded improvement loop for the
+    agent loop itself: mine past implementations, reviews, gate results, and changes-requested items
+    for reusable methods and anti-patterns; store only redacted, evidence-backed reusable knowledge
+    in gbrain; check whether the method improves metrics; then either adopt, revise, or reject it.
+    Useful methods are captured as `ImplementationDecision` / `FixPattern` / `CandidateLesson`;
+    improvable methods as `FailurePattern` / `RejectedApproach` / `ReviewFinding`, linked to the
+    relevant `LoopRun` and `GateResult`. This track may run during idle time or cycle close, but it
+    must not block active user-priority work, bypass maker/checker separation, auto-promote
+    CandidateLessons, or store raw logs, PHI, secrets, `.env` values, or unverified speculation.
 
 ## Consider
 
@@ -130,4 +139,5 @@ Status values: `proposed` → `peer-approved` → `applied` (or `rejected`).
 | ApplyNow §10 (fail-closed client reads)           | claude-lead | codex-lead  | applied               |
 | ApplyNow §11 (workload-balancing handoff)         | codex-lead  | claude-lead | applied               |
 | ApplyNow §12 (idle-capacity useful work)          | human       | claude-lead | applied               |
+| ApplyNow §13 (loop-engineering PDCA track)        | human       | codex-lead  | applied               |
 | _next candidate_                                  | _name_      | _name_      | proposed              |
