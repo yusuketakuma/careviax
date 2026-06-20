@@ -4,7 +4,7 @@ import {
   sortFacilityPacketPatients,
   splitFacilityPacketNotes,
   type FacilityPacketPatient,
-} from './facility-packet.shared';
+} from './facility-packet';
 
 function buildPatient(overrides: Partial<FacilityPacketPatient> = {}): FacilityPacketPatient {
   return {
@@ -56,7 +56,9 @@ describe('sortFacilityPacketPatients', () => {
 describe('splitFacilityPacketNotes', () => {
   it('splits lines and strips leading bullets', () => {
     expect(
-      splitFacilityPacketNotes('・入館方法:受付で名簿記入\n駐車場:建物裏2台分\n\n- 申し送り:夕食後薬の声かけ'),
+      splitFacilityPacketNotes(
+        '・入館方法:受付で名簿記入\n駐車場:建物裏2台分\n\n- 申し送り:夕食後薬の声かけ',
+      ),
     ).toEqual(['入館方法:受付で名簿記入', '駐車場:建物裏2台分', '申し送り:夕食後薬の声かけ']);
   });
 

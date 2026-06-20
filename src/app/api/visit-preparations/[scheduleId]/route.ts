@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { deriveFacilityLabel, deriveVisitPlaceGroup } from '@/lib/utils/facility';
-import { facilityPacketMemoToDisplayText } from '@/app/(dashboard)/visits/[id]/facility-packet/facility-packet.shared';
+import { facilityPacketMemoToDisplayText } from '@/lib/visits/facility-packet';
 import { Prisma } from '@prisma/client';
 import { requireAuthContext } from '@/lib/auth/context';
 import { canAccessVisitScheduleAssignment } from '@/lib/auth/visit-schedule-access';

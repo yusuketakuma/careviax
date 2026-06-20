@@ -108,9 +108,7 @@ function asTrimmedString(value: unknown): string {
  * - 旧データ(自由文「ラベル：値」)は先頭ラベル一致で各項目へ振り分け、
  *   一致しない行は申し送り欄へ集約する(情報を失わないため)。
  */
-export function parseFacilityPacketMemo(
-  notes: string | null | undefined,
-): FacilityPacketMemo {
+export function parseFacilityPacketMemo(notes: string | null | undefined): FacilityPacketMemo {
   const memo = emptyFacilityPacketMemo();
   if (!notes) return memo;
 
@@ -197,9 +195,7 @@ export function facilityPacketMemoDisplayItems(
  * - 構造化 JSON メモ → 「ラベル：値」の複数行へ。
  * - 旧自由文 → そのまま返す(表示の後方互換)。
  */
-export function facilityPacketMemoToDisplayText(
-  notes: string | null | undefined,
-): string | null {
+export function facilityPacketMemoToDisplayText(notes: string | null | undefined): string | null {
   if (!notes) return null;
   if (notes.trim().startsWith('{')) {
     const items = facilityPacketMemoDisplayItems(parseFacilityPacketMemo(notes));

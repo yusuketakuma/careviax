@@ -5,7 +5,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withOrgContext } from '@/lib/db/rls';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { conflict, forbidden, success, validationError } from '@/lib/api/response';
-import { serializeFacilityPacketMemo } from '@/app/(dashboard)/visits/[id]/facility-packet/facility-packet.shared';
+import { serializeFacilityPacketMemo } from '@/lib/visits/facility-packet';
 import { buildVisitScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { formatDateKey } from '@/lib/date-key';
 import { OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES as OPEN_PROPOSAL_STATUSES } from '@/lib/visit-schedule-proposals/route-order';

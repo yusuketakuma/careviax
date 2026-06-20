@@ -21,7 +21,7 @@ import {
   sortFacilityPacketPatients,
   type FacilityPacketMemo,
   type FacilityPacketPatient,
-} from './facility-packet.shared';
+} from '@/lib/visits/facility-packet';
 
 /**
  * p0_24「施設モード・訪問パケット」: 施設の本日訪問(部屋カード列)、

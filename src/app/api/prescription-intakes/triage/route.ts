@@ -10,7 +10,7 @@ import type {
   IntakeTriageResponse,
   IntakeTriageRow,
   IntakeTriageStatusKey,
-} from '@/app/(dashboard)/prescriptions/intake/intake-triage.shared';
+} from '@/lib/prescriptions/intake-triage-contract';
 
 /**
  * new_05_import(処方取込トリアージ)用 BFF。
@@ -121,9 +121,7 @@ type QrConfidenceSource = {
  */
 function deriveQrConfidence(draft: QrConfidenceSource): number {
   const errorCount = Array.isArray(draft.parse_errors) ? draft.parse_errors.length : 0;
-  const autoCompletedCount = Array.isArray(draft.auto_completed)
-    ? draft.auto_completed.length
-    : 0;
+  const autoCompletedCount = Array.isArray(draft.auto_completed) ? draft.auto_completed.length : 0;
   return Math.min(99, Math.max(50, 100 - errorCount * 5 - autoCompletedCount));
 }
 
@@ -297,8 +295,7 @@ export const GET = withAuthContext(
     const responseData: IntakeTriageResponse = {
       generated_at: now.toISOString(),
       new_today_count: rows.filter((row) => new Date(row.received_at) >= todayStart).length,
-      needs_decision_count: rows.filter((row) => needsDecisionStatuses.includes(row.status))
-        .length,
+      needs_decision_count: rows.filter((row) => needsDecisionStatuses.includes(row.status)).length,
       lane_counts: laneCounts,
       rows,
       duplicate_notices: duplicateNotices,
