@@ -257,7 +257,16 @@ function stubFetch(workspace: ReportsTodayWorkspaceResponse = TODAY_WORKSPACE) {
     }
     if (url.includes('/api/care-reports/generate-from-visit')) {
       return new Response(
-        JSON.stringify({ data: [{ id: 'rep_generated', report_type: 'care_manager_report' }] }),
+        JSON.stringify({
+          data: [
+            {
+              id: 'rep_generated',
+              report_type: 'care_manager_report',
+              status: 'draft',
+              updated_at: '2026-06-11T05:00:00.000Z',
+            },
+          ],
+        }),
         { status: 201 },
       );
     }

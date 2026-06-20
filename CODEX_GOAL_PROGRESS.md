@@ -8143,3 +8143,21 @@ Next loop:
   - API response envelope type hardening and broader `readApiJson` schema call-site migration remain candidates requiring narrower scoping.
   - Bulk task completion UI failure-detail display remains a follow-up candidate.
   - Re-audit agents must run again after this ledger sync; two consecutive zero-actionable audits have not been reached.
+
+### Codex Loop 10 Addendum — Generated Report Workspace Fixture
+
+- Coordination:
+  - Kept Claude-owned `.agent-loop/*`, `AGENTS.md`, `CLAUDE.md`, and prompt diffs untouched while the gbrain schema review remained in `CHANGES_REQUESTED`.
+  - Treated `.harness-mem/state/continuity.json` as generated local state and left it unstaged.
+- Implemented by Codex:
+  - Updated the report-share workspace test fixture for `/api/care-reports/generate-from-visit` to match the hardened generated-report response contract by including `status` and `updated_at` in generated report rows.
+  - This is a test-only compatibility fix; no UI, API, DB, auth, audit, or PHI response behavior changed.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `8` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'`: passed.
+  - `git diff --check -- 'src/app/(dashboard)/reports/report-share-workspace.test.tsx'`: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude gbrain schema integration requires taxonomy consistency fixes before approval.
+  - API response envelope type hardening and broader `readApiJson` schema call-site migration remain candidates requiring narrower scoping.
+  - Bulk task completion UI failure-detail display remains a follow-up candidate.
+  - Re-audit agents must run again after current owned commits and Claude's schema revision; two consecutive zero-actionable audits have not been reached.
