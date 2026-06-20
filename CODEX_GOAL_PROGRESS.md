@@ -7963,3 +7963,23 @@ Next loop:
   - Added `src/tools/lib-dependency-boundary.test.ts`.
   - Current `src/lib` reverse dependencies into `@/server`, `@/components`, or `@/app` are now explicit allowlist entries. New reverse dependencies fail the static test until reviewed.
   - Validation: focused Vitest 1 file / 1 test passed; targeted ESLint and `git diff --check` passed.
+
+### Slice U7-U9 (Claude)
+
+- U7 commit 0ecf580b: referral-form field error aria-describedby紐付け(name/name_kana/birth_date/gender)。
+- U8 検証→no-op: alert.tsx 既に role=alert、FormErrorSummary 通知済み。変更なし。
+- U9 commit (prescriptions-table): 空表示を共通EmptyStateへ + 未使用import除去。
+- UI/UX Loop1 計: 8スライス実装(U1-U7,U9) + U8検証, ~13ファイル改善。
+
+### Slice U10 (Claude) — handoff 無効ボタン理由 [High]
+
+- commit 96443526: 渡す確定ボタンの未充足必須項目(件名/宛先/何を/なぜ/いつまで)を表示+aria-describedby。不可逆操作の詰まり所を可視化。テスト拡張(理由表示+aria-describedby+充足時消失)。
+- UI/UX Loop1 計: 9スライス実装(U1-U7,U9,U10) + U8検証。全High finding解消(false-empty×3, disabled理由×2)+主要Med。~14ファイル。
+- 残: medications-content状態表示reimpl(F3 High/大), state-color hardcode(Med), ConfirmDialog採用(F6 Med), Loading swaps(F8/9 Low), native select 44px(P2)。
+
+### Codex Validation Addendum — Full gate and current UI WIP isolation
+
+- Full validation completed after Codex backend/shared follow-ups and Claude U10 settled: `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm lint`, `pnpm format:check`, `pnpm date-slices:check`, `pnpm eventbridge-schedules:check`, `git diff --check --`, full Vitest (`1085` files / `8385` tests passed / `1` skipped), and `pnpm build` all passed.
+- Current worktree after that validation includes an uncommitted UI state-color change in `src/app/(dashboard)/tasks/tasks-content.tsx` and generated `.harness-mem/state/continuity.json`. Codex notified Claude and will not stage or overwrite the UI change without coordination.
+- Current re-check: `git diff --check -- 'src/app/(dashboard)/tasks/tasks-content.tsx' CODEX_GOAL_PROGRESS.md .harness-mem/state/continuity.json` passed. `pnpm exec prettier --check CODEX_GOAL_PROGRESS.md 'src/app/(dashboard)/tasks/tasks-content.tsx'` failed before this ledger formatting because `tasks-content.tsx` is still unformatted UI WIP.
+- Zero Audit count remains `0`; re-audit must run after the UI WIP is either committed by Claude or explicitly handed to Codex.
