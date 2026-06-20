@@ -246,5 +246,9 @@ owned by the other.
     - Sequenced AFTER F-004 (landed 377d9e1e).
   verification:
     [pnpm lint, pnpm typecheck, pnpm typecheck:no-unused, pnpm format:check, pnpm test, pnpm build]
-  gbrain_memory_used: []
+  gbrain_memory_used:
+    # writeback from F-007 (codex-seeded, no duplicate CandidateLesson):
+    - projects/careviax/lessons/candidates/api-response-validation-and-consolidation # times_confirmed 1->2, gate_verified, F-007/2a4780d0 evidence (promotion_status=candidate)
+    - projects/careviax/fix-patterns/route-wire-shape-schema-parity-tests # new: match test mocks/client schema to real route wire shape; add inverse malformed-2xx tests
+    - projects/careviax/reviews/statistics-hub-rev7-contract-permission-api-mismatch-20260620 # rev7 review --resolved_by--> the fix-pattern above
 ```
