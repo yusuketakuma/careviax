@@ -24,8 +24,8 @@ inbox: ~/.agents/skills/agmsg/scripts/inbox.sh phos codex
 ## Boot sequence
 
 1. **Read the loop docs**: `.agent-loop/README.md`, `.agent-loop/prompts/claude-lead.md`, `.agent-loop/prompts/feature-intake.md`. Internalize Q1–Q6, intake flow, maker/checker rules, hard-stops (§14), security prohibitions (§15).
-2. **Memory Bootstrap**: attempt gbrain recall for the objective.
-   - **STATUS: gbrain connected 2026-06-20** (careviax indexed read-write). Use `gbrain search`/`query` for recall; record real hits. (`mcp__gbrain__*` tools need a Claude Code restart; the `gbrain` CLI works now.) Recall is subordinate to live repo state.
+2. **Memory Bootstrap**: attempt gbrain recall for the objective. The memory model is defined in **`.agent-loop/GBRAIN_SCHEMA.md`** (SSOT).
+   - **STATUS: gbrain connected 2026-06-20** (careviax indexed read-write). Use `gbrain search "<terms>"` and `gbrain list --type <Type> --tag <tag>` for recall (esp. `--type FailurePattern`, `--type DuplicateMap`, `--type RejectedApproach`, `--type GateResult`). `gbrain query` (semantic) **works now** — embeddings generated via local `ollama:mxbai-embed-large` (1024d, no external egress; 2026-06-20). (`mcp__gbrain__*` tools need a Claude Code restart; the `gbrain` CLI works now.) Recall is subordinate to live repo state — on conflict file a `StaleMemory` (§4.14).
 3. **Drain inbox** and respond to claude-lead's proposed LOOP_POLICY patch: approve, tighten scope, or push back. Record agreed scope + LOCKs.
 
 ---
@@ -69,6 +69,10 @@ pnpm test:e2e:audit  # when audit-relevant
 - `APPROVED` — only when review + gates are clean. Then claude-lead proceeds to writeback.
 
 ---
+
+## Memory writeback (Q6)
+
+After a clean review, persist durable memory per **`.agent-loop/GBRAIN_SCHEMA.md`** (§15 Writeback Rule: classify → redact secrets/PHI → attach evidence → set confidence/evidence_level/validity_scope → tag → link → dedupe; append the `memory_id` slug to `STATE.md`). Use the templates in `.agent-loop/templates/gbrain/`. As codex-lead you mainly write **ImplementationDecision · FailurePattern · FixPattern · DuplicateMap · GateResult · TypeSafetyDecision · PerformanceFinding · SecurityFinding · RejectedApproach** (§12), plus the shared **LoopRun · ReviewFinding · CandidateLesson · BlockedContext · StaleMemory**. For a type written from both sides in one task, set `partial: true` and merge into one final `LoopRun` at run end. Never auto-promote a CandidateLesson to a StableRule — that goes through `PROMOTION_QUEUE.md` (§13) with explicit human approval. gbrain memory stays subordinate to live repo state.
 
 ## Limited implementation
 

@@ -8161,3 +8161,444 @@ Next loop:
   - API response envelope type hardening and broader `readApiJson` schema call-site migration remain candidates requiring narrower scoping.
   - Bulk task completion UI failure-detail display remains a follow-up candidate.
   - Re-audit agents must run again after current owned commits and Claude's schema revision; two consecutive zero-actionable audits have not been reached.
+
+### Codex Loop 10 Addendum — Print Requested Audit Contract
+
+- Coordination:
+  - Continued within Codex-owned print audit/report test scope after notifying Claude of the previous fixture commit.
+  - Left Claude-owned `.agent-loop/*`, `AGENTS.md`, `CLAUDE.md`, and prompt diffs untouched while the gbrain schema taxonomy review remained in `CHANGES_REQUESTED`.
+- Implemented by Codex:
+  - Changed direct report print and print hub manual print paths to parse `print_requested` audit responses with `careReportPrintAuditResponseSchema` instead of trusting only `res.ok`.
+  - Required `data.audited === true`, a report payload, and a matching report id before calling `window.print()`.
+  - Added regression tests for `200` responses with `audited: false`, malformed `200` success bodies, and wrong-report-id audited success bodies in both direct print and print hub paths, closing reviewer-strict's malformed-2xx and mismatch guard gaps.
+- Validation:
+  - Direct print + print hub + tasks focused Vitest: `3` files / `25` tests passed after reviewer-strict fixes.
+  - Print-audit/tasks focused bundle: `7` files / `55` tests passed after reviewer-strict fixes.
+  - Targeted ESLint for changed print files/tests: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - Targeted `git diff --check`: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude gbrain schema integration requires taxonomy consistency fixes before approval.
+  - API response envelope type hardening and broader `readApiJson` schema call-site migration remain candidates requiring narrower scoping.
+  - Bulk task completion UI failure-detail display remains a follow-up candidate.
+  - Re-audit agents must run again after current owned commits and Claude's schema revision; two consecutive zero-actionable audits have not been reached.
+
+### Codex Loop 10 Addendum — Bulk Task Failure Detail
+
+- Coordination:
+  - Sent a `LOCK:` for `src/app/(dashboard)/tasks/tasks-content.tsx`, `src/app/(dashboard)/tasks/tasks-content.test.tsx`, `CODEX_GOAL_PROGRESS.md`, and `.codex/ralph-state.md`; Claude ACKed no conflict.
+  - Read `docs/ui-ux-design-guidelines.md` before editing the dashboard task UI, especially the PH-OS rule that dynamic errors must not be collapsed into false-empty or generic status.
+  - Kept Claude-owned `.agent-loop/*`, `AGENTS.md`, `CLAUDE.md`, and prompt diffs untouched.
+- Implemented by Codex:
+  - Preserved the existing `/api/tasks/bulk` response contract and surfaced server-provided `failures[]` messages in the partial-success toast description.
+  - Deduplicated failure messages, capped the visible list at three reasons, and avoided displaying task IDs or patient values.
+  - Added client-side normalization for success counts and `failures[]` so malformed successful payload details cannot crash the UI refresh path.
+  - Added focused component tests that exercise the bulk mutation payload, confirm the partial-failure reason reaches `toast.warning`, and verify malformed `failures` shapes fall back to the count-only warning.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/reports/[id]/print/page.test.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' 'src/app/(dashboard)/tasks/tasks-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `3` files / `23` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/reports/care-report-print-audit-contract.test.ts 'src/app/api/care-reports/[id]/print-audit/route.test.ts' 'src/app/(dashboard)/reports/[id]/print/page.test.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' 'src/app/(dashboard)/tasks/tasks-content.test.tsx' src/app/api/tasks/bulk/route.test.ts 'src/app/api/tasks/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `7` files / `53` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/tasks/tasks-content.tsx' 'src/app/(dashboard)/tasks/tasks-content.test.tsx'`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - Targeted `git diff --check`: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude review for this tasks UI slice is pending before commit.
+  - Claude review for the print-requested audit contract slice is pending before commit.
+  - API response envelope type hardening and broader `readApiJson` schema call-site migration remain candidates requiring narrower scoping.
+  - Re-audit agents must run again after current owned commits and Claude's schema revision; two consecutive zero-actionable audits have not been reached.
+
+### Codex Loop 10 Addendum — Reviewer-Strict Refresh
+
+- Coordination:
+  - Drained agmsg after the ledger refresh; no new Claude messages were pending.
+  - Kept Claude-owned `.agent-loop/*`, `AGENTS.md`, `CLAUDE.md`, prompt diffs, and generated `.harness-mem/state/continuity.json` unstaged.
+- Implemented by Codex:
+  - Updated the pending print-requested audit contract and bulk task failure-detail entries to include reviewer-strict follow-ups.
+  - No product code changed in this ledger refresh.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/reports/[id]/print/page.test.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' 'src/app/(dashboard)/tasks/tasks-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `3` files / `23` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/reports/care-report-print-audit-contract.test.ts 'src/app/api/care-reports/[id]/print-audit/route.test.ts' 'src/app/(dashboard)/reports/[id]/print/page.test.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' 'src/app/(dashboard)/tasks/tasks-content.test.tsx' src/app/api/tasks/bulk/route.test.ts 'src/app/api/tasks/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `7` files / `53` tests.
+  - Targeted ESLint for the changed print/tasks files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=8192 pnpm exec prettier --check CODEX_GOAL_PROGRESS.md`: passed before this appended addendum.
+  - Targeted `git diff --check` for Codex-owned files and ledgers: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude review for the pending print-requested audit and tasks failure-detail slice is still pending.
+  - API response envelope hardening and broader `readApiJson` migration remain candidates requiring narrower scoping.
+  - Re-audit agents must run again after the current owned diff is committed; two consecutive zero-actionable audits have not been reached.
+
+### Codex Loop 10 Addendum — Print Audit Report Match Guard
+
+- Coordination:
+  - Strict Review Agent found no High production-code blocker in the Codex-owned print/tasks diff, but identified a cheap P2 hardening gap: final `print_requested` responses should match the report id being printed.
+  - Claude review remains pending; no approval or change request was received before this follow-up.
+- Implemented by Codex:
+  - Direct report print and print hub now require the final audited response `report.id` to match the current report before `window.print()`.
+  - Added wrong-report-id regression tests for both direct print and print hub.
+- Validation:
+  - `pnpm exec prettier --write 'src/app/(dashboard)/reports/[id]/print/page.tsx' 'src/app/(dashboard)/reports/[id]/print/page.test.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx'`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/reports/[id]/print/page.test.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' 'src/app/(dashboard)/tasks/tasks-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `3` files / `25` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/reports/care-report-print-audit-contract.test.ts 'src/app/api/care-reports/[id]/print-audit/route.test.ts' 'src/app/(dashboard)/reports/[id]/print/page.test.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' 'src/app/(dashboard)/tasks/tasks-content.test.tsx' src/app/api/tasks/bulk/route.test.ts 'src/app/api/tasks/[id]/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `7` files / `55` tests.
+  - Targeted ESLint for the changed print/tasks files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `pnpm lint`: passed.
+  - Targeted `git diff --check` for Codex-owned files and ledgers: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude review for the pending print/tasks slice is still pending before commit.
+  - High API client contract candidates remain: generated-report strict `data` response, dashboard `readApiJson` schema migration, and response helper unification by route family.
+  - Dead-code cleanup candidates remain, especially unused UI wrappers and stale test-only modules.
+
+### Codex Loop 11 Addendum — Re-Audit Follow-up: Preview Audit and Bulk Task Contracts
+
+- Re-audit result:
+  - Zero Audit was not reached. Architecture, Duplication, Type/Contract, Behavior/Test, Dead Code, and Strict Review agents all completed.
+  - New in-session actionable findings included preview `report.id` mismatch protection, printable report-type narrowing, `/api/tasks/bulk` response schema sharing, malformed bulk-success fail-closed behavior, and a missing second access-check test.
+  - Dead-code audit also found stale patient-detail wrappers and legacy compatibility layers, but patient wrapper deletion is deferred until the current print/tasks slice is reviewed; legacy file API removal is blocked by external compatibility/product decision.
+- Coordination:
+  - Drained agmsg before edits; no new Claude messages were pending.
+  - Sent a lock/update message to Claude before editing the existing Codex-owned print/tasks scope.
+  - Sent `REVIEW REQUEST UPDATE 3` after implementation. Claude review is still pending before commit.
+  - Kept Claude-owned `.agent-loop/*`, `AGENTS.md`, `CLAUDE.md`, prompt diffs, and generated `.harness-mem/state/continuity.json` untouched.
+- Implemented by Codex:
+  - Added printable report-type SSOT to `src/lib/reports/care-report-print-audit-contract.ts` and narrowed print-audit responses to `physician_report`, `care_manager_report`, `nurse_share`, and `facility_handoff`.
+  - Made `/api/care-reports/[id]/print-audit` fail closed before audit persistence when the confirmed report is not printable or its content is null.
+  - Direct report print and print hub now require `preview_rendered` responses to match the current `report.id` before rendering report content or enabling print.
+  - Added `src/lib/tasks/bulk-completion-contract.ts` with shared Zod response schema, failure-code union, inferred types, and sanitized/deduped failure summary helper.
+  - `/api/tasks/bulk` now returns a body typed against the shared contract; `TasksContent` now reads the response with `readApiJson(..., { schema })` and rejects malformed successful envelopes instead of treating them as all-success.
+  - Added route coverage for non-printable report type, null content, and the second access check becoming forbidden before content output.
+  - Removed unused patient-detail compatibility components from the dead-code re-audit: `PatientWorkspaceRail`, `PharmacistMemoTab`, and the unused `PatientDocumentsPanel` wrapper. Preserved `FirstVisitDocumentsPanel`, which is still used by `CardWorkspace`.
+- Deleted or consolidated:
+  - Removed UI-local bulk task response/failure types, non-negative count normalizer, malformed failure normalizer, and summary helper from `tasks-content.tsx`.
+  - Consolidated bulk task failure-code typing between route and UI into `src/lib/tasks/bulk-completion-contract.ts`.
+  - Deleted `src/app/(dashboard)/patients/[id]/patient-workspace-rail.tsx` and `src/app/(dashboard)/patients/[id]/pharmacist-memo-tab.tsx`.
+  - Removed unused `PatientDocumentsPanel` data-fetching wrapper and its unused imports from `patient-documents-panel.tsx`.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/reports/care-report-print-audit-contract.test.ts src/lib/tasks/bulk-completion-contract.test.ts 'src/app/api/care-reports/[id]/print-audit/route.test.ts' src/app/api/tasks/bulk/route.test.ts 'src/app/(dashboard)/reports/[id]/print/page.test.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' 'src/app/(dashboard)/tasks/tasks-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `7` files / `52` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/patient-documents-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' --reporter=dot --testTimeout=30000`: passed, `2` files / `29` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - Targeted ESLint for changed print/tasks/contract files: passed.
+  - Targeted ESLint for changed patient-detail files/tests: passed.
+  - Targeted `git diff --check` for changed print/tasks/contract files: passed.
+  - Targeted `git diff --check` for changed patient-detail files: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude review for the expanded print/tasks contract slice is pending before commit.
+  - Dashboard `readApiJson` schema migration remains actionable by route family.
+  - API response-envelope hardening remains actionable only by selected route family; repo-wide unification is deferred until compatibility policy is explicit.
+  - PHOS cycle cleanup and dashboard helper consolidation remain short/mid candidates.
+  - Two consecutive zero-actionable re-audits have not been reached.
+
+### Codex Loop 11 Addendum — Cursor Page Type Consolidation
+
+- Coordination:
+  - Drained agmsg before the edit; no new Claude messages were pending.
+  - Kept Claude-owned `.agent-loop/*`, `AGENTS.md`, `CLAUDE.md`, prompt diffs, and generated `.harness-mem/state/continuity.json` untouched.
+- Implemented by Codex:
+  - Removed local `CursorPage<T>` DTO definitions from the admin pharmacy-cooperation setup screen and workflow pharmacy-cooperation screen.
+  - Reused the shared `CursorPaginatedPage<T>` API type from `src/lib/api/cursor-pagination-client.ts` for cursor-paginated `readApiJson` call sites in those screens.
+- Deleted or consolidated:
+  - Consolidated duplicate cursor page result shapes into the existing shared cursor-pagination client type.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `2` files / `18` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `pnpm exec eslint 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx'`: passed.
+  - Targeted `git diff --check` for the two changed pharmacy-cooperation files: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude review for the expanded print/tasks contract slice is still pending before commit.
+  - Dashboard `readApiJson` schema migration remains actionable by route family.
+  - API response-envelope hardening remains actionable only by selected route family; repo-wide unification is deferred until compatibility policy is explicit.
+  - PHOS cycle cleanup and dashboard helper consolidation remain short/mid candidates.
+  - Two consecutive zero-actionable re-audits have not been reached.
+
+### Codex Loop 11 Addendum — Pharmacy Cooperation Cursor Schema Migration
+
+- Coordination:
+  - Drained agmsg before the schema migration; no new Claude messages were pending.
+  - Kept Claude-owned `.agent-loop/*`, `AGENTS.md`, `CLAUDE.md`, prompt diffs, and generated `.harness-mem/state/continuity.json` untouched.
+- Implemented by Codex:
+  - Added `cursorPaginatedPageSchema()` to `src/lib/api/cursor-pagination-client.ts` so `readApiJson(..., { schema })` can share the same cursor-page envelope contract as `fetchAllCursorPages`.
+  - Added helper tests for cursor-page schema normalization and malformed envelope rejection.
+  - Migrated admin pharmacy-cooperation cursor fetches for partner pharmacies, partnerships, contracts, and contract documents to schema-validated `readApiJson`.
+  - Migrated workflow pharmacy-cooperation cursor fetches for share cases, visit requests, partner visit records, correction requests, consents, and message threads to schema-validated `readApiJson`.
+- Deleted or consolidated:
+  - Consolidated cursor-page envelope validation into `cursor-pagination-client.ts` instead of leaving each dashboard caller as a raw generic cast.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/api/cursor-pagination-client.test.ts 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `3` files / `27` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `pnpm exec eslint src/lib/api/cursor-pagination-client.ts src/lib/api/cursor-pagination-client.test.ts 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx'`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+  - Targeted `git diff --check` for changed cursor schema and pharmacy-cooperation files: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude review for the expanded print/tasks contract slice is still pending before commit.
+  - Additional dashboard `readApiJson` schema migrations remain actionable by route family.
+  - API response-envelope hardening remains actionable only by selected route family; repo-wide unification is deferred until compatibility policy is explicit.
+  - PHOS cycle cleanup and dashboard helper consolidation remain short/mid candidates.
+  - Two consecutive zero-actionable re-audits have not been reached.
+
+### Codex Loop 11 Addendum — Admin Pharmacy Cooperation Data Envelope Schemas
+
+- Coordination:
+  - Claude completed `.codex/ralph-state.md` rotation and released the lock; the 14:24 Codex entry was preserved in the shortened Ralph file.
+  - Drained agmsg during validation; no conflicting Claude edit request was pending for this admin schema slice.
+- Implemented by Codex:
+  - Added `src/lib/api/response-schemas.ts` with `apiDataSchema()` for shared `{ data: ... }` response-envelope validation outside `client-json.ts`.
+  - Added unit coverage for `apiDataSchema()` accepting valid envelopes and rejecting missing/malformed `data`.
+  - Migrated admin pharmacy-cooperation non-cursor `readApiJson` calls for pharmacy sites, contract templates, presigned uploads, and complete uploads to schema-validated reads.
+- Deleted or consolidated:
+  - Consolidated repeated `{ data: T }` envelope validation needs into `apiDataSchema()` so future dashboard migrations do not need ad hoc envelope schemas.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/api/response-schemas.test.ts 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `2` files / `7` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `pnpm exec eslint src/lib/api/response-schemas.ts src/lib/api/response-schemas.test.ts 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx'`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+  - Targeted `git diff --check` for changed response-schema and admin pharmacy-cooperation files: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude review for the expanded print/tasks and pharmacy-cooperation schema slices is pending before commit.
+  - Additional dashboard `readApiJson` schema migrations remain actionable by route family.
+  - API response-envelope hardening remains actionable only by selected route family; repo-wide unification is deferred until compatibility policy is explicit.
+  - PHOS cycle cleanup and dashboard helper consolidation remain short/mid candidates.
+  - Two consecutive zero-actionable re-audits have not been reached.
+
+### Codex Loop 11 Addendum — Workflow Pharmacy Cooperation Mutation Schemas
+
+- Coordination:
+  - Drained agmsg before and after validation; no new Claude messages or conflicting locks were pending.
+  - Kept Claude-owned `.agent-loop/*`, `AGENTS.md`, `CLAUDE.md`, prompt diffs, and generated `.harness-mem/state/continuity.json` untouched.
+- Implemented by Codex:
+  - Reused the workflow pharmacy-cooperation row schemas for mutation responses whose returned values are actually consumed by the UI.
+  - Migrated patient-share consent creation, pharmacy visit request creation, message-thread creation, partner visit record draft save, and report-draft creation reads from raw generic casts to schema-validated `readApiJson`.
+  - Left decision/action endpoints returning `unknown` unchanged where the UI ignores the body and existing route/test fixtures intentionally return partial acknowledgement objects.
+- Deleted or consolidated:
+  - Consolidated workflow mutation response validation into the same local schema definitions used by the cursor fetches.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `12` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `pnpm exec eslint 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx'`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+  - Targeted `git diff --check` for the workflow pharmacy-cooperation file: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude review for the expanded print/tasks and pharmacy-cooperation schema slices is pending before commit.
+  - Additional dashboard `readApiJson` schema migrations remain actionable by route family.
+  - API response-envelope hardening remains actionable only by selected route family; repo-wide unification is deferred until compatibility policy is explicit.
+  - PHOS cycle cleanup and dashboard helper consolidation remain short/mid candidates.
+  - Two consecutive zero-actionable re-audits have not been reached.
+
+### Codex Loop 11 Addendum — Partner Cooperation Billing Schema Migration
+
+- Coordination:
+  - Drained agmsg during validation; Claude confirmed Ralph rotation remained complete and recognized the schema slices as peer-review candidates.
+  - Kept Claude-owned `.agent-loop/*`, `AGENTS.md`, `CLAUDE.md`, prompt diffs, and generated `.harness-mem/state/continuity.json` untouched.
+- Implemented by Codex:
+  - Added local Zod schemas for partner cooperation billing summary, active contract rows, billing candidate rows, invoice rows, candidate generation result, and invoice draft result.
+  - Migrated all `readApiJson` call sites in `partner-cooperation-billing-content.tsx` to schema-validated reads, using `apiDataSchema()` for list envelopes.
+  - Preserved existing UI behavior, request payloads, query keys, and invoice transition flow.
+- Deleted or consolidated:
+  - Consolidated billing list-envelope validation through the shared `apiDataSchema()` helper instead of raw `{ data: T[] }` generic casts.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `5` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `pnpm exec eslint 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx'`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+  - Targeted `git diff --check` for the partner cooperation billing file: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude review for the expanded print/tasks and schema slices is pending before commit.
+  - Additional dashboard `readApiJson` schema migrations remain actionable by route family.
+  - API response-envelope hardening remains actionable only by selected route family; repo-wide unification is deferred until compatibility policy is explicit.
+  - PHOS cycle cleanup and dashboard helper consolidation remain short/mid candidates.
+  - Two consecutive zero-actionable re-audits have not been reached.
+
+### Codex Loop 11 Addendum — Contract Document Mutation Schemas
+
+- Coordination:
+  - Drained agmsg during validation; no new Claude messages or conflicting locks were pending.
+  - Kept Claude-owned `.agent-loop/*`, `AGENTS.md`, `CLAUDE.md`, prompt diffs, and generated `.harness-mem/state/continuity.json` untouched.
+- Implemented by Codex:
+  - Added admin pharmacy-cooperation contract document preview/save response schemas, including rendered snapshot, fee schedule, and article list shape.
+  - Migrated contract document preview and save mutation reads from raw generic casts to schema-validated `readApiJson`.
+  - Left partner/partnership/contract create and activate acknowledgement responses unchanged because existing route/test fixtures intentionally return partial acknowledgement objects while the UI ignores the body.
+- Deleted or consolidated:
+  - Reused the existing contract document row schema and the new preview schema for save responses instead of adding ad hoc inline casts.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `6` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `pnpm exec eslint 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx'`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+  - Targeted `git diff --check` for the admin pharmacy-cooperation file: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude review for the expanded print/tasks and schema slices is pending before commit.
+  - Additional dashboard `readApiJson` schema migrations remain actionable by route family, but the remaining pharmacy-cooperation ack-only responses are intentionally deferred.
+  - API response-envelope hardening remains actionable only by selected route family; repo-wide unification is deferred until compatibility policy is explicit.
+  - PHOS cycle cleanup and dashboard helper consolidation remain short/mid candidates.
+  - Two consecutive zero-actionable re-audits have not been reached.
+
+### Codex Loop 11 Addendum — Admin Setup Mutation Schema Closure and Cursor Schema Ownership
+
+- Coordination:
+  - Drained `agmsg`; Claude returned `APPROVED (slice 5)` for the admin contract document preview/save schema migration and marked it commit-ready.
+  - Claude's only minor was missing malformed-2xx coverage for contract preview/save. Preview was already covered; Codex added the missing save malformed test before considering the slice closed.
+  - Closed the previously completed focused subagents after integrating their findings; the billing PATCH P1 and missing schema-failure tests had been addressed in the current diff.
+- Implemented by Codex:
+  - Added a malformed successful contract document save response test so missing `preview` fails with the fixed `契約書の保存に失敗しました` fallback and does not show the save success toast.
+  - Schema-validated admin setup create/activate mutation responses for partner pharmacy creation, pharmacy partnership creation, pharmacy partnership activation, and pharmacy contract creation.
+  - Updated admin setup mutation test fixtures to match the real API's full returned row shape instead of legacy partial `{ id, status }` acknowledgements.
+  - Added malformed-2xx rejection tests for the four newly schema-validated admin mutations.
+  - Moved `CursorPaginatedPage<T>` and `cursorPaginatedPageSchema()` from `cursor-pagination-client.ts` to `response-schemas.ts`, keeping a compatibility re-export from `cursor-pagination-client.ts`.
+- Deleted or consolidated:
+  - Removed the response-shape schema implementation from the cursor fetch aggregation helper; response envelope schemas now live together in `src/lib/api/response-schemas.ts`.
+  - Removed raw generic success parsing from the remaining admin setup create/activate mutation responses that have stable full-row API shapes.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `14` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/api/response-schemas.test.ts src/lib/api/cursor-pagination-client.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `10` tests.
+  - `pnpm exec eslint src/lib/api/response-schemas.ts src/lib/api/response-schemas.test.ts src/lib/api/cursor-pagination-client.ts src/lib/api/cursor-pagination-client.test.ts 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx'`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - Targeted `git diff --check` for the admin setup and API schema files: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude review for the expanded print/tasks and broader schema slices still needs a final update after this addendum.
+  - Workflow correction-request create response remains a small schema migration candidate if its route response shape is confirmed.
+  - Shared pharmacy-cooperation API contract module remains a mid-size dedup candidate.
+  - API response-envelope hardening remains actionable only by selected route family; repo-wide unification is deferred until compatibility policy is explicit.
+  - PHOS cycle cleanup and dashboard helper consolidation remain short/mid candidates.
+  - Two consecutive zero-actionable re-audits have not been reached.
+
+### Codex Loop 11 Addendum — Correction Request Safe Response Contract
+
+- Coordination:
+  - Continued on the next API-reviewer short candidate after notifying Claude of the admin/cursor schema hardening.
+  - Inspected the real `/api/patient-share-cases/[id]/correction-requests` route before applying client schema validation.
+- Implemented by Codex:
+  - Changed correction-request POST success responses to use the same `toSafeCorrectionRequest()` projection as GET responses.
+  - Removed raw `reason` / `proposed_value` exposure from the correction-request POST response body while preserving persistence and audit behavior.
+  - Added route-level regression assertions that POST responses contain the created request id but not raw patient name/address text, `reason`, or `proposed_value`.
+  - Migrated workflow correction-request creation from raw `readApiJson` parsing to `readApiJson(..., { schema: correctionRequestRowSchema })`.
+  - Updated workflow component fixtures to the real safe row shape and added malformed-2xx rejection coverage for correction-request creation.
+- Deleted or consolidated:
+  - Consolidated correction-request POST and GET response projection through one safe serializer path.
+  - Removed the last API-reviewer-listed safe workflow mutation candidate that still parsed a consumed response without a schema.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/api/patient-share-cases/[id]/correction-requests/route.test.ts' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `2` files / `20` tests.
+  - `pnpm exec eslint 'src/app/api/patient-share-cases/[id]/correction-requests/route.ts' 'src/app/api/patient-share-cases/[id]/correction-requests/route.test.ts' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx'`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - Targeted `git diff --check` for the correction-request route/workflow files: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude review for the expanded print/tasks and schema slices still needs a final response after this correction-request contract update.
+  - Shared pharmacy-cooperation API contract module remains a mid-size dedup candidate.
+  - API response-envelope hardening remains actionable only by selected route family; repo-wide unification is deferred until compatibility policy is explicit.
+  - PHOS cycle cleanup and dashboard helper consolidation remain short/mid candidates.
+  - Two consecutive zero-actionable re-audits have not been reached.
+
+### Codex Loop 11 Addendum — Shared Pharmacy Cooperation API Contracts
+
+- Coordination:
+  - Continued after correction-request contract validation; no Claude-owned files were edited.
+  - Kept shape sharing conservative: only identical or route-superset response schemas were moved to the shared module.
+- Implemented by Codex:
+  - Added `src/lib/pharmacy-cooperation/api-contracts.ts` as the shared Zod contract module for pharmacy cooperation named entities, partner pharmacy rows, pharmacy partnership rows, pharmacy contract fee/version summaries, and full pharmacy contract rows.
+  - Migrated admin pharmacy-cooperation setup schemas to the shared module.
+  - Migrated workflow pharmacy-cooperation named entity and partner pharmacy summary schemas to the shared module.
+  - Migrated partner cooperation billing active contract response validation to the shared full contract schema while keeping billing-local invoice/candidate schemas local.
+  - Updated billing active-contract fixtures to the real full `/api/pharmacy-contracts` response shape (`partnership.id/status`, nested site/pharmacy ids, and `latest_version.status`).
+  - Added unit coverage for the shared contract module, including malformed partner summary/partnership rejection and route-only extra stripping on full contract rows.
+- Deleted or consolidated:
+  - Removed duplicated `namedEntitySchema`, `partnerPharmacySummarySchema`, and admin-local pharmacy site/partner/partnership/contract row schemas from dashboard files.
+  - Consolidated the contract active fee-rule/version shape used by admin setup and billing contract selection.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/pharmacy-cooperation/api-contracts.test.ts 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' --reporter=dot --testTimeout=30000`: initially failed because the billing fixture used a legacy partial active-contract shape, then passed after updating the fixture to the real full route shape, `4` files / `40` tests.
+  - `pnpm exec eslint src/lib/pharmacy-cooperation/api-contracts.ts src/lib/pharmacy-cooperation/api-contracts.test.ts 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx'`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - Targeted `git diff --check` for the shared contract and touched dashboard files: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Claude review for the expanded print/tasks/schema/correction contract slices remains pending.
+  - API response-envelope hardening remains actionable only by selected route family; repo-wide unification is deferred until compatibility policy is explicit.
+  - PHOS cycle cleanup and dashboard helper consolidation remain short/mid candidates.
+  - Two consecutive zero-actionable re-audits have not been reached.
+
+### Codex Loop 11 Validation Snapshot Before Re-Audit
+
+- Cumulative focused validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/api/cursor-pagination-client.test.ts src/lib/api/response-schemas.test.ts src/lib/pharmacy-cooperation/api-contracts.test.ts 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' 'src/app/(dashboard)/patients/[id]/patient-documents-panel.test.tsx' 'src/app/(dashboard)/patients/[id]/card-workspace.test.tsx' src/lib/reports/care-report-print-audit-contract.test.ts src/lib/tasks/bulk-completion-contract.test.ts 'src/app/api/care-reports/[id]/print-audit/route.test.ts' src/app/api/tasks/bulk/route.test.ts 'src/app/api/patient-share-cases/[id]/correction-requests/route.test.ts' 'src/app/(dashboard)/reports/[id]/print/page.test.tsx' 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' 'src/app/(dashboard)/tasks/tasks-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `16` files / `138` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+  - Full `pnpm format:check`: failed only on Claude-owned `.agent-loop/BLOCKED.md`, `.agent-loop/LOCKS.md`, `.agent-loop/MESSAGE_PROTOCOL.md`, and `.agent-loop/STARTUP_RUNBOOK.md`; Codex did not edit those files.
+  - `git diff --check`: passed.
+- Re-audit:
+  - Started fresh read-only strict review, test audit, architecture/duplication audit, and dead-code/export audit agents against the current diff.
+
+### Codex Loop 12 Addendum — Re-Audit Findings Integrated
+
+- Coordination:
+  - Integrated the latest strict/test/architecture/dead-code re-audit findings instead of counting a Zero Audit.
+  - Preserved Claude-owned `.agent-loop/*`, `AGENTS.md`, `CLAUDE.md`, `.harness-mem/state/continuity.json`, and unrelated patient workspace changes.
+- Implemented by Codex:
+  - Corrected admin contract-document GET validation to match the real `{ data: ContractDocumentRow[] }` endpoint instead of requiring cursor `hasMore`.
+  - Changed partner cooperation billing candidates to validate the real cursor page envelope and added success-side-effect coverage for candidate generation.
+  - Added `itemSchema` support to `fetchAllCursorPages()` and used it for tasks, so malformed successful cursor item rows fail closed.
+  - Split bulk-completion UI messages out of the API contract module and added success UI coverage that selected tasks clear and task caches refresh.
+  - Split patient-share correction request domain validation from UI labels, then added shared correction-request row/page schemas used by workflow and route tests.
+  - Made `family_share` a first-class audience report print target with `family` audience typing, title rendering, PDF rendering, and print-audit fail-closed content validation.
+  - Hardened pharmacy partnership activation for the concurrent idempotent race where another request activates the draft after the pre-read but before `updateMany`.
+  - Removed/de-scoped dead public exports from pharmacy-cooperation and task bulk-completion contract modules.
+- Deleted or consolidated:
+  - Deleted the old mixed `correction-request-contract.ts` in favor of `correction-request-domain.ts` and `correction-request-labels.ts`.
+  - Reused shared pharmacy-cooperation contract schemas for admin/workflow/billing projections instead of local duplicates.
+  - Reused the shared correction-request row/page schema across API and workflow tests instead of route/UI-local row definitions.
+- Validation:
+  - Focused cumulative bundle: `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run ... --reporter=dot --testTimeout=30000`: passed, `17` files / `123` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm build`: passed; compiled successfully and generated `286` static pages.
+  - `git diff --check`: passed.
+  - `pnpm format:check`: failed only on known Claude-owned `.agent-loop/BLOCKED.md`, `.agent-loop/LOCKS.md`, `.agent-loop/MESSAGE_PROTOCOL.md`, `.agent-loop/PROMOTION_QUEUE.md`, and `.agent-loop/STARTUP_RUNBOOK.md`; Codex-owned formatting was fixed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Run a fresh re-audit set after these fixes; this loop cannot count as Zero Audit because actionable findings were implemented.
+  - Claude review/agmsg acknowledgement for the latest schema/print/tasks slice remains pending.
+  - If the next re-audit finds actionable items, return to the relevant loop; otherwise record Zero Audit 1 and run the second required independent zero audit.
+
+### Codex Loop 13 Addendum — Re-Audit Follow-up Contract/Test Closure
+
+- Coordination:
+  - Resumed from the Loop 12 re-audit follow-up state and preserved Claude-owned `.agent-loop/*`, `AGENTS.md`, `CLAUDE.md`, `.harness-mem/state/continuity.json`, and unrelated worktree changes.
+  - Fixed only Codex-owned/test-contract drift surfaced by the expanded validation bundle.
+  - Spawned a fresh read-only re-audit set after validation: Architecture Agent, Duplication Agent, Type & Contract Agent, Behavior/Test Agent, Review Agent, and Dead Code Agent.
+- Implemented by Codex:
+  - Moved cursor page payload normalization into the shared API response-schema module and kept `fetchAllCursorPages()` on the shared invariant path.
+  - Added shared cursor normalizer coverage for metadata preservation, invalid item rejection, and `hasMore` without `nextCursor` rejection.
+  - Added direct `family_share` print/PDF coverage so the family audience title/body/warnings render through audited print/PDF paths and internal provenance/raw IDs remain hidden.
+  - Added correction-request ownership tests for nested `claim_note` and `billing_candidate` targets and direct mismatch rejection for `care_case` / `management_plan`.
+  - Added a bulk task stale-update conflict regression for `updateMany.count < eligibleIds.length`.
+  - Consolidated report type to audience mapping through `defaultAudienceForReportType()` instead of local duplicate maps in print audit/PDF paths.
+  - Added a shared `physicianPrintAuditContent()` test fixture for print hub audit responses so print hub tests use the current physician report content contract instead of legacy partial content.
+  - Widened `PatientShareCorrectionRequestRowInput` to accept DB-produced string target/request types while `toPatientShareCorrectionRequestRow()` still fails closed through the shared Zod output schema.
+- Deleted or consolidated:
+  - Removed the duplicate cursor-page payload normalizer from the cursor pagination client.
+  - Removed local report-type/audience mapping duplication from print audit/PDF code paths.
+  - Replaced repeated partial physician-report print hub fixtures with one contract-complete helper.
+- Validation:
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/reports/print/print-hub-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `11` tests.
+  - Cumulative focused bundle over API schemas, pharmacy cooperation contracts/screens/routes, correction requests, report print/audit/PDF, tasks bulk UI/API, activation, and visit billing candidates: passed, `25` files / `208` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/patient-share/correction-request-domain.test.ts 'src/app/api/patient-share-cases/[id]/correction-requests/route.test.ts' --reporter=dot --testTimeout=30000`: passed, `2` files / `14` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/api/pharmacy-partnerships/[id]/activate/route.test.ts' src/app/api/visit-billing-candidates/route.test.ts --reporter=dot --testTimeout=30000`: passed, `2` files / `13` tests.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed after widening the correction-request serializer input type.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm build`: passed; compiled successfully and generated `286` static pages.
+  - `git diff --check`: passed.
+  - `pnpm format:check`: failed only on known Claude-owned `.agent-loop/BLOCKED.md`, `.agent-loop/LOCKS.md`, `.agent-loop/MESSAGE_PROTOCOL.md`, `.agent-loop/PROMOTION_QUEUE.md`, and `.agent-loop/STARTUP_RUNBOOK.md`; Codex-owned formatting was fixed.
+- Remaining actionable candidates before Zero Audit can count:
+  - Wait for the fresh read-only re-audit agents started in this loop.
+  - Send Claude an agmsg update for Loop 13 validation and current audit status.
+  - If the fresh re-audit returns new actionable findings, implement them and reset the zero-audit count.
+  - If the fresh re-audit returns zero actionable, record Zero Audit 1 and run the second independent zero-actionable audit required by the stop gate.

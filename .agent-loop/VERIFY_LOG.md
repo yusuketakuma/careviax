@@ -40,17 +40,24 @@ fake a pass — leave them out of the row.
 - `timestamp` is ISO-8601 local (Asia/Tokyo).
 - Each gate cell ∈ {`pass`, `fail`, `skip`} (`skip` requires a justification in the PR/commit).
 - `result` = `pass` only if every non-skipped gate is `pass`; otherwise `fail`.
+- `consecutive_fail_count` = number of consecutive runs the **same gate** has failed
+  (per gate, carried forward from the prior row's count). Reset to `0` for a gate the
+  moment it returns `pass` (or a justified `skip`). Record the running max across gates
+  in the column. A **3rd consecutive fail** (`consecutive_fail_count = 3`) on any single
+  gate triggers the §6 hard-stop: stop iterating on that gate, escalate to `BLOCKED.md`,
+  and do not keep re-running blindly. Rows predating this column have an implicit count
+  of `0`; backfill is not required (append-only).
 
 ## Schema
 
-| timestamp | task_id | lint | typecheck | typecheck_no_unused | format_check | test | build | e2e | result |
-| --------- | ------- | ---- | --------- | ------------------- | ------------ | ---- | ----- | --- | ------ |
+| timestamp | task_id | lint | typecheck | typecheck_no_unused | format_check | test | build | e2e | result | consecutive_fail_count |
+| --------- | ------- | ---- | --------- | ------------------- | ------------ | ---- | ----- | --- | ------ | ---------------------- |
 
 ## Log
 
-| timestamp                 | task_id        | lint | typecheck | typecheck_no_unused | format_check | test | build | e2e  | result |
-| ------------------------- | -------------- | ---- | --------- | ------------------- | ------------ | ---- | ----- | ---- | ------ |
-| 2026-06-20T11:48:41+09:00 | F-20260620-001 | skip | skip      | skip                | pass         | skip | skip  | skip | pass   |
+| timestamp                 | task_id        | lint | typecheck | typecheck_no_unused | format_check | test | build | e2e  | result | consecutive_fail_count |
+| ------------------------- | -------------- | ---- | --------- | ------------------- | ------------ | ---- | ----- | ---- | ------ | ---------------------- |
+| 2026-06-20T11:48:41+09:00 | F-20260620-001 | skip | skip      | skip                | pass         | skip | skip  | skip | pass   | 0                      |
 
 <!-- skip justification for F-20260620-001: docs-only change (AGENTS.md, 4 lines added, no
      code/route/build surface). Applicable gates run & independently re-verified by claude-lead
