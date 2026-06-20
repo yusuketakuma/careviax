@@ -1,3 +1,6 @@
+import { z } from 'zod';
+import { readApiJson } from '@/lib/api/client-json';
+
 export type GenerateCareReportFromVisitInput = {
   orgId: string;
   visitRecordId: string;
@@ -9,6 +12,12 @@ export type GenerateCareReportFromVisitInput = {
 export type GeneratedCareReportSummary = {
   id: string;
 };
+
+const generatedCareReportFromVisitResponseSchema = z
+  .object({
+    data: z.array(z.object({ id: z.string() }).passthrough()).optional(),
+  })
+  .passthrough();
 
 export async function generateCareReportFromVisit<TReport extends GeneratedCareReportSummary>(
   input: GenerateCareReportFromVisitInput,
@@ -27,11 +36,11 @@ export async function generateCareReportFromVisit<TReport extends GeneratedCareR
     headers: { 'Content-Type': 'application/json', 'x-org-id': input.orgId },
     body: JSON.stringify(body),
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => null);
-    throw new Error((err as { message?: string } | null)?.message ?? fallbackMessage);
-  }
-
-  const json = (await res.json()) as { data?: TReport[] };
-  return json.data ?? [];
+  const json = await readApiJson<{
+    data?: Array<GeneratedCareReportSummary & Record<string, unknown>>;
+  }>(res, {
+    fallbackMessage,
+    schema: generatedCareReportFromVisitResponseSchema,
+  });
+  return (json.data ?? []) as TReport[];
 }
