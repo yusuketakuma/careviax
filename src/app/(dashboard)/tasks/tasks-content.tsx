@@ -29,7 +29,12 @@ import { useOrgId } from '@/lib/hooks/use-org-id';
 import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { describeOperationalTask } from '@/lib/tasks/operational-task-presentation';
-import { badgeToneClass } from '@/lib/ui/badge-semantics';
+import { StateBadge } from '@/components/ui/state-badge';
+import {
+  PRIORITY_ROLE,
+  TASK_STATUS_ROLE,
+  type StatusRoleOrNeutral,
+} from '@/lib/constants/status-labels';
 import { formatDateLabel } from '@/lib/ui/date-format';
 import type {
   TasksAssignedFilter,
@@ -133,19 +138,43 @@ const WORK_REQUEST_OPTIONS = [
   { value: 'staff_work_request_general', label: 'その他の業務を依頼' },
 ];
 
-const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
-  pending: { label: '未着手', className: badgeToneClass('info') },
-  in_progress: { label: '進行中', className: badgeToneClass('attention') },
-  completed: { label: '完了', className: badgeToneClass('neutral') },
-  cancelled: { label: 'キャンセル', className: badgeToneClass('urgent') },
+// 状態色は 6 軸セマンティック（status-labels.ts の *_ROLE）を正本とする。
+// docs/state-color-migration-map.md の TASK_STATUS_ROLE / PRIORITY_ROLE に追随。
+const STATUS_CONFIG: Record<string, { label: string; role: StatusRoleOrNeutral }> = {
+  pending: { label: '未着手', role: TASK_STATUS_ROLE.pending },
+  in_progress: { label: '進行中', role: TASK_STATUS_ROLE.in_progress },
+  completed: { label: '完了', role: TASK_STATUS_ROLE.completed },
+  cancelled: { label: 'キャンセル', role: TASK_STATUS_ROLE.cancelled },
 };
 
-const PRIORITY_CONFIG: Record<string, { label: string; className: string }> = {
-  urgent: { label: '緊急', className: badgeToneClass('urgent') },
-  high: { label: '高', className: badgeToneClass('attention') },
-  normal: { label: '通常', className: badgeToneClass('info') },
-  low: { label: '低', className: badgeToneClass('neutral') },
+const PRIORITY_CONFIG: Record<string, { label: string; role: StatusRoleOrNeutral }> = {
+  urgent: { label: '緊急', role: PRIORITY_ROLE.urgent },
+  high: { label: '高', role: PRIORITY_ROLE.high },
+  normal: { label: '通常', role: PRIORITY_ROLE.normal },
+  low: { label: '低', role: PRIORITY_ROLE.low },
 };
+
+// neutral は状態色を付けず既定 Badge / text-muted で描く（移行台帳の neutral 運用）。
+function TaskStateBadge({
+  label,
+  role,
+}: {
+  label: string;
+  role: StatusRoleOrNeutral;
+}) {
+  if (role === 'neutral') {
+    return (
+      <Badge variant="outline" className="text-xs text-muted-foreground">
+        {label}
+      </Badge>
+    );
+  }
+  return (
+    <StateBadge role={role} showIcon={false} className="text-xs">
+      {label}
+    </StateBadge>
+  );
+}
 
 // --- Main ---
 
@@ -344,9 +373,7 @@ export function TasksContent({
         cell: ({ row }) => {
           const cfg = PRIORITY_CONFIG[row.original.priority];
           return cfg ? (
-            <Badge variant="outline" className={`text-xs ${cfg.className}`}>
-              {cfg.label}
-            </Badge>
+            <TaskStateBadge label={cfg.label} role={cfg.role} />
           ) : (
             <span className="text-xs text-muted-foreground">{row.original.priority}</span>
           );
@@ -380,9 +407,7 @@ export function TasksContent({
         cell: ({ row }) => {
           const cfg = STATUS_CONFIG[row.original.status];
           return cfg ? (
-            <Badge variant="outline" className={`text-xs ${cfg.className}`}>
-              {cfg.label}
-            </Badge>
+            <TaskStateBadge label={cfg.label} role={cfg.role} />
           ) : (
             <span className="text-xs text-muted-foreground">{row.original.status}</span>
           );
@@ -774,16 +799,8 @@ export function TasksContent({
             return (
               <div key={task.id} className="space-y-2 rounded-xl border border-border/70 p-4">
                 <div className="flex flex-wrap items-center gap-1.5">
-                  {priCfg && (
-                    <Badge variant="outline" className={`text-xs ${priCfg.className}`}>
-                      {priCfg.label}
-                    </Badge>
-                  )}
-                  {cfg && (
-                    <Badge variant="outline" className={`text-xs ${cfg.className}`}>
-                      {cfg.label}
-                    </Badge>
-                  )}
+                  {priCfg && <TaskStateBadge label={priCfg.label} role={priCfg.role} />}
+                  {cfg && <TaskStateBadge label={cfg.label} role={cfg.role} />}
                 </div>
                 <p className="text-sm font-medium">{task.title}</p>
                 <div className="flex items-center justify-between">
