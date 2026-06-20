@@ -42,6 +42,10 @@ This worktree is shared with a peer Claude Code agent (`claude` in team `phos`).
 - **Own your commits.** Commit your own groups in isolation and announce them; do not mix the peer's in-flight (unlocked) changes into your commits.
 - **High-risk areas** (auth, patient/medical data, audit logs, permissions, DB/RLS, offline sync, realtime, billing) require mutual review before landing.
 
+## Agent loop SSOT
+
+The Claude x Codex x agmsg x gbrain operational loop SSOT is `.agent-loop/README.md`. Before editing, LOCK via agmsg; before committing, drain the inbox; stage only owned files; and follow the objective gates in `.agent-loop/GATE_CONFIG.md`.
+
 ## Periodic autonomous commits
 
 For long-running Ralph loops, do not let validated work accumulate indefinitely. Commit automatically and periodically when a coherent owned slice is complete.
