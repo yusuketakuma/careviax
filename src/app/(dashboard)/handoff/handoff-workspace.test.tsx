@@ -298,6 +298,9 @@ describe('HandoffWorkspace', () => {
     fireEvent.click(screen.getByTestId('handoff-open-transfer'));
     const submit = await screen.findByRole('button', { name: '渡す(責任を移す)' });
     expect((submit as HTMLButtonElement).disabled).toBe(true);
+    // 無効理由が未充足項目を示し、ボタンへ aria-describedby で接続される
+    expect(submit.getAttribute('aria-describedby')).toBe('handoff-transfer-missing');
+    expect(screen.getByText(/未入力のため渡せません:/)).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('件名'), {
       target: { value: 'セット先行準備(施設GH)' },
@@ -318,6 +321,9 @@ describe('HandoffWorkspace', () => {
       target: { value: '2026-06-11T17:00' },
     });
     expect((submit as HTMLButtonElement).disabled).toBe(false);
+    // 全項目が揃えば無効理由は消える
+    expect(submit.getAttribute('aria-describedby')).toBeNull();
+    expect(screen.queryByText(/未入力のため渡せません:/)).toBeNull();
   });
 
   it('shows 受領確認 action for incoming items', async () => {

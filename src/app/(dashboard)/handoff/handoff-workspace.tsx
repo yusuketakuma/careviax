@@ -267,6 +267,15 @@ function TransferDialog({
     draft.rationale.trim().length > 0 &&
     draft.deadline.length > 0;
 
+  // 責任移譲は取消不可。無効ボタンが何で詰まっているかを示し、解消対象を明確にする。
+  const missingFields = [
+    draft.content.trim().length === 0 ? '件名' : null,
+    draft.recipient_label.trim().length === 0 ? '宛先(誰に渡すか)' : null,
+    draft.scope.trim().length === 0 ? '①何を(作業の範囲)' : null,
+    draft.rationale.trim().length === 0 ? '②なぜ(根拠)' : null,
+    draft.deadline.length === 0 ? '③いつまで(期限)' : null,
+  ].filter((label): label is string => label !== null);
+
   const createMutation = useMutation({
     mutationFn: async () => {
       if (!boardId) throw new Error('ボードが見つかりません');
@@ -393,11 +402,25 @@ function TransferDialog({
               onChange={(event) => setDraft((prev) => ({ ...prev, deadline: event.target.value }))}
             />
           </div>
+          {!isComplete && !createMutation.isPending && boardId ? (
+            <p
+              id="handoff-transfer-missing"
+              role="status"
+              className="text-xs text-muted-foreground"
+            >
+              未入力のため渡せません: {missingFields.join('、')}
+            </p>
+          ) : null}
           <DialogFooter>
             <Button
               type="submit"
               className="min-h-[44px]"
               disabled={!isComplete || createMutation.isPending || !boardId}
+              aria-describedby={
+                !isComplete && !createMutation.isPending && boardId
+                  ? 'handoff-transfer-missing'
+                  : undefined
+              }
             >
               {createMutation.isPending ? '送信中...' : '渡す(責任を移す)'}
             </Button>
