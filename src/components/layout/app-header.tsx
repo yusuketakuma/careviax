@@ -1,8 +1,7 @@
 'use client';
 
-import { useCallback, useMemo, useSyncExternalStore } from 'react';
+import { useCallback, useSyncExternalStore } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   ChevronDown,
@@ -15,10 +14,6 @@ import {
 } from 'lucide-react';
 import { NotificationBell } from '@/components/features/notifications/notification-bell';
 import { OfflineDraftIndicator } from '@/components/features/offline/offline-draft-indicator';
-import {
-  useKeyboardShortcuts,
-  type ShortcutDefinition,
-} from '@/components/features/keyboard/use-keyboard-shortcuts';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -28,6 +23,12 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { memberRoleLabel } from '@/lib/auth/member-roles';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
+import { useCommandPaletteStore } from '@/lib/stores/command-palette-store';
+import { ACTIVE_PALETTE_CATEGORIES } from '@/lib/search/categories';
+
+// ヘッダ検索ボックスの案内文も、実際に検索される(active)カテゴリのラベルから導出する
+// (deferred の処方カード/連絡先を約束しない)。
+const SEARCH_BOX_LABEL = `${ACTIVE_PALETTE_CATEGORIES.map((c) => c.label).join('・')}を検索`;
 import { useNetworkOnline } from '@/lib/hooks/use-network-online';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useAuthStore } from '@/lib/stores/auth-store';
@@ -113,7 +114,7 @@ function HeaderOfflineDrafts() {
 }
 
 export function AppHeader() {
-  const router = useRouter();
+  const openPalette = useCommandPaletteStore((state) => state.openPalette);
   const orgId = useOrgId();
   const {
     sidebarOpen,
@@ -152,16 +153,11 @@ export function AppHeader() {
     [careMode, orgId, setCareMode],
   );
 
+  // ヘッダの検索アフォーダンス(常設ボックス / compact アイコン)はパレットを開く。
+  // グローバルショートカット(⌘K / "/")の所有は AppShell に一本化(ここでは登録しない)。
   const goToSearch = useCallback(() => {
-    router.push('/search');
-  }, [router]);
-
-  // "/" でグローバル検索へ(入力中フィールドでは useKeyboardShortcuts 側で抑止される)
-  const searchShortcuts = useMemo<ShortcutDefinition[]>(
-    () => [{ key: '/', handler: goToSearch, description: '検索へ移動', scope: 'global' }],
-    [goToSearch],
-  );
-  useKeyboardShortcuts(searchShortcuts);
+    openPalette();
+  }, [openPalette]);
 
   return (
     <header
@@ -224,7 +220,7 @@ export function AppHeader() {
           data-testid="app-header-search"
         >
           <Search className="size-4 shrink-0" aria-hidden="true" />
-          <span className="min-w-0 flex-1 truncate text-left">患者・カード・薬剤を検索</span>
+          <span className="min-w-0 flex-1 truncate text-left">{SEARCH_BOX_LABEL}</span>
           <kbd
             className="shrink-0 rounded border border-border bg-background px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground"
             aria-hidden="true"

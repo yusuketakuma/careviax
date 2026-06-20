@@ -7,8 +7,8 @@ import { type ShortcutDefinition } from './use-keyboard-shortcuts';
  */
 export const GLOBAL_SHORTCUTS: ShortcutDefinition[] = [
   // Global
-  { key: 'k', metaKey: true, handler: () => {}, description: 'グローバル検索', scope: 'global' },
-  { key: '/', handler: () => {}, description: '検索へ移動', scope: 'global' },
+  { key: 'k', metaKey: true, handler: () => {}, description: '全体検索を開く', scope: 'global' },
+  { key: '/', handler: () => {}, description: '全体検索を開く', scope: 'global' },
   { key: 'n', metaKey: true, handler: () => {}, description: '新規作成', scope: 'global' },
   { key: '?', handler: () => {}, description: 'ショートカット一覧', scope: 'global' },
   { key: 'Escape', handler: () => {}, description: 'モーダルを閉じる', scope: 'global' },
@@ -17,7 +17,13 @@ export const GLOBAL_SHORTCUTS: ShortcutDefinition[] = [
   { key: 'ArrowUp', handler: () => {}, description: '前の行へ移動', scope: 'dispensing' },
   { key: 'ArrowDown', handler: () => {}, description: '次の行へ移動', scope: 'dispensing' },
   { key: 'Enter', handler: () => {}, description: '選択した行を開く', scope: 'dispensing' },
-  { key: 'Enter', metaKey: true, handler: () => {}, description: '選択行を完了', scope: 'dispensing' },
+  {
+    key: 'Enter',
+    metaKey: true,
+    handler: () => {},
+    description: '選択行を完了',
+    scope: 'dispensing',
+  },
 
   // Auditing
   { key: 'ArrowUp', handler: () => {}, description: '前の行へ移動', scope: 'auditing' },
