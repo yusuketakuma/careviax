@@ -259,9 +259,10 @@ export function ReferralForm() {
             {...register('name')}
             placeholder="山田 太郎"
             aria-invalid={!!errors.name}
+            aria-describedby={errors.name ? 'ref-name-error' : undefined}
           />
           {errors.name && (
-            <p className="text-xs text-destructive" role="alert">
+            <p id="ref-name-error" className="text-xs text-destructive" role="alert">
               {errors.name.message}
             </p>
           )}
@@ -279,9 +280,10 @@ export function ReferralForm() {
             {...register('name_kana')}
             placeholder="ヤマダ タロウ"
             aria-invalid={!!errors.name_kana}
+            aria-describedby={errors.name_kana ? 'ref-name-kana-error' : undefined}
           />
           {errors.name_kana && (
-            <p className="text-xs text-destructive" role="alert">
+            <p id="ref-name-kana-error" className="text-xs text-destructive" role="alert">
               {errors.name_kana.message}
             </p>
           )}
@@ -300,9 +302,10 @@ export function ReferralForm() {
               type="date"
               {...register('birth_date')}
               aria-invalid={!!errors.birth_date}
+              aria-describedby={errors.birth_date ? 'ref-birth-date-error' : undefined}
             />
             {errors.birth_date && (
-              <p className="text-xs text-destructive" role="alert">
+              <p id="ref-birth-date-error" className="text-xs text-destructive" role="alert">
                 {errors.birth_date.message}
               </p>
             )}
@@ -319,6 +322,7 @@ export function ReferralForm() {
               id="ref-gender"
               {...register('gender')}
               aria-invalid={!!errors.gender}
+              aria-describedby={errors.gender ? 'ref-gender-error' : undefined}
               className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50 aria-invalid:border-destructive"
             >
               <option value="">選択してください</option>
@@ -327,7 +331,7 @@ export function ReferralForm() {
               <option value="other">その他</option>
             </select>
             {errors.gender && (
-              <p className="text-xs text-destructive" role="alert">
+              <p id="ref-gender-error" className="text-xs text-destructive" role="alert">
                 {errors.gender.message}
               </p>
             )}
