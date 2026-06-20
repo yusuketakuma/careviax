@@ -8010,5 +8010,32 @@ Next loop:
   - `readApiJson` schema validation call-site migration remains open and is mostly UI/dashboard-facing.
   - care-report print-audit DTO/client duplication remains open.
   - route-order conflict helper dedup across visit route/schedule flows remains open.
-  - Coverage gate expansion for shared `src/lib` remains open.
   - Re-audit agents must run again after ledger sync and any current local generated state is classified.
+
+### Codex Loop 8 Addendum — Autonomous Commit Policy + Coverage Gate
+
+- Coordination:
+  - Drained agmsg before committing. Claude yielded `AGENTS.md` and kept `.agent-loop/*` in its own lane; Codex acknowledged and left `.agent-loop/*` untouched.
+  - `.harness-mem/state/continuity.json` remains generated local state and was intentionally not staged.
+- Implemented by Codex:
+  - `a2414cdc` `docs: require periodic autonomous commits`
+    - Strengthened `AGENTS.md` so periodic autonomous commits are the default for repository work.
+    - Added mandatory commit trigger points and a required skip-reason record when a safe commit boundary is unavailable.
+  - `69ff423e` `test: include shared lib in coverage gate`
+    - Expanded Vitest coverage collection to include `src/lib/**/*.ts`.
+    - Hardened PH-OS Board capacity tests to wait for the rendered `Capacity` heading instead of only waiting for `getCapacity`, removing the coverage/full-run timing flake.
+- Validation:
+  - `git diff --check -- AGENTS.md`: passed.
+  - `pnpm exec prettier --check AGENTS.md`: passed.
+  - Focused PH-OS Board Vitest: `2` files / `51` tests passed.
+  - Full coverage gate with `src/lib/**/*.ts`: `1092` files / `8405` tests passed / `1` skipped; statements `83.92%`, branches `71.48%`, functions `87.66%`, lines `86.74%`.
+  - Targeted ESLint for `vitest.config.ts`, `src/phos/infra/phos-final-e2e.test.tsx`, and `src/phos/ui/board/BoardClient.test.tsx`: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - Targeted `git diff --check`: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - API response envelope type hardening remains open.
+  - `readApiJson` schema validation call-site migration remains open and is mostly UI/dashboard-facing.
+  - care-report print-audit DTO/client duplication remains open.
+  - route-order conflict helper dedup across visit route/schedule flows remains open.
+  - Re-audit agents must run again after this ledger sync and current generated state classification.
