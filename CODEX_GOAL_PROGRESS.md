@@ -99,7 +99,7 @@ Implemented:
 - Moved the canonical SES/email delivery failure reason into `src/server/services/email.ts`.
 - Added `resolveEmailDeliveryFailureReason()` so care-report send persistence uses the email service's safe failure reason instead of a route-local constant.
 - Preserved the existing client/API failure reason string (`メール送信に失敗しました`) and continued to avoid leaking raw provider errors such as `SES unavailable`.
-- Added shared `src/lib/ui/time-of-day.ts` for local `HH:mm` rendering with invalid timestamp fallback.
+- Added shared `src/lib/datetime/time-of-day.ts` for local `HH:mm` rendering with invalid timestamp fallback.
 - Re-exported the shared helper from dashboard cockpit, handoff workspace, report-share workspace, and schedule-team-board helpers so existing imports and UI behavior remain compatible.
 
 Deleted or consolidated:
@@ -109,7 +109,7 @@ Deleted or consolidated:
 
 Focused validation:
 
-- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/ui/time-of-day.test.ts src/server/services/email.test.ts 'src/app/api/care-reports/[id]/send/route.test.ts' 'src/app/(dashboard)/dashboard/dashboard-cockpit.helpers.test.ts' 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' --reporter=dot --testTimeout=30000`: passed, 7 files / 100 tests. Existing HandoffWorkspace `act(...)` warnings were emitted but did not fail the suite.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/datetime/time-of-day.test.ts src/server/services/email.test.ts 'src/app/api/care-reports/[id]/send/route.test.ts' 'src/app/(dashboard)/dashboard/dashboard-cockpit.helpers.test.ts' 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' --reporter=dot --testTimeout=30000`: passed, 7 files / 100 tests. Existing HandoffWorkspace `act(...)` warnings were emitted but did not fail the suite.
 - Touched-file ESLint for Loop 2 source/test files: passed.
 - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
 - `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
@@ -134,7 +134,7 @@ Candidate:
 
 Implemented:
 
-- Reused `src/lib/ui/time-of-day.ts` from:
+- Reused `src/lib/datetime/time-of-day.ts` from:
   - `src/app/(dashboard)/settings/operational-policy-content.tsx`
   - `src/app/(dashboard)/patients/patients-board.tsx`
   - `src/app/(dashboard)/visits/visits-today.tsx`
@@ -142,11 +142,11 @@ Implemented:
 
 Deleted or consolidated:
 
-- Consolidated all currently scanned dashboard-local time-of-day helper definitions into the shared helper. `rg` now shows only `src/lib/ui/time-of-day.ts` as the implementation and `schedule-team-board.helpers.ts` as a compatibility re-export alias for `formatTimeOfDayIso`.
+- Consolidated all currently scanned dashboard-local time-of-day helper definitions into the shared helper. `rg` now shows only `src/lib/datetime/time-of-day.ts` as the implementation and `schedule-team-board.helpers.ts` as a compatibility re-export alias for `formatTimeOfDayIso`.
 
 Focused validation:
 
-- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/ui/time-of-day.test.ts 'src/app/(dashboard)/settings/operational-policy-content.test.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx' 'src/app/(dashboard)/visits/visits-today.test.tsx' --reporter=dot --testTimeout=30000`: passed, 4 files / 21 tests.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/datetime/time-of-day.test.ts 'src/app/(dashboard)/settings/operational-policy-content.test.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx' 'src/app/(dashboard)/visits/visits-today.test.tsx' --reporter=dot --testTimeout=30000`: passed, 4 files / 21 tests.
 - Touched-file ESLint for the Loop 3 files: passed.
 - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
 
@@ -157,6 +157,100 @@ Blocked or deferred:
 Next loop:
 
 - Wait for the active re-audit agents. If they return actionable findings, implement them. Otherwise record Zero Audit 1 and run the second required re-audit.
+
+### Loop 4 - Re-Audit Follow-up: Contracts, Observability, Hygiene, and Remaining Dedup
+
+Re-audit results:
+
+- Zero audit was not reached. Refactor/Test/Strict/Dead-code re-audits returned in-session actionable items.
+- Adopted the communication protocol added by Claude in `AGENTS.md`: drain `agmsg` inbox at Ralph loop start, before edits/lock-sensitive work, before commits, and after long validations/subagent waits.
+- Claude owns and locked `src/app/api/consent-records/*`; Codex did not edit that area.
+
+Implemented:
+
+- Added invalid `Date` guards to `src/lib/date-key.ts` so `formatDateKey()` / `formatUtcDateKey()` preserve old `toISOString()` fail-fast semantics instead of returning `NaN-NaN-NaN`.
+- Added `src/lib/reports/delivery-failure-reasons.ts` as a client-safe SSOT for safe delivery failure reasons, display filtering, and sanitization.
+- Kept `src/server/services/email.ts` as a compatibility re-export for email delivery failure constants/helpers.
+- Fixed D3-a observability: `src/app/api/care-reports/[id]/send/route.ts` now binds SES/email send errors, logs internal `logger.warn` diagnostics with error name, HTTP status, and transient/permanent/unknown classification, while keeping persisted/client-facing failure text fixed and PHI-safe.
+- Reused delivery failure reason sanitizer in `/api/care-reports/today-workspace` and report-share UI.
+- Added `src/lib/api/client-json.ts` and moved the duplicated `readApiJson()` logic from admin pharmacy cooperation, billing partner cooperation, and workflow pharmacy cooperation screens into it.
+- Added `src/lib/workspace/daily-ops-rail.ts` compatibility re-export to use the shared `formatTimeOfDay()` helper.
+- Extended `src/lib/datetime/time-of-day.ts` to accept both `string` and `Date`, then removed local Date-based time formatters from visits today-preparation, patients board, and medication-set workspace API routes.
+- Narrowed `.gitignore` from global `*.bak.*` to root-only `/*.bak.*` and added a local artifact ignore contract test to ensure `agmsg/` and root backups are ignored without hiding `src/**/foo.bak.ts`.
+- Replaced report-share action-rail expectations that reused the helper under test with literal expected labels.
+- Added invalid timestamp coverage for dashboard and schedule-team-board compatibility exports.
+- Removed lock-free noUnused findings: unused default React imports in four tests, unused request parameters in dashboard clerk-support, QR draft, set-batch, workflow-exception routes, and one route test mock.
+- Inlined the one-use `dateKeyFromDate()` wrapper in `patient-share-cases`.
+
+Deleted or consolidated:
+
+- Consolidated safe report delivery failure reason/display/sanitization logic into one pure module.
+- Consolidated duplicated pharmacy cooperation client JSON/error parsing into one client-safe helper.
+- Consolidated dashboard/API time-of-day formatting under `src/lib/datetime/time-of-day.ts`.
+- Removed global backup ignore that could hide source-like `.bak.*` files under `src/**`.
+
+Focused validation:
+
+- D3-a focused validation: `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/api/care-reports/[id]/send/route.test.ts' src/lib/reports/delivery-failure-reasons.test.ts --reporter=dot --testTimeout=30000`: passed, 2 files / 47 tests.
+- Focused regression bundle for Loop 4: `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run ... --reporter=dot --testTimeout=30000`: passed, 24 files / 222 tests.
+- Touched-file ESLint for D3-a: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `pnpm date-slices:check`: passed.
+- `pnpm eventbridge-schedules:check`: passed.
+- `git diff --check --`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec tsc --noEmit --pretty false --incremental false --noUnusedLocals --noUnusedParameters --skipLibCheck`: fails only on `src/app/api/consent-records/[id]/route.ts`, which is Claude's active lock and was acknowledged by Claude as their cleanup item.
+
+Blocked or deferred:
+
+- `src/app/api/consent-records/[id]/route.ts` noUnused cleanup is blocked by Claude's lock and assigned to Claude.
+- `AGENTS.md` communication protocol update is a Claude-owned concurrent diff and was not edited by Codex.
+- Committing grouped changes was requested through Claude's relay, but Codex will not mix Claude-owned changes into Codex groups; commit grouping must respect current dirty worktree boundaries and the latest direct user instructions.
+
+Next loop:
+
+- Re-run zero-audit agents after the latest follow-up changes. If actionable findings remain, implement them. If no actionable findings remain, count Zero Audit 1 and run a second clean audit.
+
+### Loop 5 - Re-Audit Follow-up: Time Boundary, Export Surface, Logger Safety, and TZ-Stable Tests
+
+Re-audit results:
+
+- Zero audit was not reached. Architecture, Duplication, Test, Dead-code, and Strict Review agents returned additional in-session actionable items.
+- Claude locked and completed `src/server/services/file-storage.ts` separately in commit `6afc0164`; Codex did not edit that file.
+- Claude requested a D3 logger-payload negative assertion in `src/app/api/care-reports/[id]/send/route.test.ts`; Codex accepted and implemented it.
+
+Implemented:
+
+- Moved the shared time formatter from UI namespace to neutral `src/lib/datetime/time-of-day.ts` and migrated API routes, dashboard helpers, workspace helpers, and UI consumers away from `@/lib/ui/time-of-day`.
+- Fixed `report-share-workspace.test.tsx` timezone dependence by deriving fixture timestamps from local `Date` objects, then verified the test under `TZ=UTC`.
+- Tightened D3 SES failure observability tests so logger payload keys are fixed and raw provider message/contact/stack fields are not logged.
+- Private-ized `readApiErrorMessage()` and the non-public delivery failure reason constants, keeping tests on public behavior.
+- Reused canonical helpers for the remaining actionable duplicates: `formatDateKey()` in `pendingProposalDateLabel()`, `formatTimeOfDay()` through `formatSyncTime()`, and `formatTimeOfDayIso(now)` for the schedule team-board current-time label.
+- Updated progress ledgers to the current `src/lib/datetime/time-of-day.ts` path.
+
+Deleted or consolidated:
+
+- Removed the `src/lib/ui/time-of-day.ts` untracked helper surface by moving it to `src/lib/datetime/time-of-day.ts`.
+- Removed unnecessary public exports from client JSON and delivery failure helper modules.
+- Removed remaining hand-built local `HH:mm` and local tomorrow date-key formatting in the audited touched areas.
+
+Focused validation:
+
+- `TZ=UTC NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' --reporter=dot --testTimeout=30000`: passed, 1 file / 8 tests.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/api/client-json.test.ts src/lib/reports/delivery-failure-reasons.test.ts src/lib/datetime/time-of-day.test.ts 'src/app/api/care-reports/[id]/send/route.test.ts' 'src/app/(dashboard)/schedules/schedule-team-board.helpers.test.ts' src/lib/workspace/daily-ops-rail.test.ts src/components/layout/app-header.test.tsx --reporter=dot --testTimeout=30000`: passed, 7 files / 80 tests.
+- `pnpm date-slices:check`: passed.
+- Touched-file ESLint for Loop 5 high-signal files: passed.
+- Earlier Loop 5 pre-fix checks: `NODE_OPTIONS=--max-old-space-size=16384 pnpm format:check`, noUnused TypeScript check, `git diff --check --`, `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`, `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`, and `pnpm eventbridge-schedules:check` passed before the final ledger edits except for the now-addressed format/stale-ledger findings.
+
+Blocked or deferred:
+
+- `readApiJson()` blank/whitespace message fallback remains a mid-term product-contract candidate because changing it would alter existing local helper behavior.
+- Broad route response schema decoding remains long-term work because it requires endpoint-by-endpoint contract decisions.
+- Commit grouping remains deferred until Codex-owned paths can be staged explicitly without mixing Claude commits or unrelated concurrent changes.
+
+Next loop:
+
+- Run Prettier/format, type/lint/diff checks after this ledger update, then start another zero-audit pass. If all agents report zero new actionable findings, record Zero Audit 1 and immediately run the second clean pass.
 
 ## Current Goal - 2026-06-19 JST Adjacent Feature and Consistency Loop
 
@@ -7690,7 +7784,9 @@ Collect agent findings → triage by [evidence + low-risk + spec-preserving] →
 - 注記: worktree に私の作業でない未コミット変更が出現(.gitignore[agmsg//*.bak.*追加], eslint.config.mjs, pharmacy-invoices/patient-share-cases/partner-visit-report-drafts/pharmacy-contract-documents/pharmacy-cooperation-setup 等)。無関係差分として尊重し未コミット・未変更のまま放置。Codexに出所確認中。
 
 ## Loop 2 — 着手
+
 ### Slice G 完了 (Claude実装) — patient-detail BFF 直列クエリ並列化 [Duplication/Perf #9]
+
 - File: src/app/api/patients/[id]/route.ts (LOCK宣言済み)
 - 根拠: 患者詳細GETの末尾で homeCareFeatureSummary → operationHistory → actorNameMap → labRows の4本が直列await。homeCareFeatureSummary/operationHistory/labRows は互いに独立(operationHistoryは sync計算の filters のみ依存、labRows/homeCareは orgId+id のみ)。
 - 実装: 独立3本を Promise.all 化(4 RTT→2)。actorNameMap は operationHistory に依存するため後段で逐次維持。operationHistoryFilters の sync計算を Promise.all 前に移動。labRows の二重宣言を解消。
@@ -7698,3 +7794,17 @@ Collect agent findings → triage by [evidence + low-risk + spec-preserving] →
 - Validation: typecheck0, eslint0, route.test 35 pass(出力不変=回帰なし)。
 - Review: patient-detail は Codex hotspot#3 → 相互レビュー依頼。
 - 注: foreign変更(date-key dedup)は方針A=Codexが自分でコミット&共有。
+
+### 通信対策(ユーザー依頼) + Codex Loop 4 レビュー
+
+- 通信対策: AGENTS.md に agmsg drain規律(毎反復/編集前/コミット前) + ACK-gate + URGENT優先prefix + relay注記 を追加・コミット(9a54e67e, ca37e15d)。Codex 採用済み、協調回復。
+- 原因: monitor push は受信側が turn境界に来て初めて処理。Codexの連続ralphは境界が少なくbusy時に取りこぼし。→ poll規律で解決。
+- Codex Loop 4 (client-json dedup + delivery-failure-reasons SSOT) レビュー → **APPROVE**。独立検証87 tests green。client-json/displayFailureReason は既存ローカルコピーの統合(正しいdedup)、sanitize/display で raw provider error の persisted/display 漏洩を防ぐPHI-safety確認。
+- Slice G commit 6aeb5f7f, consent req \_req commit 7f8834e7。
+- Codex commit待ち: D3, Loop4, date-key dedup, noUnused cleanup(全て私 or ralph で承認済み)。landing後に worktree クリーン化、Loop2 残(apiFetch広域採用/file-storage#3#7/withOrgContext#2/sync-engine)をjoint assessment。
+
+### Loop 2 続き (Claude solo, clean非競合)
+- Reliability#7: file-storage cleanupExpiredGeneratedFiles errors[]観測化 + 回帰テスト。commit 6afc0164 (72 tests)。
+- Perf Low: pca-pumps checkPcaPumpRentalOverdues を org単位集約(withOrgContext+updateMany N→M)。daily.test更新(id→{in:[...]})。commit 7ab6abf6 (31 tests)。
+- Claude solo clean backlog ほぼ枯渇。残: sync-engine多重購読(Async Med, 高リスクoffline, Codex hotspot=要調整), withOrgContext#2(pharmacy, Codex ralph競合), apiFetch広域(Codex client-json着手済), dispense-results(監査で許容判定=非actionable)。
+- 残は Codex-lane/高リスク/調整依存。Codex の大量backlog(50+未コミット)のグループコミットが律速。
