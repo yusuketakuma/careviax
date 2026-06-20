@@ -208,3 +208,13 @@ pnpm db:generate      # Prisma client generation
 pnpm lint             # ESLint flat config
 pnpm deploy           # AWS Amplify deploy (or CDK deploy)
 ```
+
+## Autonomous Refinement Loop (Claude × Codex × agmsg × gbrain)
+
+Claude を主実装、Codex を agmsg 経由の peer reviewer/auditor とする継続改善ループの運用基盤は `.agent-loop/` にある。**ループを回す前に `.agent-loop/README.md` を読むこと**（運用の SSOT）。
+
+- **maker/checker 分離**: 実装した側は自己完了判定しない（Claude 実装→Codex review、逆も同様）。最終判定は objective gate（`pnpm lint` / `typecheck` / `typecheck:no-unused` / `format:check` / `test` / `build` / 必要時 `test:e2e`）に寄せる。`.agent-loop/GATE_CONFIG.md` 参照。
+- **編集規律**: 編集前に agmsg で対象 path を LOCK、commit 前に inbox drain、自ファイルのみ stage。`.agent-loop/LOCKS.md` / `MESSAGE_PROTOCOL.md`（AGLOOP v5）。
+- **gbrain**: 長期記憶だが現在の repo 状態・テスト・型・lint・build より**優先しない**。※ gbrain MCP は未接続（Phase 3、`gstack setup-gbrain` 依存）。
+- **新機能**: どちらに投げても `.agent-loop/FEATURE_QUEUE.md` 経由でループに載せる（`prompts/feature-intake.md`）。
+- **hard stop / security**: auth/billing/payments/security/破壊的 migration/本番 deploy は承認なしに触らない（`.agent-loop/BLOCKED.md` へ退避）。
