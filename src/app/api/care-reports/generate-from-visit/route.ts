@@ -7,6 +7,7 @@ import {
   notFound,
 } from '@/lib/api/response';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
+import type { GeneratedCareReportFromVisitResponse } from '@/lib/reports/generate-from-visit-contract';
 import { generateReportsFromVisit } from '@/server/services/report-generator';
 import { z } from 'zod';
 
@@ -99,15 +100,14 @@ export const POST = withAuthContext(
       throw err;
     }
 
-    return success(
-      {
-        data: result.reports.map((report) => ({
-          ...report,
-          updated_at: report.updated_at.toISOString(),
-        })),
-      },
-      201,
-    );
+    const responseBody = {
+      data: result.reports.map((report) => ({
+        ...report,
+        updated_at: report.updated_at.toISOString(),
+      })),
+    } satisfies GeneratedCareReportFromVisitResponse;
+
+    return success(responseBody, 201);
   },
   {
     permission: 'canAuthorReport',

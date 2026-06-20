@@ -96,6 +96,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     await recordCareReportPrintAudit(prisma, {
       orgId: ctx.orgId,
       actorId: ctx.userId,
+      actorSiteId: ctx.actorSiteId,
+      patientId: printReport.patient_id,
       reportId: id,
       intent,
       reportUpdatedAt: printReport.updated_at,

@@ -1,5 +1,9 @@
-import { z } from 'zod';
 import { readApiJson } from '@/lib/api/client-json';
+import {
+  generatedCareReportFromVisitResponseSchema,
+  type GeneratedCareReportFromVisitResponse,
+  type GeneratedCareReportSummary,
+} from './generate-from-visit-contract';
 
 export type GenerateCareReportFromVisitInput = {
   orgId: string;
@@ -8,16 +12,6 @@ export type GenerateCareReportFromVisitInput = {
   reportType?: string;
   expectedReportUpdatedAt?: string;
 };
-
-export type GeneratedCareReportSummary = {
-  id: string;
-};
-
-const generatedCareReportFromVisitResponseSchema = z
-  .object({
-    data: z.array(z.object({ id: z.string() }).passthrough()).optional(),
-  })
-  .passthrough();
 
 export async function generateCareReportFromVisit<TReport extends GeneratedCareReportSummary>(
   input: GenerateCareReportFromVisitInput,
@@ -36,9 +30,7 @@ export async function generateCareReportFromVisit<TReport extends GeneratedCareR
     headers: { 'Content-Type': 'application/json', 'x-org-id': input.orgId },
     body: JSON.stringify(body),
   });
-  const json = await readApiJson<{
-    data?: Array<GeneratedCareReportSummary & Record<string, unknown>>;
-  }>(res, {
+  const json = await readApiJson<GeneratedCareReportFromVisitResponse>(res, {
     fallbackMessage,
     schema: generatedCareReportFromVisitResponseSchema,
   });

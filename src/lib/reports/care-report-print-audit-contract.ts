@@ -11,6 +11,28 @@ export const careReportPrintAuditRequestSchema = z.object({
   intent: z.enum(CARE_REPORT_PRINT_AUDIT_INTENTS).optional(),
 });
 
+const requiredJsonValueSchema = z.custom<unknown>((value) => value !== undefined, {
+  message: 'content is required',
+});
+
+export const careReportPrintAuditReportSchema = z
+  .object({
+    id: z.string(),
+    report_type: z.string(),
+    pharmacy_name: z.string().optional(),
+    content: requiredJsonValueSchema,
+  })
+  .passthrough();
+
+export const careReportPrintAuditResponseSchema = z
+  .object({
+    data: z.object({
+      audited: z.boolean(),
+      report: careReportPrintAuditReportSchema,
+    }),
+  })
+  .passthrough();
+
 export type CareReportPrintAuditIntent = (typeof CARE_REPORT_PRINT_AUDIT_INTENTS)[number];
 
 export type CareReportPrintAuditReport = {

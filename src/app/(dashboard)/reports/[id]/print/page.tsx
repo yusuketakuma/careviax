@@ -8,12 +8,15 @@ import { PrintPageToolbar } from '@/components/features/workflow/print-page-tool
 import { PrintLayout } from '@/components/features/reports/print-layout';
 import { Loading } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { readApiJson } from '@/lib/api/client-json';
 import type {
   PhysicianReportContent,
   CareManagerReportContent,
   AudienceReportContent,
 } from '@/types/care-report-content';
-import type {
+import {
+  careReportPrintAuditResponseSchema,
+  type CareReportPrintAuditReport,
   CareReportPrintAuditPrintableReport,
   CareReportPrintAuditResponse,
 } from '@/lib/reports/care-report-print-audit-contract';
@@ -467,10 +470,10 @@ export default function ReportPrintPage() {
         body: JSON.stringify({ intent: 'preview_rendered' }),
       });
       if (res.status === 403) throw new Error('PRINT_FORBIDDEN');
-      if (!res.ok) throw new Error('報告書の印刷監査を記録できませんでした');
-      return res.json() as Promise<
-        CareReportPrintAuditResponse<CareReportPrintAuditPrintableReport>
-      >;
+      return readApiJson<CareReportPrintAuditResponse<CareReportPrintAuditReport>>(res, {
+        fallbackMessage: '報告書の印刷監査を記録できませんでした',
+        schema: careReportPrintAuditResponseSchema,
+      }) as Promise<CareReportPrintAuditResponse<CareReportPrintAuditPrintableReport>>;
     },
     enabled: !!orgId && !!reportId,
     retry: false,

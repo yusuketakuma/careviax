@@ -20,6 +20,7 @@ import { MainWorkflowCompactNav } from '@/components/features/workflow/main-work
 import { readApiJson } from '@/lib/api/client-json';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { generateCareReportFromVisit } from '@/lib/reports/generate-from-visit-client';
+import type { GeneratedCareReportSummary } from '@/lib/reports/generate-from-visit-contract';
 import { displayDeliveryFailureReason } from '@/lib/reports/delivery-failure-reasons';
 import { cn } from '@/lib/utils';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
@@ -68,10 +69,7 @@ const DELIVERY_CHANNEL_LABELS: Record<string, string> = {
   ph_os_share: 'PH-OS共有',
 };
 
-type GeneratedCareReport = {
-  id: string;
-  report_type: string;
-};
+type GeneratedCareReport = GeneratedCareReportSummary;
 
 function formatDateTime(iso: string): string {
   const date = new Date(iso);

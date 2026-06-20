@@ -205,6 +205,28 @@ describe('/api/saved-views', () => {
     expect(txMock.auditLog.create).not.toHaveBeenCalled();
   });
 
+  it('maps create-time unique constraint races to duplicate-name conflicts', async () => {
+    prismaMock.savedView.findFirst.mockResolvedValue(null);
+    prismaMock.savedView.count.mockResolvedValue(0);
+    txMock.savedView.create.mockRejectedValueOnce({ code: 'P2002' });
+
+    const response = await POST(
+      jsonRequest('/api/saved-views', 'POST', {
+        name: '朝の確認',
+        scope: 'schedules',
+        filters: {},
+      }),
+      emptyParams,
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同じ名前の保存ビューが既に存在します',
+    });
+    expect(txMock.auditLog.create).not.toHaveBeenCalled();
+  });
+
   it('updates only an owned saved view and records changed fields', async () => {
     prismaMock.savedView.findFirst
       .mockResolvedValueOnce({ id: 'view_1', user_id: 'user_1', scope: 'schedules', name: '旧名' })
@@ -248,6 +270,25 @@ describe('/api/saved-views', () => {
         },
       }),
     });
+  });
+
+  it('maps update-time unique constraint races to duplicate-name conflicts', async () => {
+    prismaMock.savedView.findFirst
+      .mockResolvedValueOnce({ id: 'view_1', user_id: 'user_1', scope: 'schedules', name: '旧名' })
+      .mockResolvedValueOnce(null);
+    txMock.savedView.update.mockRejectedValueOnce({ code: 'P2002' });
+
+    const response = await PATCH(
+      jsonRequest('/api/saved-views/view_1', 'PATCH', { name: '新名' }),
+      params,
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'WORKFLOW_CONFLICT',
+      message: '同じ名前の保存ビューが既に存在します',
+    });
+    expect(txMock.auditLog.create).not.toHaveBeenCalled();
   });
 
   it('rejects editing a shared view owned by another user', async () => {

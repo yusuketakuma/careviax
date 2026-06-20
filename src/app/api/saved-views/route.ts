@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { withAuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
 import { withOrgContext } from '@/lib/db/rls';
+import { isPrismaUniqueConstraintError } from '@/lib/db/prisma-errors';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { conflict, success, validationError } from '@/lib/api/response';
 import { prisma } from '@/lib/db/client';
@@ -80,29 +81,37 @@ export const POST = withAuthContext(async (req, ctx) => {
       where: { org_id: ctx.orgId, user_id: ctx.userId, scope },
     }));
 
-  const created = await withOrgContext(ctx.orgId, async (tx) => {
-    const view = await tx.savedView.create({
-      data: {
-        org_id: ctx.orgId,
-        user_id: ctx.userId,
-        name,
-        scope,
-        filters: filters as Prisma.InputJsonValue,
-        sort: (sort ?? undefined) as Prisma.InputJsonValue | undefined,
-        is_shared,
-        sort_order: resolvedSortOrder,
-      },
-    });
+  let created: Awaited<ReturnType<typeof prisma.savedView.create>>;
+  try {
+    created = await withOrgContext(ctx.orgId, async (tx) => {
+      const view = await tx.savedView.create({
+        data: {
+          org_id: ctx.orgId,
+          user_id: ctx.userId,
+          name,
+          scope,
+          filters: filters as Prisma.InputJsonValue,
+          sort: (sort ?? undefined) as Prisma.InputJsonValue | undefined,
+          is_shared,
+          sort_order: resolvedSortOrder,
+        },
+      });
 
-    await createAuditLogEntry(tx, ctx, {
-      action: 'saved_view_created',
-      targetType: 'SavedView',
-      targetId: view.id,
-      changes: { name, scope, is_shared },
-    });
+      await createAuditLogEntry(tx, ctx, {
+        action: 'saved_view_created',
+        targetType: 'SavedView',
+        targetId: view.id,
+        changes: { name, scope, is_shared },
+      });
 
-    return view;
-  });
+      return view;
+    });
+  } catch (error) {
+    if (isPrismaUniqueConstraintError(error)) {
+      return conflict('同じ名前の保存ビューが既に存在します');
+    }
+    throw error;
+  }
 
   return success({ data: toSavedViewRecord(created, ctx.userId) }, 201);
 });

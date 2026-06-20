@@ -57,6 +57,7 @@ describe('/api/care-reports/[id]/print-audit', () => {
         orgId: 'org_1',
         userId: 'user_1',
         role: 'pharmacist',
+        actorSiteId: 'site_1',
         ipAddress: '127.0.0.1',
         userAgent: 'Vitest',
       },
@@ -108,6 +109,8 @@ describe('/api/care-reports/[id]/print-audit', () => {
       expect.objectContaining({
         orgId: 'org_1',
         actorId: 'user_1',
+        actorSiteId: 'site_1',
+        patientId: 'patient_1',
         reportId: 'report_1',
         intent: 'print_requested',
         reportUpdatedAt: new Date('2026-06-18T01:02:03.000Z'),
@@ -132,6 +135,8 @@ describe('/api/care-reports/[id]/print-audit', () => {
       expect.any(Object),
       expect.objectContaining({
         reportId: 'report_1',
+        actorSiteId: 'site_1',
+        patientId: 'patient_1',
         intent: 'preview_rendered',
       }),
     );

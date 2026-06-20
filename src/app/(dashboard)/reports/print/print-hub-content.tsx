@@ -8,7 +8,11 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { useOrgId } from '@/lib/hooks/use-org-id';
-import type { CareReportPrintAuditResponse } from '@/lib/reports/care-report-print-audit-contract';
+import { readApiJson } from '@/lib/api/client-json';
+import {
+  careReportPrintAuditResponseSchema,
+  type CareReportPrintAuditResponse,
+} from '@/lib/reports/care-report-print-audit-contract';
 import { cn } from '@/lib/utils';
 import {
   buildDocumentReceiptRows,
@@ -713,8 +717,10 @@ export function PrintHubContent() {
         headers: { 'content-type': 'application/json', 'x-org-id': orgId },
         body: JSON.stringify({ intent: 'preview_rendered' }),
       });
-      if (!res.ok) throw new Error('報告書の印刷監査に失敗しました');
-      return res.json() as Promise<CareReportPrintAuditResponse>;
+      return readApiJson<CareReportPrintAuditResponse>(res, {
+        fallbackMessage: '報告書の印刷監査に失敗しました',
+        schema: careReportPrintAuditResponseSchema,
+      });
     },
     enabled: !!orgId && documentType === 'visit_report' && !!visitReportSource,
     retry: false,
