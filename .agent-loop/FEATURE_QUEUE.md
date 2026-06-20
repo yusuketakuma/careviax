@@ -358,3 +358,117 @@ old tasks unless they are actively being edited for another reason.
     - gbrain search "control plane loop improvement golden eval task manifest promotion rollback ledger" (no direct careviax control-plane memory; used generic process concepts only)
     - MEMORY.md: prior CareViaX lesson that huge ledgers can break whole-file Prettier/OOM; supports date partitioning and bounded file growth
 ```
+
+```yaml
+- task_id: F-20260620-009
+  status: implementing # rev3-equiv ACK; LOCK granted (state_version 40). plan rev1→rev2→corrections by codex.
+  owner: claude-lead
+  reviewer: codex-lead
+  origin_agent: human
+  type: feature
+  risk_level: medium
+  priority: P1
+  feature_name: Global search command palette (incremental, type-grouped search window)
+  background: >
+    User: 「グローバル検索機能の実装。インクリメンタルサーチ。あらゆる情報がわかるように。
+    検索ウィンドウには検索対象物が種別ごとに表示されるように」 + internet best practice 調査要求。
+    既存 /search は incremental+8カテゴリ横断を実装済みだが、コマンドパレット型の窓UI(⌘K起動・
+    矢印キー移動・Enter遷移)が無いのが核心ギャップ。recon: cmdk 未導入、permission はカテゴリ
+    fail-soft 依存、/search は readApiJson 未採用。
+  user_value: >
+    どの画面からも ⌘K で全体検索の窓を開き、種別ごとにグルーピングされた候補をインクリメンタルに
+    辿って Enter で遷移できる。キーボード/スクリーンリーダー利用者も操作可能(WAI-ARIA combobox)。
+  acceptance_criteria:
+    - ⌘K と / で AppShell 所有のコマンドパレット窓が開く(AppHeader は click のみ、global shortcut 登録なし)。
+    - MVP=6 text カテゴリ patient/proposal/prescription/drug/report/contact を種別グルーピング表示。facilities と medicationDeadline はパレットから除外(facilities→F-010、medicationDeadline は /search 高度フィルタのみ)。
+    - 250ms debounce / 最小2文字 / AbortController / sequence-id で古い応答が新しい結果を上書きしない。
+    - 権限 map が visibility と no-fetch の単一 SSOT。unknown role / orgId 欠落は org-scoped カテゴリを fetch しない(fail-closed)。
+    - カテゴリ別 raw 形状 zod schema(success()=生)で fail-closed parse、逆 malformed(誤envelope/配列欠落)を reject。1カテゴリの 403/失敗/malformed は当該のみ隔離、他は表示継続。
+    - prescription は best-effort(limit=8 bounded、filter→決定的 cap、暫定ラベル可視/aria)。完全網羅は主張しない。
+    - combobox(input focus+aria-activedescendant)/listbox/option+aria-selected、↑↓/Enter/Esc、focus 復帰、role=status/alert、WCAG AA、44px。
+    - builders は src/lib/search へ移設、route は再エクスポート shim(search-content/page/test 無編集)。
+  constraints:
+    - claude UI lane。src/app/api/**, src/lib/auth/**, prisma/**, src/server/**, package.json, lockfile 非編集。新依存追加なし(cmdk 不採用)。
+    - §9(エラーに PHI/生メッセージ出さない)/§10(readApiJson+schema fail-closed)準拠。PHI は氏名+状態のみ、report 本文断片を出さない。
+    - PHOS Board(src/phos/**)は触らない(global-shortcuts.ts は AppShell 用で別)。
+  scope:
+    allowed_paths:
+      - src/lib/search/**
+      - src/lib/stores/command-palette-store.ts
+      - src/components/features/search/**
+      - src/components/layout/app-shell.tsx
+      - src/components/layout/app-shell.test.ts
+      - src/components/layout/app-shell.test.tsx
+      - src/components/layout/app-header.tsx
+      - src/components/layout/app-header.test.tsx
+      - src/components/features/keyboard/global-shortcuts.ts
+      - src/app/(dashboard)/search/search-result-builders.ts
+    denied_paths:
+      - src/app/api/**
+      - src/lib/auth/**
+      - prisma/**
+      - src/server/**
+      - package.json
+      - pnpm-lock.yaml
+    max_diff_lines: 1200
+  loop_policy:
+    primary_loop: coding
+    max_iterations: 4
+    max_runtime_minutes: 90
+    max_cost_usd: null
+    require_plan_before_edit: true
+    concurrency_key: global-search-palette
+  success_gates:
+    required: [typecheck, unit_tests, lint, no_scope_violation, diff_review]
+    optional: [build, e2e_tests]
+  approval:
+    human_required_if:
+      - touches_auth
+      - adds_dependency
+      - changes_database_schema
+  verification:
+    - pnpm typecheck
+    - pnpm typecheck:no-unused
+    - pnpm lint
+    - pnpm format:check
+    - pnpm test
+    - pnpm build
+  gbrain_memory_used:
+    - recon-code SYSTEM_MAP (existing /search, searchable entities, permissions, §9/§10 patterns)
+    - WebSearch best practice (debounce 300-500ms, AbortController, min 2 chars, type grouping, WAI-ARIA combobox, pg_trgm/CJK FTS for backend follow-up)
+    - projects/careviax/fix-patterns/route-wire-shape-schema-parity-tests (F-007 lesson: match schema to raw route shape)
+```
+
+```yaml
+- task_id: F-20260620-010
+  status: queued # backend handoff from F-009 MVP; must be opened before F-009 done (codex condition #5)
+  owner: codex-lead
+  reviewer: claude-lead
+  origin_agent: claude-lead
+  type: feature
+  risk_level: medium
+  priority: P2
+  feature_name: Backend search expansion for global palette (server q+limit, new entities, aggregate)
+  background: >
+    F-009 (global search palette) は UI-only スライスのため、検索バックエンドの不足を本タスクへ分離。
+    現状: /api/facilities は q/limit 無視(take なし findMany=payload 非bounded)、/api/prescription-intakes は
+    server q 未対応(client filter で代替)、/api/contact-profiles は q ありだが limit/pagination なし。
+    未カバーエンティティ(Task/Staff/Incident/Billing/PartnerPharmacy)も横断対象外。
+  user_value: >
+    facilities を含む全カテゴリで server-side の絞り込みが効き、payload/データ最小化を守りつつ
+    「あらゆる情報」を取りこぼしなく横断検索できる。
+  acceptance_criteria:
+    - /api/facilities が q + limit を server-side で適用(全件 fetch を解消、F-009 でパレット復帰可能に)。
+    - /api/prescription-intakes が server-side q 検索に対応(client 補完を解消)。
+    - /api/contact-profiles に limit/pagination を追加。
+    - 追加エンティティ(Task/Staff/Incident/Billing 等)の検索 or 集約 /api/search aggregator の採否を決定し実装。
+    - 全エンドポイントが org スコープ(RLS/withAuthContext)と permission gate を維持。検索 payload に識別子以上の PHI を出さない。
+  constraints:
+    - backend lane(codex)。RLS/permission/§9/§10 を弱めない。CJK/カナ検索は pg_trgm/bigram 等の方針を調査(拡張追加は infra/migration=人間承認/BLOCKED 対象)。
+  verification:
+    - pnpm typecheck
+    - pnpm lint
+    - pnpm test
+    - pnpm build
+  gbrain_memory_used: []
+```
