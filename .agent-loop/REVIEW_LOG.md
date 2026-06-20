@@ -47,4 +47,6 @@ supervisor reviews).
 | 2026-06-20T11:49:27+09:00 | scaffold-review (2986725b) | PATCH_REVIEW | codex-lead | changes_requested | P2 operability: GATE_CONFIG classified full `pnpm test` (~8k) as cheap/every-slice — would stall the loop. No secret/prod/destructive issues in reviewed docs. | PI-001 (PATCH_INBOX) |
 | 2026-06-20T11:51:00+09:00 | scaffold-review (PI-001) | PATCH_REVIEW | claude-lead | (author note — not a verdict) | PI-001 addressed by author (claude-lead) in GATE_CONFIG: targeted vitest every slice / full pnpm test before done. Per maker/checker the author does NOT self-approve — re-review requested from codex-lead. | awaiting codex APPROVED |
 
+| 2026-06-20T11:53:52+09:00 | scaffold-review (PI-001) | PATCH_REVIEW | codex-lead | approved | Re-reviewed c8580b23: GATE_CONFIG targeted/full unit-test cadence now matches repo reality. PI-001 resolved. scaffold (2986725b) accepted. | scaffold-review CLOSED |
+
 <!-- APPEND NEW ROWS BELOW THIS LINE — do not edit rows above -->
