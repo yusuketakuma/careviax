@@ -39,6 +39,120 @@
   --wb-primary-fg: var(--primary-foreground);
   --wb-confirm-bg: var(--state-confirm);
   --wb-confirm-fg: var(--primary-foreground);
+
+  /*
+   * F-011 Stage1b（A-prime）: view が返す全色は workbench ローカルの theme 安定トークンで供給する。
+   * 外殻 chrome（pane header/status bar/modal header）は Stage1a の adaptive --wb-primary/confirm を維持。
+   * データ面（行/セル/state/text/line）は light-first で安定させ、light/dark 双方で AA を保証する
+   * （globals --state-* の dark light-ink flip を高密度業務面に持ち込まない）。定義群:
+   *  - phase accent（工程識別テーマ色。state ではない。dispense/audit/setp/seta を区別。
+   *    dot/progress=明、strong=白ラベル AA の暗塗り、border=枠。hue は識別を維持）。
+   *  - category（剤形・属性タグ・アバター/チップ装飾。固有意味色。state へ畳まない）。
+   *  - state solid（fill 兼 ink、theme 安定 dark）/ state-tint（淡背景・枠、固定 light）。
+   *  - data-plane surface/text/line（行・セル・地・文字・罫線、theme 安定 light）。
+   */
+  /* dot/progress=明（小指標・非文字 3:1）、strong=primary ボタン塗り（白ラベル AA 4.5:1 に足る暗さ・
+     theme 安定）、border=枠。hue は工程識別を維持。 */
+  --wb-phase-disp: #2f80ed;
+  --wb-phase-disp-strong: oklch(0.45 0.15 252);
+  --wb-phase-disp-border: #245aad;
+  --wb-phase-audit: #27ae60;
+  --wb-phase-audit-strong: oklch(0.45 0.12 152);
+  --wb-phase-audit-border: #218040;
+  --wb-phase-setp: #b07cd6;
+  --wb-phase-setp-strong: oklch(0.46 0.15 300);
+  --wb-phase-setp-border: #7c43ab;
+  --wb-phase-seta: #d6905a;
+  --wb-phase-seta-strong: oklch(0.47 0.1 55);
+  --wb-phase-seta-border: #a9632c;
+
+  /* category tag（色 / 淡背景 / 枠）。state でない固有意味色。 */
+  --wb-tag-tonyo: #7b4ba0;
+  --wb-tag-tonyo-bg: #f3ecf8;
+  --wb-tag-tonyo-border: #ddc8ec;
+  --wb-tag-ptp: #1d6fb8;
+  --wb-tag-ptp-bg: #e6f0fb;
+  --wb-tag-ptp-border: #bcd8f3;
+  --wb-tag-gaiyo: #b75a28;
+  --wb-tag-gaiyo-bg: #fdeee6;
+  --wb-tag-gaiyo-border: #f3cbb3;
+  --wb-tag-reisho: #2a7d8f;
+  --wb-tag-reisho-bg: #e4f3f5;
+  --wb-tag-reisho-border: #bce0e5;
+  --wb-tag-shoni: #a04a6a;
+  --wb-tag-shoni-bg: #fbe9f0;
+  --wb-tag-shoni-border: #eec4d4;
+
+  /*
+   * state solid（A-prime）: workflow state の塗り(fill, 白文字を載せる)兼 文字(ink, 淡 tint/明面上)。
+   * **theme 安定**（light/dark 不変）。workbench は light-first 高密度面のため、globals --state-* の
+   * dark light-ink flip を継承せず、ここで固定 dark 値に pin する。hue は 6 軸 SSOT を踏襲しつつ、
+   * 白文字 AA(4.5:1, 9-13px) と 淡 tint 上 ink AA を両立する暗さに設定。
+   */
+  --wb-state-done: oklch(0.45 0.13 150);
+  --wb-state-blocked: oklch(0.47 0.19 25);
+  --wb-state-confirm: oklch(0.45 0.09 75);
+  --wb-state-readonly: oklch(0.46 0.015 255);
+  --wb-info: oklch(0.45 0.13 245);
+  --wb-hazard: oklch(0.45 0.09 75);
+
+  /* state-tint（6 軸 state の淡背景/枠。固定 light パステル・theme 安定）。 */
+  --wb-done-bg: #eef8f0;
+  --wb-done-border: #9ed6ad;
+  --wb-blocked-bg: #fdeeec;
+  --wb-blocked-border: #e7a59e;
+  --wb-blocked-border-soft: #f0c4bd;
+  --wb-blocked-border-warm: #f3cbb3;
+  --wb-confirm-bg-soft: #fff6e6;
+  --wb-confirm-bg-warm: #fef4e2;
+  --wb-confirm-bg-pale: #fff8e8;
+  --wb-confirm-border: #e8c884;
+  --wb-confirm-border-warm: #f0dca6;
+  --wb-disp-tint-bg: #eef4fd;
+  --wb-dispnew-bg: #f1f9f2;
+  --wb-dispchg-bg: #fdf7ea;
+
+  /*
+   * data-plane surface / text / line（行・セル・地・文字・罫線）。**theme 安定 light**。
+   * consumer 側の固定濃色テキスト（1b-2 で token 化予定）と固定 ink がこの面に載るため、
+   * 外殻 chrome（Stage1a の adaptive --wb-primary/confirm）とは別に、データ面は light で安定させて
+   * light/dark 双方で AA を保証する（高密度業務面を一般画面の adaptive レイヤから分離）。
+   */
+  --wb-surface: #ffffff;
+  --wb-surface-alt: #f6f8fa;
+  --wb-surface-muted: #eef1f4;
+  --wb-surface-selected: #dde9f8;
+  --wb-accent: #1f4e79;
+  --wb-ink: #16345a;
+  --wb-ink-muted: #5a6878;
+  --wb-line: #d2dae3;
+
+  /* 患者アバター回転パレット（装飾・category）。 */
+  --wb-avatar-1: #3a6ea5;
+  --wb-avatar-2: #5a8f4a;
+  --wb-avatar-3: #b06a2a;
+  --wb-avatar-4: #7b4ba0;
+  --wb-avatar-5: #2a7d8f;
+  --wb-avatar-6: #a04a6a;
+  --wb-avatar-7: #4a6aa0;
+  --wb-avatar-8: #8a6a2a;
+
+  /* 属性チップ回転パレット（装飾・category: bg/border/fg）。 */
+  --wb-chip-1-bg: #e8f0fb;
+  --wb-chip-1-border: #b9d0ee;
+  --wb-chip-1-fg: #1f4e79;
+  --wb-chip-2-bg: #eaf6ec;
+  --wb-chip-2-border: #bfe0c4;
+  --wb-chip-2-fg: #2c7a3d;
+  --wb-chip-3-bg: #fdeee6;
+  --wb-chip-3-border: #f3cbb3;
+  --wb-chip-3-fg: #b75a28;
+  --wb-chip-4-bg: #f3ecf8;
+  --wb-chip-4-border: #ddc8ec;
+  --wb-chip-4-fg: #7b4ba0;
+  --wb-chip-5-bg: #fef4e2;
+  --wb-chip-5-border: #f0dca6;
+  --wb-chip-5-fg: #9a6a18;
 }
 
 /* dark/system テーマ: filled surface の文字を暗色へ切替（明色化した bg 上で AA を満たす）。 */
