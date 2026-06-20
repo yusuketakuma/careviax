@@ -117,6 +117,26 @@ describe('AuditLogsContent', () => {
     vi.unstubAllGlobals();
   });
 
+  it('shows an error state instead of a false empty when the audit log fetch fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.startsWith('/api/audit-logs?')) {
+          return new Response('error', { status: 500 });
+        }
+        return new Response('not found', { status: 404 });
+      }),
+    );
+
+    renderContent();
+
+    // 取得失敗は ErrorState(再試行導線)で示し、「ログがありません」(空)には倒さない
+    expect(await screen.findByText('監査ログを取得できませんでした')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '再試行' })).toBeTruthy();
+    expect(screen.queryByText('ログがありません')).toBeNull();
+  });
+
   it('renders audit filters for consent, patient-share, and file-download events', async () => {
     stubFetch();
     renderContent();
