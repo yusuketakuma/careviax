@@ -125,3 +125,81 @@ owned by the other.
     - git diff --check
   gbrain_memory_used: [] # gbrain not connected; substituted with repo+agmsg history
 ```
+
+```yaml
+- task_id: F-20260620-002
+  status: done # commit c6ee1476; plan+patch approved by codex-lead; gates GREEN (vitest 6/6, typecheck, no-unused, eslint, format:check, build 286p). Cycle 3.
+  owner: claude-lead
+  reviewer: codex-lead
+  origin_agent: claude-lead
+  priority: P2
+  feature_name: Fail-close the two FirstVisitDocument mutations in patient-documents-panel
+  background: >
+    claude-lead's own checker review of the codex hardening slice (gbrain
+    ReviewFinding projects/careviax/reviews/hardening-slice-precommit-clean-20260620)
+    flagged src/app/(dashboard)/patients/[id]/patient-documents-panel.tsx (~344-347,
+    654-657): the FirstVisitDocument create/update mutations still use raw
+    res.json() (fail-open), bypassing ApplyNow §10. This was explicitly OUT of the
+    hardening slice scope and is now safely landed in cccb091a, so it is a clean,
+    non-overlapping claude-lane follow-up.
+  user_value: >
+    A malformed 2xx on document create/update fails closed (surfaces an error)
+    instead of silently proceeding; consistent with the rest of the readApiJson
+    adoption. No PHI in error text.
+  acceptance_criteria:
+    - Both mutations use readApiJson(res, { schema }) with a schema for the response.
+    - fallbackMessage is a static literal (no payload/PHI interpolation).
+    - A test asserts fail-closed behavior on a malformed 2xx for each mutation.
+    - Existing toast + query-invalidation behavior is preserved (no UX regression).
+  constraints:
+    - claude lane only — src/app/(dashboard)/patients/[id]/** (+ its test). No API/route change (codex lane).
+    - ApplyNow §10 (fail-closed reads) + §9 (no PHI in error/response).
+    - Open question for plan review: does the response schema live locally (claude lane)
+      or as a shared lib schema (codex lane)? Resolve with codex before implement.
+  verification:
+    - pnpm lint
+    - pnpm typecheck
+    - pnpm typecheck:no-unused
+    - pnpm format:check
+    - pnpm test -- src/app/(dashboard)/patients
+    - pnpm build
+  gbrain_memory_used:
+    - projects/careviax/reviews/hardening-slice-precommit-clean-20260620 (origin of this follow-up)
+    - projects/careviax/decisions/readapijson-schema-fail-closed (§10 pattern)
+```
+
+```yaml
+- task_id: F-20260620-003
+  status: queued # codex-lane follow-up filed during F-20260620-002 plan review
+  owner: codex-lead
+  reviewer: claude-lead
+  origin_agent: claude-lead
+  priority: P2
+  feature_name: Project first-visit-document mutation responses to a safe minimal shape (§9 over-wire minimization)
+  background: >
+    During F-20260620-002 plan review, codex-lead flagged that
+    /api/first-visit-documents POST and /api/first-visit-documents/[id] PATCH
+    currently return { data: raw FirstVisitDocument } whose row can carry
+    emergency_contacts, delivered_to, document_url. There is no toSafe* projection
+    on this route family — not a §9 symmetry violation of an already-redacted GET,
+    but also not a safe mutation projection. The client (F-20260620-002) already
+    fails closed on a minimal { data: { id } } schema, so closing the over-wire
+    surface is a server-side hardening, not a client dependency.
+  user_value: >
+    The create/update endpoints stop emitting unneeded patient/contact/document
+    fields over the wire, minimizing PHI exposure at the API boundary.
+  acceptance_criteria:
+    - POST/PATCH /api/first-visit-documents project the response to a safe minimal shape, e.g. { data: { id, updated_at } }.
+    - A test asserts the mutation response body excludes emergency_contacts, delivered_to, document_url.
+    - The F-20260620-002 client schema still parses the trimmed response (id present).
+  constraints:
+    - codex lane — src/app/api/first-visit-documents/** (+ any src/lib projection). claude does not edit.
+    - ApplyNow §9 (PHI redaction symmetry / safe projection on mutations).
+  verification:
+    - pnpm lint
+    - pnpm typecheck
+    - pnpm test -- src/app/api/first-visit-documents
+  gbrain_memory_used:
+    - projects/careviax/failures/mutation-returns-raw-row-phi-leak
+    - projects/careviax/fix-patterns/mutation-reuse-get-safe-projection
+```

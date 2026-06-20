@@ -24,16 +24,16 @@ end. It is the first file consulted on resume and the last file written on a har
 
 ```yaml
 current_run_id: RUN-20260620-001
-current_cycle: 2 # Memory Bootstrap — first real gbrain recall; LOOP_POLICY §9/§10 APPROVED by codex-lead (status: applied)
+current_cycle: 3 # Cycle 2 closed (checker review of codex hardening slice → 7-commit split landed, worktree clear). Cycle 3: F-20260620-002 plan review.
 cycle_start_time: 2026-06-20T00:00:00+09:00 # ISO8601 Asia/Tokyo; reset at each run start. elapsed = now − cycle_start_time, checked at every cycle boundary vs §14 90-min hard-stop
-active_task_id: none
+active_task_id: none # F-20260620-002 done (commit c6ee1476, codex APPROVED); LOCK released
 files_changed_count: 0 # `git diff --name-only` from cycle_start (commit/tree at run start); >20 triggers §14 hard-stop
-claude_status: review_done # CHECKER review of codex hardening slice COMPLETE → PATCH_REVIEW_RESULT=approved (0 blocker); awaiting codex split-commits
-codex_status: implementing # codex APPROVED to stage+commit per the 6-commit split plan (see REVIEW_LOG 2026-06-20T19:05); commit hold released
+claude_status: idle # F-20260620-002 done; next intake or idle. Reviewer for F-20260620-003 (codex lane) when codex submits.
+codex_status: idle # hardening split landed; F-20260620-002 reviewed+approved. F-20260620-003 (route-side safe projection) queued in codex lane.
 last_memory_bootstrap: 2026-06-20 # Cycle 2 real gbrain recall (CLI). Classified in MEMORY_REVIEW.md; §9/§10 → LOOP_POLICY ApplyNow (codex-approved). `mcp__gbrain__*` after restart.
 zero_actionable_count: 0
-last_gate_result: pass # codex slice gate 8504 tests/build GREEN; checker review 0 blocker (Workflow wf_ca30bab6-348, 14 findings, all commit-hygiene/positive)
-next_action: await codex FYI per split-commit; then (a) verify the landed split matches reviewed diff, (b) commit my claude-owned .agent-loop files (STATE/REVIEW_LOG/prompts/claude-lead) separately, (c) clarify shared-doc staging ownership, (d) scope a non-overlapping UI/state-color tail task. Pending gbrain ReviewFinding writeback.
+last_gate_result: pass # F-20260620-002 gates GREEN (vitest 6/6, typecheck, no-unused, eslint, format:check, build 286p); codex independently re-verified
+next_action: idle/intake. Open: F-20260620-003 (codex lane — first-visit-document mutation safe projection; claude reviews). §10 now applied twice (codex hardening slice + F-002) → CandidateLesson api-response-validation-and-consolidation has a 2nd independent confirmation toward promotion (still gated, not auto-promoted).
 ```
 
 ## gbrain memory (this run)
