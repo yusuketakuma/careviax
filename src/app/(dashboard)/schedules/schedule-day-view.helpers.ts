@@ -1,5 +1,6 @@
 import { format, parseISO } from 'date-fns';
 import { ja } from 'date-fns/locale';
+import { STATUS_TOKENS } from '@/lib/constants/status-tokens';
 import { deriveVisitPlaceGroup } from '@/lib/utils/facility';
 import { formatEtaLabel } from '@/lib/visits/route-labels';
 import { minutesFromTimestamp, roundDownToSlot, roundUpToSlot } from './calendar-view.helpers';
@@ -290,8 +291,8 @@ export function buildScheduleDayOfflineStatus({
       : 'ブリーフ対象 0 件';
   const visitBriefCoverageClassName =
     hasVisitBriefCoverageGap || hasVisitBriefFailure
-      ? 'border-amber-200 bg-amber-50 text-amber-700'
-      : 'border-emerald-200 bg-emerald-50 text-emerald-700';
+      ? STATUS_TOKENS.confirm.badgeClassName
+      : STATUS_TOKENS.done.badgeClassName;
   const visitBriefStatusLabel =
     visitBriefCacheStatus === 'load_failed'
       ? '端末キャッシュを読み込めません。患者詳細と処方を確認してください。'
@@ -303,7 +304,9 @@ export function buildScheduleDayOfflineStatus({
             ? '当日予定の軽量 brief を同期済みです。'
             : '当日の確定訪問はありません。';
   const visitBriefStatusClassName =
-    hasVisitBriefCoverageGap || hasVisitBriefFailure ? 'text-amber-700' : 'text-muted-foreground';
+    hasVisitBriefCoverageGap || hasVisitBriefFailure
+      ? 'text-state-confirm'
+      : 'text-muted-foreground';
 
   return {
     visible:
@@ -315,8 +318,8 @@ export function buildScheduleDayOfflineStatus({
       hasVisitBriefFailure,
     networkBadgeLabel: isOffline ? 'オフライン' : 'オンライン',
     networkBadgeClassName: isOffline
-      ? 'border-amber-200 bg-amber-50 text-amber-700'
-      : 'border-emerald-200 bg-emerald-50 text-emerald-700',
+      ? STATUS_TOKENS.blocked.badgeClassName
+      : STATUS_TOKENS.done.badgeClassName,
     pendingSyncLabel: `同期待ち ${pendingSyncCount} 件`,
     conflictLabel: `競合 ${syncConflictCount} 件`,
     ttlLabel: `読取専用 TTL ${cacheTtlHours}h`,
@@ -433,27 +436,27 @@ export function scheduleLockText(schedule: ScheduleLockState): LockBadge {
   if (schedule.override_request?.status === 'pending') {
     return {
       label: '変更承認待ち',
-      className: 'border-amber-200 bg-amber-50 text-amber-700',
+      className: STATUS_TOKENS.confirm.badgeClassName,
       detail: schedule.override_request.reason,
     };
   }
   if (schedule.confirmed_at) {
     return {
       label: '運用ロック',
-      className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+      className: STATUS_TOKENS.done.badgeClassName,
       detail: '確定後は原則変更せず、専用リスケのみ許可します',
     };
   }
   if (schedule.applied_override) {
     return {
       label: '再調整済み',
-      className: 'border-orange-200 bg-orange-50 text-orange-700',
+      className: STATUS_TOKENS.confirm.badgeClassName,
       detail: '確定済み訪問の変更から再構成されています',
     };
   }
   return {
     label: '変更可能',
-    className: 'border-slate-200 bg-slate-50 text-slate-600',
+    className: STATUS_TOKENS.readonly.badgeClassName,
     detail: '未確定のため調整可能です',
   };
 }
@@ -464,24 +467,24 @@ export function proposalLockText(
   if (proposal.proposal_status === 'confirmed' || proposal.finalized_schedule_id) {
     return {
       label: '確定済み',
-      className: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+      className: STATUS_TOKENS.done.badgeClassName,
     };
   }
   if (proposal.proposal_status === 'patient_contact_pending') {
     return {
       label: '電話待ち',
-      className: 'border-sky-200 bg-sky-50 text-sky-700',
+      className: STATUS_TOKENS.waiting.badgeClassName,
     };
   }
   if (proposal.proposal_status === 'reschedule_pending') {
     return {
       label: '再調整中',
-      className: 'border-orange-200 bg-orange-50 text-orange-700',
+      className: STATUS_TOKENS.confirm.badgeClassName,
     };
   }
   return {
     label: '提案中',
-    className: 'border-slate-200 bg-slate-50 text-slate-600',
+    className: STATUS_TOKENS.info.badgeClassName,
   };
 }
 
