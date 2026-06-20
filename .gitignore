@@ -73,6 +73,9 @@ tmp/
 .codex/dev-e2e-local.*
 .codex/start-e2e-local.*
 
+# Rotated ralph-state archives (local only; keep repo + gbrain sync lean)
+.codex/archive/
+
 # Accidental local worktree state directory
 {"decision":"approve","reason":"WorktreeCreate: initialized worktree state"}/
 
