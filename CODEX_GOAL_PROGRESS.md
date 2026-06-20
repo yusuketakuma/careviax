@@ -7847,3 +7847,102 @@ Collect agent findings → triage by [evidence + low-risk + spec-preserving] →
 - Perf Low: pca-pumps checkPcaPumpRentalOverdues を org単位集約(withOrgContext+updateMany N→M)。daily.test更新(id→{in:[...]})。commit 7ab6abf6 (31 tests)。
 - Claude solo clean backlog ほぼ枯渇。残: sync-engine多重購読(Async Med, 高リスクoffline, Codex hotspot=要調整), withOrgContext#2(pharmacy, Codex ralph競合), apiFetch広域(Codex client-json着手済), dispense-results(監査で許容判定=非actionable)。
 - 残は Codex-lane/高リスク/調整依存。Codex の大量backlog(50+未コミット)のグループコミットが律速。
+
+---
+
+# === UI/UX GOAL TRACK (claude / Opus 4.8) ===
+
+## Loop 0 — Baseline (UI/UX)
+
+- 新ゴール: UI/UX最大化(操作性/視認性/情報設計/feedback/a11y/responsive/状態表示/入力体験)。既存仕様維持、既存共通component再利用優先。
+- 役割分担: Claude=UI/UXリード(src/app/(dashboard)/**, src/components/**), Codex=perf/sync-engine継続(UI非干渉)。各スライスLOCK。
+- SSOT: docs/ui-ux-design-guidelines.md(238行) — Workbench-first, 状態表示(false empty禁止/aria-live), 6軸状態色トークン(StateBadge/StatusDot), 共通component必須, a11y(44px/見出し階層/色依存回避)。
+- UI基盤: src/components/ui/ に充実(empty-state, error-state, loading, loading-button, confirm-dialog, form-error-summary, data-table, action-rail, section-intro, badge, dialog, sheet, segmented-progress-bar 等、多くにテスト有)。Storybook無し。
+- baseline検証: 直前のperfゴールで typecheck/eslint/full test(8350) green確認済み、worktreeクリーン。
+- 監査fan-out(read-only): design-analyst(UX/導線/情報設計), general-purpose(component重複+状態表示), general-purpose(a11y+responsive+form UX)。
+- 次: findings集約→[既存component統合×低リスク×仕様維持]でトリアージ→Loop着手。
+
+### Codex から受領した UI dedup 候補 (backlog)
+
+- readApiJson 採用: src/app/(dashboard) 配下 select-site/select-mode/admin pharmacy-sites/users の local fetch+json を共通 readApiJson(lib/api/client-json.ts) へ。
+- schedule minutes helper 重複: route-compare/conflicts/calendar。
+- pharmacy-cooperation DTO/type dedup。
+- → 私の UI/UX監査3本の結果とクロスリファレンスしてトリアージ。
+
+### UX監査(design-analyst) 結果
+
+- 共通部品到達度: EmptyState/ErrorState 使用47ファイル vs 空文言描画~135ファイル(逸脱母集団)。
+- [High] false-empty: audit-logs-content.tsx:93(isError欠落→失敗が「ログがありません」), contact-profiles-content.tsx:266(isError無し)。安全証跡で危険。
+- [High] 無効ボタン理由欠落: visits-today.tsx:305(訪問開始 disabled 無理由), handoff-workspace.tsx:400(渡す, 不可逆操作で詰まり所不可視)。
+- [Med] EmptyState非採用(自前再実装): prescriptions-table.tsx:115, incidents-content.tsx:143, notifications-content.tsx:249, conferences-content.tsx:1293/1457/1518, tasks-content.tsx:205/489。
+- [Med] 状態色ベタ書き13ファイル(StateBadge/StatusDot未集約): schedule-team-board, medication-calendar, prescription-history 等。
+- SSOT追記提案: EmptyState compact variant正式化, read query 4状態テンプレ明文化, print系の色例外。
+- Top5低リスク: prescriptions-table→EmptyState, incidents空→EmptyState, notifications空→EmptyState, visits-today disabled理由+aria-describedby, audit-logs false-empty→ErrorState。
+
+### A11y/Responsive/Form監査 結果
+
+- 全体: a11y成熟度高い(icon-button aria-label, combobox完全ARIA, FormErrorSummary focus, 44px対応)。残gap:
+- [P1] form field エラー紐付け薄い: referral-form.tsx(aria-describedbyがreferral_typeのみ), prescription-intake-form.tsx(単一error集約)。必須/任意マーカー横断的に欠落。
+- [P2] business-holidays:370 カレンダー日セル div onClick(keyboard不能)。native select<44px(insurance-card/documents-panel/referral-form)。safety-check h1欠落(h2開始)。tasks-content非セマンティック見出し。
+- [P3] 100vh→dvh(data-explorer:254/321/384), min-h-screen→min-h-dvh(structured-soap-wizard/capture/error-state). FormErrorSummary aria-live. async aria-live(LoadingButton内蔵案)。
+- Top5: dvh置換, safety-check h2→h1, referral-form aria-describedby横展開, business-holidays日セルbutton化, FormErrorSummary/alert role=alert確認。
+
+## Loop 1 — UI/UX 実装着手
+
+### Slice U1 完了 (Claude) — audit-logs false-empty解消 [High/安全]
+
+- File: audit-logs-content.tsx(+test)。isError+refetch追加、空判定前にErrorState(再試行)分岐。取得失敗を「ログがありません」に倒さない。
+- Validation: eslint0/typecheck0/test 3 pass(false-empty回帰)。commit d1587491。
+
+### Slice U2 完了 (Claude) — false-empty クラスタ [High/安全]
+
+- contact-profiles-content.tsx, evidence-gallery-content.tsx に isError→ErrorState(再試行)分岐追加。取得失敗を空に倒さない(evidenceはoffline下書き優先)。
+- Validation: eslint0, 該当テスト3 pass。typecheck は Codex の未コミット client-json.ts(TS7053)で red, 私の2ファイルは独立type-clean。commit 7225e32d。Codexに URGENT 報告済み。
+
+---
+
+## Codex Loop 7 — Re-Audit Follow-up (Backend/Shared/Perf Lane)
+
+Re-audit results:
+
+- Zero audit was not reached. Dead Code, Duplication, Type/Contract, Behavior/Test, Architecture, and Review agents returned actionable findings.
+- UI/UX work was delegated to Claude with explicit locks under `src/app/(dashboard)/**` and `src/components/**`. Codex avoided those UI surfaces except for already-owned shared/backend files.
+- Claude reviewed sync-engine commit `71a3ed72` as APPROVE.
+
+Implemented by Codex:
+
+- `730cca88` `refactor: harden shared api and facility contracts`
+  - Hardened `readApiJson` to read compatibility `{ error }` envelopes, trim blank `message`/`error` values to fallback, reject successful empty/non-JSON responses, and optionally validate success payloads through a `safeParse` schema.
+  - Extended `typecheck:no-unused` to cover both the main TS project and `tsconfig.sw.json`, with a package-script contract test.
+  - Extracted facility API time conversion/serialization to `src/lib/facilities/facility-api.ts` and removed duplicate serializers from admin facilities list/detail routes.
+  - Moved elapsed label formatting to neutral `src/lib/datetime/relative-time.ts`; `src/lib/workspace/daily-ops-rail.ts` no longer imports from `src/lib/ui`.
+  - Removed unused `inferCareReportTargetRole` compatibility re-export from `document-delivery-rules.ts`.
+  - Added PCA pump multi-org/multi-rental regression coverage for batched overdue updates while preserving one operational task per rental.
+- `71a3ed72` `fix(sync): share automatic online sync listeners`
+  - Ref-counted `setupAutoSync` subscriptions by normalized sync config so equivalent mounts share one `online` listener.
+  - Preserved existing `processSyncQueue` single-flight behavior and added listener cleanup/idempotent unsubscribe coverage.
+- `80018a88` `refactor(reports): move send failure observability to service`
+  - Extracted SES failure classification and bounded logger payload from the care-report send route into `src/server/services/care-report-send-observability.ts`.
+  - Added unit coverage that raw provider message/contact are not logged.
+
+Ledger correction:
+
+- Earlier Loop 6 ledger text overstated `src/server/services/email.ts` / `src/server/services/email.test.ts` as changed in the reviewed commit range. Current HEAD has no delivery-failure re-export in `email.ts`; canonical production usage is `src/lib/reports/delivery-failure-reasons.ts` and care-report send route imports from that helper.
+
+Validation:
+
+- Focused backend/shared Vitest bundle: passed, 13 files / 143 tests.
+- sync-engine/offline-store focused Vitest: passed, 2 files / 20 tests.
+- care-report observability/send route focused Vitest: passed, 2 files / 45 tests.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck:no-unused`: passed, now covering main + service-worker TS projects.
+- Targeted ESLint, Prettier checks, and `git diff --check` for Codex-owned paths: passed.
+
+Blocked or deferred:
+
+- Claude owns active UI/UX remediation and UI backlog candidates. Codex will not edit locked UI files without coordination.
+- Full final validation and zero-audit counting are still pending after this ledger update and after concurrent UI commits settle.
+
+Next loop:
+
+- Format/check this ledger update, commit ledger-only state, run full static/test/build gates as feasible, then restart Architecture/Duplication/Type/Test/Dead/Review agents. Count Zero Audit only if they return no new actionable findings.
