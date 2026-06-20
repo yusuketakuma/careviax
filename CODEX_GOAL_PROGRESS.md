@@ -7983,3 +7983,32 @@ Next loop:
 - Current worktree after that validation includes an uncommitted UI state-color change in `src/app/(dashboard)/tasks/tasks-content.tsx` and generated `.harness-mem/state/continuity.json`. Codex notified Claude and will not stage or overwrite the UI change without coordination.
 - Current re-check: `git diff --check -- 'src/app/(dashboard)/tasks/tasks-content.tsx' CODEX_GOAL_PROGRESS.md .harness-mem/state/continuity.json` passed. `pnpm exec prettier --check CODEX_GOAL_PROGRESS.md 'src/app/(dashboard)/tasks/tasks-content.tsx'` failed before this ledger formatting because `tasks-content.tsx` is still unformatted UI WIP.
 - Zero Audit count remains `0`; re-audit must run after the UI WIP is either committed by Claude or explicitly handed to Codex.
+
+### Codex Loop 8 Addendum — API Contract/Test Follow-up
+
+- Coordination:
+  - Claude completed the state-color consumer migration in UI-owned files and reported commits `d7c1b7d5`, `7e183d81`, `f5793fe4`, `0dfede25`, `0df5dd1e`, and ledger commit `62dbb27f`.
+  - Codex drained agmsg before each commit and left `.harness-mem/state/continuity.json` unstaged as generated local state.
+- Implemented by Codex:
+  - `82ee5357` `refactor(api): share set batch cell mutation contracts`
+    - Extracted shared SetBatch cell reference schema and duplicate-id detection to `src/lib/dispensing/set-batch-cell-mutation.ts`.
+    - Reused the shared schema/helper from both cell mutation and bulk-set routes, removing two local duplicate detectors and repeated Zod object definitions.
+    - Added helper coverage in `src/lib/dispensing/set-batch-cell-mutation.test.ts`.
+  - `37f87cbc` `test(api): cover saved views route contracts`
+    - Added route-level coverage for saved-view list/create/update/delete contracts, including scope validation, owner/shared boundaries, duplicate-name rejection, sort order resolution, and audit writes.
+  - `77a3056b` `test(api): cover billing evidence check contract`
+    - Added route-level coverage for the billing check BFF, including month validation, current/previous billing month selection, org-scoped aggregation calls, review-row projection, and no-transaction invalid query rejection.
+- Validation:
+  - SetBatch focused Vitest: `3` files / `34` tests passed.
+  - saved-views focused Vitest: `1` file / `7` tests passed.
+  - billing-evidence/check focused Vitest: `1` file / `3` tests passed.
+  - Targeted ESLint passed for all Codex-owned changed files.
+  - `pnpm typecheck` passed after each slice.
+  - `pnpm typecheck:no-unused` passed after each slice.
+- Remaining actionable candidates before Zero Audit can count:
+  - API response envelope type hardening remains open.
+  - `readApiJson` schema validation call-site migration remains open and is mostly UI/dashboard-facing.
+  - care-report print-audit DTO/client duplication remains open.
+  - route-order conflict helper dedup across visit route/schedule flows remains open.
+  - Coverage gate expansion for shared `src/lib` remains open.
+  - Re-audit agents must run again after ledger sync and any current local generated state is classified.
