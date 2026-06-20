@@ -1,6 +1,6 @@
 import { Document, Page, StyleSheet, Text, View } from '@react-pdf/renderer';
 import type { ReactNode } from 'react';
-import { formatYen } from '@/lib/ui/currency-format';
+import { formatYen } from '@/lib/format/currency';
 import {
   formatPdfDate,
   renderPdf,

@@ -3,7 +3,7 @@ import type { PharmacyInvoiceDocumentKind, PharmacyInvoiceStatus } from '@prisma
 import type { ReactNode } from 'react';
 import { prisma } from '@/lib/db/client';
 import { readJsonObject } from '@/lib/db/json';
-import { formatYen } from '@/lib/ui/currency-format';
+import { formatYen } from '@/lib/format/currency';
 import {
   formatPdfDate,
   getPdfBranding,

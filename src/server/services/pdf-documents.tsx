@@ -13,7 +13,7 @@ import {
 } from '@/lib/patient/home-visit-intake';
 import type { VisitScheduleAccessContext } from '@/lib/auth/visit-schedule-access';
 import { flattenPdfJson, readPdfJsonObject } from '@/server/services/pdf-document-json';
-import { formatYen } from '@/lib/ui/currency-format';
+import { formatYen } from '@/lib/format/currency';
 import {
   MEDICATION_CALENDAR_SLOT_KEYS,
   MEDICATION_CALENDAR_SLOT_LABELS,
