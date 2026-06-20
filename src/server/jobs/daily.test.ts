@@ -332,9 +332,10 @@ describe('checkPcaPumpRentalOverdues', () => {
         }),
       }),
     );
+    // org 単位集約により updateMany は当該 org の rental id をまとめて更新する
     expect(updateManyMock).toHaveBeenCalledWith({
       where: {
-        id: 'rental_1',
+        id: { in: ['rental_1'] },
         org_id: 'org_1',
         status: { in: ['scheduled', 'active'] },
         due_at: { lt: today },
