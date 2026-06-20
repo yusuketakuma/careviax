@@ -17,6 +17,7 @@ import {
 } from '@/server/services/patient-access';
 import { requireWritablePatient } from '@/server/services/patient-write-guard';
 import type { Prisma } from '@prisma/client';
+import { toSafeFirstVisitDocumentMutationResponse } from './response';
 
 const FIRST_VISIT_TEMPLATE_TYPES = [
   'contract_document',
@@ -290,7 +291,7 @@ export const POST = withAuthContext(
       return created;
     });
 
-    return success({ data: doc }, 201);
+    return success({ data: toSafeFirstVisitDocumentMutationResponse(doc) }, 201);
   },
   {
     permission: 'canVisit',

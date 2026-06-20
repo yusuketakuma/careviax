@@ -109,6 +109,7 @@ describe('/api/first-visit-documents', () => {
       delivered_at: null,
       delivered_to: null,
       document_url: '/api/visit-records/record_1/pdf',
+      updated_at: new Date('2026-06-16T00:00:00.000Z'),
     });
     templateFindFirstMock.mockResolvedValue({
       id: 'template_default',
@@ -262,6 +263,16 @@ describe('/api/first-visit-documents', () => {
           }),
         }),
       });
+      const body = await response.json();
+      expect(body).toEqual({
+        data: {
+          id: 'doc_2',
+          updated_at: '2026-06-16T00:00:00.000Z',
+        },
+      });
+      expect(body.data).not.toHaveProperty('emergency_contacts');
+      expect(body.data).not.toHaveProperty('delivered_to');
+      expect(body.data).not.toHaveProperty('document_url');
     });
 
     it('rejects archived patients before deriving contacts or creating documents', async () => {

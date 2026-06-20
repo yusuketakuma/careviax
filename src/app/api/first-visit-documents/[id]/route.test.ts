@@ -305,13 +305,16 @@ describe('/api/first-visit-documents/[id]', () => {
         document_url: '/api/visit-records/record_1/pdf',
       },
     });
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toEqual({
       data: {
         id: 'doc_1',
-        document_url: '/api/visit-records/record_1/pdf',
-        delivered_to: '山田太郎',
+        updated_at: '2026-06-16T00:00:00.000Z',
       },
     });
+    expect(body.data).not.toHaveProperty('emergency_contacts');
+    expect(body.data).not.toHaveProperty('delivered_to');
+    expect(body.data).not.toHaveProperty('document_url');
   });
 
   it('rejects archived patients before document update or audit history writes', async () => {
@@ -447,13 +450,16 @@ describe('/api/first-visit-documents/[id]', () => {
     ))!;
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      data: expect.objectContaining({
+    const body = await response.json();
+    expect(body).toEqual({
+      data: {
         id: 'doc_1',
-        patient_id: 'patient_1',
-        case_id: 'case_1',
-      }),
+        updated_at: '2026-06-16T00:00:00.000Z',
+      },
     });
+    expect(body.data).not.toHaveProperty('emergency_contacts');
+    expect(body.data).not.toHaveProperty('delivered_to');
+    expect(body.data).not.toHaveProperty('document_url');
     expect(auditLogCreateMock).toHaveBeenCalledWith({
       data: expect.objectContaining({
         action: 'first_visit_document.printed',
