@@ -1,5 +1,4 @@
 import { prisma } from '@/lib/db/client';
-export { inferCareReportTargetRole } from '@/lib/reports/care-report-target-role';
 
 export type DeliveryRuleSuggestion = {
   document_type: string;

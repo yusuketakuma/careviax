@@ -24,5 +24,6 @@ export function sanitizeDeliveryFailureReason(reason: string | null | undefined)
 
 export function displayDeliveryFailureReason(reason: string | null | undefined): string | null {
   if (!reason) return null;
-  return DISPLAYABLE_DELIVERY_FAILURE_REASONS.has(reason) ? reason : null;
+  const normalized = reason.trim();
+  return DISPLAYABLE_DELIVERY_FAILURE_REASONS.has(normalized) ? normalized : null;
 }

@@ -1,5 +1,5 @@
 import type { CockpitAuditQueueItem, DashboardCockpitResponse } from '@/types/dashboard-cockpit';
-import { formatElapsedLabel } from '@/lib/ui/relative-time';
+import { formatElapsedLabel } from '@/lib/datetime/relative-time';
 import { formatTimeOfDay as formatDailyOpsTime } from '@/lib/datetime/time-of-day';
 import { familyNameOf } from '@/lib/utils/person-name';
 

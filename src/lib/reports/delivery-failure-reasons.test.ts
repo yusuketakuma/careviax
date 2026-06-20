@@ -28,6 +28,9 @@ describe('delivery failure reasons', () => {
     expect(displayDeliveryFailureReason(EMAIL_DELIVERY_FAILURE_REASON)).toBe(
       EMAIL_DELIVERY_FAILURE_REASON,
     );
+    expect(displayDeliveryFailureReason(` ${EMAIL_DELIVERY_FAILURE_REASON} `)).toBe(
+      EMAIL_DELIVERY_FAILURE_REASON,
+    );
     expect(displayDeliveryFailureReason('SMTP 550 recipient detail')).toBeNull();
     expect(displayDeliveryFailureReason(null)).toBeNull();
   });

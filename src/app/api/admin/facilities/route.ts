@@ -1,4 +1,3 @@
-import type { Prisma } from '@prisma/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { withAuthContext } from '@/lib/auth/context';
 import { success, validationError } from '@/lib/api/response';
@@ -6,55 +5,7 @@ import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { prisma } from '@/lib/db/client';
 import { createFacilitySchema } from '@/lib/validations/facility';
-
-function toTimeValue(value?: string | null) {
-  if (!value) return null;
-  const [hours = '0', minutes = '0'] = value.split(':');
-  return new Date(Date.UTC(1970, 0, 1, Number.parseInt(hours, 10), Number.parseInt(minutes, 10)));
-}
-
-function formatTimeValue(value: Date | null) {
-  if (!value) return null;
-  const hours = `${value.getUTCHours()}`.padStart(2, '0');
-  const minutes = `${value.getUTCMinutes()}`.padStart(2, '0');
-  return `${hours}:${minutes}`;
-}
-
-function toResponse(
-  facility: Prisma.FacilityGetPayload<{
-    include: { contacts: true };
-  }> & {
-    patient_count?: number;
-  },
-) {
-  return {
-    id: facility.id,
-    name: facility.name,
-    facility_type: facility.facility_type,
-    address: facility.address,
-    phone: facility.phone,
-    fax: facility.fax,
-    acceptance_time_from: formatTimeValue(facility.acceptance_time_from),
-    acceptance_time_to: formatTimeValue(facility.acceptance_time_to),
-    regular_visit_weekdays: Array.isArray(facility.regular_visit_weekdays)
-      ? facility.regular_visit_weekdays
-      : [],
-    patient_count: facility.patient_count ?? 0,
-    notes: facility.notes,
-    contacts: facility.contacts.map((contact) => ({
-      id: contact.id,
-      name: contact.name,
-      role: contact.role,
-      phone: contact.phone,
-      email: contact.email,
-      fax: contact.fax,
-      is_primary: contact.is_primary,
-      notes: contact.notes,
-    })),
-    created_at: facility.created_at.toISOString(),
-    updated_at: facility.updated_at.toISOString(),
-  };
-}
+import { serializeFacilityResponse, toFacilityTimeValue } from '@/lib/facilities/facility-api';
 
 export const GET = withAuthContext(
   async (_req, ctx) => {
@@ -90,10 +41,13 @@ export const GET = withAuthContext(
 
     return success({
       data: facilities.map((facility) =>
-        toResponse({
-          ...facility,
-          patient_count: patientCountByFacilityId.get(facility.id) ?? 0,
-        }),
+        serializeFacilityResponse(
+          {
+            ...facility,
+            patient_count: patientCountByFacilityId.get(facility.id) ?? 0,
+          },
+          { includeTimestamps: true },
+        ),
       ),
     });
   },
@@ -122,8 +76,8 @@ export const POST = withAuthContext(
           address: parsed.data.address || null,
           phone: parsed.data.phone || null,
           fax: parsed.data.fax || null,
-          acceptance_time_from: toTimeValue(parsed.data.acceptance_time_from),
-          acceptance_time_to: toTimeValue(parsed.data.acceptance_time_to),
+          acceptance_time_from: toFacilityTimeValue(parsed.data.acceptance_time_from),
+          acceptance_time_to: toFacilityTimeValue(parsed.data.acceptance_time_to),
           regular_visit_weekdays: toPrismaJsonInput(parsed.data.regular_visit_weekdays),
           notes: parsed.data.notes || null,
           contacts: parsed.data.contacts.length
@@ -149,7 +103,7 @@ export const POST = withAuthContext(
       }),
     );
 
-    return success({ data: toResponse(created) }, 201);
+    return success({ data: serializeFacilityResponse(created, { includeTimestamps: true }) }, 201);
   },
   {
     permission: 'canAdmin',
