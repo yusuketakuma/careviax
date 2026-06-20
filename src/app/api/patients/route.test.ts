@@ -455,6 +455,112 @@ describe('/api/patients GET', () => {
     expect(payload).toMatchSnapshot();
   });
 
+  it('returns a bounded minimal patient projection for palette search', async () => {
+    patientFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'patient_1',
+        name: '青葉 花子',
+        name_kana: 'アオバ ハナコ',
+        birth_date: new Date('1948-05-20'),
+        phone: '090-0000-0001',
+        medical_insurance_number: 'MED-SECRET-1',
+        residences: [{ address: '東京都千代田区1-1-1' }],
+        contacts: [{ phone: '03-0000-0000', email: 'family@example.test' }],
+        conditions: [{ name: '糖尿病' }],
+      },
+      {
+        id: 'patient_2',
+        name: '青葉 次郎',
+        name_kana: 'アオバ ジロウ',
+        birth_date: new Date('1952-10-01'),
+        phone: '090-0000-0002',
+        care_insurance_number: 'CARE-SECRET-1',
+        residences: [{ address: '東京都墨田区2-2-2' }],
+        contacts: [{ phone: '03-0000-0001' }],
+        conditions: [{ name: '高血圧' }],
+      },
+    ]);
+
+    const response = (await GET(
+      createAuthenticatedRequest('http://localhost/api/patients?view=palette&q=青葉&limit=1'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toEqual({
+      data: [
+        {
+          id: 'patient_1',
+          name: '青葉 花子',
+          name_kana: 'アオバ ハナコ',
+        },
+      ],
+      hasMore: true,
+    });
+    expect(patientFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 2,
+        select: {
+          id: true,
+          name: true,
+          name_kana: true,
+        },
+      }),
+    );
+    expect(queryRawMock).not.toHaveBeenCalled();
+    expect(listPatientRiskSummariesMock).not.toHaveBeenCalled();
+    expect(patientShareCaseFindManyMock).not.toHaveBeenCalled();
+    expect(firstVisitDocumentFindManyMock).not.toHaveBeenCalled();
+    expect(JSON.stringify(body)).not.toContain('090-0000-0001');
+    expect(JSON.stringify(body)).not.toContain('MED-SECRET-1');
+    expect(JSON.stringify(body)).not.toContain('東京都千代田区');
+    expect(JSON.stringify(body)).not.toContain('family@example.test');
+    expect(JSON.stringify(body)).not.toContain('糖尿病');
+    expect(body.data[0]).not.toHaveProperty('birth_date');
+    expect(body.data[0]).not.toHaveProperty('phone');
+    expect(body.data[0]).not.toHaveProperty('medical_insurance_number');
+    expect(body.data[0]).not.toHaveProperty('residences');
+    expect(body.data[0]).not.toHaveProperty('contacts');
+    expect(body.data[0]).not.toHaveProperty('conditions');
+  });
+
+  it('rejects full-list-only filters in palette patient search before querying patients', async () => {
+    const response = (await GET(
+      createAuthenticatedRequest(
+        'http://localhost/api/patients?view=palette&q=青葉&risk_level=watch',
+      ),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'palette 表示では対応していない検索条件です',
+      details: {
+        risk_level: ['palette 表示では q/limit/sort/order のみ指定できます'],
+      },
+    });
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(queryRawMock).not.toHaveBeenCalled();
+    expect(listPatientRiskSummariesMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects palette patient limits above 50 before querying patients', async () => {
+    const response = (await GET(
+      createAuthenticatedRequest('http://localhost/api/patients?view=palette&q=青葉&limit=51'),
+    ))!;
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'limit は 1〜50 の整数で指定してください',
+      details: {
+        limit: ['palette 表示では limit は 1〜50 の整数で指定してください'],
+      },
+    });
+    expect(patientFindManyMock).not.toHaveBeenCalled();
+    expect(queryRawMock).not.toHaveBeenCalled();
+  });
+
   it('supports case, building, billing, and last-visit date filters together', async () => {
     const response = (await GET(
       createAuthenticatedRequest(

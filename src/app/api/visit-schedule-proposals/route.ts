@@ -312,7 +312,12 @@ export const GET = withAuthContext(
     const pharmacistId = searchParams.get('pharmacist_id')?.trim() || null;
     const query = searchParams.get('q')?.trim() || null;
     const limit = searchParams.get('limit');
+    const view = searchParams.get('view')?.trim() || null;
     const assignmentWhere = buildVisitScheduleProposalAssignmentWhere(ctx);
+
+    if (view !== null && view !== 'palette') {
+      return validationError('view が不正です');
+    }
 
     const parsedStatus = status ? proposalStatusSchema.safeParse(status) : null;
     if (parsedStatus && !parsedStatus.success) {
@@ -341,23 +346,98 @@ export const GET = withAuthContext(
       };
     }
 
-    const proposals = await prisma.visitScheduleProposal.findMany({
-      where: {
-        org_id: ctx.orgId,
-        ...(caseId ? { case_id: caseId } : {}),
-        ...(Object.keys(caseRelationWhere).length > 0 ? { case_: { is: caseRelationWhere } } : {}),
-        ...(pharmacistId ? { proposed_pharmacist_id: pharmacistId } : {}),
-        ...(parsedStatus ? { proposal_status: parsedStatus.data } : {}),
-        ...(dateFrom || dateTo
-          ? {
-              proposed_date: {
-                ...(parsedDateFrom.value ? { gte: new Date(parsedDateFrom.value) } : {}),
-                ...(parsedDateTo.value ? { lte: new Date(parsedDateTo.value) } : {}),
+    const proposalWhere: Prisma.VisitScheduleProposalWhereInput = {
+      org_id: ctx.orgId,
+      ...(caseId ? { case_id: caseId } : {}),
+      ...(Object.keys(caseRelationWhere).length > 0 ? { case_: { is: caseRelationWhere } } : {}),
+      ...(pharmacistId ? { proposed_pharmacist_id: pharmacistId } : {}),
+      ...(parsedStatus ? { proposal_status: parsedStatus.data } : {}),
+      ...(dateFrom || dateTo
+        ? {
+            proposed_date: {
+              ...(parsedDateFrom.value ? { gte: new Date(parsedDateFrom.value) } : {}),
+              ...(parsedDateTo.value ? { lte: new Date(parsedDateTo.value) } : {}),
+            },
+          }
+        : {}),
+      ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
+    };
+
+    if (view === 'palette') {
+      const paletteLimit = parsedLimit.value ?? 8;
+      const proposals = await prisma.visitScheduleProposal.findMany({
+        where: proposalWhere,
+        select: {
+          id: true,
+          proposal_status: true,
+          patient_contact_status: true,
+          proposed_date: true,
+          time_window_start: true,
+          time_window_end: true,
+          proposed_pharmacist_id: true,
+          case_: {
+            select: {
+              patient: {
+                select: {
+                  id: true,
+                  name: true,
+                },
               },
-            }
-          : {}),
-        ...(assignmentWhere ? { AND: [assignmentWhere] } : {}),
-      },
+            },
+          },
+        },
+        orderBy: [{ proposed_date: 'asc' }, { time_window_start: 'asc' }],
+        take: paletteLimit + 1,
+      });
+      const hasMore = proposals.length > paletteLimit;
+      const dataRows = hasMore ? proposals.slice(0, paletteLimit) : proposals;
+      const pharmacistIds = Array.from(
+        new Set(
+          dataRows
+            .map((proposal) => proposal.proposed_pharmacist_id)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      );
+      const pharmacists =
+        pharmacistIds.length === 0
+          ? []
+          : await prisma.user.findMany({
+              where: {
+                org_id: ctx.orgId,
+                id: { in: pharmacistIds },
+              },
+              select: {
+                id: true,
+                name: true,
+              },
+            });
+      const pharmacistById = new Map(pharmacists.map((pharmacist) => [pharmacist.id, pharmacist]));
+
+      return success({
+        data: dataRows.map((proposal) => ({
+          id: proposal.id,
+          proposal_status: proposal.proposal_status,
+          patient_contact_status: proposal.patient_contact_status,
+          proposed_date: proposal.proposed_date,
+          time_window_start: proposal.time_window_start,
+          time_window_end: proposal.time_window_end,
+          case_: {
+            patient: {
+              id: proposal.case_.patient.id,
+              name: proposal.case_.patient.name,
+            },
+          },
+          proposed_pharmacist:
+            proposal.proposed_pharmacist_id && pharmacistById.has(proposal.proposed_pharmacist_id)
+              ? { name: pharmacistById.get(proposal.proposed_pharmacist_id)!.name }
+              : null,
+        })),
+        hasMore,
+      });
+    }
+
+    const proposals = await prisma.visitScheduleProposal.findMany({
+      where: proposalWhere,
       include: {
         case_: {
           select: {

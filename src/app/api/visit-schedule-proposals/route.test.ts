@@ -474,6 +474,115 @@ describe('/api/visit-schedule-proposals', () => {
     );
   });
 
+  it('returns a bounded minimal projection for palette proposal search', async () => {
+    visitScheduleProposalFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'proposal_palette_1',
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'pending',
+        proposed_date: new Date('2026-04-03T00:00:00.000Z'),
+        time_window_start: new Date('2026-04-03T09:00:00.000Z'),
+        time_window_end: new Date('2026-04-03T10:00:00.000Z'),
+        proposed_pharmacist_id: 'user_2',
+        reject_reason: '東京都港区2-2-2 090-1234-5678 アムロジピン 処方詳細',
+        site: { id: 'site_1', name: '訪問拠点A', address: '東京都渋谷区' },
+        vehicle_resource: { id: 'vehicle_1', label: '社用車A' },
+        contact_logs: [{ note: '家族へ折返し待ち', contact_phone: '090-0000-0000' }],
+        case_: {
+          patient: {
+            id: 'patient_1',
+            name: '患者A',
+            phone: '03-0000-0000',
+            residences: [{ address: '東京都千代田区1-1-1', lat: 35.1, lng: 139.1 }],
+          },
+        },
+      },
+      {
+        id: 'proposal_palette_2',
+        proposal_status: 'patient_contact_pending',
+        patient_contact_status: 'pending',
+        proposed_date: new Date('2026-04-04T00:00:00.000Z'),
+        time_window_start: new Date('2026-04-04T09:00:00.000Z'),
+        time_window_end: new Date('2026-04-04T10:00:00.000Z'),
+        proposed_pharmacist_id: null,
+        case_: {
+          patient: {
+            id: 'patient_2',
+            name: '患者B',
+          },
+        },
+      },
+    ]);
+
+    const response = (await GET(
+      createRequest('http://localhost/api/visit-schedule-proposals?view=palette&q=患者&limit=1'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toEqual({
+      data: [
+        {
+          id: 'proposal_palette_1',
+          proposal_status: 'patient_contact_pending',
+          patient_contact_status: 'pending',
+          proposed_date: '2026-04-03T00:00:00.000Z',
+          time_window_start: '2026-04-03T09:00:00.000Z',
+          time_window_end: '2026-04-03T10:00:00.000Z',
+          case_: {
+            patient: {
+              id: 'patient_1',
+              name: '患者A',
+            },
+          },
+          proposed_pharmacist: {
+            name: '薬剤師A',
+          },
+        },
+      ],
+      hasMore: true,
+    });
+    const listCall = visitScheduleProposalFindManyMock.mock.calls[0]?.[0];
+    expect(listCall).toMatchObject({
+      take: 2,
+      select: {
+        id: true,
+        proposal_status: true,
+        patient_contact_status: true,
+        proposed_date: true,
+        time_window_start: true,
+        time_window_end: true,
+        proposed_pharmacist_id: true,
+        case_: {
+          select: {
+            patient: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    expect(listCall).not.toHaveProperty('include');
+    expect(JSON.stringify(body)).not.toContain('東京都港区');
+    expect(JSON.stringify(body)).not.toContain('090-1234-5678');
+    expect(JSON.stringify(body)).not.toContain('アムロジピン');
+    expect(JSON.stringify(body)).not.toContain('訪問拠点A');
+    expect(JSON.stringify(body)).not.toContain('社用車A');
+    expect(JSON.stringify(body)).not.toContain('家族へ折返し待ち');
+    expect(JSON.stringify(body)).not.toContain('03-0000-0000');
+    expect(JSON.stringify(body)).not.toContain('東京都千代田区');
+    expect(body.data[0]).not.toHaveProperty('reject_reason');
+    expect(body.data[0]).not.toHaveProperty('site');
+    expect(body.data[0]).not.toHaveProperty('vehicle_resource');
+    expect(body.data[0]).not.toHaveProperty('contact_logs');
+    expect(body.data[0].proposed_pharmacist).not.toHaveProperty('id');
+    expect(body.data[0].case_.patient).not.toHaveProperty('residences');
+    expect(body.data[0].case_.patient).not.toHaveProperty('phone');
+  });
+
   it('rejects unsupported status filters before querying proposals', async () => {
     const response = (await GET(
       createRequest('http://localhost/api/visit-schedule-proposals?status=unknown'),

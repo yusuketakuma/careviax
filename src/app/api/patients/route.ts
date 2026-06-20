@@ -13,6 +13,7 @@ import {
 } from '@/lib/patient/facility-reference';
 import {
   listPatients,
+  listPatientPaletteSearchSummaries,
   createPatientWithIntake,
   deriveBirthDate,
 } from '@/server/services/patient-service';
@@ -39,6 +40,7 @@ const caseStatusQuerySchema = z
   });
 
 const patientListQuerySchema = z.object({
+  view: z.enum(['palette']).optional(),
   q: z.string().trim().optional(),
   cursor: z.string().trim().optional(),
   limit: optionalBoundedIntegerSearchParam('limit', 1, 500),
@@ -76,12 +78,67 @@ const patientListQuerySchema = z.object({
     .optional(),
 });
 
+function findUnsupportedPalettePatientFilters(filters: z.infer<typeof patientListQuerySchema>) {
+  const unsupportedKeys = [
+    'cursor',
+    'facility_mode',
+    'consent_status',
+    'risk_level',
+    'last_visit',
+    'case_status',
+    'primary_pharmacist_id',
+    'building_id',
+    'billing_support',
+    'payer_basis',
+    'last_visit_from',
+    'last_visit_to',
+    'readiness_issue',
+    'foundation_issue',
+  ] as const;
+
+  return unsupportedKeys.filter((key) => filters[key] !== undefined);
+}
+
+function validatePatientPaletteLimit(limit: number | undefined) {
+  if (limit === undefined || limit <= 50) {
+    return null;
+  }
+
+  return validationError('limit は 1〜50 の整数で指定してください', {
+    limit: ['palette 表示では limit は 1〜50 の整数で指定してください'],
+  });
+}
+
 export const GET = withAuthContext(
   async (req, ctx) => {
     const { searchParams } = new URL(req.url);
     const parsed = parseSearchParams(patientListQuerySchema, searchParams);
     if (!parsed.ok) {
       return validationError('クエリパラメータが不正です', parsed.error.flatten().fieldErrors);
+    }
+
+    if (parsed.data.view === 'palette') {
+      const unsupportedPaletteFilters = findUnsupportedPalettePatientFilters(parsed.data);
+      if (unsupportedPaletteFilters.length > 0) {
+        return validationError(
+          'palette 表示では対応していない検索条件です',
+          Object.fromEntries(
+            unsupportedPaletteFilters.map((key) => [
+              key,
+              ['palette 表示では q/limit/sort/order のみ指定できます'],
+            ]),
+          ),
+        );
+      }
+      const limitValidationResponse = validatePatientPaletteLimit(parsed.data.limit);
+      if (limitValidationResponse) {
+        return limitValidationResponse;
+      }
+      const result = await listPatientPaletteSearchSummaries(prisma, ctx.orgId, parsed.data, {
+        userId: ctx.userId,
+        role: ctx.role,
+      });
+      return success(result);
     }
 
     const result = await listPatients(prisma, ctx.orgId, ctx.role, parsed.data, {
