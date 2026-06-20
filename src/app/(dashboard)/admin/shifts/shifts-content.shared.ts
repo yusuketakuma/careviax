@@ -1,10 +1,4 @@
-import {
-  eachDayOfInterval,
-  endOfMonth,
-  format,
-  parseISO,
-  startOfMonth,
-} from 'date-fns';
+import { eachDayOfInterval, endOfMonth, format, parseISO, startOfMonth } from 'date-fns';
 
 export type Pharmacist = {
   id: string;

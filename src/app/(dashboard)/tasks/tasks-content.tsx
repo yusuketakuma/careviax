@@ -155,13 +155,7 @@ const PRIORITY_CONFIG: Record<string, { label: string; role: StatusRoleOrNeutral
 };
 
 // neutral は状態色を付けず既定 Badge / text-muted で描く（移行台帳の neutral 運用）。
-function TaskStateBadge({
-  label,
-  role,
-}: {
-  label: string;
-  role: StatusRoleOrNeutral;
-}) {
+function TaskStateBadge({ label, role }: { label: string; role: StatusRoleOrNeutral }) {
   if (role === 'neutral') {
     return (
       <Badge variant="outline" className="text-xs text-muted-foreground">

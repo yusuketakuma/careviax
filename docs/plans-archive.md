@@ -266,7 +266,6 @@
 
 </details>
 
-
 ## Phase 2: セット・月次運用・連携強化 `cc:完了`
 
 <details>
@@ -334,7 +333,6 @@
 - [x] 外部連携者ロール + CSV/NSIPS + FAX + オフライン下書き+同期(FR-106 Ph2)
 
 </details>
-
 
 ## Phase 2b: 実務機能強化 `cc:完了`
 
@@ -1041,7 +1039,6 @@ ConferenceNote ─────┼─→ [報告書] CareReport + DeliveryRecord
 
 </details>
 
-
 ## Phase 2c: マスター機能整備 + データリンク強化 `cc:完了`
 
 <details>
@@ -1213,7 +1210,6 @@ PrescriptionIntake
 
 </details>
 
-
 ## Phase 3: 外部連携・最適化・通知高度化 `cc:完了`
 
 <details>
@@ -1253,6 +1249,7 @@ PrescriptionIntake
 </details>
 
 ## Phase 4: コードリファクタリング `cc:完了` (2026-03-31)
+
 <details>
 <summary>5 subsections completed — click to expand</summary>
 
@@ -1282,7 +1279,6 @@ PrescriptionIntake
   - `workflow` / `patients` / `visit-schedules` のスナップショット回帰を追加
 
 </details>
-
 
 ## Phase 5: 患者情報機能改善 `cc:完了` <!-- 2026-06-11 コード監査: 全 13 タスクの実装痕跡を確認(詳細は各タスク注記) -->
 
@@ -1707,7 +1703,6 @@ P-00 (現況調査)     │
 
 ---
 
-
 ## Phase 6: 処方・調剤ワークフロー改善 `cc:完了` <!-- 2026-06-11 コード監査: 全 7 タスク実装済み(dispense-form 疑義照会導線、qr-drafts/[id] packaging_method 送信 L207、generate-batches Math.ceil L261、inquiry_resolved 表示、unmatched フィルタ L197、reject-reason-stats API、inquiry status フィルタ) -->
 
 > 処方受付→調剤→鑑査→セットの日常業務フローの品質・効率改善
@@ -1758,7 +1753,6 @@ P-00 (現況調査)     │
 
 ---
 
-
 ## Phase 7: 訪問・スケジュールワークフロー改善 `cc:完了` <!-- 2026-06-11 コード監査: 全 6 タスク実装済み(buildStructuredSoap wizard 組立 L228、specialCapEligible 受渡 L169/391、facility-visit-batches DELETE L26/PATCH L83、superRefine L75、ROUTING_API_PROVIDER 切替、checklist-template) -->
 
 > 訪問計画→実施→記録の品質改善。SOAP構造化データの実効性確保が最重要。
@@ -1804,7 +1798,6 @@ P-00 (現況調査)     │
 
 ---
 
-
 ## Phase 9: 請求・管理機能改善 `cc:完了` <!-- 2026-06-11 コード監査: 全 5 タスク実装済み(SAMPLE_LOGS 削除済、nextCursor/hasMore 使用、facilities ConfirmDialog L803、検索スコープ staff/tasks/facility/visit 拡張、billing-kpi-section) -->
 
 > 管理系の silent failure 解消と運用効率改善
@@ -1841,7 +1834,6 @@ P-00 (現況調査)     │
 - **受入条件**: メインダッシュボードから請求状況が一目で把握できること
 
 ---
-
 
 ## Phase 11: セキュリティ・コンプライアンス強化 `cc:完了` <!-- 2026-06-11 コード監査+実装: 全 10 件完了。11-8 は本番のみ専用シークレット必須化(非本番は NEXTAUTH_SECRET フォールバック維持で test/E2E 互換) -->
 
@@ -1893,7 +1885,6 @@ P-00 (現況調査)     │
 
 ---
 
-
 ## Phase 13: テスト・品質基盤強化 `cc:完了` <!-- 2026-06-11 コード監査: 全 5 タスク実装済みを確認 -->
 
 > テストカバレッジ拡大と E2E の信頼性向上
@@ -1920,5 +1911,3 @@ P-00 (現況調査)     │
 - [x] `playwright.config.ts:21` で `fullyParallel: true`、`:24` で CI `workers: 4` 設定済み
 
 ---
-
-
