@@ -3,7 +3,9 @@
 **Purpose.** Per-run operating policy for the claude-lead / codex-lead agent loop. It tells each
 Supervisor what to apply unconditionally, what to weigh, and what to leave alone for the current
 run. This is the distilled, _enforceable_ slice of long-term memory (gbrain) plus the lane/LOCK
-discipline that the two sessions have already proven in practice.
+discipline that the two sessions have already proven in practice. Only `ApplyNow` memories from
+`MEMORY_REVIEW.md` are copied here; the gbrain memory model and classification rule are defined in
+`GBRAIN_SCHEMA.md` (§14).
 
 **How it is used in the loop.**
 
@@ -51,6 +53,17 @@ Proven, in-effect-now discipline. Apply on every cycle without re-deciding.
 8. **Compliance by Design.** Treat 3省2ガイドライン (MHLW v6.0 + METI/MIC v1.1) + APPI as a
    design precondition, not a later audit. Tenant isolation goes through Prisma + PostgreSQL RLS
    (`SET LOCAL app.current_org_id`); never weaken it for convenience.
+9. **PHI redaction symmetry on mutations.** A resource whose GET redacts patient data through a
+   `toSafe*()` projection MUST apply the **same** projection on its POST/PUT/PATCH/mutation
+   response — never return the raw Prisma row (it still carries `reason`, `proposed_value`,
+   name/address, etc.). Add a test asserting the mutation response **body** excludes sensitive
+   fields; GET-only tests miss this. Evidence: gbrain FailurePattern
+   `mutation-returns-raw-row-phi-leak` (high, peer-reviewed) + FixPattern
+   `mutation-reuse-get-safe-projection`. Strengthens §8 (Compliance by Design).
+10. **Fail-closed client API reads.** Validate client-side API reads with
+    `readApiJson(res, { schema })` so a malformed 2xx fails closed; keep `fallbackMessage` a static
+    literal (no payload interpolation, so no PHI leaks into error text). Evidence: gbrain
+    ImplementationDecision `readapijson-schema-fail-closed` (peer-reviewed).
 
 ## Consider
 
@@ -62,6 +75,10 @@ gbrain once connected.)
 - Whether a change spanning both lanes should be split into two LOCKed, separately-reviewed PRs.
 - Whether to wire the currently-unconfigured gates (secret scan, dependency audit / `pnpm audit`,
   SAST) for the touched surface this run.
+- **Schema consolidation at 3+.** When 3+ screens converge on the same API response shape, promote
+  the schema to a shared `src/lib/.../api-contracts.ts` (`success(row)` → bare schema, `{data}` →
+  `apiDataSchema`). Below that threshold keep it local — premature consolidation couples unrelated
+  screens. Evidence: gbrain DuplicateMap `pharmacy-cooperation-api-contracts`.
 
 ## Ignore
 
@@ -91,4 +108,6 @@ Status values: `proposed` → `peer-approved` → `applied` (or `rejected`).
 | ApplyNow §1–6 (lane/LOCK/drain/verify discipline) | claude-lead | codex-lead  | applied (proven seed) |
 | ApplyNow §7 (UI/UX SSOT + State Color tokens)     | claude-lead | _pending_   | proposed              |
 | ApplyNow §8 (Compliance by Design + RLS)          | codex-lead  | _pending_   | proposed              |
+| ApplyNow §9 (PHI redaction symmetry on mutations) | claude-lead | codex-lead  | applied               |
+| ApplyNow §10 (fail-closed client reads)           | claude-lead | codex-lead  | applied               |
 | _next candidate_                                  | _name_      | _name_      | proposed              |
