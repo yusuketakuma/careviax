@@ -16,7 +16,7 @@ values per run so trends (regressions, drift, cost creep) are visible over time.
 - cycle: 0 · status: idle · next_action: bootstrap
 - date: 2026-06-20
 
-> STATUS: gbrain MCP not yet connected — see gstack `setup-gbrain` skill. The `memory.*`
+> STATUS: gbrain connected 2026-06-20 (careviax indexed read-write). The `memory.*`
 > metrics below are Phase-3 scaffolding and stay null until gbrain is wired.
 
 ---
@@ -45,7 +45,7 @@ speed:
   review_turnaround: null # time from review request to verdict
   feature_lead_time: null # time from task accepted to merged/done
 
-memory: # STATUS: gbrain MCP not connected — null until wired
+memory: # STATUS: gbrain connected 2026-06-20 — populate once cycles issue real gbrain queries
   memory_hit_rate: null # share of cycles where a relevant memory/lesson was retrieved
   memory_apply_rate: null # share of retrieved memories actually applied
   stale_memory_rate: null # share of retrieved memories found stale/wrong

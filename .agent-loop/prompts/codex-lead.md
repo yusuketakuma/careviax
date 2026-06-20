@@ -25,7 +25,7 @@ inbox: ~/.agents/skills/agmsg/scripts/inbox.sh phos codex
 
 1. **Read the loop docs**: `.agent-loop/README.md`, `.agent-loop/prompts/claude-lead.md`, `.agent-loop/prompts/feature-intake.md`. Internalize Q1–Q6, intake flow, maker/checker rules, hard-stops (§14), security prohibitions (§15).
 2. **Memory Bootstrap**: attempt gbrain recall for the objective.
-   - **STATUS: gbrain MCP is NOT connected in this session.** Treat recall as empty; record "gbrain recall unavailable — Phase 3 pending." Do not pretend recall happened.
+   - **STATUS: gbrain connected 2026-06-20** (careviax indexed read-write). Use `gbrain search`/`query` for recall; record real hits. (`mcp__gbrain__*` tools need a Claude Code restart; the `gbrain` CLI works now.) Recall is subordinate to live repo state.
 3. **Drain inbox** and respond to claude-lead's proposed LOOP_POLICY patch: approve, tighten scope, or push back. Record agreed scope + LOCKs.
 
 ---

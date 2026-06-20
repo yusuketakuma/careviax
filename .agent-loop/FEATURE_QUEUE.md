@@ -13,8 +13,9 @@ of work is a task with a stable `task_id` and a status that advances through the
 - A task only moves to `done` after its `verification[]` commands pass (real commands:
   `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`, `pnpm test:e2e`, `pnpm test:e2e:audit`).
 - `gbrain_memory_used[]` records memory keys/notes consulted.
-  STATUS: gbrain MCP not yet connected — see gstack `setup-gbrain` skill. Phase-3 scaffolding;
-  leave entries as `[]` until gbrain is live.
+  STATUS: gbrain connected 2026-06-20 (local postgres; careviax indexed read-write). Populate
+  this with the `gbrain search`/`gbrain query` hits a task actually consulted. `mcp__gbrain__*`
+  tools require a Claude Code restart; the `gbrain` CLI works now.
 
 ## Task schema
 
@@ -34,7 +35,7 @@ of work is a task with a stable `task_id` and a status that advances through the
   verification: # exact commands that must pass before done
     - pnpm lint
     - pnpm typecheck
-  gbrain_memory_used: [] # memory keys consulted (gbrain not yet connected)
+  gbrain_memory_used: [] # memory keys/queries consulted (gbrain connected — fill from `gbrain search`/`query` hits)
 ```
 
 ## Queue

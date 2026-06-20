@@ -33,7 +33,7 @@ inbox: ~/.agents/skills/agmsg/scripts/inbox.sh phos <name>
 | `FEATURE_QUEUE.md`          | Feature intake queue (task_id, status, owner/reviewer, acceptance criteria).              |
 | `LOCKS.md`                  | Edit-conflict ledger mirroring the live agmsg LOCK discipline.                            |
 | `LOOP_POLICY.md`            | Per-run policy distilled from gbrain (ApplyNow / Consider / Ignore / BlockedContext).     |
-| `MEMORY_REVIEW.md`          | Classification of gbrain search results (pending gbrain connection).                      |
+| `MEMORY_REVIEW.md`          | Classification of gbrain search results (gbrain connected 2026-06-20).                    |
 | `PROMOTION_QUEUE.md`        | CandidateLesson → AGENTS.md/CLAUDE.md/Skill promotion candidates (§13 criteria).          |
 | `MESSAGE_PROTOCOL.md`       | The AGLOOP v5 agmsg envelope + message types + transport (§8).                            |
 | `SUBAGENT_JOBS.md`          | Registry of subagent job types (explorer/dup-scanner/verifier/…).                         |
@@ -55,14 +55,14 @@ inbox: ~/.agents/skills/agmsg/scripts/inbox.sh phos <name>
 
 Each cycle, the supervisors consider these loops. Not all run every cycle — the classifier (§7 intake) and LOOP_POLICY decide which are active.
 
-| ID     | Loop             | Focus                                                                                                                                                                                     | Primary owner                                     |
-| ------ | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| **Q1** | Refactor         | Remove duplication, simplify, raise cohesion; no behavior change.                                                                                                                         | claude-lead implements, codex-lead scans for dup. |
-| **Q2** | Stability        | Error handling, async-safety, RLS/tenant-isolation correctness, offline (Dexie) integrity, regressions.                                                                                   | codex-lead audits, claude-lead fixes.             |
-| **Q3** | Product-adjacent | Small UX-complete gaps: empty states, permission-insufficient states, error surfaces, edge data.                                                                                          | claude-lead.                                      |
-| **Q4** | UI/UX            | Conformance to `docs/ui-ux-design-guidelines.md` (state colors, hierarchy, density, a11y/WCAG AA).                                                                                        | claude-lead.                                      |
-| **Q5** | Verification     | Objective gate: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`; targeted `pnpm test:e2e` / `pnpm test:e2e:audit`.                                                               | codex-lead verifies, claude-lead supplies.        |
-| **Q6** | Memory Writeback | Persist verified decisions/learnings; correct stale gbrain entries against live repo. **STATUS: gbrain MCP not yet connected** — writeback is staged locally until `setup-gbrain` is run. | both.                                             |
+| ID     | Loop             | Focus                                                                                                                                                                                                                                   | Primary owner                                     |
+| ------ | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| **Q1** | Refactor         | Remove duplication, simplify, raise cohesion; no behavior change.                                                                                                                                                                       | claude-lead implements, codex-lead scans for dup. |
+| **Q2** | Stability        | Error handling, async-safety, RLS/tenant-isolation correctness, offline (Dexie) integrity, regressions.                                                                                                                                 | codex-lead audits, claude-lead fixes.             |
+| **Q3** | Product-adjacent | Small UX-complete gaps: empty states, permission-insufficient states, error surfaces, edge data.                                                                                                                                        | claude-lead.                                      |
+| **Q4** | UI/UX            | Conformance to `docs/ui-ux-design-guidelines.md` (state colors, hierarchy, density, a11y/WCAG AA).                                                                                                                                      | claude-lead.                                      |
+| **Q5** | Verification     | Objective gate: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`; targeted `pnpm test:e2e` / `pnpm test:e2e:audit`.                                                                                                             | codex-lead verifies, claude-lead supplies.        |
+| **Q6** | Memory Writeback | Persist verified decisions/learnings; correct stale gbrain entries against live repo. **STATUS: gbrain connected (2026-06-20)** — careviax indexed (read-write); writeback can target gbrain (CLI now; `mcp__gbrain__*` after restart). | both.                                             |
 
 ---
 
@@ -74,7 +74,7 @@ register → gbrain search (prior art) → classify → LOOP_POLICY patch
 ```
 
 1. **Register** the feature into `FEATURE_QUEUE.md`.
-2. **gbrain search** for prior art / past decisions (currently a no-op stub — gbrain not connected; record "no recall available").
+2. **gbrain search** for prior art / past decisions — `gbrain search "<terms>"` / `gbrain query "<question>"` over the indexed careviax + brain sources (record the hits in `gbrain_memory_used`). Recall stays subordinate to live repo state.
 3. **Classify**: which of Q1–Q6 apply, scope, risk, affected paths.
 4. **LOOP_POLICY patch**: claude-lead proposes a policy delta; codex-lead must approve over agmsg before implementation.
 5. **Claude implements** in its lane after LOCKing paths.
@@ -124,15 +124,15 @@ A resume point is a short block the next session (or human) can pick up from wit
 
 ## 8. Phased rollout (§17)
 
-| Phase | Description                                              | Status                                                                                                         |
-| ----- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| 1     | Scaffold `.agent-loop/` docs + supervisor prompts        | **Complete** (this directory).                                                                                 |
-| 2     | agmsg coordination live (claude/codex on team `phos`)    | **Live.**                                                                                                      |
-| 3     | gbrain long-term memory connected (recall + writeback)   | **NOT yet connected** — run the `setup-gbrain` (gstack) skill. All Q6/gbrain steps are scaffolding until then. |
-| 4     | Full automated intake → review → gate cycle hardening    | Pending.                                                                                                       |
-| 5     | Memory-driven continuous loop (gbrain-informed planning) | Pending.                                                                                                       |
+| Phase | Description                                              | Status                                                                                                                                                                  |
+| ----- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | Scaffold `.agent-loop/` docs + supervisor prompts        | **Complete** (this directory).                                                                                                                                          |
+| 2     | agmsg coordination live (claude/codex on team `phos`)    | **Live.**                                                                                                                                                               |
+| 3     | gbrain long-term memory connected (recall + writeback)   | **Connected (2026-06-20).** Local postgres; careviax imported (131 pages / 1408 chunks), repo policy read-write. `mcp__gbrain__*` tools load on next Claude Code start. |
+| 4     | Full automated intake → review → gate cycle hardening    | Pending.                                                                                                                                                                |
+| 5     | Memory-driven continuous loop (gbrain-informed planning) | Pending.                                                                                                                                                                |
 
-**CURRENT STATUS:** Phase 1 scaffold complete; Phase 2 agmsg already live (claude/codex on team phos); Phase 3 gbrain NOT yet connected (run gstack setup-gbrain); Phase 4–5 pending.
+**CURRENT STATUS:** Phase 1 scaffold complete; Phase 2 agmsg live (claude/codex on team phos); Phase 3 gbrain connected (local postgres, careviax imported — **keyword search works now; natural-language `gbrain query` is empty until embeddings are generated, which needs an API key + a data-egress decision — see `BLOCKED.md` gbrain-embeddings**; restart Claude Code for `mcp__gbrain__*` tools); Phase 4–5 pending. See CLAUDE.md `## GBrain Configuration`.
 
 ---
 

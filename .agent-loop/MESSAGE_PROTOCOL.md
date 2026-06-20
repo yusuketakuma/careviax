@@ -75,7 +75,7 @@ details: |
 | `DONE`                     | either           | Task complete, verified, locks released.                                                                     |
 
 > **gbrain note (honesty).** `MEMORY_BOOTSTRAP_REQUEST` / `MEMORY_BOOTSTRAP_RESULT`
-> are Phase-3 scaffolding. **STATUS: gbrain MCP is not yet connected in this
+> are live as of 2026-06-20. **STATUS: gbrain connected (local postgres; careviax indexed) in this
 > session** — see the gstack `setup-gbrain` skill. Until then, bootstrap
 > messages carry only locally-derived state (git status, ledger files, prior
 > agmsg history) and must not claim long-term memory was consulted.

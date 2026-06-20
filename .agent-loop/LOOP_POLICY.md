@@ -20,10 +20,11 @@ discipline that the two sessions have already proven in practice.
 - **Date:** 2026-06-20
 - **Supervisors:** claude-lead (UI/UX + main impl), codex-lead (backend/perf/refactor/test review)
 
-> **STATUS: gbrain MCP not yet connected** — ApplyNow below is seeded from already-proven
-> lane/LOCK/drain discipline. Populate the remainder from the Memory Bootstrap once the
-> `setup-gbrain` skill has been run and gbrain search is live. Do not invent gbrain-derived
-> policy until then.
+> **STATUS: gbrain connected 2026-06-20** — careviax indexed (read-write, local postgres).
+> ApplyNow below is seeded from already-proven lane/LOCK/drain discipline; from the next cycle,
+> populate the remainder from a real Memory Bootstrap (`gbrain search`/`query`). gbrain recall
+> stays subordinate to live repo state. (`mcp__gbrain__*` tools need a Claude Code restart; the
+> `gbrain` CLI works now.)
 
 ---
 
@@ -74,8 +75,9 @@ Explicitly out of scope for this run; do not re-litigate.
 
 External dependencies gating otherwise-ready work. Mark blocked items `cc:blocked` (lowercase).
 
-- **gbrain long-term memory** — MCP not connected. Blocks Consider/Ignore population and any
-  gbrain-derived policy. Unblock via the `setup-gbrain` skill. `cc:blocked`
+- **gbrain long-term memory** — ~~MCP not connected~~ **UNBLOCKED 2026-06-20**: connected
+  (local postgres; careviax indexed read-write). `mcp__gbrain__*` tools available after a Claude
+  Code restart; `gbrain` CLI works now. Memory Bootstrap can issue real queries from next cycle.
 - **Security gates (secret scan / dependency audit / SAST)** — recommended, not yet configured —
   TODO. Cannot be enforced as ApplyNow until wired. `cc:blocked`
 

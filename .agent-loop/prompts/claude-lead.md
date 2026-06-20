@@ -24,7 +24,7 @@ inbox: ~/.agents/skills/agmsg/scripts/inbox.sh phos claude
 
 1. **Read the loop docs**: `.agent-loop/README.md`, `.agent-loop/prompts/codex-lead.md`, `.agent-loop/prompts/feature-intake.md`. Internalize the six loops Q1–Q6, the intake flow, maker/checker rules, hard-stops (§14), and security prohibitions (§15).
 2. **Memory Bootstrap**: attempt a gbrain recall for the objective (prior decisions, prior art, known pitfalls).
-   - **STATUS: gbrain MCP is NOT connected in this session.** Treat recall as empty. Record "gbrain recall unavailable — Phase 3 pending, run gstack `setup-gbrain`." Do not pretend recall happened. Fall back to reading the repo and `docs/` directly.
+   - **STATUS: gbrain connected 2026-06-20** (careviax indexed read-write). Run `gbrain search "<terms>"` / `gbrain query "<question>"` and record real hits. (`mcp__gbrain__*` tools need a Claude Code restart; the `gbrain` CLI works now.) Always also read the live repo + `docs/`; gbrain recall is subordinate to current repo state.
 3. **Classify** the objective: which of Q1–Q6 apply, scope, risk tier, and the exact paths likely touched.
 4. **Propose a LOOP_POLICY patch** to codex-lead over agmsg: which loops are active this cycle, scope bounds, and your intended LOCK paths. **Wait for codex-lead's reply** (approval or adjustment) before implementing anything non-trivial.
 5. **Run the loop** (below).
@@ -52,7 +52,7 @@ For each cycle (max 4 — see hard-stops):
    Also self-check: 正常系 / 異常系 / 空状態 (empty) / 権限不足 (insufficient permission) / responsive.
 6. **Hand off to codex-lead** over agmsg with a short diff summary + gate results. Request review.
 7. **On `CHANGES_REQUESTED`**: address every point, re-run gates, hand back. On `APPROVED`: proceed to writeback.
-8. **Writeback (Q6)**: stage the verified decision/learning. **gbrain not connected** → record locally in `REVIEW_LOG.md` / `VERIFY_LOG.md` (and `PROMOTION_QUEUE.md` if it's a candidate lesson) and mark "pending gbrain writeback". Do not permanently codify unverified memory.
+8. **Writeback (Q6)**: stage the verified decision/learning in `REVIEW_LOG.md` / `VERIFY_LOG.md` (and `PROMOTION_QUEUE.md` if it's a candidate lesson). **gbrain connected** — you may also write a page via the `gbrain` CLI. Do not permanently codify unverified memory.
 9. **Commit discipline**: drain inbox again, stage **only your own files**, commit. Commit messages in English, ending with the required Co-Authored-By trailer.
 
 ---

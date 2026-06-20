@@ -19,7 +19,7 @@ current_cycle: 1 # COMPLETE — F-20260620-001 done; scaffold-review (PI-001) ap
 active_task_id: none
 claude_status: idle
 codex_status: implementing # codex on backend dedup slices (print-audit / readApiJson)
-last_memory_bootstrap: 2026-06-20 # gbrain MCP NOT connected — no recall; substituted with repo + agmsg history (see MEMORY_REVIEW.md)
+last_memory_bootstrap: 2026-06-20 # gbrain CONNECTED (local postgres; careviax indexed read-write). `mcp__gbrain__*` after restart; `gbrain` CLI usable now. See CLAUDE.md ## GBrain Configuration.
 zero_actionable_count: 0
 last_gate_result: pass # cycle 1 closed green; AGENTS pointer a1c916ac, GATE_CONFIG fix c8580b23 (codex APPROVED)
 next_action: idle — next FEATURE_QUEUE intake, or wire gbrain (Phase 3, gstack setup-gbrain)

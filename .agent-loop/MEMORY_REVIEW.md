@@ -19,11 +19,12 @@ four buckets below. The result feeds `LOOP_POLICY.md` (ApplyNow/Consider) and
 - **Cycle:** 1 (active_task: F-20260620-001 — wire AGENTS.md pointer)
 - **Date:** 2026-06-20
 
-> **STATUS: gbrain MCP not yet connected** — Memory Bootstrap returned no recall this cycle.
-> Substituted with live repo + agmsg history: AGENTS.md is codex-lead's lane (recently committed
-> a2414cdc); LOCK contention on AGENTS.md was already resolved this session by yielding to Codex;
-> the cross-lane coordination rule (LOCK/approve before editing a peer's file) is the operative
-> prior knowledge. Once `setup-gbrain` is run, this substitution becomes a real gbrain query.
+> **STATUS: gbrain connected 2026-06-20** (after this cycle ran). At the time of Cycle 1 the
+> bootstrap had no recall and was substituted with live repo + agmsg history (AGENTS.md is
+> codex-lead's lane, committed a2414cdc; the AGENTS.md LOCK contention was resolved by yielding
+> to Codex; cross-lane LOCK/approve discipline was the operative prior knowledge). From the next
+> cycle, Memory Bootstrap should issue a real `gbrain search`/`gbrain query` (careviax indexed
+> read-write) — still subordinate to live repo state per LOOP_POLICY.
 
 ---
 
@@ -31,23 +32,23 @@ four buckets below. The result feeds `LOOP_POLICY.md` (ApplyNow/Consider) and
 
 _Memories that map directly to a non-negotiable rule for this run; copy into LOOP_POLICY ApplyNow._
 
-_(empty — gbrain not connected)_
+_(empty — no cycle has run a real gbrain query yet)_
 
 ## Consider
 
 _Memories relevant but situational; weighed against this run's objective during planning._
 
-_(empty — gbrain not connected)_
+_(empty — no cycle has run a real gbrain query yet)_
 
 ## Ignore
 
 _Memories retrieved but out of scope / superseded; recorded so they are not re-evaluated._
 
-_(empty — gbrain not connected)_
+_(empty — no cycle has run a real gbrain query yet)_
 
 ## BlockedContext
 
 _Memories whose application is gated by an external dependency; reference the blocker._
 
-_(empty — gbrain not connected; the gbrain connection itself is the active blocker — see
+_(empty — gbrain now connected; populate from real queries next cycle — see
 LOOP_POLICY.md ## BlockedContext, `cc:blocked`)_

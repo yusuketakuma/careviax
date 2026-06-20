@@ -44,8 +44,8 @@ human approval / external credentials regardless of how green the gates are.
 
 ## Blocked
 
-| task_id | reason | needs | since | unblock_condition |
-| ------- | ------ | ----- | ----- | ----------------- |
-|         |        |       |       |                   |
+| task_id           | reason                                                                                                                                                                                                                                                                                                                                                     | needs                           | since      | unblock_condition                                                                                                                                       |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| gbrain-embeddings | careviax imported (keyword-searchable) but NOT embedded — `gbrain embed` needs an embedding API key (`OPENAI_API_KEY` / `VOYAGE_API_KEY`). Natural-language `gbrain query` over careviax returns empty until embedded. Generating embeddings sends careviax doc text to OpenAI/Voyage (data egress) — a compliance decision for a 3省2ガイドライン system. | human_approval + external_creds | 2026-06-20 | User decides: (a) approve + set an embedding API key, then `gbrain embed --stale` → semantic recall works; or (b) keep keyword-only recall (no egress). |
 
 <!-- APPEND NEW ROWS BELOW. auth/billing/payments/security/destructive-migration/prod-deploy ALWAYS land here (§15). -->
