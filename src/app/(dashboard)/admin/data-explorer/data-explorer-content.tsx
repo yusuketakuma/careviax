@@ -251,7 +251,7 @@ export function DataExplorerContent() {
       />
 
       <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)_minmax(0,1.1fr)]">
-        <Card className="xl:h-[calc(100vh-13rem)] xl:overflow-hidden">
+        <Card className="xl:h-[calc(100dvh-13rem)] xl:overflow-hidden">
           <CardHeader>
             <CardTitle>モデル一覧</CardTitle>
             <CardDescription>監査カテゴリごとにフィルタできます。</CardDescription>
@@ -318,7 +318,7 @@ export function DataExplorerContent() {
           </CardContent>
         </Card>
 
-        <Card className="xl:h-[calc(100vh-13rem)] xl:overflow-hidden">
+        <Card className="xl:h-[calc(100dvh-13rem)] xl:overflow-hidden">
           <CardHeader>
             <CardTitle>{effectiveSelectedTable || 'テーブル選択待ち'}</CardTitle>
             <CardDescription>
@@ -381,7 +381,7 @@ export function DataExplorerContent() {
           </CardContent>
         </Card>
 
-        <Card className="xl:h-[calc(100vh-13rem)] xl:overflow-hidden">
+        <Card className="xl:h-[calc(100dvh-13rem)] xl:overflow-hidden">
           <CardHeader>
             <CardTitle>詳細 / 許可フィールド更新</CardTitle>
             <CardDescription>

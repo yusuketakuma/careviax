@@ -231,7 +231,7 @@ export function EvidenceCaptureContent({
 
   return (
     <div
-      className="mx-auto flex min-h-screen w-full max-w-md flex-col bg-background px-6 pb-10 pt-6"
+      className="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-background px-6 pb-10 pt-6"
       data-testid="evidence-capture-page"
     >
       {/* 専用ヘッダー(没入型: アプリシェルなし) */}

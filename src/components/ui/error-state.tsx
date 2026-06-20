@@ -154,7 +154,7 @@ export function ErrorState({
       className={cn(
         'flex flex-col items-center justify-center gap-5 text-center',
         size === 'page'
-          ? 'min-h-screen px-8 py-12'
+          ? 'min-h-dvh px-8 py-12'
           : 'rounded-xl border border-dashed border-border bg-card px-6 py-10',
         className,
       )}
