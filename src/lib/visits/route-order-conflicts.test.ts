@@ -130,4 +130,45 @@ describe('visit route order conflicts', () => {
       select: { id: true },
     });
   });
+
+  it('uses multi-id exclusion filters for schedules and proposals', async () => {
+    visitScheduleFindFirst.mockResolvedValueOnce(null);
+    visitScheduleProposalFindFirst.mockResolvedValueOnce(null);
+
+    await expect(
+      findVisitRouteOrderConflict(reader, {
+        orgId: 'org_1',
+        cells: [{ pharmacistId: 'pharmacist_1', dateKey: '2026-06-20', routeOrder: 1 }],
+        excludeScheduleIds: ['schedule_1', 'schedule_2'],
+        excludeProposalIds: ['proposal_1', 'proposal_2'],
+      }),
+    ).resolves.toBeNull();
+
+    expect(visitScheduleFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: { notIn: ['schedule_1', 'schedule_2'] },
+        }),
+      }),
+    );
+    expect(visitScheduleProposalFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: { notIn: ['proposal_1', 'proposal_2'] },
+        }),
+      }),
+    );
+  });
+
+  it('prefers committed schedule conflicts when a proposal also matches', async () => {
+    visitScheduleFindFirst.mockResolvedValueOnce({ id: 'schedule_1' });
+    visitScheduleProposalFindFirst.mockResolvedValueOnce({ id: 'proposal_1' });
+
+    await expect(
+      findVisitRouteOrderConflict(reader, {
+        orgId: 'org_1',
+        cells: [{ pharmacistId: 'pharmacist_1', dateKey: '2026-06-20', routeOrder: 1 }],
+      }),
+    ).resolves.toEqual({ kind: 'schedule', id: 'schedule_1' });
+  });
 });
