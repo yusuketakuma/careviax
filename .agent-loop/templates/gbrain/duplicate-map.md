@@ -1,7 +1,7 @@
 ---
 type: DuplicateMap
 title: <consolidation — e.g. items filtering logic>
-memory_id: projects/careviax/duplicates/<duplicate-map-id>
+memory_id: projects/careviax/duplicates/<yyyy-mm-dd>/<duplicate-map-id>
 project_id: careviax
 task_id: <QL-YYYYMMDD-nnn>
 created_by: <codex-lead | claude-lead>
@@ -39,4 +39,4 @@ tags: [<area>, duplicate-removal, <agent>]
 ## Links
 
 - canonicalizes: [[file:<src/...>]]
-- produced_by: [[projects/careviax/loop-runs/<YYYY-MM-DD>/<task-id>]]
+- produced_by: [[projects/careviax/loop-runs/<yyyy-mm-dd>/<task-id>]]

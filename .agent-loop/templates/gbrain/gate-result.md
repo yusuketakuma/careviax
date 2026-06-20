@@ -1,7 +1,7 @@
 ---
 type: GateResult
 title: <task-id> — gate @ <sha>
-memory_id: projects/careviax/gates/<task-id>-<sha>
+memory_id: projects/careviax/gates/<yyyy-mm-dd>/<task-id>-<sha>
 project_id: careviax
 task_id: <QL-YYYYMMDD-nnn>
 commit_after: <sha>
@@ -39,4 +39,4 @@ result: <pass|partial_pass|fail> · accepted_for_next_step: <true|false> · reas
 
 ## Links
 
-- gated: [[projects/careviax/loop-runs/<YYYY-MM-DD>/<task-id>]]
+- gated: [[projects/careviax/loop-runs/<yyyy-mm-dd>/<task-id>]]

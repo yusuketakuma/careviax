@@ -1,7 +1,7 @@
 ---
 type: ImplementationDecision
 title: <decision — e.g. Consolidate API fetchers into src/lib/...>
-memory_id: projects/careviax/decisions/<decision-id>
+memory_id: projects/careviax/decisions/<yyyy-mm-dd>/<decision-id>
 project_id: careviax
 task_id: <QL-YYYYMMDD-nnn>
 commit_after: <sha>
@@ -50,6 +50,6 @@ tags: [<area>, <concern>, <technology>, <agent>, accepted]
 
 ## Links
 
-- produced_by: [[projects/careviax/loop-runs/<YYYY-MM-DD>/<task-id>]]
-- rejects: [[projects/careviax/rejected/<rejected-id>]]
+- produced_by: [[projects/careviax/loop-runs/<yyyy-mm-dd>/<task-id>]]
+- rejects: [[projects/careviax/rejected/<yyyy-mm-dd>/<rejected-id>]]
 - canonical: [[file:<src/...>]]

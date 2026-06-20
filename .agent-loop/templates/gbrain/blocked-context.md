@@ -1,7 +1,7 @@
 ---
 type: BlockedContext
 title: <short — why we stopped>
-memory_id: projects/careviax/blocked/<blocked-id>
+memory_id: projects/careviax/blocked/<yyyy-mm-dd>/<blocked-id>
 project_id: careviax
 task_id: <QL-YYYYMMDD-nnn>
 created_by: <claude-lead | codex-lead>

@@ -1,7 +1,7 @@
 ---
 type: CandidateLesson
 title: <lesson — phrased as a rule>
-memory_id: projects/careviax/lessons/candidates/<lesson-id>
+memory_id: projects/careviax/lessons/candidates/<yyyy-mm-dd>/<lesson-id>
 project_id: careviax
 task_id: <QL-YYYYMMDD-nnn>
 created_by: <claude-lead | codex-lead>
@@ -20,7 +20,7 @@ tags: [<area>, <concern>, <agent>]
 
 lesson: <one-sentence rule>
 source_task: <QL-YYYYMMDD-nnn>
-source_memory: [[projects/careviax/decisions/<decision-id>]]
+source_memory: [[projects/careviax/decisions/<yyyy-mm-dd>/<decision-id>]]
 
 ## Applies to
 
@@ -41,5 +41,5 @@ source_memory: [[projects/careviax/decisions/<decision-id>]]
 
 ## Links
 
-- derived_from: [[projects/careviax/decisions/<decision-id>]]
+- derived_from: [[projects/careviax/decisions/<yyyy-mm-dd>/<decision-id>]]
 - promotes_to: PROMOTION_QUEUE.md

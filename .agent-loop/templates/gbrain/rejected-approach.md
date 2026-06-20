@@ -1,7 +1,7 @@
 ---
 type: RejectedApproach
 title: <rejected approach — short>
-memory_id: projects/careviax/rejected/<rejected-id>
+memory_id: projects/careviax/rejected/<yyyy-mm-dd>/<rejected-id>
 project_id: careviax
 task_id: <QL-YYYYMMDD-nnn>
 created_by: <codex-lead | claude-lead>
@@ -30,4 +30,4 @@ tags: [<area>, rejected, <agent>]
 
 ## Links
 
-- linked_decision: [[projects/careviax/decisions/<decision-id>]]
+- linked_decision: [[projects/careviax/decisions/<yyyy-mm-dd>/<decision-id>]]

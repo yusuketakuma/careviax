@@ -16,6 +16,8 @@ of work is a task with a stable `task_id` and a status that advances through the
   STATUS: gbrain connected 2026-06-20 (local postgres; careviax indexed read-write). Populate
   this with the `gbrain search`/`gbrain query` hits a task actually consulted. `mcp__gbrain__*`
   tools require a Claude Code restart; the `gbrain` CLI works now.
+- F-20260620-008 introduces optional Control Plane fields. Existing tasks without those fields
+  are valid **legacy manifests** and inherit defaults from `CONTROL_PLANE_CONFIG.yml`.
 
 ## Task schema
 
@@ -25,6 +27,8 @@ of work is a task with a stable `task_id` and a status that advances through the
   owner: claude-lead # claude-lead (UI lane) | codex-lead (backend lane)
   reviewer: codex-lead # the opposite lane reviews
   origin_agent: claude-lead # who submitted this feature request; may differ from owner
+  type: feature # feature | bugfix | refactor | test | docs | loop_improvement
+  risk_level: low # low | medium | high | critical
   priority: P2 # P0 (now) | P1 | P2 | P3
   feature_name: ''
   background: '' # why this exists; link to docs/spec section if any
@@ -33,6 +37,28 @@ of work is a task with a stable `task_id` and a status that advances through the
     - ''
   constraints: # compliance / design / lane constraints
     - ''
+  scope: # optional Control Plane fields; missing means legacy/defaulted
+    allowed_paths: [glob]
+    denied_paths: [glob]
+    max_diff_lines: 800
+  loop_policy:
+    primary_loop: coding # coding | improvement
+    max_iterations: 4
+    max_runtime_minutes: 90
+    max_cost_usd: null
+    require_plan_before_edit: true
+    concurrency_key: ''
+  success_gates:
+    required: [typecheck, unit_tests, lint, no_scope_violation, diff_review]
+    optional: [e2e_tests, perf_check]
+  approval:
+    human_required_if:
+      - touches_auth
+      - touches_payment
+      - adds_dependency
+      - changes_database_schema
+      - modifies_workflow
+      - modifies_eval_threshold
   verification: # exact commands that must pass before done
     - pnpm lint
     - pnpm typecheck
@@ -73,6 +99,11 @@ owned by the other.
 - `verifying` — `verification[]` gates running.
 - `done` — only after `verification[]` passes.
 - `blocked` — parked per `BLOCKED.md`.
+
+**Control Plane compatibility.** Tasks created before F-20260620-008 may omit `type`,
+`risk_level`, `scope`, `loop_policy`, `success_gates`, and `approval`. Supervisors treat those
+entries as legacy manifests and apply the defaults in `CONTROL_PLANE_CONFIG.yml`; do not backfill
+old tasks unless they are actively being edited for another reason.
 
 ## Queue
 
@@ -251,4 +282,79 @@ owned by the other.
     - projects/careviax/lessons/candidates/api-response-validation-and-consolidation # times_confirmed 1->2, gate_verified, F-007/2a4780d0 evidence (promotion_status=candidate)
     - projects/careviax/fix-patterns/route-wire-shape-schema-parity-tests # new: match test mocks/client schema to real route wire shape; add inverse malformed-2xx tests
     - projects/careviax/reviews/statistics-hub-rev7-contract-permission-api-mismatch-20260620 # rev7 review --resolved_by--> the fix-pattern above
+
+- task_id: F-20260620-008
+  status: done
+  owner: codex-lead
+  reviewer: claude-lead
+  origin_agent: codex-lead
+  type: loop_improvement
+  risk_level: medium
+  priority: P1
+  feature_name: Control Plane MVP and date-partitioned gbrain writeback layout
+  background: >
+    User supplied AI coding-loop Control Plane specification v0.1 and requested implementation
+    for the Coding Loop plus Loop Improvement Loop. User also requested that gbrain supplemental
+    files remain type-organized but gain a date partition to prevent giant per-type directories
+    or pages over time.
+  user_value: >
+    The agent loop becomes more auditable and safer: tasks have explicit manifest controls,
+    high-risk/runtime automation is deferred instead of implied, and new gbrain writebacks are
+    organized by type and JST write date.
+  acceptance_criteria:
+    - CONTROL_PLANE.md maps the supplied spec to existing .agent-loop artifacts and names deferred items.
+    - CONTROL_PLANE_CONFIG.yml is machine-readable but clearly marked advisory/manual, not runtime-enforced.
+    - FEATURE_QUEUE supports optional control-plane manifest fields while preserving existing legacy entries.
+    - GBRAIN_SCHEMA and templates define new-memory slugs as projects/careviax/<type-dir>/<yyyy-mm-dd>/<id>.
+    - Existing gbrain slugs are explicitly stable; no bulk migration is performed.
+    - Deferred runtime/high-risk control-plane work is recorded in BLOCKED.md.
+  constraints:
+    - Docs/config only under .agent-loop; no src/prisma/public/.github edits.
+    - Do not claim runtime enforcement, secret scanning, SAST, auto-merge, golden eval mutation, or shadow/canary execution is implemented.
+    - Use JST write date for gbrain slug partitions.
+  scope:
+    allowed_paths:
+      - .agent-loop/CONTROL_PLANE.md
+      - .agent-loop/CONTROL_PLANE_CONFIG.yml
+      - .agent-loop/README.md
+      - .agent-loop/FEATURE_QUEUE.md
+      - .agent-loop/GBRAIN_SCHEMA.md
+      - .agent-loop/templates/gbrain/**
+      - .agent-loop/BLOCKED.md
+      - .agent-loop/STATE.md
+    denied_paths:
+      - src/**
+      - prisma/**
+      - public/**
+      - .github/**
+    max_diff_lines: 1800
+  loop_policy:
+    primary_loop: improvement
+    max_iterations: 4
+    max_runtime_minutes: 90
+    max_cost_usd: null
+    require_plan_before_edit: true
+    concurrency_key: agent-loop-control-plane
+  success_gates:
+    required: [format_check, diff_check, peer_review, no_scope_violation]
+    optional: [typecheck]
+  approval:
+    human_required_if:
+      - runtime_enforcement
+      - modifies_golden_eval
+      - modifies_eval_threshold
+      - adds_dependency
+      - modifies_workflow
+      - auto_merge
+      - production_deploy
+  verification:
+    - pnpm exec prettier --check .agent-loop/CONTROL_PLANE.md .agent-loop/CONTROL_PLANE_CONFIG.yml .agent-loop/README.md .agent-loop/FEATURE_QUEUE.md .agent-loop/GBRAIN_SCHEMA.md .agent-loop/BLOCKED.md .agent-loop/STATE.md .agent-loop/templates/gbrain/*.md
+    - git diff --check
+    - ruby -e "require 'yaml'; YAML.load_file('.agent-loop/CONTROL_PLANE_CONFIG.yml')"
+  review:
+    - PLAN_REVIEW_RESULT approved-with-notes from claude-lead; notes #1-#4 incorporated.
+    - CODE_REVIEW_RESULT approved from claude-lead; commit approved for explicit .agent-loop staging with .harness-mem excluded.
+  gbrain_memory_used:
+    - gbrain search "control plane loop improvement golden eval task manifest promotion rollback ledger" (no direct careviax control-plane memory; used generic process concepts only)
+    - MEMORY.md: prior CareViaX lesson that huge ledgers can break whole-file Prettier/OOM; supports date partitioning and bounded file growth
 ```

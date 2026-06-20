@@ -1,7 +1,7 @@
 ---
 type: ReviewFinding
 title: <RF-id> — <abstracted finding>
-memory_id: projects/careviax/reviews/<review-id>
+memory_id: projects/careviax/reviews/<yyyy-mm-dd>/<review-id>
 project_id: careviax
 task_id: <QL-YYYYMMDD-nnn>
 created_by: <codex-lead | claude-lead>
@@ -44,4 +44,4 @@ severity: <high|medium|low> · status: <fixed|accepted_risk|blocked|false_positi
 ## Links
 
 - targets: [[file:<src/...>]]
-- from_run: [[projects/careviax/loop-runs/<YYYY-MM-DD>/<task-id>]]
+- from_run: [[projects/careviax/loop-runs/<yyyy-mm-dd>/<task-id>]]

@@ -29,6 +29,8 @@ inbox: ~/.agents/skills/agmsg/scripts/inbox.sh phos <name>
 | File                        | Purpose                                                                                                                                                                              |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `README.md`                 | This operator guide — system overview, loops, hard-stops, rollout status.                                                                                                            |
+| `CONTROL_PLANE.md`          | Control Plane MVP SSOT: task/routing/policy/eval/approval/promotion/incident boundaries mapped to this file-plane loop.                                                              |
+| `CONTROL_PLANE_CONFIG.yml`  | Machine-readable advisory policy for the Control Plane MVP. Descriptive only until runtime enforcement is implemented.                                                               |
 | `STATE.md`                  | Single source of truth for the current run/cycle; resume point on hard-stop.                                                                                                         |
 | `FEATURE_QUEUE.md`          | Feature intake queue (task_id, status, owner/reviewer, acceptance criteria).                                                                                                         |
 | `LOCKS.md`                  | Edit-conflict ledger mirroring the live agmsg LOCK discipline.                                                                                                                       |
@@ -211,10 +213,10 @@ A resume point is a short block the next session (or human) can pick up from wit
 | 1     | Scaffold `.agent-loop/` docs + supervisor prompts        | **Complete** (this directory).                                                                                                                                          |
 | 2     | agmsg coordination live (claude/codex on team `phos`)    | **Live.**                                                                                                                                                               |
 | 3     | gbrain long-term memory connected (recall + writeback)   | **Connected (2026-06-20).** Local postgres; careviax imported (131 pages / 1408 chunks), repo policy read-write. `mcp__gbrain__*` tools load on next Claude Code start. |
-| 4     | Full automated intake → review → gate cycle hardening    | Pending.                                                                                                                                                                |
+| 4     | Full automated intake → review → gate cycle hardening    | **In progress.** F-008 adds the docs/config Control Plane MVP; runtime enforcement remains deferred.                                                                    |
 | 5     | Memory-driven continuous loop (gbrain-informed planning) | Pending.                                                                                                                                                                |
 
-**CURRENT STATUS:** Phase 1 scaffold complete; Phase 2 agmsg live (claude/codex on team phos); Phase 3 gbrain connected (local postgres, careviax imported — **keyword AND semantic search both work now; embeddings generated via local `ollama:mxbai-embed-large` (1024d, no external egress) as of 2026-06-20, default source embed 100% — `BLOCKED.md` gbrain-embeddings is RESOLVED**; restart Claude Code for `mcp__gbrain__*` tools); Phase 4–5 pending. See CLAUDE.md `## GBrain Configuration`.
+**CURRENT STATUS:** Phase 1 scaffold complete; Phase 2 agmsg live (claude/codex on team phos); Phase 3 gbrain connected (local postgres, careviax imported — **keyword AND semantic search both work now; embeddings generated via local `ollama:mxbai-embed-large` (1024d, no external egress) as of 2026-06-20, default source embed 100% — `BLOCKED.md` gbrain-embeddings is RESOLVED**; restart Claude Code for `mcp__gbrain__*` tools); Phase 4 Control Plane MVP docs/config is in progress; Phase 5 pending. See CLAUDE.md `## GBrain Configuration`.
 
 ---
 

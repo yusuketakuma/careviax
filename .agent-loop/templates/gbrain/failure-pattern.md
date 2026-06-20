@@ -1,7 +1,7 @@
 ---
 type: FailurePattern
 title: <symptom — short>
-memory_id: projects/careviax/failures/<failure-id>
+memory_id: projects/careviax/failures/<yyyy-mm-dd>/<failure-id>
 project_id: careviax
 created_by: <codex-lead | claude-lead>
 owner_agent: <codex-lead | claude-lead>
@@ -30,7 +30,7 @@ tags: [<area>, stability, <technology>, <agent>]
 
 ## Good fix
 
-- <the real fix> → see [[projects/careviax/fix-patterns/<fix-id>]]
+- <the real fix> → see [[projects/careviax/fix-patterns/<yyyy-mm-dd>/<fix-id>]]
 
 ## Applies to
 
@@ -38,8 +38,8 @@ tags: [<area>, stability, <technology>, <agent>]
 
 ## Evidence
 
-- LoopRun: [[projects/careviax/loop-runs/<YYYY-MM-DD>/<task-id>]]
-- ReviewFinding: [[projects/careviax/reviews/<review-id>]]
+- LoopRun: [[projects/careviax/loop-runs/<yyyy-mm-dd>/<task-id>]]
+- ReviewFinding: [[projects/careviax/reviews/<yyyy-mm-dd>/<review-id>]]
 
 ## Tests to run
 
@@ -47,4 +47,4 @@ tags: [<area>, stability, <technology>, <agent>]
 
 ## Links
 
-- fixed_by: [[projects/careviax/fix-patterns/<fix-id>]]
+- fixed_by: [[projects/careviax/fix-patterns/<yyyy-mm-dd>/<fix-id>]]

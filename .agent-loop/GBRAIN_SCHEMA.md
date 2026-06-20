@@ -65,7 +65,7 @@ type: LoopRun | FeatureIntake | ImplementationDecision | RejectedApproach | Fail
   | FormUXPattern | StateDisplayPattern | AccessibilityFinding | ResponsiveFinding
   | ProductDecision | UserFlowDecision | PerformanceFinding
 title: <human-readable title — REQUIRED; gbrain derives from slug if omitted>
-memory_id: <deterministic — equals the slug, e.g. projects/careviax/decisions/api-client-consolidation>
+memory_id: <deterministic — equals the slug, e.g. projects/careviax/decisions/2026-06-20/api-client-consolidation>
 project_id: careviax
 repo_url: <github url or null>
 branch: <branch>
@@ -229,27 +229,45 @@ are `.agent-loop/prompts/claude-lead`, etc.). The memory **`type`** comes from f
 queryable via `gbrain list --type <Type>`. Write-through lands in the local brain
 (`/Users/yusuke/brain/...`, on-device — no data egress).
 
+Singleton pages stay stable:
+
 ```
 projects/careviax/profile
-projects/careviax/loop-runs/<YYYY-MM-DD>/<task-id>
-projects/careviax/features/<feature-id>
-projects/careviax/decisions/<decision-id>
-projects/careviax/rejected/<rejected-id>
-projects/careviax/failures/<failure-id>
-projects/careviax/fix-patterns/<fix-id>
-projects/careviax/reviews/<review-id>
-projects/careviax/gates/<gate-id>
-projects/careviax/duplicates/<duplicate-map-id>
-projects/careviax/risk-areas/<risk-id>
-projects/careviax/blocked/<blocked-id>
-projects/careviax/lessons/candidates/<lesson-id>
-projects/careviax/lessons/verified/<lesson-id>
-projects/careviax/lessons/stable-candidates/<lesson-id>
-projects/careviax/stale/<stale-memory-id>
 ```
 
+New memory pages use a **type directory + JST write-date + id** layout:
+
+```
+projects/careviax/loop-runs/<yyyy-mm-dd>/<task-id>
+projects/careviax/features/<yyyy-mm-dd>/<feature-id>
+projects/careviax/decisions/<yyyy-mm-dd>/<decision-id>
+projects/careviax/rejected/<yyyy-mm-dd>/<rejected-id>
+projects/careviax/failures/<yyyy-mm-dd>/<failure-id>
+projects/careviax/fix-patterns/<yyyy-mm-dd>/<fix-id>
+projects/careviax/reviews/<yyyy-mm-dd>/<review-id>
+projects/careviax/gates/<yyyy-mm-dd>/<gate-id>
+projects/careviax/duplicates/<yyyy-mm-dd>/<duplicate-map-id>
+projects/careviax/risk-areas/<yyyy-mm-dd>/<risk-id>
+projects/careviax/blocked/<yyyy-mm-dd>/<blocked-id>
+projects/careviax/lessons/candidates/<yyyy-mm-dd>/<lesson-id>
+projects/careviax/lessons/verified/<yyyy-mm-dd>/<lesson-id>
+projects/careviax/lessons/stable-candidates/<yyyy-mm-dd>/<lesson-id>
+projects/careviax/stale/<yyyy-mm-dd>/<stale-memory-id>
+```
+
+The date is the **write date in Asia/Tokyo**. The first path segment after `projects/careviax/`
+is the `type-dir`: a human directory name, not the canonical type. The canonical memory type is
+still the frontmatter `type:` field, and `gbrain list --type <Type>` continues to use that
+frontmatter rather than the slug path.
+
+Existing pre-F-008 slugs without a date partition are **stable**. Do not bulk-migrate them: existing
+links, backlinks, and STATE/FEATURE_QUEUE references depend on those slugs. When an old page is
+materially revised, either update it in place or create a dated successor and set/link
+`superseded_by` explicitly.
+
 Keeping `decisions/`, `failures/`, `fix-patterns/`, and `lessons/` **separate from `loop-runs/`** is
-deliberate: it keeps "what is reusable knowledge" findable instead of buried in run logs.
+deliberate: it keeps reusable knowledge findable instead of buried in run logs. Adding the date
+partition prevents any one type directory from growing into an unbounded giant file or flat folder.
 
 ---
 
@@ -479,18 +497,18 @@ After saving:  append memory_id (= slug) to .agent-loop/STATE.md ·
 
 ```bash
 # write (stdin; frontmatter type/title/tags honored)
-gbrain put projects/careviax/decisions/<id> < page.md
+gbrain put projects/careviax/decisions/<yyyy-mm-dd>/<id> < page.md
 # read / list by type or tag
-gbrain get  projects/careviax/decisions/<id>
+gbrain get  projects/careviax/decisions/<yyyy-mm-dd>/<id>
 gbrain list --type ImplementationDecision --tag api -n 20
 # recall (keyword + query=semantic both work; local ollama embeddings, 2026-06-20)
 gbrain search "api client retry duplicate"
 # typed edges (the knowledge graph)
-gbrain link projects/careviax/loop-runs/2026-06-20/QL-001 projects/careviax/decisions/<id> --link-type produced
-gbrain backlinks projects/careviax/decisions/<id>
-gbrain graph-query projects/careviax/decisions/<id> --type produced --direction in
+gbrain link projects/careviax/loop-runs/2026-06-20/QL-001 projects/careviax/decisions/2026-06-20/<id> --link-type produced
+gbrain backlinks projects/careviax/decisions/2026-06-20/<id>
+gbrain graph-query projects/careviax/decisions/2026-06-20/<id> --type produced --direction in
 # tags
-gbrain tag projects/careviax/decisions/<id> duplicate-removal
+gbrain tag projects/careviax/decisions/2026-06-20/<id> duplicate-removal
 # supersede a stale memory: set superseded_by in the OLD page's frontmatter, then re-put it.
 ```
 

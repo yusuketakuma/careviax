@@ -1,7 +1,7 @@
 ---
 type: FixPattern
 title: <standard fix for <failure>>
-memory_id: projects/careviax/fix-patterns/<fix-id>
+memory_id: projects/careviax/fix-patterns/<yyyy-mm-dd>/<fix-id>
 project_id: careviax
 created_by: <codex-lead | claude-lead>
 owner_agent: <codex-lead | claude-lead>
@@ -15,7 +15,7 @@ tags: [<area>, <concern>, <technology>, <agent>]
 
 # <title>
 
-fixes: [[projects/careviax/failures/<failure-id>]]
+fixes: [[projects/careviax/failures/<yyyy-mm-dd>/<failure-id>]]
 
 ## Recipe
 
@@ -33,4 +33,4 @@ fixes: [[projects/careviax/failures/<failure-id>]]
 
 ## Links
 
-- fixes: [[projects/careviax/failures/<failure-id>]]
+- fixes: [[projects/careviax/failures/<yyyy-mm-dd>/<failure-id>]]

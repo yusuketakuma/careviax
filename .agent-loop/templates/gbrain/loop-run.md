@@ -1,7 +1,7 @@
 ---
 type: LoopRun
 title: <task-id> — <one-line summary>
-memory_id: projects/careviax/loop-runs/<YYYY-MM-DD>/<task-id>
+memory_id: projects/careviax/loop-runs/<yyyy-mm-dd>/<task-id>
 project_id: careviax
 branch: <branch>
 commit_before: <sha>
@@ -51,8 +51,8 @@ integration_test: <skipped> · build: <pass|fail> · e2e: <skipped> · secret_sc
 
 ## Lessons created
 
-- [[projects/careviax/lessons/candidates/<lesson-id>]]
+- [[projects/careviax/lessons/candidates/<yyyy-mm-dd>/<lesson-id>]]
 
 ## Links
 
-- produced: [[projects/careviax/decisions/<id>]]
+- produced: [[projects/careviax/decisions/<yyyy-mm-dd>/<id>]]
