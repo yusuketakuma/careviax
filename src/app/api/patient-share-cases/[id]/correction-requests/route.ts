@@ -8,74 +8,21 @@ import { conflict, notFound, success, validationError } from '@/lib/api/response
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import {
-  PATIENT_SHARE_CORRECTION_TARGET_TYPES,
-  resolvePatientShareCorrectionRequestPolicy,
-} from '@/server/services/patient-share-policy';
+  correctionRequestFieldPathSchema,
+  correctionRequestTypeSchema,
+  correctionTargetTypeSchema,
+  isPatientShareCorrectionFieldPath,
+  toPatientShareCorrectionRequestRow,
+} from '@/lib/patient-share/correction-request-domain';
+import { resolvePatientShareCorrectionRequestPolicy } from '@/server/services/patient-share-policy';
 
 const correctionStatusSchema = z.enum(['open', 'responded', 'resolved', 'cancelled']);
-const correctionTargetTypeSchema = z.enum(PATIENT_SHARE_CORRECTION_TARGET_TYPES);
-const correctionRequestTypeSchema = z.enum(['correction', 'addition']);
-const fieldPathSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(120)
-  .regex(/^[A-Za-z0-9_.[\]-]+$/, '項目パスが不正です');
-
-const ALLOWED_FIELD_PATHS_BY_TARGET_TYPE: Record<
-  z.infer<typeof correctionTargetTypeSchema>,
-  ReadonlySet<string>
-> = {
-  patient_profile: new Set([
-    'name',
-    'name_kana',
-    'birth_date',
-    'gender',
-    'phone',
-    'allergy_info',
-    'notes',
-    'primary_residence.address',
-    'primary_residence.unit_name',
-  ]),
-  care_case: new Set([
-    'referral_source',
-    'referral_date',
-    'start_date',
-    'end_date',
-    'primary_pharmacist_id',
-    'required_visit_support',
-    'notes',
-  ]),
-  management_plan: new Set(['content', 'goals', 'monitoring_items', 'review_schedule']),
-  visit_request: new Set([
-    'request_reason',
-    'desired_start_at',
-    'desired_end_at',
-    'physician_instruction',
-    'carry_items',
-    'patient_home_notes',
-  ]),
-  partner_visit_record: new Set([
-    'visit_at',
-    'pharmacist_id',
-    'pharmacist_name',
-    'record_content',
-    'attachments',
-  ]),
-  claim_note: new Set([
-    'prescription_received_by',
-    'dispensing_pharmacy_name',
-    'claim_status',
-    'claim_note_text',
-  ]),
-  billing_candidate: new Set(['billing_status', 'exclusion_reason', 'amount_snapshot']),
-};
 
 const createCorrectionRequestSchema = z
   .object({
     target_type: correctionTargetTypeSchema,
     target_id: z.string().trim().min(1).max(128).optional(),
-    field_path: fieldPathSchema.optional(),
+    field_path: correctionRequestFieldPathSchema.optional(),
     request_type: correctionRequestTypeSchema.default('correction'),
     reason: z.string().trim().min(1, '理由は必須です').max(1000),
     proposed_value: z.unknown().optional(),
@@ -83,7 +30,7 @@ const createCorrectionRequestSchema = z
   .superRefine((value, ctx) => {
     if (
       value.field_path &&
-      !ALLOWED_FIELD_PATHS_BY_TARGET_TYPE[value.target_type].has(value.field_path)
+      !isPatientShareCorrectionFieldPath(value.target_type, value.field_path)
     ) {
       ctx.addIssue({
         code: 'custom',
@@ -96,42 +43,6 @@ const createCorrectionRequestSchema = z
 function optionalSearchParam(value: string | null) {
   const trimmed = value?.trim() ?? '';
   return trimmed.length > 0 ? trimmed : undefined;
-}
-
-type SafeCorrectionRequestRow = {
-  id: string;
-  share_case_id: string;
-  target_owner: string;
-  target_type: string;
-  target_id: string | null;
-  field_path: string | null;
-  request_type: string;
-  status: string;
-  requested_by: string;
-  responded_by: string | null;
-  resolved_by: string | null;
-  resolved_at: Date | null;
-  created_at: Date;
-  updated_at: Date;
-};
-
-function toSafeCorrectionRequest(row: SafeCorrectionRequestRow) {
-  return {
-    id: row.id,
-    share_case_id: row.share_case_id,
-    target_owner: row.target_owner,
-    target_type: row.target_type,
-    target_id: row.target_id,
-    field_path: row.field_path,
-    request_type: row.request_type,
-    status: row.status,
-    requested_by: row.requested_by,
-    responded_by: row.responded_by,
-    resolved_by: row.resolved_by,
-    resolved_at: row.resolved_at,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-  };
 }
 
 export const GET = withAuthContext<{ id: string }>(
@@ -211,7 +122,7 @@ export const GET = withAuthContext<{ id: string }>(
     const page = buildCursorPage(rows, limit, (row) => row.id);
     return success({
       ...page,
-      data: page.data.map(toSafeCorrectionRequest),
+      data: page.data.map(toPatientShareCorrectionRequestRow),
     });
   },
   {
@@ -358,7 +269,7 @@ export const POST = withAuthContext<{ id: string }>(
     });
 
     if ('response' in result) return result.response ?? validationError('入力値が不正です');
-    return success(result.correctionRequest, 201);
+    return success(toPatientShareCorrectionRequestRow(result.correctionRequest), 201);
   },
   {
     permission: 'canManagePatientSharing',

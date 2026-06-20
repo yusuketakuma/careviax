@@ -14,7 +14,10 @@ import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
 import { prisma } from '@/lib/db/client';
 import {
   careReportPrintAuditRequestSchema,
+  isPrintableCareReportContent,
+  isPrintableCareReportType,
   type CareReportPrintAuditResponse,
+  type CareReportPrintAuditPrintableReport,
 } from '@/lib/reports/care-report-print-audit-contract';
 import { recordCareReportPrintAudit } from '@/server/services/export-audit';
 import { canAccessCareReportSource } from '@/server/services/care-report-access';
@@ -91,6 +94,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   ) {
     return withSensitiveNoStore(await forbiddenResponse('この報告書を印刷する権限がありません'));
   }
+  if (!isPrintableCareReportType(printReport.report_type)) {
+    return withSensitiveNoStore(conflict('印刷対象外の報告書です'));
+  }
+  if (printReport.content === null) {
+    return withSensitiveNoStore(conflict('報告書本文がないため印刷できません'));
+  }
+  if (!isPrintableCareReportContent(printReport.report_type, printReport.content)) {
+    return withSensitiveNoStore(conflict('印刷用の報告書形式が不正です'));
+  }
 
   try {
     await recordCareReportPrintAudit(prisma, {
@@ -116,10 +128,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       report: {
         id: printReport.id,
         report_type: printReport.report_type,
-        content: printReport.content,
+        content: printReport.content as CareReportPrintAuditPrintableReport['content'],
       },
     },
-  } satisfies CareReportPrintAuditResponse;
+  } satisfies CareReportPrintAuditResponse<CareReportPrintAuditPrintableReport>;
 
   return withSensitiveNoStore(success(responseBody));
 }

@@ -309,6 +309,48 @@ describe('buildCareReportPdf', () => {
     expect(text).not.toContain('billing-1');
   });
 
+  it('renders family share PDFs from the audience allowlist and hides internal provenance', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      ...baseReport,
+      report_type: 'family_share',
+      content: {
+        report_audience: 'family',
+        patient: { name: '山田 太郎', birth_date: '1940-01-01' },
+        report_date: '2026-06-15',
+        visit_date: '2026-06-14',
+        pharmacist_name: '鈴木 薬剤師',
+        summary: '眠気は落ち着いています。',
+        medication: '朝食後の薬は家族確認で服用できています。',
+        residual: '残薬はありません。',
+        evaluation: '転倒リスクは低下傾向です。',
+        requests: 'ふらつきが出たら薬局へ連絡してください。',
+        warnings: ['眠気が強い日は運転を避けてください。'],
+        billing_context: { billing_evidence_id: 'billing-1' },
+        source_provenance: {
+          patient_id: 'patient_1',
+          visit_record_id: 'visit_1',
+          prescription_line_ids: ['line-1'],
+          prescription_lines: [{ drug_code: '123456789', prescription_line_id: 'line-1' }],
+        },
+      },
+    });
+
+    await buildCareReportPdf('org_1', 'report_1');
+
+    const text = collectPdfText(renderToBufferMock.mock.calls[0][0]).join('\n');
+    expect(text).toContain('ご家族向け服薬情報共有');
+    expect(text).toContain('眠気は落ち着いています。');
+    expect(text).toContain('朝食後の薬は家族確認で服用できています。');
+    expect(text).toContain('ふらつきが出たら薬局へ連絡してください。');
+    expect(text).toContain('眠気が強い日は運転を避けてください。');
+    expect(text).not.toContain('source_provenance');
+    expect(text).not.toContain('patient_id');
+    expect(text).not.toContain('visit_1');
+    expect(text).not.toContain('line-1');
+    expect(text).not.toContain('123456789');
+    expect(text).not.toContain('billing-1');
+  });
+
   it('does not render audience report PDFs when report type and audience disagree', async () => {
     careReportFindFirstMock.mockResolvedValue({
       ...baseReport,

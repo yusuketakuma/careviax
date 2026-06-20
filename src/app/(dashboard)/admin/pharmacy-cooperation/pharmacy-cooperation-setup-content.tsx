@@ -15,6 +15,7 @@ import {
   Save,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -25,61 +26,29 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/loading';
 import { readApiJson } from '@/lib/api/client-json';
+import {
+  apiDataSchema,
+  cursorPaginatedPageSchema,
+  type CursorPaginatedPage,
+} from '@/lib/api/response-schemas';
 import { formatDateDisplay as formatDate } from '@/lib/datetime/date-display';
 import { formatUtcDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import {
+  partnerPharmacyRowSchema,
+  pharmacyContractRowSchema,
+  pharmacyPartnershipRowSchema,
+  pharmacySiteRowSchema,
+  type PartnerPharmacyRowContract,
+  type PharmacyContractRowContract,
+  type PharmacyPartnershipRowContract,
+  type PharmacySiteRowContract,
+} from '@/lib/pharmacy-cooperation/api-contracts';
 
-type CursorPage<T> = {
-  data: T[];
-};
-
-type PharmacySiteRow = {
-  id: string;
-  name: string;
-  address?: string | null;
-};
-
-type PartnerPharmacyRow = {
-  id: string;
-  pharmacy_code: string | null;
-  name: string;
-  tel: string | null;
-  status: string;
-  updated_at?: string;
-};
-
-type PharmacyPartnershipRow = {
-  id: string;
-  status: string;
-  base_site_id: string;
-  partner_pharmacy_id: string;
-  effective_from: string | null;
-  effective_to: string | null;
-  base_site: { id: string; name: string };
-  partner_pharmacy: { id: string; name: string; status: string };
-};
-
-type PharmacyContractRow = {
-  id: string;
-  status: string;
-  effective_from: string;
-  effective_to: string | null;
-  partnership: {
-    id: string;
-    status: string;
-    base_site: { id: string; name: string };
-    partner_pharmacy: { id: string; name: string; status: string };
-  };
-  latest_version: {
-    version_no: number;
-    status: string;
-    active_fee_rule: {
-      billing_model: string;
-      unit_price: number | null;
-      tax_category: string;
-    } | null;
-  } | null;
-};
+type PharmacySiteRow = PharmacySiteRowContract;
+type PartnerPharmacyRow = PartnerPharmacyRowContract;
+type PharmacyPartnershipRow = PharmacyPartnershipRowContract;
+type PharmacyContractRow = PharmacyContractRowContract;
 
 type ContractTemplateRow = {
   id: string;
@@ -176,48 +145,146 @@ type CompleteUploadResponse = {
   };
 };
 
+const contractDocumentRowSchema = z.object({
+  id: z.string(),
+  contract_id: z.string(),
+  version_id: z.string(),
+  template_id: z.string(),
+  file_id: z.string().nullable(),
+  document_type: z.string(),
+  hash_value: z.string(),
+  signed_at: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+const contractDocumentPreviewSchema = z.object({
+  document_type: z.string(),
+  hash_value: z.string(),
+  rendered_text: z.string(),
+  snapshot: z.object({
+    template: z.object({
+      id: z.string(),
+      name: z.string(),
+      version: z.number(),
+      format: z.string(),
+    }),
+    version: z.object({
+      id: z.string(),
+      version_no: z.number(),
+      status: z.string(),
+    }),
+    fee_schedule: z.object({
+      billing_model: z.string(),
+      unit_price: z.number().nullable(),
+      tax_category: z.string(),
+      tax_rate_bp: z.number().nullable(),
+      rounding_rule: z.string().nullable(),
+    }),
+    articles: z.array(
+      z.object({
+        article_no: z.number(),
+        title: z.string(),
+      }),
+    ),
+  }),
+});
+
+const contractTemplateRowSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  version: z.number(),
+  format: z.string(),
+  is_default: z.boolean().optional(),
+});
+
+const presignedUploadResponseSchema = apiDataSchema(
+  z.object({
+    id: z.string(),
+    uploadUrl: z.string(),
+    headers: z.record(z.string(), z.string()).optional(),
+  }),
+);
+
+const completeUploadResponseSchema = apiDataSchema(
+  z.object({
+    id: z.string(),
+  }),
+);
+
+const pharmacySitesResponseSchema = apiDataSchema(z.array(pharmacySiteRowSchema));
+const partnerPharmacyPageSchema = cursorPaginatedPageSchema(partnerPharmacyRowSchema);
+const pharmacyPartnershipPageSchema = cursorPaginatedPageSchema(pharmacyPartnershipRowSchema);
+const pharmacyContractPageSchema = cursorPaginatedPageSchema(pharmacyContractRowSchema);
+const contractTemplatesResponseSchema = apiDataSchema(z.array(contractTemplateRowSchema));
+const contractDocumentsResponseSchema = apiDataSchema(z.array(contractDocumentRowSchema));
+const contractDocumentPreviewResponseSchema = contractDocumentPreviewSchema.extend({
+  mode: z.literal('preview'),
+});
+const savedContractDocumentResponseSchema = contractDocumentRowSchema.extend({
+  preview: contractDocumentPreviewSchema,
+});
+
 function todayDateKey() {
   return formatUtcDateKey(new Date());
 }
 
 async function fetchPharmacySites(orgId: string) {
   const response = await fetch('/api/pharmacy-sites', { headers: { 'x-org-id': orgId } });
-  return readApiJson<{ data: PharmacySiteRow[] }>(response);
+  return readApiJson<{ data: PharmacySiteRow[] }>(response, {
+    fallbackMessage: '薬局拠点の取得に失敗しました',
+    schema: pharmacySitesResponseSchema,
+  });
 }
 
 async function fetchPartnerPharmacies(orgId: string) {
   const response = await fetch('/api/partner-pharmacies?limit=20', {
     headers: { 'x-org-id': orgId },
   });
-  return readApiJson<CursorPage<PartnerPharmacyRow>>(response);
+  return readApiJson<CursorPaginatedPage<PartnerPharmacyRow>>(response, {
+    fallbackMessage: '協力薬局の取得に失敗しました',
+    schema: partnerPharmacyPageSchema,
+  });
 }
 
 async function fetchPartnerships(orgId: string) {
   const response = await fetch('/api/pharmacy-partnerships?limit=20', {
     headers: { 'x-org-id': orgId },
   });
-  return readApiJson<CursorPage<PharmacyPartnershipRow>>(response);
+  return readApiJson<CursorPaginatedPage<PharmacyPartnershipRow>>(response, {
+    fallbackMessage: '薬局間連携の取得に失敗しました',
+    schema: pharmacyPartnershipPageSchema,
+  });
 }
 
 async function fetchContracts(orgId: string) {
   const response = await fetch('/api/pharmacy-contracts?limit=20', {
     headers: { 'x-org-id': orgId },
   });
-  return readApiJson<CursorPage<PharmacyContractRow>>(response);
+  return readApiJson<CursorPaginatedPage<PharmacyContractRow>>(response, {
+    fallbackMessage: '薬局間契約の取得に失敗しました',
+    schema: pharmacyContractPageSchema,
+  });
 }
 
 async function fetchContractTemplates(orgId: string) {
   const response = await fetch('/api/templates?template_type=contract_document', {
     headers: { 'x-org-id': orgId },
   });
-  return readApiJson<{ data: ContractTemplateRow[] }>(response);
+  return readApiJson<{ data: ContractTemplateRow[] }>(response, {
+    fallbackMessage: '契約テンプレートの取得に失敗しました',
+    schema: contractTemplatesResponseSchema,
+  });
 }
 
 async function fetchContractDocuments(orgId: string, contractId: string) {
   const response = await fetch(`/api/pharmacy-contracts/${contractId}/documents`, {
     headers: { 'x-org-id': orgId },
   });
-  return readApiJson<CursorPage<ContractDocumentRow>>(response);
+  return readApiJson<{ data: ContractDocumentRow[] }>(response, {
+    fallbackMessage: '契約書類の取得に失敗しました',
+    schema: contractDocumentsResponseSchema,
+  });
 }
 
 async function uploadContractDocumentPdf(orgId: string, file: File) {
@@ -238,7 +305,10 @@ async function uploadContractDocumentPdf(orgId: string, file: File) {
       size_bytes: file.size,
     }),
   });
-  const presigned = await readApiJson<PresignedUploadResponse>(presignResponse);
+  const presigned = await readApiJson<PresignedUploadResponse>(presignResponse, {
+    fallbackMessage: '署名付きアップロードURLの取得に失敗しました',
+    schema: presignedUploadResponseSchema,
+  });
 
   const uploadResponse = await fetch(presigned.data.uploadUrl, {
     method: 'PUT',
@@ -260,7 +330,10 @@ async function uploadContractDocumentPdf(orgId: string, file: File) {
       etag: uploadResponse.headers.get('etag') ?? undefined,
     }),
   });
-  const completed = await readApiJson<CompleteUploadResponse>(completeResponse);
+  const completed = await readApiJson<CompleteUploadResponse>(completeResponse, {
+    fallbackMessage: 'ファイル登録の完了に失敗しました',
+    schema: completeUploadResponseSchema,
+  });
   return completed.data.id;
 }
 
@@ -934,7 +1007,10 @@ export function PharmacyCooperationSetupContent() {
           ...(partnerForm.tel ? { tel: partnerForm.tel } : {}),
         }),
       });
-      return readApiJson<PartnerPharmacyRow>(response);
+      return readApiJson<PartnerPharmacyRow>(response, {
+        fallbackMessage: '協力薬局の登録に失敗しました',
+        schema: partnerPharmacyRowSchema,
+      });
     },
     onSuccess: async () => {
       toast.success('協力薬局を登録しました');
@@ -962,7 +1038,10 @@ export function PharmacyCooperationSetupContent() {
           effective_from: partnershipForm.effective_from,
         }),
       });
-      return readApiJson<PharmacyPartnershipRow>(response);
+      return readApiJson<PharmacyPartnershipRow>(response, {
+        fallbackMessage: '薬局間連携の作成に失敗しました',
+        schema: pharmacyPartnershipRowSchema,
+      });
     },
     onSuccess: async () => {
       toast.success('薬局間連携を作成しました');
@@ -987,7 +1066,10 @@ export function PharmacyCooperationSetupContent() {
         },
         body: JSON.stringify(approvals),
       });
-      return readApiJson<PharmacyPartnershipRow>(response);
+      return readApiJson<PharmacyPartnershipRow>(response, {
+        fallbackMessage: '薬局間連携の有効化に失敗しました',
+        schema: pharmacyPartnershipRowSchema,
+      });
     },
     onSuccess: async () => {
       toast.success('薬局間連携を有効化しました');
@@ -1034,7 +1116,10 @@ export function PharmacyCooperationSetupContent() {
           },
         }),
       });
-      return readApiJson<PharmacyContractRow>(response);
+      return readApiJson<PharmacyContractRow>(response, {
+        fallbackMessage: '薬局間契約の登録に失敗しました',
+        schema: pharmacyContractRowSchema,
+      });
     },
     onSuccess: async () => {
       toast.success('薬局間契約を登録しました');
@@ -1064,7 +1149,10 @@ export function PharmacyCooperationSetupContent() {
           }),
         },
       );
-      return readApiJson<ContractDocumentPreview & { mode: 'preview' }>(response);
+      return readApiJson<ContractDocumentPreview & { mode: 'preview' }>(response, {
+        fallbackMessage: '契約書プレビューに失敗しました',
+        schema: contractDocumentPreviewResponseSchema,
+      });
     },
     onSuccess: (preview) => {
       setContractDocumentPreview(preview);
@@ -1101,7 +1189,10 @@ export function PharmacyCooperationSetupContent() {
           }),
         },
       );
-      return readApiJson<ContractDocumentRow & { preview: ContractDocumentPreview }>(response);
+      return readApiJson<ContractDocumentRow & { preview: ContractDocumentPreview }>(response, {
+        fallbackMessage: '契約書の保存に失敗しました',
+        schema: savedContractDocumentResponseSchema,
+      });
     },
     onSuccess: async (document) => {
       setContractDocumentPreview(document.preview);

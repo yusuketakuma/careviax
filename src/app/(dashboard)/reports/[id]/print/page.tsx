@@ -16,9 +16,8 @@ import type {
 } from '@/types/care-report-content';
 import {
   careReportPrintAuditResponseSchema,
-  type CareReportPrintAuditReport,
-  CareReportPrintAuditPrintableReport,
-  CareReportPrintAuditResponse,
+  type CareReportPrintAuditPrintableReport,
+  type CareReportPrintAuditResponse,
 } from '@/lib/reports/care-report-print-audit-contract';
 
 // ─── Physician report layout (別紙様式1準拠) ─────────────────────────────────
@@ -404,7 +403,9 @@ function AudienceReportPrint({ content }: { content: AudienceReportContent }) {
   const title =
     content.report_audience === 'visiting_nurse'
       ? '訪問看護向け服薬情報共有'
-      : '施設向け服薬介助申し送り';
+      : content.report_audience === 'family'
+        ? 'ご家族向け服薬情報共有'
+        : '施設向け服薬介助申し送り';
   const sections = [
     ['今日の要点', content.summary],
     ['服薬状況', content.medication],
@@ -470,10 +471,10 @@ export default function ReportPrintPage() {
         body: JSON.stringify({ intent: 'preview_rendered' }),
       });
       if (res.status === 403) throw new Error('PRINT_FORBIDDEN');
-      return readApiJson<CareReportPrintAuditResponse<CareReportPrintAuditReport>>(res, {
+      return readApiJson<CareReportPrintAuditResponse<CareReportPrintAuditPrintableReport>>(res, {
         fallbackMessage: '報告書の印刷監査を記録できませんでした',
         schema: careReportPrintAuditResponseSchema,
-      }) as Promise<CareReportPrintAuditResponse<CareReportPrintAuditPrintableReport>>;
+      });
     },
     enabled: !!orgId && !!reportId,
     retry: false,
@@ -482,7 +483,7 @@ export default function ReportPrintPage() {
     staleTime: 0,
   });
   const data = printAuditQuery.data?.data.report;
-  const canRenderPrintBody = printAuditQuery.data?.data.audited === true && Boolean(data);
+  const canRenderPrintBody = printAuditQuery.data?.data.audited === true && data?.id === reportId;
   const isPrintForbidden =
     printAuditQuery.isError &&
     printAuditQuery.error instanceof Error &&
@@ -501,7 +502,16 @@ export default function ReportPrintPage() {
       setManualPrintError('印刷権限がないため、再印刷できません。');
       return false;
     }
-    if (!res.ok) {
+    try {
+      const audit = await readApiJson<CareReportPrintAuditResponse>(res, {
+        fallbackMessage: '印刷監査を記録できないため、再印刷できません。',
+        schema: careReportPrintAuditResponseSchema,
+      });
+      if (audit.data.audited !== true || !audit.data.report || audit.data.report.id !== reportId) {
+        setManualPrintError('印刷監査を記録できないため、再印刷できません。');
+        return false;
+      }
+    } catch {
       setManualPrintError('印刷監査を記録できないため、再印刷できません。');
       return false;
     }

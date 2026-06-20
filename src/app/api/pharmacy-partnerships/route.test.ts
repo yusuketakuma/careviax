@@ -39,6 +39,7 @@ vi.mock('@/lib/audit/audit-entry', () => ({
 }));
 
 import { POST as rawPOST } from './route';
+import { pharmacyPartnershipRowSchema } from '@/lib/pharmacy-cooperation/api-contracts';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
 const POST = (req: NextRequest) => rawPOST(req, emptyRouteContext);
@@ -61,6 +62,10 @@ describe('/api/pharmacy-partnerships POST', () => {
       status: 'draft',
       base_site_id: 'site_1',
       partner_pharmacy_id: 'partner_pharmacy_1',
+      effective_from: new Date('2026-06-01T00:00:00.000Z'),
+      effective_to: new Date('2026-12-31T00:00:00.000Z'),
+      base_site: { id: 'site_1', name: '基幹薬局' },
+      partner_pharmacy: { id: 'partner_pharmacy_1', name: '連携薬局', status: 'active' },
     });
     createAuditLogEntryMock.mockResolvedValue({ id: 'audit_1' });
     withOrgContextMock.mockImplementation(async (_orgId, callback) =>
@@ -91,6 +96,8 @@ describe('/api/pharmacy-partnerships POST', () => {
     );
 
     expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(pharmacyPartnershipRowSchema.safeParse(body).success).toBe(true);
     expect(baseSiteFindFirstMock).toHaveBeenCalledWith({
       where: { id: 'site_1', org_id: 'org_1' },
       select: { id: true },

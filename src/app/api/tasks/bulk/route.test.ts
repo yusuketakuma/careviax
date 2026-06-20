@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { bulkCompleteTasksResponseSchema } from '@/lib/tasks/bulk-completion-contract';
 
 const {
   requireAuthContextMock,
@@ -103,7 +104,9 @@ describe('/api/tasks/bulk', () => {
     const response = await POST(createPostRequest({ ids: ['task_1', 'task_2'] }));
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(bulkCompleteTasksResponseSchema.safeParse(body).success).toBe(true);
+    expect(body).toMatchObject({
       data: {
         total: 2,
         completed: 2,
@@ -156,6 +159,28 @@ describe('/api/tasks/bulk', () => {
       data: {
         status: 'completed',
         completed_at: expect.any(Date),
+      },
+    });
+  });
+
+  it('returns a stale-state conflict when fewer eligible tasks are updated than selected', async () => {
+    taskUpdateManyMock.mockResolvedValueOnce({ count: 1 });
+
+    const response = await POST(createPostRequest({ ids: ['task_1', 'task_2'] }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        total: 2,
+        completed: 1,
+        failed: 1,
+        failures: [
+          {
+            id: null,
+            code: 'conflict',
+            message: '1件のタスクはすでに完了または取り消されています。再読み込みしてください',
+          },
+        ],
       },
     });
   });

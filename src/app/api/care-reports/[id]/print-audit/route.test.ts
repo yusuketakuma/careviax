@@ -36,6 +36,7 @@ vi.mock('@/server/services/care-report-access', () => ({
 }));
 
 import { POST } from './route';
+import { careReportPrintAuditResponseSchema } from '@/lib/reports/care-report-print-audit-contract';
 
 function createRequest() {
   return new NextRequest('http://localhost/api/care-reports/report_1/print-audit', {
@@ -46,6 +47,70 @@ function createRequest() {
 function expectSensitiveNoStore(response: Response) {
   expect(response.headers.get('Cache-Control')).toBe('private, no-store, max-age=0');
   expect(response.headers.get('Pragma')).toBe('no-cache');
+}
+
+function familyShareContent() {
+  return {
+    report_audience: 'family',
+    patient: { name: '佐藤 花子', birth_date: '1940-01-01' },
+    report_date: '2026-06-19',
+    visit_date: '2026-06-18',
+    pharmacist_name: '薬剤師 太郎',
+    summary: '家族共有向け印刷本文',
+    medication: '服薬状況',
+    residual: '残薬なし',
+    evaluation: '安定',
+    requests: '継続確認',
+    warnings: [],
+  };
+}
+
+function physicianReportContent() {
+  return {
+    patient: { name: '佐藤 花子', birth_date: '1940-01-01', gender: 'F' },
+    report_date: '2026-06-19',
+    visit_date: '2026-06-18',
+    pharmacist_name: '薬剤師 太郎',
+    prescriber: { name: '主治医 一郎', institution: '在宅診療所' },
+    prescriptions: [
+      {
+        drug_name: 'アムロジピン錠5mg',
+        dose: '1錠',
+        frequency: '1日1回朝食後',
+        days: 28,
+      },
+    ],
+    medication_management: {
+      compliance_summary: '概ね良好',
+      adherence_score: 4,
+      self_management: '家族支援あり',
+      calendar_used: true,
+    },
+    adverse_events: { has_events: false, events: [] },
+    functional_assessment: {
+      sleep: '良好',
+      cognition: '変化なし',
+      diet_oral: '良好',
+      mobility: '杖歩行',
+      excretion: '自立',
+    },
+    residual_medications: [],
+    assessment: '服薬継続可能',
+    plan: '次回も残薬確認',
+    physician_communication: '処方継続で問題ありません',
+    warnings: [],
+  };
+}
+
+async function expectErrorBodyWithoutPrintContent(
+  response: Response,
+  expected: { code: string; message: string },
+) {
+  const body = await response.json();
+  expect(body).toMatchObject(expected);
+  const bodyText = JSON.stringify(body);
+  expect(bodyText).not.toContain('山田花子');
+  expect(bodyText).not.toContain('印刷本文');
 }
 
 describe('/api/care-reports/[id]/print-audit', () => {
@@ -69,7 +134,7 @@ describe('/api/care-reports/[id]/print-audit', () => {
       case_id: 'case_1',
       visit_record_id: 'visit_record_1',
       report_type: 'physician_report',
-      content: { summary: '印刷本文' },
+      content: physicianReportContent(),
       updated_at: new Date('2026-06-18T01:02:03.000Z'),
     });
     canAccessCareReportSourceMock.mockResolvedValue(true);
@@ -83,13 +148,15 @@ describe('/api/care-reports/[id]/print-audit', () => {
 
     expect(response.status).toBe(200);
     expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(careReportPrintAuditResponseSchema.safeParse(body).success).toBe(true);
+    expect(body).toMatchObject({
       data: {
         audited: true,
         report: {
           id: 'report_1',
           report_type: 'physician_report',
-          content: { summary: '印刷本文' },
+          content: { patient: { name: '佐藤 花子' }, assessment: '服薬継続可能' },
         },
       },
     });
@@ -140,6 +207,120 @@ describe('/api/care-reports/[id]/print-audit', () => {
         intent: 'preview_rendered',
       }),
     );
+  });
+
+  it('records print audits for family share reports rendered by audience print views', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      status: 'confirmed',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      visit_record_id: 'visit_record_1',
+      report_type: 'family_share',
+      content: familyShareContent(),
+      updated_at: new Date('2026-06-18T01:02:03.000Z'),
+    });
+
+    const response = (await POST(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    }))!;
+
+    expect(response.status).toBe(200);
+    expectSensitiveNoStore(response);
+    const body = await response.json();
+    expect(careReportPrintAuditResponseSchema.safeParse(body).success).toBe(true);
+    expect(body).toMatchObject({
+      data: {
+        audited: true,
+        report: {
+          id: 'report_1',
+          report_type: 'family_share',
+          content: { report_audience: 'family', summary: '家族共有向け印刷本文' },
+        },
+      },
+    });
+    expect(recordCareReportPrintAuditMock).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        reportId: 'report_1',
+        intent: 'print_requested',
+      }),
+    );
+  });
+
+  it('does not audit family share reports when the audience print content is malformed', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      status: 'confirmed',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      visit_record_id: 'visit_record_1',
+      report_type: 'family_share',
+      content: { summary: '山田花子 / 印刷本文' },
+      updated_at: new Date('2026-06-18T01:02:03.000Z'),
+    });
+
+    const response = (await POST(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    }))!;
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expectErrorBodyWithoutPrintContent(response, {
+      code: 'WORKFLOW_CONFLICT',
+      message: '印刷用の報告書形式が不正です',
+    });
+    expect(recordCareReportPrintAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('does not audit physician reports when printable content is malformed', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      status: 'confirmed',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      visit_record_id: 'visit_record_1',
+      report_type: 'physician_report',
+      content: { summary: '山田花子 / 印刷本文' },
+      updated_at: new Date('2026-06-18T01:02:03.000Z'),
+    });
+
+    const response = (await POST(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    }))!;
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expectErrorBodyWithoutPrintContent(response, {
+      code: 'WORKFLOW_CONFLICT',
+      message: '印刷用の報告書形式が不正です',
+    });
+    expect(recordCareReportPrintAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('does not audit care manager reports when printable content is malformed', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      status: 'confirmed',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      visit_record_id: 'visit_record_1',
+      report_type: 'care_manager_report',
+      content: { summary: '山田花子 / 印刷本文' },
+      updated_at: new Date('2026-06-18T01:02:03.000Z'),
+    });
+
+    const response = (await POST(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    }))!;
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expectErrorBodyWithoutPrintContent(response, {
+      code: 'WORKFLOW_CONFLICT',
+      message: '印刷用の報告書形式が不正です',
+    });
+    expect(recordCareReportPrintAuditMock).not.toHaveBeenCalled();
   });
 
   it('rejects invalid print audit intents before loading the report', async () => {
@@ -228,6 +409,74 @@ describe('/api/care-reports/[id]/print-audit', () => {
     expect(recordCareReportPrintAuditMock).not.toHaveBeenCalled();
   });
 
+  it('does not audit or return content for non-printable report types', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      status: 'confirmed',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      visit_record_id: 'visit_record_1',
+      report_type: 'internal_record',
+      content: { summary: '患者名 山田花子 / 印刷本文' },
+      updated_at: new Date('2026-06-18T01:02:03.000Z'),
+    });
+
+    const response = (await POST(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    }))!;
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expectErrorBodyWithoutPrintContent(response, {
+      code: 'WORKFLOW_CONFLICT',
+      message: '印刷対象外の報告書です',
+    });
+    expect(canAccessCareReportSourceMock).toHaveBeenCalledTimes(2);
+    expect(recordCareReportPrintAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('does not audit or return content when the printable report body is empty', async () => {
+    careReportFindFirstMock.mockResolvedValue({
+      id: 'report_1',
+      status: 'confirmed',
+      patient_id: 'patient_1',
+      case_id: 'case_1',
+      visit_record_id: 'visit_record_1',
+      report_type: 'physician_report',
+      content: null,
+      updated_at: new Date('2026-06-18T01:02:03.000Z'),
+    });
+
+    const response = (await POST(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    }))!;
+
+    expect(response.status).toBe(409);
+    expectSensitiveNoStore(response);
+    await expectErrorBodyWithoutPrintContent(response, {
+      code: 'WORKFLOW_CONFLICT',
+      message: '報告書本文がないため印刷できません',
+    });
+    expect(recordCareReportPrintAuditMock).not.toHaveBeenCalled();
+  });
+
+  it('does not audit when report access is lost before content output', async () => {
+    canAccessCareReportSourceMock.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+
+    const response = (await POST(createRequest(), {
+      params: Promise.resolve({ id: 'report_1' }),
+    }))!;
+
+    expect(response.status).toBe(403);
+    expectSensitiveNoStore(response);
+    await expectErrorBodyWithoutPrintContent(response, {
+      code: 'AUTH_FORBIDDEN',
+      message: 'この報告書を印刷する権限がありません',
+    });
+    expect(canAccessCareReportSourceMock).toHaveBeenCalledTimes(2);
+    expect(recordCareReportPrintAuditMock).not.toHaveBeenCalled();
+  });
+
   it('fails closed when the print audit cannot be recorded', async () => {
     recordCareReportPrintAuditMock.mockRejectedValueOnce(new Error('DB down'));
 
@@ -237,7 +486,7 @@ describe('/api/care-reports/[id]/print-audit', () => {
 
     expect(response.status).toBe(500);
     expectSensitiveNoStore(response);
-    await expect(response.json()).resolves.toMatchObject({
+    await expectErrorBodyWithoutPrintContent(response, {
       code: 'PRINT_AUDIT_FAILED',
       message: '報告書の印刷監査を記録できませんでした',
     });

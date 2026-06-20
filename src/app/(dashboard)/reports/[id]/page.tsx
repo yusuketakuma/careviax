@@ -311,7 +311,9 @@ function isAudienceReportContent(content: unknown): content is AudienceReportCon
   const value = readReportContentObject(content);
   return (
     value != null &&
-    (value.report_audience === 'visiting_nurse' || value.report_audience === 'facility') &&
+    (value.report_audience === 'visiting_nurse' ||
+      value.report_audience === 'facility' ||
+      value.report_audience === 'family') &&
     hasStringFields(value.patient, ['name', 'birth_date']) &&
     typeof value.report_date === 'string' &&
     typeof value.visit_date === 'string' &&
@@ -339,7 +341,9 @@ function AudienceReportView({ content }: { content: AudienceReportContent }) {
         <CardTitle className="text-base">
           {content.report_audience === 'visiting_nurse'
             ? '訪問看護向け服薬情報共有'
-            : '施設向け服薬介助申し送り'}
+            : content.report_audience === 'family'
+              ? 'ご家族向け服薬情報共有'
+              : '施設向け服薬介助申し送り'}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -707,7 +711,9 @@ export default function ReportDetailPage() {
   const isPhysician = report.report_type === 'physician_report';
   const isCareManager = report.report_type === 'care_manager_report';
   const isAudienceReport =
-    report.report_type === 'nurse_share' || report.report_type === 'facility_handoff';
+    report.report_type === 'nurse_share' ||
+    report.report_type === 'facility_handoff' ||
+    report.report_type === 'family_share';
   const hasPhysicianContent = isPhysician && isPhysicianReportContent(report.content);
   const hasCareManagerContent = isCareManager && isCareManagerReportContent(report.content);
   const hasAudienceContent = isAudienceReport && isAudienceReportContent(report.content);

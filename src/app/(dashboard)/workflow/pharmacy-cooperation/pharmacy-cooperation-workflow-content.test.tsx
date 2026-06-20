@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { PharmacyCooperationWorkflowContent } from './pharmacy-cooperation-workflow-content';
 
@@ -159,6 +160,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   },
                 },
               ],
+              hasMore: false,
             }),
             { status: 200 },
           );
@@ -183,6 +185,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   updated_at: '2026-06-18T00:00:00.000Z',
                 },
               ],
+              hasMore: false,
             }),
             { status: 200 },
           );
@@ -208,22 +211,23 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   updated_at: '2026-06-18T01:00:00.000Z',
                 },
               ],
+              hasMore: false,
             }),
             { status: 200 },
           );
         }
         if (url === '/api/patient-share-cases/share_case_1/correction-requests?limit=8') {
-          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+          return new Response(JSON.stringify({ data: [], hasMore: false }), { status: 200 });
         }
         if (
           url === '/api/patient-share-cases/share_case_accept_ready/correction-requests?limit=8'
         ) {
-          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+          return new Response(JSON.stringify({ data: [], hasMore: false }), { status: 200 });
         }
         if (
           url === '/api/patient-share-cases/share_case_activation_ready/correction-requests?limit=8'
         ) {
-          return new Response(JSON.stringify({ data: [] }), { status: 200 });
+          return new Response(JSON.stringify({ data: [], hasMore: false }), { status: 200 });
         }
         if (url === '/api/pharmacy-visit-requests?limit=8') {
           return new Response(
@@ -300,6 +304,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   has_decline_reason: false,
                 },
               ],
+              hasMore: false,
             }),
             { status: 200 },
           );
@@ -359,8 +364,8 @@ describe('PharmacyCooperationWorkflowContent', () => {
                     claim_status: 'pending',
                     visit_date: '2026-06-19T00:00:00.000Z',
                     partner_pharmacy_name: '協力薬局',
-                    prescription_received_by: '基幹薬局',
-                    dispensing_pharmacy_name: '基幹薬局',
+                    prescription_received_by: null,
+                    dispensing_pharmacy_name: null,
                   },
                   has_record_content: true,
                   attachment_count: 0,
@@ -394,6 +399,7 @@ describe('PharmacyCooperationWorkflowContent', () => {
                   has_base_confirmation_snapshot: false,
                 },
               ],
+              hasMore: false,
             }),
             { status: 200 },
           );
@@ -494,9 +500,18 @@ describe('PharmacyCooperationWorkflowContent', () => {
             JSON.stringify({
               id: 'correction_2',
               share_case_id: 'share_case_active',
+              target_owner: 'partner_pharmacy',
               target_type: 'patient_profile',
+              target_id: null,
               field_path: 'notes',
+              request_type: 'correction',
               status: 'open',
+              requested_by: 'base_user',
+              responded_by: null,
+              resolved_by: null,
+              resolved_at: null,
+              created_at: '2026-06-19T10:20:00.000Z',
+              updated_at: '2026-06-19T10:20:00.000Z',
             }),
             { status: 201 },
           );
@@ -640,6 +655,107 @@ describe('PharmacyCooperationWorkflowContent', () => {
         throw new Error(`Unexpected fetch: ${url}`);
       }),
     );
+  });
+
+  it('shows the workflow error state for malformed share case success payloads', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/patient-share-cases?limit=8&view_context=pharmacy_cooperation_workflow') {
+        return new Response(
+          JSON.stringify({
+            data: [{ id: 'share_case_1', partnership: null }],
+            hasMore: false,
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('薬局間協力ワークフローを表示できません')).toBeTruthy();
+    expect(screen.getByText('状態一覧の取得に失敗しました。再試行してください。')).toBeTruthy();
+    expect(screen.queryByText('share_case_1')).toBeNull();
+  });
+
+  it('shows the workflow error state for cursor pages missing hasMore', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/patient-share-cases?limit=8&view_context=pharmacy_cooperation_workflow') {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'share_case_1',
+                status: 'active',
+                starts_at: '2026-06-01T00:00:00.000Z',
+                ends_at: null,
+                updated_at: '2026-06-18T00:00:00.000Z',
+                partnership: {
+                  id: 'partnership_1',
+                  status: 'active',
+                  partner_pharmacy: {
+                    id: 'partner_pharmacy_1',
+                    name: '協力薬局',
+                    status: 'active',
+                  },
+                },
+                patient_link: null,
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('薬局間協力ワークフローを表示できません')).toBeTruthy();
+    expect(screen.getByText('状態一覧の取得に失敗しました。再試行してください。')).toBeTruthy();
+    expect(screen.queryByText('share_case_1')).toBeNull();
+  });
+
+  it('rejects malformed report draft success payloads before showing a generated report result', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/partner-visit-records/partner_record_confirmed/physician-report-draft') {
+        return new Response(
+          JSON.stringify({
+            message: '医師向け報告書ドラフトを作成しました',
+            reused_existing_draft: false,
+            report: { id: 'care_report_1', status: 'draft' },
+          }),
+          { status: 201 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    const confirmedRow = (await screen.findByText('partner_record_confirmed')).closest('tr');
+    expect(confirmedRow).toBeTruthy();
+    fireEvent.click(
+      within(confirmedRow as HTMLTableRowElement).getByRole('button', {
+        name: 'partner_record_confirmed 協力薬局 の報告書ドラフトを作成',
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '報告書ドラフトを作成する' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('報告書ドラフトの作成に失敗しました');
+    });
+    expect(screen.queryByTestId('pharmacy-cooperation-report-result')).toBeNull();
+    expect(toast.success).not.toHaveBeenCalledWith('医師向け報告書ドラフトを作成しました');
   });
 
   it('registers and revokes patient share consents without rendering raw consent person', async () => {
@@ -1123,6 +1239,196 @@ describe('PharmacyCooperationWorkflowContent', () => {
 
     expect(document.body.textContent).not.toContain('共有内容の確認が必要です');
     expect(document.body.textContent).not.toContain('連携先確認済み');
+  });
+
+  it('rejects malformed correction request create success payloads before showing success', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (
+        url === '/api/patient-share-cases/share_case_active/correction-requests' &&
+        init?.method === 'POST'
+      ) {
+        return new Response(
+          JSON.stringify({
+            id: 'correction_2',
+            share_case_id: 'share_case_active',
+            target_type: 'patient_profile',
+            field_path: 'notes',
+            status: 'open',
+          }),
+          { status: 201 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    await screen.findByRole('table', { name: '修正依頼一覧' });
+    fireEvent.change(screen.getByRole('combobox', { name: '修正依頼の項目' }), {
+      target: { value: 'notes' },
+    });
+    fireEvent.change(screen.getByLabelText('修正依頼の理由'), {
+      target: { value: '共有内容の確認が必要です' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /修正依頼を作成/ }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('修正依頼の作成に失敗しました');
+    });
+    expect(toast.success).not.toHaveBeenCalledWith('修正依頼を作成しました');
+  });
+
+  it('rejects malformed patient share consent create success before clearing the consent form', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/patient-share-cases/share_case_1/consents' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ id: 'share_consent_created' }), { status: 201 });
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    await screen.findByText('share_consent_1');
+    fireEvent.change(screen.getByLabelText('患者共有同意日'), {
+      target: { value: '2026-06-19' },
+    });
+    fireEvent.change(screen.getByLabelText('患者共有同意者'), {
+      target: { value: '患者家族 山田花子' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /同意登録/ }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('患者共有同意の登録に失敗しました');
+    });
+    expect(toast.success).not.toHaveBeenCalledWith('患者共有同意を登録しました');
+    expect(screen.getByLabelText<HTMLInputElement>('患者共有同意者').value).toBe(
+      '患者家族 山田花子',
+    );
+  });
+
+  it('rejects malformed pharmacy visit request create success before clearing raw clinical fields', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-visit-requests' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ id: 'visit_request_2', status: 'requested' }), {
+          status: 201,
+        });
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    await screen.findByText('share_case_active');
+    fireEvent.change(screen.getByRole('combobox', { name: '訪問依頼作成の共有ケース' }), {
+      target: { value: 'share_case_active' },
+    });
+    fireEvent.change(screen.getByLabelText('訪問依頼の希望開始'), {
+      target: { value: '2026-06-20T10:30' },
+    });
+    fireEvent.change(screen.getByLabelText('訪問依頼の依頼理由'), {
+      target: { value: '退院直後の服薬確認が必要です' },
+    });
+    fireEvent.change(screen.getByLabelText('訪問依頼の医師指示'), {
+      target: { value: '血圧と副作用を確認' },
+    });
+    fireEvent.change(screen.getByLabelText('訪問依頼の居宅注意事項'), {
+      target: { value: '玄関暗証番号は家族へ確認' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /訪問依頼を作成/ }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('訪問依頼の作成に失敗しました');
+    });
+    expect(toast.success).not.toHaveBeenCalledWith('訪問依頼を作成しました');
+    expect(screen.getByLabelText<HTMLTextAreaElement>('訪問依頼の依頼理由').value).toBe(
+      '退院直後の服薬確認が必要です',
+    );
+    expect(screen.getByLabelText<HTMLTextAreaElement>('訪問依頼の医師指示').value).toBe(
+      '血圧と副作用を確認',
+    );
+    expect(screen.getByLabelText<HTMLTextAreaElement>('訪問依頼の居宅注意事項').value).toBe(
+      '玄関暗証番号は家族へ確認',
+    );
+  });
+
+  it('rejects malformed pharmacy cooperation message create success before clearing message text', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-cooperation-message-threads' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ thread: { id: 'message_thread_created' } }), {
+          status: 201,
+        });
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    await screen.findByText('確認事項があります');
+    fireEvent.change(screen.getByLabelText('薬局間連携メッセージ本文'), {
+      target: { value: '服薬状況を共有します' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /メッセージ送信/ }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('メッセージの送信に失敗しました');
+    });
+    expect(toast.success).not.toHaveBeenCalledWith('メッセージを送信しました');
+    expect(screen.getByLabelText<HTMLTextAreaElement>('薬局間連携メッセージ本文').value).toBe(
+      '服薬状況を共有します',
+    );
+  });
+
+  it('rejects malformed partner visit record draft success before clearing record fields', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/partner-visit-records' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ id: 'partner_record_draft', status: 'draft' }), {
+          status: 201,
+        });
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    await screen.findByText('visit_request_record_ready');
+    fireEvent.change(screen.getByLabelText('協力訪問記録の訪問日時'), {
+      target: { value: '2026-06-20T10:30' },
+    });
+    fireEvent.change(screen.getByLabelText('協力訪問記録の服薬状況'), {
+      target: { value: '服薬確認済み' },
+    });
+    fireEvent.change(screen.getByLabelText('協力訪問記録の残薬'), {
+      target: { value: '残薬なし' },
+    });
+    fireEvent.change(screen.getByLabelText('協力訪問記録の提案'), {
+      target: { value: '継続確認' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /下書き保存/ }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('協力訪問記録の保存に失敗しました');
+    });
+    expect(toast.success).not.toHaveBeenCalledWith('協力訪問記録の下書きを保存しました');
+    expect(screen.getByLabelText<HTMLTextAreaElement>('協力訪問記録の服薬状況').value).toBe(
+      '服薬確認済み',
+    );
+    expect(screen.getByLabelText<HTMLTextAreaElement>('協力訪問記録の残薬').value).toBe('残薬なし');
+    expect(screen.getByLabelText<HTMLTextAreaElement>('協力訪問記録の提案').value).toBe('継続確認');
   });
 
   it('lists and posts pharmacy cooperation messages for visit request contexts', async () => {

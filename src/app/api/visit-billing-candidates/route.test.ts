@@ -344,4 +344,37 @@ describe('/api/visit-billing-candidates POST', () => {
       candidate_ids: ['visit_billing_candidate_locked'],
     });
   });
+
+  it('reuses a concurrently created candidate when create hits the unique constraint', async () => {
+    visitBillingCandidateFindUniqueMock.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      id: 'visit_billing_candidate_concurrent',
+      billing_status: 'candidate',
+      invoice_items: [],
+    });
+    visitBillingCandidateCreateMock.mockRejectedValueOnce({ code: 'P2002' });
+    visitBillingCandidateUpdateMock.mockResolvedValueOnce({
+      id: 'visit_billing_candidate_concurrent',
+      billing_status: 'candidate',
+      is_billable: true,
+    });
+
+    const response = await POST(createRequest({ billing_month: '2026-06-01' }));
+
+    expect(response.status).toBe(200);
+    expect(visitBillingCandidateCreateMock).toHaveBeenCalledTimes(1);
+    expect(visitBillingCandidateFindUniqueMock).toHaveBeenCalledTimes(2);
+    expect(visitBillingCandidateUpdateMock).toHaveBeenCalledWith({
+      where: { id_org_id: { id: 'visit_billing_candidate_concurrent', org_id: 'org_1' } },
+      data: expect.objectContaining({
+        billing_month: new Date('2026-06-01T00:00:00.000Z'),
+        billing_status: 'candidate',
+        is_billable: true,
+      }),
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      generated_candidates: 1,
+      skipped_locked_count: 0,
+      candidate_ids: ['visit_billing_candidate_concurrent'],
+    });
+  });
 });

@@ -739,7 +739,9 @@ export function PrintHubContent() {
   });
   const auditedVisitReportPayload = auditedVisitReportQuery.data?.data;
   const canRenderAuditedVisitReport =
-    auditedVisitReportPayload?.audited === true && Boolean(auditedVisitReportPayload.report);
+    auditedVisitReportPayload?.audited === true &&
+    Boolean(visitReportSource) &&
+    auditedVisitReportPayload.report?.id === visitReportSource?.id;
   const auditedVisitReport = useMemo<CareReportForPrint | null>(() => {
     const audited = auditedVisitReportPayload?.report;
     if (!visitReportSource || !canRenderAuditedVisitReport || !audited) return null;
@@ -835,7 +837,20 @@ export function PrintHubContent() {
         headers: { 'content-type': 'application/json', 'x-org-id': orgId },
         body: JSON.stringify({ intent: 'print_requested' }),
       });
-      if (!res.ok) {
+      try {
+        const audit = await readApiJson<CareReportPrintAuditResponse>(res, {
+          fallbackMessage: '報告書の印刷監査を記録できませんでした。再読み込みしてください。',
+          schema: careReportPrintAuditResponseSchema,
+        });
+        if (
+          audit.data.audited !== true ||
+          !audit.data.report ||
+          audit.data.report.id !== visitReportSource.id
+        ) {
+          setPrintError('報告書の印刷監査を記録できませんでした。再読み込みしてください。');
+          return;
+        }
+      } catch {
         setPrintError('報告書の印刷監査を記録できませんでした。再読み込みしてください。');
         return;
       }

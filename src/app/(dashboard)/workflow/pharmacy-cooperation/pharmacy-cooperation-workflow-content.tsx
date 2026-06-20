@@ -15,6 +15,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -25,16 +26,25 @@ import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
 import { readApiJson } from '@/lib/api/client-json';
+import { cursorPaginatedPageSchema, type CursorPaginatedPage } from '@/lib/api/response-schemas';
 import { formatDateDisplay as formatDate } from '@/lib/datetime/date-display';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import {
+  partnerPharmacySummarySchema,
+  pharmacyCooperationNamedEntitySchema as namedEntitySchema,
+} from '@/lib/pharmacy-cooperation/api-contracts';
+import {
+  patientShareCorrectionRequestPageSchema,
+  patientShareCorrectionRequestRowSchema,
+  type PatientShareCorrectionRequestRow,
+  type PatientShareCorrectionRequestType as CorrectionRequestType,
+  type PatientShareCorrectionTargetType as CorrectionTargetType,
+} from '@/lib/patient-share/correction-request-domain';
+import {
+  PATIENT_SHARE_CORRECTION_FIELD_OPTIONS as CORRECTION_FIELD_OPTIONS,
+  PATIENT_SHARE_CORRECTION_TARGET_LABELS as CORRECTION_TARGET_LABELS,
+} from '@/lib/patient-share/correction-request-labels';
 import { cn } from '@/lib/utils';
-
-type CursorPage<T> = {
-  data: T[];
-  hasMore?: boolean;
-  nextCursor?: string;
-  next_cursor?: string | null;
-};
 
 type PatientShareCaseRow = {
   id: string;
@@ -67,33 +77,7 @@ type LinkAcceptForm = {
   overrideReason: string;
 };
 
-type CorrectionTargetType =
-  | 'patient_profile'
-  | 'care_case'
-  | 'management_plan'
-  | 'visit_request'
-  | 'partner_visit_record'
-  | 'claim_note'
-  | 'billing_candidate';
-
-type CorrectionRequestType = 'correction' | 'addition';
-
-type CorrectionRequestRow = {
-  id: string;
-  share_case_id: string;
-  target_owner: string;
-  target_type: CorrectionTargetType;
-  target_id: string | null;
-  field_path: string | null;
-  request_type: CorrectionRequestType;
-  status: string;
-  requested_by: string;
-  responded_by: string | null;
-  resolved_by: string | null;
-  resolved_at: string | null;
-  created_at: string;
-  updated_at: string;
-};
+type CorrectionRequestRow = PatientShareCorrectionRequestRow;
 
 type PatientShareConsentRow = {
   id: string;
@@ -213,8 +197,8 @@ type PartnerVisitRecordRow = {
     claim_status: string;
     visit_date: string;
     partner_pharmacy_name: string;
-    prescription_received_by: string;
-    dispensing_pharmacy_name: string;
+    prescription_received_by: string | null;
+    dispensing_pharmacy_name: string | null;
   } | null;
   has_record_content: boolean;
   attachment_count: number;
@@ -277,6 +261,161 @@ type PharmacyCooperationMessageThreadRow = {
   messages: PharmacyCooperationMessageRow[];
 };
 
+const patientShareCaseRowSchema = z.object({
+  id: z.string(),
+  status: z.string(),
+  starts_at: z.string().nullable(),
+  ends_at: z.string().nullable(),
+  updated_at: z.string(),
+  partnership: z.object({
+    id: z.string(),
+    status: z.string(),
+    partner_pharmacy: partnerPharmacySummarySchema,
+  }),
+  patient_link: z
+    .object({
+      id: z.string(),
+      match_status: z.string(),
+      approved_by_base: z.string().nullable(),
+      approved_by_partner: z.string().nullable(),
+      accepted_at: z.string().nullable(),
+      declined_at: z.string().nullable(),
+      has_partner_patient_id: z.boolean(),
+    })
+    .nullable(),
+});
+
+const patientShareConsentRowSchema = z.object({
+  id: z.string(),
+  share_case_id: z.string(),
+  consent_record_id: z.string().nullable(),
+  consent_date: z.string(),
+  consent_method: z.enum(['paper_scan', 'digital']),
+  scope_keys: z.array(z.string()),
+  has_file_asset: z.boolean(),
+  valid_until: z.string().nullable(),
+  revoked_at: z.string().nullable(),
+  revoked_by: z.string().nullable(),
+  created_by: z.string(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+const visitRequestEstimateSnapshotSchema = z.object({
+  estimate_status: z.string().nullable().optional(),
+  billing_model: z.string().nullable().optional(),
+  unit_price: z.number().nullable().optional(),
+  tax_category: z.string().nullable().optional(),
+});
+
+const pharmacyVisitRequestRowSchema = z.object({
+  id: z.string(),
+  share_case_id: z.string(),
+  urgency: z.string(),
+  desired_start_at: z.string().nullable(),
+  desired_end_at: z.string().nullable(),
+  visit_type: z.string().nullable(),
+  status: z.string(),
+  contract_id: z.string().nullable(),
+  contract_version_id: z.string().nullable(),
+  estimated_amount: z.number().nullable(),
+  estimated_snapshot: visitRequestEstimateSnapshotSchema.nullable(),
+  accepted_at: z.string().nullable(),
+  declined_at: z.string().nullable(),
+  completed_at: z.string().nullable(),
+  partner_pharmacy: partnerPharmacySummarySchema,
+  partnership: z.object({
+    id: z.string(),
+    base_site: namedEntitySchema,
+  }),
+  has_request_reason: z.boolean(),
+  has_physician_instruction: z.boolean(),
+  has_carry_items: z.boolean(),
+  has_patient_home_notes: z.boolean(),
+  has_decline_reason: z.boolean(),
+});
+
+const partnerVisitRecordRowSchema = z.object({
+  id: z.string(),
+  visit_request_id: z.string(),
+  share_case_id: z.string(),
+  revision_no: z.number(),
+  status: z.string(),
+  pharmacist_name: z.string().nullable(),
+  visit_at: z.string(),
+  submitted_at: z.string().nullable(),
+  confirmed_at: z.string().nullable(),
+  owner_partner_pharmacy: partnerPharmacySummarySchema,
+  visit_request: z.object({
+    id: z.string(),
+    status: z.string(),
+    urgency: z.string(),
+  }),
+  claim_note: z
+    .object({
+      id: z.string(),
+      claim_status: z.string(),
+      visit_date: z.string(),
+      partner_pharmacy_name: z.string(),
+      prescription_received_by: z.string().nullable(),
+      dispensing_pharmacy_name: z.string().nullable(),
+    })
+    .nullable(),
+  has_record_content: z.boolean(),
+  attachment_count: z.number(),
+  has_returned_reason: z.boolean(),
+  has_base_confirmation_snapshot: z.boolean(),
+});
+
+const pharmacyCooperationMessageRowSchema = z.object({
+  id: z.string(),
+  org_id: z.string(),
+  thread_id: z.string(),
+  sender_user_id: z.string(),
+  sender_side: z.enum(['base_pharmacy', 'partner_pharmacy']),
+  body: z.string(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+const pharmacyCooperationMessageThreadRowSchema = z.object({
+  id: z.string(),
+  org_id: z.string(),
+  share_case_id: z.string(),
+  visit_request_id: z.string().nullable(),
+  context_type: z.enum(['patient_share_case', 'visit_request']),
+  status: z.string(),
+  created_by: z.string(),
+  last_message_at: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+  messages: z.array(pharmacyCooperationMessageRowSchema),
+});
+
+const messageThreadResultSchema = z.object({
+  thread: pharmacyCooperationMessageThreadRowSchema,
+  notification_count: z.number(),
+});
+
+const reportDraftResultSchema = z.object({
+  message: z.string(),
+  reused_existing_draft: z.boolean(),
+  report: z.object({
+    id: z.string(),
+    status: z.string(),
+    report_type: z.string(),
+  }),
+});
+
+const patientShareCasePageSchema = cursorPaginatedPageSchema(patientShareCaseRowSchema);
+const pharmacyVisitRequestPageSchema = cursorPaginatedPageSchema(pharmacyVisitRequestRowSchema);
+const partnerVisitRecordPageSchema = cursorPaginatedPageSchema(partnerVisitRecordRowSchema);
+const correctionRequestPageSchema = patientShareCorrectionRequestPageSchema;
+const patientShareConsentPageSchema = cursorPaginatedPageSchema(patientShareConsentRowSchema);
+const pharmacyCooperationMessageThreadPageSchema = cursorPaginatedPageSchema(
+  pharmacyCooperationMessageThreadRowSchema,
+);
+
 type MessageForm = {
   body: string;
 };
@@ -288,74 +427,6 @@ const EMPTY_LINK_ACCEPT_FORM: LinkAcceptForm = {
   birthDate: '',
   address: '',
   overrideReason: '',
-};
-
-const CORRECTION_FIELD_OPTIONS: Record<
-  CorrectionTargetType,
-  Array<{ value: string; label: string }>
-> = {
-  patient_profile: [
-    { value: 'name', label: '氏名' },
-    { value: 'name_kana', label: '氏名カナ' },
-    { value: 'birth_date', label: '生年月日' },
-    { value: 'gender', label: '性別' },
-    { value: 'phone', label: '電話' },
-    { value: 'allergy_info', label: 'アレルギー' },
-    { value: 'notes', label: '備考' },
-    { value: 'primary_residence.address', label: '住所' },
-    { value: 'primary_residence.unit_name', label: '居室' },
-  ],
-  care_case: [
-    { value: 'referral_source', label: '紹介元' },
-    { value: 'referral_date', label: '紹介日' },
-    { value: 'start_date', label: '開始日' },
-    { value: 'end_date', label: '終了日' },
-    { value: 'primary_pharmacist_id', label: '主担当' },
-    { value: 'required_visit_support', label: '訪問支援' },
-    { value: 'notes', label: '備考' },
-  ],
-  management_plan: [
-    { value: 'content', label: '計画内容' },
-    { value: 'goals', label: '目標' },
-    { value: 'monitoring_items', label: '確認項目' },
-    { value: 'review_schedule', label: '見直し予定' },
-  ],
-  visit_request: [
-    { value: 'request_reason', label: '依頼理由' },
-    { value: 'desired_start_at', label: '希望開始' },
-    { value: 'desired_end_at', label: '希望終了' },
-    { value: 'physician_instruction', label: '医師指示' },
-    { value: 'carry_items', label: '持参物' },
-    { value: 'patient_home_notes', label: '居宅メモ' },
-  ],
-  partner_visit_record: [
-    { value: 'visit_at', label: '訪問日時' },
-    { value: 'pharmacist_id', label: '薬剤師ID' },
-    { value: 'pharmacist_name', label: '薬剤師名' },
-    { value: 'record_content', label: '記録内容' },
-    { value: 'attachments', label: '添付' },
-  ],
-  claim_note: [
-    { value: 'prescription_received_by', label: '処方箋受付' },
-    { value: 'dispensing_pharmacy_name', label: '調剤薬局' },
-    { value: 'claim_status', label: '請求状態' },
-    { value: 'claim_note_text', label: '請求メモ' },
-  ],
-  billing_candidate: [
-    { value: 'billing_status', label: '算定状態' },
-    { value: 'exclusion_reason', label: '除外理由' },
-    { value: 'amount_snapshot', label: '金額' },
-  ],
-};
-
-const CORRECTION_TARGET_LABELS: Record<CorrectionTargetType, string> = {
-  patient_profile: '患者基本',
-  care_case: 'ケース',
-  management_plan: '管理計画',
-  visit_request: '訪問依頼',
-  partner_visit_record: '協力訪問記録',
-  claim_note: '請求メモ',
-  billing_candidate: '算定候補',
 };
 
 const EMPTY_CORRECTION_FORM: CorrectionForm = {
@@ -425,21 +496,30 @@ async function fetchShareCases(orgId: string) {
       headers: { 'x-org-id': orgId },
     },
   );
-  return readApiJson<CursorPage<PatientShareCaseRow>>(response);
+  return readApiJson<CursorPaginatedPage<PatientShareCaseRow>>(response, {
+    fallbackMessage: '患者共有ケースの取得に失敗しました',
+    schema: patientShareCasePageSchema,
+  });
 }
 
 async function fetchVisitRequests(orgId: string) {
   const response = await fetch('/api/pharmacy-visit-requests?limit=8', {
     headers: { 'x-org-id': orgId },
   });
-  return readApiJson<CursorPage<PharmacyVisitRequestRow>>(response);
+  return readApiJson<CursorPaginatedPage<PharmacyVisitRequestRow>>(response, {
+    fallbackMessage: '訪問依頼の取得に失敗しました',
+    schema: pharmacyVisitRequestPageSchema,
+  });
 }
 
 async function fetchPartnerVisitRecords(orgId: string) {
   const response = await fetch('/api/partner-visit-records?limit=8', {
     headers: { 'x-org-id': orgId },
   });
-  return readApiJson<CursorPage<PartnerVisitRecordRow>>(response);
+  return readApiJson<CursorPaginatedPage<PartnerVisitRecordRow>>(response, {
+    fallbackMessage: '協力薬局訪問記録の取得に失敗しました',
+    schema: partnerVisitRecordPageSchema,
+  });
 }
 
 async function fetchCorrectionRequests(orgId: string, shareCaseId: string) {
@@ -449,14 +529,20 @@ async function fetchCorrectionRequests(orgId: string, shareCaseId: string) {
       headers: { 'x-org-id': orgId },
     },
   );
-  return readApiJson<CursorPage<CorrectionRequestRow>>(response);
+  return readApiJson<CursorPaginatedPage<CorrectionRequestRow>>(response, {
+    fallbackMessage: '修正依頼の取得に失敗しました',
+    schema: correctionRequestPageSchema,
+  });
 }
 
 async function fetchPatientShareConsents(orgId: string, shareCaseId: string) {
   const response = await fetch(`/api/patient-share-cases/${shareCaseId}/consents?limit=8`, {
     headers: { 'x-org-id': orgId },
   });
-  return readApiJson<CursorPage<PatientShareConsentRow>>(response);
+  return readApiJson<CursorPaginatedPage<PatientShareConsentRow>>(response, {
+    fallbackMessage: '患者共有同意の取得に失敗しました',
+    schema: patientShareConsentPageSchema,
+  });
 }
 
 async function fetchMessageThreads(
@@ -474,7 +560,10 @@ async function fetchMessageThreads(
   const response = await fetch(`/api/pharmacy-cooperation-message-threads?${params.toString()}`, {
     headers: { 'x-org-id': orgId },
   });
-  return readApiJson<CursorPage<PharmacyCooperationMessageThreadRow>>(response);
+  return readApiJson<CursorPaginatedPage<PharmacyCooperationMessageThreadRow>>(response, {
+    fallbackMessage: '連携メッセージの取得に失敗しました',
+    schema: pharmacyCooperationMessageThreadPageSchema,
+  });
 }
 
 function formatDateTime(value: string | null | undefined) {
@@ -2629,7 +2718,10 @@ export function PharmacyCooperationWorkflowContent() {
           }),
         },
       );
-      return readApiJson<PatientShareConsentRow>(response);
+      return readApiJson<PatientShareConsentRow>(response, {
+        fallbackMessage: '患者共有同意の登録に失敗しました',
+        schema: patientShareConsentRowSchema,
+      });
     },
     onSuccess: async () => {
       toast.success('患者共有同意を登録しました');
@@ -2702,7 +2794,10 @@ export function PharmacyCooperationWorkflowContent() {
           }),
         },
       );
-      return readApiJson<CorrectionRequestRow>(response);
+      return readApiJson<CorrectionRequestRow>(response, {
+        fallbackMessage: '修正依頼の作成に失敗しました',
+        schema: patientShareCorrectionRequestRowSchema,
+      });
     },
     onSuccess: async () => {
       toast.success('修正依頼を作成しました');
@@ -2741,7 +2836,10 @@ export function PharmacyCooperationWorkflowContent() {
             : {}),
         }),
       });
-      return readApiJson<PharmacyVisitRequestRow>(response);
+      return readApiJson<PharmacyVisitRequestRow>(response, {
+        fallbackMessage: '訪問依頼の作成に失敗しました',
+        schema: pharmacyVisitRequestRowSchema,
+      });
     },
     onSuccess: async () => {
       toast.success('訪問依頼を作成しました');
@@ -2772,7 +2870,10 @@ export function PharmacyCooperationWorkflowContent() {
       return readApiJson<{
         thread: PharmacyCooperationMessageThreadRow;
         notification_count: number;
-      }>(response);
+      }>(response, {
+        fallbackMessage: 'メッセージの送信に失敗しました',
+        schema: messageThreadResultSchema,
+      });
     },
     onSuccess: async () => {
       toast.success('メッセージを送信しました');
@@ -2807,7 +2908,10 @@ export function PharmacyCooperationWorkflowContent() {
             : {}),
         }),
       });
-      return readApiJson<PartnerVisitRecordRow>(response);
+      return readApiJson<PartnerVisitRecordRow>(response, {
+        fallbackMessage: '協力訪問記録の保存に失敗しました',
+        schema: partnerVisitRecordRowSchema,
+      });
     },
     onSuccess: async () => {
       toast.success('協力訪問記録の下書きを保存しました');
@@ -2909,7 +3013,10 @@ export function PharmacyCooperationWorkflowContent() {
         method: 'POST',
         headers: { 'x-org-id': orgId },
       });
-      return readApiJson<ReportDraftResult>(response);
+      return readApiJson<ReportDraftResult>(response, {
+        fallbackMessage: '報告書ドラフトの作成に失敗しました',
+        schema: reportDraftResultSchema,
+      });
     },
     onSuccess: async (result) => {
       setLastReportDraft(result);

@@ -48,6 +48,44 @@ function renderPrintHubContent(queryClient: QueryClient = createTestQueryClient(
   };
 }
 
+function physicianPrintAuditContent(assessment: string, reportDate = '2026-06-18') {
+  return {
+    patient: { name: '山田 太郎', birth_date: '1940-01-01', gender: 'M' },
+    report_date: reportDate,
+    visit_date: '2026-06-18',
+    pharmacist_name: '薬剤師 太郎',
+    prescriber: { name: '主治医 一郎', institution: '在宅診療所' },
+    prescriptions: [
+      {
+        drug_name: 'アムロジピン錠5mg',
+        dose: '1錠',
+        frequency: '1日1回朝食後',
+        days: 28,
+      },
+    ],
+    medication_management: {
+      compliance_summary: '概ね良好',
+      adherence_score: 4,
+      self_management: '家族支援あり',
+      calendar_used: true,
+    },
+    adverse_events: { has_events: false, events: [] },
+    functional_assessment: {
+      lab_values: '未確認',
+      sleep: '良好',
+      cognition: '変化なし',
+      diet_oral: '良好',
+      mobility: '杖歩行',
+      excretion: '自立',
+    },
+    residual_medications: [],
+    assessment,
+    plan: '次回も残薬確認',
+    physician_communication: '処方継続で問題ありません',
+    warnings: [],
+  };
+}
+
 describe('PrintHubContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -230,11 +268,7 @@ describe('PrintHubContent', () => {
               report: {
                 id: 'report_1',
                 report_type: 'physician_report',
-                content: {
-                  patient: { name: '山田 太郎' },
-                  report_date: '2026-06-18',
-                  assessment: '訪問報告書の監査済み本文',
-                },
+                content: physicianPrintAuditContent('訪問報告書の監査済み本文'),
               },
             },
           }),
@@ -269,6 +303,60 @@ describe('PrintHubContent', () => {
     expect(window.print).toHaveBeenCalledTimes(1);
   });
 
+  it('does not show or print a visit report when the preview audit response is for another report', async () => {
+    useSearchParamsMock.mockReturnValue(new URLSearchParams('type=visit_report'));
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/care-reports?limit=50&status=confirmed') {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'report_1',
+                patient_id: 'patient_1',
+                patient_name: '山田 太郎',
+                report_type: 'physician_report',
+                status: 'confirmed',
+                created_at: '2026-06-18T00:00:00.000Z',
+                delivery_records: [],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/care-reports/report_1/print-audit') {
+        expect(init?.method).toBe('POST');
+        return new Response(
+          JSON.stringify({
+            data: {
+              audited: true,
+              report: {
+                id: 'report_other',
+                report_type: 'physician_report',
+                content: physicianPrintAuditContent('別報告書として返された監査本文'),
+              },
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    renderPrintHubContent();
+
+    expect(
+      await screen.findByText('帳票データの読み込みに失敗しました。再読み込みしてください。'),
+    ).toBeTruthy();
+    expect(screen.queryByText('別報告書として返された監査本文')).toBeNull();
+    expect(screen.getByTestId('print-submit-button')).toHaveProperty('disabled', true);
+
+    fireEvent.click(screen.getByTestId('print-submit-button'));
+
+    expect(window.print).not.toHaveBeenCalled();
+  });
+
   it('does not show cached visit report content before the current preview audit resolves', async () => {
     useSearchParamsMock.mockReturnValue(new URLSearchParams('type=visit_report'));
     const queryClient = createTestQueryClient();
@@ -278,11 +366,7 @@ describe('PrintHubContent', () => {
         report: {
           id: 'report_1',
           report_type: 'physician_report',
-          content: {
-            patient: { name: '山田 太郎' },
-            report_date: '2026-06-17',
-            assessment: 'キャッシュ済みの古い監査本文',
-          },
+          content: physicianPrintAuditContent('キャッシュ済みの古い監査本文', '2026-06-17'),
         },
       },
     });
@@ -336,11 +420,7 @@ describe('PrintHubContent', () => {
         report: {
           id: 'report_1',
           report_type: 'physician_report',
-          content: {
-            patient: { name: '山田 太郎' },
-            report_date: '2026-06-17',
-            assessment: 'キャッシュ済みの失敗時本文',
-          },
+          content: physicianPrintAuditContent('キャッシュ済みの失敗時本文', '2026-06-17'),
         },
       },
     });
@@ -392,11 +472,7 @@ describe('PrintHubContent', () => {
         report: {
           id: 'report_1',
           report_type: 'physician_report',
-          content: {
-            patient: { name: '山田 太郎' },
-            report_date: '2026-06-17',
-            assessment: 'キャッシュ済みの旧本文',
-          },
+          content: physicianPrintAuditContent('キャッシュ済みの旧本文', '2026-06-17'),
         },
       },
     });
@@ -429,11 +505,7 @@ describe('PrintHubContent', () => {
               report: {
                 id: 'report_1',
                 report_type: 'physician_report',
-                content: {
-                  patient: { name: '山田 太郎' },
-                  report_date: '2026-06-18',
-                  assessment: '現在の監査済み本文',
-                },
+                content: physicianPrintAuditContent('現在の監査済み本文'),
               },
             },
           }),
@@ -447,5 +519,209 @@ describe('PrintHubContent', () => {
 
     expect(await screen.findByText('現在の監査済み本文')).toBeTruthy();
     expect(screen.queryByText('キャッシュ済みの旧本文')).toBeNull();
+  });
+
+  it('does not print a visit report when the print-requested audit response is not audited', async () => {
+    useSearchParamsMock.mockReturnValue(new URLSearchParams('type=visit_report'));
+    let printRequested = false;
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/care-reports?limit=50&status=confirmed') {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'report_1',
+                patient_id: 'patient_1',
+                patient_name: '山田 太郎',
+                report_type: 'physician_report',
+                status: 'confirmed',
+                created_at: '2026-06-18T00:00:00.000Z',
+                delivery_records: [],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/care-reports/report_1/print-audit') {
+        expect(init?.method).toBe('POST');
+        const body = JSON.parse(String(init?.body ?? '{}')) as { intent?: string };
+        if (body.intent === 'print_requested') {
+          printRequested = true;
+          return new Response(
+            JSON.stringify({
+              data: {
+                audited: false,
+                report: {
+                  id: 'report_1',
+                  report_type: 'physician_report',
+                  content: physicianPrintAuditContent('印刷前に表示済みの監査本文'),
+                },
+              },
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            data: {
+              audited: true,
+              report: {
+                id: 'report_1',
+                report_type: 'physician_report',
+                content: physicianPrintAuditContent('印刷前に表示済みの監査本文'),
+              },
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    renderPrintHubContent();
+
+    expect(await screen.findByText('印刷前に表示済みの監査本文')).toBeTruthy();
+
+    fireEvent.click(await screen.findByTestId('print-submit-button'));
+
+    await waitFor(() => expect(printRequested).toBe(true));
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      '報告書の印刷監査を記録できませんでした。再読み込みしてください。',
+    );
+    expect(window.print).not.toHaveBeenCalled();
+  });
+
+  it('does not print a visit report when the print-requested audit success response is malformed', async () => {
+    useSearchParamsMock.mockReturnValue(new URLSearchParams('type=visit_report'));
+    let printRequested = false;
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/care-reports?limit=50&status=confirmed') {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'report_1',
+                patient_id: 'patient_1',
+                patient_name: '山田 太郎',
+                report_type: 'physician_report',
+                status: 'confirmed',
+                created_at: '2026-06-18T00:00:00.000Z',
+                delivery_records: [],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/care-reports/report_1/print-audit') {
+        expect(init?.method).toBe('POST');
+        const body = JSON.parse(String(init?.body ?? '{}')) as { intent?: string };
+        if (body.intent === 'print_requested') {
+          printRequested = true;
+          return new Response(JSON.stringify({ data: { audited: true } }), { status: 200 });
+        }
+        return new Response(
+          JSON.stringify({
+            data: {
+              audited: true,
+              report: {
+                id: 'report_1',
+                report_type: 'physician_report',
+                content: physicianPrintAuditContent('印刷前に表示済みの監査本文'),
+              },
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    renderPrintHubContent();
+
+    expect(await screen.findByText('印刷前に表示済みの監査本文')).toBeTruthy();
+
+    fireEvent.click(await screen.findByTestId('print-submit-button'));
+
+    await waitFor(() => expect(printRequested).toBe(true));
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      '報告書の印刷監査を記録できませんでした。再読み込みしてください。',
+    );
+    expect(window.print).not.toHaveBeenCalled();
+  });
+
+  it('does not print a visit report when the print-requested audit response is for another report', async () => {
+    useSearchParamsMock.mockReturnValue(new URLSearchParams('type=visit_report'));
+    let printRequested = false;
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/care-reports?limit=50&status=confirmed') {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'report_1',
+                patient_id: 'patient_1',
+                patient_name: '山田 太郎',
+                report_type: 'physician_report',
+                status: 'confirmed',
+                created_at: '2026-06-18T00:00:00.000Z',
+                delivery_records: [],
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === '/api/care-reports/report_1/print-audit') {
+        expect(init?.method).toBe('POST');
+        const body = JSON.parse(String(init?.body ?? '{}')) as { intent?: string };
+        if (body.intent === 'print_requested') {
+          printRequested = true;
+          return new Response(
+            JSON.stringify({
+              data: {
+                audited: true,
+                report: {
+                  id: 'report_other',
+                  report_type: 'physician_report',
+                  content: physicianPrintAuditContent('別報告書として返された監査本文'),
+                },
+              },
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            data: {
+              audited: true,
+              report: {
+                id: 'report_1',
+                report_type: 'physician_report',
+                content: physicianPrintAuditContent('印刷前に表示済みの監査本文'),
+              },
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    renderPrintHubContent();
+
+    expect(await screen.findByText('印刷前に表示済みの監査本文')).toBeTruthy();
+
+    fireEvent.click(await screen.findByTestId('print-submit-button'));
+
+    await waitFor(() => expect(printRequested).toBe(true));
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      '報告書の印刷監査を記録できませんでした。再読み込みしてください。',
+    );
+    expect(window.print).not.toHaveBeenCalled();
   });
 });

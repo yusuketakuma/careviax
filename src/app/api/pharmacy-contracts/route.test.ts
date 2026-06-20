@@ -41,6 +41,7 @@ vi.mock('@/lib/audit/audit-entry', () => ({
 }));
 
 import { GET as rawGET, POST as rawPOST } from './route';
+import { pharmacyContractRowSchema } from '@/lib/pharmacy-cooperation/api-contracts';
 
 const emptyRouteContext = { params: Promise.resolve({}) };
 const GET = (req: NextRequest) => rawGET(req, emptyRouteContext);
@@ -75,6 +76,12 @@ describe('/api/pharmacy-contracts POST', () => {
       effective_from: new Date('2026-06-01T00:00:00.000Z'),
       effective_to: new Date('2026-12-31T00:00:00.000Z'),
       payment_due_rule: { month_offset: 1 },
+      partnership: {
+        id: 'partnership_1',
+        status: 'active',
+        base_site: { id: 'site_1', name: '基幹薬局' },
+        partner_pharmacy: { id: 'partner_pharmacy_1', name: '連携薬局', status: 'active' },
+      },
       versions: [
         {
           id: 'contract_version_1',
@@ -217,7 +224,9 @@ describe('/api/pharmacy-contracts POST', () => {
     );
     const auditText = JSON.stringify(createAuditLogEntryMock.mock.calls);
     expect(auditText).not.toContain('base-partner agreement text');
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(pharmacyContractRowSchema.safeParse(body).success).toBe(true);
+    expect(body).toMatchObject({
       id: 'contract_1',
       has_payment_due_rule: true,
       latest_version: {

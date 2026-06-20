@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type ColumnDef } from '@tanstack/react-table';
 import { CheckSquare, Filter, Send, UserRoundCheck } from 'lucide-react';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { PageSection } from '@/components/layout/page-section';
 import { DataTable } from '@/components/ui/data-table';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -26,9 +27,15 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import { readApiJson } from '@/lib/api/client-json';
 import { fetchAllCursorPages } from '@/lib/api/cursor-pagination-client';
 import { useAuthStore } from '@/lib/stores/auth-store';
 import { describeOperationalTask } from '@/lib/tasks/operational-task-presentation';
+import {
+  bulkCompleteTasksResponseSchema,
+  type BulkCompleteTasksResponse,
+} from '@/lib/tasks/bulk-completion-contract';
+import { summarizeBulkCompleteTaskFailures } from '@/lib/tasks/bulk-completion-messages';
 import { StateBadge } from '@/components/ui/state-badge';
 import {
   PRIORITY_ROLE,
@@ -63,6 +70,24 @@ type Task = {
   created_at: string;
 };
 
+const taskSchema: z.ZodType<Task> = z.object({
+  id: z.string(),
+  task_type: z.string(),
+  title: z.string(),
+  description: z.string().nullable(),
+  status: z.string(),
+  priority: z.string(),
+  assigned_to: z.string().nullable(),
+  assigned_to_name: z.string().nullable().optional(),
+  can_complete_inline: z.boolean().optional(),
+  due_date: z.string().nullable(),
+  sla_due_at: z.string().nullable(),
+  related_entity_type: z.string().nullable(),
+  related_entity_id: z.string().nullable(),
+  completed_at: z.string().nullable(),
+  created_at: z.string(),
+});
+
 type StaffWorkload = {
   id: string;
   name: string;
@@ -88,13 +113,6 @@ type StaffWorkload = {
     due_date: string | null;
     sla_due_at: string | null;
   }>;
-};
-
-type BulkCompleteTasksResult = {
-  total: number;
-  completed: number;
-  failed: number;
-  failures?: Array<{ id: string | null; code: string; message: string }>;
 };
 
 // --- Constants ---
@@ -233,6 +251,7 @@ export function TasksContent({
         params: new URLSearchParams(queryParams),
         init: { headers: { 'x-org-id': orgId } },
         errorMessage: 'タスクの取得に失敗しました',
+        itemSchema: taskSchema,
       });
     },
     enabled: !!orgId,
@@ -316,27 +335,24 @@ export function TasksContent({
         headers: { 'Content-Type': 'application/json', 'x-org-id': orgId },
         body: JSON.stringify({ ids }),
       });
-      const payload = await res.json().catch(() => null);
-      if (!res.ok) {
-        throw new Error(
-          typeof payload?.message === 'string' ? payload.message : 'タスク更新に失敗しました',
-        );
-      }
-
-      const result = (payload?.data ?? payload) as Partial<BulkCompleteTasksResult> | null;
-      const completed = result?.completed ?? Math.max(ids.length - (result?.failed ?? 0), 0);
-      const total = result?.total ?? ids.length;
-      return {
-        total,
-        completed,
-        failed: result?.failed ?? Math.max(total - completed, 0),
-      };
+      const payload = await readApiJson<BulkCompleteTasksResponse>(res, {
+        fallbackMessage: 'タスク更新に失敗しました',
+        schema: bulkCompleteTasksResponseSchema,
+      });
+      return payload.data;
     },
-    onSuccess: ({ total, completed, failed }) => {
+    onSuccess: ({ total, completed, failed, failures }) => {
       if (failed === 0) {
         toast.success(`${total}件のタスクを完了しました`);
       } else {
-        toast.warning(`${completed}件完了、${failed}件失敗しました`);
+        const failureSummary = summarizeBulkCompleteTaskFailures(failures);
+        if (failureSummary) {
+          toast.warning(`${completed}件完了、${failed}件失敗しました`, {
+            description: failureSummary,
+          });
+        } else {
+          toast.warning(`${completed}件完了、${failed}件失敗しました`);
+        }
       }
       setSelectedTasks([]);
       void queryClient.invalidateQueries({ queryKey: ['tasks', orgId] });

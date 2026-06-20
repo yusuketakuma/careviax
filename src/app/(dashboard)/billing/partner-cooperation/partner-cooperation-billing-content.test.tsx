@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { setupDomTestEnv } from '@/test/dom-test-utils';
 import { PartnerCooperationBillingContent } from './partner-cooperation-billing-content';
 
@@ -134,11 +135,18 @@ describe('PartnerCooperationBillingContent', () => {
                   effective_from: '2026-06-01T00:00:00.000Z',
                   effective_to: null,
                   partnership: {
-                    base_site: { name: '基幹薬局' },
-                    partner_pharmacy: { name: '協力薬局', status: 'active' },
+                    id: 'partnership_1',
+                    status: 'active',
+                    base_site: { id: 'site_1', name: '基幹薬局' },
+                    partner_pharmacy: {
+                      id: 'partner_pharmacy_1',
+                      name: '協力薬局',
+                      status: 'active',
+                    },
                   },
                   latest_version: {
                     version_no: 2,
+                    status: 'active',
                     active_fee_rule: {
                       billing_model: 'fixed_per_visit',
                       unit_price: 5500,
@@ -147,6 +155,7 @@ describe('PartnerCooperationBillingContent', () => {
                   },
                 },
               ],
+              hasMore: false,
             }),
             { status: 200 },
           );
@@ -181,6 +190,7 @@ describe('PartnerCooperationBillingContent', () => {
                   },
                 },
               ],
+              hasMore: false,
             }),
             { status: 200 },
           );
@@ -234,13 +244,22 @@ describe('PartnerCooperationBillingContent', () => {
             body.action === 'cancel' ? 'cancelled' : body.action === 'issue' ? 'issued' : 'sent';
           return new Response(
             JSON.stringify({
-              ...invoice,
+              id: invoice.id,
+              contract_id: invoice.contract_id,
+              document_kind: invoice.document_kind,
+              invoice_no: invoice.invoice_no,
+              billing_month: invoice.billing_month,
+              subtotal: invoice.subtotal,
+              tax_amount: invoice.tax_amount,
+              total: invoice.total,
               status: nextStatus,
               issued_at: body.action === 'issue' ? '2026-06-19T00:00:00.000Z' : invoice.issued_at,
               sent_at: null,
               received_at: null,
               payment_scheduled_for: null,
               paid_at: null,
+              updated_at: '2026-06-19T00:00:00.000Z',
+              item_count: invoice.item_count,
             }),
             { status: 200 },
           );
@@ -249,6 +268,225 @@ describe('PartnerCooperationBillingContent', () => {
         throw new Error(`Unexpected fetch: ${url}`);
       }),
     );
+  });
+
+  it('shows the monthly summary error state for malformed summary success payloads', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith('/api/visit-billing-candidates/summary?')) {
+        return new Response(
+          JSON.stringify({
+            billing_month: '2026-06-01',
+            visit_record_count: 4,
+            confirmed_visit_record_count: 3,
+            unconfirmed_visit_record_count: 1,
+            generated_candidate_count: 2,
+            billable_candidate_count: 2,
+            excluded_candidate_count: 0,
+            invoiced_candidate_count: 0,
+            free_candidate_count: 1,
+            paid_candidate_count: 1,
+            planned_invoice_amount: '5500',
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('薬局間協力の月次集計を表示できません')).toBeTruthy();
+    expect(screen.getByText('対象月の集計取得に失敗しました。再試行してください。')).toBeTruthy();
+  });
+
+  it('rejects malformed invoice draft success payloads before rendering the draft result', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-invoices' && init?.method === 'POST') {
+        return new Response(
+          JSON.stringify({
+            id: 'invoice_1',
+            billing_month: '2026-06-01',
+            total: 6050,
+          }),
+          { status: 201 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    await screen.findByText(/選択中: 基幹薬局/);
+    fireEvent.click(screen.getByRole('button', { name: /請求書ドラフト/ }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('薬局間月次ドキュメントの作成に失敗しました');
+    });
+    expect(screen.queryByTestId('partner-invoice-draft-result')).toBeNull();
+  });
+
+  it('rejects malformed invoice lifecycle PATCH success payloads before showing success', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/pharmacy-invoices/invoice_existing' && init?.method === 'PATCH') {
+        return new Response(JSON.stringify({ id: 'invoice_existing', status: 'issued' }), {
+          status: 200,
+        });
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    const invoicesTable = await screen.findByRole('table', {
+      name: '薬局間月次ドキュメント一覧',
+    });
+    fireEvent.click(within(invoicesTable).getByRole('button', { name: /INV-001 発行/ }));
+    fireEvent.click(screen.getByRole('button', { name: '発行する' }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('月次ドキュメントの更新に失敗しました');
+    });
+    expect(toast.success).not.toHaveBeenCalledWith('請求書を更新しました');
+  });
+
+  it('rejects malformed candidate generation success payloads before showing success', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/visit-billing-candidates' && init?.method === 'POST') {
+        return new Response(
+          JSON.stringify({
+            message: '2026-06-01 の薬局間協力訪問請求候補を生成しました',
+            billing_month: '2026-06-01',
+            scanned_confirmed_records: 3,
+            generated_candidates: 3,
+            billable_count: 2,
+            excluded_count: 1,
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    await screen.findByText(/選択中: 基幹薬局/);
+    fireEvent.click(screen.getByRole('button', { name: /候補を生成/ }));
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('請求候補の生成に失敗しました');
+    });
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it('shows the billing error state for malformed billing candidate list success payloads', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith('/api/visit-billing-candidates?')) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'candidate_1',
+                billing_month: '2026-06-01T00:00:00.000Z',
+                billing_status: 'candidate',
+                is_billable: true,
+                exclusion_reason: null,
+                amount_summary: {
+                  billing_model: 'fixed_per_visit',
+                  amount: '5500',
+                  tax_category: 'taxable',
+                  blocker_codes: [],
+                },
+                partner_visit_record: {
+                  id: 'partner_visit_record_1',
+                  visit_at: '2026-06-18T01:30:00.000Z',
+                  status: 'confirmed',
+                  confirmed_at: '2026-06-18T03:00:00.000Z',
+                  owner_partner_pharmacy: { name: '協力薬局' },
+                },
+                contract_version: {
+                  id: 'contract_version_1',
+                  version_no: 2,
+                  effective_from: '2026-06-01T00:00:00.000Z',
+                },
+              },
+            ],
+            hasMore: false,
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('薬局間協力の請求候補を表示できません')).toBeTruthy();
+    expect(screen.getByText('候補一覧の取得に失敗しました。再試行してください。')).toBeTruthy();
+    expect(screen.queryByText('candidate_1')).toBeNull();
+  });
+
+  it('shows the billing error state when a valid candidate list omits hasMore', async () => {
+    const originalFetch = vi.mocked(fetch).getMockImplementation();
+    expect(originalFetch).toBeTruthy();
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith('/api/visit-billing-candidates?')) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'candidate_1',
+                billing_month: '2026-06-01T00:00:00.000Z',
+                billing_status: 'candidate',
+                is_billable: true,
+                exclusion_reason: null,
+                amount_summary: {
+                  billing_model: 'fixed_per_visit',
+                  amount: 5500,
+                  tax_category: 'taxable',
+                  blocker_codes: [],
+                },
+                partner_visit_record: {
+                  id: 'partner_visit_record_1',
+                  visit_at: '2026-06-18T01:30:00.000Z',
+                  status: 'confirmed',
+                  confirmed_at: '2026-06-18T03:00:00.000Z',
+                  owner_partner_pharmacy: { name: '協力薬局', status: 'active' },
+                },
+                contract_version: {
+                  id: 'contract_version_1',
+                  version_no: 2,
+                  effective_from: '2026-06-01T00:00:00.000Z',
+                },
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return originalFetch!(input, init);
+    });
+
+    renderContent();
+
+    expect(await screen.findByText('薬局間協力の請求候補を表示できません')).toBeTruthy();
+    expect(screen.queryByText('candidate_1')).toBeNull();
+    expect(JSON.stringify(document.body.textContent)).not.toContain('山田');
   });
 
   it('renders monthly summary, contract selection, and PHI-minimized candidate rows', async () => {
@@ -282,6 +520,7 @@ describe('PartnerCooperationBillingContent', () => {
   });
 
   it('posts the selected billing month when generating visit billing candidates', async () => {
+    const invalidateSpy = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
     renderContent();
 
     await screen.findByText(/選択中: 基幹薬局/);
@@ -297,6 +536,17 @@ describe('PartnerCooperationBillingContent', () => {
       expect(postCall).toBeTruthy();
       expect(JSON.parse(String(postCall?.[1]?.body))).toEqual({ billing_month: '2026-06-01' });
     });
+    expect(toast.success).toHaveBeenCalledWith('2026-06-01 の薬局間協力訪問請求候補を生成しました');
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['partner-cooperation-summary', 'org_1'],
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['partner-cooperation-candidates', 'org_1'],
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['partner-cooperation-invoices', 'org_1'],
+    });
+    invalidateSpy.mockRestore();
   });
 
   it('creates a paid invoice draft for the selected active contract and exposes the PDF link', async () => {
@@ -360,6 +610,7 @@ describe('PartnerCooperationBillingContent', () => {
         occurred_at: '2026-06-19',
       });
     });
+    expect(toast.success).toHaveBeenCalledWith('請求書を更新しました');
   });
 
   it('requires a reason before cancelling an issued invoice lifecycle state', async () => {

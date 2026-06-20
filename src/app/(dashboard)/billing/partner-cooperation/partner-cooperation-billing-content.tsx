@@ -14,6 +14,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { z } from 'zod';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -25,8 +26,17 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
 import { readApiJson } from '@/lib/api/client-json';
+import {
+  apiDataSchema,
+  cursorPaginatedPageSchema,
+  type CursorPaginatedPage,
+} from '@/lib/api/response-schemas';
 import { formatDateDisplay as formatDate } from '@/lib/datetime/date-display';
 import { useOrgId } from '@/lib/hooks/use-org-id';
+import {
+  pharmacyContractRowSchema as pharmacyCooperationContractRowSchema,
+  type PharmacyContractRowContract,
+} from '@/lib/pharmacy-cooperation/api-contracts';
 import { cn } from '@/lib/utils';
 
 type PartnerCooperationSummary = {
@@ -44,24 +54,7 @@ type PartnerCooperationSummary = {
   pending_candidate_generation_count: number;
 };
 
-type PharmacyContractRow = {
-  id: string;
-  status: string;
-  effective_from: string;
-  effective_to: string | null;
-  partnership: {
-    partner_pharmacy: { name: string; status: string };
-    base_site: { name: string };
-  };
-  latest_version: {
-    version_no: number;
-    active_fee_rule: {
-      billing_model: string;
-      unit_price: number | null;
-      tax_category: string;
-    } | null;
-  } | null;
-};
+type PharmacyContractRow = PharmacyContractRowContract;
 
 type VisitBillingCandidateRow = {
   id: string;
@@ -120,6 +113,10 @@ type InvoiceDraftResult = {
   message?: string;
 };
 
+type PharmacyInvoiceTransitionResult = Omit<PharmacyInvoiceRow, 'partnership'> & {
+  updated_at: string;
+};
+
 type CandidateGenerationResult = {
   message: string;
   billing_month: string;
@@ -143,6 +140,110 @@ type PendingInvoiceTransition = {
   invoice: PharmacyInvoiceRow;
   action: InvoiceTransitionAction;
 };
+
+const partnerCooperationSummarySchema = z.object({
+  billing_month: z.string(),
+  visit_record_count: z.number(),
+  confirmed_visit_record_count: z.number(),
+  unconfirmed_visit_record_count: z.number(),
+  generated_candidate_count: z.number(),
+  billable_candidate_count: z.number(),
+  excluded_candidate_count: z.number(),
+  invoiced_candidate_count: z.number(),
+  free_candidate_count: z.number(),
+  paid_candidate_count: z.number(),
+  planned_invoice_amount: z.number(),
+  pending_candidate_generation_count: z.number(),
+});
+
+const visitBillingCandidateRowSchema = z.object({
+  id: z.string(),
+  billing_month: z.string(),
+  billing_status: z.string(),
+  is_billable: z.boolean(),
+  exclusion_reason: z.string().nullable(),
+  amount_summary: z.object({
+    billing_model: z.string().nullable(),
+    amount: z.number().nullable(),
+    tax_category: z.string().nullable(),
+    blocker_codes: z.array(z.string()),
+  }),
+  partner_visit_record: z.object({
+    id: z.string(),
+    visit_at: z.string(),
+    status: z.string(),
+    confirmed_at: z.string().nullable(),
+    owner_partner_pharmacy: z.object({ name: z.string(), status: z.string() }),
+  }),
+  contract_version: z
+    .object({
+      id: z.string(),
+      version_no: z.number(),
+      effective_from: z.string(),
+    })
+    .nullable(),
+});
+
+const pharmacyInvoiceRowSchema = z.object({
+  id: z.string(),
+  contract_id: z.string(),
+  document_kind: z.enum(['invoice', 'free_cooperation_report']),
+  invoice_no: z.string().nullable(),
+  billing_month: z.string(),
+  subtotal: z.number(),
+  tax_amount: z.number(),
+  total: z.number(),
+  status: z.string(),
+  issued_at: z.string().nullable(),
+  sent_at: z.string().nullable(),
+  received_at: z.string().nullable(),
+  payment_scheduled_for: z.string().nullable(),
+  paid_at: z.string().nullable(),
+  item_count: z.number(),
+  partnership: z.object({
+    base_site: z.object({ id: z.string(), name: z.string() }),
+    partner_pharmacy: z.object({
+      id: z.string(),
+      name: z.string(),
+      status: z.string(),
+    }),
+  }),
+});
+
+const pharmacyInvoiceTransitionResultSchema = pharmacyInvoiceRowSchema
+  .omit({
+    partnership: true,
+  })
+  .extend({
+    updated_at: z.string(),
+  });
+
+const invoiceDraftResultSchema = z.object({
+  id: z.string(),
+  document_kind: z.enum(['invoice', 'free_cooperation_report']),
+  status: z.string(),
+  billing_month: z.string(),
+  subtotal: z.number(),
+  tax_amount: z.number(),
+  total: z.number(),
+  item_count: z.number(),
+  reused_existing_draft: z.boolean(),
+  message: z.string().optional(),
+});
+
+const candidateGenerationResultSchema = z.object({
+  message: z.string(),
+  billing_month: z.string(),
+  scanned_confirmed_records: z.number(),
+  generated_candidates: z.number(),
+  billable_count: z.number(),
+  excluded_count: z.number(),
+  skipped_locked_count: z.number(),
+});
+
+const activeContractsResponseSchema = apiDataSchema(z.array(pharmacyCooperationContractRowSchema));
+const billingCandidatesResponseSchema = cursorPaginatedPageSchema(visitBillingCandidateRowSchema);
+const pharmacyInvoicesResponseSchema = apiDataSchema(z.array(pharmacyInvoiceRowSchema));
 
 const EMPTY_CONTRACTS: PharmacyContractRow[] = [];
 
@@ -207,14 +308,20 @@ async function fetchSummary(orgId: string, billingMonth: string) {
     `/api/visit-billing-candidates/summary?billing_month=${encodeURIComponent(billingMonth)}`,
     { headers: { 'x-org-id': orgId } },
   );
-  return readApiJson<PartnerCooperationSummary>(response);
+  return readApiJson<PartnerCooperationSummary>(response, {
+    fallbackMessage: '薬局間協力請求サマリーの取得に失敗しました',
+    schema: partnerCooperationSummarySchema,
+  });
 }
 
 async function fetchActiveContracts(orgId: string) {
   const response = await fetch('/api/pharmacy-contracts?status=active&limit=50', {
     headers: { 'x-org-id': orgId },
   });
-  const json = await readApiJson<{ data: PharmacyContractRow[] }>(response);
+  const json = await readApiJson<{ data: PharmacyContractRow[] }>(response, {
+    fallbackMessage: '有効な薬局間契約の取得に失敗しました',
+    schema: activeContractsResponseSchema,
+  });
   return json.data;
 }
 
@@ -223,7 +330,10 @@ async function fetchCandidates(orgId: string, billingMonth: string) {
     `/api/visit-billing-candidates?billing_month=${encodeURIComponent(billingMonth)}&limit=20`,
     { headers: { 'x-org-id': orgId } },
   );
-  const json = await readApiJson<{ data: VisitBillingCandidateRow[] }>(response);
+  const json = await readApiJson<CursorPaginatedPage<VisitBillingCandidateRow>>(response, {
+    fallbackMessage: '請求候補の取得に失敗しました',
+    schema: billingCandidatesResponseSchema,
+  });
   return json.data;
 }
 
@@ -232,11 +342,18 @@ async function fetchInvoices(orgId: string, billingMonth: string) {
     `/api/pharmacy-invoices?billing_month=${encodeURIComponent(billingMonth)}&limit=20`,
     { headers: { 'x-org-id': orgId } },
   );
-  const json = await readApiJson<{ data: PharmacyInvoiceRow[] }>(response);
+  const json = await readApiJson<{ data: PharmacyInvoiceRow[] }>(response, {
+    fallbackMessage: '月次ドキュメントの取得に失敗しました',
+    schema: pharmacyInvoicesResponseSchema,
+  });
   return json.data;
 }
 
-async function patchInvoiceStatus(orgId: string, invoiceId: string, body: Record<string, unknown>) {
+async function patchInvoiceStatus(
+  orgId: string,
+  invoiceId: string,
+  body: Record<string, unknown>,
+): Promise<PharmacyInvoiceTransitionResult> {
   const response = await fetch(`/api/pharmacy-invoices/${invoiceId}`, {
     method: 'PATCH',
     headers: {
@@ -245,7 +362,10 @@ async function patchInvoiceStatus(orgId: string, invoiceId: string, body: Record
     },
     body: JSON.stringify(body),
   });
-  return readApiJson<PharmacyInvoiceRow>(response);
+  return readApiJson<PharmacyInvoiceTransitionResult>(response, {
+    fallbackMessage: '月次ドキュメントの更新に失敗しました',
+    schema: pharmacyInvoiceTransitionResultSchema,
+  });
 }
 
 function KpiBox({
@@ -882,7 +1002,10 @@ export function PartnerCooperationBillingContent() {
         },
         body: JSON.stringify({ billing_month: billingMonth }),
       });
-      return readApiJson<CandidateGenerationResult>(response);
+      return readApiJson<CandidateGenerationResult>(response, {
+        fallbackMessage: '請求候補の生成に失敗しました',
+        schema: candidateGenerationResultSchema,
+      });
     },
     onSuccess: async (result) => {
       toast.success(result.message);
@@ -910,7 +1033,10 @@ export function PartnerCooperationBillingContent() {
           document_kind: documentKind,
         }),
       });
-      return readApiJson<InvoiceDraftResult>(response);
+      return readApiJson<InvoiceDraftResult>(response, {
+        fallbackMessage: '薬局間月次ドキュメントの作成に失敗しました',
+        schema: invoiceDraftResultSchema,
+      });
     },
     onSuccess: async (result) => {
       setLastDraft(result);

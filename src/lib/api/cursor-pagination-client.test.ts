@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 import { CURSOR_PAGINATION_PAGE_LIMIT, fetchAllCursorPages } from './cursor-pagination-client';
 
 function jsonResponse(body: unknown) {
@@ -102,6 +103,42 @@ describe('cursor-pagination-client', () => {
         path: '/api/example',
         errorMessage: 'failed',
         fetchImpl,
+      }),
+    ).rejects.toThrow('failed');
+  });
+
+  it('throws instead of truncating when a page reports hasMore without a next cursor', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({
+        data: [{ id: 'row_1' }],
+        hasMore: true,
+      }),
+    );
+
+    await expect(
+      fetchAllCursorPages({
+        path: '/api/example',
+        errorMessage: 'failed',
+        fetchImpl,
+      }),
+    ).rejects.toThrow('failed');
+  });
+
+  it('throws the caller error when an item schema rejects a cursor page row', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({
+        data: [{ id: 123 }],
+        hasMore: false,
+        deliverySummary: { pending_delivery_count: 2 },
+      }),
+    );
+
+    await expect(
+      fetchAllCursorPages({
+        path: '/api/example',
+        errorMessage: 'failed',
+        fetchImpl,
+        itemSchema: z.object({ id: z.string() }),
       }),
     ).rejects.toThrow('failed');
   });

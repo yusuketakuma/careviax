@@ -5,6 +5,7 @@ import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
 import { conflict, notFound, success, validationError } from '@/lib/api/response';
 import { withOrgContext } from '@/lib/db/rls';
+import { toPharmacyPartnershipRowContract } from '@/lib/pharmacy-cooperation/api-contracts';
 
 const optionalTrimmedString = (max: number) =>
   z
@@ -48,6 +49,38 @@ function isDateBefore(left: Date, right: Date) {
   return utcDateOnlyTime(left) < utcDateOnlyTime(right);
 }
 
+function utcDayRange(date: Date) {
+  const start = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const nextStart = new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1),
+  );
+  return { start, nextStart };
+}
+
+function activationConflictFor(
+  partnership: {
+    status: string;
+    effective_from: Date | null;
+    effective_to: Date | null;
+    partner_pharmacy: { status: string };
+  },
+  now: Date,
+) {
+  if (partnership.partner_pharmacy.status !== 'active') {
+    return conflict('有効な協力薬局との連携のみ有効化できます');
+  }
+  if (partnership.status === 'ended') {
+    return conflict('終了済みの薬局間連携は有効化できません');
+  }
+  if (partnership.effective_from && isDateAfter(partnership.effective_from, now)) {
+    return conflict('薬局間連携の開始日前です');
+  }
+  if (partnership.effective_to && isDateBefore(partnership.effective_to, now)) {
+    return conflict('薬局間連携の終了日を過ぎています');
+  }
+  return null;
+}
+
 export const POST = withAuthContext<{ id: string }>(
   async (req, ctx, { params }) => {
     const { id: rawId } = await params;
@@ -75,33 +108,36 @@ export const POST = withAuthContext<{ id: string }>(
           partner_pharmacy_id: true,
           approved_by_base: true,
           approved_by_partner: true,
+          base_site: { select: { id: true, name: true } },
           partner_pharmacy: { select: { id: true, name: true, status: true } },
         },
       });
 
       if (!partnership) return { response: notFound('薬局間連携が見つかりません') };
-      if (partnership.partner_pharmacy.status !== 'active') {
-        return { response: conflict('有効な協力薬局との連携のみ有効化できます') };
-      }
-      if (partnership.status === 'ended') {
-        return { response: conflict('終了済みの薬局間連携は有効化できません') };
-      }
-      if (partnership.effective_from && isDateAfter(partnership.effective_from, now)) {
-        return { response: conflict('薬局間連携の開始日前です') };
-      }
-      if (partnership.effective_to && isDateBefore(partnership.effective_to, now)) {
-        return { response: conflict('薬局間連携の終了日を過ぎています') };
-      }
+      const activationConflict = activationConflictFor(partnership, now);
+      if (activationConflict) return { response: activationConflict };
       if (partnership.status === 'active') {
         return { partnership };
       }
 
+      const activeDateWindow = utcDayRange(now);
       const updatedCount = await tx.pharmacyPartnership.updateMany({
         where: {
           id,
           org_id: ctx.orgId,
           status: { in: ['draft', 'suspended'] },
           partner_pharmacy: { status: 'active' },
+          AND: [
+            {
+              OR: [
+                { effective_from: null },
+                { effective_from: { lt: activeDateWindow.nextStart } },
+              ],
+            },
+            {
+              OR: [{ effective_to: null }, { effective_to: { gte: activeDateWindow.start } }],
+            },
+          ],
         },
         data: {
           status: 'active',
@@ -112,6 +148,18 @@ export const POST = withAuthContext<{ id: string }>(
         },
       });
       if (updatedCount.count !== 1) {
+        const current = await tx.pharmacyPartnership.findUniqueOrThrow({
+          where: { id_org_id: { id, org_id: ctx.orgId } },
+          include: {
+            base_site: { select: { id: true, name: true } },
+            partner_pharmacy: { select: { id: true, name: true, status: true } },
+          },
+        });
+        const currentConflict = activationConflictFor(current, now);
+        if (currentConflict) return { response: currentConflict };
+        if (current.status === 'active') {
+          return { partnership: current };
+        }
         return { response: conflict('薬局間連携はすでに更新されています') };
       }
 
@@ -142,7 +190,7 @@ export const POST = withAuthContext<{ id: string }>(
     });
 
     if ('response' in result) return result.response ?? validationError('入力値が不正です');
-    return success(result.partnership);
+    return success(toPharmacyPartnershipRowContract(result.partnership));
   },
   {
     permission: 'canManagePatientSharing',

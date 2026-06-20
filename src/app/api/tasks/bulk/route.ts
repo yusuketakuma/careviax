@@ -11,6 +11,10 @@ import {
   resolveDashboardAssignmentScope,
 } from '@/server/services/dashboard-assignment-scope';
 import { requireWritableTaskPatient } from '@/server/services/task-write-guard';
+import type {
+  BulkCompleteTaskFailure,
+  BulkCompleteTasksResponse,
+} from '@/lib/tasks/bulk-completion-contract';
 
 const bulkCompleteTaskSchema = z.object({
   ids: z
@@ -18,17 +22,6 @@ const bulkCompleteTaskSchema = z.object({
     .min(1, 'タスクを選択してください')
     .max(100, '一度に完了できるタスクは100件までです'),
 });
-
-type BulkTaskFailure = {
-  id: string | null;
-  code:
-    | 'not_found'
-    | 'dedicated_completion_required'
-    | 'invalid_status'
-    | 'patient_not_writable'
-    | 'conflict';
-  message: string;
-};
 
 type BulkTask = {
   id: string;
@@ -38,7 +31,7 @@ type BulkTask = {
   related_entity_id: string | null;
 };
 
-function writableFailureForStatus(id: string, status: number): BulkTaskFailure {
+function writableFailureForStatus(id: string, status: number): BulkCompleteTaskFailure {
   return {
     id,
     code: status === 409 ? 'conflict' : 'patient_not_writable',
@@ -85,7 +78,7 @@ export async function POST(req: NextRequest) {
   });
 
   const tasksById = new Map(tasks.map((task: BulkTask) => [task.id, task]));
-  const failures: BulkTaskFailure[] = [];
+  const failures: BulkCompleteTaskFailure[] = [];
   const eligibleIds: string[] = [];
 
   for (const id of requestedIds) {
@@ -157,12 +150,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return success({
+  const responseBody = {
     data: {
       total: requestedIds.length,
       completed,
       failed: requestedIds.length - completed,
       failures,
     },
-  });
+  } satisfies BulkCompleteTasksResponse;
+
+  return success(responseBody);
 }
