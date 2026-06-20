@@ -252,6 +252,44 @@ Next loop:
 
 - Run Prettier/format, type/lint/diff checks after this ledger update, then start another zero-audit pass. If all agents report zero new actionable findings, record Zero Audit 1 and immediately run the second clean pass.
 
+### Loop 6 - Re-Audit Follow-up: Commit Policy, Durable noUnused Gate, and Remaining Changed-Surface Dedup
+
+Re-audit results:
+
+- Zero audit was not reached. Duplication, Dead Code, Test, and Architecture agents returned additional actionable items.
+- User explicitly instructed Codex to update `AGENTS.md` so long-running work commits automatically and periodically.
+- Claude sent `URGENT:` coordination for sync-engine ownership and commit hygiene; Codex ACKed, retained sync-engine ownership, and kept Claude off that file until Codex is ready.
+
+Implemented:
+
+- Updated `AGENTS.md` with a periodic autonomous commit policy: commit validated owned logical groups, drain `agmsg` first, stage only explicit owned paths, announce hashes, and keep push/deploy/destructive operations approval-gated.
+- Added durable `typecheck:no-unused` package script and wired it into GitHub Actions after `pnpm typecheck`.
+- Removed the stale `src/server/services/email.ts` re-export of delivery failure constants/helpers and deleted the compatibility-only test.
+- Added `src/lib/datetime/date-display.ts` for existing string-date display behavior and migrated pharmacy cooperation setup, partner cooperation billing, and pharmacy cooperation workflow screens to it.
+- Migrated changed UI fetchers in report-share workspace, schedule team-board, and patients board to `readApiJson<{ data: ... }>(response, fallback)` while preserving their `.data` return contracts and screen-specific fallback messages.
+
+Deleted or consolidated:
+
+- Removed three duplicated local `formatDate(value)?.slice(0, 10)` display helpers from pharmacy cooperation surfaces.
+- Removed changed-surface duplicated `if (!res.ok) throw ...; await res.json(); return json.data` fetch parsing from report-share, schedule team-board, and patients board query fetchers.
+- Removed the email-service compatibility export surface after all production consumers used `src/lib/reports/delivery-failure-reasons.ts` directly.
+
+Focused validation:
+
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/datetime/date-display.test.ts src/server/services/email.test.ts 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx' 'src/app/(dashboard)/admin/pharmacy-cooperation/pharmacy-cooperation-setup-content.test.tsx' 'src/app/(dashboard)/billing/partner-cooperation/partner-cooperation-billing-content.test.tsx' 'src/app/(dashboard)/workflow/pharmacy-cooperation/pharmacy-cooperation-workflow-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, 8 files / 62 tests.
+- `pnpm typecheck:no-unused`: passed.
+- Touched-file ESLint for Loop 6 code files passed; `AGENTS.md`, `.github/workflows/ci.yml`, and `package.json` were reported only as ignored-file warnings because they are outside ESLint config.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm format:check`: passed.
+
+Blocked or deferred:
+
+- sync-engine multi-subscription hardening is accepted as Codex-owned high-risk offline-sync work, but it is deferred until current committed groups are landed and re-audited.
+- Full test/build are still final-gate validations; focused tests and standard static gates were used for this intermediate commit boundary.
+
+Next loop:
+
+- Re-run `git diff --check`, full lint/typecheck/date/eventbridge after ledger formatting, then commit validated logical groups with explicit path staging and `agmsg` FYI hashes. After commits, re-run the zero-audit pass.
+
 ## Current Goal - 2026-06-19 JST Adjacent Feature and Consistency Loop
 
 Objective: investigate the current CareViaX implementation, add/improve nearby features that naturally extend existing product flows, remove duplication/inconsistency/unfinished behavior, and continue until actionable in-session candidates are exhausted.
@@ -7804,6 +7842,7 @@ Collect agent findings → triage by [evidence + low-risk + spec-preserving] →
 - Codex commit待ち: D3, Loop4, date-key dedup, noUnused cleanup(全て私 or ralph で承認済み)。landing後に worktree クリーン化、Loop2 残(apiFetch広域採用/file-storage#3#7/withOrgContext#2/sync-engine)をjoint assessment。
 
 ### Loop 2 続き (Claude solo, clean非競合)
+
 - Reliability#7: file-storage cleanupExpiredGeneratedFiles errors[]観測化 + 回帰テスト。commit 6afc0164 (72 tests)。
 - Perf Low: pca-pumps checkPcaPumpRentalOverdues を org単位集約(withOrgContext+updateMany N→M)。daily.test更新(id→{in:[...]})。commit 7ab6abf6 (31 tests)。
 - Claude solo clean backlog ほぼ枯渇。残: sync-engine多重購読(Async Med, 高リスクoffline, Codex hotspot=要調整), withOrgContext#2(pharmacy, Codex ralph競合), apiFetch広域(Codex client-json着手済), dispense-results(監査で許容判定=非actionable)。
