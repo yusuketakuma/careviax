@@ -100,7 +100,7 @@ function resolveConsentDocumentUrlInput(args: {
 }
 
 export const GET = withAuthContext<{ id: string }>(
-  async (req: NextRequest, ctx, routeContext: AuthRouteContext<{ id: string }>) => {
+  async (_req: NextRequest, ctx, routeContext: AuthRouteContext<{ id: string }>) => {
     if (!hasPermission(ctx.role, 'canVisit')) {
       return forbidden('同意記録の閲覧には訪問権限が必要です');
     }
