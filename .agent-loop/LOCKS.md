@@ -32,6 +32,13 @@ Supervisor must re-read and retry. This detects two lanes racing the same row.
 request with the same key is a no-op (no duplicate grant), so retries on flaky transport are safe.
 See `MESSAGE_PROTOCOL.md` for the wire field.
 
+**Workload handoff locks.** A load-balancing `HANDOFF` changes who owns the work, but it does not
+expand the edit scope. The receiver must request/hold an explicit LOCK for the exact paths being
+transferred, and the sender must treat those paths as forbidden while the receiver implements. A
+resent handoff reuses the same `idempotency_key`; it must not create a second ownership flip or a
+broader lock. Any handoff row still increments `state_version` when ownership, paths, or status
+change.
+
 **Worktree & conflict model.** Lane assignment (UI vs backend worktree/lane) plus agmsg LOCK
 discipline prevents _mechanical_ (file-level) conflicts — the two lanes never touch the same
 paths, so git never sees overlapping edits. _Logical_ conflicts (a double-claimed task, circular

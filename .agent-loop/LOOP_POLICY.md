@@ -64,6 +64,24 @@ Proven, in-effect-now discipline. Apply on every cycle without re-deciding.
     `readApiJson(res, { schema })` so a malformed 2xx fails closed; keep `fallbackMessage` a static
     literal (no payload interpolation, so no PHI leaks into error text). Evidence: gbrain
     ImplementationDecision `readapijson-schema-fail-closed` (peer-reviewed).
+11. **Workload-balancing handoff.** If one Supervisor is saturated and the other has spare
+    capacity, the current owner may hand off a task or narrow subtask even when it would normally
+    sit in the other lane. This requires an explicit AGLOOP `HANDOFF` or owner-decision envelope,
+    a stable `idempotency_key` for retries, ACK before work starts, updated
+    `owner_agent`/`reviewer_agent`, and declared `locked_paths`/`forbidden_paths`. Handoff does
+    **not** widen scope: the receiver edits only the granted `locked_paths`, runs the same
+    objective gate before `PATCH_REVIEW_REQUEST`, and never self-reviews. Existing hard-stops
+    (auth, billing/payments, security policy, destructive migration, production deploy) remain
+    human-gated and cannot be bypassed by load balancing.
+12. **Idle-capacity useful work.** When the queue has no actionable review, plan, VERIFY, LOCK, or
+    user-priority task, a Supervisor may spend idle capacity on bounded work that improves the next
+    cycle: small behavior-preserving refactors, duplicate/dead-code discovery, targeted test
+    strengthening, validation/ledger cleanup, gbrain dedupe/classification/stale-memory review,
+    and coherent commits of already-reviewed owned slices. Idle work still requires inbox drain,
+    gbrain/repo dedupe, explicit LOCK for any edit, peer review before done, objective validation,
+    and explicit-path staging. Do not use idle time to start broad rewrites, unreviewed product
+    features, cross-lane edits, auth/billing/payments/security/destructive migration/deploy work, or
+    speculative gbrain writes.
 
 ## Consider
 
@@ -110,4 +128,6 @@ Status values: `proposed` → `peer-approved` → `applied` (or `rejected`).
 | ApplyNow §8 (Compliance by Design + RLS)          | codex-lead  | _pending_   | proposed              |
 | ApplyNow §9 (PHI redaction symmetry on mutations) | claude-lead | codex-lead  | applied               |
 | ApplyNow §10 (fail-closed client reads)           | claude-lead | codex-lead  | applied               |
+| ApplyNow §11 (workload-balancing handoff)         | codex-lead  | claude-lead | applied               |
+| ApplyNow §12 (idle-capacity useful work)          | human       | claude-lead | applied               |
 | _next candidate_                                  | _name_      | _name_      | proposed              |

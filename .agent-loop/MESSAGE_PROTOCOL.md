@@ -88,7 +88,7 @@ details: |
 | `VERIFY_RESULT`              | reviewer → owner | Verification evidence + verdict.                                                                             |
 | `BLOCKED`                    | either           | Work blocked on external dependency (`cc:blocked`).                                                          |
 | `UNBLOCK`                    | either           | Dependency resolved; resume.                                                                                 |
-| `HANDOFF`                    | lead → lead      | Transfer ownership of a task/lane to the other lead.                                                         |
+| `HANDOFF`                    | lead → lead      | Transfer ownership of a task/subtask to the other lead with ACK, stable idempotency, and explicit locks.     |
 | `STATUS_PING`                | either           | Liveness / cycle heartbeat.                                                                                  |
 | `DONE`                       | either           | Task complete, verified, locks released.                                                                     |
 | `FEATURE_INTAKE`             | either           | New feature request landed; enqueue to `.agent-loop/FEATURE_QUEUE.md`.                                       |
@@ -192,7 +192,10 @@ team `phos`.
 - **ACK-gated types.** `LOCK_REQUEST`, `HANDOFF`, and `CHANGES_REQUESTED`
   require an explicit ACK/grant/deny before the sender proceeds:
   - `LOCK_REQUEST` → wait for `LOCK_GRANT` / `LOCK_DENY` before editing.
-  - `HANDOFF` → wait for the receiver's ACK before releasing ownership.
+  - `HANDOFF` → wait for the receiver's ACK before releasing ownership. A resent
+    handoff reuses the same stable `idempotency_key` and must not double-flip ownership.
+    The receiver edits only the granted `locked_paths`; load handoff does not widen scope
+    or bypass the same objective gate before `PATCH_REVIEW_REQUEST`.
   - `CHANGES_REQUESTED` → the owner must ACK and address the changes before
     re-requesting review.
     All other types are fire-and-forward (no blocking ACK required).

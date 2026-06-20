@@ -107,6 +107,44 @@ Use `prompts/feature-intake.md` verbatim to drive this.
 - Codex may implement, but **only inside an explicitly LOCKed scope** recorded in `LOCKS.md`. Outside that scope it reviews, it does not write.
 - The objective gate (Q5) is the tie-breaker: opinions yield to green/red gate evidence.
 
+### 5.1 Workload-balancing handoff
+
+When one Supervisor is saturated and the other has spare capacity, the current owner may hand off
+a task or narrow subtask to the available Supervisor. This is an exception to the default lane
+split, not a bypass of the loop:
+
+- Send an AGLOOP `HANDOFF` or owner-decision envelope and wait for ACK before work starts.
+- Reuse the same stable `idempotency_key` on retries so ownership is not flipped twice.
+- Update `owner_agent` / `reviewer_agent`; the original owner becomes reviewer when appropriate.
+- Declare `locked_paths` / `forbidden_paths`; the receiver edits only the granted paths.
+- Run the same objective gate before `PATCH_REVIEW_REQUEST`; hard-stop surfaces stay human-gated.
+
+### 5.2 Idle-capacity work
+
+When no review, plan, VERIFY, LOCK, or user-priority task is actionable, the loop should still
+improve the repo deliberately. Idle work is allowed only when it is small, owned, and reviewable.
+
+Good idle work:
+
+- Code refactoring that is behavior-preserving, narrow, and backed by focused tests or type checks.
+- Duplicate implementation detection, dead-code discovery, and old-path cleanup proposals.
+- Test strengthening for known weak edges: fail-closed reads, false-empty states, stale data,
+  tenant/org scoping, async races, and regression fixtures.
+- gbrain internal cleanup: dedupe memories, classify ApplyNow/Consider/Ignore, flag stale memory,
+  add reusable ReviewFinding/RejectedApproach/GateResult records, and link related memories.
+- Validation and ledger hygiene: rerun targeted gates, update run ledgers with evidence, and commit
+  coherent already-reviewed owned slices with explicit path staging.
+
+Guardrails:
+
+- Drain agmsg before choosing idle work, before editing, and before committing.
+- Prefer read-only reconnaissance first; create/claim a task and LOCK exact paths before any edit.
+- Keep maker/checker separation. The idle worker does not self-approve.
+- Do not start broad rewrites, speculative new features, cross-lane edits, or hard-stop surfaces
+  (auth, billing/payments, security policy, destructive migration, production deploy).
+- Do not write raw logs, conversation, secrets, tokens, `.env` values, or PHI into gbrain or loop
+  docs.
+
 ---
 
 ## 6. Hard-stop rules (§14)
