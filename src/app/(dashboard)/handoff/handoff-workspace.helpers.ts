@@ -7,6 +7,7 @@ import type {
 } from '@/components/features/workspace/action-rail';
 import { formatElapsedLabel } from '@/lib/ui/relative-time';
 import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
+import { STATUS_TOKENS } from '@/lib/constants/status-tokens';
 import { familyNameOf as sharedFamilyNameOf } from '@/lib/utils/person-name';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 
@@ -162,31 +163,32 @@ export type HandoffStatusBadge = {
   className: string;
 };
 
-/** 状態バッジ。承諾待ち=紫 / 作業中 N/M=青 / 確認中 残時間=橙 / 完了=灰。 */
+// 状態色は 6 軸セマンティック（STATUS_TOKENS）を正本とする。
+// 承諾待ち=waiting(紫) / 作業中=info(青) / 確認中=confirm(橙) / 完了=done(緑) / 薬剤師相談・要確認=confirm。
 export function buildStatusBadge(item: HandoffBoardItem, now: Date): HandoffStatusBadge {
   switch (item.lifecycle_status) {
     case 'proposed':
-      return { label: '承諾待ち', className: 'bg-violet-100 text-violet-700' };
+      return { label: '承諾待ち', className: STATUS_TOKENS.waiting.badgeClassName };
     case 'in_progress': {
       const progress =
         item.progress_done != null && item.progress_total != null
           ? ` ${item.progress_done}/${item.progress_total}`
           : '';
-      return { label: `作業中${progress}`, className: 'bg-blue-100 text-blue-700' };
+      return { label: `作業中${progress}`, className: STATUS_TOKENS.info.badgeClassName };
     }
     case 'confirming': {
       const remaining = item.deadline ? ` ${remainingLabel(item.deadline, now)}` : '';
-      return { label: `確認中${remaining}`, className: 'bg-amber-100 text-amber-700' };
+      return { label: `確認中${remaining}`, className: STATUS_TOKENS.confirm.badgeClassName };
     }
     case 'completed':
-      return { label: '完了', className: 'bg-slate-100 text-slate-600' };
+      return { label: '完了', className: STATUS_TOKENS.done.badgeClassName };
     default:
       break;
   }
   if (item.consult_status) {
-    return { label: '薬剤師相談', className: 'bg-amber-100 text-amber-700' };
+    return { label: '薬剤師相談', className: STATUS_TOKENS.confirm.badgeClassName };
   }
-  return { label: '要確認', className: 'bg-slate-100 text-slate-600' };
+  return { label: '要確認', className: STATUS_TOKENS.confirm.badgeClassName };
 }
 
 /** 進捗率(0-100)。作業中以外・進捗未設定は null。 */

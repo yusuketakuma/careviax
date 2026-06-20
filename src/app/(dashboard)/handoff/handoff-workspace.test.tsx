@@ -455,7 +455,7 @@ describe('handoff-workspace helpers', () => {
       now,
     );
     expect(inProgress.label).toBe('作業中 9/12');
-    expect(inProgress.className).toContain('blue');
+    expect(inProgress.className).toContain('info');
     const confirming = buildStatusBadge(
       buildItem({
         lifecycle_status: 'confirming',
@@ -464,7 +464,7 @@ describe('handoff-workspace helpers', () => {
       now,
     );
     expect(confirming.label).toBe('確認中 30分');
-    expect(confirming.className).toContain('amber');
+    expect(confirming.className).toContain('confirm');
     expect(buildStatusBadge(buildItem({ consult_status: 'open' }), now).label).toBe('薬剤師相談');
     expect(buildStatusBadge(buildItem({}), now).label).toBe('要確認');
   });
