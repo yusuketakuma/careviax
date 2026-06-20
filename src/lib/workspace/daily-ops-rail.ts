@@ -1,8 +1,10 @@
 import type { CockpitAuditQueueItem, DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import { formatElapsedLabel } from '@/lib/ui/relative-time';
+import { formatTimeOfDay as formatDailyOpsTime } from '@/lib/datetime/time-of-day';
 import { familyNameOf } from '@/lib/utils/person-name';
 
 export { familyNameOf };
+export { formatDailyOpsTime };
 
 /**
  * design/images/new の右レール「次にやること / 止まっている理由」共通ビルダー。
@@ -11,14 +13,6 @@ export { familyNameOf };
  * (docs/design-gap-analysis-new.md「右レール用は 09_set と共通」)、
  * 既存 /api/dashboard/cockpit の集計をそのまま画面横断で使う。
  */
-
-/** ISO → HH:mm(ローカル時刻)。 */
-export function formatDailyOpsTime(iso: string): string {
-  const date = new Date(iso);
-  const hours = `${date.getHours()}`.padStart(2, '0');
-  const minutes = `${date.getMinutes()}`.padStart(2, '0');
-  return `${hours}:${minutes}`;
-}
 
 /** 経過分 → 「30分」「2時間」「1日」(止まっている理由の経過時間表示)。 */
 export const formatDailyOpsAgeLabel = formatElapsedLabel;

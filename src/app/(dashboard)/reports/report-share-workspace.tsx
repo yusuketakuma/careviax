@@ -17,8 +17,10 @@ import {
 } from '@/components/ui/table';
 import { WorkspaceActionRail } from '@/components/features/workspace/action-rail';
 import { MainWorkflowCompactNav } from '@/components/features/workflow/main-workflow-route';
+import { readApiJson } from '@/lib/api/client-json';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { generateCareReportFromVisit } from '@/lib/reports/generate-from-visit-client';
+import { displayDeliveryFailureReason } from '@/lib/reports/delivery-failure-reasons';
 import { cn } from '@/lib/utils';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type {
@@ -82,23 +84,14 @@ function deliveryRetryLabel(retryCount: number): string {
   return retryCount > 0 ? `再送${retryCount}回` : '再送未実施';
 }
 
-function displayFailureReason(reason: string | null): string | null {
-  if (
-    reason === 'メール送信に失敗しました' ||
-    reason === '送付に失敗しました' ||
-    reason === '外部送信に失敗しました'
-  ) {
-    return reason;
-  }
-  return null;
-}
-
 async function fetchReportsTodayWorkspace(orgId: string): Promise<ReportsTodayWorkspaceResponse> {
   const res = await fetch('/api/care-reports/today-workspace', {
     headers: { 'x-org-id': orgId },
   });
-  if (!res.ok) throw new Error('報告ワークスペースの取得に失敗しました');
-  const json = await res.json();
+  const json = await readApiJson<{ data: ReportsTodayWorkspaceResponse }>(
+    res,
+    '報告ワークスペースの取得に失敗しました',
+  );
   return json.data;
 }
 
@@ -106,8 +99,10 @@ async function fetchOperationCockpit(orgId: string): Promise<DashboardCockpitRes
   const res = await fetch('/api/dashboard/cockpit', {
     headers: { 'x-org-id': orgId },
   });
-  if (!res.ok) throw new Error('当日オペレーション情報の取得に失敗しました');
-  const json = await res.json();
+  const json = await readApiJson<{ data: DashboardCockpitResponse }>(
+    res,
+    '当日オペレーション情報の取得に失敗しました',
+  );
   return json.data;
 }
 
@@ -376,7 +371,7 @@ function ReportOpenIssuesSection({ issues }: { issues: ReportOpenIssue[] }) {
 function CreatedReportStatusCell({ report }: { report: ReportCreatedRow }) {
   if (report.failed_delivery) {
     const failedDelivery = report.failed_delivery;
-    const failureReason = displayFailureReason(failedDelivery.failure_reason);
+    const failureReason = displayDeliveryFailureReason(failedDelivery.failure_reason);
     return (
       <div className="space-y-2">
         <div className="rounded-md border border-state-blocked/30 bg-state-blocked/10 p-2 text-state-blocked">

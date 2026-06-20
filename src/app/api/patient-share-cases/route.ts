@@ -5,6 +5,7 @@ import { buildCursorPage, parsePaginationParams } from '@/lib/api/pagination';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { notFound, success, validationError } from '@/lib/api/response';
 import { withSensitiveNoStore } from '@/lib/api/sensitive-response';
+import { formatUtcDateKey } from '@/lib/date-key';
 import { toPrismaJsonInput } from '@/lib/db/json';
 import { withOrgContext } from '@/lib/db/rls';
 import { dateKeySchema } from '@/lib/validations/date-key';
@@ -97,17 +98,13 @@ function optionalDate(value: string | null | undefined) {
   return value ? utcDateFromLocalKey(value) : null;
 }
 
-function dateKeyFromDate(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
-
 function buildBasePatientSnapshot(patient: PatientForSnapshot) {
   const residence = patient.residences[0] ?? null;
   return {
     id: patient.id,
     name: patient.name,
     name_kana: patient.name_kana,
-    birth_date: dateKeyFromDate(patient.birth_date),
+    birth_date: formatUtcDateKey(patient.birth_date),
     gender: patient.gender,
     primary_residence: residence
       ? {

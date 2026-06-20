@@ -17,6 +17,7 @@ import {
   type EvidenceItem,
   type NextActionPanelProps,
 } from '@/components/features/workspace/action-rail';
+import { readApiJson } from '@/lib/api/client-json';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { buildWorkRequestHref } from '@/lib/tasks/work-request-navigation';
 import { formatElapsedLabel } from '@/lib/ui/relative-time';
@@ -64,8 +65,10 @@ async function fetchScheduleDayBoard(
   const res = await fetch(`/api/visit-schedules/day-board?date=${date}`, {
     headers: { 'x-org-id': orgId },
   });
-  if (!res.ok) throw new Error('全員スケジュールの取得に失敗しました');
-  const json = await res.json();
+  const json = await readApiJson<{ data: ScheduleDayBoardResponse }>(
+    res,
+    '全員スケジュールの取得に失敗しました',
+  );
   return json.data;
 }
 
@@ -73,8 +76,10 @@ async function fetchCockpitForRail(orgId: string): Promise<DashboardCockpitRespo
   const res = await fetch('/api/dashboard/cockpit', {
     headers: { 'x-org-id': orgId },
   });
-  if (!res.ok) throw new Error('当日の優先タスク取得に失敗しました');
-  const json = await res.json();
+  const json = await readApiJson<{ data: DashboardCockpitResponse }>(
+    res,
+    '当日の優先タスク取得に失敗しました',
+  );
   return json.data;
 }
 
@@ -98,8 +103,10 @@ async function fetchScheduleOperationalTasks(orgId: string): Promise<ScheduleTas
   const res = await fetch(`/api/tasks?${params.toString()}`, {
     headers: { 'x-org-id': orgId },
   });
-  if (!res.ok) throw new Error('スケジュール運用タスクの取得に失敗しました');
-  const json = await res.json();
+  const json = await readApiJson<{ data: ScheduleTask[] }>(
+    res,
+    'スケジュール運用タスクの取得に失敗しました',
+  );
   return json.data;
 }
 
@@ -820,7 +827,7 @@ function TeamGanttCard({
 
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
   const showNowMarker = nowMinutes >= BOARD_START_MINUTES && nowMinutes <= BOARD_END_MINUTES;
-  const nowLabel = `${`${now.getHours()}`.padStart(2, '0')}:${`${now.getMinutes()}`.padStart(2, '0')}`;
+  const nowLabel = formatTimeOfDayIso(now);
   const hourLabels: string[] = [];
   for (let minutes = BOARD_START_MINUTES; minutes <= BOARD_END_MINUTES; minutes += 60) {
     hourLabels.push(`${Math.floor(minutes / 60)}:00`);

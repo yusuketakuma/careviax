@@ -1,5 +1,6 @@
 import { PROCESS_STEPS_9, type ProcessStepKey } from '@/lib/prescription/cycle-workspace';
 import { formatElapsedLabel } from '@/lib/ui/relative-time';
+import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import type { CockpitVisit } from '@/types/dashboard-cockpit';
 
 /**
@@ -12,14 +13,7 @@ import type { CockpitVisit } from '@/types/dashboard-cockpit';
 // 時刻
 // ---------------------------------------------------------------------------
 
-/** ISO 文字列 → ローカル時刻の HH:MM。 */
-export function formatTimeOfDay(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '—';
-  const hours = `${date.getHours()}`.padStart(2, '0');
-  const minutes = `${date.getMinutes()}`.padStart(2, '0');
-  return `${hours}:${minutes}`;
-}
+export { formatTimeOfDay };
 
 export const COCKPIT_FRESHNESS_WINDOW_MS = 30_000;
 

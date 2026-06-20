@@ -25,7 +25,7 @@ const PHARMACIST_CONSULT_ITEMS = [
 ];
 
 export const GET = withAuthContext(
-  async (req, ctx) => {
+  async (_req, ctx) => {
     const now = new Date();
 
     const [

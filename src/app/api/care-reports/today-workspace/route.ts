@@ -6,6 +6,7 @@ import { withOrgContext } from '@/lib/db/rls';
 import { readJsonObject, readJsonObjectString } from '@/lib/db/json';
 import { dateKeySchema } from '@/lib/validations/date-key';
 import { familyNameOf } from '@/lib/utils/person-name';
+import { sanitizeDeliveryFailureReason } from '@/lib/reports/delivery-failure-reasons';
 import {
   BILLING_VALIDATION_LAYER_KEYS,
   readBillingValidationLayers,
@@ -164,22 +165,6 @@ function retryLabel(retryCount: number): string {
   return retryCount > 0 ? `再送${retryCount}回` : '再送未実施';
 }
 
-function sanitizeFailureReason(reason: string | null): string | null {
-  if (!reason) return null;
-  const normalized = reason.trim();
-  if (!normalized) return null;
-
-  if (
-    normalized === 'メール送信に失敗しました' ||
-    normalized === '送付に失敗しました' ||
-    normalized === '外部送信に失敗しました'
-  ) {
-    return normalized;
-  }
-
-  return '送付に失敗しました';
-}
-
 function selectLatestFailedDelivery(
   deliveryRecords: WorkspaceDeliveryRecord[],
 ): WorkspaceDeliveryRecord | null {
@@ -198,7 +183,7 @@ function buildFailedDeliverySummary(
     delivery_record_id: delivery.id,
     recipient_label: delivery.recipient_name?.trim() || '宛先未設定',
     channel: delivery.channel,
-    failure_reason: sanitizeFailureReason(delivery.failure_reason),
+    failure_reason: sanitizeDeliveryFailureReason(delivery.failure_reason),
     retry_count: delivery.retry_count,
     failed_at: delivery.updated_at.toISOString(),
     action: { label: '宛先確認・再送', href: `/reports/${reportId}` },

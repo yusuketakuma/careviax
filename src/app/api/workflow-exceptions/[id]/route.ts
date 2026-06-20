@@ -9,7 +9,7 @@ import { prisma } from '@/lib/db/client';
 import type { ExceptionStatus } from '@/types/domain-literals';
 
 export const GET = withAuthContext(
-  async (req: NextRequest, ctx, { params }: { params: Promise<{ id: string }> }) => {
+  async (_req: NextRequest, ctx, { params }: { params: Promise<{ id: string }> }) => {
     const { id: rawId } = await params;
     const id = normalizeRequiredRouteParam(rawId);
     if (!id) return validationError('ワークフロー例外IDが不正です');

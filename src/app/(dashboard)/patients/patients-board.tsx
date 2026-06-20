@@ -27,11 +27,13 @@ import {
   getHandlingTagLabel,
 } from '@/components/features/workspace/safety-board';
 import { ProcessProgressDots } from '@/components/features/workspace/process-chips';
+import { readApiJson } from '@/lib/api/client-json';
 import { PROCESS_STEPS_9 } from '@/lib/prescription/cycle-workspace';
 import { STATUS_TOKENS, type StatusRole } from '@/lib/constants/status-tokens';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { formatElapsedLabel } from '@/lib/ui/relative-time';
+import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { cn } from '@/lib/utils';
 import type {
   PatientAttentionKey,
@@ -59,8 +61,10 @@ export async function fetchPatientBoard(
   const res = await fetch(`/api/patients/board?${params}`, {
     headers: { 'x-org-id': orgId },
   });
-  if (!res.ok) throw new Error('患者一覧の取得に失敗しました');
-  const json = await res.json();
+  const json = await readApiJson<{ data: PatientBoardResponse }>(
+    res,
+    '患者一覧の取得に失敗しました',
+  );
   return json.data;
 }
 
@@ -190,13 +194,6 @@ function countCards(
   predicate: (card: PatientBoardCard) => boolean,
 ): number {
   return cards.reduce((count, card) => count + (predicate(card) ? 1 : 0), 0);
-}
-
-function formatTimeOfDay(iso: string): string {
-  const date = new Date(iso);
-  const hours = `${date.getHours()}`.padStart(2, '0');
-  const minutes = `${date.getMinutes()}`.padStart(2, '0');
-  return `${hours}:${minutes}`;
 }
 
 /** 経過分 → 「30分」「2時間」「1日」(止まっている理由の経過時間)。 */

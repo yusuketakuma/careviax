@@ -6,6 +6,7 @@ import {
 } from '@prisma/client';
 import type { AuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { formatNullableUtcDateKey } from '@/lib/date-key';
 import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
 
 const ACTIVE_INVOICE_STATUSES = [
@@ -176,7 +177,7 @@ const INVOICE_TRANSITION_RULES = {
 >;
 
 function toDateKey(value: Date | null) {
-  return value ? value.toISOString().slice(0, 10) : null;
+  return formatNullableUtcDateKey(value);
 }
 
 function toBillingMonthCode(value: Date) {

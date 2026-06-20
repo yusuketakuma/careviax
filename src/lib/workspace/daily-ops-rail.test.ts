@@ -5,6 +5,7 @@ import {
   buildDailyOpsNextAction,
   familyNameOf,
   formatDailyOpsAgeLabel,
+  formatDailyOpsTime,
 } from './daily-ops-rail';
 
 function localIso(hours: number, minutes = 0) {
@@ -135,6 +136,11 @@ describe('buildDailyOpsBlockedReasons', () => {
 });
 
 describe('formatDailyOpsAgeLabel / familyNameOf', () => {
+  it('shared time formatter keeps HH:mm padding and invalid timestamp fallback', () => {
+    expect(formatDailyOpsTime(localIso(9, 5))).toBe('09:05');
+    expect(formatDailyOpsTime('not-a-date')).toBe('—');
+  });
+
   it('分・時間・日の単位に丸める', () => {
     expect(formatDailyOpsAgeLabel(30)).toBe('30分');
     expect(formatDailyOpsAgeLabel(150)).toBe('2時間');

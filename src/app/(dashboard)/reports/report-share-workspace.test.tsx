@@ -11,11 +11,14 @@ import { ReportShareWorkspace } from './report-share-workspace';
 import {
   buildHeaderMeta,
   buildWorkspaceNextAction,
-  formatTimeOfDay,
   waitingBadgeLabel,
 } from './report-share-workspace.helpers';
 
 setupDomTestEnv();
+
+function localIso(year: number, monthIndex: number, day: number, hour: number, minute = 0) {
+  return new Date(year, monthIndex, day, hour, minute).toISOString();
+}
 
 beforeEach(() => {
   useUIStore.setState({ workspaceRailOpen: true });
@@ -116,7 +119,7 @@ const TODAY_WORKSPACE: ReportsTodayWorkspaceResponse = {
       created_at: '2026-06-10T01:00:00.000Z',
       updated_at: '2026-06-11T02:00:00.000Z',
       reported_to_professional: true,
-      last_sent_at: '2026-06-11T02:10:00.000Z',
+      last_sent_at: localIso(2026, 5, 11, 11, 10),
       last_recipient_label: '山田 太郎',
       last_channel: 'fax',
       failed_delivery: null,
@@ -200,7 +203,7 @@ const COCKPIT: DashboardCockpitResponse = {
       cycle_id: 'cycle_1',
       patient_name: '田中 一郎',
       priority: 'normal',
-      due_at: '2026-06-11T03:00:00.000Z',
+      due_at: localIso(2026, 5, 11, 12),
       intake_id: 'intake_1',
       prescribed_date: '2026-06-01',
       handling_tags: ['narcotic'],
@@ -214,8 +217,8 @@ const COCKPIT: DashboardCockpitResponse = {
       patient_name: '田中 一郎',
       visit_type: 'regular',
       schedule_status: 'planned',
-      time_start: '2026-06-11T05:00:00.000Z',
-      time_end: '2026-06-11T05:30:00.000Z',
+      time_start: localIso(2026, 5, 11, 14),
+      time_end: localIso(2026, 5, 11, 14, 30),
       facility_batch_id: null,
     },
   ],
@@ -432,14 +435,10 @@ describe('ReportShareWorkspace', () => {
 
     // 次にやること: 麻薬監査が主操作(青)・期限付き
     await waitFor(() => {
-      expect(
-        screen.getByText(`麻薬監査を開始 — ${formatTimeOfDay('2026-06-11T03:00:00.000Z')}期限`),
-      ).toBeTruthy();
+      expect(screen.getByText('麻薬監査を開始 — 12:00期限')).toBeTruthy();
     });
     expect(
-      screen.getByText(
-        `${formatTimeOfDay('2026-06-11T05:00:00.000Z')}訪問(田中様)の持参薬です。完了で午後の予定がすべて確定します。`,
-      ),
+      screen.getByText('14:00訪問(田中様)の持参薬です。完了で午後の予定がすべて確定します。'),
     ).toBeTruthy();
 
     // 止まっている理由(カテゴリ+経過+個別アクション)

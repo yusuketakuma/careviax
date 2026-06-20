@@ -60,6 +60,8 @@ tools/tests/.artifacts/
 .omc/
 artifacts/
 audits/
+agmsg/
+/*.bak.*
 # ルートの成果物のみ。src/**/reports(アプリ実装)に誤爆させない
 /reports/
 tmp/

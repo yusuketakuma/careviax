@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import type { AuthContext } from '@/lib/auth/context';
 import { createAuditLogEntry } from '@/lib/audit/audit-entry';
+import { formatNullableUtcDateKey } from '@/lib/date-key';
 import { readJsonObject, toPrismaJsonInput } from '@/lib/db/json';
 import { findLatestPrescriberInstitutionSuggestion } from '@/lib/prescriptions/prescriber-institutions';
 import { getHomeVisitIntake, type HomeVisitIntake } from '@/lib/patient/home-visit-intake';
@@ -118,7 +119,7 @@ export type CreatePartnerVisitPhysicianReportDraftResult = {
 };
 
 function toDateKey(value: Date | null | undefined) {
-  return value ? value.toISOString().slice(0, 10) : '';
+  return formatNullableUtcDateKey(value) ?? '';
 }
 
 function trimString(value: unknown) {

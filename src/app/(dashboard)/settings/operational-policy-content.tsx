@@ -26,6 +26,7 @@ import {
 } from '@/components/features/workspace/action-rail';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { formatElapsedLabel } from '@/lib/ui/relative-time';
+import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { cn } from '@/lib/utils';
 import {
   groupSystemSettingCandidates,
@@ -95,11 +96,6 @@ async function fetchCockpitForRail(orgId: string): Promise<DashboardCockpitRespo
   if (!res.ok) throw new Error('当日の優先タスク取得に失敗しました');
   const json = await res.json();
   return json.data;
-}
-
-function formatTimeOfDay(iso: string): string {
-  const date = new Date(iso);
-  return `${`${date.getHours()}`.padStart(2, '0')}:${`${date.getMinutes()}`.padStart(2, '0')}`;
 }
 
 const formatAgeLabel = formatElapsedLabel;

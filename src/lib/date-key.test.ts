@@ -22,6 +22,13 @@ describe('date-key helpers', () => {
     expect(formatNullableDateKey(undefined)).toBeNull();
   });
 
+  it('throws for invalid local Date values', () => {
+    const invalidDate = new Date('not-a-date');
+
+    expect(() => formatDateKey(invalidDate)).toThrow(RangeError);
+    expect(() => formatNullableDateKey(invalidDate)).toThrow(RangeError);
+  });
+
   it('formats a Date using the UTC calendar day', () => {
     expect(formatUtcDateKey(new Date('2026-03-30T00:30:00.000Z'))).toBe('2026-03-30');
   });
@@ -30,5 +37,12 @@ describe('date-key helpers', () => {
     expect(formatNullableUtcDateKey(new Date('2026-07-09T12:34:56.000Z'))).toBe('2026-07-09');
     expect(formatNullableUtcDateKey(null)).toBeNull();
     expect(formatNullableUtcDateKey(undefined)).toBeNull();
+  });
+
+  it('throws for invalid UTC Date values', () => {
+    const invalidDate = new Date('not-a-date');
+
+    expect(() => formatUtcDateKey(invalidDate)).toThrow(RangeError);
+    expect(() => formatNullableUtcDateKey(invalidDate)).toThrow(RangeError);
   });
 });

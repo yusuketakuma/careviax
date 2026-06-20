@@ -280,6 +280,10 @@ describe('formatTimeOfDay', () => {
   it('formats local HH:MM with zero padding', () => {
     expect(formatTimeOfDay(localIso(9, 5))).toBe('09:05');
   });
+
+  it('returns a placeholder for invalid timestamps', () => {
+    expect(formatTimeOfDay('not-a-date')).toBe('—');
+  });
 });
 
 describe('buildTeamHandoffSuggestion', () => {

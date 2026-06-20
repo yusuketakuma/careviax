@@ -27,6 +27,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { memberRoleLabel } from '@/lib/auth/member-roles';
+import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { useNetworkOnline } from '@/lib/hooks/use-network-online';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useAuthStore } from '@/lib/stores/auth-store';
@@ -46,9 +47,8 @@ const CARE_MODE_OPTIONS: { value: CareMode; label: string }[] = [
 
 export function formatSyncTime(isoString: string | null): string | null {
   if (!isoString) return null;
-  const date = new Date(isoString);
-  if (Number.isNaN(date.getTime())) return null;
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  const label = formatTimeOfDay(isoString);
+  return label === '—' ? null : label;
 }
 
 const emptySubscribe = () => () => {};

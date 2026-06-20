@@ -24,6 +24,9 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/loading';
+import { readApiJson } from '@/lib/api/client-json';
+import { formatDateDisplay as formatDate } from '@/lib/datetime/date-display';
+import { formatUtcDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 type CursorPage<T> = {
@@ -174,19 +177,7 @@ type CompleteUploadResponse = {
 };
 
 function todayDateKey() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-async function readApiJson<T>(response: Response): Promise<T> {
-  const json = await response.json().catch(() => null);
-  if (!response.ok) {
-    const message =
-      json && typeof json === 'object' && 'message' in json && typeof json.message === 'string'
-        ? json.message
-        : '処理に失敗しました';
-    throw new Error(message);
-  }
-  return json as T;
+  return formatUtcDateKey(new Date());
 }
 
 async function fetchPharmacySites(orgId: string) {
@@ -301,11 +292,6 @@ function statusVariant(status: string): 'default' | 'secondary' | 'destructive' 
   }
   if (status === 'draft') return 'secondary';
   return 'outline';
-}
-
-function formatDate(value: string | null | undefined) {
-  if (!value) return '-';
-  return value.slice(0, 10);
 }
 
 const CONTRACT_RENEWAL_ALERT_WINDOW_DAYS = 60;

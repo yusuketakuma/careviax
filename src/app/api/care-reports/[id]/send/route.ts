@@ -20,6 +20,10 @@ import {
 import { prisma } from '@/lib/db/client';
 import { readJsonObjectRequestBody } from '@/lib/api/request-body';
 import { normalizeRequiredRouteParam } from '@/lib/api/route-params';
+import {
+  EMAIL_DELIVERY_FAILURE_REASON,
+  resolveEmailDeliveryFailureReason,
+} from '@/lib/reports/delivery-failure-reasons';
 import { upsertBillingEvidenceForVisit } from '@/server/services/billing-evidence';
 import { resolveOperationalTasks } from '@/server/services/operational-tasks';
 import { sendCareReportEmail } from '@/server/services/report-delivery';
@@ -58,7 +62,6 @@ function maskRecipientContact(channel: string, contact: string) {
   return contact ? '***' : '';
 }
 
-const EMAIL_DELIVERY_FAILURE_REASON = 'メール送信に失敗しました';
 const STALE_DRAFT_DELIVERY_MS = 10 * 60 * 1000;
 const STALE_SEND_REQUEST_MS = 10 * 60 * 1000;
 
@@ -136,6 +139,63 @@ function buildCareReportSendRequestFingerprint(args: {
 
 function isUniqueConstraintError(error: unknown) {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}
+
+type SesFailureClassification = 'transient' | 'permanent' | 'unknown';
+
+function readExternalErrorName(error: unknown): string {
+  if (error instanceof Error && error.name) return error.name;
+  if (error && typeof error === 'object' && 'name' in error && typeof error.name === 'string') {
+    return error.name;
+  }
+  return typeof error;
+}
+
+function readExternalHttpStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== 'object' || !('$metadata' in error)) return undefined;
+  const metadata = error.$metadata;
+  if (!metadata || typeof metadata !== 'object' || !('httpStatusCode' in metadata)) {
+    return undefined;
+  }
+  const status = metadata.httpStatusCode;
+  return typeof status === 'number' && Number.isFinite(status) ? status : undefined;
+}
+
+function classifySesFailure(
+  errorName: string,
+  httpStatus: number | undefined,
+): SesFailureClassification {
+  if (httpStatus === 429 || (httpStatus !== undefined && httpStatus >= 500)) return 'transient';
+  if (httpStatus !== undefined && httpStatus >= 400 && httpStatus < 500) return 'permanent';
+  if (/throttl|timeout|temporar|serviceunavailable|internal/i.test(errorName)) return 'transient';
+  if (/messagerejected|mailfromdomainnotverified|configuration.*not.*exist/i.test(errorName)) {
+    return 'permanent';
+  }
+  return 'unknown';
+}
+
+function logCareReportEmailDeliveryFailure(args: {
+  ctx: AuthContext;
+  reportId: string;
+  deliveryRecordId: string;
+  error: unknown;
+}) {
+  const errorName = readExternalErrorName(args.error);
+  const httpStatus = readExternalHttpStatus(args.error);
+  const failureClass = classifySesFailure(errorName, httpStatus);
+
+  logger.warn('care report email delivery failed', {
+    event: 'care_report.email_delivery_failed',
+    orgId: args.ctx.orgId,
+    actorId: args.ctx.userId,
+    entityType: 'care_report',
+    entityId: args.reportId,
+    targetId: args.deliveryRecordId,
+    externalProvider: 'ses',
+    error_name: errorName,
+    status: httpStatus,
+    failure_class: failureClass,
+  });
 }
 
 function isDeliveredReportStatus(status: string) {
@@ -1063,8 +1123,15 @@ async function processRecipient(args: {
         reportId: report.id,
         pdfUrl: report.pdf_url,
       });
-    } catch {
-      const failureReason = EMAIL_DELIVERY_FAILURE_REASON;
+    } catch (sendError) {
+      const failureReason = resolveEmailDeliveryFailureReason();
+
+      logCareReportEmailDeliveryFailure({
+        ctx,
+        reportId,
+        deliveryRecordId: attemptedDeliveryRecord.id,
+        error: sendError,
+      });
 
       await withOrgContext(
         ctx.orgId,
@@ -1541,7 +1608,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const responseBody = {
       code: 'EXTERNAL_EMAIL_SEND_FAILED',
-      message: 'メール送信に失敗しました',
+      message: EMAIL_DELIVERY_FAILURE_REASON,
       details: {
         provider: 'ses',
         failed_recipients: failures.length,

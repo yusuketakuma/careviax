@@ -24,6 +24,8 @@ import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
+import { readApiJson } from '@/lib/api/client-json';
+import { formatDateDisplay as formatDate } from '@/lib/datetime/date-display';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 
@@ -416,18 +418,6 @@ const EMPTY_MESSAGE_FORM: MessageForm = {
   body: '',
 };
 
-async function readApiJson<T>(response: Response): Promise<T> {
-  const json = await response.json().catch(() => null);
-  if (!response.ok) {
-    const message =
-      json && typeof json === 'object' && 'message' in json && typeof json.message === 'string'
-        ? json.message
-        : '処理に失敗しました';
-    throw new Error(message);
-  }
-  return json as T;
-}
-
 async function fetchShareCases(orgId: string) {
   const response = await fetch(
     '/api/patient-share-cases?limit=8&view_context=pharmacy_cooperation_workflow',
@@ -485,11 +475,6 @@ async function fetchMessageThreads(
     headers: { 'x-org-id': orgId },
   });
   return readApiJson<CursorPage<PharmacyCooperationMessageThreadRow>>(response);
-}
-
-function formatDate(value: string | null | undefined) {
-  if (!value) return '-';
-  return value.slice(0, 10);
 }
 
 function formatDateTime(value: string | null | undefined) {

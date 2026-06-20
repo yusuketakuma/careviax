@@ -24,6 +24,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
+import { readApiJson } from '@/lib/api/client-json';
+import { formatDateDisplay as formatDate } from '@/lib/datetime/date-display';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { cn } from '@/lib/utils';
 
@@ -168,11 +170,6 @@ function formatYen(value: number | null | undefined) {
   return `${Math.round(value ?? 0).toLocaleString('ja-JP')}円`;
 }
 
-function formatDate(value: string | null | undefined) {
-  if (!value) return '-';
-  return value.slice(0, 10);
-}
-
 function safeErrorDetail() {
   return '再試行しても解消しない場合は管理者へ連絡してください。';
 }
@@ -203,18 +200,6 @@ function billingModelLabel(model: string | null) {
     expense_reimbursement: '実費',
   };
   return model ? (labels[model] ?? model) : '未判定';
-}
-
-async function readApiJson<T>(response: Response): Promise<T> {
-  const json = await response.json().catch(() => null);
-  if (!response.ok) {
-    const message =
-      json && typeof json === 'object' && 'message' in json && typeof json.message === 'string'
-        ? json.message
-        : '処理に失敗しました';
-    throw new Error(message);
-  }
-  return json as T;
 }
 
 async function fetchSummary(orgId: string, billingMonth: string) {

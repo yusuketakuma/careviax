@@ -6,6 +6,7 @@ import type {
   NextActionPanelProps,
 } from '@/components/features/workspace/action-rail';
 import { formatElapsedLabel } from '@/lib/ui/relative-time';
+import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { familyNameOf as sharedFamilyNameOf } from '@/lib/utils/person-name';
 import type { DashboardCockpitResponse } from '@/types/dashboard-cockpit';
 import type { ReportsTodayWorkspaceResponse } from '@/types/reports-today-workspace';
@@ -16,12 +17,7 @@ import type { ReportsTodayWorkspaceResponse } from '@/types/reports-today-worksp
  * (/api/dashboard/cockpit)から組み立てる(09_set/11_billing/12_handoff と共通の文脈)。
  */
 
-export function formatTimeOfDay(iso: string): string {
-  const date = new Date(iso);
-  const hours = `${date.getHours()}`.padStart(2, '0');
-  const minutes = `${date.getMinutes()}`.padStart(2, '0');
-  return `${hours}:${minutes}`;
-}
+export { formatTimeOfDay };
 
 /** 経過分 → 「30分」「2時間」「1日」 */
 export const formatAgeLabel = formatElapsedLabel;

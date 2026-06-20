@@ -20,6 +20,7 @@ import {
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
 import { formatElapsedLabel } from '@/lib/ui/relative-time';
+import { formatTimeOfDay } from '@/lib/datetime/time-of-day';
 import { cn } from '@/lib/utils';
 import type {
   VisitPrepCheck,
@@ -72,13 +73,6 @@ const PATIENT_SAFETY_TAGS: Record<string, { label: string; className: string }> 
   },
   swallowing: { label: '嚥下', className: 'border-tag-hazard/30 bg-tag-hazard/10 text-tag-hazard' },
 };
-
-function formatTimeOfDay(iso: string): string {
-  const date = new Date(iso);
-  const hours = `${date.getHours()}`.padStart(2, '0');
-  const minutes = `${date.getMinutes()}`.padStart(2, '0');
-  return `${hours}:${minutes}`;
-}
 
 /** 経過分 → 「30分」「2時間」「1日」(止まっている理由の経過時間)。 */
 const formatAgeLabel = formatElapsedLabel;
