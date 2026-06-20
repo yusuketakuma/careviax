@@ -390,7 +390,7 @@ describe('BoardClient', () => {
       date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
       scope: CapacityScope.PHARMACY,
     });
-    expect(screen.getByRole('heading', { name: 'Capacity' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Capacity' })).toBeTruthy();
     expect(screen.getByText('逼迫')).toBeTruthy();
   });
 

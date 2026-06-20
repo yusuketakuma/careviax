@@ -751,7 +751,7 @@ describe('PH-OS final review executable E2E coverage', () => {
     const { unmount } = render(<BoardClient client={managerClient} initialItems={[boardItem()]} />);
 
     await waitFor(() => expect(managerClient.getCapacity).toHaveBeenCalled());
-    expect(screen.getByRole('heading', { name: 'Capacity' })).not.toBeNull();
+    expect(await screen.findByRole('heading', { name: 'Capacity' })).not.toBeNull();
     unmount();
 
     const clerkClient = boardClient();
