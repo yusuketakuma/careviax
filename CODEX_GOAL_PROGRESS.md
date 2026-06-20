@@ -8037,5 +8037,29 @@ Next loop:
   - API response envelope type hardening remains open.
   - `readApiJson` schema validation call-site migration remains open and is mostly UI/dashboard-facing.
   - care-report print-audit DTO/client duplication remains open.
-  - route-order conflict helper dedup across visit route/schedule flows remains open.
   - Re-audit agents must run again after this ledger sync and current generated state classification.
+
+### Codex Loop 8 Addendum — Route Order Conflict Dedup
+
+- Coordination:
+  - Sent `LOCK:` to Claude for the route-order conflict dedup slice and drained agmsg before commit.
+  - Claude committed `.agent-loop/*` scaffold as `2986725b`; Codex left `.agent-loop/*` untouched and acknowledged the separate review request.
+  - `.agent-loop/FEATURE_QUEUE.md`, `.agent-loop/MEMORY_REVIEW.md`, `.agent-loop/STATE.md`, and `.harness-mem/state/continuity.json` remained unstaged outside this Codex slice.
+- Implemented by Codex:
+  - `d259e70e` `refactor(api): share visit route order conflict checks`
+    - Added `src/lib/visits/route-order-conflicts.ts` with shared route-order cell duplicate detection and schedule/proposal conflict lookup.
+    - Reused the helper from mixed route reorder, proposal reorder, schedule reorder, facility visit batch upsert, and single visit schedule PATCH conflict checks.
+    - Preserved existing schedule-scope differences by keeping callers that previously checked all schedule statuses on `scheduleStatusScope: 'any'`, while active-only callers keep the cancelled/rescheduled exclusion.
+    - Added helper regression coverage and updated route tests to assert the helper-backed query shape.
+- Validation:
+  - Related Vitest bundle: `6` files / `124` tests passed.
+  - Targeted ESLint for helper/routes/tests: passed.
+  - `pnpm typecheck`: passed.
+  - `pnpm typecheck:no-unused`: passed.
+  - Targeted `git diff --check`: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - API response envelope type hardening remains open.
+  - `readApiJson` schema validation call-site migration remains open and is mostly UI/dashboard-facing.
+  - care-report print-audit DTO/client duplication remains open.
+  - Claude `.agent-loop/*` scaffold review is pending for Codex.
+  - Re-audit agents must run again after ledger sync and current generated/peer state classification.
