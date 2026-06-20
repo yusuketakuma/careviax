@@ -45,7 +45,8 @@ describe('IncidentsContent', () => {
   it('connects the empty-list disabled reason to memo controls and blocks direct submit', async () => {
     render(<IncidentsContent />, { wrapper: createWrapper() });
 
-    expect(await screen.findByText('ヒヤリハット記録はまだありません。')).toBeTruthy();
+    // 空一覧は共通 EmptyState で表示される(タイトルに句点なし)
+    expect(await screen.findByText('ヒヤリハット記録はまだありません')).toBeTruthy();
 
     const disabledReason = screen.getByText('記録一覧に記録がないため入力できません。');
     const whatHappenedInput = screen.getByLabelText('起きたこと');

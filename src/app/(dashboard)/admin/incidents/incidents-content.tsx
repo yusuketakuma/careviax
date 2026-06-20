@@ -3,7 +3,9 @@
 import * as React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { ClipboardList } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorState } from '@/components/ui/error-state';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/loading';
@@ -140,7 +142,13 @@ export function IncidentsContent() {
       >
         <h2 className="text-base font-bold text-foreground">記録一覧</h2>
         {reports.length === 0 ? (
-          <p className="mt-5 text-sm text-muted-foreground">ヒヤリハット記録はまだありません。</p>
+          <div className="mt-5">
+            <EmptyState
+              icon={ClipboardList}
+              title="ヒヤリハット記録はまだありません"
+              description="記録が登録されると、ここに一覧で表示されます。"
+            />
+          </div>
         ) : (
           <ul className="mt-5 space-y-5" role="list" data-testid="incident-record-list">
             {reports.map((report) => {
