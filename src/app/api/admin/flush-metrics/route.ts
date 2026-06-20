@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { withAuthContext } from '@/lib/auth/context';
+import { error } from '@/lib/api/response';
 import { flushPerformanceMetricsToCloudWatch } from '@/lib/utils/performance';
 
 /**
@@ -11,8 +12,13 @@ import { flushPerformanceMetricsToCloudWatch } from '@/lib/utils/performance';
  */
 export const POST = withAuthContext(
   async () => {
-    await flushPerformanceMetricsToCloudWatch();
-    return NextResponse.json({ ok: true, flushed_at: new Date().toISOString() });
+    try {
+      await flushPerformanceMetricsToCloudWatch();
+      return NextResponse.json({ ok: true, flushed_at: new Date().toISOString() });
+    } catch (err) {
+      console.error('[admin:flush-metrics]', err);
+      return error('EXTERNAL_JOB_FAILED', 'メトリクスのフラッシュに失敗しました', 500);
+    }
   },
   { permission: 'canAdmin', message: 'メトリクスのフラッシュ権限がありません' },
 );

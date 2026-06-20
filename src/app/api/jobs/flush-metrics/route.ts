@@ -21,7 +21,10 @@ export async function POST(req: NextRequest) {
 
   try {
     await flushPerformanceMetricsToCloudWatch();
-    return success({ jobType: 'flush-metrics', flushed_at: new Date().toISOString() }) as NextResponse;
+    return success({
+      jobType: 'flush-metrics',
+      flushed_at: new Date().toISOString(),
+    }) as NextResponse;
   } catch (err) {
     console.error('[job:flush-metrics]', err);
     return error('EXTERNAL_JOB_FAILED', 'ジョブの実行に失敗しました', 500) as NextResponse;
