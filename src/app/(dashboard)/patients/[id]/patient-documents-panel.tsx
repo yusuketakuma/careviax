@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { FileCheck2, FileDown, FilePlus2, FileQuestion, Printer, Save } from 'lucide-react';
@@ -13,11 +13,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loading } from '@/components/ui/loading';
 import { Textarea } from '@/components/ui/textarea';
-import { useOrgId } from '@/lib/hooks/use-org-id';
-import { ManagementPlanPanel } from './management-plan-panel';
-import { ExternalShareContent } from './share/external-share-content';
 import type { PatientDocumentsSnapshot, PatientOverview } from './patient-detail.types';
 
 type FirstVisitDocumentItem = PatientDocumentsSnapshot['first_visit_documents'][number];
@@ -73,80 +69,6 @@ const SIGNER_TYPE_LABELS: Record<string, string> = {
   guardian: '後見人',
   other: 'その他',
 };
-
-export function PatientDocumentsPanel({
-  patientId,
-  patientName,
-  cases,
-  enabled,
-}: {
-  patientId: string;
-  patientName: string;
-  cases: PatientOverview['cases'];
-  enabled: boolean;
-}) {
-  const orgId = useOrgId();
-  const documentsQuery = useQuery<PatientDocumentsSnapshot>({
-    queryKey: ['patient-documents', patientId, orgId],
-    enabled: Boolean(orgId && patientId && enabled),
-    queryFn: async () => {
-      const response = await fetch(`/api/patients/${patientId}/documents`, {
-        headers: { 'x-org-id': orgId ?? '' },
-      });
-      if (!response.ok) {
-        throw new Error('文書情報の取得に失敗しました');
-      }
-      return response.json();
-    },
-  });
-
-  if (!orgId) {
-    return <Loading label="文書情報を読み込み中..." />;
-  }
-
-  if (documentsQuery.isLoading) {
-    return <Loading label="文書情報を読み込み中..." />;
-  }
-
-  if (documentsQuery.error instanceof Error || !documentsQuery.data) {
-    return (
-      <Card>
-        <CardHeader>
-          <h2 className="font-heading text-base leading-snug font-medium">文書</h2>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-destructive">
-            {documentsQuery.error instanceof Error
-              ? documentsQuery.error.message
-              : '文書情報の取得に失敗しました'}
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-      <ManagementPlanPanel
-        patientId={patientId}
-        patientName={patientName}
-        cases={cases}
-        orgId={orgId}
-      />
-      <ExternalShareContent patientId={patientId} />
-      <div className="xl:col-span-2">
-        <FirstVisitDocumentsPanel
-          cases={cases}
-          documents={documentsQuery.data.first_visit_documents}
-          documentStatuses={documentsQuery.data.document_statuses}
-          printReadiness={documentsQuery.data.print_readiness}
-          orgId={orgId}
-          patientId={patientId}
-        />
-      </div>
-    </div>
-  );
-}
 
 export function FirstVisitDocumentsPanel({
   cases,

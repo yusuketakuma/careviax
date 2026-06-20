@@ -291,6 +291,11 @@ function mockPatientQuery(
         updated_at: string;
       }>;
     };
+    patientDocuments?: {
+      data?: PatientDocumentsSnapshot;
+      error?: Error;
+      isLoading?: boolean;
+    };
     executePatientShareCaseMutation?: boolean;
   } = {},
 ) {
@@ -638,9 +643,9 @@ function mockPatientQuery(
     }
     if (queryKey[0] === 'patient-documents') {
       return {
-        data: documentsData,
-        isLoading: false,
-        error: null,
+        data: options.patientDocuments ? options.patientDocuments.data : documentsData,
+        isLoading: options.patientDocuments?.isLoading ?? false,
+        error: options.patientDocuments?.error ?? null,
       };
     }
 
@@ -1014,6 +1019,53 @@ describe('CardWorkspace', () => {
     expect(screen.queryByTestId('next-action-panel')).toBeNull();
     expect(screen.queryByTestId('blocked-reasons-panel')).toBeNull();
     expect(screen.queryByTestId('evidence-panel')).toBeNull();
+  });
+
+  it('keeps the embedded documents panel in place when document loading fails', () => {
+    mockPatientQuery(
+      buildWorkspace(),
+      null,
+      {},
+      {
+        patientDocuments: {
+          data: undefined,
+          error: new Error('文書情報の取得に失敗しました'),
+        },
+      },
+    );
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    const documentsPanel = screen.getByTestId('patient-card-documents-panel');
+    expect(
+      within(documentsPanel).getByRole('heading', { name: '初回訪問文書・交付記録' }),
+    ).toBeTruthy();
+    expect(within(documentsPanel).getByText('文書情報の取得に失敗しました')).toBeTruthy();
+    expect(within(documentsPanel).queryByRole('link', { name: '印刷プレビュー' })).toBeNull();
+    expect(within(documentsPanel).queryByText('契約書')).toBeNull();
+  });
+
+  it('keeps the embedded documents panel in place when document data is missing', () => {
+    mockPatientQuery(
+      buildWorkspace(),
+      null,
+      {},
+      {
+        patientDocuments: {
+          data: undefined,
+        },
+      },
+    );
+
+    render(<CardWorkspace patientId="patient_1" />);
+
+    const documentsPanel = screen.getByTestId('patient-card-documents-panel');
+    expect(
+      within(documentsPanel).getByRole('heading', { name: '初回訪問文書・交付記録' }),
+    ).toBeTruthy();
+    expect(within(documentsPanel).getByText('文書情報の取得に失敗しました')).toBeTruthy();
+    expect(within(documentsPanel).queryByRole('link', { name: '印刷プレビュー' })).toBeNull();
+    expect(within(documentsPanel).queryByText('契約書')).toBeNull();
   });
 
   it('falls back to an empty state when no cycle workspace exists', () => {
