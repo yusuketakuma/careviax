@@ -302,9 +302,26 @@ export function VisitsToday() {
             <Link href={firstVisitHref}>訪問モードを開始</Link>
           </Button>
         ) : (
-          <Button type="button" className="min-h-[44px]" disabled>
-            訪問モードを開始
-          </Button>
+          // 無効ボタンは理由を示し、可能なら解消導線を置く(Action beside evidence)
+          <div className="flex flex-col items-start gap-1.5">
+            <Button
+              type="button"
+              className="min-h-[44px]"
+              disabled
+              aria-describedby="visit-start-disabled-reason"
+            >
+              訪問モードを開始
+            </Button>
+            <p id="visit-start-disabled-reason" className="text-xs text-muted-foreground">
+              本日の訪問予定がないため開始できません。
+              <Link
+                href="/schedules"
+                className="ml-1 text-primary underline-offset-2 hover:underline"
+              >
+                訪問予定を確認
+              </Link>
+            </p>
+          </div>
         )}
       </div>
 
