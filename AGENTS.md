@@ -20,13 +20,25 @@ Do not stop until the concrete task is actually complete or an explicit blocker 
 
 For each iteration:
 
+0. **Drain the agmsg inbox first** (`~/.agents/skills/agmsg/scripts/inbox.sh phos codex`). A busy main loop does not process pushed agmsg events until it reaches a turn boundary, so polling here every iteration is the reliable delivery path — do not rely on push alone. Act on any `PAUSE_REQUEST`/`HANDOFF_REQUEST`/conflicting `LOCK`/`REQUEST CHANGES` before doing anything else.
 1. Read repository state and `.codex/ralph-state.md` if present.
 2. Choose the highest-value next action.
-3. Inspect affected code and impact radius.
-4. Make the smallest complete fix.
-5. Run available validation.
-6. Update `.codex/ralph-state.md`.
-7. Continue.
+3. **Before editing, re-drain the inbox and check no peer holds a `LOCK` on the target files.** Declare your own `LOCK` and wait for `ACK`/no-conflict before editing shared/high-risk files.
+4. Inspect affected code and impact radius.
+5. Make the smallest complete fix.
+6. Run available validation.
+7. Update `.codex/ralph-state.md`; send an agmsg `FYI:`/`READY_FOR_REVIEW:` at start and finish of each owned group.
+8. **Drain the inbox again** before committing (catch a just-arrived `PAUSE_REQUEST`/conflict), then continue.
+
+## Multi-agent coordination (agmsg)
+
+This worktree is shared with a peer Claude Code agent (`claude` in team `phos`). Messaging is best-effort: a pushed event is only processed when the receiver hits a turn boundary, so **never assume a message was received**.
+
+- **Poll, don't trust push.** Drain the inbox at every iteration boundary, before every edit, and before every commit (steps 0/3/8 above). This is the guaranteed delivery channel; the Monitor stream is only a latency optimization.
+- **ACK-gate blocking operations.** `LOCK`, `DELEGATE`, `PAUSE_REQUEST`, `HANDOFF_REQUEST`, and `REQUEST CHANGES` require an explicit reply (`ACK`/`ACCEPT`/`DECLINE`) before the sender proceeds. If you send one, wait for the ack; if you receive one, ack promptly. No ack within your next 1–2 iterations → re-send.
+- **File-level locks are mandatory for shared edits.** Announce `LOCK: <paths>` before touching files; respect peer locks; never edit a peer-locked path. Resolve overlaps via `PAUSE_REQUEST`/`HANDOFF_REQUEST`.
+- **Own your commits.** Commit your own groups in isolation and announce them; do not mix the peer's in-flight (unlocked) changes into your commits.
+- **High-risk areas** (auth, patient/medical data, audit logs, permissions, DB/RLS, offline sync, realtime, billing) require mutual review before landing.
 
 ## Whole-repository scope
 

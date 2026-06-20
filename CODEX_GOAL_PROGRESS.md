@@ -86,6 +86,78 @@ Next loop:
 
 - Continue with the next non-conflicting actionable item: prefer a small type/contract or duplication cleanup with existing tests, or accept Claude's D3 backend-reliability-dedup delegation if it can be locked away from active Claude files.
 
+### Loop 2 - D3 Backend Reliability / Time Helper Dedup
+
+Coordination:
+
+- Accepted Claude's D3 backend-reliability-dedup delegation through `agmsg`.
+- Codex lock used for this loop: `src/server/services/email.ts`, `src/app/api/care-reports/[id]/send/route.ts`, `src/app/(dashboard)/handoff/handoff-workspace.helpers.ts`, `src/app/(dashboard)/dashboard/dashboard-cockpit.helpers.ts`, `src/app/(dashboard)/reports/report-share-workspace.helpers.ts`, `src/app/(dashboard)/schedules/schedule-team-board.helpers.ts`, plus new shared time helper files.
+- Claude lock respected: no edits to `src/lib/auth/context.ts`, `src/lib/api/response.ts`, `src/lib/api/performance.ts`, or `src/app/api/consent-records/*`.
+
+Implemented:
+
+- Moved the canonical SES/email delivery failure reason into `src/server/services/email.ts`.
+- Added `resolveEmailDeliveryFailureReason()` so care-report send persistence uses the email service's safe failure reason instead of a route-local constant.
+- Preserved the existing client/API failure reason string (`メール送信に失敗しました`) and continued to avoid leaking raw provider errors such as `SES unavailable`.
+- Added shared `src/lib/ui/time-of-day.ts` for local `HH:mm` rendering with invalid timestamp fallback.
+- Re-exported the shared helper from dashboard cockpit, handoff workspace, report-share workspace, and schedule-team-board helpers so existing imports and UI behavior remain compatible.
+
+Deleted or consolidated:
+
+- Removed four duplicated local `formatTimeOfDay` / `formatTimeOfDayIso` implementations from dashboard/handoff/report/schedule helper modules.
+- Removed the route-local `EMAIL_DELIVERY_FAILURE_REASON` duplication from care-report send.
+
+Focused validation:
+
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/ui/time-of-day.test.ts src/server/services/email.test.ts 'src/app/api/care-reports/[id]/send/route.test.ts' 'src/app/(dashboard)/dashboard/dashboard-cockpit.helpers.test.ts' 'src/app/(dashboard)/handoff/handoff-workspace.test.tsx' 'src/app/(dashboard)/reports/report-share-workspace.test.tsx' 'src/app/(dashboard)/schedules/schedule-team-board.test.tsx' --reporter=dot --testTimeout=30000`: passed, 7 files / 100 tests. Existing HandoffWorkspace `act(...)` warnings were emitted but did not fail the suite.
+- Touched-file ESLint for Loop 2 source/test files: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm lint`: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm format:check`: passed.
+- `git diff --check --`: passed.
+
+Blocked or deferred:
+
+- Other local time-of-day duplicates remain in separate dashboard pages (`settings`, `patients-board`, `visits-today`) and are candidates for a later loop; they were not included in D3's agreed lock to keep the delegated slice bounded.
+- Existing HandoffWorkspace test `act(...)` warnings are pre-existing test hygiene debt, not introduced by this helper migration.
+
+Next loop:
+
+- Run the required re-audit set over the current diff. If actionable findings remain, implement them before counting a zero audit. If no actionable findings remain, count Zero Audit 1 and run a second independent re-audit.
+
+### Loop 3 - Complete Dashboard Time-of-day Consolidation
+
+Candidate:
+
+- Loop 2 intentionally kept to Claude D3's agreed lock, leaving equivalent local `formatTimeOfDay()` helpers in settings, patients board, and visits-today screens.
+- The remaining helpers were still in-session actionable because they used the same `HH:mm` formatting behavior and had focused jsdom coverage.
+
+Implemented:
+
+- Reused `src/lib/ui/time-of-day.ts` from:
+  - `src/app/(dashboard)/settings/operational-policy-content.tsx`
+  - `src/app/(dashboard)/patients/patients-board.tsx`
+  - `src/app/(dashboard)/visits/visits-today.tsx`
+- Removed the remaining local dashboard `formatTimeOfDay()` implementations.
+
+Deleted or consolidated:
+
+- Consolidated all currently scanned dashboard-local time-of-day helper definitions into the shared helper. `rg` now shows only `src/lib/ui/time-of-day.ts` as the implementation and `schedule-team-board.helpers.ts` as a compatibility re-export alias for `formatTimeOfDayIso`.
+
+Focused validation:
+
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run src/lib/ui/time-of-day.test.ts 'src/app/(dashboard)/settings/operational-policy-content.test.tsx' 'src/app/(dashboard)/patients/patients-board.test.tsx' 'src/app/(dashboard)/visits/visits-today.test.tsx' --reporter=dot --testTimeout=30000`: passed, 4 files / 21 tests.
+- Touched-file ESLint for the Loop 3 files: passed.
+- `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: passed.
+
+Blocked or deferred:
+
+- None for dashboard-local time-of-day helper duplication found by the current scan.
+
+Next loop:
+
+- Wait for the active re-audit agents. If they return actionable findings, implement them. Otherwise record Zero Audit 1 and run the second required re-audit.
+
 ## Current Goal - 2026-06-19 JST Adjacent Feature and Consistency Loop
 
 Objective: investigate the current CareViaX implementation, add/improve nearby features that naturally extend existing product flows, remove duplication/inconsistency/unfinished behavior, and continue until actionable in-session candidates are exhausted.
@@ -7612,6 +7684,17 @@ Collect agent findings → triage by [evidence + low-risk + spec-preserving] →
 - Slice B は typecheck0/eslint0/フルスイート緑。Codexのsecurityレビュー待ち→承認後コミット予定。
 
 ### Slice B コミット
+
 - Codex REVIEW: **APPROVE / no blocking findings**(15 tests pass検証)。non-blocking: 将来 route が error message に PHI を含めて throw した場合の logger 記録を PHI watchlist に(現状は redact ctx + 固定文言で client非露出のため許容)。
 - commit: fix(api) 5f617fd2(context.ts/response.ts/context.test.ts/consent-records.test.ts)。
 - 注記: worktree に私の作業でない未コミット変更が出現(.gitignore[agmsg//*.bak.*追加], eslint.config.mjs, pharmacy-invoices/patient-share-cases/partner-visit-report-drafts/pharmacy-contract-documents/pharmacy-cooperation-setup 等)。無関係差分として尊重し未コミット・未変更のまま放置。Codexに出所確認中。
+
+## Loop 2 — 着手
+### Slice G 完了 (Claude実装) — patient-detail BFF 直列クエリ並列化 [Duplication/Perf #9]
+- File: src/app/api/patients/[id]/route.ts (LOCK宣言済み)
+- 根拠: 患者詳細GETの末尾で homeCareFeatureSummary → operationHistory → actorNameMap → labRows の4本が直列await。homeCareFeatureSummary/operationHistory/labRows は互いに独立(operationHistoryは sync計算の filters のみ依存、labRows/homeCareは orgId+id のみ)。
+- 実装: 独立3本を Promise.all 化(4 RTT→2)。actorNameMap は operationHistory に依存するため後段で逐次維持。operationHistoryFilters の sync計算を Promise.all 前に移動。labRows の二重宣言を解消。
+- 効果: 患者詳細(高頻度BFF)で 2 RTT 削減。クエリ内容・結果・順序非依存で完全に不変。
+- Validation: typecheck0, eslint0, route.test 35 pass(出力不変=回帰なし)。
+- Review: patient-detail は Codex hotspot#3 → 相互レビュー依頼。
+- 注: foreign変更(date-key dedup)は方針A=Codexが自分でコミット&共有。
