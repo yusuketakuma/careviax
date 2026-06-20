@@ -28,12 +28,12 @@ current_cycle: 2 # Memory Bootstrap — first real gbrain recall; LOOP_POLICY §
 cycle_start_time: 2026-06-20T00:00:00+09:00 # ISO8601 Asia/Tokyo; reset at each run start. elapsed = now − cycle_start_time, checked at every cycle boundary vs §14 90-min hard-stop
 active_task_id: none
 files_changed_count: 0 # `git diff --name-only` from cycle_start (commit/tree at run start); >20 triggers §14 hard-stop
-claude_status: idle # bootstrap done; selecting first loop task
-codex_status: implementing # codex on backend response-schema/PHI hardening (loops 12/13)
+claude_status: review_done # CHECKER review of codex hardening slice COMPLETE → PATCH_REVIEW_RESULT=approved (0 blocker); awaiting codex split-commits
+codex_status: implementing # codex APPROVED to stage+commit per the 6-commit split plan (see REVIEW_LOG 2026-06-20T19:05); commit hold released
 last_memory_bootstrap: 2026-06-20 # Cycle 2 real gbrain recall (CLI). Classified in MEMORY_REVIEW.md; §9/§10 → LOOP_POLICY ApplyNow (codex-approved). `mcp__gbrain__*` after restart.
 zero_actionable_count: 0
-last_gate_result: pass # format:check unblocked (da7217ca); policy bootstrap green
-next_action: begin loop — pick first task (Refactor/Stability/Product-Adjacent/UIUX); owner-decide → peer plan review → LOCK → implement → PATCH_REVIEW_REQUEST
+last_gate_result: pass # codex slice gate 8504 tests/build GREEN; checker review 0 blocker (Workflow wf_ca30bab6-348, 14 findings, all commit-hygiene/positive)
+next_action: await codex FYI per split-commit; then (a) verify the landed split matches reviewed diff, (b) commit my claude-owned .agent-loop files (STATE/REVIEW_LOG/prompts/claude-lead) separately, (c) clarify shared-doc staging ownership, (d) scope a non-overlapping UI/state-color tail task. Pending gbrain ReviewFinding writeback.
 ```
 
 ## gbrain memory (this run)
@@ -49,6 +49,7 @@ next_action: begin loop — pick first task (Refactor/Stability/Product-Adjacent
 - GateResult: projects/careviax/gates/pharmacy-cooperation-hardening-green-20260620 (full suite 8465 passed)
 - LoopRun: projects/careviax/loop-runs/2026-06-20/codex-response-schema-hardening (2026-06-20)
 - CandidateLesson: projects/careviax/lessons/candidates/api-response-validation-and-consolidation (→ PROMOTION_QUEUE)
+- ReviewFinding: projects/careviax/reviews/hardening-slice-precommit-clean-20260620 (Cycle 2; 0-blocker pre-commit review, links FailurePattern/FixPattern/Decision)
 
 ## Resume point
 
