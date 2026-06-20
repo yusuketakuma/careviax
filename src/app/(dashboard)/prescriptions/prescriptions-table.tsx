@@ -2,10 +2,9 @@
 
 import { format, parseISO, differenceInCalendarDays } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { AlertTriangle, Clock, FilePlus, FileText, RefreshCw } from 'lucide-react';
-import Link from 'next/link';
+import { AlertTriangle, Clock, FileText, RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { SkeletonRows } from '@/components/ui/loading';
 import { cn } from '@/lib/utils';
 import { SOURCE_LABELS } from './new/prescription-form.shared';
@@ -114,19 +113,12 @@ export function PrescriptionsTable({
 
   if (items.length === 0) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 py-12 text-muted-foreground">
-        <FileText className="size-8 opacity-20" aria-hidden="true" />
-        <div className="text-center">
-          <p className="text-sm">該当する処方受付がありません</p>
-          <p className="mt-1 text-xs">新しい処方を登録して業務を開始しましょう</p>
-        </div>
-        <Button variant="default" size="sm" className="mt-2 gap-1" asChild>
-          <Link href="/prescriptions/new">
-            <FilePlus className="size-3.5" aria-hidden="true" />
-            新規受付
-          </Link>
-        </Button>
-      </div>
+      <EmptyState
+        icon={FileText}
+        title="該当する処方受付がありません"
+        description="新しい処方を登録して業務を開始しましょう"
+        action={{ label: '新規受付', href: '/prescriptions/new' }}
+      />
     );
   }
 
