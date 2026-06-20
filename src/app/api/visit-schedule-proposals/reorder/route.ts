@@ -9,6 +9,10 @@ import { success, validationError, notFound, conflict } from '@/lib/api/response
 import { buildVisitScheduleProposalAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { formatDateKey } from '@/lib/date-key';
 import { dateKeySchema } from '@/lib/validations/date-key';
+import {
+  findVisitRouteOrderConflict,
+  hasDuplicateVisitRouteOrderCells,
+} from '@/lib/visits/route-order-conflicts';
 import { OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES as OPEN_PROPOSAL_STATUSES } from '@/lib/visit-schedule-proposals/route-order';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 
@@ -191,42 +195,21 @@ export const PATCH = withAuthContext(
                 }))
               : (explicitUpdates ?? []);
 
-          const duplicateRouteOrder = new Set<number>();
-          const hasDuplicateRouteOrder = updates.some((item) => {
-            if (duplicateRouteOrder.has(item.route_order)) return true;
-            duplicateRouteOrder.add(item.route_order);
-            return false;
-          });
-          if (hasDuplicateRouteOrder) {
+          const routeOrderCells = updates.map((item) => ({
+            pharmacistId: first.proposed_pharmacist_id,
+            dateKey: firstDateKey,
+            routeOrder: item.route_order,
+          }));
+          if (hasDuplicateVisitRouteOrderCells(routeOrderCells)) {
             return { error: 'duplicate_route_order' as const };
           }
 
-          const routeOrders = updates.map((item) => item.route_order);
-          const [scheduleConflict, proposalConflict] = await Promise.all([
-            tx.visitSchedule.findFirst({
-              where: {
-                org_id: ctx.orgId,
-                pharmacist_id: first.proposed_pharmacist_id,
-                scheduled_date: new Date(firstDateKey),
-                route_order: { in: routeOrders },
-                schedule_status: { notIn: ['cancelled', 'rescheduled'] },
-              },
-              select: { id: true },
-            }),
-            tx.visitScheduleProposal.findFirst({
-              where: {
-                org_id: ctx.orgId,
-                proposed_pharmacist_id: first.proposed_pharmacist_id,
-                proposed_date: new Date(firstDateKey),
-                route_order: { in: routeOrders },
-                finalized_schedule_id: null,
-                proposal_status: { in: OPEN_PROPOSAL_STATUSES },
-                id: { notIn: orderedIds },
-              },
-              select: { id: true },
-            }),
-          ]);
-          if (scheduleConflict || proposalConflict) {
+          const routeOrderConflict = await findVisitRouteOrderConflict(tx, {
+            orgId: ctx.orgId,
+            cells: routeOrderCells,
+            excludeProposalIds: orderedIds,
+          });
+          if (routeOrderConflict) {
             return { error: 'duplicate_route_order' as const };
           }
 

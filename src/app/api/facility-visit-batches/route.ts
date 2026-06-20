@@ -8,7 +8,7 @@ import { conflict, forbidden, success, validationError } from '@/lib/api/respons
 import { serializeFacilityPacketMemo } from '@/lib/visits/facility-packet';
 import { buildVisitScheduleAssignmentWhere } from '@/lib/auth/visit-schedule-access';
 import { formatDateKey } from '@/lib/date-key';
-import { OPEN_VISIT_SCHEDULE_PROPOSAL_STATUSES as OPEN_PROPOSAL_STATUSES } from '@/lib/visit-schedule-proposals/route-order';
+import { findVisitRouteOrderConflict } from '@/lib/visits/route-order-conflicts';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 
 const upsertFacilityVisitBatchSchema = z
@@ -313,31 +313,17 @@ export const POST = withAuthContext(
       const targetScheduleIdsForRoute = orderedSchedules.map((schedule) => schedule.id);
       const targetPharmacistId = orderedSchedules[0].pharmacist_id;
       const targetDateKey = formatDateKey(orderedSchedules[0].scheduled_date);
-      const [existingScheduleRouteOrderConflict, existingProposalRouteOrderConflict] =
-        await Promise.all([
-          tx.visitSchedule.findFirst({
-            where: {
-              org_id: ctx.orgId,
-              id: { notIn: targetScheduleIdsForRoute },
-              pharmacist_id: targetPharmacistId,
-              scheduled_date: new Date(targetDateKey),
-              route_order: { in: routeOrders },
-            },
-            select: { id: true },
-          }),
-          tx.visitScheduleProposal.findFirst({
-            where: {
-              org_id: ctx.orgId,
-              proposed_pharmacist_id: targetPharmacistId,
-              proposed_date: new Date(targetDateKey),
-              route_order: { in: routeOrders },
-              finalized_schedule_id: null,
-              proposal_status: { in: OPEN_PROPOSAL_STATUSES },
-            },
-            select: { id: true },
-          }),
-        ]);
-      if (existingScheduleRouteOrderConflict || existingProposalRouteOrderConflict) {
+      const routeOrderConflict = await findVisitRouteOrderConflict(tx, {
+        orgId: ctx.orgId,
+        cells: routeOrders.map((routeOrder) => ({
+          pharmacistId: targetPharmacistId,
+          dateKey: targetDateKey,
+          routeOrder,
+        })),
+        excludeScheduleIds: targetScheduleIdsForRoute,
+        scheduleStatusScope: 'any',
+      });
+      if (routeOrderConflict) {
         return { error: 'duplicate_route_order' as const };
       }
 

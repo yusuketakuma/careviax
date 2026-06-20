@@ -8,6 +8,10 @@ import { success, validationError, notFound, conflict } from '@/lib/api/response
 import { formatDateKey } from '@/lib/date-key';
 import { withOrgContext } from '@/lib/db/rls';
 import {
+  findVisitRouteOrderConflict,
+  hasDuplicateVisitRouteOrderCells,
+} from '@/lib/visits/route-order-conflicts';
+import {
   buildVisitScheduleAssignmentWhere,
   buildVisitScheduleProposalAssignmentWhere,
 } from '@/lib/auth/visit-schedule-access';
@@ -207,36 +211,18 @@ export const PATCH = withAuthContext(
           );
           if (mismatch) return { error: 'mismatch' as const };
 
-          const routeOrders = typedRouteCells.map((item) => item.routeOrder);
-          if (new Set(routeOrders).size !== routeOrders.length) {
+          if (hasDuplicateVisitRouteOrderCells(typedRouteCells)) {
             return { error: 'duplicate_route_order' as const };
           }
 
-          const [scheduleConflict, proposalConflict] = await Promise.all([
-            tx.visitSchedule.findFirst({
-              where: {
-                org_id: ctx.orgId,
-                pharmacist_id: firstCell.pharmacistId,
-                scheduled_date: new Date(firstCell.dateKey),
-                route_order: { in: routeOrders },
-                ...(scheduleIds.length > 0 ? { id: { notIn: scheduleIds } } : {}),
-              },
-              select: { id: true },
-            }),
-            tx.visitScheduleProposal.findFirst({
-              where: {
-                org_id: ctx.orgId,
-                proposed_pharmacist_id: firstCell.pharmacistId,
-                proposed_date: new Date(firstCell.dateKey),
-                route_order: { in: routeOrders },
-                finalized_schedule_id: null,
-                proposal_status: { in: OPEN_PROPOSAL_STATUSES },
-                ...(proposalIds.length > 0 ? { id: { notIn: proposalIds } } : {}),
-              },
-              select: { id: true },
-            }),
-          ]);
-          if (scheduleConflict || proposalConflict) {
+          const routeOrderConflict = await findVisitRouteOrderConflict(tx, {
+            orgId: ctx.orgId,
+            cells: typedRouteCells,
+            excludeScheduleIds: scheduleIds,
+            excludeProposalIds: proposalIds,
+            scheduleStatusScope: 'any',
+          });
+          if (routeOrderConflict) {
             return { error: 'duplicate_route_order' as const };
           }
 
