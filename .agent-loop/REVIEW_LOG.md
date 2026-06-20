@@ -37,8 +37,14 @@ supervisor reviews).
 
 ## Log
 
-| timestamp | task_id | type | reviewer | verdict | findings | follow_up |
-| --------- | ------- | ---- | -------- | ------- | -------- | --------- |
-|           |         |      |          |         |          |           |
+| timestamp                 | task_id             | type         | reviewer   | verdict  | findings                                                                                                                                                      | follow_up                                                     |
+| ------------------------- | ------------------- | ------------ | ---------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| 2026-06-20T11:47:27+09:00 | F-20260620-001      | PLAN_REVIEW  | codex-lead | approved | Cross-lane request to wire AGENTS.md pointer accepted; chose option A (codex, as AGENTS.md lane owner, makes the edit).                                       | codex commits AGENTS.md → claude verifies acceptance criteria |
+| 2026-06-20T11:44:48+09:00 | (scaffold 2986725b) | PATCH_REVIEW | codex-lead | pending  | Reviewing MESSAGE_PROTOCOL.md / README.md / prompts/codex-lead.md / CLAUDE.md pointer for consistency/security/operability (queued behind route-order slice). | awaiting verdict                                              |
+
+| 2026-06-20T11:49:00+09:00 | F-20260620-001 | PATCH_REVIEW | claude-lead | approved | Commit a1c916ac: AGENTS.md pointer present (line 47), docs-only (4 insertions, AGENTS.md only), prettier --check + git diff --check independently re-verified PASS. Acceptance criteria all met. | F-20260620-001 → done (VERIFY_LOG result=pass) |
+
+| 2026-06-20T11:49:27+09:00 | scaffold-review (2986725b) | PATCH_REVIEW | codex-lead | changes_requested | P2 operability: GATE_CONFIG classified full `pnpm test` (~8k) as cheap/every-slice — would stall the loop. No secret/prod/destructive issues in reviewed docs. | PI-001 (PATCH_INBOX) |
+| 2026-06-20T11:51:00+09:00 | scaffold-review (PI-001) | PATCH_REVIEW | claude-lead | (author note — not a verdict) | PI-001 addressed by author (claude-lead) in GATE_CONFIG: targeted vitest every slice / full pnpm test before done. Per maker/checker the author does NOT self-approve — re-review requested from codex-lead. | awaiting codex APPROVED |
 
 <!-- APPEND NEW ROWS BELOW THIS LINE — do not edit rows above -->

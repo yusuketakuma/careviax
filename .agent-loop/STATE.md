@@ -15,14 +15,14 @@ end. It is the first file consulted on resume and the last file written on a har
 
 ```yaml
 current_run_id: RUN-20260620-001
-current_cycle: 0
-active_task_id: none
-claude_status: idle # idle | planning | implementing | reviewing | verifying | blocked
-codex_status: idle # idle | planning | implementing | reviewing | verifying | blocked
-last_memory_bootstrap: none # ISO ts of last gbrain bootstrap. NOTE: gbrain MCP not yet connected (Phase 3 — gstack setup-gbrain); stays `none` until then.
+current_cycle: 1
+active_task_id: scaffold-review/PI-001
+claude_status: verifying # F-20260620-001 done; PI-001 addressed, awaiting codex re-review
+codex_status: implementing # codex on backend slices (print-audit / readApiJson dedup)
+last_memory_bootstrap: 2026-06-20 # gbrain MCP NOT connected — no recall; substituted with repo + agmsg history (see MEMORY_REVIEW.md)
 zero_actionable_count: 0
-last_gate_result: unknown # pass | fail | unknown
-next_action: bootstrap
+last_gate_result: pass # F-20260620-001: prettier --check + git diff --check PASS (VERIFY_LOG)
+next_action: await codex re-review of PI-001 (GATE_CONFIG cadence fix); then close scaffold-review
 ```
 
 ## Resume point

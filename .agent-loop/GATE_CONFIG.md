@@ -23,19 +23,20 @@ evidence to the RUN ledger.
 
 ## Gates
 
-| Gate                | Command                              | Wired                          | Cost  | When to run                                   |
-| ------------------- | ------------------------------------ | ------------------------------ | ----- | --------------------------------------------- |
-| lint                | `pnpm lint`                          | yes                            | cheap | every slice                                   |
-| format              | `pnpm format:check`                  | yes                            | cheap | every slice                                   |
-| typecheck           | `pnpm typecheck`                     | yes                            | cheap | every slice                                   |
-| no-unused typecheck | `pnpm typecheck:no-unused`           | yes (added by Codex)           | cheap | every slice                                   |
-| unit test           | `pnpm test` (Vitest)                 | yes                            | cheap | every slice                                   |
-| build               | `pnpm build`                         | yes                            | heavy | before done / merge                           |
-| e2e                 | `pnpm test:e2e` (Playwright)         | yes                            | heavy | before done / merge — impacted areas          |
-| e2e (audit)         | `pnpm test:e2e:audit`                | yes                            | heavy | before done / merge — audit-impacting changes |
-| secret scan         | _(recommended, e.g. gitleaks)_       | **no — TODO**                  | cheap | once wired: every commit                      |
-| dependency audit    | `pnpm audit`                         | available, not a required gate | cheap | periodic / on dep change                      |
-| SAST                | _(recommended, e.g. semgrep/CodeQL)_ | **no — TODO**                  | heavy | once wired: before merge                      |
+| Gate                 | Command                              | Wired                          | Cost  | When to run                                   |
+| -------------------- | ------------------------------------ | ------------------------------ | ----- | --------------------------------------------- |
+| lint                 | `pnpm lint`                          | yes                            | cheap | every slice                                   |
+| format               | `pnpm format:check`                  | yes                            | cheap | every slice                                   |
+| typecheck            | `pnpm typecheck`                     | yes                            | cheap | every slice                                   |
+| no-unused typecheck  | `pnpm typecheck:no-unused`           | yes (added by Codex)           | cheap | every slice                                   |
+| unit test (targeted) | `pnpm exec vitest run <impacted>`    | yes                            | cheap | every slice — impacted files/areas            |
+| unit test (full)     | `pnpm test` (Vitest, ~8k tests)      | yes                            | heavy | before done / merge, or periodic broad run    |
+| build                | `pnpm build`                         | yes                            | heavy | before done / merge                           |
+| e2e                  | `pnpm test:e2e` (Playwright)         | yes                            | heavy | before done / merge — impacted areas          |
+| e2e (audit)          | `pnpm test:e2e:audit`                | yes                            | heavy | before done / merge — audit-impacting changes |
+| secret scan          | _(recommended, e.g. gitleaks)_       | **no — TODO**                  | cheap | once wired: every commit                      |
+| dependency audit     | `pnpm audit`                         | available, not a required gate | cheap | periodic / on dep change                      |
+| SAST                 | _(recommended, e.g. semgrep/CodeQL)_ | **no — TODO**                  | heavy | once wired: before merge                      |
 
 ### Gate details
 
@@ -45,7 +46,11 @@ evidence to the RUN ledger.
   (covers app types + the Serwist service worker). Wired. Cheap.
 - **no-unused typecheck** — `pnpm typecheck:no-unused`. Stricter pass that flags unused
   locals/params; added by Codex. Wired. Cheap. Run alongside typecheck on every slice.
-- **unit test** — `pnpm test`. Vitest@4. Wired. Cheap.
+- **unit test (targeted)** — `pnpm exec vitest run <impacted files/area>`. Vitest@4. Wired.
+  Cheap — run on every slice for the files/areas the change touches.
+- **unit test (full)** — `pnpm test` runs the whole Vitest suite (~8k tests). Wired but
+  **heavy**: run before declaring a slice done / proposing a merge, or as a periodic broad
+  validation — NOT on every slice (it would stall the loop). Evidence recording stays mandatory.
 - **build** — `pnpm build`. Next.js 16 production build. Wired. Heavy — run before
   declaring done or proposing a merge, not on every slice.
 - **e2e** — `pnpm test:e2e`. Playwright@1.58. Wired but heavy: run for the impacted
@@ -67,10 +72,13 @@ evidence to the RUN ledger.
   taste, and structural issues, but acceptance leans on the wired objective gates above.
   A change is **not "done" on LLM review alone** — the relevant gates must be green with
   recorded evidence.
-- **Cheap gates — run every slice:** lint, format, typecheck, no-unused typecheck, unit
-  test. Fast feedback; failing any blocks the slice.
-- **Heavy gates — run before done/merge:** build, e2e, e2e:audit. Scope e2e to the
-  impacted area to control cost.
+- **Cheap gates — run every slice:** lint, format, typecheck, no-unused typecheck, and
+  **targeted** unit tests (`pnpm exec vitest run` for the impacted files/areas). Fast
+  feedback; failing any blocks the slice. (The full Vitest suite is ~8k tests — too heavy
+  for every slice; running it per slice would stall the loop or train agents to skip it.)
+- **Heavy gates — run before done/merge:** the **full** unit suite (`pnpm test`), build,
+  e2e, e2e:audit. Scope e2e to the impacted area to control cost. The full suite may also
+  run as a periodic broad validation between slices.
 - **Not-yet-wired gates** (secret scan, SAST) and **advisory checks** (`pnpm audit`) must
   be reported honestly: never count an unwired gate as a pass. Wiring them is tracked as
   a TODO and, once done, this table's `Wired` column is updated.

@@ -16,13 +16,14 @@ four buckets below. The result feeds `LOOP_POLICY.md` (ApplyNow/Consider) and
   candidate.
 
 - **Run:** RUN-20260620-001
-- **Cycle:** 0 (idle, next_action: bootstrap)
+- **Cycle:** 1 (active_task: F-20260620-001 — wire AGENTS.md pointer)
 - **Date:** 2026-06-20
 
-> **STATUS: gbrain MCP not yet connected** — no search results to classify this cycle. Sections
-> are intentionally empty scaffolding. Once the `setup-gbrain` skill is run and gbrain search
-> returns hits, populate each section from the query results. Do not back-fill with guessed
-> memories.
+> **STATUS: gbrain MCP not yet connected** — Memory Bootstrap returned no recall this cycle.
+> Substituted with live repo + agmsg history: AGENTS.md is codex-lead's lane (recently committed
+> a2414cdc); LOCK contention on AGENTS.md was already resolved this session by yielding to Codex;
+> the cross-lane coordination rule (LOCK/approve before editing a peer's file) is the operative
+> prior knowledge. Once `setup-gbrain` is run, this substitution becomes a real gbrain query.
 
 ---
 

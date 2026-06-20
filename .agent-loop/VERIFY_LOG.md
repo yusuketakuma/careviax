@@ -48,8 +48,12 @@ fake a pass — leave them out of the row.
 
 ## Log
 
-| timestamp | task_id | lint | typecheck | typecheck_no_unused | format_check | test | build | e2e | result |
-| --------- | ------- | ---- | --------- | ------------------- | ------------ | ---- | ----- | --- | ------ |
-|           |         |      |           |                     |              |      |       |     |        |
+| timestamp                 | task_id        | lint | typecheck | typecheck_no_unused | format_check | test | build | e2e  | result |
+| ------------------------- | -------------- | ---- | --------- | ------------------- | ------------ | ---- | ----- | ---- | ------ |
+| 2026-06-20T11:48:41+09:00 | F-20260620-001 | skip | skip      | skip                | pass         | skip | skip  | skip | pass   |
 
+<!-- skip justification for F-20260620-001: docs-only change (AGENTS.md, 4 lines added, no
+     code/route/build surface). Applicable gates run & independently re-verified by claude-lead
+     (reviewer): `pnpm exec prettier --check AGENTS.md` PASS + `git diff --check` PASS. Commit
+     a1c916ac (codex-lead, AGENTS.md lane owner). -->
 <!-- APPEND NEW ROWS BELOW THIS LINE — do not edit rows above -->

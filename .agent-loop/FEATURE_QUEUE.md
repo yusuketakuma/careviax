@@ -61,4 +61,30 @@ of work is a task with a stable `task_id` and a status that advances through the
   gbrain_memory_used: []
 -->
 
-_(queue empty)_
+```yaml
+- task_id: F-20260620-001
+  status: done # commit a1c916ac (codex, AGENTS.md lane); reviewed+verified by claude-lead. Cycle 1.
+  owner: claude-lead
+  reviewer: codex-lead
+  priority: P3
+  feature_name: Wire AGENTS.md pointer to the agent-loop operator guide
+  background: >
+    Spec §4 lists AGENTS.md among the loop's wired docs. The .agent-loop/ scaffold
+    (2986725b) added a CLAUDE.md pointer but deferred AGENTS.md because Codex held a
+    LOCK on it (committed a2414cdc). This task closes that loose end via cross-lane
+    coordination — the first real dogfood cycle of the loop itself.
+  user_value: >
+    A Codex operator opening AGENTS.md (its primary instructions) is pointed to the
+    loop's operator guide, so both supervisors share one entry point.
+  acceptance_criteria:
+    - AGENTS.md contains a one-line pointer to .agent-loop/README.md.
+    - Edit is made/approved in Codex's lane (AGENTS.md = codex-lead), not unilaterally.
+    - No behavior/code change; docs only.
+  constraints:
+    - AGENTS.md is codex-lead's lane — coordinate over agmsg, do not edit unilaterally.
+    - Docs only; no auth/billing/security/migration surface.
+  verification:
+    - pnpm exec prettier --check AGENTS.md
+    - git diff --check
+  gbrain_memory_used: [] # gbrain not connected; substituted with repo+agmsg history
+```
