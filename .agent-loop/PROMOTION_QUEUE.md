@@ -20,7 +20,7 @@ permanent team policy, so it is deliberately gated.
 
 ---
 
-## Promotion criteria (spec §13)
+## Promotion criteria (`GBRAIN_SCHEMA.md` §4.13 promotion ladder + §11 quality gate)
 
 A CandidateLesson may be promoted only if **all** of the following hold:
 
@@ -49,7 +49,28 @@ A candidate is **rejected outright**, regardless of evidence, if it:
 
 ## Candidates
 
-_None yet (Cycle 0, bootstrap). Use the template below to file the first candidate._
+### CandidateLesson: API response validation & PHI-safe mutations
+
+- **id:** CL-20260620-01
+- **statement:** Validate client API reads with `readApiJson(res, {schema})` (fail-close malformed 2xx, static `fallbackMessage` only); mutation/POST responses must reuse the GET's `toSafe*` allowlist projection (never return the raw created row); consolidate response schemas to a shared lib when 3+ screens converge.
+- **proposed_by:** claude-lead
+- **destination:** AGENTS.md (codex lane conventions) / CLAUDE.md (API section)
+- **evidence (runs):**
+  - RUN-20260620-001 — Codex slice 1–8 + PHI fix (correction-request POST leaked raw `reason`/`proposed_value`); reviewer-audit APPROVED each; full suite 8465 passed.
+  - RUN-**\_\_** — _pending independent second occurrence (do not promote yet)._
+- **objective-gate:** `pnpm typecheck` / `typecheck:no-unused` / full `pnpm test` green (8465 passed / 1 skipped, 2026-06-20)
+- **stack-fit:** zod@4 + Next route handlers + `readApiJson` already in `src/lib/api/`; no new deps.
+- **exceptions:** ack-only endpoints returning no body; bare `success(row)` uses a bare schema (not `apiDataSchema`).
+- **security-impact:** none (strengthens PHI redaction & fail-closed; does not weaken auth/tests).
+- **criteria check:** [x]gate-backed [x]stack-fit [x]exceptions [x]no-sec-weaken [ ]2+runs [ ]both-agree [ ]explicit-approval
+- **reviewed_by:** codex-lead — _pending_
+- **status:** proposed
+- **gbrain:** [[projects/careviax/lessons/candidates/api-response-validation-and-consolidation]]
+
+_Template below._
+
+<!--
+### CandidateLesson: <short-title>
 
 <!--
 ### CandidateLesson: <short-title>
