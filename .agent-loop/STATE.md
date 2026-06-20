@@ -26,15 +26,15 @@ end. It is the first file consulted on resume and the last file written on a har
 current_run_id: RUN-20260620-001
 current_cycle: 4 # Cycle 4 active: F-20260620-007 statistics hub plan/patch review loop with codex checker.
 cycle_start_time: 2026-06-20T00:00:00+09:00 # ISO8601 Asia/Tokyo; reset at each run start. elapsed = now − cycle_start_time, checked at every cycle boundary vs §14 90-min hard-stop
-active_task_id: F-20260620-007 # 統計 hub — rev7 plan approved; awaiting Claude PATCH_REVIEW_REQUEST.
-current_cycle_note: 'Cycle 4 review: F-004 done; §11/§12 policy docs committed; F-007 rev5 patch rejected, rev6 contract rejected, rev7 plan approved with hasPermission correction.'
+active_task_id: F-20260620-007 # 統計 hub — rev7 patch reviewed; awaiting Claude rev8 PATCH_REVIEW_REQUEST.
+current_cycle_note: 'Cycle 4 review: F-004 done; §11/§12 policy docs committed; F-007 rev7 patch reviewed by codex and CHANGES_REQUESTED for KPI contract, destination permissions, exact manifest/provenance, and page integration test gaps.'
 files_changed_count: 8 # dirty worktree: Claude F-007 source paths + machine .harness-mem; codex ledger commits separated.
-claude_status: implementing # F-007 rev7 approved; Claude owns statistics/** + navigation-config.{ts,test.ts}.
-codex_status: waiting_for_patch_review # codex reviewer; REVIEW_LOG committed aaf06424, PATCH_INBOX PI-002 open.
+claude_status: implementing # F-007 rev8 fixes in progress after codex CHANGES_REQUESTED; Claude owns statistics/** + navigation-config.{ts,test.ts}.
+codex_status: waiting_for_patch_review # codex sent rev7 CHANGES_REQUESTED; ledger lock recorded; awaiting rev8 PATCH_REVIEW_REQUEST.
 last_memory_bootstrap: 2026-06-20 # Cycle 2 real gbrain recall (CLI). Classified in MEMORY_REVIEW.md; §9/§10 → LOOP_POLICY ApplyNow (codex-approved). `mcp__gbrain__*` after restart.
 zero_actionable_count: 1 # queue dry after F-003; idle/backoff per FEATURE_QUEUE intake
-last_gate_result: pass # F-20260620-004 gates GREEN (vitest 10/10, typecheck/no-unused/eslint/format/build); codex APPROVED rev3 after 3 rounds (caught stale-data-on-refetch regression, 404 false alert+color)
-next_action: await Claude PATCH_REVIEW_REQUEST for F-007 rev7. Review contract reconciliation (64 raw recon -> exact 23 navigable manifest incl. /admin/jobs), exact manifest tests, page canViewDashboard gate, per-surface hasPermission filtering, direct fetch allowlist, malformed-2xx/stale-refetch/raw-error/org-hydration tests.
+last_gate_result: partial_pass # F-007 rev7 objective gates were green, but codex PATCH_REVIEW failed on API/client contract + permission/test blockers.
+next_action: await Claude PATCH_REVIEW_REQUEST for F-007 rev8. Review the five blockers: raw dispensing-stats response contract, clerk-support canViewDashboard, report-delivery canSendCareReport, exact 23-entry manifest/provenance, and StatisticsPage permission glue test; also check workflow/intake permission unification and org hydration test.
 ```
 
 ## gbrain memory (this run)
@@ -54,6 +54,7 @@ next_action: await Claude PATCH_REVIEW_REQUEST for F-007 rev7. Review contract r
 - FailurePattern: projects/careviax/failures/false-empty-and-stale-wipe-on-fetch-failure (Cycle 4; F-004 377d9e1e — false-empty + stale-wipe-on-refetch + fix)
 - ReviewFinding: projects/careviax/reviews/statistics-hub-registry-contract-coverage-20260620 (F-007; registry self-consistency tests missed approved manifest coverage)
 - ReviewFinding: projects/careviax/reviews/statistics-hub-contract-reconciliation-and-permission-gating-20260620 (F-007 rev6; raw recon reconciliation + page/per-surface permission gating)
+- ReviewFinding: projects/careviax/reviews/statistics-hub-rev7-contract-permission-api-mismatch-20260620 (F-007 rev7; green gates missed KPI response contract + destination permission mismatches)
 
 ## Resume point
 
