@@ -24,17 +24,17 @@ end. It is the first file consulted on resume and the last file written on a har
 
 ```yaml
 current_run_id: RUN-20260620-001
-current_cycle: 3 # Cycle 2 closed (checker review of codex hardening slice → 7-commit split landed, worktree clear). Cycle 3: F-20260620-002 plan review.
+current_cycle: 4 # Cycle 4 active: F-20260620-007 statistics hub plan/patch review loop with codex checker.
 cycle_start_time: 2026-06-20T00:00:00+09:00 # ISO8601 Asia/Tokyo; reset at each run start. elapsed = now − cycle_start_time, checked at every cycle boundary vs §14 90-min hard-stop
-active_task_id: F-20260620-007 # 統計 hub — rev4 plan review (PHI display human-approved); impl after F-004 landed
-current_cycle_note: "Cycle 4 Discover→impl: F-004 (377d9e1e) done; §11 handoff applied (codex); F-007 rev4 plan review"
-files_changed_count: 0 # `git diff --name-only` from cycle_start (commit/tree at run start); >20 triggers §14 hard-stop
-claude_status: plan_review # F-20260620-004 landed (377d9e1e); F-007 rev4 plan with codex (awaiting PLAN_REVIEW_RESULT)
-codex_status: reviewing # reviewing F-007 rev4 plan; just APPROVED F-004 rev3 (3 review rounds). §11 policy patch applied by codex.
+active_task_id: F-20260620-007 # 統計 hub — rev7 plan approved; awaiting Claude PATCH_REVIEW_REQUEST.
+current_cycle_note: 'Cycle 4 review: F-004 done; §11/§12 policy docs committed; F-007 rev5 patch rejected, rev6 contract rejected, rev7 plan approved with hasPermission correction.'
+files_changed_count: 8 # dirty worktree: Claude F-007 source paths + machine .harness-mem; codex ledger commits separated.
+claude_status: implementing # F-007 rev7 approved; Claude owns statistics/** + navigation-config.{ts,test.ts}.
+codex_status: waiting_for_patch_review # codex reviewer; REVIEW_LOG committed aaf06424, PATCH_INBOX PI-002 open.
 last_memory_bootstrap: 2026-06-20 # Cycle 2 real gbrain recall (CLI). Classified in MEMORY_REVIEW.md; §9/§10 → LOOP_POLICY ApplyNow (codex-approved). `mcp__gbrain__*` after restart.
 zero_actionable_count: 1 # queue dry after F-003; idle/backoff per FEATURE_QUEUE intake
 last_gate_result: pass # F-20260620-004 gates GREEN (vitest 10/10, typecheck/no-unused/eslint/format/build); codex APPROVED rev3 after 3 rounds (caught stale-data-on-refetch regression, 404 false alert+color)
-next_action: await codex PLAN_REVIEW_RESULT on F-007 rev4 (統計 hub, PHI display human-approved 2026-06-20). On approval → LOCK src/components/layout/navigation-config.ts + src/app/(dashboard)/statistics/** → implement aggregation hub (after F-004 already landed). New lesson to writeback: plain isError wipes stale data on TanStack v5 refetch — gate blocking error on isError && !data.
+next_action: await Claude PATCH_REVIEW_REQUEST for F-007 rev7. Review contract reconciliation (64 raw recon -> exact 23 navigable manifest incl. /admin/jobs), exact manifest tests, page canViewDashboard gate, per-surface hasPermission filtering, direct fetch allowlist, malformed-2xx/stale-refetch/raw-error/org-hydration tests.
 ```
 
 ## gbrain memory (this run)
@@ -52,6 +52,8 @@ next_action: await codex PLAN_REVIEW_RESULT on F-007 rev4 (統計 hub, PHI displ
 - CandidateLesson: projects/careviax/lessons/candidates/api-response-validation-and-consolidation (→ PROMOTION_QUEUE)
 - ReviewFinding: projects/careviax/reviews/hardening-slice-precommit-clean-20260620 (Cycle 2; 0-blocker pre-commit review, links FailurePattern/FixPattern/Decision)
 - FailurePattern: projects/careviax/failures/false-empty-and-stale-wipe-on-fetch-failure (Cycle 4; F-004 377d9e1e — false-empty + stale-wipe-on-refetch + fix)
+- ReviewFinding: projects/careviax/reviews/statistics-hub-registry-contract-coverage-20260620 (F-007; registry self-consistency tests missed approved manifest coverage)
+- ReviewFinding: projects/careviax/reviews/statistics-hub-contract-reconciliation-and-permission-gating-20260620 (F-007 rev6; raw recon reconciliation + page/per-surface permission gating)
 
 ## Resume point
 
