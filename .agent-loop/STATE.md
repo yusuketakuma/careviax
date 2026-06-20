@@ -26,14 +26,15 @@ end. It is the first file consulted on resume and the last file written on a har
 current_run_id: RUN-20260620-001
 current_cycle: 3 # Cycle 2 closed (checker review of codex hardening slice → 7-commit split landed, worktree clear). Cycle 3: F-20260620-002 plan review.
 cycle_start_time: 2026-06-20T00:00:00+09:00 # ISO8601 Asia/Tokyo; reset at each run start. elapsed = now − cycle_start_time, checked at every cycle boundary vs §14 90-min hard-stop
-active_task_id: none # F-20260620-002 (c6ee1476) + F-20260620-003 (ec241ffe) both done. Worktree clear except machine-gen .harness-mem.
+active_task_id: F-20260620-007 # 統計 hub — rev4 plan review (PHI display human-approved); impl after F-004 landed
+current_cycle_note: "Cycle 4 Discover→impl: F-004 (377d9e1e) done; §11 handoff applied (codex); F-007 rev4 plan review"
 files_changed_count: 0 # `git diff --name-only` from cycle_start (commit/tree at run start); >20 triggers §14 hard-stop
-claude_status: idle # 3 maker/checker cycles complete (codex hardening review; F-002 impl; F-003 review). Queue dry; awaiting next intake.
-codex_status: idle # F-20260620-003 landed (ec241ffe, claude-approved). No queued codex task.
+claude_status: plan_review # F-20260620-004 landed (377d9e1e); F-007 rev4 plan with codex (awaiting PLAN_REVIEW_RESULT)
+codex_status: reviewing # reviewing F-007 rev4 plan; just APPROVED F-004 rev3 (3 review rounds). §11 policy patch applied by codex.
 last_memory_bootstrap: 2026-06-20 # Cycle 2 real gbrain recall (CLI). Classified in MEMORY_REVIEW.md; §9/§10 → LOOP_POLICY ApplyNow (codex-approved). `mcp__gbrain__*` after restart.
 zero_actionable_count: 1 # queue dry after F-003; idle/backoff per FEATURE_QUEUE intake
-last_gate_result: pass # F-20260620-003 gates GREEN (focused 31/31, full 8506, typecheck/no-unused/eslint/format:check/lint); claude independently re-verified 31/31 + partition clean
-next_action: idle/intake. §9 (mutation PHI minimization) now applied+verified across the codex hardening slice + F-002/F-003 → CandidateLesson api-response-validation-and-consolidation has 2+ independent confirmations; eligible to DRAFT a PROMOTION_QUEUE entry (human-gated, NOT auto). Otherwise await next FEATURE_QUEUE intake.
+last_gate_result: pass # F-20260620-004 gates GREEN (vitest 10/10, typecheck/no-unused/eslint/format/build); codex APPROVED rev3 after 3 rounds (caught stale-data-on-refetch regression, 404 false alert+color)
+next_action: await codex PLAN_REVIEW_RESULT on F-007 rev4 (統計 hub, PHI display human-approved 2026-06-20). On approval → LOCK src/components/layout/navigation-config.ts + src/app/(dashboard)/statistics/** → implement aggregation hub (after F-004 already landed). New lesson to writeback: plain isError wipes stale data on TanStack v5 refetch — gate blocking error on isError && !data.
 ```
 
 ## gbrain memory (this run)
@@ -50,6 +51,7 @@ next_action: idle/intake. §9 (mutation PHI minimization) now applied+verified a
 - LoopRun: projects/careviax/loop-runs/2026-06-20/codex-response-schema-hardening (2026-06-20)
 - CandidateLesson: projects/careviax/lessons/candidates/api-response-validation-and-consolidation (→ PROMOTION_QUEUE)
 - ReviewFinding: projects/careviax/reviews/hardening-slice-precommit-clean-20260620 (Cycle 2; 0-blocker pre-commit review, links FailurePattern/FixPattern/Decision)
+- FailurePattern: projects/careviax/failures/false-empty-and-stale-wipe-on-fetch-failure (Cycle 4; F-004 377d9e1e — false-empty + stale-wipe-on-refetch + fix)
 
 ## Resume point
 

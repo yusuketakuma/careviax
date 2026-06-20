@@ -203,3 +203,48 @@ owned by the other.
     - projects/careviax/failures/mutation-returns-raw-row-phi-leak
     - projects/careviax/fix-patterns/mutation-reuse-get-safe-projection
 ```
+
+```yaml
+- task_id: F-20260620-004
+  status: done # commit 377d9e1e; codex APPROVED rev3 (3 review rounds). Cycle 4 Discover top finding.
+  owner: claude-lead
+  reviewer: codex-lead
+  origin_agent: claude-lead
+  priority: P1
+  feature_name: Fail-close admin metrics & analytics on fetch failure (no false-empty)
+  background: >
+    Cycle-4 Discover sweep found a false-empty bug class (design SSOT rule 3): admin
+    metrics + analytics rendered fabricated zeros (and metrics fired false 未達/超過
+    alerts) on fetch failure; analytics billing + resource-map each false-emptied.
+  acceptance_criteria:
+    - First-load failure → blocking ErrorState; refetch failure with data keeps data + inline warning.
+    - Metrics 404 placeholder fires no threshold alerts and uses neutral (not warning) color.
+    - Analytics billing/resource errors are section-scoped + independent; loading shows no "…ありません".
+  verification:
+    [pnpm lint, pnpm typecheck, pnpm typecheck:no-unused, pnpm format:check, pnpm test, pnpm build]
+  gbrain_memory_used:
+    - projects/careviax/decisions/readapijson-schema-fail-closed
+  notes: >
+    codex (subagent review) caught a stale-data-on-refetch regression my verify missed:
+    plain isError wipes good data on TanStack v5 refetch — gate blocking error on isError && !data.
+
+- task_id: F-20260620-007
+  status: peer_plan_review # rev4 plan with codex (PHI display human-approved 2026-06-20)
+  owner: claude-lead
+  reviewer: codex-lead
+  origin_agent: claude-lead
+  priority: P2
+  feature_name: 統計 (statistics) aggregation hub — canonical all-statistics entrypoint
+  background: >
+    User: 「統計機能にすべてを集約」 + 「PHIに限らず全情報を表示してよい」. New top-level 統計
+    nav + /statistics hub aggregating the 64 existing statistics surfaces (recon
+    wf_624ac1cd) by 9 categories as deep-link cards + safe live headline KPIs. Reuse-first,
+    no duplicate analytics stack.
+  constraints:
+    - claude lane (src/components/layout/navigation-config.ts + src/app/(dashboard)/statistics/**); no api/lib/server/prisma edits.
+    - PHI display human-approved BUT tenant isolation/RLS + endpoint permission + §9 no-PHI-in-error-text + §10 fail-closed remain non-negotiable (403 → locked state, never false-empty).
+    - Sequenced AFTER F-004 (landed 377d9e1e).
+  verification:
+    [pnpm lint, pnpm typecheck, pnpm typecheck:no-unused, pnpm format:check, pnpm test, pnpm build]
+  gbrain_memory_used: []
+```
