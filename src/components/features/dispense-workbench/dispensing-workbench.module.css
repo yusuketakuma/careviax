@@ -2,12 +2,17 @@
  * 調剤ワークベンチスタイル（設計プロト 調剤ワークベンチ.dc.html のインライン CSS を
  * CSS Module 定数として隔離）。globals.css / Tailwind テーマには手を入れない。
  *
- * 寸法・配色は業務画面の視認性を維持する：
+ * F-011 Stage1（配色揃え）: レセコン風の独自 hex（灰背景 #e8ebee・青グラデヘッダ等）を
+ * 標準パレットの CSS 変数（globals.css の oklch トークン）参照へ置換し、他画面との色調差を解消する。
+ * 操作体系（F1-F12・phase 遷移・レイアウト寸法）は不変＝寸法/構造はそのまま、color/background/border の
+ * 値のみトークン化する。base chrome は var(--background/--card/--muted/--secondary/--accent/--border/--primary)、
+ * hold モーダル（保留=注意）は var(--state-confirm)、compare モーダル（情報）は var(--primary) を用いる。
+ *
+ * 寸法は業務画面の視認性を維持する：
  *  - フォント: Meiryo → Hiragino → Yu Gothic → MS PGothic → sans-serif
  *  - ペインヘッダ 24px / グリッド帯 30/23px
  *  - 左ペイン 212px / 右ペイン 300px / 本体 min-width 1540px
- *  - スクロールバー 13px / 青グラデ #2c558a→#193454, #3a5e8c→#27466c
- *  - 主要パレット #1f4e79（accent）等
+ *  - スクロールバー 13px
  */
 
 /* ===== ルート（デスクトップ専用）===== */
@@ -18,10 +23,28 @@
   flex-direction: column;
   overflow: hidden;
   font-family: Meiryo, 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'MS PGothic', sans-serif;
-  background: #e8ebee;
-  color: #1c2530;
+  background: var(--muted);
+  color: var(--foreground);
   -webkit-font-smoothing: antialiased;
   position: relative;
+
+  /*
+   * filled surface（塗りつぶしヘッダ/バー/モーダルヘッダ）の bg/fg ペア（ローカル）。
+   * bg はテーマトークン（light/dark 自動追従）。fg は light=白(--primary-foreground)で十分だが、
+   * dark テーマでは --primary/--state-confirm が明色化し白文字だと WCAG AA を割るため、
+   * 下の :global(.dark) で fg を暗色(--background)へ切替えてコントラストを確保する。
+   * （light: primary/白≈9.45:1, confirm/白≈5.48:1 / dark: primary/暗≈5.55:1, confirm/暗≈10.56:1）
+   */
+  --wb-primary-bg: var(--primary);
+  --wb-primary-fg: var(--primary-foreground);
+  --wb-confirm-bg: var(--state-confirm);
+  --wb-confirm-fg: var(--primary-foreground);
+}
+
+/* dark/system テーマ: filled surface の文字を暗色へ切替（明色化した bg 上で AA を満たす）。 */
+:global(.dark) .root {
+  --wb-primary-fg: var(--background);
+  --wb-confirm-fg: var(--background);
 }
 
 /* AppShell 配下にマウントする場合のヘッダ控除高（計画 §3・単一変更点） */
@@ -35,15 +58,15 @@
   height: 13px;
 }
 .root ::-webkit-scrollbar-track {
-  background: #e7eaee;
+  background: var(--muted);
 }
 .root ::-webkit-scrollbar-thumb {
-  background: #b3bcc6;
-  border: 3px solid #e7eaee;
+  background: var(--border);
+  border: 3px solid var(--muted);
   border-radius: 7px;
 }
 .root ::-webkit-scrollbar-thumb:hover {
-  background: #94a0ad;
+  background: var(--muted-foreground);
 }
 
 .root select,
@@ -68,26 +91,26 @@
   flex: none;
   display: flex;
   align-items: stretch;
-  background: #d4e3f4;
-  border-bottom: 2px solid #9fb8d6;
+  background: var(--secondary);
+  border-bottom: 2px solid var(--border);
 }
 .ribbonCell {
   padding: 5px 14px;
-  border-right: 1px solid #b6cbe5;
+  border-right: 1px solid var(--border);
 }
 .ribbonLabel {
   font-size: 10.5px;
-  color: #3f5878;
+  color: var(--muted-foreground);
 }
 .ribbonValue {
   font-size: 13px;
   font-weight: 700;
-  color: #1a3656;
+  color: var(--foreground);
 }
 .ribbonName {
   font-size: 21px;
   font-weight: 700;
-  color: #10294a;
+  color: var(--foreground);
   line-height: 1.15;
   letter-spacing: 0.5px;
 }
@@ -105,11 +128,11 @@
   flex: none;
   display: flex;
   flex-direction: column;
-  background: #f5f6f8;
-  border-right: 1px solid #c6ccd4;
+  background: var(--muted);
+  border-right: 1px solid var(--border);
 }
 
-/* ペインヘッダ（24px・青グラデ） */
+/* ペインヘッダ（24px・標準 primary のフラット塗り） */
 .paneHeader {
   flex: none;
   height: 24px;
@@ -117,8 +140,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 9px;
-  background: linear-gradient(180deg, #3a5e8c, #27466c);
-  color: #fff;
+  background: var(--wb-primary-bg);
+  color: var(--wb-primary-fg);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.5px;
@@ -134,7 +157,7 @@
   align-items: center;
   gap: 8px;
   padding: 6px 9px;
-  border-bottom: 1px solid #e3e6ea;
+  border-bottom: 1px solid var(--border);
   cursor: pointer;
 }
 .patientAvatar {
@@ -142,7 +165,7 @@
   width: 24px;
   height: 24px;
   border-radius: 4px;
-  color: #fff;
+  color: var(--primary-foreground);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -156,20 +179,20 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  background: #fff;
+  background: var(--card);
 }
 
 /* 工程タブ */
 .phaseTabBar {
   flex: none;
-  background: #eef1f5;
-  border-bottom: 1px solid #c6ccd4;
+  background: var(--muted);
+  border-bottom: 1px solid var(--border);
 }
 .phaseTab {
   padding: 6px 18px 7px 18px;
   font-size: 12.5px;
   font-weight: 700;
-  border: 1px solid #c2cad4;
+  border: 1px solid var(--border);
   border-bottom: none;
   border-radius: 5px 5px 0 0;
   cursor: pointer;
@@ -184,27 +207,27 @@
   flex: none;
   display: flex;
   align-items: stretch;
-  background: linear-gradient(180deg, #e2eaf3, #d2deec);
-  border-bottom: 1.5px solid #9fb3cc;
+  background: var(--secondary);
+  border-bottom: 1.5px solid var(--border);
   font-size: 11px;
   font-weight: 700;
-  color: #1c3d63;
+  color: var(--foreground);
 }
 .gridSection {
   display: flex;
   align-items: center;
   gap: 9px;
   padding: 5px 10px;
-  background: linear-gradient(180deg, #cedbea, #bfd0e3);
-  border-top: 1px solid #a9bdd6;
-  border-bottom: 1px solid #a9bdd6;
+  background: var(--accent);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
 }
 /* 薬剤行（帯高さ 30px・zebra は inline bg で制御） */
 .gridDrugRow {
   display: flex;
   align-items: stretch;
-  border-bottom: 1px solid #e0e4e9;
+  border-bottom: 1px solid var(--border);
   font-size: 12.5px;
   min-height: 30px;
 }
@@ -212,12 +235,12 @@
 .gridTotalRow {
   display: flex;
   align-items: stretch;
-  border-bottom: 2px solid #b6c5d8;
-  border-top: 1px solid #b6c5d8;
-  background: #eef2f7;
+  border-bottom: 2px solid var(--border);
+  border-top: 1px solid var(--border);
+  background: var(--muted);
   font-size: 12px;
   font-weight: 700;
-  color: #1c3d63;
+  color: var(--foreground);
   min-height: 28px;
 }
 
@@ -227,19 +250,19 @@
   flex: none;
   display: flex;
   flex-direction: column;
-  background: #f5f6f8;
-  border-left: 1px solid #c6ccd4;
+  background: var(--muted);
+  border-left: 1px solid var(--border);
 }
 
-/* ===== ステータスバー（23px・青グラデ）===== */
+/* ===== ステータスバー（23px・標準 primary のフラット塗り）===== */
 .statusBar {
   flex: none;
   height: 23px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: linear-gradient(180deg, #2c4a6e, #1e3450);
-  color: #cfdcec;
+  background: var(--wb-primary-bg);
+  color: var(--wb-primary-fg);
   font-size: 11px;
   padding: 0 10px;
 }
@@ -248,21 +271,22 @@
 .modalOverlay {
   position: absolute;
   inset: 0;
-  background: rgba(20, 32, 50, 0.42);
+  background: color-mix(in oklch, var(--foreground) 42%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 50;
 }
 .modalCard {
-  background: #fff;
+  background: var(--card);
   border-radius: 9px;
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.3);
   overflow: hidden;
 }
+/* 保留（=注意・確認が必要）は 6 軸の state-confirm（琥珀）。fg は light/dark 両対応の local token。 */
 .modalHeaderHold {
-  background: linear-gradient(180deg, #e0972b, #c97f18);
-  color: #fff;
+  background: var(--wb-confirm-bg);
+  color: var(--wb-confirm-fg);
   font-size: 13px;
   font-weight: 700;
   padding: 9px 14px;
@@ -270,9 +294,10 @@
   align-items: center;
   justify-content: space-between;
 }
+/* 比較（=情報提示）は標準 primary。fg は light/dark 両対応の local token。 */
 .modalHeaderCompare {
-  background: linear-gradient(180deg, #5a78a8, #3f5e8c);
-  color: #fff;
+  background: var(--wb-primary-bg);
+  color: var(--wb-primary-fg);
   font-size: 13px;
   font-weight: 700;
   padding: 9px 14px;
