@@ -9,6 +9,10 @@ import {
   buildSetBatchHistorySnapshot,
   createSetBatchChangeLog,
 } from '@/lib/dispensing/set-batch-history';
+import {
+  findDuplicateSetBatchCellId,
+  setBatchCellRefSchema,
+} from '@/lib/dispensing/set-batch-cell-mutation';
 import { notifyWorkflowMutation } from '@/server/services/workflow-dashboard-cache';
 import { buildSetPlanAssignmentWhere } from '@/server/services/prescription-access';
 import { z } from 'zod';
@@ -30,12 +34,7 @@ const cellMutationSchema = z
       batch_id: z.string().min(1, 'セルIDは必須です').optional(),
       expected_version: z.number().int().min(1).optional(),
       cells: z
-        .array(
-          z.object({
-            batch_id: z.string().min(1, 'セルIDは必須です'),
-            expected_version: z.number().int().min(1),
-          }),
-        )
+        .array(setBatchCellRefSchema)
         .min(1, 'セルIDは必須です')
         .max(200, '一度に更新できるセル明細は200件までです')
         .optional(),
@@ -47,12 +46,7 @@ const cellMutationSchema = z
       held_detail: z.string().max(1000).optional(),
       expected_version: z.number().int().min(1).optional(),
       cells: z
-        .array(
-          z.object({
-            batch_id: z.string().min(1, 'セルIDは必須です'),
-            expected_version: z.number().int().min(1),
-          }),
-        )
+        .array(setBatchCellRefSchema)
         .min(1, 'セルIDは必須です')
         .max(200, '一度に更新できるセル明細は200件までです')
         .optional(),
@@ -62,12 +56,7 @@ const cellMutationSchema = z
       batch_id: z.string().min(1, 'セルIDは必須です').optional(),
       expected_version: z.number().int().min(1).optional(),
       cells: z
-        .array(
-          z.object({
-            batch_id: z.string().min(1, 'セルIDは必須です'),
-            expected_version: z.number().int().min(1),
-          }),
-        )
+        .array(setBatchCellRefSchema)
         .min(1, 'セルIDは必須です')
         .max(200, '一度に更新できるセル明細は200件までです')
         .optional(),
@@ -165,7 +154,7 @@ export const PATCH = withAuthContext<{ id: string }>(
       }
 
       if (input.cells) {
-        const duplicateId = findDuplicateBatchId(input.cells.map((cell) => cell.batch_id));
+        const duplicateId = findDuplicateSetBatchCellId(input.cells);
         if (duplicateId) {
           return {
             kind: 'error' as const,
@@ -447,15 +436,6 @@ export const PATCH = withAuthContext<{ id: string }>(
   },
   { permission: 'canSet', message: 'セット作業の権限がありません' },
 );
-
-function findDuplicateBatchId(batchIds: string[]): string | null {
-  const seen = new Set<string>();
-  for (const batchId of batchIds) {
-    if (seen.has(batchId)) return batchId;
-    seen.add(batchId);
-  }
-  return null;
-}
 
 function buildCellMutationWrite(
   input: z.infer<typeof cellMutationSchema>,
