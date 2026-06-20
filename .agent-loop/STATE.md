@@ -26,14 +26,14 @@ end. It is the first file consulted on resume and the last file written on a har
 current_run_id: RUN-20260620-001
 current_cycle: 3 # Cycle 2 closed (checker review of codex hardening slice → 7-commit split landed, worktree clear). Cycle 3: F-20260620-002 plan review.
 cycle_start_time: 2026-06-20T00:00:00+09:00 # ISO8601 Asia/Tokyo; reset at each run start. elapsed = now − cycle_start_time, checked at every cycle boundary vs §14 90-min hard-stop
-active_task_id: none # F-20260620-002 done (commit c6ee1476, codex APPROVED); LOCK released
+active_task_id: none # F-20260620-002 (c6ee1476) + F-20260620-003 (ec241ffe) both done. Worktree clear except machine-gen .harness-mem.
 files_changed_count: 0 # `git diff --name-only` from cycle_start (commit/tree at run start); >20 triggers §14 hard-stop
-claude_status: idle # F-20260620-002 done; next intake or idle. Reviewer for F-20260620-003 (codex lane) when codex submits.
-codex_status: idle # hardening split landed; F-20260620-002 reviewed+approved. F-20260620-003 (route-side safe projection) queued in codex lane.
+claude_status: idle # 3 maker/checker cycles complete (codex hardening review; F-002 impl; F-003 review). Queue dry; awaiting next intake.
+codex_status: idle # F-20260620-003 landed (ec241ffe, claude-approved). No queued codex task.
 last_memory_bootstrap: 2026-06-20 # Cycle 2 real gbrain recall (CLI). Classified in MEMORY_REVIEW.md; §9/§10 → LOOP_POLICY ApplyNow (codex-approved). `mcp__gbrain__*` after restart.
-zero_actionable_count: 0
-last_gate_result: pass # F-20260620-002 gates GREEN (vitest 6/6, typecheck, no-unused, eslint, format:check, build 286p); codex independently re-verified
-next_action: idle/intake. Open: F-20260620-003 (codex lane — first-visit-document mutation safe projection; claude reviews). §10 now applied twice (codex hardening slice + F-002) → CandidateLesson api-response-validation-and-consolidation has a 2nd independent confirmation toward promotion (still gated, not auto-promoted).
+zero_actionable_count: 1 # queue dry after F-003; idle/backoff per FEATURE_QUEUE intake
+last_gate_result: pass # F-20260620-003 gates GREEN (focused 31/31, full 8506, typecheck/no-unused/eslint/format:check/lint); claude independently re-verified 31/31 + partition clean
+next_action: idle/intake. §9 (mutation PHI minimization) now applied+verified across the codex hardening slice + F-002/F-003 → CandidateLesson api-response-validation-and-consolidation has 2+ independent confirmations; eligible to DRAFT a PROMOTION_QUEUE entry (human-gated, NOT auto). Otherwise await next FEATURE_QUEUE intake.
 ```
 
 ## gbrain memory (this run)

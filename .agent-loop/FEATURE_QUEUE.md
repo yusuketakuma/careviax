@@ -170,7 +170,7 @@ owned by the other.
 
 ```yaml
 - task_id: F-20260620-003
-  status: queued # codex-lane follow-up filed during F-20260620-002 plan review
+  status: done # commit ec241ffe; plan+patch approved by claude-lead (reviewer); gates GREEN (focused 31/31, full 8506, typecheck/no-unused/eslint/format:check/lint). Cycle 3.
   owner: codex-lead
   reviewer: claude-lead
   origin_agent: claude-lead
