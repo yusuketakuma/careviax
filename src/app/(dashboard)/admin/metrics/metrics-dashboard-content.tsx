@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { TrendingUp, Users, Home, FileText, Activity } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ErrorState } from '@/components/ui/error-state';
 import { HelpPopover } from '@/components/ui/help-popover';
 import { SegmentedProgressBar } from '@/components/ui/segmented-progress-bar';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -121,95 +122,153 @@ function MetricCard({
 export function MetricsDashboardContent() {
   const orgId = useOrgId();
 
-  const { data } = useQuery({
+  const { data, isError, isLoading, refetch } = useQuery({
     queryKey: ['admin-metrics', orgId],
     queryFn: async () => {
       const res = await fetch('/api/admin/metrics', {
         headers: { 'x-org-id': orgId },
       });
-      if (res.status === 404) return { data: PLACEHOLDER };
+      if (res.status === 404) return { data: PLACEHOLDER, placeholder: true };
       if (!res.ok) throw new Error('経営指標の取得に失敗しました');
-      return res.json() as Promise<{ data: MetricsData }>;
+      return res.json() as Promise<{ data: MetricsData; placeholder?: boolean }>;
     },
     enabled: !!orgId,
   });
 
-  const metrics = data?.data ?? PLACEHOLDER;
+  const hasData = data !== undefined;
 
+  // First-load failure with no usable data → blocking error. A 404 resolves as a
+  // placeholder success, so it never reaches this branch. A refetch failure that still
+  // has prior data is handled below (keep the data, show a non-blocking warning).
+  if (isError && !hasData) {
+    return (
+      <ErrorState
+        variant="server"
+        size="page"
+        description="経営指標を取得できませんでした。時間をおいて再度お試しください。"
+        action={{ label: '再読み込み', onClick: () => void refetch() }}
+        live="assertive"
+      />
+    );
+  }
+
+  if (isLoading && !hasData) {
+    return (
+      <div
+        role="status"
+        aria-label="経営指標を読み込み中"
+        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+      >
+        {Array.from({ length: 5 }).map((_, index) => (
+          <Card key={index}>
+            <CardContent className="py-10">
+              <div className="h-8 w-24 animate-pulse rounded bg-muted" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
+  }
+
+  const metrics = data?.data ?? PLACEHOLDER;
+  const isPlaceholder = !hasData || data?.placeholder === true;
+
+  // Suppress threshold alerts on placeholder/no-data (404 or pre-data): firing them on
+  // zeros would tell operators a metric is "below threshold" when the API has no data.
   const genericAlert =
-    metrics.generic_dispensing_rate < GENERIC_TARGET
+    !isPlaceholder && metrics.generic_dispensing_rate < GENERIC_TARGET
       ? `目標（${GENERIC_TARGET}%）未達。後発品の積極的な提案を検討してください。`
       : undefined;
 
   const prescriptionsAlert =
-    metrics.prescriptions_per_pharmacist > PRESCRIPTIONS_LIMIT
+    !isPlaceholder && metrics.prescriptions_per_pharmacist > PRESCRIPTIONS_LIMIT
       ? `基準（${PRESCRIPTIONS_LIMIT}枚/日）超過。人員配置を見直してください。`
       : undefined;
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      <MetricCard
-        title="処方箋集中率"
-        description="特定の処方元への集中度合い"
-        value={metrics.prescription_concentration_rate}
-        unit="%"
-        max={100}
-        icon={TrendingUp}
-        colorClass="bg-chart-1"
-        target="基準: 70%以下"
-      />
-      <MetricCard
-        title="後発医薬品調剤割合"
-        description="全調剤に占める後発品の割合"
-        value={metrics.generic_dispensing_rate}
-        unit="%"
-        max={100}
-        targetLine={GENERIC_TARGET}
-        target={`目標: ${GENERIC_TARGET}%以上`}
-        icon={Activity}
-        colorClass={
-          metrics.generic_dispensing_rate >= GENERIC_TARGET ? 'bg-state-done' : 'bg-state-confirm'
-        }
-        alertText={genericAlert}
-      />
-      <MetricCard
-        title="薬剤師1人あたり処方箋枚数"
-        description="1日平均（当月）"
-        value={metrics.prescriptions_per_pharmacist}
-        unit="枚/日"
-        max={60}
-        targetLine={PRESCRIPTIONS_LIMIT}
-        target={`基準: ${PRESCRIPTIONS_LIMIT}枚/日`}
-        icon={Users}
-        colorClass={
-          metrics.prescriptions_per_pharmacist > PRESCRIPTIONS_LIMIT
-            ? 'bg-state-blocked'
-            : 'bg-chart-1'
-        }
-        alertText={prescriptionsAlert}
-      />
-      <MetricCard
-        title="在宅訪問実績回数"
-        description="年度累計"
-        value={metrics.home_visit_count_ytd}
-        unit="回"
-        max={HOME_VISIT_TARGET_YTD}
-        targetLine={HOME_VISIT_TARGET_YTD}
-        target={`目標: ${HOME_VISIT_TARGET_YTD}回/年`}
-        icon={Home}
-        colorClass={
-          metrics.home_visit_count_ytd >= HOME_VISIT_TARGET_YTD ? 'bg-state-done' : 'bg-chart-1'
-        }
-      />
-      <MetricCard
-        title="処方箋月次受付枚数"
-        description="当月受付枚数"
-        value={metrics.monthly_prescription_count}
-        unit="枚"
-        max={2000}
-        icon={FileText}
-        colorClass="bg-chart-1"
-      />
+    <div className="space-y-4">
+      {isError && hasData && (
+        <ErrorState
+          variant="server"
+          size="inline"
+          description="最新の経営指標を取得できませんでした。表示は前回取得した値です。"
+          action={{
+            label: '再読み込み',
+            onClick: () => void refetch(),
+            variant: 'outline',
+            size: 'sm',
+          }}
+          live="polite"
+        />
+      )}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <MetricCard
+          title="処方箋集中率"
+          description="特定の処方元への集中度合い"
+          value={metrics.prescription_concentration_rate}
+          unit="%"
+          max={100}
+          icon={TrendingUp}
+          colorClass="bg-chart-1"
+          target="基準: 70%以下"
+        />
+        <MetricCard
+          title="後発医薬品調剤割合"
+          description="全調剤に占める後発品の割合"
+          value={metrics.generic_dispensing_rate}
+          unit="%"
+          max={100}
+          targetLine={GENERIC_TARGET}
+          target={`目標: ${GENERIC_TARGET}%以上`}
+          icon={Activity}
+          colorClass={
+            isPlaceholder
+              ? 'bg-chart-1'
+              : metrics.generic_dispensing_rate >= GENERIC_TARGET
+                ? 'bg-state-done'
+                : 'bg-state-confirm'
+          }
+          alertText={genericAlert}
+        />
+        <MetricCard
+          title="薬剤師1人あたり処方箋枚数"
+          description="1日平均（当月）"
+          value={metrics.prescriptions_per_pharmacist}
+          unit="枚/日"
+          max={60}
+          targetLine={PRESCRIPTIONS_LIMIT}
+          target={`基準: ${PRESCRIPTIONS_LIMIT}枚/日`}
+          icon={Users}
+          colorClass={
+            metrics.prescriptions_per_pharmacist > PRESCRIPTIONS_LIMIT
+              ? 'bg-state-blocked'
+              : 'bg-chart-1'
+          }
+          alertText={prescriptionsAlert}
+        />
+        <MetricCard
+          title="在宅訪問実績回数"
+          description="年度累計"
+          value={metrics.home_visit_count_ytd}
+          unit="回"
+          max={HOME_VISIT_TARGET_YTD}
+          targetLine={HOME_VISIT_TARGET_YTD}
+          target={`目標: ${HOME_VISIT_TARGET_YTD}回/年`}
+          icon={Home}
+          colorClass={
+            metrics.home_visit_count_ytd >= HOME_VISIT_TARGET_YTD ? 'bg-state-done' : 'bg-chart-1'
+          }
+        />
+        <MetricCard
+          title="処方箋月次受付枚数"
+          description="当月受付枚数"
+          value={metrics.monthly_prescription_count}
+          unit="枚"
+          max={2000}
+          icon={FileText}
+          colorClass="bg-chart-1"
+        />
+      </div>
     </div>
   );
 }

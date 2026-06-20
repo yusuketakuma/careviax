@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
+import { ErrorState } from '@/components/ui/error-state';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 
 type AnalyticsResponse = {
@@ -147,7 +148,7 @@ export function AnalyticsContent() {
   const orgId = useOrgId();
   const [resourceFilter, setResourceFilter] = useState<ResourceFilter>('all');
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['billing-analytics', orgId],
     queryFn: async () => {
       const res = await fetch('/api/billing-evidence/analytics', {
@@ -159,7 +160,12 @@ export function AnalyticsContent() {
     enabled: !!orgId,
   });
 
-  const { data: resourceMapData, isLoading: resourceMapLoading } = useQuery({
+  const {
+    data: resourceMapData,
+    isLoading: resourceMapLoading,
+    isError: resourceMapError,
+    refetch: resourceMapRefetch,
+  } = useQuery({
     queryKey: ['pharmacy-sites', orgId, 'resource-map'],
     queryFn: async () => {
       const res = await fetch('/api/pharmacy-sites?view=resource_map', {
@@ -225,240 +231,307 @@ export function AnalyticsContent() {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard
-          icon={FileSpreadsheet}
-          label="今月候補"
-          value={analytics?.summary.current_month_candidates ?? 0}
-          caption={`${analytics?.summary.current_month ?? '---- --'} の請求候補`}
-          isLoading={isLoading}
+      {isError && !data ? (
+        <ErrorState
+          variant="server"
+          size="inline"
+          title="請求分析を取得できませんでした"
+          description="時間をおいて再度お試しください。"
+          action={{ label: '再読み込み', onClick: () => void refetch() }}
+          live="assertive"
         />
-        <MetricCard
-          icon={AlertTriangle}
-          label="レビュー待ち"
-          value={analytics?.summary.current_month_review_pending ?? 0}
-          caption="月次締めを止めている候補"
-          isLoading={isLoading}
-        />
-        <MetricCard
-          icon={ShieldCheck}
-          label="算定可率"
-          value={`${analytics?.summary.current_month_claimable_rate ?? 0}%`}
-          caption="当月 billing evidence ベース"
-          isLoading={isLoading}
-        />
-        <MetricCard
-          icon={CheckCircle2}
-          label="締め進捗"
-          value={`${analytics?.summary.current_month_close_rate ?? 0}%`}
-          caption={`締め済み ${analytics?.summary.current_month_exported ?? 0} 件`}
-          isLoading={isLoading}
-        />
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[1.4fr_0.8fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">月次推移</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <DataTable
-              columns={monthlyTrendColumns}
-              data={analytics?.monthly_trend ?? []}
-              isLoading={isLoading}
-              caption="月次推移"
-              getRowId={(row) => row.month}
-              getRowA11yLabel={(row) => `${row.month} の月次推移`}
-              emptyMessage="月次推移はありません。"
-              toolbar={{
-                enableGlobalFilter: true,
-                globalFilterPlaceholder: '月次推移内検索',
-                enableColumnVisibility: true,
+      ) : (
+        <>
+          {isError && data && (
+            <ErrorState
+              variant="server"
+              size="inline"
+              description="最新の請求分析を取得できませんでした。表示は前回取得した値です。"
+              action={{
+                label: '再読み込み',
+                onClick: () => void refetch(),
+                variant: 'outline',
+                size: 'sm',
               }}
+              live="polite"
             />
-          </CardContent>
-        </Card>
+          )}
+          <div aria-busy={isLoading} className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <MetricCard
+              icon={FileSpreadsheet}
+              label="今月候補"
+              value={analytics?.summary.current_month_candidates ?? 0}
+              caption={`${analytics?.summary.current_month ?? '---- --'} の請求候補`}
+              isLoading={isLoading}
+            />
+            <MetricCard
+              icon={AlertTriangle}
+              label="レビュー待ち"
+              value={analytics?.summary.current_month_review_pending ?? 0}
+              caption="月次締めを止めている候補"
+              isLoading={isLoading}
+            />
+            <MetricCard
+              icon={ShieldCheck}
+              label="算定可率"
+              value={`${analytics?.summary.current_month_claimable_rate ?? 0}%`}
+              caption="当月 billing evidence ベース"
+              isLoading={isLoading}
+            />
+            <MetricCard
+              icon={CheckCircle2}
+              label="締め進捗"
+              value={`${analytics?.summary.current_month_close_rate ?? 0}%`}
+              caption={`締め済み ${analytics?.summary.current_month_exported ?? 0} 件`}
+              isLoading={isLoading}
+            />
+          </div>
 
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">締め阻害要因</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {(analytics?.blocker_reasons.length ?? 0) === 0 ? (
-                <p className="text-sm text-muted-foreground">算定不可の主因はありません。</p>
-              ) : (
-                analytics?.blocker_reasons.map((item) => (
-                  <div
-                    key={item.reason}
-                    className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm"
-                  >
-                    <span>{item.reason}</span>
-                    <span className="tabular-nums text-muted-foreground">{item.count}件</span>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
+          <div className="grid gap-6 xl:grid-cols-[1.4fr_0.8fr]">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">月次推移</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <DataTable
+                  columns={monthlyTrendColumns}
+                  data={analytics?.monthly_trend ?? []}
+                  isLoading={isLoading}
+                  caption="月次推移"
+                  getRowId={(row) => row.month}
+                  getRowA11yLabel={(row) => `${row.month} の月次推移`}
+                  emptyMessage="月次推移はありません。"
+                  toolbar={{
+                    enableGlobalFilter: true,
+                    globalFilterPlaceholder: '月次推移内検索',
+                    enableColumnVisibility: true,
+                  }}
+                />
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">主要算定コード</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {(analytics?.top_codes.length ?? 0) === 0 ? (
-                <p className="text-sm text-muted-foreground">算定コードの実績はありません。</p>
-              ) : (
-                analytics?.top_codes.map((item) => (
-                  <div
-                    key={`${item.billing_code}-${item.billing_name}`}
-                    className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm"
-                  >
-                    <div>
-                      <p className="font-medium">{item.billing_name}</p>
-                      <p className="text-xs text-muted-foreground">{item.billing_code}</p>
-                    </div>
-                    <span className="tabular-nums text-muted-foreground">{item.count}件</span>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">地域資源マップ</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-2">
-              <MetricCard
-                icon={MapPinned}
-                label="拠点数"
-                value={resourceMap?.summary.total_sites ?? 0}
-                caption="集約対象の拠点"
-                isLoading={resourceMapLoading}
-              />
-              <MetricCard
-                icon={ShieldCheck}
-                label="緊急対応可"
-                value={resourceMap?.summary.emergency_ready_sites ?? 0}
-                caption="直近シフトあり"
-                isLoading={resourceMapLoading}
-              />
-              <MetricCard
-                icon={AlertTriangle}
-                label="休日ギャップ"
-                value={resourceMap?.summary.holiday_gap_sites ?? 0}
-                caption="当番未設定の拠点"
-                isLoading={resourceMapLoading}
-              />
-              <MetricCard
-                icon={AlertTriangle}
-                label="座標未整備"
-                value={resourceMap?.summary.missing_geo_sites ?? 0}
-                caption="lat/lng 未設定"
-                isLoading={resourceMapLoading}
-              />
-            </div>
-            <Link
-              href="/workflow"
-              className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
-            >
-              緊急時プレイブックを確認
-            </Link>
-            <div className="grid gap-2">
-              <p className="text-xs font-medium text-muted-foreground">地域別サマリー</p>
-              {areaSummary.length === 0 ? (
-                <p className="text-sm text-muted-foreground">地域別集計はありません。</p>
-              ) : (
-                areaSummary.slice(0, 6).map((area) => (
-                  <div
-                    key={area.area}
-                    className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
-                  >
-                    <div>
-                      <p className="font-medium">{area.area}</p>
-                      <p className="text-xs text-muted-foreground">
-                        緊急対応 {area.emergencyReady} / 休日ギャップ {area.holidayGap}
-                      </p>
-                    </div>
-                    <span className="tabular-nums text-muted-foreground">{area.siteCount}拠点</span>
-                  </div>
-                ))
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">拠点別の対応体制</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex flex-wrap gap-2">
-              {[
-                ['all', '全拠点'],
-                ['emergency_ready', '緊急対応可'],
-                ['holiday_gap', '休日ギャップ'],
-                ['narcotic', '麻薬対応'],
-                ['sterile', '無菌対応'],
-                ['delegate', '代行可'],
-                ['missing_geo', '座標未整備'],
-              ].map(([value, label]) => (
-                <Button
-                  key={value}
-                  size="sm"
-                  variant={resourceFilter === value ? 'default' : 'outline'}
-                  onClick={() => setResourceFilter(value as ResourceFilter)}
-                >
-                  {label}
-                </Button>
-              ))}
-            </div>
-            {filteredSites.length === 0 ? (
-              <p className="text-sm text-muted-foreground">地域資源データはありません。</p>
-            ) : (
-              filteredSites.map((site) => (
-                <div key={site.id} className="rounded-lg border border-border px-3 py-3 text-sm">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="font-medium">{site.name}</p>
-                      <p className="text-xs text-muted-foreground">{site.address}</p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {site.capability_tags.map((tag) => (
-                        <Badge key={tag} variant="outline">
-                          {tag}
-                        </Badge>
-                      ))}
-                      {!site.has_geo && <Badge variant="destructive">座標未整備</Badge>}
-                    </div>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
-                    <span>緊急対応シフト {site.emergency_capable_shift_count}件</span>
-                    <span>麻薬 {site.supports_narcotic ? '対応可' : '未確認'}</span>
-                    <span>無菌 {site.supports_sterile ? '対応可' : '未確認'}</span>
-                    <span>代行 {site.can_delegate ? '可' : '要確認'}</span>
-                  </div>
-                  {site.holiday_gap_dates.length > 0 ? (
-                    <div className="mt-3 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-xs text-state-confirm">
-                      空白日:{' '}
-                      {site.holiday_gap_dates
-                        .map((item) => `${item.date.slice(5, 10)} ${item.name}`)
-                        .join(' / ')}
-                    </div>
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">締め阻害要因</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {isLoading ? (
+                    <div className="h-12 animate-pulse rounded bg-muted" />
+                  ) : (analytics?.blocker_reasons.length ?? 0) === 0 ? (
+                    <p className="text-sm text-muted-foreground">算定不可の主因はありません。</p>
                   ) : (
-                    <p className="mt-3 text-xs text-state-done">直近の休日空白はありません。</p>
+                    analytics?.blocker_reasons.map((item) => (
+                      <div
+                        key={item.reason}
+                        className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm"
+                      >
+                        <span>{item.reason}</span>
+                        <span className="tabular-nums text-muted-foreground">{item.count}件</span>
+                      </div>
+                    ))
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">主要算定コード</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {isLoading ? (
+                    <div className="h-12 animate-pulse rounded bg-muted" />
+                  ) : (analytics?.top_codes.length ?? 0) === 0 ? (
+                    <p className="text-sm text-muted-foreground">算定コードの実績はありません。</p>
+                  ) : (
+                    analytics?.top_codes.map((item) => (
+                      <div
+                        key={`${item.billing_code}-${item.billing_name}`}
+                        className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm"
+                      >
+                        <div>
+                          <p className="font-medium">{item.billing_name}</p>
+                          <p className="text-xs text-muted-foreground">{item.billing_code}</p>
+                        </div>
+                        <span className="tabular-nums text-muted-foreground">{item.count}件</span>
+                      </div>
+                    ))
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </>
+      )}
+
+      {resourceMapError && !resourceMapData ? (
+        <ErrorState
+          variant="server"
+          size="inline"
+          title="地域資源マップを取得できませんでした"
+          description="時間をおいて再度お試しください。"
+          action={{ label: '再読み込み', onClick: () => void resourceMapRefetch() }}
+          live="assertive"
+        />
+      ) : (
+        <>
+          {resourceMapError && resourceMapData && (
+            <ErrorState
+              variant="server"
+              size="inline"
+              description="最新の地域資源マップを取得できませんでした。表示は前回取得した値です。"
+              action={{
+                label: '再読み込み',
+                onClick: () => void resourceMapRefetch(),
+                variant: 'outline',
+                size: 'sm',
+              }}
+              live="polite"
+            />
+          )}
+          <div aria-busy={resourceMapLoading} className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">地域資源マップ</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <MetricCard
+                    icon={MapPinned}
+                    label="拠点数"
+                    value={resourceMap?.summary.total_sites ?? 0}
+                    caption="集約対象の拠点"
+                    isLoading={resourceMapLoading}
+                  />
+                  <MetricCard
+                    icon={ShieldCheck}
+                    label="緊急対応可"
+                    value={resourceMap?.summary.emergency_ready_sites ?? 0}
+                    caption="直近シフトあり"
+                    isLoading={resourceMapLoading}
+                  />
+                  <MetricCard
+                    icon={AlertTriangle}
+                    label="休日ギャップ"
+                    value={resourceMap?.summary.holiday_gap_sites ?? 0}
+                    caption="当番未設定の拠点"
+                    isLoading={resourceMapLoading}
+                  />
+                  <MetricCard
+                    icon={AlertTriangle}
+                    label="座標未整備"
+                    value={resourceMap?.summary.missing_geo_sites ?? 0}
+                    caption="lat/lng 未設定"
+                    isLoading={resourceMapLoading}
+                  />
+                </div>
+                <Link
+                  href="/workflow"
+                  className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+                >
+                  緊急時プレイブックを確認
+                </Link>
+                <div className="grid gap-2">
+                  <p className="text-xs font-medium text-muted-foreground">地域別サマリー</p>
+                  {resourceMapLoading ? (
+                    <div className="h-12 animate-pulse rounded bg-muted" />
+                  ) : areaSummary.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">地域別集計はありません。</p>
+                  ) : (
+                    areaSummary.slice(0, 6).map((area) => (
+                      <div
+                        key={area.area}
+                        className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
+                      >
+                        <div>
+                          <p className="font-medium">{area.area}</p>
+                          <p className="text-xs text-muted-foreground">
+                            緊急対応 {area.emergencyReady} / 休日ギャップ {area.holidayGap}
+                          </p>
+                        </div>
+                        <span className="tabular-nums text-muted-foreground">
+                          {area.siteCount}拠点
+                        </span>
+                      </div>
+                    ))
                   )}
                 </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">拠点別の対応体制</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    ['all', '全拠点'],
+                    ['emergency_ready', '緊急対応可'],
+                    ['holiday_gap', '休日ギャップ'],
+                    ['narcotic', '麻薬対応'],
+                    ['sterile', '無菌対応'],
+                    ['delegate', '代行可'],
+                    ['missing_geo', '座標未整備'],
+                  ].map(([value, label]) => (
+                    <Button
+                      key={value}
+                      size="sm"
+                      variant={resourceFilter === value ? 'default' : 'outline'}
+                      onClick={() => setResourceFilter(value as ResourceFilter)}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </div>
+                {resourceMapLoading ? (
+                  <div className="h-12 animate-pulse rounded bg-muted" />
+                ) : filteredSites.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">地域資源データはありません。</p>
+                ) : (
+                  filteredSites.map((site) => (
+                    <div
+                      key={site.id}
+                      className="rounded-lg border border-border px-3 py-3 text-sm"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium">{site.name}</p>
+                          <p className="text-xs text-muted-foreground">{site.address}</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {site.capability_tags.map((tag) => (
+                            <Badge key={tag} variant="outline">
+                              {tag}
+                            </Badge>
+                          ))}
+                          {!site.has_geo && <Badge variant="destructive">座標未整備</Badge>}
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
+                        <span>緊急対応シフト {site.emergency_capable_shift_count}件</span>
+                        <span>麻薬 {site.supports_narcotic ? '対応可' : '未確認'}</span>
+                        <span>無菌 {site.supports_sterile ? '対応可' : '未確認'}</span>
+                        <span>代行 {site.can_delegate ? '可' : '要確認'}</span>
+                      </div>
+                      {site.holiday_gap_dates.length > 0 ? (
+                        <div className="mt-3 rounded-md border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-xs text-state-confirm">
+                          空白日:{' '}
+                          {site.holiday_gap_dates
+                            .map((item) => `${item.date.slice(5, 10)} ${item.name}`)
+                            .join(' / ')}
+                        </div>
+                      ) : (
+                        <p className="mt-3 text-xs text-state-done">直近の休日空白はありません。</p>
+                      )}
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </>
+      )}
     </div>
   );
 }
