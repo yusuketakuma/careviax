@@ -55,13 +55,3 @@ export function optionalBlankableBoundedIntegerSearchParam(
     boundedIntegerStringSchema(fieldName, min, max).optional(),
   );
 }
-
-export async function parseBody<T>(
-  schema: z.ZodSchema<T>,
-  request: Request,
-): Promise<{ ok: true; data: T } | { ok: false; error: z.ZodError }> {
-  const body = await request.json();
-  const result = schema.safeParse(body);
-  if (!result.success) return { ok: false, error: result.error };
-  return { ok: true, data: result.data };
-}
