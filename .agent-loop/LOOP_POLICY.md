@@ -18,7 +18,7 @@ discipline that the two sessions have already proven in practice. Only `ApplyNow
   Supervisor can unilaterally promote a rule.
 
 - **Run:** RUN-20260620-001
-- **Cycle:** 0 (idle, next_action: bootstrap)
+- **Cycle:** 4 (Discover sweep; bootstrap re-run — no new ApplyNow, gbrain memory set unchanged since Cycle 2; §1–10 stand)
 - **Date:** 2026-06-20
 - **Supervisors:** claude-lead (UI/UX + main impl), codex-lead (backend/perf/refactor/test review)
 
