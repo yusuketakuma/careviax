@@ -229,7 +229,7 @@ owned by the other.
     plain isError wipes good data on TanStack v5 refetch — gate blocking error on isError && !data.
 
 - task_id: F-20260620-007
-  status: peer_plan_review # rev4 plan with codex (PHI display human-approved 2026-06-20)
+  status: done # rev9 APPROVED by codex; committed 2a4780d0 (8 files, +1320). rev7→rev9: KPI envelope bug, contract boundaries, domain validation all closed.
   owner: claude-lead
   reviewer: codex-lead
   origin_agent: claude-lead
