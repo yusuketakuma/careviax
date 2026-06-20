@@ -5,6 +5,8 @@
  * docs/design-gap-analysis-new.md 09_set セクション準拠。
  */
 
+import { STATUS_TOKENS } from '@/lib/constants/status-tokens';
+
 export type SetWorkspaceScope = 'today' | 'upcoming';
 
 export type SetSlotKey = 'morning' | 'noon' | 'evening';
@@ -83,39 +85,41 @@ export type SetWorkspaceResponse = {
 
 export type SetRowStatusPresentation = {
   label: string;
-  /** 状態バッジ/テキストの配色(緑=完了 / 黄=確認中 / 青=進行中 / 灰=待機) */
+  /** 状態バッジの配色。6 軸セマンティック(STATUS_TOKENS): done=完了 / confirm=確認中 / info=進行中 / neutral=待機。 */
   badgeClassName: string;
-  /** 注意行の背景(監査待ち・再作業=薄い状態色) */
+  /** 注意行の背景(監査待ち・再作業=状態色の薄い面)。 */
   rowClassName?: string;
 };
 
+// 状態色は中央トークン(STATUS_TOKENS)を正本とする。完了=done / 部分承認・監査待ち=confirm /
+// 差戻し=blocked / 進行中=info / 着手前=neutral(状態色なし)。
 export const SET_ROW_STATUS_PRESENTATIONS: Record<SetRowStatusKey, SetRowStatusPresentation> = {
   completed: {
     label: '完了',
-    badgeClassName: 'bg-emerald-100 text-emerald-700',
+    badgeClassName: STATUS_TOKENS.done.badgeClassName,
   },
   partial_approved: {
     label: '部分承認',
-    badgeClassName: 'bg-amber-100 text-amber-800',
-    rowClassName: 'bg-amber-50/60 hover:bg-amber-50',
+    badgeClassName: STATUS_TOKENS.confirm.badgeClassName,
+    rowClassName: 'bg-state-confirm/5 hover:bg-state-confirm/10',
   },
   rejected: {
     label: '差戻し',
-    badgeClassName: 'bg-red-100 text-red-700',
-    rowClassName: 'bg-red-50/60 hover:bg-red-50',
+    badgeClassName: STATUS_TOKENS.blocked.badgeClassName,
+    rowClassName: 'bg-state-blocked/5 hover:bg-state-blocked/10',
   },
   quantity_check: {
     label: '監査待ち',
-    badgeClassName: 'bg-amber-100 text-amber-800',
-    rowClassName: 'bg-amber-50/60 hover:bg-amber-50',
+    badgeClassName: STATUS_TOKENS.confirm.badgeClassName,
+    rowClassName: 'bg-state-confirm/5 hover:bg-state-confirm/10',
   },
   in_progress: {
     label: '進行中',
-    badgeClassName: 'bg-blue-100 text-blue-700',
+    badgeClassName: STATUS_TOKENS.info.badgeClassName,
   },
   waiting: {
     label: '着手前',
-    badgeClassName: 'bg-slate-100 text-slate-600',
+    badgeClassName: 'bg-muted text-muted-foreground',
   },
 };
 
