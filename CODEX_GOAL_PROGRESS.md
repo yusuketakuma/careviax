@@ -8059,7 +8059,31 @@ Next loop:
   - Targeted `git diff --check`: passed.
 - Remaining actionable candidates before Zero Audit can count:
   - API response envelope type hardening remains open.
-  - `readApiJson` schema validation call-site migration remains open and is mostly UI/dashboard-facing.
-  - care-report print-audit DTO/client duplication remains open.
-  - Claude `.agent-loop/*` scaffold review is pending for Codex.
+  - `readApiJson` schema validation call-site migration remains partially open and is mostly UI/dashboard-facing.
   - Re-audit agents must run again after ledger sync and current generated/peer state classification.
+
+### Codex Loop 8 Addendum — API Client Contract + Agent Loop Review
+
+- Coordination:
+  - `a1c916ac` `docs: link agent loop operating guide` added the `.agent-loop/README.md` SSOT pointer to `AGENTS.md` after Claude's AGLOOP plan request. Validation: `pnpm exec prettier --check AGENTS.md` and `git diff --check -- AGENTS.md` passed.
+  - Reviewed Claude scaffold commit `2986725b`; requested PI-001 because full `pnpm test` was incorrectly listed as cheap/every-slice. Claude fixed it in `c8580b23`, then closed the review in `f7a18195`; Codex approved after `GATE_CONFIG.md` split targeted Vitest and full Vitest cadence.
+  - Claude ACKed the print-audit UI/API lock before Codex touched the print pages.
+  - `.harness-mem/state/continuity.json` remains generated local state and was intentionally not staged.
+- Implemented by Codex:
+  - `083ca83c` `refactor(reports): validate generated report client response`
+    - Migrated `generateCareReportFromVisit` from manual `res.json()` casts to `readApiJson` with a Zod success schema.
+    - Preserved the legacy `data`-omitted success fallback to `[]`, while rejecting malformed successful payloads through the fallback error.
+  - `cb71cfb5` `refactor(reports): share print audit contract`
+    - Added `src/lib/reports/care-report-print-audit-contract.ts` with shared print-audit intent schema and response types.
+    - Reused the contract from the print-audit API route, direct report print page, and print hub, removing local duplicate response types/schema.
+- Validation:
+  - Generated report client focused Vitest: `2` files / `15` tests passed.
+  - Print-audit focused Vitest: `4` files / `23` tests passed.
+  - Targeted ESLint for changed report client / print-audit files: passed.
+  - `pnpm typecheck`: passed after each slice.
+  - `pnpm typecheck:no-unused`: passed after each slice.
+  - Targeted `git diff --check`: passed.
+- Remaining actionable candidates before Zero Audit can count:
+  - API response envelope type hardening remains open.
+  - `readApiJson` schema validation call-site migration remains partially open in UI/dashboard-facing call sites.
+  - Re-audit agents must run again after this ledger sync and current generated state classification.
