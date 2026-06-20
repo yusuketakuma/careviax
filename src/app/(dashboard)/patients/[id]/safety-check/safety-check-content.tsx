@@ -365,7 +365,7 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
     <section aria-label="薬の安全チェック" data-testid="safety-check">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h2 className="text-xl font-bold text-foreground">薬の安全チェック</h2>
+          <h1 className="text-xl font-bold text-foreground">薬の安全チェック</h1>
           <p className="text-sm text-muted-foreground">
             {patientName
               ? `${patientName}さん — 気になる点を処方医への相談から報告書反映まで進めます`
@@ -395,9 +395,9 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
               className="rounded-lg border border-border/70 bg-card p-4"
               data-testid="safety-concerns"
             >
-              <h3 id="safety-concerns-heading" className="text-base font-semibold text-foreground">
+              <h2 id="safety-concerns-heading" className="text-base font-semibold text-foreground">
                 気になる点
-              </h3>
+              </h2>
               {concerns.length === 0 ? (
                 <p className="mt-4 text-sm leading-6 text-muted-foreground">
                   気になる点はありません。新しい課題は服薬管理画面から登録できます。
@@ -421,9 +421,9 @@ export function SafetyCheckContent({ patientId }: { patientId: string }) {
               className="rounded-lg border border-border/70 bg-card p-4"
               data-testid="safety-steps"
             >
-              <h3 id="safety-steps-heading" className="text-base font-semibold text-foreground">
+              <h2 id="safety-steps-heading" className="text-base font-semibold text-foreground">
                 確認の流れ
-              </h3>
+              </h2>
               <div className="mt-4">
                 <SafetyStepList issues={issues} />
               </div>
