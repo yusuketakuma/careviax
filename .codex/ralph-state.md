@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260620-1902 JST
+
+- current task: finish F-20260620-003 by projecting first-visit-document mutation responses to a safe minimal over-wire shape after the F-20260620-002 client fail-closed follow-up.
+- files inspected: `AGENTS.md` instructions from the active prompt, agmsg inbox output, `.agent-loop/FEATURE_QUEUE.md`, Next.js route-handler docs under `node_modules/next/dist/docs/`, `src/app/api/first-visit-documents/route.ts`, `src/app/api/first-visit-documents/[id]/route.ts`, `src/app/api/first-visit-documents/route.test.ts`, `src/app/api/first-visit-documents/[id]/route.test.ts`, current `git status`, and Claude plan/code review messages.
+- files changed: `src/app/api/first-visit-documents/response.ts`, `src/app/api/first-visit-documents/route.ts`, `src/app/api/first-visit-documents/[id]/route.ts`, `src/app/api/first-visit-documents/route.test.ts`, `src/app/api/first-visit-documents/[id]/route.test.ts`, and this Ralph state entry.
+- bugs found: POST `/api/first-visit-documents` and PATCH `/api/first-visit-documents/[id]` returned raw `FirstVisitDocument` rows on success, so mutation responses could unnecessarily include `emergency_contacts`, `delivered_to`, and `document_url` even though the client only needs an id.
+- security risks found: mutation response minimization now returns only `{ data: { id, updated_at } }` with `updated_at` serialized to an ISO string. Tests assert the exact response shape and the explicit absence of `emergency_contacts`, `delivered_to`, and `document_url` for create, delivered-status update, and old-client print-history update paths.
+- performance issues found: no query shape, transaction scope, cache behavior, or network call count changed. The new projection is a small route-local serialization helper applied only to mutation success responses.
+- validation commands: focused Vitest for `src/app/api/first-visit-documents/route.test.ts` and `src/app/api/first-visit-documents/[id]/route.test.ts`; targeted ESLint for touched route/test/helper files; `pnpm typecheck`; `pnpm typecheck:no-unused`; `pnpm format:check`; targeted Prettier check for touched files; `git diff --check`; full `pnpm lint`; `pnpm test -- src/app/api/first-visit-documents --reporter=dot --testTimeout=30000`.
+- validation results: focused route Vitest passed with 2 files / 31 tests. Targeted ESLint, `pnpm typecheck`, `pnpm typecheck:no-unused`, `pnpm format:check`, targeted Prettier check, `git diff --check`, and full `pnpm lint` passed. The requested `pnpm test -- src/app/api/first-visit-documents --reporter=dot --testTimeout=30000` ran the full Vitest suite through the repo's pnpm/vitest argument handling and passed with 8506 tests passed / 1 skipped, with nonfatal JSDOM navigation warnings. Claude independently re-verified the diff and focused route Vitest, then approved. Code commit landed as `ec241ffe` (`fix(api): project first-visit document mutation responses`).
+- remaining work: Claude is recording the F-20260620-003 review/status rows in claude-owned loop docs. The worktree has only machine-generated `.harness-mem/state/continuity.json` dirty. No open source-code follow-up remains for F-20260620-003.
+- next action: commit this ledger-only Ralph entry, release the `.codex/ralph-state.md` lock, and wait for the next non-overlapping intake.
+
 ### 20260620-1405 JST
 
 - current task: implement re-audit follow-ups after Zero Audit failed: preview audit report-id matching, printable report type narrowing, shared bulk task completion response schema, missing route access/content fail-closed tests, and stale patient-detail compatibility component cleanup.
