@@ -7946,3 +7946,20 @@ Blocked or deferred:
 Next loop:
 
 - Format/check this ledger update, commit ledger-only state, run full static/test/build gates as feasible, then restart Architecture/Duplication/Type/Test/Dead/Review agents. Count Zero Audit only if they return no new actionable findings.
+
+### Slice U2-U6 完了 (Claude) — UI/UX Loop1
+
+- U2 commit 7225e32d: contact-profiles/evidence-gallery false-empty→ErrorState。
+- U3 commit ab77bac8: visits-today 無効ボタン理由+aria-describedby+解消導線。
+- U4 commit d5991011: incidents/notifications 空表示→共通EmptyState。
+- U5 commit 1a416710: dvh responsive(data-explorer/capture/structured-soap-wizard/error-state)。
+- U6 commit ed594917: safety-check h1起点化(h2→h1,h3→h2), business-holidays 日セルkeyboard操作可能化(role/tabIndex/onKeyDown/aria-label/focus ring)。
+- 全スライス eslint0/typecheck0/該当テスト pass。
+- 残backlog: referral-form/prescription-intake-form field-error紐付け(P1), prescriptions-table EmptyState+DataTable(Med), state-color hardcode(prescription-history Med), handoff無効理由(High複雑), medications-content状態表示reimpl(High F3), ConfirmDialog採用(F6 Med), Loading swaps(F8/9 Low), native select 44px(P2), FormErrorSummary aria-live(P3)。
+
+### Codex Addendum — lib dependency boundary guard
+
+- `08140f1c` `test: guard lib dependency boundary`
+  - Added `src/tools/lib-dependency-boundary.test.ts`.
+  - Current `src/lib` reverse dependencies into `@/server`, `@/components`, or `@/app` are now explicit allowlist entries. New reverse dependencies fail the static test until reviewed.
+  - Validation: focused Vitest 1 file / 1 test passed; targeted ESLint and `git diff --check` passed.
