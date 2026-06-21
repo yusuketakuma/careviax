@@ -11,6 +11,9 @@ const useOrgIdMock = vi.hoisted(() => vi.fn());
 const useQueryMock = vi.hoisted(() => vi.fn());
 const routerBackMock = vi.hoisted(() => vi.fn());
 const routerPushMock = vi.hoisted(() => vi.fn());
+const allowNavigationMock = vi.hoisted(() => vi.fn());
+// 実 hook は allowNavigation 関数を直接返す。mock も同形にする(分割代入しない)。
+const unsavedGuardMock = vi.hoisted(() => vi.fn(() => allowNavigationMock));
 
 vi.mock('@/lib/hooks/use-org-id', () => ({
   useOrgId: useOrgIdMock,
@@ -32,6 +35,10 @@ vi.mock('sonner', () => ({
     success: vi.fn(),
     error: vi.fn(),
   },
+}));
+
+vi.mock('@/lib/hooks/use-unsaved-changes-guard', () => ({
+  useUnsavedChangesGuard: unsavedGuardMock,
 }));
 
 describe('PatientForm', () => {
@@ -184,6 +191,28 @@ describe('PatientForm', () => {
       name: '山田 太郎',
       duplicate_acknowledged: true,
     });
+  });
+
+  it('guards unsaved changes while dirty and bypasses navigation on cancel', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({ data: [], isLoading: false });
+    render(<PatientForm />);
+
+    const lastEnabled = () => {
+      const calls = unsavedGuardMock.mock.calls as unknown as Array<[{ enabled: boolean }]>;
+      return calls.at(-1)?.[0]?.enabled;
+    };
+    // 初期(未変更)は guard 無効。
+    expect(lastEnabled()).toBe(false);
+
+    // 入力で dirty → guard 有効(離脱防止が効く)。
+    fireEvent.change(screen.getByLabelText('氏名 *'), { target: { value: '山田 太郎' } });
+    expect(lastEnabled()).toBe(true);
+
+    // キャンセルは離脱を許可(allowNavigation で bypass)してから戻る。
+    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
+    expect(allowNavigationMock).toHaveBeenCalled();
+    expect(routerBackMock).toHaveBeenCalled();
   });
 
   it('overlays a stepper: step 1 is registerable and 次へ/戻る move steps (tabs preserved)', () => {

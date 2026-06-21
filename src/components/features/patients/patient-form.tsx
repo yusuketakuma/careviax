@@ -19,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FormErrorSummary } from '@/components/ui/form-error-summary';
 import { LoadingButton } from '@/components/ui/loading-button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useUnsavedChangesGuard } from '@/lib/hooks/use-unsaved-changes-guard';
 import { collectFormErrorSummaryItems } from '@/lib/forms/errors';
 import {
   adlLabels,
@@ -267,11 +268,15 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
     handleSubmit,
     control,
     setValue,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, isDirty },
   } = useForm<CreatePatientInput>({
     resolver: zodResolver(createPatientSchema),
     defaultValues: defaultValues ?? {},
   });
+
+  // 入力中の離脱防止(CLAUDE.md エラー防止)。未保存かつ送信中でないときのみ guard。
+  // submit 成功 / キャンセル / 既存患者を開く は allowNavigation() で bypass する。
+  const allowNavigation = useUnsavedChangesGuard({ enabled: isDirty && !isSubmitting });
 
   const [watchedName, watchedBirthDate, watchedGender] = useWatch({
     control,
@@ -550,6 +555,7 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
 
     const patient = await res.json();
     toast.success(patientId ? '患者情報を更新しました' : '患者を登録しました');
+    allowNavigation(); // 正常保存後の遷移は離脱防止プロンプトを出さない。
     onSuccess?.(patient.id ?? patientId);
     if (redirectTo) {
       router.push(redirectTo);
@@ -2283,7 +2289,10 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
                       variant="link"
                       size="sm"
                       className="h-auto p-0 text-state-confirm underline-offset-2"
-                      onClick={() => router.push(`/patients/${encodeURIComponent(d.id)}`)}
+                      onClick={() => {
+                        allowNavigation();
+                        router.push(`/patients/${encodeURIComponent(d.id)}`);
+                      }}
                     >
                       既存患者を開く
                     </Button>
@@ -2328,7 +2337,10 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
         <Button
           type="button"
           variant="outline"
-          onClick={() => router.back()}
+          onClick={() => {
+            allowNavigation();
+            router.back();
+          }}
           disabled={isSubmitting}
         >
           キャンセル
