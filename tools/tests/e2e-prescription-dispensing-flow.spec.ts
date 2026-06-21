@@ -363,7 +363,7 @@ async function waitForSetAuditApprovalReady(main: Locator) {
 }
 
 async function waitForVisibleSetAuditCell(main: Locator) {
-  const cell = main.locator('[role="button"]').filter({ hasText: /包/ }).first();
+  const cell = main.getByRole('button', { name: /服薬カレンダーセル.*包/ }).first();
   await expect(cell).toBeVisible({ timeout: 15_000 });
   return cell;
 }
@@ -979,7 +979,7 @@ test.describe('set → set-audit real-data direct entry', () => {
     await expect(ngClassification).toBeDisabled();
     await expect(rejectButton).toBeDisabled();
 
-    await main.locator('[role="button"]').filter({ hasText: /包/ }).first().click();
+    await (await waitForVisibleSetAuditCell(main)).click();
     await expect(ngClassification).toBeEnabled();
     await ngClassification.selectOption({ label: '数量不足' });
     await expect(rejectButton).toBeEnabled();

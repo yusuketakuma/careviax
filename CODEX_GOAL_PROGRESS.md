@@ -8939,3 +8939,25 @@ Next loop:
   - `git diff --check -- tools/tests/e2e-billing-flow.spec.ts`: passed.
 - Remaining:
   - Drain agmsg, stage only the billing E2E spec plus ledgers, commit, notify Claude, then continue the non-overlapping UX/E2E sweep.
+
+### Prescription/Dispensing E2E Drift — Set-Audit Calendar Cell Locator
+
+- Coordination:
+  - Ran under ACKed `F-UX-PRESCRIPTION-DISPENSING-E2E-BASELINE` lock for `tools/tests/e2e-prescription-dispensing-flow.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and `.codex/ralph-state.md`.
+  - Kept the slice test-only. Product medical/prescription/dispensing code was not changed.
+- Bugs found:
+  - The set-audit E2E helper still used CSS `[role="button"]` to locate calendar cells. The current calendar renders native `<button>` elements with accessible names such as `服薬カレンダーセル / 1日目 / 朝 / 1包 / 監査OK`, so the CSS role selector found nothing and three set-audit tests timed out.
+- Implemented by Codex:
+  - Switched the set-audit cell helper to Playwright `getByRole('button', { name: /服薬カレンダーセル.*包/ })`.
+  - Reused the helper in the NG-classification test instead of duplicating the stale selector.
+- Validation:
+  - Baseline `tools/tests/e2e-prescription-dispensing-flow.spec.ts --project=chromium`: failed `3/17`; `14/17` passed. Failures were all stale set-audit calendar-cell locators.
+  - Focused rerun for the three fixed set-audit tests: passed `3/3`.
+  - Full rerun `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/e2e-prescription-dispensing-flow.spec.ts --project=chromium`: passed, `17/17` in `2.8m`.
+  - `pnpm exec eslint tools/tests/e2e-prescription-dispensing-flow.spec.ts`: passed.
+  - `pnpm exec prettier --check tools/tests/e2e-prescription-dispensing-flow.spec.ts`: clean after targeted Prettier write.
+  - `pnpm format:check`: clean for changed files.
+  - `pnpm typecheck`: passed, including Next route type generation.
+  - `git diff --check`: passed.
+- Remaining:
+  - Drain agmsg, stage only the prescription/dispensing E2E spec plus ledgers, commit, notify Claude, then continue the next non-overlapping UX/E2E candidate.

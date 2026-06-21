@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260621-1907 JST
+
+- current task: validate and stabilize the prescription/dispensing high-frequency E2E baseline after the billing E2E slice, keeping the work test-only.
+- files inspected: agmsg inbox/ACK messages, current `git status`, `tools/tests/e2e-prescription-dispensing-flow.spec.ts`, Playwright failure contexts/screenshots for set-audit calendar-cell selection, `src/components/features/dispense-workbench/medication-calendar-grid.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `tools/tests/e2e-prescription-dispensing-flow.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the set-audit E2E helper used CSS `[role="button"]` even though the current calendar cells are native buttons with accessible names like `服薬カレンダーセル / 1日目 / 朝 / 1包 / 監査OK`, so three set-audit tests could not find the visible cells.
+- security risks found: no product medical code, prescription intake, dispensing logic, set-audit mutation, DB schema, audit logging, patient projection, PHI handling, authorization, RLS, export, or print behavior changed. The slice is Playwright test-only plus ledgers.
+- performance issues found: no runtime path changed. The stale selector previously caused one 240s timeout; the stabilized full suite completed in 2.8m.
+- validation commands: baseline Chromium Playwright for `tools/tests/e2e-prescription-dispensing-flow.spec.ts`; focused Chromium Playwright for the three fixed set-audit tests; full Chromium Playwright for `tools/tests/e2e-prescription-dispensing-flow.spec.ts`; scoped ESLint; targeted Prettier write/check; `pnpm format:check`; `pnpm typecheck`; `git diff --check`.
+- validation results: baseline prescription/dispensing E2E failed `3/17` and passed `14/17`; focused rerun passed `3/3`; full rerun passed `17/17`. Scoped ESLint, scoped Prettier, changed-file format check, full typecheck, and diff-check passed.
+- remaining work: drain agmsg, stage only the prescription/dispensing E2E spec plus ledgers, commit, notify Claude, then continue with the next non-overlapping UX/display/navigation baseline.
+- next action: commit the prescription/dispensing E2E drift slice and release the lock.
+
 ### 20260621-1853 JST
 
 - current task: validate and stabilize the billing flow E2E baseline after the visual-regression follow-up commit, while keeping billing product code untouched because billing is a hard-stop area.
