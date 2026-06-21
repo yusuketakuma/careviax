@@ -246,6 +246,18 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
   const [duplicates, setDuplicates] = useState<DuplicatePatient[]>([]);
   const [duplicateConfirmedKey, setDuplicateConfirmedKey] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<PatientFormTab>('basic');
+  // 段階表示: Tabs を内部維持したまま、現在ステップ index と前後ナビを被せる。
+  // deep-link(?section=/#patient-form-*) と findFirstErrorTab は従来どおり activeTab を駆動する。
+  const currentStepIndex = Math.max(
+    0,
+    PATIENT_FORM_TABS.findIndex((t) => t.value === activeTab),
+  );
+  const goStep = (delta: number) =>
+    setActiveTab(
+      PATIENT_FORM_TABS[
+        Math.min(PATIENT_FORM_TABS.length - 1, Math.max(0, currentStepIndex + delta))
+      ].value,
+    );
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastAutofilledAddressRef = useRef<string | null>(null);
   const errorSummaryId = 'patient-form-error-summary';
@@ -556,9 +568,27 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
 
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as PatientFormTab)}>
         <div className="rounded-lg border border-border/70 bg-card p-2">
+          <div
+            className="mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-1"
+            role="status"
+            aria-label={`入力ステップ ${currentStepIndex + 1} / ${PATIENT_FORM_TABS.length}`}
+          >
+            <p className="text-xs font-medium text-muted-foreground">
+              ステップ <span className="tabular-nums text-foreground">{currentStepIndex + 1}</span>{' '}
+              / {PATIENT_FORM_TABS.length} — {PATIENT_FORM_TABS[currentStepIndex]?.label}
+            </p>
+            {!patientId && currentStepIndex === 0 ? (
+              <span className="text-[11px] font-medium text-state-done">
+                基本情報だけで登録できます（残りは後からでも追記できます）
+              </span>
+            ) : null}
+          </div>
           <TabsList variant="line" className="flex w-full flex-wrap justify-start gap-1">
-            {PATIENT_FORM_TABS.map((tab) => (
+            {PATIENT_FORM_TABS.map((tab, index) => (
               <TabsTrigger key={tab.value} value={tab.value} className="flex-none px-3">
+                <span className="mr-1 tabular-nums text-muted-foreground" aria-hidden="true">
+                  {index + 1}.
+                </span>
                 {tab.label}
               </TabsTrigger>
             ))}
@@ -2244,8 +2274,19 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
                 const genderLabel =
                   d.gender === 'male' ? '男性' : d.gender === 'female' ? '女性' : 'その他';
                 return (
-                  <li key={d.id}>
-                    {d.name}（{birthStr}・{genderLabel}）
+                  <li key={d.id} className="flex flex-wrap items-center gap-2">
+                    <span>
+                      {d.name}（{birthStr}・{genderLabel}）
+                    </span>
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-state-confirm underline-offset-2"
+                      onClick={() => router.push(`/patients/${encodeURIComponent(d.id)}`)}
+                    >
+                      既存患者を開く
+                    </Button>
                   </li>
                 );
               })}
@@ -2262,6 +2303,26 @@ export function PatientForm({ patientId, redirectTo, onSuccess, defaultValues }:
           </AlertDescription>
         </Alert>
       )}
+
+      {/* 段階ナビ: 任意ステップを順に進む。登録ボタンは常時表示(Step1 のみで登録可)。 */}
+      <div className="flex items-center justify-between gap-3">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => goStep(-1)}
+          disabled={currentStepIndex === 0 || isSubmitting}
+        >
+          ← 戻る
+        </Button>
+        {currentStepIndex < PATIENT_FORM_TABS.length - 1 ? (
+          <Button type="button" variant="outline" size="sm" onClick={() => goStep(1)}>
+            次へ: {PATIENT_FORM_TABS[currentStepIndex + 1].label} →
+          </Button>
+        ) : (
+          <span />
+        )}
+      </div>
 
       <div className="flex justify-end gap-3">
         <Button

@@ -186,6 +186,63 @@ describe('PatientForm', () => {
     });
   });
 
+  it('overlays a stepper: step 1 is registerable and 次へ/戻る move steps (tabs preserved)', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({ data: [], isLoading: false });
+    render(<PatientForm />);
+
+    // Step1 は基本のみで登録可能の明示 + 基本タブが現在ステップ(選択中)。
+    expect(screen.getByText(/基本情報だけで登録できます/)).toBeTruthy();
+    expect(screen.getByRole('tab', { name: '基本', selected: true })).toBeTruthy();
+
+    // 次へ: 住所・保険 で step2 を activate(Tabs を内部維持)。
+    fireEvent.click(screen.getByRole('button', { name: /次へ: 住所・保険/ }));
+    expect(screen.getByRole('tab', { name: '住所・保険', selected: true })).toBeTruthy();
+
+    // 戻る で step1 に戻る。
+    fireEvent.click(screen.getByRole('button', { name: '← 戻る' }));
+    expect(screen.getByRole('tab', { name: '基本', selected: true })).toBeTruthy();
+  });
+
+  it('offers an open-existing-patient link in the duplicate alert (keeping それでも登録する)', async () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useQueryMock.mockReturnValue({ data: [], isLoading: false });
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 409,
+      json: async () => ({
+        message: '重複',
+        details: {
+          duplicate_type: 'patient_identity',
+          duplicates: [
+            {
+              id: 'patient_existing',
+              name: '山田 太郎',
+              name_kana: 'ヤマダ タロウ',
+              birth_date: '1950-01-01T00:00:00.000Z',
+              gender: 'male',
+            },
+          ],
+        },
+      }),
+    } as Response);
+
+    render(<PatientForm />);
+    fillRequiredPatientFields();
+    fireEvent.click(screen.getByRole('button', { name: '登録する' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('同名の患者が存在します:')).toBeTruthy();
+    });
+
+    // 「それでも登録する」は維持。
+    expect(screen.getByRole('button', { name: 'それでも登録する' })).toBeTruthy();
+    // 「既存患者を開く」で患者詳細へ遷移。
+    fireEvent.click(screen.getByRole('button', { name: '既存患者を開く' }));
+    expect(routerPushMock).toHaveBeenCalledWith('/patients/patient_existing');
+  });
+
   it('ignores a superseded duplicate-check response after the inputs change (stale race)', async () => {
     vi.useFakeTimers();
     try {
