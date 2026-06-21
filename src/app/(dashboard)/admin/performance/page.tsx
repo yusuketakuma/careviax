@@ -20,6 +20,7 @@ import { getAdminPerformanceShortcutLinks } from '@/components/features/admin/ad
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ErrorState } from '@/components/ui/error-state';
 import { HelpPopover } from '@/components/ui/help-popover';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { useRealtimeQuery } from '@/lib/hooks/use-realtime-query';
@@ -249,6 +250,14 @@ export default function PerformancePage() {
   const proposals = useMemo(() => proposalsQuery.data?.data ?? [], [proposalsQuery.data]);
   const runtime = runtimeQuery.data?.data;
 
+  // 業務 KPI は workflow/schedules/proposals の集計。いずれか失敗時は 0 (false-zero) 表示せず ErrorState を出す。
+  const metricsError = workflowQuery.isError || schedulesQuery.isError || proposalsQuery.isError;
+  const refetchMetrics = () => {
+    void workflowQuery.refetch();
+    void schedulesQuery.refetch();
+    void proposalsQuery.refetch();
+  };
+
   const performance = useMemo(() => {
     const lockedSchedules = schedules.filter((schedule) => Boolean(schedule.confirmed_at)).length;
     const pendingOverrides = schedules.filter(
@@ -338,98 +347,120 @@ export default function PerformancePage() {
         </CardContent>
       </Card>
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <KpiCard
-          title="確定ロック件数"
-          value={performance.lockedSchedules}
-          description="電話確定済みの予定"
-          icon={CheckCircle2}
-          tone={kpiToneClass(performance.routeLockRate, 80)}
+      {metricsError ? (
+        // 業務 KPI の元クエリ(workflow/schedules/proposals)失敗時は 0 (false-zero) を出さず ErrorState + 再読み込み。
+        <ErrorState
+          variant="server"
+          size="inline"
+          action={{ label: '再読み込み', onClick: refetchMetrics }}
         />
-        <KpiCard
-          title="変更承認待ち"
-          value={performance.pendingOverrides}
-          description="専用リスケが必要な件数"
-          icon={RefreshCw}
-          tone={kpiToneClass(performance.pendingOverrides, 0, true)}
-        />
-        <KpiCard
-          title="緊急影響"
-          value={performance.emergencyItems}
-          description="緊急訪問・割込影響の合算"
-          icon={AlertTriangle}
-          tone={kpiToneClass(performance.emergencyItems, 0, true)}
-        />
-        <KpiCard
-          title="電話確認率"
-          value={performance.phoneConfirmationRate}
-          description="候補の電話確認済み比率"
-          unit="%"
-          icon={Route}
-          tone={kpiToneClass(performance.phoneConfirmationRate, 80)}
-        />
-        <KpiCard
-          title="平均ルート負荷"
-          value={performance.avgRouteScore.toFixed(1)}
-          description="候補の移動スコア平均"
-          icon={TrendingUp}
-        />
-        <KpiCard
-          title="代替割当"
-          value={performance.fallbackAssignments}
-          description="主担当以外の割当総数"
-          icon={Users}
-          tone={kpiToneClass(performance.fallbackAssignments, 0, true)}
-        />
-        <KpiCard
-          title="確定率"
-          value={performance.routeLockRate}
-          description="対象期間の確定率"
-          unit="%"
-          icon={ShieldAlert}
-          tone={kpiToneClass(performance.routeLockRate, 80)}
-        />
-        <KpiCard
-          title="報告待ち"
-          value={workflow?.outcome_metrics.awaiting_reports ?? 0}
-          description="訪問後の後続作業"
-          icon={AlertTriangle}
-          tone={kpiToneClass(workflow?.outcome_metrics.awaiting_reports ?? 0, 0, true)}
-        />
-      </section>
+      ) : (
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <KpiCard
+            title="確定ロック件数"
+            value={performance.lockedSchedules}
+            description="電話確定済みの予定"
+            icon={CheckCircle2}
+            tone={kpiToneClass(performance.routeLockRate, 80)}
+          />
+          <KpiCard
+            title="変更承認待ち"
+            value={performance.pendingOverrides}
+            description="専用リスケが必要な件数"
+            icon={RefreshCw}
+            tone={kpiToneClass(performance.pendingOverrides, 0, true)}
+          />
+          <KpiCard
+            title="緊急影響"
+            value={performance.emergencyItems}
+            description="緊急訪問・割込影響の合算"
+            icon={AlertTriangle}
+            tone={kpiToneClass(performance.emergencyItems, 0, true)}
+          />
+          <KpiCard
+            title="電話確認率"
+            value={performance.phoneConfirmationRate}
+            description="候補の電話確認済み比率"
+            unit="%"
+            icon={Route}
+            tone={kpiToneClass(performance.phoneConfirmationRate, 80)}
+          />
+          <KpiCard
+            title="平均ルート負荷"
+            value={performance.avgRouteScore.toFixed(1)}
+            description="候補の移動スコア平均"
+            icon={TrendingUp}
+          />
+          <KpiCard
+            title="代替割当"
+            value={performance.fallbackAssignments}
+            description="主担当以外の割当総数"
+            icon={Users}
+            tone={kpiToneClass(performance.fallbackAssignments, 0, true)}
+          />
+          <KpiCard
+            title="確定率"
+            value={performance.routeLockRate}
+            description="対象期間の確定率"
+            unit="%"
+            icon={ShieldAlert}
+            tone={kpiToneClass(performance.routeLockRate, 80)}
+          />
+          <KpiCard
+            title="報告待ち"
+            value={workflow?.outcome_metrics.awaiting_reports ?? 0}
+            description="訪問後の後続作業"
+            icon={AlertTriangle}
+            tone={kpiToneClass(workflow?.outcome_metrics.awaiting_reports ?? 0, 0, true)}
+          />
+        </section>
+      )}
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <KpiCard
-          title="API P95"
-          value={runtime?.summary.overall_p95_ms ?? 0}
-          description="current-process の横断 P95"
-          unit="ms"
-          icon={Timer}
-          tone={kpiToneClass(runtime?.summary.overall_p95_ms ?? 0, runtime?.target_ms ?? 500, true)}
+      {runtimeQuery.isError ? (
+        // ランタイム指標(runtime)失敗時は 0 (false-zero) を出さず ErrorState + 再読み込み。
+        <ErrorState
+          variant="server"
+          size="inline"
+          action={{ label: '再読み込み', onClick: () => void runtimeQuery.refetch() }}
         />
-        <KpiCard
-          title="API P50"
-          value={runtime?.summary.overall_p50_ms ?? 0}
-          description="current-process の横断 P50"
-          unit="ms"
-          icon={TrendingUp}
-        />
-        <KpiCard
-          title="閾値超過率"
-          value={runtime?.summary.slow_request_rate ?? 0}
-          description={`>${runtime?.target_ms ?? 500}ms の割合`}
-          unit="%"
-          icon={AlertTriangle}
-          tone={kpiToneClass(runtime?.summary.slow_request_rate ?? 0, 5, true)}
-        />
-        <KpiCard
-          title="閾値超過 route"
-          value={runtime?.summary.routes_over_target ?? 0}
-          description="P95 が目標を超える endpoint"
-          icon={ShieldAlert}
-          tone={kpiToneClass(runtime?.summary.routes_over_target ?? 0, 0, true)}
-        />
-      </section>
+      ) : (
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <KpiCard
+            title="API P95"
+            value={runtime?.summary.overall_p95_ms ?? 0}
+            description="current-process の横断 P95"
+            unit="ms"
+            icon={Timer}
+            tone={kpiToneClass(
+              runtime?.summary.overall_p95_ms ?? 0,
+              runtime?.target_ms ?? 500,
+              true,
+            )}
+          />
+          <KpiCard
+            title="API P50"
+            value={runtime?.summary.overall_p50_ms ?? 0}
+            description="current-process の横断 P50"
+            unit="ms"
+            icon={TrendingUp}
+          />
+          <KpiCard
+            title="閾値超過率"
+            value={runtime?.summary.slow_request_rate ?? 0}
+            description={`>${runtime?.target_ms ?? 500}ms の割合`}
+            unit="%"
+            icon={AlertTriangle}
+            tone={kpiToneClass(runtime?.summary.slow_request_rate ?? 0, 5, true)}
+          />
+          <KpiCard
+            title="閾値超過 route"
+            value={runtime?.summary.routes_over_target ?? 0}
+            description="P95 が目標を超える endpoint"
+            icon={ShieldAlert}
+            tone={kpiToneClass(runtime?.summary.routes_over_target ?? 0, 0, true)}
+          />
+        </section>
+      )}
 
       <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
         <Card>
@@ -486,7 +517,14 @@ export default function PerformancePage() {
             <CardDescription>移動負荷の高い候補とロック状況を確認します</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {topProposals.length === 0 ? (
+            {proposalsQuery.isError ? (
+              // 取得失敗時は空状態（false-empty）にせず、再読み込み導線つきの ErrorState を出す。
+              <ErrorState
+                variant="server"
+                size="inline"
+                action={{ label: '再読み込み', onClick: () => void proposalsQuery.refetch() }}
+              />
+            ) : topProposals.length === 0 ? (
               <p className="text-sm text-muted-foreground">対象期間の訪問候補はありません</p>
             ) : (
               topProposals.map((proposal) => (
@@ -591,40 +629,51 @@ export default function PerformancePage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">収集開始</span>
-                <span className="font-medium text-foreground">
-                  {runtime?.collected_since
-                    ? format(new Date(runtime.collected_since), 'M/d HH:mm', { locale: ja })
-                    : '未計測'}
-                </span>
-              </div>
-              <div className="mt-2 flex items-center justify-between">
-                <span className="text-muted-foreground">サンプル総数</span>
-                <span className="font-medium text-foreground">
-                  {runtime?.summary.total_requests ?? 0}
-                </span>
-              </div>
-              <div className="mt-2 flex items-center justify-between">
-                <span className="text-muted-foreground">記録 route 数</span>
-                <span className="font-medium text-foreground">
-                  {runtime?.summary.route_count ?? 0}
-                </span>
-              </div>
-              <div className="mt-2 flex items-center justify-between">
-                <span className="text-muted-foreground">5xx 件数</span>
-                <span className="font-medium text-foreground">
-                  {runtime?.summary.error_requests ?? 0}
-                </span>
-              </div>
-            </div>
-            {(runtime?.summary.total_requests ?? 0) === 0 ? (
-              <p className="rounded-xl border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-state-confirm">
-                まだ API サンプルがありません。通常画面を操作すると current-process
-                の計測が蓄積されます。
-              </p>
-            ) : null}
+            {runtimeQuery.isError ? (
+              // 取得失敗時はサマリ数値(未計測/0 = false-zero)を一切出さず、ErrorState のみを出す。
+              <ErrorState
+                variant="server"
+                size="inline"
+                action={{ label: '再読み込み', onClick: () => void runtimeQuery.refetch() }}
+              />
+            ) : (
+              <>
+                <div className="rounded-2xl border border-border/70 bg-muted/20 px-4 py-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">収集開始</span>
+                    <span className="font-medium text-foreground">
+                      {runtime?.collected_since
+                        ? format(new Date(runtime.collected_since), 'M/d HH:mm', { locale: ja })
+                        : '未計測'}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between">
+                    <span className="text-muted-foreground">サンプル総数</span>
+                    <span className="font-medium text-foreground">
+                      {runtime?.summary.total_requests ?? 0}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between">
+                    <span className="text-muted-foreground">記録 route 数</span>
+                    <span className="font-medium text-foreground">
+                      {runtime?.summary.route_count ?? 0}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between">
+                    <span className="text-muted-foreground">5xx 件数</span>
+                    <span className="font-medium text-foreground">
+                      {runtime?.summary.error_requests ?? 0}
+                    </span>
+                  </div>
+                </div>
+                {(runtime?.summary.total_requests ?? 0) === 0 ? (
+                  <p className="rounded-xl border border-state-confirm/30 bg-state-confirm/10 px-3 py-2 text-state-confirm">
+                    まだ API サンプルがありません。通常画面を操作すると current-process
+                    の計測が蓄積されます。
+                  </p>
+                ) : null}
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -634,7 +683,14 @@ export default function PerformancePage() {
             <CardDescription>現時点で P95 が高い route を上から確認します</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {(runtime?.routes.length ?? 0) === 0 ? (
+            {runtimeQuery.isError ? (
+              // 取得失敗時は空状態（false-empty）にせず、再読み込み導線つきの ErrorState を出す。
+              <ErrorState
+                variant="server"
+                size="inline"
+                action={{ label: '再読み込み', onClick: () => void runtimeQuery.refetch() }}
+              />
+            ) : (runtime?.routes.length ?? 0) === 0 ? (
               <p className="text-sm text-muted-foreground">
                 表示できる API latency sample はまだありません
               </p>

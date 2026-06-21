@@ -10,6 +10,7 @@ import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminRealtimeShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { ErrorState } from '@/components/ui/error-state';
 import { StateBadge } from '@/components/ui/state-badge';
 import type { StatusRole } from '@/lib/constants/status-tokens';
 import { PRIORITY_ROLE } from '@/lib/constants/status-labels';
@@ -187,36 +188,47 @@ export default function RealtimePage() {
         </CardContent>
       </Card>
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {routeHealth.map((item) => (
-          <Card key={item.title}>
+      {workflowQuery.isError ? (
+        // ワークフロー取得失敗時は KPI を 0 (false-zero) 表示せず、再読み込み導線つきの ErrorState を出す。
+        <ErrorState
+          variant="server"
+          size="inline"
+          action={{ label: '再読み込み', onClick: () => void workflowQuery.refetch() }}
+        />
+      ) : (
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {routeHealth.map((item) => (
+            <Card key={item.title}>
+              <CardContent className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">{item.title}</p>
+                  <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
+                    {item.value}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">{item.description}</p>
+                </div>
+                <div className="rounded-full border border-border bg-background p-2">
+                  <item.icon className="size-4 text-muted-foreground" aria-hidden="true" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+          <Card>
             <CardContent className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-sm font-medium text-muted-foreground">{item.title}</p>
-                <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">{item.value}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{item.description}</p>
+                <p className="text-sm font-medium text-muted-foreground">未処理例外</p>
+                <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
+                  {workflow?.workflow_exceptions.open ?? 0}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">ワークフロー例外</p>
               </div>
               <div className="rounded-full border border-border bg-background p-2">
-                <item.icon className="size-4 text-muted-foreground" aria-hidden="true" />
+                <AlertTriangle className="size-4 text-muted-foreground" aria-hidden="true" />
               </div>
             </CardContent>
           </Card>
-        ))}
-        <Card>
-          <CardContent className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">未処理例外</p>
-              <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
-                {workflow?.workflow_exceptions.open ?? 0}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">ワークフロー例外</p>
-            </div>
-            <div className="rounded-full border border-border bg-background p-2">
-              <AlertTriangle className="size-4 text-muted-foreground" aria-hidden="true" />
-            </div>
-          </CardContent>
-        </Card>
-      </section>
+        </section>
+      )}
 
       <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
         <Card>
@@ -227,6 +239,13 @@ export default function RealtimePage() {
           <CardContent className="space-y-3">
             {notificationsQuery.isLoading ? (
               <p className="text-sm text-muted-foreground">通知を読み込んでいます...</p>
+            ) : notificationsQuery.isError ? (
+              // 取得失敗時は空状態（false-empty）にせず、再読み込み導線つきの ErrorState を出す。
+              <ErrorState
+                variant="server"
+                size="inline"
+                action={{ label: '再読み込み', onClick: () => void notificationsQuery.refetch() }}
+              />
             ) : liveNotifications.length === 0 ? (
               <p className="text-sm text-muted-foreground">未読通知はありません</p>
             ) : (
@@ -282,6 +301,13 @@ export default function RealtimePage() {
           <CardContent className="space-y-3">
             {workflowQuery.isLoading ? (
               <p className="text-sm text-muted-foreground">ワークベンチを読み込んでいます...</p>
+            ) : workflowQuery.isError ? (
+              // 取得失敗時は空状態（false-empty）にせず、再読み込み導線つきの ErrorState を出す。
+              <ErrorState
+                variant="server"
+                size="inline"
+                action={{ label: '再読み込み', onClick: () => void workflowQuery.refetch() }}
+              />
             ) : workbenchItems.length === 0 ? (
               <p className="text-sm text-muted-foreground">未処理項目はありません</p>
             ) : (
