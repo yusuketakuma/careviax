@@ -8602,3 +8602,26 @@ Next loop:
   - Send Claude an agmsg update for Loop 13 validation and current audit status.
   - If the fresh re-audit returns new actionable findings, implement them and reset the zero-audit count.
   - If the fresh re-audit returns zero actionable, record Zero Audit 1 and run the second independent zero-actionable audit required by the stop gate.
+
+### UX Runtime Pass — Dashboard Then Patients
+
+- Coordination:
+  - Continued the active dashboard-first UX goal after committing the dashboard nav-drawer E2E slice.
+  - Kept Claude-owned `src/app/(dashboard)/admin/alert-rules/*` changes out of Codex-owned validation/commit scope.
+  - Sent locks for the patient E2E and patient edit-save slice; no conflicting agmsg messages were received during repeated drains.
+- Implemented by Codex:
+  - Updated patient E2E selectors to the current patient board contract: searchbox `氏名・状態で検索`, current empty text, role-based edit form fields, and the `住所・保険` tab where phone is actually edited.
+  - Fixed a real patient edit save blocker: legacy persisted `allergy_info` that does not satisfy current `AllergyEntry` schema no longer becomes hidden form default data, so unrelated edits such as phone changes can submit.
+  - Preserved patient data safety by omitting malformed/legacy allergy JSON from the edit payload instead of converting or deleting it. The existing stored JSON remains untouched by unrelated edits.
+  - Added focused unit coverage for schema-valid vs legacy allergy defaults.
+- Validation:
+  - `pnpm exec vitest run 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.test.ts'`: passed, `1` file / `2` tests.
+  - `pnpm exec eslint 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.tsx' 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.test.ts' tools/tests/ui-patient-flow.spec.ts`: passed.
+  - `pnpm exec prettier --check 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.tsx' 'src/app/(dashboard)/patients/[id]/edit/patient-edit-content.test.ts' tools/tests/ui-patient-flow.spec.ts`: passed.
+  - Patient desktop Playwright flow: `tools/tests/ui-patient-flow.spec.ts --project=chromium`: passed, `15/15`.
+  - Patient mobile Playwright subset: `tools/tests/ui-mobile-layout.spec.ts --project=mobile-chromium -g patients`: passed, `4/4`.
+  - `pnpm typecheck`: passed.
+- Remaining:
+  - Claude approved the patient edit behavior slice on 2026-06-21.
+  - Commit only Codex-owned patient files and ledgers; do not include Claude-owned alert-rules files or generated `.harness-mem/state/continuity.json`.
+  - Continue next to the next high-frequency UX route after this slice lands.
