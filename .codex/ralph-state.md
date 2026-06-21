@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260621-1944 JST
+
+- current task: stabilize the route-mocked UI smoke baseline after the comment-thread stream smoke baseline, keeping the work test/mock-only.
+- files inspected: agmsg inbox/ACK messages, current `git status`, `tools/tests/ui-route-mocked-smoke.spec.ts`, route-mock helper contracts, schedule day-board types and current schedule board rendering, pharmacy cooperation workflow/billing schema contracts, Playwright failure contexts, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `tools/tests/ui-route-mocked-smoke.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: route-mocked Gantt smoke waited for the stale `/api/visit-schedules` list and old `タブレット日次ガント` table while the current page uses `/api/visit-schedules/day-board` and renders `今日のスケジュール — 全員`; the day-board mock missed required current fields and triggered the schedule error boundary; pharmacy cooperation cursor mocks lacked `hasMore` and used a partial active-contract/invoice shape; billing candidates used a non-exact `患者で絞り込み中` text locator.
+- security risks found: no product code, auth, authorization, RLS, DB schema, patient/PHI projection, billing/PCA behavior, audit logging, external sharing, export, or mutation contract changed. The update is limited to local route mocks, E2E selectors, and ledgers.
+- performance issues found: no runtime path changed. The stale route/list/table expectations and schema-invalid mocks caused avoidable false waits; the stabilized full route-mocked smoke completed in 56.0s.
+- validation commands: baseline and post-fix Chromium Playwright for `tools/tests/ui-route-mocked-smoke.spec.ts`; focused reruns for Gantt/billing/pharmacy cooperation failures; scoped ESLint; scoped Prettier check; full `pnpm typecheck`; `git diff --check`.
+- validation results: baseline route-mocked smoke failed `4/10`, passed `5/10`, and skipped the mobile-only formulary test. After mock/selector updates, focused pharmacy cooperation passed `1/1`, and full route-mocked smoke passed `9/9` with `1` skipped. Scoped ESLint passed, scoped Prettier check was clean, full typecheck passed with Next route type generation, and diff-check passed.
+- remaining work: run final ledger formatting/diff checks after this entry, drain agmsg, stage only the route-mocked spec and ledgers, commit the slice, notify Claude, then continue the next non-overlapping UX/E2E candidate. Do not push unless the user explicitly asks.
+- next action: run final scoped checks, commit the route-mocked smoke drift slice, and release the lock.
+
 ### 20260621-1930 JST
 
 - current task: validate the comment-thread shared notification stream smoke baseline under a stream-enabled local server.

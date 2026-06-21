@@ -9018,3 +9018,29 @@ Next loop:
   - `pnpm exec prettier --check tools/tests/ui-comment-thread-network-smoke.spec.ts`: clean.
 - Remaining:
   - Commit this validation-only ledger update, notify Claude, then continue the next non-overlapping UX/E2E sweep. Do not push without explicit user instruction.
+
+### Route-Mocked UI Smoke Drift — Current Schedule Board and Cooperation Contracts
+
+- Coordination:
+  - Ran under ACKed `F-UX-ROUTE-MOCKED-SMOKE-E2E-BASELINE` lock for `tools/tests/ui-route-mocked-smoke.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and `.codex/ralph-state.md`.
+  - Kept the slice test/mock-only. Product UI/API code remained untouched; Claude's FE lane boundary was respected.
+- Bugs found:
+  - The schedule day smoke still waited for legacy `/api/visit-schedules` and asserted the removed `タブレット日次ガント` table, while the current page reads `/api/visit-schedules/day-board` and renders the accessible `今日のスケジュール — 全員` board plus vehicle/route panels.
+  - The day-board route mock omitted current required fields such as `site_id`, `route_order`, `vehicle_resources`, and `preparation_summary`, causing the schedule page error boundary to render.
+  - Pharmacy cooperation route mocks returned cursor-paginated GET payloads without `hasMore` and used a partial active-contract shape, so the workflow/billing smoke could not surface the created visit request or selected contract reliably.
+  - The billing candidates smoke used a non-exact `患者で絞り込み中` text locator and collided with the longer disabled-reason text.
+- Implemented by Codex:
+  - Updated the Gantt/day-board mock to capture day-board requests and return the current schedule-board contract, including preparation summaries and vehicle resources.
+  - Retargeted tablet assertions to the current schedule board lists, vehicle resources, route panel, no-horizontal-overflow, and work-request link touch target.
+  - Aligned pharmacy cooperation cursor mocks with `hasMore: false` and completed the active contract/invoice mock shape used by the schema-validated billing dashboard.
+  - Tightened the billing candidates patient-filter assertion to an exact text match.
+- Validation:
+  - Baseline `tools/tests/ui-route-mocked-smoke.spec.ts --project=chromium`: failed `4/10`; `5/10` passed and `1` mobile-only test skipped.
+  - Focused post-fix reruns: Gantt/billing passed `3/4` then pharmacy cooperation passed `1/1` after completing the contract mock.
+  - Full rerun `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-route-mocked-smoke.spec.ts --project=chromium`: passed, `9/9` with `1` skipped in `56.0s`.
+  - `pnpm exec eslint tools/tests/ui-route-mocked-smoke.spec.ts`: passed.
+  - `pnpm exec prettier --check tools/tests/ui-route-mocked-smoke.spec.ts CODEX_GOAL_PROGRESS.md .codex/ralph-state.md`: clean before this ledger update.
+  - `pnpm typecheck`: passed, including Next route type generation.
+  - `git diff --check`: passed.
+- Remaining:
+  - Format/check ledgers after this entry, drain agmsg, stage only the route-mocked spec plus ledgers, commit, notify Claude, and continue the next non-overlapping UX/E2E sweep. Do not push without explicit user instruction.

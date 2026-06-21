@@ -363,18 +363,34 @@ const GANTT_ROUTE_MOCK_SCHEDULES = [
 ];
 
 function buildGanttDayBoardResponse() {
-  const toBoardVisit = (schedule: (typeof GANTT_ROUTE_MOCK_SCHEDULES)[number]) => ({
-    id: schedule.id,
-    patient_name: schedule.case_.patient.name,
-    visit_type: schedule.visit_type,
-    schedule_status: schedule.schedule_status,
-    priority: schedule.priority,
-    time_start: schedule.time_window_start,
-    time_end: schedule.time_window_end,
-    confirmed: schedule.confirmed_at != null,
-    facility_label: null,
-    facility_patient_count: 1,
-  });
+  const toBoardVisit = (schedule: (typeof GANTT_ROUTE_MOCK_SCHEDULES)[number]) => {
+    const ready = schedule.preparation.prepared_at != null;
+
+    return {
+      id: schedule.id,
+      patient_name: schedule.case_.patient.name,
+      visit_type: schedule.visit_type,
+      schedule_status: schedule.schedule_status,
+      priority: schedule.priority,
+      site_id: schedule.site.id,
+      route_order: schedule.route_order,
+      time_start: schedule.time_window_start,
+      time_end: schedule.time_window_end,
+      vehicle_resource_id: null,
+      vehicle_label: null,
+      vehicle_travel_mode: null,
+      confirmed: schedule.confirmed_at != null,
+      facility_label: null,
+      facility_batch_id: null,
+      facility_patient_count: 1,
+      preparation_summary: {
+        completed_count: ready ? 5 : 2,
+        total_count: 5,
+        status: ready ? 'ready' : 'incomplete',
+        incomplete_labels: ready ? [] : ['持参薬・物品確認', 'ルート確認'],
+      },
+    };
+  };
 
   return {
     generated_at: `${GANTT_DATE}T08:00:00.000Z`,
@@ -405,6 +421,21 @@ function buildGanttDayBoardResponse() {
     ],
     audit_pending_count: 1,
     report_pending_count: 0,
+    vehicle_resources: [
+      {
+        id: 'gantt_route_mock_vehicle',
+        label: 'RouteMock 軽バン',
+        site_id: GANTT_SITE_ID,
+        vehicle_code: 'GANTT-001',
+        travel_mode: 'DRIVE',
+        available: true,
+        max_stops: 8,
+        assigned_visit_count: 0,
+        remaining_stops: 8,
+        recommended: true,
+        recommendation_reason: '未割当訪問を受けられます',
+      },
+    ],
     pending_proposals: [],
   };
 }
@@ -1172,12 +1203,19 @@ function buildPharmacyCoopContract() {
     effective_from: '2026-06-01T00:00:00.000Z',
     effective_to: null,
     partnership: {
-      base_site: { name: 'RouteMock基幹薬局' },
-      partner_pharmacy: { name: 'RouteMock協力薬局', status: 'active' },
+      id: PHARMACY_COOP_PARTNERSHIP_ID,
+      status: 'active',
+      base_site: { id: 'pharmacy_coop_route_site', name: 'RouteMock基幹薬局' },
+      partner_pharmacy: {
+        id: PHARMACY_COOP_PARTNER_PHARMACY_ID,
+        name: 'RouteMock協力薬局',
+        status: 'active',
+      },
     },
     latest_version: {
       id: PHARMACY_COOP_CONTRACT_VERSION_ID,
       version_no: 1,
+      status: 'active',
       active_fee_rule: {
         billing_model: 'per_visit_with_addon',
         unit_price: 8800,
@@ -1232,6 +1270,8 @@ function buildPharmacyCoopInvoice(created: boolean) {
     status: 'draft',
     issued_at: null,
     sent_at: null,
+    received_at: null,
+    payment_scheduled_for: null,
     paid_at: null,
     item_count: 1,
     partnership: {
@@ -1446,14 +1486,14 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
       }
 
       const consent = buildPharmacyCoopConsent(state.consentCreated);
-      await fulfillJson(route, { data: consent ? [consent] : [] });
+      await fulfillJson(route, { data: consent ? [consent] : [], hasMore: false });
     },
   );
 
   await page.route(
     apiPathPattern(`/api/patient-share-cases/${PHARMACY_COOP_SHARE_CASE_ID}/correction-requests`),
     async (route) => {
-      await fulfillJson(route, { data: [] });
+      await fulfillJson(route, { data: [], hasMore: false });
     },
   );
 
@@ -1478,7 +1518,7 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
       created: state.visitRequestCreated,
       status: state.visitRequestStatus,
     });
-    await fulfillJson(route, { data: visitRequest ? [visitRequest] : [] });
+    await fulfillJson(route, { data: visitRequest ? [visitRequest] : [], hasMore: false });
   });
 
   await page.route(apiPathPattern('/api/pharmacy-cooperation-message-threads'), async (route) => {
@@ -1553,7 +1593,7 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
       created: state.partnerRecordCreated,
       status: state.partnerRecordStatus,
     });
-    await fulfillJson(route, { data: record ? [record] : [] });
+    await fulfillJson(route, { data: record ? [record] : [], hasMore: false });
   });
 
   await page.route(
@@ -1640,7 +1680,7 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
     }
 
     const candidate = buildPharmacyCoopBillingCandidate(state.billingCandidateGenerated);
-    await fulfillJson(route, { data: candidate ? [candidate] : [] });
+    await fulfillJson(route, { data: candidate ? [candidate] : [], hasMore: false });
   });
 
   await page.route(apiPathPattern('/api/pharmacy-invoices'), async (route) => {
@@ -1670,7 +1710,7 @@ async function installPharmacyCooperationRouteMocks(page: Page) {
     }
 
     const invoice = buildPharmacyCoopInvoice(state.invoiceCreated);
-    await fulfillJson(route, { data: invoice ? [invoice] : [] });
+    await fulfillJson(route, { data: invoice ? [invoice] : [], hasMore: false });
   });
 
   return requests;
@@ -2170,6 +2210,7 @@ async function installOfflineVisitRecordRouteMocks(page: Page) {
 async function installScheduleDayGanttRouteMocks(page: Page) {
   const scheduleRequests: CapturedRouteRequest[] = [];
   const routeRequests: CapturedRouteRequest[] = [];
+  const dayBoardRequests: CapturedRouteRequest[] = [];
 
   await page.route(apiPathPattern('/api/notifications/stream'), async (route) => {
     await route.fulfill({
@@ -2249,6 +2290,7 @@ async function installScheduleDayGanttRouteMocks(page: Page) {
   );
 
   await page.route(apiPathPattern('/api/visit-schedules/day-board'), async (route) => {
+    dayBoardRequests.push(captureRouteRequest(route));
     await fulfillJson(route, { data: buildGanttDayBoardResponse() });
   });
 
@@ -2323,7 +2365,7 @@ async function installScheduleDayGanttRouteMocks(page: Page) {
     });
   });
 
-  return { routeRequests, scheduleRequests };
+  return { dayBoardRequests, routeRequests, scheduleRequests };
 }
 
 async function installScheduleProposalBulkRouteMocks(page: Page) {
@@ -2827,73 +2869,55 @@ test.describe('schedule day route-mocked Gantt smoke', () => {
 
     const { page, errors } = await createInstrumentedPage(context);
     await page.setViewportSize({ width: 768, height: 1024 });
-    const { scheduleRequests } = await installScheduleDayGanttRouteMocks(page);
+    const { dayBoardRequests } = await installScheduleDayGanttRouteMocks(page);
 
     await openStableRoute(page, `/schedules?view=list&tab=confirmed&date=${GANTT_DATE}`);
 
     await expect
-      .poll(() => scheduleRequests.length, {
-        message: 'schedule Gantt smoke should fetch schedules through the route mock',
+      .poll(() => dayBoardRequests.length, {
+        message: 'schedule Gantt smoke should fetch the day board through the route mock',
         timeout: 15_000,
       })
       .toBeGreaterThan(0);
-    await expect(page.getByRole('heading', { name: 'タブレット日次ガント' })).toBeVisible({
+    const board = page.getByRole('region', { name: '今日のスケジュール — 全員' });
+    await expect(board.getByRole('heading', { name: '今日のスケジュール — 全員' })).toBeVisible({
       timeout: 30_000,
     });
 
-    const table = page.getByRole('table', {
-      name: /日次ガント表。行は時間帯、列は薬剤師、セルは患者訪問予定を示します。/,
-    });
-    await expect(table).toBeVisible();
-    await expect(table.getByRole('columnheader', { name: /薬剤師A/ })).toBeVisible();
-    await expect(table.getByRole('columnheader', { name: /薬剤師B/ })).toBeVisible();
-    await expect(table.getByRole('group', { name: /薬剤師 薬剤師A.*同時刻 2件/ })).toHaveCount(2);
-    await expect(table.getByRole('group', { name: /薬剤師 薬剤師B.*重なり 3件/ })).toHaveCount(3);
-
-    const scroller = table.locator(
-      'xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " overflow-x-auto ")][1]',
-    );
-    await expect(scroller).toHaveAttribute('role', 'region');
-    await expect(scroller).toHaveAttribute('aria-labelledby', 'schedule-day-gantt-heading');
-    await expect(scroller).toHaveAttribute('aria-describedby', 'schedule-day-gantt-scroll-help');
-    const scrollMetrics = await scroller.evaluate((element) => ({
-      clientWidth: element.clientWidth,
-      scrollWidth: element.scrollWidth,
-    }));
-    expect(scrollMetrics.scrollWidth).toBeGreaterThan(scrollMetrics.clientWidth + 100);
-    await scroller.evaluate((element) => {
-      element.scrollLeft = 0;
-    });
-    await scroller.focus();
-    await expect(scroller).toBeFocused();
-    await page.keyboard.press('ArrowRight');
-    await expect
-      .poll(() => scroller.evaluate((element) => element.scrollLeft), {
-        message: 'focused Gantt scroll region should respond to keyboard horizontal scroll',
-        timeout: 3_000,
-      })
-      .toBeGreaterThan(0);
+    const pharmacistAList = board.getByRole('list', { name: '薬剤師A(薬)の今日の予定' });
+    const pharmacistBList = board.getByRole('list', { name: '薬剤師B(薬)の今日の予定' });
+    await expect(pharmacistAList).toBeVisible();
+    await expect(pharmacistBList).toBeVisible();
+    await expect(
+      pharmacistAList.getByRole('listitem', { name: /ガントE2E 同時A様、準備チェック完了/ }),
+    ).toBeVisible();
+    await expect(
+      pharmacistAList.getByRole('listitem', {
+        name: /ガントE2E 同時B様、準備 2\/5、未完: 持参薬・物品確認/,
+      }),
+    ).toBeVisible();
+    await expect(
+      pharmacistBList.getByRole('listitem', {
+        name: /ガントE2E 連鎖重なり三号様、準備チェック完了/,
+      }),
+    ).toBeVisible();
+    await expect(board.getByRole('region', { name: '車両リソース' })).toBeVisible();
+    await expect(board.getByRole('region', { name: '訪問ルート' })).toBeVisible();
     await expectNoPageHorizontalOverflow(page);
-    await expectNoVisibleBoxOverlap(table.locator('[role="group"][aria-label^="薬剤師"]'));
 
     await page.screenshot({
       path: testInfo.outputPath('schedule-day-gantt-tablet-portrait.png'),
       fullPage: true,
     });
 
-    const confirmedCard = page.locator('#schedule-gantt_route_mock_same_start_1');
-    await expect(confirmedCard).toBeVisible();
-    const preparationButton = confirmedCard.getByRole('button', {
-      name: /ガントE2E 同時A.*訪問準備を開く/,
+    const workRequestLink = pharmacistAList.getByRole('link', {
+      name: 'ガントE2E 同時A様の訪問を依頼',
     });
-    await expect(preparationButton).toBeVisible();
-    await expect(preparationButton).toBeEnabled();
-    await preparationButton.focus();
-    await expect(preparationButton).toBeFocused();
-    await preparationButton.click();
-    await expect(
-      page.getByRole('dialog', { name: 'ガントE2E 同時Aの訪問準備チェック' }),
-    ).toBeVisible();
+    await expect(workRequestLink).toHaveAttribute(
+      'href',
+      /work_request_type=staff_work_request_visit/,
+    );
+    await expectMinTouchBox(workRequestLink, 'schedule board work-request link');
 
     expect(errors).toEqual([]);
   });
@@ -2908,45 +2932,47 @@ test.describe('schedule day route-mocked Gantt smoke', () => {
 
     const { page, errors } = await createInstrumentedPage(context);
     await page.setViewportSize({ width: 1024, height: 768 });
-    const { routeRequests, scheduleRequests } = await installScheduleDayGanttRouteMocks(page);
+    const { dayBoardRequests } = await installScheduleDayGanttRouteMocks(page);
 
     await openStableRoute(page, `/schedules?view=list&tab=confirmed&date=${GANTT_DATE}`);
 
     await expect
-      .poll(() => scheduleRequests.length, {
-        message: 'schedule Gantt smoke should fetch schedules through the route mock',
-        timeout: 15_000,
-      })
-      .toBeGreaterThan(0);
-    await expect
-      .poll(() => routeRequests.length, {
-        message: 'schedule Gantt smoke should keep route preview calls mocked',
+      .poll(() => dayBoardRequests.length, {
+        message: 'schedule Gantt smoke should fetch the day board through the route mock',
         timeout: 15_000,
       })
       .toBeGreaterThan(0);
 
-    const table = page.getByRole('table', {
-      name: /日次ガント表。行は時間帯、列は薬剤師、セルは患者訪問予定を示します。/,
-    });
-    await expect(page.getByRole('heading', { name: 'タブレット日次ガント' })).toBeVisible();
-    await expect(table).toBeVisible();
-    await expect(table.getByText('同時刻 2件')).toBeVisible();
-    await expect(table.getByText('重なり 3件')).toBeVisible();
+    const board = page.getByRole('region', { name: '今日のスケジュール — 全員' });
+    await expect(board).toBeVisible();
+    await expect(board.getByText('余白 360分')).toBeVisible();
+    await expect(board.getByText('余白 330分')).toBeVisible();
     await expect(
-      table.getByRole('group', {
-        name: /薬剤師 薬剤師B.*患者 ガントE2E 重なり長い患者名一号.*重なり 3件.*ルート順 1/,
-      }),
+      board.getByRole('listitem', { name: /ガントE2E 重なり長い患者名一号様、準備 2\/5/ }),
     ).toBeVisible();
     await expect(
-      table.getByRole('group', {
-        name: /薬剤師 薬剤師B.*患者 ガントE2E 連鎖重なり三号.*重なり 3件.*ルート順 3/,
-      }),
+      board.getByRole('listitem', { name: /ガントE2E 連鎖重なり三号様、準備チェック完了/ }),
     ).toBeVisible();
-    await expect(table.getByRole('rowheader', { name: '09:30' })).toBeVisible();
-    await expect(table.getByRole('rowheader', { name: '10:30' })).toBeVisible();
+    const routeRegion = board.getByRole('region', { name: '訪問ルート' });
+    await expect(routeRegion).toBeVisible();
+    await expect(
+      routeRegion
+        .getByRole('listitem')
+        .filter({ hasText: 'ガントE2E 重なり長い患者名一号様' })
+        .filter({ hasText: '09:30 / 車両未割当' }),
+    ).toBeVisible();
+    await expect(
+      routeRegion
+        .getByRole('listitem')
+        .filter({ hasText: 'ガントE2E 連鎖重なり三号様' })
+        .filter({ hasText: '10:30 / 車両未割当' }),
+    ).toBeVisible();
+    await expect(board.getByRole('region', { name: '車両リソース' })).toContainText(
+      'RouteMock 軽バン',
+    );
 
     await expectNoPageHorizontalOverflow(page);
-    await expectNoVisibleBoxOverlap(table.locator('[role="group"][aria-label^="薬剤師"]'));
+    await expectNoVisibleBoxOverlap(routeRegion.getByRole('listitem'));
 
     await page.screenshot({
       path: testInfo.outputPath('schedule-day-gantt-tablet-landscape.png'),
@@ -3436,7 +3462,7 @@ test.describe('billing candidates route-mocked workbench smoke', () => {
     );
     await expect(page.getByText(/visit_record_id:/)).toHaveCount(0);
     await expect(page.getByText(/schedule_id:/)).toHaveCount(0);
-    await expect(page.getByText('患者で絞り込み中')).toBeVisible();
+    await expect(page.getByText('患者で絞り込み中', { exact: true })).toBeVisible();
     await expect(page.getByText(`患者ID ${BILLING_PATIENT_ID}`)).toBeVisible();
     await expect(
       page.getByRole('row').filter({ hasText: '請求RouteMock 患者' }).first(),
