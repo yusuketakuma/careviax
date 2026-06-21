@@ -51,6 +51,8 @@ const SEARCH_CATEGORIES: SearchCategory[] = [
   'contact',
 ];
 
+const SEARCH_RESULT_LIMIT = 8;
+
 type CategoryCounts = Partial<Record<SearchCategory, number>>;
 
 type AllResults = Record<SearchCategory, SearchResultRow[]>;
@@ -72,6 +74,129 @@ type SearchContentProps = {
   initialQuery?: string;
   initialCategory?: SearchCategory;
 };
+
+function perfNow() {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now();
+}
+
+// PHI-safe, opt-in client-side measurement for /search performance work.
+// Enable with NEXT_PUBLIC_DEBUG_SEARCH_PERF=true or localStorage.DEBUG_SEARCH_PERF=true.
+function isSearchPerfTraceEnabled() {
+  if (process.env.NEXT_PUBLIC_DEBUG_SEARCH_PERF === 'true') return true;
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem('DEBUG_SEARCH_PERF') === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function classifySearchFetchMode(url: string) {
+  if (url.includes('view=palette')) return 'palette';
+  if (
+    url.includes('/api/patients') ||
+    url.includes('/api/visit-schedule-proposals') ||
+    url.includes('/api/care-reports')
+  ) {
+    return url.includes('limit=') ? 'full-bounded' : 'full';
+  }
+  if (url.includes('limit=')) return 'bounded';
+  return 'full';
+}
+
+function countSearchPayloadItems(payload: unknown) {
+  const data = (payload as { data?: unknown }).data;
+  if (Array.isArray(data)) return data.length;
+
+  const medicationDeadlinePayload = payload as {
+    critical?: { items?: unknown[] };
+    warning?: { items?: unknown[] };
+  };
+  if (medicationDeadlinePayload.critical || medicationDeadlinePayload.warning) {
+    return (
+      (medicationDeadlinePayload.critical?.items?.length ?? 0) +
+      (medicationDeadlinePayload.warning?.items?.length ?? 0)
+    );
+  }
+
+  return 0;
+}
+
+function estimateSearchPayloadBytes(payload: unknown) {
+  try {
+    return JSON.stringify(payload).length;
+  } catch {
+    return null;
+  }
+}
+
+function traceSearchPerf(
+  step: 'fetch' | 'json',
+  category: SearchCategory,
+  details: {
+    elapsedMs: number;
+    mode?: string;
+    ok?: boolean;
+    status?: number;
+    itemCount?: number;
+    payloadBytes?: number | null;
+  },
+) {
+  if (!isSearchPerfTraceEnabled()) return;
+  const parts = [
+    '[PERF_TRACE]',
+    'component=SearchContent',
+    `step=${step}`,
+    `category=${category}`,
+    `elapsed_ms=${details.elapsedMs.toFixed(1)}`,
+  ];
+  if (details.mode) parts.push(`mode=${details.mode}`);
+  if (details.ok !== undefined) parts.push(`ok=${details.ok ? 'true' : 'false'}`);
+  if (details.status !== undefined) parts.push(`status=${details.status}`);
+  if (details.itemCount !== undefined) parts.push(`item_count=${details.itemCount}`);
+  if (details.payloadBytes !== undefined && details.payloadBytes !== null) {
+    parts.push(`payload_bytes=${details.payloadBytes}`);
+  }
+  console.info(parts.join(' '));
+}
+
+async function fetchSearchCategory(
+  category: SearchCategory,
+  url: string,
+  init: RequestInit,
+): Promise<Response | null> {
+  const startedAt = perfNow();
+  const mode = classifySearchFetchMode(url);
+  try {
+    const response = await fetch(url, init);
+    traceSearchPerf('fetch', category, {
+      elapsedMs: perfNow() - startedAt,
+      mode,
+      ok: response.ok,
+      status: response.status,
+    });
+    return response;
+  } catch {
+    traceSearchPerf('fetch', category, {
+      elapsedMs: perfNow() - startedAt,
+      mode,
+      ok: false,
+    });
+    return null;
+  }
+}
+
+async function readSearchJson<T>(category: SearchCategory, response: Response | null) {
+  if (!response?.ok) return null;
+  const startedAt = perfNow();
+  const payload = (await response.json()) as T;
+  traceSearchPerf('json', category, {
+    elapsedMs: perfNow() - startedAt,
+    itemCount: countSearchPayloadItems(payload),
+    payloadBytes: isSearchPerfTraceEnabled() ? estimateSearchPayloadBytes(payload) : null,
+  });
+  return payload;
+}
 
 export function SearchContent({
   initialQuery = '',
@@ -145,10 +270,12 @@ export function SearchContent({
         const q = encodeURIComponent(normalized);
         const headers: HeadersInit = orgId ? { 'x-org-id': orgId } : {};
         const sig = controller.signal;
+        const requestInit = { headers, signal: sig };
 
         // 接続可能な詳細絞り込み条件を既存 API に AND 合成(第一版)
         const visitScheduleParams = new URLSearchParams({ q: normalized });
-        visitScheduleParams.set('limit', '8');
+        visitScheduleParams.set('view', 'palette');
+        visitScheduleParams.set('limit', String(SEARCH_RESULT_LIMIT));
         if (advancedFilter.assigneeId) {
           visitScheduleParams.set('pharmacist_id', advancedFilter.assigneeId);
         }
@@ -167,7 +294,7 @@ export function SearchContent({
             String(advancedFilter.medicationDeadlineWithinDays),
           );
           medicationDeadlineParams.set('q', normalized);
-          medicationDeadlineParams.set('limit', '8');
+          medicationDeadlineParams.set('limit', String(SEARCH_RESULT_LIMIT));
         }
         const cycleStatusParam = advancedFilter.cycleStatus
           ? `&status=${encodeURIComponent(advancedFilter.cycleStatus)}`
@@ -187,28 +314,50 @@ export function SearchContent({
           reportRes,
           contactRes,
         ] = await Promise.all([
-          fetch(`/api/patients?q=${q}&limit=8`, { headers, signal: sig }).catch(() => null),
-          fetch(`/api/visit-schedule-proposals?${visitScheduleParams.toString()}`, {
+          fetchSearchCategory('patient', `/api/patients?q=${q}&limit=${SEARCH_RESULT_LIMIT}`, {
             headers,
             signal: sig,
-          }).catch(() => null),
+          }),
+          fetchSearchCategory(
+            'proposal',
+            `/api/visit-schedule-proposals?${visitScheduleParams.toString()}`,
+            requestInit,
+          ),
           // prescription-intakes の q は API 側未実装(source_type/status のみ対応)のため
           // クライアント側で patient.name による前方一致フィルタを補完する。
           // 将来 API 側 q 実装時にフィルタ除去可。
-          fetch(`/api/prescription-intakes?q=${q}&limit=8${cycleStatusParam}${careTagsParam}`, {
+          fetchSearchCategory(
+            'prescription',
+            `/api/prescription-intakes?q=${q}&limit=${SEARCH_RESULT_LIMIT}${cycleStatusParam}${careTagsParam}`,
+            requestInit,
+          ),
+          advancedFilter.medicationDeadlineWithinDays != null
+            ? fetchSearchCategory(
+                'medicationDeadline',
+                `/api/dashboard/medication-deadlines?${medicationDeadlineParams.toString()}`,
+                requestInit,
+              )
+            : Promise.resolve(null),
+          fetchSearchCategory('drug', `/api/drug-masters?q=${q}&limit=${SEARCH_RESULT_LIMIT}`, {
+            signal: sig,
+          }),
+          fetchSearchCategory('facility', `/api/facilities?q=${q}&limit=${SEARCH_RESULT_LIMIT}`, {
             headers,
             signal: sig,
-          }).catch(() => null),
-          advancedFilter.medicationDeadlineWithinDays != null
-            ? fetch(`/api/dashboard/medication-deadlines?${medicationDeadlineParams.toString()}`, {
-                headers,
-                signal: sig,
-              }).catch(() => null)
-            : Promise.resolve(null),
-          fetch(`/api/drug-masters?q=${q}&limit=8`, { signal: sig }).catch(() => null),
-          fetch(`/api/facilities?q=${q}&limit=8`, { headers, signal: sig }).catch(() => null),
-          fetch(`/api/care-reports?q=${q}&limit=8`, { headers, signal: sig }).catch(() => null),
-          fetch(`/api/contact-profiles?q=${q}`, { headers, signal: sig }).catch(() => null),
+          }),
+          fetchSearchCategory(
+            'report',
+            `/api/care-reports?view=palette&q=${q}&limit=${SEARCH_RESULT_LIMIT}`,
+            {
+              headers,
+              signal: sig,
+            },
+          ),
+          fetchSearchCategory(
+            'contact',
+            `/api/contact-profiles?q=${q}&limit=${SEARCH_RESULT_LIMIT}`,
+            requestInit,
+          ),
         ]);
 
         if (sig.aborted) return;
@@ -237,50 +386,57 @@ export function SearchContent({
         noteFailure('report', reportRes);
         noteFailure('contact', contactRes);
 
-        const patientData = patientRes?.ok
-          ? (((await patientRes.json()) as { data: PatientSearchItem[] }).data ?? [])
-          : [];
+        const patientPayload = await readSearchJson<{ data: PatientSearchItem[] }>(
+          'patient',
+          patientRes,
+        );
+        const patientData = patientPayload?.data ?? [];
 
-        const proposalData = proposalRes?.ok
-          ? (((await proposalRes.json()) as { data: ScheduleProposalSearchItem[] }).data ?? [])
-          : [];
+        const proposalPayload = await readSearchJson<{ data: ScheduleProposalSearchItem[] }>(
+          'proposal',
+          proposalRes,
+        );
+        const proposalData = proposalPayload?.data ?? [];
 
         // prescription-intakes の API 側 q 未対応のためクライアントフィルタで補完
-        const prescriptionRaw = prescriptionRes?.ok
-          ? (((await prescriptionRes.json()) as { data: PrescriptionSearchItem[] }).data ?? [])
-          : [];
+        const prescriptionPayload = await readSearchJson<{ data: PrescriptionSearchItem[] }>(
+          'prescription',
+          prescriptionRes,
+        );
+        const prescriptionRaw = prescriptionPayload?.data ?? [];
         const prescriptionData = prescriptionRaw.filter((item) => {
           const patientName = item.cycle?.case_?.patient?.name ?? '';
           return patientName.includes(normalized) || normalized.length === 0;
         });
 
-        const medicationDeadlinePayload = medicationDeadlineRes?.ok
-          ? ((await medicationDeadlineRes.json()) as {
-              critical?: { items?: MedicationDeadlineSearchItem[] };
-              warning?: { items?: MedicationDeadlineSearchItem[] };
-            })
-          : null;
+        const medicationDeadlinePayload = await readSearchJson<{
+          critical?: { items?: MedicationDeadlineSearchItem[] };
+          warning?: { items?: MedicationDeadlineSearchItem[] };
+        }>('medicationDeadline', medicationDeadlineRes);
         const medicationDeadlineData = [
           ...(medicationDeadlinePayload?.critical?.items ?? []),
           ...(medicationDeadlinePayload?.warning?.items ?? []),
-        ].slice(0, 8);
+        ].slice(0, SEARCH_RESULT_LIMIT);
 
-        const drugData = drugRes?.ok
-          ? (((await drugRes.json()) as { data: DrugSearchItem[] }).data ?? [])
-          : [];
+        const drugPayload = await readSearchJson<{ data: DrugSearchItem[] }>('drug', drugRes);
+        const drugData = drugPayload?.data ?? [];
 
-        const facilityData = facilityRes?.ok
-          ? (((await facilityRes.json()) as { data: FacilitySearchItem[] }).data ?? [])
-          : [];
+        const facilityPayload = await readSearchJson<{ data: FacilitySearchItem[] }>(
+          'facility',
+          facilityRes,
+        );
+        const facilityData = facilityPayload?.data ?? [];
 
-        const reportRaw = reportRes?.ok
-          ? (((await reportRes.json()) as { data: ReportSearchItem[] }).data ?? [])
-          : [];
-        const reportData = reportRaw.slice(0, 8);
+        const reportPayload = await readSearchJson<{
+          data: Array<ReportSearchItem & { patient?: { name?: string | null } | null }>;
+        }>('report', reportRes);
+        const reportData = (reportPayload?.data ?? []).slice(0, SEARCH_RESULT_LIMIT);
 
-        const contactData = contactRes?.ok
-          ? (((await contactRes.json()) as { data: ContactSearchItem[] }).data ?? [])
-          : [];
+        const contactPayload = await readSearchJson<{ data: ContactSearchItem[] }>(
+          'contact',
+          contactRes,
+        );
+        const contactData = contactPayload?.data ?? [];
 
         const built: AllResults = {
           patient: patientData.map(buildPatientResult),
@@ -289,7 +445,7 @@ export function SearchContent({
           medicationDeadline: medicationDeadlineData.map(buildMedicationDeadlineResult),
           drug: drugData.map(buildDrugResult),
           facility: facilityData.map(buildFacilityResult),
-          report: reportData.map((item) => buildReportResult(item)),
+          report: reportData.map((item) => buildReportResult(item, item.patient?.name ?? null)),
           contact: contactData.map(buildContactResult),
         };
 
