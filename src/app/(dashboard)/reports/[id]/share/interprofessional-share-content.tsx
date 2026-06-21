@@ -352,7 +352,7 @@ export function InterprofessionalShareContent({ reportId }: { reportId: string }
           </div>
         ) : null}
 
-        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.3fr)_minmax(0,1fr)]">
+        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.3fr)_minmax(0,1fr)]">
           {/* 左: 共有する相手 */}
           <section
             aria-labelledby="share-audience-heading"

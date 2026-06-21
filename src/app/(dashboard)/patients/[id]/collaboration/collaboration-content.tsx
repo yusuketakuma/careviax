@@ -30,7 +30,7 @@ import {
 
 function CollaborationSkeleton() {
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,17fr)_minmax(0,22fr)_minmax(280px,10fr)]">
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,17fr)_minmax(0,22fr)_minmax(240px,10fr)] xl:grid-cols-[minmax(0,17fr)_minmax(0,22fr)_minmax(280px,10fr)]">
       {[0, 1, 2].map((column) => (
         <div key={column} className="space-y-4 rounded-lg border border-border/70 bg-card p-4">
           <Skeleton className="h-5 w-40" />
@@ -141,7 +141,7 @@ export function CollaborationContent({ patientId }: { patientId: string }) {
             />
           </div>
         ) : (
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,17fr)_minmax(0,22fr)_minmax(280px,10fr)]">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,17fr)_minmax(0,22fr)_minmax(240px,10fr)] xl:grid-cols-[minmax(0,17fr)_minmax(0,22fr)_minmax(280px,10fr)]">
             <section
               aria-labelledby="collaboration-presence-heading"
               className="rounded-lg border border-border/70 bg-card p-4 xl:min-h-[600px]"

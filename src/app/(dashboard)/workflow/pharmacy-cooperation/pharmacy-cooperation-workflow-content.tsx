@@ -942,7 +942,7 @@ function TableFrame({ children, label }: { children: ReactNode; label: string })
       role="region"
       aria-label={`${label} 横スクロール領域`}
       tabIndex={0}
-      className="overflow-x-auto rounded-lg border border-border/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="overflow-x-auto rounded-lg border border-border/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring xl:max-h-[70vh] xl:overflow-y-auto"
     >
       <table className="min-w-[72rem] text-sm" aria-label={label}>
         {children}
@@ -1026,7 +1026,7 @@ function ShareCasesTable({
 
   return (
     <TableFrame label="患者共有ケース一覧">
-      <thead className="bg-muted/60 text-xs text-muted-foreground">
+      <thead className="sticky top-0 z-10 bg-muted/80 text-xs text-muted-foreground backdrop-blur">
         <tr>
           <th scope="col" className="px-3 py-2 text-left font-medium">
             共有ケース
@@ -1408,7 +1408,7 @@ function PatientShareConsentsPanel({
           <EmptyState title="患者共有同意はまだありません" />
         ) : (
           <TableFrame label="患者共有同意一覧">
-            <thead className="bg-muted/60 text-xs text-muted-foreground">
+            <thead className="sticky top-0 z-10 bg-muted/80 text-xs text-muted-foreground backdrop-blur">
               <tr>
                 <th scope="col" className="px-3 py-2 text-left font-medium">
                   同意
@@ -1512,7 +1512,7 @@ function VisitRequestsTable({
 
   return (
     <TableFrame label="協力薬局訪問依頼一覧">
-      <thead className="bg-muted/60 text-xs text-muted-foreground">
+      <thead className="sticky top-0 z-10 bg-muted/80 text-xs text-muted-foreground backdrop-blur">
         <tr>
           <th scope="col" className="px-3 py-2 text-left font-medium">
             依頼
@@ -1990,7 +1990,7 @@ function PartnerVisitRecordsTable({
 
   return (
     <TableFrame label="協力訪問記録一覧">
-      <thead className="bg-muted/60 text-xs text-muted-foreground">
+      <thead className="sticky top-0 z-10 bg-muted/80 text-xs text-muted-foreground backdrop-blur">
         <tr>
           <th scope="col" className="px-3 py-2 text-left font-medium">
             訪問記録

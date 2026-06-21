@@ -29,7 +29,7 @@ export function MasterEditorView({
   return (
     <PageScaffold>
       <div
-        className="grid min-h-[720px] gap-7 xl:grid-cols-[280px_430px_minmax(0,1fr)]"
+        className="grid min-h-[720px] gap-7 lg:grid-cols-[220px_340px_minmax(0,1fr)] xl:grid-cols-[280px_430px_minmax(0,1fr)]"
         data-testid={testId}
       >
         <Card className="rounded-2xl">

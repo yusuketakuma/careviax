@@ -253,8 +253,8 @@ export function DataExplorerContent() {
         shortcuts={getAdminDataExplorerShortcutLinks()}
       />
 
-      <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)_minmax(0,1.1fr)]">
-        <Card className="xl:h-[calc(100dvh-13rem)] xl:overflow-hidden">
+      <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-[320px_minmax(0,1fr)_minmax(0,1.1fr)]">
+        <Card className="lg:h-[calc(100dvh-16rem)] lg:overflow-hidden xl:h-[calc(100dvh-13rem)] xl:overflow-hidden">
           <CardHeader>
             <CardTitle>モデル一覧</CardTitle>
             <CardDescription>監査カテゴリごとにフィルタできます。</CardDescription>
@@ -321,7 +321,7 @@ export function DataExplorerContent() {
           </CardContent>
         </Card>
 
-        <Card className="xl:h-[calc(100dvh-13rem)] xl:overflow-hidden">
+        <Card className="lg:h-[calc(100dvh-16rem)] lg:overflow-hidden xl:h-[calc(100dvh-13rem)] xl:overflow-hidden">
           <CardHeader>
             <CardTitle>{effectiveSelectedTable || 'テーブル選択待ち'}</CardTitle>
             <CardDescription>
@@ -384,7 +384,7 @@ export function DataExplorerContent() {
           </CardContent>
         </Card>
 
-        <Card className="xl:h-[calc(100dvh-13rem)] xl:overflow-hidden">
+        <Card className="lg:col-span-2 xl:h-[calc(100dvh-13rem)] xl:overflow-hidden">
           <CardHeader>
             <CardTitle>詳細 / 許可フィールド更新</CardTitle>
             <CardDescription>
