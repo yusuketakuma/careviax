@@ -100,6 +100,10 @@ function extractEditablePatch(row: Record<string, unknown> | null, columns: Expl
   );
 }
 
+function orgScopedHeaders(orgId: string): HeadersInit | undefined {
+  return orgId ? { 'x-org-id': orgId } : undefined;
+}
+
 export function DataExplorerContent() {
   const orgId = useOrgId();
   const queryClient = useQueryClient();
@@ -117,12 +121,11 @@ export function DataExplorerContent() {
     queryKey: ['admin-data-explorer-models', orgId],
     queryFn: async () => {
       const response = await fetch('/api/admin/data-explorer/models', {
-        headers: { 'x-org-id': orgId },
+        headers: orgScopedHeaders(orgId),
       });
       if (!response.ok) throw new Error('モデル一覧の取得に失敗しました');
       return response.json() as Promise<{ data: ExplorerModel[] }>;
     },
-    enabled: !!orgId,
   });
 
   const filteredModels = useMemo(
@@ -153,13 +156,13 @@ export function DataExplorerContent() {
       const response = await fetch(
         `/api/admin/data-explorer/${effectiveSelectedTable}?${params.toString()}`,
         {
-          headers: { 'x-org-id': orgId },
+          headers: orgScopedHeaders(orgId),
         },
       );
       if (!response.ok) throw new Error('テーブルデータの取得に失敗しました');
       return response.json() as Promise<{ data: ExplorerRowsPayload }>;
     },
-    enabled: !!orgId && !!effectiveSelectedTable,
+    enabled: !!effectiveSelectedTable,
   });
 
   const tableData = rowsQuery.data?.data ?? null;
@@ -198,7 +201,7 @@ export function DataExplorerContent() {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
-            'x-org-id': orgId,
+            ...(orgId ? { 'x-org-id': orgId } : {}),
           },
           body: JSON.stringify({ patch }),
         },

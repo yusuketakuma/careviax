@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260621-1657 JST
+
+- current task: fix and review-gate the admin Data Explorer E2E bootstrap failure while recording the auth-flow E2E baseline and reviewing Claude-owned patients/new Slice3.
+- files inspected: agmsg inbox/LOCK/ACK/PATCH_REVIEW messages, `git status`, `docs/ui-ux-design-guidelines.md`, Next.js Server/Client Components guide, `src/app/(dashboard)/admin/data-explorer/data-explorer-content.tsx`, `src/app/(dashboard)/admin/data-explorer/data-explorer-content.test.tsx`, `tools/tests/ui-data-explorer.spec.ts`, `src/app/api/admin/data-explorer/models/route.ts`, `src/app/api/admin/data-explorer/[table]/route.ts`, `src/lib/auth/context.ts`, `src/lib/hooks/use-org-id.ts`, `src/components/providers/app-provider.tsx`, `tools/tests/helpers/local-auth.ts`, Claude-owned `src/components/features/patients/patient-form.tsx` and `.test.tsx` diff for review only, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `src/app/(dashboard)/admin/data-explorer/data-explorer-content.tsx`, `src/app/(dashboard)/admin/data-explorer/data-explorer-content.test.tsx`, `tools/tests/ui-data-explorer.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: Data Explorer could render a blank model list in local authenticated E2E because the client gated initial model/row queries on `useOrgId()` and sent `x-org-id` eagerly, even though the API can safely resolve org from the authenticated session when the header is absent. Claude-owned patients/new Slice3 also had a blocking hook API mismatch: `useUnsavedChangesGuard()` returns a function directly, but the patch destructured `{ allowNavigation }`.
+- security risks found: Data Explorer remains behind the existing `canAdmin` route guard and no auth/authorization/RLS/DB mutation behavior changed. Omitting `x-org-id` during bootstrap falls back to authenticated session org resolution; PATCH still sends `x-org-id` when the store has one. The E2E/auth baseline touched no product auth code.
+- performance issues found: no DB query shape, polling interval, cache fan-out, or render loop changed. The Data Explorer change only removes a client-side bootstrap stall and avoids false blank screens.
+- validation commands: auth-flow Chromium Playwright; baseline and post-fix Data Explorer Chromium Playwright; one-off Playwright API/page probe; focused Data Explorer Vitest; scoped Data Explorer ESLint; scoped Data Explorer Prettier check; scoped Data Explorer `git diff --check`; full `pnpm typecheck`; read-only TS check for Claude-owned patient-form review.
+- validation results: auth-flow E2E passed `9/9`. Baseline Data Explorer E2E failed `0/1` on missing `AuditLog`; post-fix Data Explorer E2E passed `1/1`. Focused Data Explorer Vitest passed `5/5`. Scoped ESLint, Prettier, and `git diff --check` passed. Full `pnpm typecheck` initially failed only on Claude-owned/peer-locked `patient-form` Slice3 rev1 WIP; Codex returned `request_changes`, Claude sent rev2, and a rerun passed with route types generated successfully.
+- remaining work: send Data Explorer `PATCH_REVIEW_REQUEST` to Claude, wait for approval before committing product files, then stage only Codex-owned Data Explorer files plus ledgers. Do not stage Claude-owned patient-form WIP.
+- next action: run final scoped checks after ledger formatting, send the Data Explorer review request, and continue to respond to Slice3 rev2 when received.
+
 ### 20260621-1634 JST
 
 - current task: run the non-overlapping workflow lightweight view E2E baseline while reviewing Claude-owned reports Slice1 and loop-cycle rev2.

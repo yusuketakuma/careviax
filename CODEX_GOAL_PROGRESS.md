@@ -8789,3 +8789,38 @@ Next loop:
 - Remaining:
   - Commit this validation-only ledger update without staging Claude-owned `src/app/(dashboard)/reports/report-share-workspace.tsx`, `src/app/(dashboard)/reports/report-share-workspace.test.tsx`, or `.agent-loop/loop-cycle.mjs`.
   - Continue with incoming S2d/loop-code reviews or the next non-overlapping dashboard-first UX route.
+
+### Auth Flow E2E Baseline — Login, MFA, and Password Reset
+
+- Coordination:
+  - Continued under the ACKed `F-UX-AUTH-FLOW-E2E-BASELINE` lock for `tools/tests/e2e-auth-flow.spec.ts` and ledgers.
+  - No product or test code change was needed; the current auth smoke coverage already matched the local authenticated E2E environment.
+- Validation:
+  - `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/e2e-auth-flow.spec.ts --project=chromium`: passed, `9/9` in `3.9m`.
+- Remaining:
+  - Record this baseline with the Data Explorer slice and continue the dashboard-first UX sweep.
+
+### Admin Data Explorer E2E Bootstrap — Session-resolved Org Loading
+
+- Coordination:
+  - Started from the ACKed `F-UX-DATA-EXPLORER-E2E-DRIFT` E2E lock, then expanded to `src/app/(dashboard)/admin/data-explorer/data-explorer-content.tsx` and `.test.tsx` after finding a product bootstrap bug.
+  - Claude explicitly handed off `data-explorer-content.tsx(+test)` to Codex for this slice with Claude as reviewer. Codex did not touch Claude-locked `src/components/features/patients/patient-form.tsx` / `.test.tsx`.
+  - Re-read the PH-OS UI/UX SSOT and the Next.js Server/Client Components guide before modifying the client component.
+- Bug found:
+  - The Data Explorer client required `!!orgId` before fetching models/rows and always sent `x-org-id`, so local authenticated E2E could render a blank model list when the Zustand auth store had not hydrated yet. The API route already resolves org from the authenticated session when the header is absent.
+- Implemented by Codex:
+  - Added optional org-scoped headers and allowed the model query to run before `useOrgId()` has a value.
+  - Changed the rows query gate from `!!orgId && !!effectiveSelectedTable` to `!!effectiveSelectedTable`.
+  - Kept PATCH requests org-scoped when an org id exists, while omitting `x-org-id` during bootstrap fallback.
+  - Added jsdom regression coverage proving model/row queries still run with `useOrgId()` returning an empty string.
+  - Tightened the Data Explorer Playwright spec to select the `Organization` model and assert the current row-selection accessibility contract instead of relying only on page text.
+- Validation:
+  - Baseline `tools/tests/ui-data-explorer.spec.ts --project=chromium`: failed `0/1`; the page shell rendered but no `AuditLog`/`Patient` models appeared.
+  - Playwright probe after the fix confirmed `/api/admin/data-explorer/models` returned `200` and the page rendered `AuditLog`, `Patient`, and `Organization` rows.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec vitest run 'src/app/(dashboard)/admin/data-explorer/data-explorer-content.test.tsx' --reporter=dot --testTimeout=30000`: passed, `1` file / `5` tests.
+  - `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-data-explorer.spec.ts --project=chromium`: passed, `1/1`.
+  - Scoped ESLint for Data Explorer product/test and Playwright spec: passed.
+  - Scoped Prettier check and scoped `git diff --check`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: initially failed on Claude-owned/peer-locked `src/components/features/patients/patient-form.tsx` and `.test.tsx` Slice3 rev1 WIP (`allowNavigation` and test tuple typing); after Claude rev2, rerun passed with route types generated successfully.
+- Remaining:
+  - Send `PATCH_REVIEW_REQUEST` to Claude and wait for approval before committing the product fix.

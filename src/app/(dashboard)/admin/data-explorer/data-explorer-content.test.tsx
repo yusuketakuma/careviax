@@ -7,7 +7,9 @@ import { DataExplorerContent } from './data-explorer-content';
 
 setupDomTestEnv();
 
+const useOrgIdMock = vi.hoisted(() => vi.fn(() => 'org_1'));
 const mutationMutateMock = vi.hoisted(() => vi.fn());
+const queryOptionsMock = vi.hoisted(() => vi.fn());
 const rowsPayloadMock = vi.hoisted(() => ({
   value: {
     modelName: 'Patient',
@@ -80,8 +82,13 @@ function resetRowsPayload() {
   };
 }
 
+type QueryMockOptions = {
+  queryKey: readonly unknown[];
+  enabled?: boolean;
+};
+
 vi.mock('@/lib/hooks/use-org-id', () => ({
-  useOrgId: () => 'org_1',
+  useOrgId: useOrgIdMock,
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -89,7 +96,9 @@ vi.mock('@tanstack/react-query', () => ({
     mutate: mutationMutateMock,
     isPending: false,
   }),
-  useQuery: ({ queryKey }: { queryKey: readonly unknown[] }) => {
+  useQuery: (options: QueryMockOptions) => {
+    queryOptionsMock(options);
+    const { queryKey } = options;
     const key = queryKey[0];
 
     if (key === 'admin-data-explorer-models') {
@@ -138,6 +147,7 @@ vi.mock('sonner', () => ({
 describe('DataExplorerContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useOrgIdMock.mockReturnValue('org_1');
     resetRowsPayload();
   });
 
@@ -148,6 +158,30 @@ describe('DataExplorerContent', () => {
     expect(screen.getByLabelText('カテゴリフィルタ')).toBeTruthy();
     expect(screen.getByLabelText('行検索')).toBeTruthy();
     expect(screen.getByLabelText('許可フィールド JSON')).toBeTruthy();
+  });
+
+  it('loads session-scoped models and rows before the org store hydrates', () => {
+    useOrgIdMock.mockReturnValue('');
+
+    render(<DataExplorerContent />);
+
+    expect(screen.getAllByText('patients').length).toBeGreaterThan(0);
+    expect(screen.getByText('山田 花子')).toBeTruthy();
+
+    const queryOptions = queryOptionsMock.mock.calls.map(
+      ([options]) => options as QueryMockOptions,
+    );
+    const modelsQuery = queryOptions.find(
+      (options) => options.queryKey[0] === 'admin-data-explorer-models',
+    );
+    const rowsQuery = queryOptions.find(
+      (options) => options.queryKey[0] === 'admin-data-explorer-rows',
+    );
+
+    expect(modelsQuery?.queryKey).toEqual(['admin-data-explorer-models', '']);
+    expect(modelsQuery?.enabled).not.toBe(false);
+    expect(rowsQuery?.queryKey).toEqual(['admin-data-explorer-rows', '', 'patients', '']);
+    expect(rowsQuery?.enabled).toBe(true);
   });
 
   it('keeps PHI out of row selection accessible names', () => {
