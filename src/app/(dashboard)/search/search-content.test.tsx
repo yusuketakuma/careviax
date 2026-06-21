@@ -193,9 +193,10 @@ describe('SearchContent', () => {
     const reportUrl = urls.find((url) => url.includes('/api/care-reports'));
     const contactUrl = urls.find((url) => url.includes('/api/contact-profiles'));
 
-    // The dedicated /search page keeps the richer patient payload because its
-    // shared builder renders conditions and next-visit subtitle from this data.
-    expect(patientUrl).not.toContain('view=palette');
+    // The dedicated /search page uses a middle projection that keeps the
+    // condition/next-visit fields required for the row subtitle without the full
+    // patient-list enrichment payload.
+    expect(patientUrl).toContain('view=search');
     expect(patientUrl).toContain('limit=8');
     expect(proposalUrl).toContain('view=palette');
     expect(proposalUrl).toContain('limit=8');

@@ -314,10 +314,14 @@ export function SearchContent({
           reportRes,
           contactRes,
         ] = await Promise.all([
-          fetchSearchCategory('patient', `/api/patients?q=${q}&limit=${SEARCH_RESULT_LIMIT}`, {
-            headers,
-            signal: sig,
-          }),
+          fetchSearchCategory(
+            'patient',
+            `/api/patients?view=search&q=${q}&limit=${SEARCH_RESULT_LIMIT}`,
+            {
+              headers,
+              signal: sig,
+            },
+          ),
           fetchSearchCategory(
             'proposal',
             `/api/visit-schedule-proposals?${visitScheduleParams.toString()}`,

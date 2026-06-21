@@ -524,6 +524,123 @@ describe('/api/patients GET', () => {
     expect(body.data[0]).not.toHaveProperty('conditions');
   });
 
+  it('returns bounded patient search summaries without full-list enrichment fields', async () => {
+    patientFindManyMock.mockResolvedValueOnce([
+      {
+        id: 'patient_1',
+        name: '青葉 花子',
+        name_kana: 'アオバ ハナコ',
+        birth_date: new Date('1948-05-20'),
+        phone: '090-0000-0001',
+        medical_insurance_number: 'MED-SECRET-1',
+        care_insurance_number: 'CARE-SECRET-1',
+        residences: [{ address: '東京都千代田区1-1-1' }],
+        contacts: [{ phone: '03-0000-0000', email: 'family@example.test' }],
+        conditions: [
+          { name: '糖尿病', is_primary: true, notes: 'hidden condition note' },
+          { name: '高血圧', is_primary: false, notes: 'hidden secondary note' },
+        ],
+        cases: [
+          {
+            notes: 'hidden case note',
+            visit_schedules: [
+              {
+                scheduled_date: new Date('2026-06-17T00:00:00.000Z'),
+                carry_items_status: 'ready',
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'patient_2',
+        name: '青葉 次郎',
+        name_kana: 'アオバ ジロウ',
+        phone: '090-0000-0002',
+        residences: [{ address: '東京都墨田区2-2-2' }],
+        contacts: [{ phone: '03-0000-0001' }],
+        conditions: [{ name: '心不全', is_primary: true }],
+        cases: [{ visit_schedules: [] }],
+      },
+    ]);
+
+    const response = (await GET(
+      createAuthenticatedRequest('http://localhost/api/patients?view=search&q=青葉&limit=1'),
+    ))!;
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toEqual({
+      data: [
+        {
+          id: 'patient_1',
+          name: '青葉 花子',
+          name_kana: 'アオバ ハナコ',
+          conditions: [
+            { name: '糖尿病', is_primary: true },
+            { name: '高血圧', is_primary: false },
+          ],
+          visit_schedules: [{ scheduled_date: '2026-06-17T00:00:00.000Z' }],
+        },
+      ],
+      hasMore: true,
+    });
+    expect(patientFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 2,
+        select: expect.objectContaining({
+          id: true,
+          name: true,
+          name_kana: true,
+          conditions: {
+            where: { is_active: true },
+            orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
+            take: 2,
+            select: {
+              name: true,
+              is_primary: true,
+            },
+          },
+          cases: {
+            take: 1,
+            orderBy: { updated_at: 'desc' },
+            select: {
+              visit_schedules: {
+                orderBy: [{ scheduled_date: 'asc' }, { time_window_start: 'asc' }],
+                take: 1,
+                select: {
+                  scheduled_date: true,
+                },
+              },
+            },
+          },
+        }),
+      }),
+    );
+    expect(queryRawMock).not.toHaveBeenCalled();
+    expect(listPatientRiskSummariesMock).not.toHaveBeenCalled();
+    expect(patientShareCaseFindManyMock).not.toHaveBeenCalled();
+    expect(firstVisitDocumentFindManyMock).not.toHaveBeenCalled();
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('090-0000-0001');
+    expect(serialized).not.toContain('MED-SECRET-1');
+    expect(serialized).not.toContain('CARE-SECRET-1');
+    expect(serialized).not.toContain('東京都千代田区');
+    expect(serialized).not.toContain('family@example.test');
+    expect(serialized).not.toContain('hidden condition note');
+    expect(serialized).not.toContain('hidden case note');
+    expect(serialized).not.toContain('carry_items_status');
+    expect(body.data[0]).not.toHaveProperty('birth_date');
+    expect(body.data[0]).not.toHaveProperty('phone');
+    expect(body.data[0]).not.toHaveProperty('medical_insurance_number');
+    expect(body.data[0]).not.toHaveProperty('care_insurance_number');
+    expect(body.data[0]).not.toHaveProperty('residences');
+    expect(body.data[0]).not.toHaveProperty('contacts');
+    expect(body.data[0]).not.toHaveProperty('risk_summary');
+    expect(body.data[0]).not.toHaveProperty('pharmacy_share');
+    expect(body.data[0]).not.toHaveProperty('readiness');
+  });
+
   it('rejects full-list-only filters in palette patient search before querying patients', async () => {
     const response = (await GET(
       createAuthenticatedRequest(

@@ -44,7 +44,7 @@ const DEFAULT_PATIENT_PALETTE_LIMIT = 8;
 const MAX_PATIENT_PALETTE_LIMIT = 50;
 
 export type PatientListFilters = {
-  view?: 'palette';
+  view?: 'palette' | 'search';
   q?: string;
   cursor?: string;
   limit?: number;
@@ -724,6 +724,69 @@ export async function listPatientPaletteSearchSummaries(
       id: patient.id,
       name: patient.name,
       name_kana: patient.name_kana,
+    })),
+    hasMore,
+  };
+}
+
+export async function listPatientSearchResultSummaries(
+  prisma: PrismaClient,
+  orgId: string,
+  filters: PatientListFilters,
+  accessContext?: VisitScheduleAccessContext,
+) {
+  const limit = normalizePatientPaletteLimit(filters.limit);
+  const baseWhere = buildDbWhere(orgId, filters);
+  const where = accessContext ? applyPatientAssignmentWhere(baseWhere, accessContext) : baseWhere;
+  const caseAssignmentWhere = accessContext ? buildCareCaseAssignmentWhere(accessContext) : null;
+  const rows = await prisma.patient.findMany({
+    where,
+    orderBy: buildPatientOrderBy(filters),
+    take: limit + 1,
+    select: {
+      id: true,
+      name: true,
+      name_kana: true,
+      conditions: {
+        where: { is_active: true },
+        orderBy: [{ is_primary: 'desc' }, { created_at: 'asc' }],
+        take: 2,
+        select: {
+          name: true,
+          is_primary: true,
+        },
+      },
+      cases: {
+        ...(caseAssignmentWhere ? { where: caseAssignmentWhere } : {}),
+        select: {
+          visit_schedules: {
+            orderBy: [{ scheduled_date: 'asc' }, { time_window_start: 'asc' }],
+            take: 1,
+            select: {
+              scheduled_date: true,
+            },
+          },
+        },
+        orderBy: { updated_at: 'desc' },
+        take: 1,
+      },
+    },
+  });
+  const hasMore = rows.length > limit;
+  const dataRows = hasMore ? rows.slice(0, limit) : rows;
+
+  return {
+    data: dataRows.map((patient) => ({
+      id: patient.id,
+      name: patient.name,
+      name_kana: patient.name_kana,
+      conditions: patient.conditions.map((condition) => ({
+        name: condition.name,
+        is_primary: condition.is_primary,
+      })),
+      visit_schedules: (patient.cases[0]?.visit_schedules ?? []).map((schedule) => ({
+        scheduled_date: schedule.scheduled_date,
+      })),
     })),
     hasMore,
   };
