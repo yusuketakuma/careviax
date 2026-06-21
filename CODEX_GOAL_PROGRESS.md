@@ -8974,3 +8974,32 @@ Next loop:
   - `pnpm exec prettier --check tools/tests/e2e-billing-pca-prescription-guardrails.spec.ts`: clean.
 - Remaining:
   - Commit this validation-only ledger update, notify Claude, then continue the non-overlapping UX/E2E sweep.
+
+### Schedule Vehicle Resource E2E Drift — Proposal Idempotency and Schema Drift
+
+- Coordination:
+  - Ran under ACKed `F-UX-SCHEDULE-VEHICLE-RESOURCE-E2E-BASELINE` lock. Expanded with Claude approval after the success-path proposal API revealed product/schema drift.
+  - Product billing/PCA code remained untouched. Scheduling product change was limited to removing an unused Prisma relation that was absent from migrations and DB.
+- Bugs found:
+  - `tools/tests/e2e-schedule-vehicle-resource-constraints.spec.ts` still omitted the now-required `idempotency_key` for `/api/visit-schedule-proposals`.
+  - The fixture created consent, plans, shifts, and vehicles but no schedulable `MedicationCycle`, so `/api/visit-schedules/generate` failed before vehicle-resource assertions.
+  - Prisma schema declared an unused `VisitScheduleProposalBatch` to `PharmacySite` relation via `pharmacySiteId`; the column was never migrated and current proposal success paths returned 500 against migration-built DBs.
+- Implemented by Codex:
+  - Added stable fixture medication cycles, prescription intakes, and prescription lines for the base and substitute cases, plus deterministic cleanup of schedules created on those fixture cycles.
+  - Added unique E2E idempotency keys to proposal POST requests.
+  - Removed the unmigrated/unused `VisitScheduleProposalBatch` to `PharmacySite` Prisma relation while retaining the `Organization` relation.
+- Validation:
+  - Baseline schedule vehicle E2E failed `5/5`; after fixture/idempotency updates, `4/5` passed and the remaining proposal success path exposed the Prisma schema drift 500.
+  - `pnpm exec prisma generate`: passed.
+  - Restarted `pnpm dev:e2e:local` on `http://localhost:3012` after Prisma generate.
+  - `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public pnpm exec prisma migrate status`: passed, database schema up to date.
+  - `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/e2e-schedule-vehicle-resource-constraints.spec.ts --project=chromium`: passed, `5/5` in `10.5s`.
+  - `pnpm exec prisma format`: passed.
+  - `pnpm exec prisma validate`: passed.
+  - `pnpm exec eslint tools/tests/e2e-schedule-vehicle-resource-constraints.spec.ts tools/tests/helpers/schedule-vehicle-resource-fixtures.ts`: passed.
+  - `pnpm exec prettier --check tools/tests/e2e-schedule-vehicle-resource-constraints.spec.ts tools/tests/helpers/schedule-vehicle-resource-fixtures.ts`: clean.
+  - `pnpm format:check`: clean for changed files.
+  - `pnpm typecheck`: passed, including Next route type generation.
+  - `git diff --check`: passed.
+- Remaining:
+  - Drain agmsg, stage only schema/test/helper plus ledgers, commit, notify Claude, then continue the next non-overlapping UX/E2E sweep. Do not push without explicit user instruction.

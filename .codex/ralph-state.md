@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260621-1924 JST
+
+- current task: stabilize the schedule vehicle resource constraint E2E baseline and fix the root schema drift exposed by the proposal success path.
+- files inspected: agmsg inbox/ACK/review messages, current `git status`, `tools/tests/e2e-schedule-vehicle-resource-constraints.spec.ts`, `tools/tests/helpers/schedule-vehicle-resource-fixtures.ts`, `src/lib/validations/visit-schedule-proposal.ts`, `src/app/api/visit-schedules/generate/route.ts`, `src/app/api/visit-schedule-proposals/route.ts`, `src/server/services/visit-schedule-planner.ts`, `prisma/schema/visit.prisma`, `prisma/schema/organization.prisma`, `prisma/migrations/20260617040500_add_visit_schedule_proposal_batch/migration.sql`, local DB `VisitScheduleProposalBatch` column inventory, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `prisma/schema/visit.prisma`, `prisma/schema/organization.prisma`, `tools/tests/e2e-schedule-vehicle-resource-constraints.spec.ts`, `tools/tests/helpers/schedule-vehicle-resource-fixtures.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: proposal-generation requests lacked the required `idempotency_key`; vehicle-resource fixture cases lacked a schedulable `MedicationCycle`, causing `/api/visit-schedules/generate` to fail before vehicle assertions; `VisitScheduleProposalBatch.pharmacySiteId` existed only in Prisma schema and no migration/DB column, so proposal success-path reads returned 500.
+- security risks found: no auth, authorization, RLS, billing/PCA code, PHI projection, audit logging, export, or external integration behavior changed. The fixture helper remains guarded to local `ph_os_e2e` under Playwright, and the Prisma change removes an unused relation for a column that was never persisted.
+- performance issues found: no runtime query fan-out or scheduling planner algorithm changed. The E2E fixture cleanup prevents repeated local runs from accumulating fixture-cycle schedules that would create false capacity/duplicate failures.
+- validation commands: baseline and post-fix Chromium Playwright for `tools/tests/e2e-schedule-vehicle-resource-constraints.spec.ts`; `pnpm exec prisma generate`; restarted `pnpm dev:e2e:local`; `pnpm exec prisma migrate status` against local `ph_os_e2e`; `pnpm exec prisma format`; `pnpm exec prisma validate`; scoped ESLint; scoped Prettier check; `pnpm format:check`; `pnpm typecheck`; `git diff --check`.
+- validation results: baseline schedule vehicle E2E failed `5/5`; fixture/idempotency update brought it to `4/5` and exposed the schema drift 500; after removing the unused Prisma relation and regenerating/restarting, the schedule vehicle E2E passed `5/5`. Prisma generate, migrate status, Prisma format/validate, scoped ESLint, scoped Prettier, changed-file format check, full typecheck, and diff-check all passed.
+- remaining work: drain agmsg, stage only the schema/test/helper and ledger files, commit the slice, notify Claude with validation evidence, then continue the next non-overlapping UX/E2E candidate. Do not push unless the user explicitly asks.
+- next action: commit the schedule vehicle resource E2E/schema drift slice and release the lock.
+
 ### 20260621-1911 JST
 
 - current task: record the high-risk billing/PCA/prescription API guardrail E2E baseline after the prescription/dispensing E2E drift slice, without touching product hard-stop areas.

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import { attachLocalSession, createInstrumentedPage } from './helpers/local-auth';
 import {
@@ -112,6 +113,7 @@ test.describe('schedule vehicle resource constraints', () => {
         candidate_count: 1,
         start_date: IDS.substituteDate,
         preferred_pharmacist_id: IDS.userId,
+        idempotency_key: uniqueIdempotencyKey('substitute'),
       },
     });
 
@@ -145,6 +147,7 @@ test.describe('schedule vehicle resource constraints', () => {
         start_date: IDS.sharedCapacityDate,
         preferred_pharmacist_id: IDS.userId,
         vehicle_resource_id: IDS.sharedCapacityVehicle,
+        idempotency_key: uniqueIdempotencyKey('shared-capacity'),
       },
     });
 
@@ -194,6 +197,10 @@ async function apiFetch(
     },
     { ...args, orgId: ORG_ID },
   );
+}
+
+function uniqueIdempotencyKey(scope: string) {
+  return `e2e-schedule-vehicle:${scope}:${randomUUID()}`;
 }
 
 function withoutExpectedValidationConsole(errors: string[]) {

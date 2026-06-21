@@ -334,9 +334,7 @@ model VisitScheduleProposalBatch {
   created_at          DateTime     @default(now())
   updated_at          DateTime     @updatedAt
 
-  proposals      VisitScheduleProposal[]
-  pharmacySite   PharmacySite?           @relation(fields: [pharmacySiteId], references: [id])
-  pharmacySiteId String?
+  proposals VisitScheduleProposal[]
 
   @@unique([org_id, idempotency_key])
   @@index([org_id, case_id])

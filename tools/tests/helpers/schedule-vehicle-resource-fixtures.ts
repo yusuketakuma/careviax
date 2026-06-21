@@ -26,6 +26,12 @@ export const SCHEDULE_VEHICLE_FIXTURE_IDS = {
   substituteConsent: 'e2e_substitute_visit_consent',
   substituteManagementPlan: 'e2e_substitute_management_plan',
   substituteShift: 'e2e_substitute_backup_shift',
+  baseCycle: 'e2e_vehicle_medication_cycle',
+  baseIntake: 'e2e_vehicle_prescription_intake',
+  baseLine: 'e2e_vehicle_prescription_line',
+  substituteCycle: 'e2e_substitute_medication_cycle',
+  substituteIntake: 'e2e_substitute_prescription_intake',
+  substituteLine: 'e2e_substitute_prescription_line',
   caseId: 'cmnhseedcase001amq9ph-os',
   patientId: 'cmnhseedpt001amq9ph-os',
   userId: 'cmnb3swgz0008wgq9gfpgjq6r',
@@ -50,6 +56,77 @@ function assertSafeE2eDatabase() {
   }
 }
 
+async function upsertSchedulableMedicationCycle(
+  client: Client,
+  fixture: {
+    cycleId: string;
+    intakeId: string;
+    lineId: string;
+    caseId: string;
+    patientId: string;
+    externalPrescriptionId: string;
+    rxNumber: string;
+    drugName: string;
+  },
+) {
+  await client.query(
+    `
+      INSERT INTO "MedicationCycle" (
+        "id","org_id","case_id","patient_id","overall_status","exception_status","version","created_at","updated_at"
+      ) VALUES ($1,'cmnhseedorg0000amq9ph-os',$2,$3,'set_audited',NULL,991,NOW(),NOW())
+      ON CONFLICT ("id") DO UPDATE
+      SET "case_id" = EXCLUDED."case_id",
+          "patient_id" = EXCLUDED."patient_id",
+          "overall_status" = 'set_audited',
+          "exception_status" = NULL,
+          "version" = EXCLUDED."version",
+          "updated_at" = NOW()
+    `,
+    [fixture.cycleId, fixture.caseId, fixture.patientId],
+  );
+
+  await client.query(
+    `
+      INSERT INTO "PrescriptionIntake" (
+        "id","org_id","cycle_id","source_type","external_prescription_id","rx_number","prescribed_date","prescriber_name","prescriber_institution","prescription_category","created_at","updated_at"
+      ) VALUES ($1,'cmnhseedorg0000amq9ph-os',$2,'paper',$3,$4,'2026-07-01','E2E 医師','E2E 在宅クリニック','regular',NOW(),NOW())
+      ON CONFLICT ("id") DO UPDATE
+      SET "cycle_id" = EXCLUDED."cycle_id",
+          "source_type" = 'paper',
+          "external_prescription_id" = EXCLUDED."external_prescription_id",
+          "rx_number" = EXCLUDED."rx_number",
+          "prescribed_date" = EXCLUDED."prescribed_date",
+          "prescriber_name" = EXCLUDED."prescriber_name",
+          "prescriber_institution" = EXCLUDED."prescriber_institution",
+          "prescription_category" = 'regular',
+          "updated_at" = NOW()
+    `,
+    [fixture.intakeId, fixture.cycleId, fixture.externalPrescriptionId, fixture.rxNumber],
+  );
+
+  await client.query(
+    `
+      INSERT INTO "PrescriptionLine" (
+        "id","org_id","intake_id","line_number","drug_name","drug_code","dose","frequency","days","quantity","unit","start_date","end_date","created_at","updated_at"
+      ) VALUES ($1,'cmnhseedorg0000amq9ph-os',$2,1,$3,NULL,'1錠','1日1回 朝食後',62,62,'錠','2026-07-01','2026-08-31',NOW(),NOW())
+      ON CONFLICT ("id") DO UPDATE
+      SET "intake_id" = EXCLUDED."intake_id",
+          "line_number" = 1,
+          "drug_name" = EXCLUDED."drug_name",
+          "drug_code" = NULL,
+          "dose" = '1錠',
+          "frequency" = '1日1回 朝食後',
+          "days" = 62,
+          "quantity" = 62,
+          "unit" = '錠',
+          "start_date" = EXCLUDED."start_date",
+          "end_date" = EXCLUDED."end_date",
+          "updated_at" = NOW()
+    `,
+    [fixture.lineId, fixture.intakeId, fixture.drugName],
+  );
+}
+
 export async function ensureScheduleVehicleResourceFixtures() {
   assertSafeE2eDatabase();
 
@@ -57,6 +134,15 @@ export async function ensureScheduleVehicleResourceFixtures() {
   await client.connect();
 
   try {
+    await client.query(
+      `
+        DELETE FROM "VisitSchedule"
+        WHERE "org_id" = 'cmnhseedorg0000amq9ph-os'
+          AND "cycle_id" IN ($1,$2)
+      `,
+      [SCHEDULE_VEHICLE_FIXTURE_IDS.baseCycle, SCHEDULE_VEHICLE_FIXTURE_IDS.substituteCycle],
+    );
+
     await client.query(
       `
         INSERT INTO "ConsentRecord" (
@@ -105,6 +191,17 @@ export async function ensureScheduleVehicleResourceFixtures() {
         SCHEDULE_VEHICLE_FIXTURE_IDS.userId,
       ],
     );
+
+    await upsertSchedulableMedicationCycle(client, {
+      cycleId: SCHEDULE_VEHICLE_FIXTURE_IDS.baseCycle,
+      intakeId: SCHEDULE_VEHICLE_FIXTURE_IDS.baseIntake,
+      lineId: SCHEDULE_VEHICLE_FIXTURE_IDS.baseLine,
+      caseId: SCHEDULE_VEHICLE_FIXTURE_IDS.caseId,
+      patientId: SCHEDULE_VEHICLE_FIXTURE_IDS.patientId,
+      externalPrescriptionId: 'e2e-vehicle-external-prescription-1',
+      rxNumber: 'E2E-VEHICLE-RX-001',
+      drugName: 'E2E車両制約薬',
+    });
 
     await client.query(
       `
@@ -481,6 +578,17 @@ export async function ensureScheduleVehicleResourceFixtures() {
         SCHEDULE_VEHICLE_FIXTURE_IDS.userId,
       ],
     );
+
+    await upsertSchedulableMedicationCycle(client, {
+      cycleId: SCHEDULE_VEHICLE_FIXTURE_IDS.substituteCycle,
+      intakeId: SCHEDULE_VEHICLE_FIXTURE_IDS.substituteIntake,
+      lineId: SCHEDULE_VEHICLE_FIXTURE_IDS.substituteLine,
+      caseId: SCHEDULE_VEHICLE_FIXTURE_IDS.substituteCase,
+      patientId: SCHEDULE_VEHICLE_FIXTURE_IDS.substitutePatient,
+      externalPrescriptionId: 'e2e-substitute-external-prescription-1',
+      rxNumber: 'E2E-SUBSTITUTE-RX-001',
+      drugName: 'E2E代理薬剤師制約薬',
+    });
 
     await client.query(
       `
