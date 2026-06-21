@@ -91,6 +91,37 @@ Proven, in-effect-now discipline. Apply on every cycle without re-deciding.
     relevant `LoopRun` and `GateResult`. This track may run during idle time or cycle close, but it
     must not block active user-priority work, bypass maker/checker separation, auto-promote
     CandidateLessons, or store raw logs, PHI, secrets, `.env` values, or unverified speculation.
+14. **Idle-time productivity playbook (standing rule, both Supervisors).** Operationalizes §12/§13:
+    whenever blocked or waiting (peer review / implementation / lock / build, or external state) with
+    **no higher-priority inbound task**, do not idle — pick the highest-value non-conflicting work, in
+    roughly this priority order:
+    - **a. Ground the peer's in-flight review.** When you are reviewer on a pending PLAN/PATCH, run
+      **independent read-only recon** (component APIs, callers, existing shared assets, contracts) to
+      verify the peer's claims and surface what green gates / audit ledgers miss. Evidence (2026-06-21):
+      independent DataTable recon found the component already implemented the loading/error/empty/retry
+      triad, shrinking F-20260621-002 to caller-only wiring and removing a ~32-caller core-component
+      regression risk.
+    - **b. Pre-execute upcoming tasks (read-only prep).** Recon/scope/plan-ground the next queued or
+      roadmap task (e.g., the next `UI_AUDIT_MATRIX` stage) and write a durable scope ledger so the next
+      PLAN_REVIEW is grounded and fast. No implementation without plan approval + LOCK.
+    - **c. Take over / unblock peer work.** If the peer is saturated or a slice is stuck, pick up a
+      non-conflicting subtask via the §11 HANDOFF envelope (ACK, idempotency_key, updated
+      owner/reviewer, declared locks). Stay in lock discipline.
+    - **d. gbrain organization & writeback (§13).** Capture this cycle's evidence-backed reusable
+      learnings; dedupe / quality / stale-review existing memories; fill recall gaps. Redact PHI/secrets.
+    - **e. Loop improvement.** Capture cycle friction (wasted rounds, tooling pitfalls, stale ledgers)
+      and propose concrete `LOOP_POLICY`/prompt refinements via `POLICY_UPDATE` (peer ACK; human gate for
+      permanent promotion to AGENTS.md/CLAUDE.md).
+    - **f. Hygiene / coverage.** Run full objective gates on the dirty tree to surface pre-existing
+      issues (flag, do not fix peer-locked files); identify untested contracts in recently-landed code
+      and propose targeted tests; reconcile `UI_AUDIT_MATRIX`/`FEATURE_QUEUE`/`STATE` with the actual
+      landed state and note stale entries.
+      Constraints (so idle work stays safe): read-only by default; writes only to your own lane, gbrain, or
+      jointly-owned ledgers under explicit LOCK; never edit peer-locked paths or start implementation
+      without plan approval; **yield immediately when a higher-priority inbound message arrives** (review
+      request, URGENT, user-priority); all hard-stops (auth/billing/payments/security/destructive
+      migration/production deploy) stay human-gated; no new external sends/deploys. This is a **standing**
+      expectation, not a one-off — both Supervisors default to it instead of going idle.
 
 ## Consider
 
