@@ -497,7 +497,7 @@ old tasks unless they are actively being edited for another reason.
 | F-20260621-003 | codex  | claude   | perf: /search patient を view=search 中間 projection へ（subtitle 維持で payload 削減、実測 5489B→小）                                                  | review/lock granted          |
 | S2a            | codex  | claude   | T1 DataTable 配線 High: admin/users + admin/jobs（同形・DataTable 不変）                                                                                | queued（codex perf task 後） |
 | S2b            | codex  | claude   | T1 DataTable 配線 Med: facility-standards/document-templates/pharmacist-credentials/billing-rules/audit-logs/tasks/analytics/qr-drafts 等を 1-2 file/PR | queued                       |
-| S2c            | claude | codex    | T1 非DataTable ErrorState 横展開: performance/dispense-audit-stats/alert-rules/realtime（UI 配置判断）                                                  | next（claude）               |
+| S2c            | claude | codex    | T1 非DataTable ErrorState 横展開: performance/dispense-audit-stats/alert-rules/realtime（UI 配置判断）                                                  | **done** b45bf925 (dispense-audit-stats 331cd347); codex APPROVED rev2 |
 | S2d            | claude | codex    | P-A 個別: prescriptions/new 手書き error→ErrorState（小）→ patients/new 段階表示・reports グルーピング（大・別 PLAN）                                   | queued                       |
 | S2e            | claude | codex    | T4 状態色6軸集約: clerk-support/patients/[id]/admin/realtime/performance/notification-settings/qr-drafts                                                | queued                       |
 
