@@ -9044,3 +9044,17 @@ Next loop:
   - `git diff --check`: passed.
 - Remaining:
   - Format/check ledgers after this entry, drain agmsg, stage only the route-mocked spec plus ledgers, commit, notify Claude, and continue the next non-overlapping UX/E2E sweep. Do not push without explicit user instruction.
+
+### Follow-up PR Readiness — Branch-Level Validation
+
+- Coordination:
+  - Ran under ACKed `F-UX-FOLLOWUP-PR-READINESS` lock for `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md`.
+  - Validation-only slice for the eight follow-up commits after PR #1 merge: `70b454d3`, `e4e7a9ec`, `176701e8`, `5b0175b2`, `063d9023`, `aa6a4c87`, `dd136712`, and `86acf64b`.
+  - Product/test source was not changed. Push remains intentionally skipped because the user has not explicitly requested it.
+- Validation:
+  - `pnpm typecheck`: passed, including Next route type generation.
+  - `pnpm test`: passed, `1113` files passed / `1` skipped; `8669` tests passed / `1` skipped.
+  - `pnpm build`: passed, production build completed and generated `287` static pages.
+  - `pnpm lint`: passed.
+- Remaining:
+  - Run final ledger formatting/diff checks after this entry, commit this validation-only ledger update, notify Claude that the follow-up commit stack is branch-green, and wait for explicit user instruction before any push.

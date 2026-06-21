@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260621-1953 JST
+
+- current task: record follow-up PR readiness for the eight commits currently ahead of `origin/refactor/state-color-unification`.
+- files inspected: agmsg inbox/ACK messages, current `git status`, follow-up commit log, `package.json` validation scripts, local DB/web readiness checks, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `CODEX_GOAL_PROGRESS.md` and this Ralph state entry only.
+- bugs found: no branch-level type, unit, build, or lint failure was found. This validates the current follow-up stack after the schedule schema fix and route-mocked smoke drift fix.
+- security risks found: no product source, test source, auth, authorization, RLS, DB schema, billing/PCA behavior, patient/PHI projection, audit logging, export, or mutation behavior changed in this validation-only slice.
+- performance issues found: no runtime path changed. Full unit completed in 128.43s and production build generated 287 static pages.
+- validation commands: `pnpm typecheck`; `pnpm test`; `pnpm build`; `pnpm lint`.
+- validation results: typecheck passed with Next route type generation; full Vitest passed with `1113` files passed / `1` skipped and `8669` tests passed / `1` skipped; production build passed and generated `287` static pages; full ESLint passed.
+- remaining work: run final ledger formatting/diff checks after this entry, drain agmsg, stage only the two ledger files, commit the validation-only readiness slice, notify Claude, and wait for explicit user instruction before any push.
+- next action: commit the follow-up readiness ledger slice and release the lock.
+
 ### 20260621-1944 JST
 
 - current task: stabilize the route-mocked UI smoke baseline after the comment-thread stream smoke baseline, keeping the work test/mock-only.
