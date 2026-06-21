@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { StateBadge } from '@/components/ui/state-badge';
+import { MEDICATION_CYCLE_STATUS_ROLE } from '@/lib/constants/status-labels';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import {
@@ -186,24 +187,23 @@ const SOURCE_LABELS: Record<string, string> = {
   refill: 'リフィル',
 };
 
-const STATUS_LABELS: Record<
-  string,
-  { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }
-> = {
-  intake_received: { label: CYCLE_STATUS_LABELS.intake_received, variant: 'outline' },
-  structuring: { label: CYCLE_STATUS_LABELS.structuring, variant: 'outline' },
-  inquiry_pending: { label: CYCLE_STATUS_LABELS.inquiry_pending, variant: 'secondary' },
-  ready_to_dispense: { label: CYCLE_STATUS_LABELS.ready_to_dispense, variant: 'default' },
-  dispensing: { label: CYCLE_STATUS_LABELS.dispensing, variant: 'default' },
-  audit_pending: { label: CYCLE_STATUS_LABELS.audit_pending, variant: 'secondary' },
-  audited: { label: CYCLE_STATUS_LABELS.audited, variant: 'default' },
-  setting: { label: CYCLE_STATUS_LABELS.setting, variant: 'default' },
-  set_audited: { label: CYCLE_STATUS_LABELS.set_audited, variant: 'default' },
-  visit_ready: { label: CYCLE_STATUS_LABELS.visit_ready, variant: 'default' },
-  visit_completed: { label: CYCLE_STATUS_LABELS.visit_completed, variant: 'default' },
-  reported: { label: CYCLE_STATUS_LABELS.reported, variant: 'outline' },
-  on_hold: { label: CYCLE_STATUS_LABELS.on_hold, variant: 'destructive' },
-  cancelled: { label: CYCLE_STATUS_LABELS.cancelled, variant: 'destructive' },
+// cycle status バッジの色は SSOT(MEDICATION_CYCLE_STATUS_ROLE)で決める。ここは
+// 「どの status をバッジ表示するか」と表示ラベルのゲートのみを担い、色は持たない。
+const STATUS_LABELS: Record<string, { label: string }> = {
+  intake_received: { label: CYCLE_STATUS_LABELS.intake_received },
+  structuring: { label: CYCLE_STATUS_LABELS.structuring },
+  inquiry_pending: { label: CYCLE_STATUS_LABELS.inquiry_pending },
+  ready_to_dispense: { label: CYCLE_STATUS_LABELS.ready_to_dispense },
+  dispensing: { label: CYCLE_STATUS_LABELS.dispensing },
+  audit_pending: { label: CYCLE_STATUS_LABELS.audit_pending },
+  audited: { label: CYCLE_STATUS_LABELS.audited },
+  setting: { label: CYCLE_STATUS_LABELS.setting },
+  set_audited: { label: CYCLE_STATUS_LABELS.set_audited },
+  visit_ready: { label: CYCLE_STATUS_LABELS.visit_ready },
+  visit_completed: { label: CYCLE_STATUS_LABELS.visit_completed },
+  reported: { label: CYCLE_STATUS_LABELS.reported },
+  on_hold: { label: CYCLE_STATUS_LABELS.on_hold },
+  cancelled: { label: CYCLE_STATUS_LABELS.cancelled },
 };
 
 // 一包化不適応キーワード（OD錠, 徐放製剤, 貼付剤, 坐剤, 点眼, 吸入等）
@@ -781,6 +781,7 @@ function PrescriptionIntakeCard({
 }) {
   const [expanded, setExpanded] = useState(true);
   const statusCfg = STATUS_LABELS[intake.cycle.overall_status];
+  const statusRole = MEDICATION_CYCLE_STATUS_ROLE[intake.cycle.overall_status];
   const isDo = prevIntake ? isDoPrescription(intake, prevIntake) : false;
   const prevLines = prevIntake?.lines ?? null;
   const isFax = intake.source_type === 'fax';
@@ -847,10 +848,12 @@ function PrescriptionIntakeCard({
                   <span className="text-xs text-muted-foreground">
                     {SOURCE_LABELS[intake.source_type] ?? intake.source_type}
                   </span>
-                  {statusCfg && (
-                    <Badge variant={statusCfg.variant} className="h-5 text-[10px]">
+                  {statusCfg && statusRole && statusRole !== 'neutral' && (
+                    // 色は SSOT role 駆動（on_hold=confirm / cancelled=blocked を区別）。
+                    // 隣接ラベルが非色シグナルを担うため showIcon は省く。
+                    <StateBadge role={statusRole} showIcon={false} className="h-5 text-[10px]">
                       {statusCfg.label}
-                    </Badge>
+                    </StateBadge>
                   )}
                   {isDo && (
                     <span className="inline-flex items-center gap-0.5 rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-bold text-gray-700">

@@ -160,4 +160,58 @@ describe('PrescriptionHistoryContent', () => {
     });
     expect(collapsedToggle.getAttribute('aria-expanded')).toBe('false');
   });
+
+  it('drives cycle-status badge color from the SSOT role (on_hold=confirm, cancelled=blocked)', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useParamsMock.mockReturnValue({ id: 'patient_1' });
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+
+    const intake = (id: string, date: string, status: string) => ({
+      id,
+      cycle_id: `cycle_${id}`,
+      source_type: 'manual',
+      prescribed_date: date,
+      prescriber_name: '佐藤医師',
+      prescriber_institution: '青空クリニック',
+      prescription_expiry_date: null,
+      original_document_url: null,
+      original_collected_at: null,
+      original_collected_by: null,
+      refill_remaining_count: null,
+      refill_next_dispense_date: null,
+      split_dispense_total: null,
+      split_dispense_current: null,
+      split_next_dispense_date: null,
+      created_at: `${date}T00:00:00.000Z`,
+      cycle: { overall_status: status },
+      lines: [],
+    });
+
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: string[] }) => {
+      if (queryKey[0] === 'drug-masters-batch') {
+        return { data: {}, isLoading: false };
+      }
+      return {
+        data: {
+          patient: { id: 'patient_1', name: '山田花子', name_kana: 'ヤマダハナコ' },
+          data: [
+            intake('intake_hold', '2026-06-02', 'on_hold'),
+            intake('intake_cancel', '2026-06-01', 'cancelled'),
+          ],
+        },
+        isLoading: false,
+      };
+    });
+
+    const { container } = render(<PrescriptionHistoryContent />);
+
+    // 保留=confirm(橙) / 取消=blocked(赤) が SSOT どおり別 role になること（旧実装は両方 destructive 同色）。
+    const confirmBadges = Array.from(container.querySelectorAll('[data-role="confirm"]'));
+    const blockedBadges = Array.from(container.querySelectorAll('[data-role="blocked"]'));
+    expect(confirmBadges.some((el) => el.textContent?.includes('保留'))).toBe(true);
+    expect(blockedBadges.some((el) => el.textContent?.includes('取消'))).toBe(true);
+    // 回帰: 取消が confirm 側に混ざらない（=保留と同色化していない）こと。
+    expect(confirmBadges.some((el) => el.textContent?.includes('取消'))).toBe(false);
+  });
 });
