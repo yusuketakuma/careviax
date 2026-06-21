@@ -8889,3 +8889,30 @@ Next loop:
   - Generated screenshots are under ignored artifact directories: `test-results/` and `tools/tests/.artifacts/design-fidelity/`.
 - Remaining:
   - Commit this validation-only ledger update and push so PR #1 includes the latest UX baseline evidence.
+
+### Visual Regression Baseline Drift — Current Dashboard, Patients, Reports
+
+- Coordination:
+  - Ran under ACKed `F-UX-VISUAL-REGRESSION-DRIFT` lock for `tools/tests/ui-visual-regression.spec.ts`, its snapshots, `CODEX_GOAL_PROGRESS.md`, and `.codex/ralph-state.md`.
+  - Claude confirmed PR #1 was merged to `main` as `a6b744ba`; this is follow-up work on the retained shared branch.
+- Bugs found:
+  - The visual regression spec still targeted stale `dashboard-phase-rail`; the current dashboard exposes `dashboard-process-now`.
+  - Patients and reports full-workspace screenshots could capture loading skeletons because the tests waited only for the outer shell.
+  - The patients board baseline included a minute-level generated timestamp, causing a 24px false diff on immediate rerun.
+  - The snapshot directory still contained unreferenced old baselines from removed visual tests.
+- Implemented by Codex:
+  - Retargeted the dashboard snapshot to `dashboard-process-now`.
+  - Added loaded-content waits for `patients-board-grid`, `patient-board-card`, and `report-waiting-box`.
+  - Masked the patients board generated-at text while preserving the cards, filters, summary tiles, and report content as comparison targets.
+  - Regenerated the four current snapshots and removed five unreferenced old snapshot files.
+- Validation:
+  - Baseline `tools/tests/ui-visual-regression.spec.ts --project=chromium`: failed `0/4` on stale dashboard selector and missing current snapshots; generated patients/reports actuals showed skeleton capture for patients and report workspace.
+  - `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-visual-regression.spec.ts --project=chromium --update-snapshots`: passed, `4/4`, regenerated current baselines.
+  - Same command without `--update-snapshots`: passed, `4/4` in `5.7s`.
+  - `pnpm exec eslint tools/tests/ui-visual-regression.spec.ts`: passed.
+  - `pnpm exec prettier --check tools/tests/ui-visual-regression.spec.ts`: clean.
+  - `pnpm format:check`: clean for changed files.
+  - `pnpm typecheck`: passed, including Next route type generation.
+  - `git diff --check`: passed.
+- Remaining:
+  - Drain agmsg, stage only the visual-regression spec/snapshots plus ledgers, commit the slice, notify Claude, then continue the dashboard-first UX sweep.

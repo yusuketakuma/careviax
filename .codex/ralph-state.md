@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260621-1847 JST
+
+- current task: stabilize the current visual regression baseline after PR #1 was merged, keeping the dashboard-first UX sweep moving on the retained shared branch.
+- files inspected: agmsg inbox/ACK and PR merge notice, current `git status`, `tools/tests/ui-visual-regression.spec.ts`, generated visual-regression actual screenshots, `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`, `src/app/(dashboard)/patients/patients-board.tsx`, `src/app/(dashboard)/reports/report-share-workspace.tsx`, `package.json`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `tools/tests/ui-visual-regression.spec.ts`, current visual-regression snapshot PNGs under `tools/tests/ui-visual-regression.spec.ts-snapshots/`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the visual-regression spec still waited for removed `dashboard-phase-rail`; patients and reports workspace screenshots could freeze loading skeletons because only the outer shells were awaited; the patients board baseline included a minute-level generated timestamp that caused a 24px false diff on rerun; five stale snapshot files no longer had spec references.
+- security risks found: no product code, auth, authorization, RLS, DB, API, patient projection, report content, audit, export, print, or mutation surface changed. Snapshot artifacts are test baselines only and use the local `ph_os_e2e` environment.
+- performance issues found: no runtime path changed. The new waits remove false visual-drift failures without adding app work; the stabilized visual-regression suite completes in 5.7s after baseline generation.
+- validation commands: baseline Chromium Playwright for `tools/tests/ui-visual-regression.spec.ts`; Chromium Playwright with `--update-snapshots`; Chromium Playwright normal rerun; scoped ESLint for `tools/tests/ui-visual-regression.spec.ts`; scoped Prettier check; `pnpm format:check`; `pnpm typecheck`; `git diff --check`; manual image inspection of regenerated dashboard, patients, and reports snapshots.
+- validation results: baseline visual-regression failed `0/4` on stale dashboard selector and missing/currently unsuitable snapshots. After retargeting/wait/mask changes, update-snapshots passed `4/4`; normal visual-regression rerun passed `4/4`; scoped ESLint, scoped Prettier, changed-file format check, full typecheck, and diff-check passed. Image inspection confirmed regenerated patients/reports baselines use loaded data rather than skeletons.
+- remaining work: drain agmsg, stage only visual-regression spec/snapshots plus ledgers, commit, notify Claude, then continue with the next non-overlapping UX/display/navigation baseline.
+- next action: commit the visual-regression baseline slice and release the lock.
+
 ### 20260621-1840 JST
 
 - current task: continue the dashboard-first UX sweep with screenshot/layout and design-fidelity capture baselines after PR #1 was created.
