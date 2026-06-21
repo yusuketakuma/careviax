@@ -367,13 +367,18 @@ const CHANGE_BADGES: Record<
   ChangeType,
   { label: string; icon: typeof Plus; color: string } | null
 > = {
-  added: { label: '新規', icon: Plus, color: 'bg-green-100 text-green-800' },
-  removed: { label: '中止', icon: Minus, color: 'bg-red-100 text-red-800' },
-  dose_changed: { label: '用量変更', icon: ArrowRight, color: 'bg-orange-100 text-orange-800' },
+  // 変更種別は state 軸（新規=情報 / 中止=止まり / 用量・用法変更=要確認）。6軸トークンへ集約。
+  added: { label: '新規', icon: Plus, color: 'bg-tag-info/10 text-tag-info' },
+  removed: { label: '中止', icon: Minus, color: 'bg-state-blocked/10 text-state-blocked' },
+  dose_changed: {
+    label: '用量変更',
+    icon: ArrowRight,
+    color: 'bg-state-confirm/10 text-state-confirm',
+  },
   frequency_changed: {
     label: '用法変更',
     icon: ArrowRight,
-    color: 'bg-orange-100 text-orange-800',
+    color: 'bg-state-confirm/10 text-state-confirm',
   },
   unchanged: null,
   do: null,
@@ -439,7 +444,7 @@ function buildLatestChangeSummary(
     items.push({
       drugName: line.drug_name,
       label: cfg?.label ?? '変更',
-      color: cfg?.color ?? 'bg-slate-100 text-slate-700',
+      color: cfg?.color ?? 'bg-muted text-muted-foreground',
       detail:
         change === 'added'
           ? `${line.dose} / ${line.frequency}`
@@ -457,7 +462,7 @@ function buildLatestChangeSummary(
     items.push({
       drugName: line.drug_name,
       label: '中止',
-      color: 'bg-red-100 text-red-800',
+      color: 'bg-state-blocked/10 text-state-blocked',
       detail: `${line.dose} / ${line.frequency}`,
     });
   }
@@ -522,9 +527,9 @@ function DrugLineRow({
     <div
       className={[
         'flex items-start gap-3 border-b border-border/30 px-4 py-2 last:border-0 transition-colors',
-        changeType === 'added' ? 'bg-green-50/40' : '',
+        changeType === 'added' ? 'bg-tag-info/10' : '',
         changeType === 'dose_changed' || changeType === 'frequency_changed'
-          ? 'bg-orange-50/40'
+          ? 'bg-state-confirm/10'
           : '',
         hasOverlap ? 'ring-1 ring-inset ring-state-blocked/40' : '',
       ].join(' ')}
@@ -856,7 +861,7 @@ function PrescriptionIntakeCard({
                     </StateBadge>
                   )}
                   {isDo && (
-                    <span className="inline-flex items-center gap-0.5 rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-bold text-gray-700">
+                    <span className="inline-flex items-center gap-0.5 rounded bg-muted px-1.5 py-0.5 text-[10px] font-bold text-muted-foreground">
                       <Copy className="size-2.5" aria-hidden="true" />
                       Do
                     </span>
@@ -927,10 +932,10 @@ function PrescriptionIntakeCard({
           )}
 
           {(intake.original_document_url || (isFax && !originalCollected)) && (
-            <div className="border-t bg-slate-50/60 px-4 py-3">
+            <div className="border-t bg-muted/40 px-4 py-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="space-y-1">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     原本管理
                   </p>
                   <p className="text-xs text-muted-foreground">
@@ -1013,10 +1018,11 @@ const METHOD_FILTER_OPTIONS = [
 
 // ─── p0_11 処方の変化を確認(差分レビュー)ビュー ───────────────────────────
 
+// 差分の変化種別も state 軸（新規=情報 / 中止=止まり / 変更=要確認）。6軸トークンへ。
 const DIFF_CHANGE_TEXT_COLOR: Record<DiffReviewChangeType, string> = {
-  added: 'text-emerald-700',
-  removed: 'text-red-700',
-  changed: 'text-orange-700',
+  added: 'text-tag-info',
+  removed: 'text-state-blocked',
+  changed: 'text-state-confirm',
   unchanged: 'text-muted-foreground',
 };
 
@@ -1053,7 +1059,7 @@ function DiffReviewView({
 
       <div className="grid gap-4 xl:grid-cols-[2fr_1fr]">
         {/* 4 列テーブル: 変化 / 前回 / 今回 / 薬剤師メモ */}
-        <Card className="border-slate-200 shadow-sm">
+        <Card className="border-border shadow-sm">
           <CardContent className="p-0">
             <Table>
               <TableHeader>
@@ -1087,7 +1093,7 @@ function DiffReviewView({
         </Card>
 
         {/* 次にやること + CTA */}
-        <Card className="border-slate-200 shadow-sm">
+        <Card className="border-border shadow-sm">
           <CardHeader className="pb-2">
             <h3 className="font-heading text-base font-semibold text-foreground">次にやること</h3>
           </CardHeader>
@@ -1107,7 +1113,7 @@ function DiffReviewView({
 
       {/* サブカード: セットにも影響する変化 / 患者さんに確認したいこと */}
       <div className="grid gap-4 md:grid-cols-2">
-        <Card className="border-slate-200 shadow-sm">
+        <Card className="border-border shadow-sm">
           <CardHeader className="pb-2">
             <h3 className="font-heading text-base font-semibold text-foreground">
               セットにも影響する変化
@@ -1133,7 +1139,7 @@ function DiffReviewView({
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200 shadow-sm">
+        <Card className="border-border shadow-sm">
           <CardHeader className="pb-2">
             <h3 className="font-heading text-base font-semibold text-foreground">
               患者さんに確認したいこと
@@ -1368,13 +1374,13 @@ export function PrescriptionHistoryContent() {
             </Badge>
           )}
           {stats.warnings > 0 && (
-            <Badge className="bg-red-200 text-red-900 hover:bg-red-200">
+            <Badge className="border-transparent bg-state-blocked/10 text-state-blocked">
               <AlertTriangle className="mr-0.5 size-3" aria-hidden="true" />
               警告 {stats.warnings}
             </Badge>
           )}
           {stats.overlaps > 0 && (
-            <Badge className="bg-red-200 text-red-900 hover:bg-red-200">
+            <Badge className="border-transparent bg-state-blocked/10 text-state-blocked">
               期間重複 {(stats.overlaps / 2) | 0}件
             </Badge>
           )}
@@ -1384,14 +1390,14 @@ export function PrescriptionHistoryContent() {
       {overviewCards.length > 0 && (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           {overviewCards.map((item) => (
-            <Card key={item.label} className="border-slate-200 shadow-sm">
+            <Card key={item.label} className="border-border shadow-sm">
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
                   <p className="text-sm font-medium text-muted-foreground">{item.label}</p>
                   <HelpPopover title={item.label} description={item.description} />
                 </div>
                 <p className="flex items-center gap-2 font-heading text-xl leading-snug font-medium">
-                  <CalendarDays className="size-4 text-sky-700" aria-hidden="true" />
+                  <CalendarDays className="size-4 text-muted-foreground" aria-hidden="true" />
                   {item.value}
                 </p>
               </CardHeader>
@@ -1401,7 +1407,7 @@ export function PrescriptionHistoryContent() {
       )}
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <Card className="border-slate-200 shadow-sm">
+        <Card className="border-border shadow-sm">
           <CardHeader>
             <h2 className="font-heading text-base leading-snug font-medium">
               処方変更ダッシュボード
@@ -1415,7 +1421,7 @@ export function PrescriptionHistoryContent() {
               latestChanges.map((item) => (
                 <div
                   key={`${item.drugName}-${item.label}`}
-                  className="rounded-xl border border-slate-200 bg-white p-3"
+                  className="rounded-xl border border-border bg-card p-3"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -1434,7 +1440,7 @@ export function PrescriptionHistoryContent() {
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200 shadow-sm">
+        <Card className="border-border shadow-sm">
           <CardHeader>
             <h2 className="font-heading text-base leading-snug font-medium">調剤方法ワンビュー</h2>
             <CardDescription>
@@ -1450,7 +1456,7 @@ export function PrescriptionHistoryContent() {
               dispensingOverview.map((item) => (
                 <div
                   key={`${item.drugName}-${item.note}`}
-                  className="rounded-xl border border-slate-200 bg-white p-3"
+                  className="rounded-xl border border-border bg-card p-3"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
