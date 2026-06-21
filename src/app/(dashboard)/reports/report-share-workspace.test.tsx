@@ -334,6 +334,15 @@ describe('ReportShareWorkspace', () => {
     expect(screen.getByText('加藤 ミサ 様 — 保険・請求根拠未確定')).toBeTruthy();
     expect(screen.getByTestId('report-created-list')).toBeTruthy();
     expect(screen.getByText('作成済み報告書')).toBeTruthy();
+
+    // Slice1: 即時対応優先(guidelines §68-76)。返信待ち(=止まっている)を残課題・作成済みより前に出す。
+    const waiting = screen.getAllByTestId('report-waiting-reply')[0];
+    const issues = screen.getByTestId('report-open-issues');
+    const created = screen.getByTestId('report-created-list');
+    expect(waiting.compareDocumentPosition(issues) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      waiting.compareDocumentPosition(created) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(screen.getByRole('link', { name: '田中 一郎 様' }).getAttribute('href')).toBe(
       '/patients/patient_1',
     );

@@ -657,9 +657,11 @@ export function ReportShareWorkspace() {
                 }
                 isGeneratingDraft={generateDraftMutation.isPending}
               />
+              {/* 即時対応優先(guidelines §68-76): 今日書く → 返信待ち(=止まっている/他職種待ち) →
+                  残課題 → 作成済(参照)。返信待ちを上位へ繰り上げて判断を先に出す。 */}
+              <WaitingBoxesSection data={data} />
               <ReportOpenIssuesSection issues={data.open_issues} />
               <CreatedReportsSection reports={data.created_reports} />
-              <WaitingBoxesSection data={data} />
               <p
                 className="rounded-lg border border-tag-info/30 bg-tag-info/10 px-4 py-3 text-sm leading-6 text-tag-info"
                 data-testid="report-template-policy-bar"
