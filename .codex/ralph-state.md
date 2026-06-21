@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260621-1256 JST
+
+- current task: begin the user-priority UX/runtime sweep from the dashboard by verifying dashboard display and navigation flows, then fixing the first high-priority breakage found.
+- files inspected: agmsg inbox/LOCK acknowledgements, clean `git status`, `package.json` scripts, `playwright.local.config.ts`, `tools/tests/ui-dashboard-nav.spec.ts`, `tools/tests/helpers/local-auth.ts`, `src/components/layout/app-shell.tsx`, `src/components/layout/sidebar.tsx`, `src/components/layout/app-shell.test.tsx`, `src/components/layout/navigation-config.test.ts`, Playwright failure screenshots/error contexts, and live drawer behavior on `http://localhost:3012/dashboard`.
+- files changed: `tools/tests/ui-dashboard-nav.spec.ts` and this Ralph state entry.
+- bugs found: the dashboard navigation E2E still assumed a persistent desktop sidebar under `data-testid="app-sidebar"`. The current PH-OS UX opens navigation through the top-bar `ナビを開く` drawer, so the test no longer exercised the real user path and timed out on core dashboard transitions.
+- security risks found: no auth, authorization, API, DB, RLS, PHI, or production surface changed. Local Playwright auth remained constrained to `localhost` and `ph_os_e2e`.
+- performance issues found: no runtime code changed. Updating the E2E removed 4-minute stale-selector timeouts and restores fast dashboard navigation regression coverage.
+- validation commands: `pnpm dev:e2e:local` for `http://localhost:3012`; one-off Playwright drawer smoke via `tsx`; `pnpm exec prettier --check tools/tests/ui-dashboard-nav.spec.ts`; `pnpm exec eslint tools/tests/ui-dashboard-nav.spec.ts`; `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-dashboard-nav.spec.ts --project=chromium`.
+- validation results: the initial dashboard navigation run passed the two dashboard content tests but failed 7 stale sidebar tests. Live drawer smoke confirmed `ナビを開く` exposes 今日/患者/工程/連携/統計/管理, 患者一覧, 設定, and ログアウト. After updating the spec, targeted Prettier and ESLint passed, and `ui-dashboard-nav.spec.ts --project=chromium` passed 9/9 in 26.3s.
+- remaining work: commit the dashboard navigation E2E update; continue UX/runtime sweep with mobile dashboard layout and then the next high-frequency routes (patients, schedules, visits) unless higher-priority agmsg arrives.
+- next action: drain agmsg, commit this E2E/ledger slice, release locks, then run the next dashboard/mobile UX check.
+
 ### 20260621-1239 JST
 
 - current task: close F-20260621-003 by committing the approved `/search` patient `view=search` bounded projection slice.
