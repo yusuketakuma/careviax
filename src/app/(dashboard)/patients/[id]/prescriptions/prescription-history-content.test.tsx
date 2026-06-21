@@ -353,4 +353,64 @@ describe('PrescriptionHistoryContent', () => {
     // 回帰: Do の旧 gray、警告の旧 red-200 が残っていないこと。
     expect(html).not.toMatch(/bg-gray-200|bg-red-200/);
   });
+
+  it('renders the 後発 (generic) badge without state color (classification value)', () => {
+    useOrgIdMock.mockReturnValue('org_1');
+    useParamsMock.mockReturnValue({ id: 'patient_1' });
+    useQueryClientMock.mockReturnValue({ invalidateQueries: vi.fn() });
+    useMutationMock.mockReturnValue({ mutate: vi.fn(), isPending: false });
+
+    useQueryMock.mockImplementation(({ queryKey }: { queryKey: string[] }) => {
+      if (queryKey[0] === 'drug-masters-batch') {
+        return { data: {}, isLoading: false };
+      }
+      return {
+        data: {
+          patient: { id: 'patient_1', name: '山田花子', name_kana: 'ヤマダハナコ' },
+          data: [
+            {
+              id: 'intake_generic',
+              cycle_id: 'cycle_generic',
+              source_type: 'manual',
+              prescribed_date: '2026-06-01',
+              prescriber_name: '佐藤医師',
+              prescriber_institution: '青空クリニック',
+              prescription_expiry_date: null,
+              original_document_url: null,
+              original_collected_at: null,
+              original_collected_by: null,
+              refill_remaining_count: null,
+              refill_next_dispense_date: null,
+              split_dispense_total: null,
+              split_dispense_current: null,
+              split_next_dispense_date: null,
+              created_at: '2026-06-01T00:00:00.000Z',
+              cycle: { overall_status: 'active' },
+              lines: [
+                {
+                  id: 'l_generic',
+                  drug_name: 'アムロジピン',
+                  dose: '5mg',
+                  frequency: '1日1回',
+                  days: 14,
+                  quantity: 14,
+                  unit: '錠',
+                  route: 'internal',
+                  is_generic: true,
+                },
+              ],
+            },
+          ],
+        },
+        isLoading: false,
+      };
+    });
+
+    render(<PrescriptionHistoryContent />);
+
+    // 後発は分類値 → 状態色なし(青を付けない)。枠線のみ/muted。
+    const badge = screen.getByText('後発');
+    expect(badge.className).not.toMatch(/text-blue-600|border-blue-300/);
+    expect(badge.className).toContain('text-muted-foreground');
+  });
 });

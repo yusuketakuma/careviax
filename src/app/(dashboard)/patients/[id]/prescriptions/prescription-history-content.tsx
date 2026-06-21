@@ -548,9 +548,10 @@ function DrugLineRow({
             </Badge>
           )}
           {line.is_generic && (
+            // 後発/先発は分類値（状態でない）→ 色を付けず枠線のみ(SSOT: state-color-migration-map)。
             <Badge
               variant="outline"
-              className="h-4 px-1 text-[10px] font-normal text-blue-600 border-blue-300"
+              className="h-4 px-1 text-[10px] font-normal text-muted-foreground"
             >
               後発
             </Badge>
