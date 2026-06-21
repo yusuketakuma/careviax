@@ -8876,3 +8876,185 @@ Next loop:
   - `git diff --check -- tools/tests/ui-major-screens.spec.ts`: passed.
 - Remaining:
   - Commit `tools/tests/ui-major-screens.spec.ts` plus this ledger update, notify Claude, then release PR pause.
+
+### Layout Screenshot + Design Fidelity Baselines — High-frequency Screens
+
+- Coordination:
+  - Ran under ACKed `F-UX-LAYOUT-SCREENSHOT-AUDIT-BASELINE` lock for `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md`.
+  - Claude confirmed PR #1 was created from `HEAD=4bf640b5` and will include later commits pushed to the shared branch. No product or test source edits were needed for this slice.
+- Validation:
+  - `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-layout-screenshot-audit.spec.ts --project=chromium`: passed, `10/10` in `42.5s`.
+  - Desktop and mobile screenshot/overflow coverage passed for dashboard, my-day, patients, schedules, and dispensing.
+  - `DESIGN_SCREEN_IDS=new_01_dashboard,new_02_patient_list,new_03_schedule,new_04_visit,new_05_import DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-design-fidelity.spec.ts --project=chromium`: passed, `5/5` in `42.2s`.
+  - Generated screenshots are under ignored artifact directories: `test-results/` and `tools/tests/.artifacts/design-fidelity/`.
+- Remaining:
+  - Commit this validation-only ledger update and push so PR #1 includes the latest UX baseline evidence.
+
+### Visual Regression Baseline Drift — Current Dashboard, Patients, Reports
+
+- Coordination:
+  - Ran under ACKed `F-UX-VISUAL-REGRESSION-DRIFT` lock for `tools/tests/ui-visual-regression.spec.ts`, its snapshots, `CODEX_GOAL_PROGRESS.md`, and `.codex/ralph-state.md`.
+  - Claude confirmed PR #1 was merged to `main` as `a6b744ba`; this is follow-up work on the retained shared branch.
+- Bugs found:
+  - The visual regression spec still targeted stale `dashboard-phase-rail`; the current dashboard exposes `dashboard-process-now`.
+  - Patients and reports full-workspace screenshots could capture loading skeletons because the tests waited only for the outer shell.
+  - The patients board baseline included a minute-level generated timestamp, causing a 24px false diff on immediate rerun.
+  - The snapshot directory still contained unreferenced old baselines from removed visual tests.
+- Implemented by Codex:
+  - Retargeted the dashboard snapshot to `dashboard-process-now`.
+  - Added loaded-content waits for `patients-board-grid`, `patient-board-card`, and `report-waiting-box`.
+  - Masked the patients board generated-at text while preserving the cards, filters, summary tiles, and report content as comparison targets.
+  - Regenerated the four current snapshots and removed five unreferenced old snapshot files.
+- Validation:
+  - Baseline `tools/tests/ui-visual-regression.spec.ts --project=chromium`: failed `0/4` on stale dashboard selector and missing current snapshots; generated patients/reports actuals showed skeleton capture for patients and report workspace.
+  - `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-visual-regression.spec.ts --project=chromium --update-snapshots`: passed, `4/4`, regenerated current baselines.
+  - Same command without `--update-snapshots`: passed, `4/4` in `5.7s`.
+  - `pnpm exec eslint tools/tests/ui-visual-regression.spec.ts`: passed.
+  - `pnpm exec prettier --check tools/tests/ui-visual-regression.spec.ts`: clean.
+  - `pnpm format:check`: clean for changed files.
+  - `pnpm typecheck`: passed, including Next route type generation.
+  - `git diff --check`: passed.
+- Remaining:
+  - Drain agmsg, stage only the visual-regression spec/snapshots plus ledgers, commit the slice, notify Claude, then continue the dashboard-first UX sweep.
+
+### Billing Flow E2E Drift — Current Billing Check and Candidate Actions
+
+- Coordination:
+  - Ran under ACKed `F-UX-BILLING-FLOW-E2E-BASELINE` lock for `tools/tests/e2e-billing-flow.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and `.codex/ralph-state.md`.
+  - Kept the slice test-only. Billing is a hard-stop product area, so no product billing code was touched.
+- Bugs found:
+  - The `/billing` navigation test still expected a candidate-page link before/within the old dashboard contract. The current billing page is the billing-check surface and links each discrepancy to billing evidence and the patient card.
+  - The route-mocked candidate action test used a non-exact `確定` button locator; the current row also has a detail button whose accessible name includes the billing item name `... 確定 ...`, causing Playwright strict-mode ambiguity.
+- Implemented by Codex:
+  - Updated the main billing test to wait for `billing-check-review-table` and assert the current `算定要件 →` and `→ カードへ` navigation links.
+  - Tightened the candidate review action click to `name: '確定', exact: true`.
+- Validation:
+  - Baseline `tools/tests/e2e-billing-flow.spec.ts --project=chromium`: failed `2/8`; `6/8` passed.
+  - Focused rerun for the two fixed tests: passed `2/2`.
+  - Full rerun `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/e2e-billing-flow.spec.ts --project=chromium`: passed, `8/8` in `12.1s`.
+  - `pnpm exec eslint tools/tests/e2e-billing-flow.spec.ts`: passed.
+  - `pnpm exec prettier --check tools/tests/e2e-billing-flow.spec.ts`: clean.
+  - `pnpm format:check`: clean for changed files.
+  - `pnpm typecheck`: passed, including Next route type generation.
+  - `git diff --check -- tools/tests/e2e-billing-flow.spec.ts`: passed.
+- Remaining:
+  - Drain agmsg, stage only the billing E2E spec plus ledgers, commit, notify Claude, then continue the non-overlapping UX/E2E sweep.
+
+### Prescription/Dispensing E2E Drift — Set-Audit Calendar Cell Locator
+
+- Coordination:
+  - Ran under ACKed `F-UX-PRESCRIPTION-DISPENSING-E2E-BASELINE` lock for `tools/tests/e2e-prescription-dispensing-flow.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and `.codex/ralph-state.md`.
+  - Kept the slice test-only. Product medical/prescription/dispensing code was not changed.
+- Bugs found:
+  - The set-audit E2E helper still used CSS `[role="button"]` to locate calendar cells. The current calendar renders native `<button>` elements with accessible names such as `服薬カレンダーセル / 1日目 / 朝 / 1包 / 監査OK`, so the CSS role selector found nothing and three set-audit tests timed out.
+- Implemented by Codex:
+  - Switched the set-audit cell helper to Playwright `getByRole('button', { name: /服薬カレンダーセル.*包/ })`.
+  - Reused the helper in the NG-classification test instead of duplicating the stale selector.
+- Validation:
+  - Baseline `tools/tests/e2e-prescription-dispensing-flow.spec.ts --project=chromium`: failed `3/17`; `14/17` passed. Failures were all stale set-audit calendar-cell locators.
+  - Focused rerun for the three fixed set-audit tests: passed `3/3`.
+  - Full rerun `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/e2e-prescription-dispensing-flow.spec.ts --project=chromium`: passed, `17/17` in `2.8m`.
+  - `pnpm exec eslint tools/tests/e2e-prescription-dispensing-flow.spec.ts`: passed.
+  - `pnpm exec prettier --check tools/tests/e2e-prescription-dispensing-flow.spec.ts`: clean after targeted Prettier write.
+  - `pnpm format:check`: clean for changed files.
+  - `pnpm typecheck`: passed, including Next route type generation.
+  - `git diff --check`: passed.
+- Remaining:
+  - Drain agmsg, stage only the prescription/dispensing E2E spec plus ledgers, commit, notify Claude, then continue the next non-overlapping UX/E2E candidate.
+
+### Billing/PCA/Prescription Guardrails E2E Baseline — Current API Contracts
+
+- Coordination:
+  - Ran under ACKed `F-UX-BILLING-PCA-PRESCRIPTION-GUARDRAILS-E2E-BASELINE` lock for `tools/tests/e2e-billing-pca-prescription-guardrails.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and `.codex/ralph-state.md`.
+  - Validation-only slice. Billing/PCA/product medical code was not changed.
+- Validation:
+  - `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/e2e-billing-pca-prescription-guardrails.spec.ts --project=chromium`: passed, `4/4` in `1.7m`.
+  - Covered billing-preview blocks for care applying/change-pending/public subsidy 21/54 applying cases, PCA open/double-rent guardrail, PCA rental create/return-to-maintenance flow, and prescription intake injection eligibility guardrail.
+  - `pnpm exec eslint tools/tests/e2e-billing-pca-prescription-guardrails.spec.ts`: passed.
+  - `pnpm exec prettier --check tools/tests/e2e-billing-pca-prescription-guardrails.spec.ts`: clean.
+- Remaining:
+  - Commit this validation-only ledger update, notify Claude, then continue the non-overlapping UX/E2E sweep.
+
+### Schedule Vehicle Resource E2E Drift — Proposal Idempotency and Schema Drift
+
+- Coordination:
+  - Ran under ACKed `F-UX-SCHEDULE-VEHICLE-RESOURCE-E2E-BASELINE` lock. Expanded with Claude approval after the success-path proposal API revealed product/schema drift.
+  - Product billing/PCA code remained untouched. Scheduling product change was limited to removing an unused Prisma relation that was absent from migrations and DB.
+- Bugs found:
+  - `tools/tests/e2e-schedule-vehicle-resource-constraints.spec.ts` still omitted the now-required `idempotency_key` for `/api/visit-schedule-proposals`.
+  - The fixture created consent, plans, shifts, and vehicles but no schedulable `MedicationCycle`, so `/api/visit-schedules/generate` failed before vehicle-resource assertions.
+  - Prisma schema declared an unused `VisitScheduleProposalBatch` to `PharmacySite` relation via `pharmacySiteId`; the column was never migrated and current proposal success paths returned 500 against migration-built DBs.
+- Implemented by Codex:
+  - Added stable fixture medication cycles, prescription intakes, and prescription lines for the base and substitute cases, plus deterministic cleanup of schedules created on those fixture cycles.
+  - Added unique E2E idempotency keys to proposal POST requests.
+  - Removed the unmigrated/unused `VisitScheduleProposalBatch` to `PharmacySite` Prisma relation while retaining the `Organization` relation.
+- Validation:
+  - Baseline schedule vehicle E2E failed `5/5`; after fixture/idempotency updates, `4/5` passed and the remaining proposal success path exposed the Prisma schema drift 500.
+  - `pnpm exec prisma generate`: passed.
+  - Restarted `pnpm dev:e2e:local` on `http://localhost:3012` after Prisma generate.
+  - `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public pnpm exec prisma migrate status`: passed, database schema up to date.
+  - `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/e2e-schedule-vehicle-resource-constraints.spec.ts --project=chromium`: passed, `5/5` in `10.5s`.
+  - `pnpm exec prisma format`: passed.
+  - `pnpm exec prisma validate`: passed.
+  - `pnpm exec eslint tools/tests/e2e-schedule-vehicle-resource-constraints.spec.ts tools/tests/helpers/schedule-vehicle-resource-fixtures.ts`: passed.
+  - `pnpm exec prettier --check tools/tests/e2e-schedule-vehicle-resource-constraints.spec.ts tools/tests/helpers/schedule-vehicle-resource-fixtures.ts`: clean.
+  - `pnpm format:check`: clean for changed files.
+  - `pnpm typecheck`: passed, including Next route type generation.
+  - `git diff --check`: passed.
+- Remaining:
+  - Drain agmsg, stage only schema/test/helper plus ledgers, commit, notify Claude, then continue the next non-overlapping UX/E2E sweep. Do not push without explicit user instruction.
+
+### Comment Thread Stream Smoke Baseline — Shared SSE Without Idle Polling
+
+- Coordination:
+  - Ran under ACKed `F-UX-COMMENT-THREAD-NETWORK-E2E-BASELINE` lock for `tools/tests/ui-comment-thread-network-smoke.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and `.codex/ralph-state.md`.
+  - Validation-only slice. Product comment/thread/realtime code was not changed.
+- Validation:
+  - Temporarily stopped the normal `pnpm dev:e2e:local` server because that script sets `NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM=1`.
+  - Started a dedicated local Next dev server on `http://localhost:3012` with the same local E2E DB/auth settings but without `NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM`.
+  - `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 PLAYWRIGHT_STREAM_SMOKE=1 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-comment-thread-network-smoke.spec.ts --project=chromium`: passed, `1/1` in `1.7m`.
+  - Stopped the stream-enabled server and restarted the normal `pnpm dev:e2e:local` server on `http://localhost:3012`.
+  - `pnpm exec eslint tools/tests/ui-comment-thread-network-smoke.spec.ts`: passed.
+  - `pnpm exec prettier --check tools/tests/ui-comment-thread-network-smoke.spec.ts`: clean.
+- Remaining:
+  - Commit this validation-only ledger update, notify Claude, then continue the next non-overlapping UX/E2E sweep. Do not push without explicit user instruction.
+
+### Route-Mocked UI Smoke Drift — Current Schedule Board and Cooperation Contracts
+
+- Coordination:
+  - Ran under ACKed `F-UX-ROUTE-MOCKED-SMOKE-E2E-BASELINE` lock for `tools/tests/ui-route-mocked-smoke.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and `.codex/ralph-state.md`.
+  - Kept the slice test/mock-only. Product UI/API code remained untouched; Claude's FE lane boundary was respected.
+- Bugs found:
+  - The schedule day smoke still waited for legacy `/api/visit-schedules` and asserted the removed `タブレット日次ガント` table, while the current page reads `/api/visit-schedules/day-board` and renders the accessible `今日のスケジュール — 全員` board plus vehicle/route panels.
+  - The day-board route mock omitted current required fields such as `site_id`, `route_order`, `vehicle_resources`, and `preparation_summary`, causing the schedule page error boundary to render.
+  - Pharmacy cooperation route mocks returned cursor-paginated GET payloads without `hasMore` and used a partial active-contract shape, so the workflow/billing smoke could not surface the created visit request or selected contract reliably.
+  - The billing candidates smoke used a non-exact `患者で絞り込み中` text locator and collided with the longer disabled-reason text.
+- Implemented by Codex:
+  - Updated the Gantt/day-board mock to capture day-board requests and return the current schedule-board contract, including preparation summaries and vehicle resources.
+  - Retargeted tablet assertions to the current schedule board lists, vehicle resources, route panel, no-horizontal-overflow, and work-request link touch target.
+  - Aligned pharmacy cooperation cursor mocks with `hasMore: false` and completed the active contract/invoice mock shape used by the schema-validated billing dashboard.
+  - Tightened the billing candidates patient-filter assertion to an exact text match.
+- Validation:
+  - Baseline `tools/tests/ui-route-mocked-smoke.spec.ts --project=chromium`: failed `4/10`; `5/10` passed and `1` mobile-only test skipped.
+  - Focused post-fix reruns: Gantt/billing passed `3/4` then pharmacy cooperation passed `1/1` after completing the contract mock.
+  - Full rerun `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-route-mocked-smoke.spec.ts --project=chromium`: passed, `9/9` with `1` skipped in `56.0s`.
+  - `pnpm exec eslint tools/tests/ui-route-mocked-smoke.spec.ts`: passed.
+  - `pnpm exec prettier --check tools/tests/ui-route-mocked-smoke.spec.ts CODEX_GOAL_PROGRESS.md .codex/ralph-state.md`: clean before this ledger update.
+  - `pnpm typecheck`: passed, including Next route type generation.
+  - `git diff --check`: passed.
+- Remaining:
+  - Format/check ledgers after this entry, drain agmsg, stage only the route-mocked spec plus ledgers, commit, notify Claude, and continue the next non-overlapping UX/E2E sweep. Do not push without explicit user instruction.
+
+### Follow-up PR Readiness — Branch-Level Validation
+
+- Coordination:
+  - Ran under ACKed `F-UX-FOLLOWUP-PR-READINESS` lock for `CODEX_GOAL_PROGRESS.md` and `.codex/ralph-state.md`.
+  - Validation-only slice for the eight follow-up commits after PR #1 merge: `70b454d3`, `e4e7a9ec`, `176701e8`, `5b0175b2`, `063d9023`, `aa6a4c87`, `dd136712`, and `86acf64b`.
+  - Product/test source was not changed. Push remains intentionally skipped because the user has not explicitly requested it.
+- Validation:
+  - `pnpm typecheck`: passed, including Next route type generation.
+  - `pnpm test`: passed, `1113` files passed / `1` skipped; `8669` tests passed / `1` skipped.
+  - `pnpm build`: passed, production build completed and generated `287` static pages.
+  - `pnpm lint`: passed.
+- Remaining:
+  - Run final ledger formatting/diff checks after this entry, commit this validation-only ledger update, notify Claude that the follow-up commit stack is branch-green, and wait for explicit user instruction before any push.

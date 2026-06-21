@@ -20,6 +20,123 @@ Backup directory:
 
 ## Iterations
 
+### 20260621-1953 JST
+
+- current task: record follow-up PR readiness for the eight commits currently ahead of `origin/refactor/state-color-unification`.
+- files inspected: agmsg inbox/ACK messages, current `git status`, follow-up commit log, `package.json` validation scripts, local DB/web readiness checks, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `CODEX_GOAL_PROGRESS.md` and this Ralph state entry only.
+- bugs found: no branch-level type, unit, build, or lint failure was found. This validates the current follow-up stack after the schedule schema fix and route-mocked smoke drift fix.
+- security risks found: no product source, test source, auth, authorization, RLS, DB schema, billing/PCA behavior, patient/PHI projection, audit logging, export, or mutation behavior changed in this validation-only slice.
+- performance issues found: no runtime path changed. Full unit completed in 128.43s and production build generated 287 static pages.
+- validation commands: `pnpm typecheck`; `pnpm test`; `pnpm build`; `pnpm lint`.
+- validation results: typecheck passed with Next route type generation; full Vitest passed with `1113` files passed / `1` skipped and `8669` tests passed / `1` skipped; production build passed and generated `287` static pages; full ESLint passed.
+- remaining work: run final ledger formatting/diff checks after this entry, drain agmsg, stage only the two ledger files, commit the validation-only readiness slice, notify Claude, and wait for explicit user instruction before any push.
+- next action: commit the follow-up readiness ledger slice and release the lock.
+
+### 20260621-1944 JST
+
+- current task: stabilize the route-mocked UI smoke baseline after the comment-thread stream smoke baseline, keeping the work test/mock-only.
+- files inspected: agmsg inbox/ACK messages, current `git status`, `tools/tests/ui-route-mocked-smoke.spec.ts`, route-mock helper contracts, schedule day-board types and current schedule board rendering, pharmacy cooperation workflow/billing schema contracts, Playwright failure contexts, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `tools/tests/ui-route-mocked-smoke.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: route-mocked Gantt smoke waited for the stale `/api/visit-schedules` list and old `タブレット日次ガント` table while the current page uses `/api/visit-schedules/day-board` and renders `今日のスケジュール — 全員`; the day-board mock missed required current fields and triggered the schedule error boundary; pharmacy cooperation cursor mocks lacked `hasMore` and used a partial active-contract/invoice shape; billing candidates used a non-exact `患者で絞り込み中` text locator.
+- security risks found: no product code, auth, authorization, RLS, DB schema, patient/PHI projection, billing/PCA behavior, audit logging, external sharing, export, or mutation contract changed. The update is limited to local route mocks, E2E selectors, and ledgers.
+- performance issues found: no runtime path changed. The stale route/list/table expectations and schema-invalid mocks caused avoidable false waits; the stabilized full route-mocked smoke completed in 56.0s.
+- validation commands: baseline and post-fix Chromium Playwright for `tools/tests/ui-route-mocked-smoke.spec.ts`; focused reruns for Gantt/billing/pharmacy cooperation failures; scoped ESLint; scoped Prettier check; full `pnpm typecheck`; `git diff --check`.
+- validation results: baseline route-mocked smoke failed `4/10`, passed `5/10`, and skipped the mobile-only formulary test. After mock/selector updates, focused pharmacy cooperation passed `1/1`, and full route-mocked smoke passed `9/9` with `1` skipped. Scoped ESLint passed, scoped Prettier check was clean, full typecheck passed with Next route type generation, and diff-check passed.
+- remaining work: run final ledger formatting/diff checks after this entry, drain agmsg, stage only the route-mocked spec and ledgers, commit the slice, notify Claude, then continue the next non-overlapping UX/E2E candidate. Do not push unless the user explicitly asks.
+- next action: run final scoped checks, commit the route-mocked smoke drift slice, and release the lock.
+
+### 20260621-1930 JST
+
+- current task: validate the comment-thread shared notification stream smoke baseline under a stream-enabled local server.
+- files inspected: agmsg inbox/ACK messages, current `git status`, `tools/tests/ui-comment-thread-network-smoke.spec.ts`, `package.json` E2E server scripts, notification stream environment flags, and this Ralph state file.
+- files changed: `CODEX_GOAL_PROGRESS.md` and this Ralph state entry only.
+- bugs found: no comment-thread stream smoke failure was found. The suite proved collaboration comments, notifications inbox, and admin realtime open shared notification streams, receive `text/event-stream`, include presence on the collaboration stream, and avoid idle fallback polling while connected.
+- security risks found: no product comment/thread/realtime code, auth, authorization, RLS, DB schema, PHI projection, audit logging, notification payload, or mutation behavior changed. The validation used route mocks for non-stream network dependencies and local authenticated Playwright sessions.
+- performance issues found: no runtime path changed. The smoke specifically checked that comment, inbox, workflow, unread notification, and stream request counts did not increase after a 65s connected idle window.
+- validation commands: stream-enabled local Next dev server without `NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM`; Chromium Playwright for `tools/tests/ui-comment-thread-network-smoke.spec.ts` with `PLAYWRIGHT_STREAM_SMOKE=1`; normal `pnpm dev:e2e:local` restart; scoped ESLint; scoped Prettier check.
+- validation results: comment-thread stream smoke passed `1/1` in `1.7m`; scoped ESLint passed; scoped Prettier check was clean. Normal E2E server was restored on `http://localhost:3012` afterward.
+- remaining work: drain agmsg, stage only the two ledger files, commit the validation-only baseline, notify Claude, then continue with the next non-overlapping UX/E2E candidate. Do not push unless the user explicitly asks.
+- next action: commit the comment-thread stream smoke ledger slice and release the lock.
+
+### 20260621-1924 JST
+
+- current task: stabilize the schedule vehicle resource constraint E2E baseline and fix the root schema drift exposed by the proposal success path.
+- files inspected: agmsg inbox/ACK/review messages, current `git status`, `tools/tests/e2e-schedule-vehicle-resource-constraints.spec.ts`, `tools/tests/helpers/schedule-vehicle-resource-fixtures.ts`, `src/lib/validations/visit-schedule-proposal.ts`, `src/app/api/visit-schedules/generate/route.ts`, `src/app/api/visit-schedule-proposals/route.ts`, `src/server/services/visit-schedule-planner.ts`, `prisma/schema/visit.prisma`, `prisma/schema/organization.prisma`, `prisma/migrations/20260617040500_add_visit_schedule_proposal_batch/migration.sql`, local DB `VisitScheduleProposalBatch` column inventory, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `prisma/schema/visit.prisma`, `prisma/schema/organization.prisma`, `tools/tests/e2e-schedule-vehicle-resource-constraints.spec.ts`, `tools/tests/helpers/schedule-vehicle-resource-fixtures.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: proposal-generation requests lacked the required `idempotency_key`; vehicle-resource fixture cases lacked a schedulable `MedicationCycle`, causing `/api/visit-schedules/generate` to fail before vehicle assertions; `VisitScheduleProposalBatch.pharmacySiteId` existed only in Prisma schema and no migration/DB column, so proposal success-path reads returned 500.
+- security risks found: no auth, authorization, RLS, billing/PCA code, PHI projection, audit logging, export, or external integration behavior changed. The fixture helper remains guarded to local `ph_os_e2e` under Playwright, and the Prisma change removes an unused relation for a column that was never persisted.
+- performance issues found: no runtime query fan-out or scheduling planner algorithm changed. The E2E fixture cleanup prevents repeated local runs from accumulating fixture-cycle schedules that would create false capacity/duplicate failures.
+- validation commands: baseline and post-fix Chromium Playwright for `tools/tests/e2e-schedule-vehicle-resource-constraints.spec.ts`; `pnpm exec prisma generate`; restarted `pnpm dev:e2e:local`; `pnpm exec prisma migrate status` against local `ph_os_e2e`; `pnpm exec prisma format`; `pnpm exec prisma validate`; scoped ESLint; scoped Prettier check; `pnpm format:check`; `pnpm typecheck`; `git diff --check`.
+- validation results: baseline schedule vehicle E2E failed `5/5`; fixture/idempotency update brought it to `4/5` and exposed the schema drift 500; after removing the unused Prisma relation and regenerating/restarting, the schedule vehicle E2E passed `5/5`. Prisma generate, migrate status, Prisma format/validate, scoped ESLint, scoped Prettier, changed-file format check, full typecheck, and diff-check all passed.
+- remaining work: drain agmsg, stage only the schema/test/helper and ledger files, commit the slice, notify Claude with validation evidence, then continue the next non-overlapping UX/E2E candidate. Do not push unless the user explicitly asks.
+- next action: commit the schedule vehicle resource E2E/schema drift slice and release the lock.
+
+### 20260621-1911 JST
+
+- current task: record the high-risk billing/PCA/prescription API guardrail E2E baseline after the prescription/dispensing E2E drift slice, without touching product hard-stop areas.
+- files inspected: agmsg inbox/ACK messages, current `git status`, `tools/tests/e2e-billing-pca-prescription-guardrails.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `CODEX_GOAL_PROGRESS.md` and this Ralph state entry only.
+- bugs found: no guardrail E2E failure was found. Current API contracts still block care applying/change-pending/public subsidy applying billing previews, reject double-renting unavailable PCA pumps, move returned PCA pumps to maintenance, and block unconfirmed injection prescription intake while accepting eligible outpatient/self-injection lines.
+- security risks found: no product code, billing/PCA/prescription API behavior, auth, authorization, RLS, DB schema, patient projection, audit logging, export, or mutation contract changed. This was a validation-only baseline.
+- performance issues found: no runtime path changed. The guardrail suite completed in 1.7m.
+- validation commands: Chromium Playwright for `tools/tests/e2e-billing-pca-prescription-guardrails.spec.ts`; scoped ESLint; scoped Prettier check.
+- validation results: guardrail E2E passed `4/4`; scoped ESLint passed; scoped Prettier check was clean.
+- remaining work: drain agmsg, stage only the two ledger files, commit the validation-only baseline, notify Claude, then continue with the next non-overlapping UX/display/navigation baseline.
+- next action: commit the billing/PCA/prescription guardrail baseline ledger slice and release the lock.
+
+### 20260621-1907 JST
+
+- current task: validate and stabilize the prescription/dispensing high-frequency E2E baseline after the billing E2E slice, keeping the work test-only.
+- files inspected: agmsg inbox/ACK messages, current `git status`, `tools/tests/e2e-prescription-dispensing-flow.spec.ts`, Playwright failure contexts/screenshots for set-audit calendar-cell selection, `src/components/features/dispense-workbench/medication-calendar-grid.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `tools/tests/e2e-prescription-dispensing-flow.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the set-audit E2E helper used CSS `[role="button"]` even though the current calendar cells are native buttons with accessible names like `服薬カレンダーセル / 1日目 / 朝 / 1包 / 監査OK`, so three set-audit tests could not find the visible cells.
+- security risks found: no product medical code, prescription intake, dispensing logic, set-audit mutation, DB schema, audit logging, patient projection, PHI handling, authorization, RLS, export, or print behavior changed. The slice is Playwright test-only plus ledgers.
+- performance issues found: no runtime path changed. The stale selector previously caused one 240s timeout; the stabilized full suite completed in 2.8m.
+- validation commands: baseline Chromium Playwright for `tools/tests/e2e-prescription-dispensing-flow.spec.ts`; focused Chromium Playwright for the three fixed set-audit tests; full Chromium Playwright for `tools/tests/e2e-prescription-dispensing-flow.spec.ts`; scoped ESLint; targeted Prettier write/check; `pnpm format:check`; `pnpm typecheck`; `git diff --check`.
+- validation results: baseline prescription/dispensing E2E failed `3/17` and passed `14/17`; focused rerun passed `3/3`; full rerun passed `17/17`. Scoped ESLint, scoped Prettier, changed-file format check, full typecheck, and diff-check passed.
+- remaining work: drain agmsg, stage only the prescription/dispensing E2E spec plus ledgers, commit, notify Claude, then continue with the next non-overlapping UX/display/navigation baseline.
+- next action: commit the prescription/dispensing E2E drift slice and release the lock.
+
+### 20260621-1853 JST
+
+- current task: validate and stabilize the billing flow E2E baseline after the visual-regression follow-up commit, while keeping billing product code untouched because billing is a hard-stop area.
+- files inspected: agmsg inbox/ACK/guardrail message, current `git status`, `tools/tests/e2e-billing-flow.spec.ts`, billing Playwright failure contexts/screenshots, `src/app/(dashboard)/billing/page.tsx`, `src/app/(dashboard)/billing/billing-check-content.tsx`, `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `tools/tests/e2e-billing-flow.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the `/billing` E2E still expected stale candidate-page navigation instead of the current billing-check evidence/patient-card links; the route-mocked candidate action test used a non-exact `確定` locator that now matches both the detail button's billing item accessible name and the action button.
+- security risks found: no product billing code, auth, authorization, RLS, DB, API, patient projection, claim generation, monthly close semantics, CSV payload, audit logging, export behavior, or mutation surface changed. The slice is Playwright test-only plus ledgers.
+- performance issues found: no runtime path changed. The update removes false waits/assertion drift and keeps the full billing E2E baseline at 12.1s.
+- validation commands: baseline Chromium Playwright for `tools/tests/e2e-billing-flow.spec.ts`; focused Chromium Playwright for the two fixed tests; full Chromium Playwright for `tools/tests/e2e-billing-flow.spec.ts`; scoped ESLint; scoped Prettier check; `pnpm format:check`; `pnpm typecheck`; scoped `git diff --check`.
+- validation results: baseline billing E2E failed `2/8` and passed `6/8`; focused rerun passed `2/2`; full billing E2E rerun passed `8/8`. Scoped ESLint, scoped Prettier, changed-file format check, full typecheck, and diff-check passed.
+- remaining work: drain agmsg, stage only the billing E2E spec plus ledgers, commit, notify Claude, then continue the next non-overlapping UX/display/navigation baseline.
+- next action: commit the billing-flow E2E drift slice and release the lock.
+
+### 20260621-1847 JST
+
+- current task: stabilize the current visual regression baseline after PR #1 was merged, keeping the dashboard-first UX sweep moving on the retained shared branch.
+- files inspected: agmsg inbox/ACK and PR merge notice, current `git status`, `tools/tests/ui-visual-regression.spec.ts`, generated visual-regression actual screenshots, `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`, `src/app/(dashboard)/patients/patients-board.tsx`, `src/app/(dashboard)/reports/report-share-workspace.tsx`, `package.json`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `tools/tests/ui-visual-regression.spec.ts`, current visual-regression snapshot PNGs under `tools/tests/ui-visual-regression.spec.ts-snapshots/`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the visual-regression spec still waited for removed `dashboard-phase-rail`; patients and reports workspace screenshots could freeze loading skeletons because only the outer shells were awaited; the patients board baseline included a minute-level generated timestamp that caused a 24px false diff on rerun; five stale snapshot files no longer had spec references.
+- security risks found: no product code, auth, authorization, RLS, DB, API, patient projection, report content, audit, export, print, or mutation surface changed. Snapshot artifacts are test baselines only and use the local `ph_os_e2e` environment.
+- performance issues found: no runtime path changed. The new waits remove false visual-drift failures without adding app work; the stabilized visual-regression suite completes in 5.7s after baseline generation.
+- validation commands: baseline Chromium Playwright for `tools/tests/ui-visual-regression.spec.ts`; Chromium Playwright with `--update-snapshots`; Chromium Playwright normal rerun; scoped ESLint for `tools/tests/ui-visual-regression.spec.ts`; scoped Prettier check; `pnpm format:check`; `pnpm typecheck`; `git diff --check`; manual image inspection of regenerated dashboard, patients, and reports snapshots.
+- validation results: baseline visual-regression failed `0/4` on stale dashboard selector and missing/currently unsuitable snapshots. After retargeting/wait/mask changes, update-snapshots passed `4/4`; normal visual-regression rerun passed `4/4`; scoped ESLint, scoped Prettier, changed-file format check, full typecheck, and diff-check passed. Image inspection confirmed regenerated patients/reports baselines use loaded data rather than skeletons.
+- remaining work: drain agmsg, stage only visual-regression spec/snapshots plus ledgers, commit, notify Claude, then continue with the next non-overlapping UX/display/navigation baseline.
+- next action: commit the visual-regression baseline slice and release the lock.
+
+### 20260621-1840 JST
+
+- current task: continue the dashboard-first UX sweep with screenshot/layout and design-fidelity capture baselines after PR #1 was created.
+- files inspected: agmsg inbox/PR_CREATED/LOCK/ACK messages, current `git status`, `tools/tests/ui-layout-screenshot-audit.spec.ts`, `tools/tests/ui-design-fidelity.spec.ts`, `tools/tests/helpers/design-screen-map.ts`, ignored screenshot artifact paths, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `CODEX_GOAL_PROGRESS.md` and this Ralph state entry only.
+- bugs found: no layout screenshot or top-five design capture failure was found. Dashboard, my-day, patients, schedules, dispensing, and the first five new design-map routes all rendered and captured successfully.
+- security risks found: no product code, auth, authorization, RLS, DB schema, PHI projection, audit behavior, report content, export, or mutation surface changed. Screenshot artifacts remain ignored under `test-results/` and `tools/tests/.artifacts/design-fidelity/`.
+- performance issues found: no runtime path changed. The layout audit completed in `42.5s`; the selected design-fidelity capture completed in `42.2s`.
+- validation commands: Chromium Playwright for `tools/tests/ui-layout-screenshot-audit.spec.ts`; Chromium Playwright for `tools/tests/ui-design-fidelity.spec.ts` with `DESIGN_SCREEN_IDS=new_01_dashboard,new_02_patient_list,new_03_schedule,new_04_visit,new_05_import`; git status checks confirming only ignored screenshot artifacts were produced.
+- validation results: layout screenshot audit passed `10/10`; design fidelity top-five capture passed `5/5`. Claude reported PR #1 was created from `HEAD=4bf640b5` and acknowledged this validation-only ledger lock/expand. No source edits were required.
+- remaining work: format/check ledgers, drain agmsg, stage only `CODEX_GOAL_PROGRESS.md` and this Ralph state entry, commit, notify Claude, and push if needed so PR #1 includes this validation evidence.
+- next action: commit the validation-only ledger slice, then continue the UX sweep with the next display/navigation-focused E2E candidate.
+
 ### 20260621-1832 JST
 
 - current task: record page/detail layout baselines and stabilize current `ui-major-screens` E2E drift before Claude opens the branch PR.

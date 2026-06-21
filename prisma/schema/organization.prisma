@@ -117,19 +117,18 @@ model PharmacySite {
   created_at                 DateTime     @default(now())
   updated_at                 DateTime     @updatedAt
 
-  memberships                  Membership[]
-  pharmacist_shifts            PharmacistShift[]
-  pharmacist_shift_templates   PharmacistShiftTemplate[]
-  facility_standards           FacilityStandardRegistration[]
-  drug_stocks                  PharmacyDrugStock[]
-  visit_schedules              VisitSchedule[]
-  visit_schedule_proposals     VisitScheduleProposal[]
-  business_holidays            BusinessHoliday[]
-  insurance_configs            PharmacySiteInsuranceConfig[]
-  service_areas                ServiceArea[]
-  visit_vehicle_resources      VisitVehicleResource[]
-  visitScheduleProposalBatches VisitScheduleProposalBatch[]
-  base_pharmacy_partnerships   PharmacyPartnership[]          @relation("BaseSitePharmacyPartnerships")
+  memberships                Membership[]
+  pharmacist_shifts          PharmacistShift[]
+  pharmacist_shift_templates PharmacistShiftTemplate[]
+  facility_standards         FacilityStandardRegistration[]
+  drug_stocks                PharmacyDrugStock[]
+  visit_schedules            VisitSchedule[]
+  visit_schedule_proposals   VisitScheduleProposal[]
+  business_holidays          BusinessHoliday[]
+  insurance_configs          PharmacySiteInsuranceConfig[]
+  service_areas              ServiceArea[]
+  visit_vehicle_resources    VisitVehicleResource[]
+  base_pharmacy_partnerships PharmacyPartnership[]          @relation("BaseSitePharmacyPartnerships")
 
   @@unique([id, org_id])
   @@index([org_id])

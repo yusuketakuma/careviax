@@ -347,26 +347,15 @@ test.describe('billing: main page', () => {
     expect(errors).toEqual([]);
   });
 
-  test('billing page has navigation to candidates', async ({ context }) => {
+  test('billing page links billing evidence and patient card navigation', async ({ context }) => {
     const { page, errors } = await createInstrumentedPage(context);
     await openBillingRoute(page, '/billing');
 
-    // Should have link to candidates page
-    const candidatesLink = page.getByRole('link', {
-      name: /候補|請求候補|Candidates/i,
+    await expect(page.getByTestId('billing-check-review-table')).toBeVisible({
+      timeout: 30_000,
     });
-    const hasCandidatesLink = await candidatesLink.isVisible().catch(() => false);
-
-    // OR navigation in sidebar
-    const sidebarCandidates = page.locator('nav').getByRole('link', {
-      name: /請求|Billing/i,
-    });
-    const hasSidebarLink = await sidebarCandidates
-      .first()
-      .isVisible()
-      .catch(() => false);
-
-    expect(hasCandidatesLink || hasSidebarLink).toBe(true);
+    await expect(page.getByRole('link', { name: '算定要件 →' })).toBeVisible();
+    await expect(page.getByRole('link', { name: '→ カードへ' })).toBeVisible();
 
     expect(errors).toEqual([]);
   });
@@ -523,7 +512,9 @@ test.describe('billing: candidates page', () => {
       .toBe(true);
     await expect(closeButton).toBeDisabled();
 
-    await candidateRow(page, '請求E2E 確定').getByRole('button', { name: '確定' }).click();
+    await candidateRow(page, '請求E2E 確定')
+      .getByRole('button', { name: '確定', exact: true })
+      .click();
     await expect(closeButton).toBeEnabled();
     await closeButton.click();
     await expect
