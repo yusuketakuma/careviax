@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260621-1853 JST
+
+- current task: validate and stabilize the billing flow E2E baseline after the visual-regression follow-up commit, while keeping billing product code untouched because billing is a hard-stop area.
+- files inspected: agmsg inbox/ACK/guardrail message, current `git status`, `tools/tests/e2e-billing-flow.spec.ts`, billing Playwright failure contexts/screenshots, `src/app/(dashboard)/billing/page.tsx`, `src/app/(dashboard)/billing/billing-check-content.tsx`, `src/app/(dashboard)/billing/candidates/billing-candidates-content.tsx`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `tools/tests/e2e-billing-flow.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the `/billing` E2E still expected stale candidate-page navigation instead of the current billing-check evidence/patient-card links; the route-mocked candidate action test used a non-exact `確定` locator that now matches both the detail button's billing item accessible name and the action button.
+- security risks found: no product billing code, auth, authorization, RLS, DB, API, patient projection, claim generation, monthly close semantics, CSV payload, audit logging, export behavior, or mutation surface changed. The slice is Playwright test-only plus ledgers.
+- performance issues found: no runtime path changed. The update removes false waits/assertion drift and keeps the full billing E2E baseline at 12.1s.
+- validation commands: baseline Chromium Playwright for `tools/tests/e2e-billing-flow.spec.ts`; focused Chromium Playwright for the two fixed tests; full Chromium Playwright for `tools/tests/e2e-billing-flow.spec.ts`; scoped ESLint; scoped Prettier check; `pnpm format:check`; `pnpm typecheck`; scoped `git diff --check`.
+- validation results: baseline billing E2E failed `2/8` and passed `6/8`; focused rerun passed `2/2`; full billing E2E rerun passed `8/8`. Scoped ESLint, scoped Prettier, changed-file format check, full typecheck, and diff-check passed.
+- remaining work: drain agmsg, stage only the billing E2E spec plus ledgers, commit, notify Claude, then continue the next non-overlapping UX/display/navigation baseline.
+- next action: commit the billing-flow E2E drift slice and release the lock.
+
 ### 20260621-1847 JST
 
 - current task: stabilize the current visual regression baseline after PR #1 was merged, keeping the dashboard-first UX sweep moving on the retained shared branch.

@@ -8916,3 +8916,26 @@ Next loop:
   - `git diff --check`: passed.
 - Remaining:
   - Drain agmsg, stage only the visual-regression spec/snapshots plus ledgers, commit the slice, notify Claude, then continue the dashboard-first UX sweep.
+
+### Billing Flow E2E Drift — Current Billing Check and Candidate Actions
+
+- Coordination:
+  - Ran under ACKed `F-UX-BILLING-FLOW-E2E-BASELINE` lock for `tools/tests/e2e-billing-flow.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and `.codex/ralph-state.md`.
+  - Kept the slice test-only. Billing is a hard-stop product area, so no product billing code was touched.
+- Bugs found:
+  - The `/billing` navigation test still expected a candidate-page link before/within the old dashboard contract. The current billing page is the billing-check surface and links each discrepancy to billing evidence and the patient card.
+  - The route-mocked candidate action test used a non-exact `確定` button locator; the current row also has a detail button whose accessible name includes the billing item name `... 確定 ...`, causing Playwright strict-mode ambiguity.
+- Implemented by Codex:
+  - Updated the main billing test to wait for `billing-check-review-table` and assert the current `算定要件 →` and `→ カードへ` navigation links.
+  - Tightened the candidate review action click to `name: '確定', exact: true`.
+- Validation:
+  - Baseline `tools/tests/e2e-billing-flow.spec.ts --project=chromium`: failed `2/8`; `6/8` passed.
+  - Focused rerun for the two fixed tests: passed `2/2`.
+  - Full rerun `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/e2e-billing-flow.spec.ts --project=chromium`: passed, `8/8` in `12.1s`.
+  - `pnpm exec eslint tools/tests/e2e-billing-flow.spec.ts`: passed.
+  - `pnpm exec prettier --check tools/tests/e2e-billing-flow.spec.ts`: clean.
+  - `pnpm format:check`: clean for changed files.
+  - `pnpm typecheck`: passed, including Next route type generation.
+  - `git diff --check -- tools/tests/e2e-billing-flow.spec.ts`: passed.
+- Remaining:
+  - Drain agmsg, stage only the billing E2E spec plus ledgers, commit, notify Claude, then continue the non-overlapping UX/E2E sweep.
