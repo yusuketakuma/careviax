@@ -31,17 +31,19 @@ async function fetchClerkSupport(orgId: string): Promise<ClerkSupportResponse> {
   return json.data;
 }
 
+// KPI 件数は単一エンティティの状態でもカテゴリ識別色でもないため、状態色を塗らない
+// (赤=危険等の偽シグナル回避)。区別はラベル＋空間分離で行う。件数は foreground 強調、
+// ゼロ件は muted で弱調にする（色ではなく明度コントラスト）。
 const KPI_DEFS: Array<{
   key: keyof ClerkSupportKpis;
   label: string;
-  countClass: string;
 }> = [
-  { key: 'intake_pending', label: '処方受付', countClass: 'text-red-600' },
-  { key: 'delivery_target_missing', label: '送付先未設定', countClass: 'text-amber-600' },
-  { key: 'schedule_confirmation', label: '日程確認', countClass: 'text-blue-600' },
-  { key: 'document_drafts', label: '文書記録', countClass: 'text-emerald-600' },
-  { key: 'reply_pending', label: '返信待ち', countClass: 'text-violet-600' },
-  { key: 'pharmacist_review', label: '薬剤師確認', countClass: 'text-sky-600' },
+  { key: 'intake_pending', label: '処方受付' },
+  { key: 'delivery_target_missing', label: '送付先未設定' },
+  { key: 'schedule_confirmation', label: '日程確認' },
+  { key: 'document_drafts', label: '文書記録' },
+  { key: 'reply_pending', label: '返信待ち' },
+  { key: 'pharmacist_review', label: '薬剤師確認' },
 ];
 
 export function ClerkSupportContent() {
@@ -81,15 +83,23 @@ export function ClerkSupportContent() {
       ) : (
         <>
           <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-6" data-testid="clerk-kpi-grid">
-            {KPI_DEFS.map((def) => (
-              <div key={def.key} className="rounded-lg border border-border/70 bg-card px-4 py-3">
-                <p className="text-sm font-medium text-foreground">{def.label}</p>
-                <p className={cn('mt-1 text-2xl font-bold tabular-nums', def.countClass)}>
-                  {data.kpis[def.key]}
-                  <span className="ml-0.5 text-sm font-medium">件</span>
-                </p>
-              </div>
-            ))}
+            {KPI_DEFS.map((def) => {
+              const count = data.kpis[def.key];
+              return (
+                <div key={def.key} className="rounded-lg border border-border/70 bg-card px-4 py-3">
+                  <p className="text-sm font-medium text-foreground">{def.label}</p>
+                  <p
+                    className={cn(
+                      'mt-1 text-2xl font-bold tabular-nums',
+                      count === 0 ? 'text-muted-foreground' : 'text-foreground',
+                    )}
+                  >
+                    {count}
+                    <span className="ml-0.5 text-sm font-medium">件</span>
+                  </p>
+                </div>
+              );
+            })}
           </div>
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
