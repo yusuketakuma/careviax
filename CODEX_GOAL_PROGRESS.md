@@ -8961,3 +8961,16 @@ Next loop:
   - `git diff --check`: passed.
 - Remaining:
   - Drain agmsg, stage only the prescription/dispensing E2E spec plus ledgers, commit, notify Claude, then continue the next non-overlapping UX/E2E candidate.
+
+### Billing/PCA/Prescription Guardrails E2E Baseline — Current API Contracts
+
+- Coordination:
+  - Ran under ACKed `F-UX-BILLING-PCA-PRESCRIPTION-GUARDRAILS-E2E-BASELINE` lock for `tools/tests/e2e-billing-pca-prescription-guardrails.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and `.codex/ralph-state.md`.
+  - Validation-only slice. Billing/PCA/product medical code was not changed.
+- Validation:
+  - `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/e2e-billing-pca-prescription-guardrails.spec.ts --project=chromium`: passed, `4/4` in `1.7m`.
+  - Covered billing-preview blocks for care applying/change-pending/public subsidy 21/54 applying cases, PCA open/double-rent guardrail, PCA rental create/return-to-maintenance flow, and prescription intake injection eligibility guardrail.
+  - `pnpm exec eslint tools/tests/e2e-billing-pca-prescription-guardrails.spec.ts`: passed.
+  - `pnpm exec prettier --check tools/tests/e2e-billing-pca-prescription-guardrails.spec.ts`: clean.
+- Remaining:
+  - Commit this validation-only ledger update, notify Claude, then continue the non-overlapping UX/E2E sweep.

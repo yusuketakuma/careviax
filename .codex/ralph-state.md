@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260621-1911 JST
+
+- current task: record the high-risk billing/PCA/prescription API guardrail E2E baseline after the prescription/dispensing E2E drift slice, without touching product hard-stop areas.
+- files inspected: agmsg inbox/ACK messages, current `git status`, `tools/tests/e2e-billing-pca-prescription-guardrails.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file.
+- files changed: `CODEX_GOAL_PROGRESS.md` and this Ralph state entry only.
+- bugs found: no guardrail E2E failure was found. Current API contracts still block care applying/change-pending/public subsidy applying billing previews, reject double-renting unavailable PCA pumps, move returned PCA pumps to maintenance, and block unconfirmed injection prescription intake while accepting eligible outpatient/self-injection lines.
+- security risks found: no product code, billing/PCA/prescription API behavior, auth, authorization, RLS, DB schema, patient projection, audit logging, export, or mutation contract changed. This was a validation-only baseline.
+- performance issues found: no runtime path changed. The guardrail suite completed in 1.7m.
+- validation commands: Chromium Playwright for `tools/tests/e2e-billing-pca-prescription-guardrails.spec.ts`; scoped ESLint; scoped Prettier check.
+- validation results: guardrail E2E passed `4/4`; scoped ESLint passed; scoped Prettier check was clean.
+- remaining work: drain agmsg, stage only the two ledger files, commit the validation-only baseline, notify Claude, then continue with the next non-overlapping UX/display/navigation baseline.
+- next action: commit the billing/PCA/prescription guardrail baseline ledger slice and release the lock.
+
 ### 20260621-1907 JST
 
 - current task: validate and stabilize the prescription/dispensing high-frequency E2E baseline after the billing E2E slice, keeping the work test-only.
