@@ -9003,3 +9003,18 @@ Next loop:
   - `git diff --check`: passed.
 - Remaining:
   - Drain agmsg, stage only schema/test/helper plus ledgers, commit, notify Claude, then continue the next non-overlapping UX/E2E sweep. Do not push without explicit user instruction.
+
+### Comment Thread Stream Smoke Baseline — Shared SSE Without Idle Polling
+
+- Coordination:
+  - Ran under ACKed `F-UX-COMMENT-THREAD-NETWORK-E2E-BASELINE` lock for `tools/tests/ui-comment-thread-network-smoke.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and `.codex/ralph-state.md`.
+  - Validation-only slice. Product comment/thread/realtime code was not changed.
+- Validation:
+  - Temporarily stopped the normal `pnpm dev:e2e:local` server because that script sets `NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM=1`.
+  - Started a dedicated local Next dev server on `http://localhost:3012` with the same local E2E DB/auth settings but without `NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM`.
+  - `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 PLAYWRIGHT_STREAM_SMOKE=1 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-comment-thread-network-smoke.spec.ts --project=chromium`: passed, `1/1` in `1.7m`.
+  - Stopped the stream-enabled server and restarted the normal `pnpm dev:e2e:local` server on `http://localhost:3012`.
+  - `pnpm exec eslint tools/tests/ui-comment-thread-network-smoke.spec.ts`: passed.
+  - `pnpm exec prettier --check tools/tests/ui-comment-thread-network-smoke.spec.ts`: clean.
+- Remaining:
+  - Commit this validation-only ledger update, notify Claude, then continue the next non-overlapping UX/E2E sweep. Do not push without explicit user instruction.

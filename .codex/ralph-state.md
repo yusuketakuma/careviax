@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260621-1930 JST
+
+- current task: validate the comment-thread shared notification stream smoke baseline under a stream-enabled local server.
+- files inspected: agmsg inbox/ACK messages, current `git status`, `tools/tests/ui-comment-thread-network-smoke.spec.ts`, `package.json` E2E server scripts, notification stream environment flags, and this Ralph state file.
+- files changed: `CODEX_GOAL_PROGRESS.md` and this Ralph state entry only.
+- bugs found: no comment-thread stream smoke failure was found. The suite proved collaboration comments, notifications inbox, and admin realtime open shared notification streams, receive `text/event-stream`, include presence on the collaboration stream, and avoid idle fallback polling while connected.
+- security risks found: no product comment/thread/realtime code, auth, authorization, RLS, DB schema, PHI projection, audit logging, notification payload, or mutation behavior changed. The validation used route mocks for non-stream network dependencies and local authenticated Playwright sessions.
+- performance issues found: no runtime path changed. The smoke specifically checked that comment, inbox, workflow, unread notification, and stream request counts did not increase after a 65s connected idle window.
+- validation commands: stream-enabled local Next dev server without `NEXT_PUBLIC_DISABLE_NOTIFICATION_STREAM`; Chromium Playwright for `tools/tests/ui-comment-thread-network-smoke.spec.ts` with `PLAYWRIGHT_STREAM_SMOKE=1`; normal `pnpm dev:e2e:local` restart; scoped ESLint; scoped Prettier check.
+- validation results: comment-thread stream smoke passed `1/1` in `1.7m`; scoped ESLint passed; scoped Prettier check was clean. Normal E2E server was restored on `http://localhost:3012` afterward.
+- remaining work: drain agmsg, stage only the two ledger files, commit the validation-only baseline, notify Claude, then continue with the next non-overlapping UX/E2E candidate. Do not push unless the user explicitly asks.
+- next action: commit the comment-thread stream smoke ledger slice and release the lock.
+
 ### 20260621-1924 JST
 
 - current task: stabilize the schedule vehicle resource constraint E2E baseline and fix the root schema drift exposed by the proposal success path.
