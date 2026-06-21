@@ -5,6 +5,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { StateBadge } from '@/components/ui/state-badge';
 import { PageScaffold } from '@/components/layout/page-scaffold';
+import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
+import { SectionIntro } from '@/components/ui/section-intro';
 
 const MASTER_CATEGORIES = ['薬剤', '医療機関', '施設', 'スタッフ', '車両', 'タグ', '帳票'] as const;
 const MASTER_FIELDS = ['名称', 'コード', '分類', '注意ポイント', '表示するタグ', 'メモ'] as const;
@@ -28,8 +30,20 @@ export function MasterEditorView({
 
   return (
     <PageScaffold>
+      {/* SYS-2: 共通 AdminPageHeader を付与し h1 とページ構成を他 admin 画面に揃える。
+          ADD-9: 実データ未接続のサンプル表示である旨を supportingContent で明示する。 */}
+      <AdminPageHeader
+        title={listTitle}
+        description={`${activeCategory}マスタの登録・編集を行います。`}
+        supportingContent={
+          <SectionIntro
+            title="サンプル表示"
+            description="実データ接続は未実装です。表示は固定のサンプルで、登録・編集操作は保存されません。"
+          />
+        }
+      />
       <div
-        className="grid min-h-[720px] gap-7 lg:grid-cols-[220px_340px_minmax(0,1fr)] xl:grid-cols-[280px_430px_minmax(0,1fr)]"
+        className="grid min-h-[calc(100dvh-16rem)] gap-7 lg:grid-cols-[220px_340px_minmax(0,1fr)] xl:grid-cols-[280px_430px_minmax(0,1fr)]"
         data-testid={testId}
       >
         <Card className="rounded-2xl">
