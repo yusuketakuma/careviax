@@ -1,8 +1,9 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { getAdminCapacityShortcutLinks } from '@/components/features/admin/admin-page-shortcut-presets';
-import { PageShortcutLinks } from '@/components/features/workflow/page-shortcut-links';
+import { PageScaffold } from '@/components/layout/page-scaffold';
 import { ErrorState } from '@/components/ui/error-state';
 import { Skeleton } from '@/components/ui/loading';
 import { useOrgId } from '@/lib/hooks/use-org-id';
@@ -167,13 +168,13 @@ export function CapacityContent() {
   const { kpis, process_remaining, staff_load, attention_items } = capacityQuery.data;
 
   return (
-    <div className="space-y-5" data-testid="capacity-page">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          今日あとどれだけ対応できる?
-        </h1>
-        <PageShortcutLinks links={getAdminCapacityShortcutLinks()} />
-      </div>
+    <PageScaffold variant="bare" testId="capacity-page">
+      {/* SYS-3: 自前 div+h1+ショートカットを共通 PageScaffold + AdminPageHeader へ統一。 */}
+      <AdminPageHeader
+        title="今日あとどれだけ対応できる?"
+        description="訪問枠・調剤セット・スタッフ稼働・緊急余力から、今日あと対応できる量と詰まりを確認します。"
+        shortcuts={getAdminCapacityShortcutLinks()}
+      />
 
       {/* KPI 4 枚: 訪問枠 / 調剤・セット / スタッフ稼働 / 緊急余力 */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -257,6 +258,6 @@ export function CapacityContent() {
           )}
         </section>
       </div>
-    </div>
+    </PageScaffold>
   );
 }
