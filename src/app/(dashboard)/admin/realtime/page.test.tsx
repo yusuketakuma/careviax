@@ -108,8 +108,8 @@ describe('RealtimePage', () => {
     );
   });
 
-  it('reflects SSE connection state in the indicator color (connected=emerald, reconnecting=amber)', () => {
-    // 接続中: emerald(正常)。
+  it('reflects SSE connection state in the indicator color (connected=done, reconnecting=confirm)', () => {
+    // 接続中: done(正常, 状態色トークン)。
     useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
       const [scope] = queryKey;
       if (scope === 'admin-realtime-workflow') return { data: WORKFLOW_DATA, connected: true };
@@ -117,11 +117,11 @@ describe('RealtimePage', () => {
     });
     const { unmount } = render(<RealtimePage />);
     const connected = screen.getByText('SSE 接続中です。新着通知は即時反映されます。');
-    expect(connected.className).toContain('text-emerald-100');
-    expect(connected.className).not.toContain('amber');
+    expect(connected.className).toContain('text-state-done');
+    expect(connected.className).not.toContain('state-confirm');
     unmount();
 
-    // 再接続中(両ストリーム未接続): amber(注意)。常時 emerald の偽シグナルを避ける。
+    // 再接続中(両ストリーム未接続): confirm(要注意)。常時 done の偽シグナルを避ける。
     useRealtimeQueryMock.mockImplementation(({ queryKey }: { queryKey: unknown[] }) => {
       const [scope] = queryKey;
       if (scope === 'admin-realtime-workflow') return { data: WORKFLOW_DATA, connected: false };
@@ -131,8 +131,8 @@ describe('RealtimePage', () => {
     const reconnecting = screen.getByText(
       'SSE 再接続中です。未接続時は定期再取得へフォールバックします。',
     );
-    expect(reconnecting.className).toContain('text-amber-100');
-    expect(reconnecting.className).not.toContain('emerald');
+    expect(reconnecting.className).toContain('text-state-confirm');
+    expect(reconnecting.className).not.toContain('state-done');
   });
 
   it('merges notification stream items into the admin realtime cache', () => {
