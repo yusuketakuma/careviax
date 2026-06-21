@@ -182,16 +182,16 @@ External dependencies gating otherwise-ready work. Mark blocked items `cc:blocke
 Each policy line needs proposed_by + reviewed_by + status before it graduates to ApplyNow.
 Status values: `proposed` → `peer-approved` → `applied` (or `rejected`).
 
-| Policy line                                       | proposed_by | reviewed_by | status                |
-| ------------------------------------------------- | ----------- | ----------- | --------------------- |
-| ApplyNow §1–6 (lane/LOCK/drain/verify discipline) | claude-lead | codex-lead  | applied (proven seed) |
-| ApplyNow §7 (UI/UX SSOT + State Color tokens)     | claude-lead | _pending_   | proposed              |
-| ApplyNow §8 (Compliance by Design + RLS)          | codex-lead  | _pending_   | proposed              |
-| ApplyNow §9 (PHI redaction symmetry on mutations) | claude-lead | codex-lead  | applied               |
-| ApplyNow §10 (fail-closed client reads)           | claude-lead | codex-lead  | applied               |
-| ApplyNow §11 (workload-balancing handoff)         | codex-lead  | claude-lead | applied               |
-| ApplyNow §12 (idle-capacity useful work)          | human       | claude-lead | applied               |
-| ApplyNow §13 (loop-engineering PDCA track)        | human       | codex-lead  | applied               |
-| ApplyNow §14 (idle-time productivity playbook)    | claude-lead | codex-lead  | applied               |
-| ApplyNow §15 (no passive-wait per-turn trigger)   | human       | codex-lead  | proposed              |
-| _next candidate_                                  | _name_      | _name_      | proposed              |
+| Policy line                                       | proposed_by | reviewed_by | status                                 |
+| ------------------------------------------------- | ----------- | ----------- | -------------------------------------- |
+| ApplyNow §1–6 (lane/LOCK/drain/verify discipline) | claude-lead | codex-lead  | applied (proven seed)                  |
+| ApplyNow §7 (UI/UX SSOT + State Color tokens)     | claude-lead | _pending_   | proposed                               |
+| ApplyNow §8 (Compliance by Design + RLS)          | codex-lead  | _pending_   | proposed                               |
+| ApplyNow §9 (PHI redaction symmetry on mutations) | claude-lead | codex-lead  | applied                                |
+| ApplyNow §10 (fail-closed client reads)           | claude-lead | codex-lead  | applied                                |
+| ApplyNow §11 (workload-balancing handoff)         | codex-lead  | claude-lead | applied                                |
+| ApplyNow §12 (idle-capacity useful work)          | human       | claude-lead | applied                                |
+| ApplyNow §13 (loop-engineering PDCA track)        | human       | codex-lead  | applied                                |
+| ApplyNow §14 (idle-time productivity playbook)    | claude-lead | codex-lead  | applied                                |
+| ApplyNow §15 (no passive-wait per-turn trigger)   | human       | codex-lead  | peer-approved (human gate for applied) |
+| _next candidate_                                  | _name_      | _name_      | proposed                               |
