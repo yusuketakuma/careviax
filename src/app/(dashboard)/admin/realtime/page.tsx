@@ -179,7 +179,15 @@ export default function RealtimePage() {
               <span className="text-slate-300">ワークベンチ</span>
               <span className="font-medium">{workbenchItems.length}</span>
             </div>
-            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
+            {/* 接続状態を色でも示す。再接続中(=ライブ未保証)を常時 emerald にすると緑=正常の偽シグナルになるため、
+                未接続時は amber(注意)へ切替える。文言も併記し色のみ依存にはしない。dark hero 上のため chrome 配色。 */}
+            <div
+              className={`rounded-xl border px-3 py-2 text-xs ${
+                realtimeConnected
+                  ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-100'
+                  : 'border-amber-500/20 bg-amber-500/10 text-amber-100'
+              }`}
+            >
               {realtimeConnected
                 ? 'SSE 接続中です。新着通知は即時反映されます。'
                 : 'SSE 再接続中です。未接続時は定期再取得へフォールバックします。'}
