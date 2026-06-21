@@ -284,6 +284,8 @@ export function NotificationSettingsContent() {
   const [rulesLoadedOrgId, setRulesLoadedOrgId] = useState<string | null>(null);
   const [rulesLoadError, setRulesLoadError] = useState(false);
   const [rulesReloadKey, setRulesReloadKey] = useState(0);
+  const [escalationLoadError, setEscalationLoadError] = useState(false);
+  const [escalationReloadKey, setEscalationReloadKey] = useState(0);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [browserNotificationState, setBrowserNotificationState] = useState(
     readBrowserNotificationState,
@@ -349,9 +351,11 @@ export function NotificationSettingsContent() {
       .then((payload) => {
         if (!active) return;
         setEscalationRules(payload.data ?? []);
+        setEscalationLoadError(false);
       })
       .catch((error: unknown) => {
         if (!active) return;
+        setEscalationLoadError(true);
         toast.error(
           error instanceof Error ? error.message : 'エスカレーションルールの取得に失敗しました',
         );
@@ -360,7 +364,7 @@ export function NotificationSettingsContent() {
     return () => {
       active = false;
     };
-  }, [orgId]);
+  }, [orgId, escalationReloadKey]);
 
   const loading = Boolean(orgId) && rulesLoadedOrgId !== orgId;
   const permission = browserNotificationState.permission;
@@ -774,7 +778,22 @@ export function NotificationSettingsContent() {
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          {escalationRules.length === 0 ? (
+          {escalationLoadError ? (
+            // 取得失敗を「まだありません」の偽 empty に潰さず、再読込導線つき ErrorState を出す。
+            <ErrorState
+              variant="server"
+              size="inline"
+              title="エスカレーションルールを読み込めませんでした"
+              description="データの読み込みに失敗しました。時間をおいて再読み込みしてください。"
+              action={{
+                label: '再読み込み',
+                onClick: () => {
+                  setEscalationLoadError(false);
+                  setEscalationReloadKey((key) => key + 1);
+                },
+              }}
+            />
+          ) : escalationRules.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               エスカレーションルールはまだありません。
             </p>

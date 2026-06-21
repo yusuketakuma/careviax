@@ -384,7 +384,7 @@ export function DataExplorerContent() {
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-2 xl:h-[calc(100dvh-13rem)] xl:overflow-hidden">
+        <Card className="lg:col-span-2 xl:col-span-1 xl:h-[calc(100dvh-13rem)] xl:overflow-hidden">
           <CardHeader>
             <CardTitle>詳細 / 許可フィールド更新</CardTitle>
             <CardDescription>
