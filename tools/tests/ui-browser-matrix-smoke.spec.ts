@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { attachLocalSession, createInstrumentedPage, openStableRoute } from './helpers/local-auth';
 
 const ROUTES = [
-  { path: '/dashboard', readyTestId: 'dashboard-priority-actions' },
+  { path: '/dashboard', readyTestId: 'dashboard-cockpit' },
   { path: '/patients', readyTestId: 'patients-board' },
   { path: '/reports', readyTestId: 'report-share-workspace' },
   { path: '/handoff', readyTestId: 'handoff-workspace' },

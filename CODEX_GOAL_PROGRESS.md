@@ -8823,4 +8823,22 @@ Next loop:
   - Scoped Prettier check and scoped `git diff --check`: passed.
   - `NODE_OPTIONS=--max-old-space-size=16384 pnpm typecheck`: initially failed on Claude-owned/peer-locked `src/components/features/patients/patient-form.tsx` and `.test.tsx` Slice3 rev1 WIP (`allowNavigation` and test tuple typing); after Claude rev2, rerun passed with route types generated successfully.
 - Remaining:
-  - Send `PATCH_REVIEW_REQUEST` to Claude and wait for approval before committing the product fix.
+  - Claude approved the patch and Codex landed it as `20feec1d fix(admin): load data explorer before org hydration`.
+
+### Browser Matrix Smoke Drift — Dashboard Ready Marker
+
+- Coordination:
+  - Continued under the ACKed `F-UX-BROWSER-MATRIX-DASHBOARD-DRIFT` lock for `tools/tests/ui-browser-matrix-smoke.spec.ts` and ledgers.
+  - Kept Claude-owned `src/components/features/patients/patient-form.tsx` / `.test.tsx` Slice3 WIP out of Codex staging scope.
+- Bug found:
+  - The browser-matrix smoke spec still waited for stale `dashboard-priority-actions`, which no longer exists in the current dashboard. The current dashboard exposes `data-testid="dashboard-cockpit"`, and the mobile layout spec already uses that as the route ready marker.
+- Implemented by Codex:
+  - Updated only the dashboard route's ready marker in `tools/tests/ui-browser-matrix-smoke.spec.ts` from `dashboard-priority-actions` to `dashboard-cockpit`.
+- Validation:
+  - Baseline `tools/tests/ui-browser-matrix-smoke.spec.ts --project=chromium`: failed `1/6`; `/dashboard` timed out on `dashboard-priority-actions`, while `/patients`, `/reports`, `/handoff`, `/workflow`, and `/billing` passed.
+  - Post-fix `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-browser-matrix-smoke.spec.ts --project=chromium`: passed, `6/6` in `48.0s`.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec eslint tools/tests/ui-browser-matrix-smoke.spec.ts`: passed.
+  - `pnpm exec prettier --check tools/tests/ui-browser-matrix-smoke.spec.ts`: clean.
+  - `git diff --check -- tools/tests/ui-browser-matrix-smoke.spec.ts`: passed.
+- Remaining:
+  - Commit only `tools/tests/ui-browser-matrix-smoke.spec.ts` plus ledger entries, then continue with the next high-frequency UX baseline/fix.

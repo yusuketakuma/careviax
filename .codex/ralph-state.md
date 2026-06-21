@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260621-1712 JST
+
+- current task: stabilize the browser matrix smoke baseline after landing the Data Explorer bootstrap fix and reviewing Claude-owned patients/new Slice3 rev2.
+- files inspected: agmsg inbox/ACK/review messages, current `git status`, browser matrix failure context, `tools/tests/ui-browser-matrix-smoke.spec.ts`, `tools/tests/ui-mobile-layout.spec.ts`, `tools/tests/ui-dashboard-nav.spec.ts`, `src/app/(dashboard)/dashboard/dashboard-cockpit.tsx`, and Claude-owned `src/components/features/patients/patient-form.tsx` / `.test.tsx` diff for review only.
+- files changed: `tools/tests/ui-browser-matrix-smoke.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the browser matrix smoke spec still waited for stale `dashboard-priority-actions`; the current dashboard exposes `dashboard-cockpit`, and five other high-frequency route entries already passed. Claude-owned Slice3 rev2 fixed the runtime hook API mismatch but still introduced a scoped ESLint warning in its test mock; rev4 cleared the warning and typecheck issue, so Codex approved it.
+- security risks found: no product code, auth, authorization, RLS, DB, API, patient projection, mutation, audit, export, or PHI behavior changed. The browser matrix change is test-only and updates a ready marker to the current dashboard surface.
+- performance issues found: no runtime path changed. The stale selector previously cost a 20s false timeout; the corrected browser matrix suite passed in 48.0s.
+- validation commands: baseline browser matrix Chromium Playwright; post-fix browser matrix Chromium Playwright; scoped ESLint/Prettier/diff-check for `tools/tests/ui-browser-matrix-smoke.spec.ts`; focused patient-form Vitest/typecheck:no-unused/Prettier/ESLint/diff-check for Claude review.
+- validation results: baseline browser matrix failed `1/6` on `/dashboard` ready marker drift; post-fix browser matrix passed `6/6`. Scoped ESLint, Prettier, and `git diff --check` passed for the browser matrix spec. Claude-owned Slice3 rev4 focused Vitest passed `9/9`; eslint `--max-warnings=0`, typecheck:no-unused, Prettier, and diff-check all passed; Codex approved rev4.
+- remaining work: format/check ledgers, drain agmsg, stage only `tools/tests/ui-browser-matrix-smoke.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry, commit, then notify Claude. Do not stage Claude-owned patient-form files.
+- next action: commit the browser matrix test-only slice, then continue with the next non-overlapping UX route.
+
 ### 20260621-1657 JST
 
 - current task: fix and review-gate the admin Data Explorer E2E bootstrap failure while recording the auth-flow E2E baseline and reviewing Claude-owned patients/new Slice3.
