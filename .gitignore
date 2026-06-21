@@ -61,6 +61,7 @@ tools/tests/.artifacts/
 artifacts/
 audits/
 agmsg/
+.harness-worktrees/
 /*.bak.*
 # ルートの成果物のみ。src/**/reports(アプリ実装)に誤爆させない
 /reports/
