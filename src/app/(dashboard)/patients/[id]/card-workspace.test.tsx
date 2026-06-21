@@ -1005,6 +1005,13 @@ describe('CardWorkspace', () => {
     expect(within(activities).getByText('残薬調整 → 疑義照会 回答受領')).toBeTruthy();
     expect(within(activities).getByText('定期処方 取込(やまもと内科)')).toBeTruthy();
     expect(within(activities).getAllByRole('button', { name: '開く' })).toHaveLength(3);
+    // 直近の動き種別バッジは SSOT 6軸トークン（工程=info / 照会=confirm / 取込=neutral）。
+    expect(activities.innerHTML).toContain('text-tag-info');
+    expect(activities.innerHTML).toContain('text-state-confirm');
+    // 回帰: 旧 ad-hoc な emerald/blue カテゴリ色が残っていないこと。
+    expect(activities.innerHTML).not.toMatch(
+      /border-emerald-200|bg-emerald-50|text-emerald-700|border-blue-200|bg-blue-50|text-blue-700/,
+    );
 
     // 右レール: このカードに紐づく今日(期限/監査後/時刻 + 遷移リンク)
     const todayPanel = screen.getByTestId('card-today-panel');

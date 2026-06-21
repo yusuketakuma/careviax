@@ -106,9 +106,11 @@ const ACTIVITY_TYPE_LABELS: Record<PatientWorkspaceActivity['type'], string> = {
   intake: '取込',
 };
 
+// 直近の動き種別は state 軸（ラベル併記で識別。色は SSOT 6軸へ）。
+// transition=info / inquiry=confirm(cycle inquiry_pending と整合) / intake=neutral。
 const ACTIVITY_BADGE_CLASSES: Record<PatientWorkspaceActivity['type'], string> = {
-  transition: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  inquiry: 'border-blue-200 bg-blue-50 text-blue-700',
+  transition: 'border-transparent bg-tag-info/10 text-tag-info',
+  inquiry: 'border-transparent bg-state-confirm/10 text-state-confirm',
   intake: 'border-border bg-muted text-muted-foreground',
 };
 
