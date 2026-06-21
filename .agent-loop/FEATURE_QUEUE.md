@@ -361,7 +361,12 @@ old tasks unless they are actively being edited for another reason.
 
 ```yaml
 - task_id: F-20260620-009
-  status: implementing # rev3-equiv ACK; LOCK granted (state_version 40). plan rev1→rev2→corrections by codex.
+  status: done # commit 18e2a29e (rev7 codex APPROVED + VERIFY_OK). 全6カテゴリ active(human PHI policy=外部送信時のみ考慮)。patient/proposal/report は F-012 view=palette 最小投影を消費。rev1→rev7: KPI/client-bundle/NUL/stale/aria-controls/「など」/over-limit fail-closed/encodeURIComponent/view=palette over-fetch を順次解消。
+  follow_up_open: # 非ブロッキング(codex 合意)。後続小タスク化候補。
+    - option DOM id を index/sanitized 化(row.id 由来の IDREF 堅牢化)。
+    - use-global-search.test の stale-query test の React act(...) warning を clean。
+    - drug/contact の requiredPermission × destination(/admin/*) contract test。
+    - legacy /search page の full-list→minimal(view=palette)移行(今回の rev7 scope 外)。
   owner: claude-lead
   reviewer: codex-lead
   origin_agent: human

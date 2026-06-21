@@ -97,10 +97,61 @@ error無) / prescriptions/new(手書きerror)。
 
 ---
 
+## 5. Stage1 詳細 — P-B workbench 配色揃え（recon 確定、read-only 調査済）
+
+**対象構造.** `/dispense` `/audit` `/set` `/set-audit` は同一 `DispensingWorkbench` に `phase`
+prop（dispense/audit/setp/seta）を渡すだけの薄い4 page。色実装ディレクトリ=
+`src/components/features/dispense-workbench/`。
+
+**色の所在.** hex 直書き **200+ 箇所**。中心2ソース: `use-workbench-view.ts`（phase別色トークンを
+hex 生成・40+箇所、`ACCENT='#1f4e79'`/primaryBg/状態色/カレンダー色/risk色）と
+`dispensing-workbench.module.css`（CSS Module 全 hex・30+宣言、root背景#e8ebee/青グラデ
+ヘッダ#3a5e8c→#27466c/ステータスバー#2c4a6e→#1e3450/橙モーダル）。消費側インライン=
+right-pane.tsx(60+)/prescription-grid.tsx(40+)/medication-calendar-grid.tsx(30+)/
+dispensing-workbench.tsx/patient-list-panel.tsx/phase-tabs.tsx + hold/compare ダイアログ2。
+
+**標準 SSOT.** `globals.css` の oklch CSS変数: primary=oklch(0.38 0.09 252)≒#1f4e79 /
+background=白 / border=--border / 6軸状態色=--state-blocked(赤)/done(緑)/confirm(琥珀)/
+waiting(紫)/readonly(灰) + --tag-hazard(琥珀)/info(青)。標準UIは STATUS_TOKENS 経由。
+
+**揃え方針（操作体系不変・テーマ色のみ）.**
+
+- 方式: hex リテラル → `var(--*)` 参照へ置換（CSS Module/インライン style 内で CSS変数参照。
+  Tailwind class 置換ではない＝レイアウト/構造に無影響）。`PHASE_ROUTE`/`PHASE_HREF`/fkeys
+  (F1-F12)/runAction/keydown/store 結線/view field の shape は一切触らない（色値文字列のみ差替）。
+- **base chrome（揃える）**: root背景#e8ebee→白ベース(--background/--muted)、境界各種→--border、
+  青グラデヘッダ/ステータスバー→standard primary 系。← 人間が感じる「色調のずれ」の主因。
+- **状態色（6軸へ畳む）**: 完了/監査OK(#3a9d4f等)→--state-done、NG/差戻し(#d9534f/#c0392b)→
+  --state-blocked、保留/監査待ち/作業中(#9a6a18/#e0972b)→--state-confirm、未着手(#9aa6b4)→
+  --state-readonly、比較/info(#2f80ed)→--tag-info、麻薬/冷所→--tag-hazard。
+- **phase accent（畳まない・要 UI 判断）**: tab dot/primaryBg/右ペイン accent の phase別色
+  (disp=青/audit=緑/setp=紫/seta=橙)は **phase 識別のためのテーマ色**であり state ではない
+  （前例 migration-map:334）。一律 state トークン化は phase 識別を壊す。→ **phase 差別化は維持**
+  しつつ、各 accent を標準パレットと同系統の色相へ寄せて「同じデザインシステムに属する」見えに
+  する（hue を palette 由来に揃える）。色のみ依存は無し（label+aria_current 併記済）。
+
+**リスク/注意.**
+
+- 既存テスト（prescription-grid.test.tsx 等）が hex 文字列を直接アサートしている可能性 →
+  Stage1 着手時に color アサート有無を grep 確認し期待値を追従。
+- patient-list-panel LEGEND(:29-33) が view 状態色(:293-299)と独立な静的 hex で**二重管理** →
+  トークン化のついでに view 由来へ一本化（凡例と実体の整合）。
+- CSS Module は Tailwind `bg-state-*` が効かない → `var(--state-*)` 参照で統一。
+
+**影響範囲.** 編集 8ファイル / 色直書き 200+ 箇所（大半は反復パターンで機械置換可、phase accent
+のみ意味判断）。owned files = dispense-workbench/ 配下 8 + 関連テスト。F-009 と path 非重複。
+
+---
+
 ## status
 
 - Stage1 棚卸し: **done**(114 screens)
 - Stage2 UX監査: **done**(synthesis 確定)
-- Stage3 計画: 本台帳の §4 をベースに PLAN_REVIEW_REQUEST を codex へ(次)
-- Stage4 実装: F-009 landing + plan 承認 + lock 取得後
+- Stage3 計画: PLAN_REVIEW_REQUEST + Stage1 supplement 送付 → codex **approved_with_notes**(2026-06-21)
+  - Stage1(P-B workbench)合意: phase accent 保持(state へ map しない) / CSS Module・inline の var(--\*) 参照方式 /
+    test は token・role・label を assert(hex/oklch 不可) / lock=src/components/features/dispense-workbench/\*\* +
+    直下テストのみ / presentational only・非色 affordance 保持・legend を row state と同 source 化 /
+    Stage2+(DataTable state 標準化・広域6軸)は別 PLAN_REVIEW
+- Stage4 実装: F-009 rev6 landing(lock 解放)後に Stage1 LOCK→配色実体差し替え PATCH。
+  patch-review=focused workbench tests + static gates + hex drift 低減 + /dispense /audit /set /set-audit smoke
 - hard-stop: 4 cycle / 90分 / 20ファイル / 同一検証失敗3回 / 広範囲で人間判断要 で停止し本台帳と STATE/gbrain に再開点記録

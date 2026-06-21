@@ -68,6 +68,21 @@ next_action: wait for F-009 rev3 PATCH_REVIEW_REQUEST; review stale/actionabilit
      any locked paths to release, and the single next command/action to take.
      Empty at bootstrap. -->
 
-_(empty)_
+**active_task_id**: なし（F-011 Stage1 完了）。次は FEATURE_QUEUE / F-011 Stage2+ を別 PLAN_REVIEW で。
+
+**完了済（このサイクル, landed+verified）**:
+
+- F-20260620-009 グローバル検索パレット — commit 18e2a29e。
+- F-20260620-012 最小投影 backend（reviewer=claude, Medium 検出）— commit cc8209fc。
+- F-011 Stage1a（workbench module.css chrome 配色トークン化, dark AA）— commit 5c5048d9。
+- F-011 Stage1b-1（view 色生成 SSOT を theme 安定 --wb-\* token 化, A-prime, dark AA + contrast contract test）— commit 9c295163。
+- F-011 Stage1b-2（消費側 inline + logic.ts form 色 + LEGEND 同 source + semantic 分離 compare/packet/outside-med≠tonyo）— commit 393541c7。**F-011 Stage1(P-B 調剤系4画面配色揃え)完了・lock release 済**。
+
+**確立した token 体系（module.css .root, theme 安定）**: --wb-state-{done,blocked,confirm,readonly}/--wb-info/--wb-hazard（dark solid=fill兼ink）、--wb-_-bg/-border（固定 light tint）、--wb-phase-_（dot/strong=白ラベルAA/border）、--wb-tag-\*/avatar/chip（category）、--wb-surface/-alt/-muted/-selected/--wb-accent/--wb-ink/-ink-muted/--wb-line（data-plane 安定 light）。外殻 chrome=Stage1a adaptive --wb-primary/confirm。contract test=workbench-color-tokens.test.ts（raw hex/未定義token/change-type/数値contrast）。
+
+**中断点: なし（F-011 Stage1 完了, lock release 済）。**
+
+- 次の着手候補: F-011 Stage2+（UI_AUDIT_MATRIX §4: T1 DataTable state 標準化 → T4 状態色6軸集約 → T3/T5 MasterEditor/responsive → T6/T7 a11y → P-A 個別 → T2 typo）は**別 PLAN_REVIEW_REQUEST**で開始（Stage1 と混ぜない／codex 既出 note）。または FEATURE_QUEUE の次タスク。
+- 着手時: lock 取得 → 実装 → maker/checker → objective gate → commit。frontend-implementer は worktree 隔離で共有ブランチ不適（main tree で実装 or isolation 無し agent）。
 
 > Note: a hard-stop writes the **Resume point** here before exiting so the next session can resume without re-deriving context.
