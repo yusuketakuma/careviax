@@ -8719,3 +8719,24 @@ Next loop:
 - Remaining:
   - Commit only the two Codex-owned E2E files and ledger entries.
   - Continue the UX sweep after commit with the next high-frequency route that is not under Claude lock.
+
+### Patient Flow E2E Drift — Current Detail/Edit Navigation
+
+- Coordination:
+  - Continued the dashboard-first UX/runtime goal after `02e6c2a8` landed the visits/schedule E2E slice.
+  - Kept Claude-owned prescription-history and admin realtime state-color work out of Codex staging scope.
+  - Reused the ACKed `F-UX-PATIENT-FLOW-E2E-DRIFT` lock for `tools/tests/ui-patient-flow.spec.ts` and ledgers.
+- Implemented by Codex:
+  - Increased the patient board card wait budget through a named timeout because the current board can spend longer in authenticated dev/E2E loading before cards appear.
+  - Stabilized the patient detail edit navigation test by opening the detail route directly after the separate patient-card click test, verifying the `基本情報を編集` href, activating it through keyboard, and waiting on the actual edit route path plus form inputs.
+  - Stabilized the new-patient back-link test by verifying the `患者一覧へ戻る` href, activating it through keyboard, and waiting for `/patients` plus the `patients-board` surface.
+  - Left product links untouched. Manual Playwright smoke confirmed pointer-click navigation for both links works; this change only removes runner drift around click/focus timing in the dev-rendered E2E path.
+- Validation:
+  - Baseline `tools/tests/ui-patient-flow.spec.ts --project=chromium`: failed `13/15`; failures were stale edit-page/skeleton timing and back-link navigation wait drift.
+  - Focused rerun for `patient detail edit saves and reflects changes|back link navigates away without submission`: passed, `2/2`.
+  - Full `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-patient-flow.spec.ts --project=chromium`: passed, `15/15`.
+  - `pnpm exec prettier --check tools/tests/ui-patient-flow.spec.ts`: passed.
+  - `NODE_OPTIONS=--max-old-space-size=16384 pnpm exec eslint tools/tests/ui-patient-flow.spec.ts`: passed.
+- Remaining:
+  - Commit only `tools/tests/ui-patient-flow.spec.ts` plus ledger entries.
+  - Continue the UX sweep after commit with the next non-overlapping high-frequency route.

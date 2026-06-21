@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260621-1558 JST
+
+- current task: stabilize the current patient flow E2E navigation drift while reviewing Claude-owned state-color patches without mixing ownership.
+- files inspected: agmsg inbox and review messages, current `git status`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, `tools/tests/ui-patient-flow.spec.ts`, Playwright failure contexts for patient edit/back navigation, `docs/ui-ux-design-guidelines.md`, Next.js App Router docs already read in this continuation, Claude-owned prescription-history and admin realtime diffs for review only, `.agent-loop/LOOP_POLICY.md`, `.agent-loop/STATE.md`, and focused validation output.
+- files changed: `tools/tests/ui-patient-flow.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the patient-flow E2E still used a 30s card wait that was too short for the current authenticated dev board; the edit-save test duplicated patient-card click coverage before asserting edit form behavior and could land on skeleton/stale state; the new-patient back-link test used click/wait timing that drifted even though the current link href is correct.
+- security risks found: no product code, auth, authorization, RLS, DB, API, patient data projection, audit, export, mutation, or PHI handling changed. This slice is test-only plus ledgers.
+- performance issues found: no runtime path changed. The E2E update reduces false timeouts in high-frequency patient navigation coverage.
+- validation commands: baseline full Playwright `tools/tests/ui-patient-flow.spec.ts --project=chromium`; focused Playwright rerun for `patient detail edit saves and reflects changes|back link navigates away without submission`; full Playwright `tools/tests/ui-patient-flow.spec.ts --project=chromium`; targeted Prettier check; targeted ESLint; independent review gates for Claude-owned prescription-history/realtime patches; full `pnpm typecheck`.
+- validation results: baseline patient-flow E2E failed `13/15` on edit-page skeleton/timing and back-link navigation wait drift. Focused patient-flow rerun passed `2/2`; full patient-flow rerun passed `15/15`. Targeted Prettier and ESLint passed for `tools/tests/ui-patient-flow.spec.ts`. Claude review gates passed with focused prescription-history+realtime Vitest `12/12`, scoped ESLint/Prettier/diff-check, and full `pnpm typecheck`.
+- remaining work: format/check ledgers, drain agmsg, stage only `tools/tests/ui-patient-flow.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file, commit the test-only slice, then notify Claude. Do not stage Claude-owned prescription-history or admin realtime files.
+- next action: run targeted ledger/test diff checks, commit the Codex-owned E2E drift slice, then continue the UX sweep with the next non-overlapping route.
+
 ### 20260621-1513 JST
 
 - current task: continue the dashboard-first UX/runtime sweep with the next high-frequency schedule/visits E2E route after all prior changes were committed.
