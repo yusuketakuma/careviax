@@ -25,6 +25,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { ErrorState } from '@/components/ui/error-state';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import {
   Dialog,
@@ -281,6 +282,8 @@ export function NotificationSettingsContent() {
   const [rules, setRules] = useState<NotificationRule[]>([]);
   const [escalationRules, setEscalationRules] = useState<EscalationRule[]>([]);
   const [rulesLoadedOrgId, setRulesLoadedOrgId] = useState<string | null>(null);
+  const [rulesLoadError, setRulesLoadError] = useState(false);
+  const [rulesReloadKey, setRulesReloadKey] = useState(0);
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [browserNotificationState, setBrowserNotificationState] = useState(
     readBrowserNotificationState,
@@ -315,18 +318,20 @@ export function NotificationSettingsContent() {
       .then((payload) => {
         if (!active) return;
         setRules(payload.data ?? []);
+        setRulesLoadError(false);
         setRulesLoadedOrgId(orgId);
       })
       .catch((error: unknown) => {
         if (!active) return;
         setRulesLoadedOrgId(orgId);
+        setRulesLoadError(true);
         toast.error(error instanceof Error ? error.message : '通知設定の取得に失敗しました');
       });
 
     return () => {
       active = false;
     };
-  }, [orgId]);
+  }, [orgId, rulesReloadKey]);
 
   useEffect(() => {
     if (!orgId) return;
@@ -665,6 +670,23 @@ export function NotificationSettingsContent() {
               <Loader2 className="size-4 animate-spin" aria-hidden="true" />
               通知設定を読み込み中です
             </div>
+          ) : rulesLoadError ? (
+            // 取得失敗時はトーストに加えてインライン ErrorState を出し、再読み込み導線を提供する。
+            <ErrorState
+              variant="server"
+              size="inline"
+              title="通知設定を読み込めませんでした"
+              description="データの読み込みに失敗しました。時間をおいて再読み込みしてください。"
+              action={{
+                label: '再読み込み',
+                onClick: () => {
+                  // 再取得を loading 表示から開始するため、エラーと読込済みorgをリセットしてから effect を再走させる。
+                  setRulesLoadError(false);
+                  setRulesLoadedOrgId(null);
+                  setRulesReloadKey((key) => key + 1);
+                },
+              }}
+            />
           ) : (
             EVENT_CONFIGS.map((config) => {
               const badge = BADGE_VARIANTS[config.badge];

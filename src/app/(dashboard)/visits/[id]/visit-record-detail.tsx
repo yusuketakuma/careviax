@@ -27,6 +27,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { ErrorState } from '@/components/ui/error-state';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { generateCareReportFromVisit } from '@/lib/reports/generate-from-visit-client';
 import { OUTCOME_LABELS, OUTCOME_VARIANTS } from '@/lib/constants/visit';
@@ -454,7 +455,12 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
     },
   });
 
-  const { data: record, isLoading } = useQuery<VisitRecordFull>({
+  const {
+    data: record,
+    isLoading,
+    isError: isRecordError,
+    refetch: refetchRecord,
+  } = useQuery<VisitRecordFull>({
     queryKey: ['visit-record', recordId, orgId],
     queryFn: async () => {
       const res = await fetch(`/api/visit-records/${recordId}`, {
@@ -551,6 +557,21 @@ export function VisitRecordDetail({ recordId }: { recordId: string }) {
     return (
       <div className="flex items-center justify-center py-12">
         <p className="text-sm text-muted-foreground">読み込み中...</p>
+      </div>
+    );
+  }
+
+  if (isRecordError) {
+    // 取得失敗を「見つかりません」に潰さず、再試行導線つきの ErrorState を出す。
+    return (
+      <div className="py-12">
+        <ErrorState
+          variant="server"
+          size="inline"
+          title="訪問記録を読み込めませんでした"
+          description="データの読み込みに失敗しました。時間をおいて再読み込みしてください。"
+          action={{ label: '再読み込み', onClick: () => void refetchRecord() }}
+        />
       </div>
     );
   }

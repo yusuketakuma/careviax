@@ -130,7 +130,12 @@ function QrDraftList() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [filterMode, setFilterMode] = useState<'all' | 'unmatched'>('all');
 
-  const { data: allData, isLoading: allLoading } = useRealtimeQuery({
+  const {
+    data: allData,
+    isLoading: allLoading,
+    isError: allError,
+    refetch: refetchAll,
+  } = useRealtimeQuery({
     queryKey: ['qr-drafts', orgId, 'all'],
     queryFn: async () => {
       const res = await fetch('/api/qr-scan-drafts?include_unmatched_count=1', {
@@ -144,7 +149,11 @@ function QrDraftList() {
     invalidateOn: ['qr_draft_created', 'qr_draft_confirmed'],
   });
 
-  const { data: unmatchedData } = useRealtimeQuery({
+  const {
+    data: unmatchedData,
+    isError: unmatchedError,
+    refetch: refetchUnmatched,
+  } = useRealtimeQuery({
     queryKey: ['qr-drafts', orgId, 'unmatched'],
     queryFn: async () => {
       const res = await fetch('/api/qr-scan-drafts?unmatched=true', {
@@ -159,6 +168,9 @@ function QrDraftList() {
   });
 
   const isLoading = allLoading;
+  // 表示中のフィルタに対応するクエリの取得失敗を拾い、DataTable の errorMessage/onRetry に渡す。
+  const isError = filterMode === 'unmatched' ? unmatchedError : allError;
+  const handleRetry = filterMode === 'unmatched' ? refetchUnmatched : refetchAll;
   const drafts = useMemo(
     () => (filterMode === 'unmatched' ? (unmatchedData?.data ?? []) : (allData?.data ?? [])),
     [filterMode, allData, unmatchedData],
@@ -241,6 +253,12 @@ function QrDraftList() {
         columns={columns}
         data={drafts}
         isLoading={isBootstrappingOrg || isLoading}
+        errorMessage={
+          isError
+            ? 'QRスキャン下書きの読み込みに失敗しました。時間をおいて再読み込みしてください。'
+            : undefined
+        }
+        onRetry={() => void handleRetry()}
         caption="QRスキャン下書き一覧"
         selectedRowIndex={selectedIndex}
         onRowClick={(index) => {

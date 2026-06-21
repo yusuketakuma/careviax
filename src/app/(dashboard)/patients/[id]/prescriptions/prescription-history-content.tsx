@@ -44,6 +44,7 @@ import { formatDateKey } from '@/lib/date-key';
 import { useOrgId } from '@/lib/hooks/use-org-id';
 import { CYCLE_STATUS_LABELS } from '@/lib/prescription/cycle-workspace';
 import { Loading } from '@/components/ui/loading';
+import { ErrorState } from '@/components/ui/error-state';
 import { toast } from 'sonner';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -1177,7 +1178,7 @@ export function PrescriptionHistoryContent() {
   const [routeFilter, setRouteFilter] = useState('');
   const [methodFilter, setMethodFilter] = useState('');
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['patient-prescriptions', orgId, patientId],
     queryFn: async () => {
       const res = await fetch(`/api/patients/${patientId}/prescriptions?limit=100`, {
@@ -1318,6 +1319,19 @@ export function PrescriptionHistoryContent() {
   const handlePrint = useCallback(() => window.print(), []);
 
   if (isLoading) return <Loading />;
+
+  if (isError) {
+    // 取得失敗を空表示に潰さず、再試行導線つきの ErrorState を出す。
+    return (
+      <ErrorState
+        variant="server"
+        size="inline"
+        title="処方履歴を読み込めませんでした"
+        description="データの読み込みに失敗しました。時間をおいて再読み込みしてください。"
+        action={{ label: '再読み込み', onClick: () => void refetch() }}
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">
