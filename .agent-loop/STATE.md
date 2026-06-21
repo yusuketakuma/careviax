@@ -23,18 +23,18 @@ end. It is the first file consulted on resume and the last file written on a har
   `active_task_id`, locked paths, and the next command in **Resume point** before exiting).
 
 ```yaml
-current_run_id: RUN-20260620-001
-current_cycle: 4 # Cycle 4: F-010A backend search expansion landed; F-009 global-search patch review remains active.
-cycle_start_time: 2026-06-20T00:00:00+09:00 # ISO8601 Asia/Tokyo; reset at each run start. elapsed = now − cycle_start_time, checked at every cycle boundary vs §14 90-min hard-stop
-active_task_id: F-20260620-009 # Claude-owned global search command-palette patch review is active; Codex-owned F-010A backend slice is committed.
-current_cycle_note: 'Cycle 4: Codex landed F-010A backend search expansion in 721ce32d (facilities q+limit, prescription q minimal projection, contact limit-mode minimal summaries). Codex returned CHANGES_REQUESTED on F-009 rev2 for short-query stale Enter, Escape handling, and deferred-category copy mismatch; Claude accepted and is preparing rev3.'
-files_changed_count: 18 # Shared worktree still has Claude-owned F-009 FE/search dirty paths plus machine .harness-mem; F-010A code paths are committed.
-claude_status: implementing # Claude is revising F-009 global search rev3 after codex CHANGES_REQUESTED.
-codex_status: reviewing # Codex committed F-010A and is waiting for F-009 rev3 PATCH_REVIEW_REQUEST.
-last_memory_bootstrap: 2026-06-20 # Cycle 2 real gbrain recall (CLI). Classified in MEMORY_REVIEW.md; §9/§10 → LOOP_POLICY ApplyNow (codex-approved). `mcp__gbrain__*` after restart.
-zero_actionable_count: 1 # queue dry after F-003; idle/backoff per FEATURE_QUEUE intake
-last_gate_result: pass # F-010A focused tests/typecheck/no-unused/scoped eslint/scoped prettier/diff-check/build GREEN; F-009 rev2 returned CHANGES_REQUESTED.
-next_action: wait for F-009 rev3 PATCH_REVIEW_REQUEST; review stale/actionability, Escape handling, deferred-copy alignment, no-fetch/PHI safety, and gates.
+current_run_id: RUN-20260621-001
+current_cycle: 1 # User-priority loop-control update: idle-capacity auto-discovery/execution wiring.
+cycle_start_time: 2026-06-21T12:28:00+09:00 # ISO8601 Asia/Tokyo; reset at each run start. elapsed = now − cycle_start_time, checked at every cycle boundary vs §14 90-min hard-stop
+active_task_id: LOOP-IDLE-AUTO-20260621
+current_cycle_note: 'User requested that available time automatically explore and execute useful work. Codex is wiring the existing ApplyNow §12/§14 idle rule into control-plane config, supervisor prompts, README procedure, and state so waiting requires prior exploration.'
+files_changed_count: 8 # Owned loop-control/ledger paths only; shared worktree also has peer-owned dirty UI/search/patient files.
+claude_status: implementing # Claude has F-011-S2c-1 dispense-audit-stats patch ready/pending Codex review; those paths remain peer-owned.
+codex_status: reviewing # LOOP-IDLE-AUTO-20260621 loop-control configuration is validated; Codex is returning to pending review/handoff work.
+last_memory_bootstrap: 2026-06-21 # Consulted prior CareViaX idle-delegation memory plus live .agent-loop policy/config/state.
+zero_actionable_count: 0 # Idle auto-discovery must run before this increments.
+last_gate_result: pass # Targeted Prettier check and git diff --check passed for loop-control docs/config.
+next_action: return to pending F-011-S2c-1 review / F-20260621-003 handoff work; if no actionable item remains, run idle_auto_discovery before waiting.
 ```
 
 ## gbrain memory (this run)

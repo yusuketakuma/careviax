@@ -9,7 +9,7 @@
 version: 0.1
 status: advisory_mvp
 run_id: RUN-20260620-001
-updated_at: 2026-06-20
+updated_at: 2026-06-21
 
 control_plane:
   can_merge: false
@@ -23,6 +23,39 @@ control_plane:
     mode: manual_supervisor
     runtime_controller: not_implemented
     note: 'Rules here are applied by claude-lead/codex-lead, not by an automated daemon.'
+  idle_auto_discovery:
+    enabled: true
+    trigger: no_actionable_review_plan_verify_lock_or_user_priority_task
+    default_action: select_and_execute_bounded_non_conflicting_work
+    note: 'Automatic means every supervisor cycle must run this selection contract before waiting; it is still manually enforced by the active supervisor, not a daemon.'
+    selection_order:
+      - drain_agmsg_and_handle_priority_messages
+      - check_peer_locks_and_dirty_worktree
+      - review_pending_peer_requests
+      - recall_gbrain_for_failure_duplicate_gate_context
+      - inspect_feature_queue_state_and_recent_ledgers
+      - choose_highest_value_safe_candidate
+    execution_contract:
+      require_explicit_lock_before_writes: true
+      require_peer_review_before_done: true
+      require_validation_before_completion: true
+      yield_on_inbound_priority_message: true
+      record_decision_in_state: true
+      stage_only_owned_paths: true
+    allowed_work:
+      - read_only_peer_review_grounding
+      - queued_task_recon_and_scope_notes
+      - approved_handoff_subtask
+      - targeted_test_or_validation_hygiene
+      - loop_policy_prompt_or_gbrain_cleanup
+      - coherent_commit_of_already_reviewed_owned_slice
+    denied_work:
+      - broad_rewrite
+      - unapproved_product_feature
+      - cross_lane_edit_without_handoff
+      - auth_billing_security_migration_or_production_work
+      - speculative_gbrain_write
+      - external_send_deploy_or_destructive_action
 
 task_manifest:
   storage: .agent-loop/FEATURE_QUEUE.md

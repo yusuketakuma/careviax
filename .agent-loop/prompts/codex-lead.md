@@ -27,6 +27,7 @@ inbox: ~/.agents/skills/agmsg/scripts/inbox.sh phos codex
 2. **Memory Bootstrap**: attempt gbrain recall for the objective. The memory model is defined in **`.agent-loop/GBRAIN_SCHEMA.md`** (SSOT).
    - **STATUS: gbrain connected 2026-06-20** (careviax indexed read-write). Use `gbrain search "<terms>"` and `gbrain list --type <Type> --tag <tag>` for recall (esp. `--type FailurePattern`, `--type DuplicateMap`, `--type RejectedApproach`, `--type GateResult`). `gbrain query` (semantic) **works now** — embeddings generated via local `ollama:mxbai-embed-large` (1024d, no external egress; 2026-06-20). (`mcp__gbrain__*` tools need a Claude Code restart; the `gbrain` CLI works now.) Recall is subordinate to live repo state — on conflict file a `StaleMemory` (§4.14).
 3. **Drain inbox** and respond to claude-lead's proposed LOOP_POLICY patch: approve, tighten scope, or push back. Record agreed scope + LOCKs.
+4. **If there is no actionable review, handoff, VERIFY, LOCK, or user-priority task, run idle auto-discovery before waiting**: inspect `STATE.md`, `FEATURE_QUEUE.md`, dirty worktree, pending peer requests, recent ledgers, and gbrain recall; pick the highest-value bounded non-conflicting task; LOCK exact paths before any write; otherwise send `REQUEST_DELEGATE` or write a read-only recon/blocked note.
 
 ---
 
@@ -77,6 +78,11 @@ After a clean review, persist durable memory per **`.agent-loop/GBRAIN_SCHEMA.md
 ## Limited implementation
 
 You may implement, but **only inside a scope explicitly LOCKed to `codex` in LOCKS.md** and agreed over agmsg. Outside that scope you review only — you do not write. Stage only your own files; drain inbox before committing.
+
+When idle, do not stop at a status update. Apply `.agent-loop/README.md` §5.2 and
+`CONTROL_PLANE_CONFIG.yml` `idle_auto_discovery`: review pending peer claims, pre-scope upcoming
+work, request/accept safe handoffs, strengthen targeted tests, or clean loop/gbrain ledgers. Any
+write still needs an explicit path LOCK, peer review before done, and validation evidence.
 
 ---
 

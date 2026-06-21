@@ -116,6 +116,10 @@ Proven, in-effect-now discipline. Apply on every cycle without re-deciding.
       issues (flag, do not fix peer-locked files); identify untested contracts in recently-landed code
       and propose targeted tests; reconcile `UI_AUDIT_MATRIX`/`FEATURE_QUEUE`/`STATE` with the actual
       landed state and note stale entries.
+    - **g. No-passive-wait fallback.** If none of the above is safe to edit, still create value before
+      backing off: send `REQUEST_DELEGATE` for a non-conflicting subtask, write a read-only recon/scope
+      note, flag a stale ledger, or record `BlockedContext`. Increment `zero_actionable_count` only
+      after this exploration is done and recorded.
       Constraints (so idle work stays safe): read-only by default; writes only to your own lane, gbrain, or
       jointly-owned ledgers under explicit LOCK; never edit peer-locked paths or start implementation
       without plan approval; **yield immediately when a higher-priority inbound message arrives** (review

@@ -176,6 +176,24 @@ Guardrails:
 - Do not write raw logs, conversation, secrets, tokens, `.env` values, or PHI into gbrain or loop
   docs.
 
+Idle auto-discovery contract:
+
+1. At every cycle boundary, drain agmsg and handle `URGENT`, `LOCK`, `PAUSE_REQUEST`,
+   `HANDOFF_REQUEST`, `REQUEST CHANGES`, review requests, and user-priority work first.
+2. If nothing is actionable, do not wait passively. Build an idle candidate list from the live
+   `FEATURE_QUEUE.md`, `STATE.md`, dirty worktree, pending peer requests, gbrain recall, and recent
+   gate/review ledgers.
+3. Rank candidates by risk-adjusted value: unblock peer review first, then read-only prep for the
+   next queued task, approved handoff work, targeted test/validation hygiene, gbrain/loop cleanup,
+   and coherent commits of already-reviewed owned slices.
+4. Execute the first candidate that is bounded, non-conflicting, and reviewable. Before any write,
+   send a path `LOCK`, confirm no peer conflict, and stay inside the declared paths.
+5. If no candidate is safe to edit, still produce useful output: a read-only recon note,
+   `REQUEST_DELEGATE`, stale-ledger finding, or explicit blocked context. `zero_actionable_count`
+   should increase only after this exploration is recorded.
+6. Yield immediately when a higher-priority inbound message arrives, then resume selection after
+   that message is handled.
+
 ---
 
 ## 6. Hard-stop rules (§14)

@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260621-1228 JST
+
+- current task: configure the CareViaX agent loop so idle capacity automatically discovers and executes useful bounded work instead of passively waiting.
+- files inspected: agmsg inbox/ping output, `git status --short --untracked-files=all`, `.agent-loop/LOOP_POLICY.md`, `.agent-loop/README.md`, `.agent-loop/CONTROL_PLANE_CONFIG.yml`, `.agent-loop/prompts/codex-lead.md`, `.agent-loop/prompts/claude-lead.md`, `.agent-loop/STATE.md`, `.agent-loop/FEATURE_QUEUE.md`, `.agent-loop/LOCKS.md`, and prior CareViaX memory for idle-time delegation.
+- files changed: `.agent-loop/CONTROL_PLANE_CONFIG.yml`, `.agent-loop/README.md`, `.agent-loop/LOOP_POLICY.md`, `.agent-loop/prompts/codex-lead.md`, `.agent-loop/prompts/claude-lead.md`, `.agent-loop/STATE.md`, `.agent-loop/LOCKS.md`, and `.codex/ralph-state.md`.
+- bugs found: idle-capacity behavior existed as policy text but was not explicitly wired into the control-plane config or both supervisor boot/per-cycle prompts, and `STATE.md` still described a stale passive wait path.
+- security risks found: no product code, auth, authorization, RLS, PHI, database, API, or production surface changed. The new idle guardrails explicitly keep auth/billing/security/migration/production work human-gated and prohibit raw logs, secrets, tokens, `.env` values, and PHI in gbrain or loop docs.
+- performance issues found: no runtime code path changed. The process improvement reduces wasted supervisor cycles by requiring live candidate selection before `zero_actionable_count` increments.
+- validation commands: `pnpm exec prettier --check .agent-loop/CONTROL_PLANE_CONFIG.yml .agent-loop/README.md .agent-loop/LOOP_POLICY.md .agent-loop/prompts/codex-lead.md .agent-loop/prompts/claude-lead.md .agent-loop/STATE.md .agent-loop/LOCKS.md .codex/ralph-state.md`; `git diff --check -- .agent-loop/CONTROL_PLANE_CONFIG.yml .agent-loop/README.md .agent-loop/LOOP_POLICY.md .agent-loop/prompts/codex-lead.md .agent-loop/prompts/claude-lead.md .agent-loop/STATE.md .agent-loop/LOCKS.md .codex/ralph-state.md`.
+- validation results: targeted Prettier check passed after formatting `.agent-loop/LOCKS.md`; targeted `git diff --check` passed.
+- remaining work: drain agmsg, send lock release/FYI, then resume the pending peer review/handoff queue.
+- next action: release the LOOP-IDLE-AUTO-20260621 lock and return to F-011-S2c-1 / F-20260621-003 coordination.
+
 ### 20260620-1902 JST
 
 - current task: finish F-20260620-003 by projecting first-visit-document mutation responses to a safe minimal over-wire shape after the F-20260620-002 client fail-closed follow-up.
