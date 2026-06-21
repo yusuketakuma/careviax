@@ -1958,3 +1958,16 @@ Backup directory:
 - validation results: focused `/search` Vitest passed with 16 tests. Typecheck passed. No-unused typecheck passed. Scoped ESLint passed. Scoped Prettier passed. Build passed with 287 pages. Full `pnpm format:check` failed only on pre-existing `.agent-loop/STATE.md`, `.agent-loop/UI_AUDIT_MATRIX.md`, and `.agent-loop/F011_STAGE1B_TOKEN_MAP.md` formatting issues outside this slice.
 - remaining work: send Claude PATCH_REVIEW_REQUEST for the two locked `/search` files plus this Codex ledger update. If approved, commit only owned paths explicitly and release the `/search` lock.
 - next action: request Claude review, then commit the approved slice or address requested changes.
+
+### 20260621-1124 JST
+
+- current task: F-20260621-002 caller-only DataTable state wiring for visible admin screens.
+- files inspected: agmsg inbox/plan supplement, `docs/ui-ux-design-guidelines.md`, `.agent-loop/UI_AUDIT_MATRIX.md`, `src/components/ui/data-table.tsx`, `src/components/ui/data-table.test.tsx`, `src/app/(dashboard)/admin/institutions/institutions-content.tsx`, `src/app/(dashboard)/admin/institutions/institutions-content.test.tsx`, `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx`, and `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx`.
+- files changed: `src/app/(dashboard)/admin/institutions/institutions-content.tsx`, `src/app/(dashboard)/admin/institutions/institutions-content.test.tsx`, `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.tsx`, `src/app/(dashboard)/admin/pca-pumps/pca-pumps-content.test.tsx`, and this Ralph state entry.
+- bugs found: admin institutions and PCA pump DataTable callers passed only `isLoading`; query failure therefore fell through to empty `data?.data ?? []` and could be shown as an empty list instead of an acquisition failure.
+- security risks found: no API, auth, RLS, DB, permission, billing, or PHI projection behavior changed. New user-facing messages are static and do not interpolate raw server errors.
+- performance issues found: no request fan-out, query key, caching, or DB behavior changed.
+- validation commands: focused Vitest for `institutions-content.test.tsx`, `pca-pumps-content.test.tsx`, and `data-table.test.tsx`; `pnpm typecheck`; `pnpm typecheck:no-unused`; scoped ESLint; scoped Prettier check; targeted `git diff --check`; `pnpm build`.
+- validation results: focused Vitest passed with 3 files / 15 tests. Typecheck passed. No-unused typecheck passed. Scoped ESLint passed. Scoped Prettier passed after formatting PCA files. Targeted diff check passed. Build passed with 287 pages.
+- remaining work: send Claude PATCH_REVIEW_REQUEST for the caller-only 4-file UI state wiring. If approved, commit only the four caller/test files plus this Codex ledger entry and release the lock.
+- next action: request Claude review, then commit the approved slice or address requested changes.

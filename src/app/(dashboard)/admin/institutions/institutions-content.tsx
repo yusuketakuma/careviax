@@ -60,7 +60,7 @@ export function InstitutionsContent() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [deleteTarget, setDeleteTarget] = useState<Institution | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['prescriber-institutions', orgId, query],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -245,7 +245,14 @@ export function InstitutionsContent() {
             />
           </div>
 
-          <DataTable columns={columns} data={institutions} isLoading={isLoading} />
+          <DataTable
+            columns={columns}
+            data={institutions}
+            isLoading={isLoading}
+            errorMessage={isError ? '医療機関一覧を取得できませんでした' : undefined}
+            emptyMessage="医療機関はまだ登録されていません"
+            onRetry={() => void refetch()}
+          />
         </CardContent>
       </Card>
 

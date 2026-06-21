@@ -963,7 +963,14 @@ export function PcaPumpsContent() {
                 placeholder="管理番号 / シリアル / 機種"
               />
             </div>
-            <DataTable columns={pumpColumns} data={pumps} isLoading={pumpsQuery.isLoading} />
+            <DataTable
+              columns={pumpColumns}
+              data={pumps}
+              isLoading={pumpsQuery.isLoading}
+              errorMessage={pumpsQuery.isError ? 'PCAポンプ台帳を取得できませんでした' : undefined}
+              emptyMessage="PCAポンプはまだ登録されていません"
+              onRetry={() => void pumpsQuery.refetch()}
+            />
           </CardContent>
         </Card>
 
@@ -1016,6 +1023,11 @@ export function PcaPumpsContent() {
               columns={rentalColumns}
               data={openRentals}
               isLoading={rentalsQuery.isLoading}
+              errorMessage={
+                rentalsQuery.isError ? 'PCAポンプ貸出一覧を取得できませんでした' : undefined
+              }
+              emptyMessage="貸出中・対応待ちのPCAポンプはありません"
+              onRetry={() => void rentalsQuery.refetch()}
             />
           </CardContent>
         </Card>

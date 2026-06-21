@@ -24,6 +24,8 @@ vi.mock('@/components/ui/data-table', () => ({
   DataTable: ({
     columns,
     data,
+    errorMessage,
+    onRetry,
   }: {
     columns: Array<{
       id?: string;
@@ -31,8 +33,20 @@ vi.mock('@/components/ui/data-table', () => ({
       cell?: (args: { row: { original: unknown } }) => ReactNode;
     }>;
     data: unknown[];
+    errorMessage?: string;
+    onRetry?: () => void;
   }) => (
     <div>
+      {errorMessage ? (
+        <div role="alert">
+          <p>{errorMessage}</p>
+          {onRetry ? (
+            <button type="button" onClick={onRetry}>
+              再読み込み
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {data.map((row, rowIndex) => (
         <div key={rowIndex}>
           {columns.map((column, columnIndex) =>
@@ -132,5 +146,25 @@ describe('InstitutionsContent', () => {
         expect.objectContaining({ method: 'DELETE', headers: { 'x-org-id': 'org_1' } }),
       );
     });
+  });
+
+  it('passes query failures to DataTable instead of showing a false empty list', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === '/api/prescriber-institutions?') {
+          return new Response(JSON.stringify({ message: 'internal details' }), { status: 500 });
+        }
+        return new Response(JSON.stringify({ message: `Unhandled ${url}` }), { status: 500 });
+      }),
+    );
+
+    renderContent();
+
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      '医療機関一覧を取得できませんでした',
+    );
+    expect(screen.getByRole('button', { name: '再読み込み' })).toBeTruthy();
   });
 });
