@@ -7,6 +7,7 @@ import { AdminPageHeader } from '@/components/features/admin/admin-page-header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Loading } from '@/components/ui/loading';
+import { ErrorState } from '@/components/ui/error-state';
 import { Button } from '@/components/ui/button';
 import { PageScaffold } from '@/components/layout/page-scaffold';
 
@@ -43,7 +44,7 @@ export default function DispenseAuditStatsPage() {
   const orgId = useOrgId();
   const [days, setDays] = useState(30);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['reject-reason-stats', orgId, days],
     queryFn: async () => {
       const res = await fetch(`/api/admin/reject-reason-stats?days=${days}`, {
@@ -77,6 +78,13 @@ export default function DispenseAuditStatsPage() {
 
       {isLoading ? (
         <Loading />
+      ) : isError ? (
+        // 取得失敗時は空状態（false-empty）にせず、再読み込み導線つきの ErrorState を出す。
+        <ErrorState
+          variant="server"
+          size="inline"
+          action={{ label: '再読み込み', onClick: () => void refetch() }}
+        />
       ) : !stats ? (
         <p className="text-sm text-muted-foreground">データがありません</p>
       ) : (
