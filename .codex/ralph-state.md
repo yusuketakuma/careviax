@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260621-1608 JST
+
+- current task: stabilize workflow E2E after patient-flow landed, while reviewing Claude-owned S2e SSOT/card/generic state-color follow-ups.
+- files inspected: agmsg inbox/LOCK/ACK/PATCH_REVIEW messages, current `git status`, `CODEX_GOAL_PROGRESS.md`, this Ralph state file, `tools/tests/ui-workflow-flow.spec.ts`, Playwright failure screenshot/error context for the workflow prefill test, `tools/tests/helpers/local-auth.ts`, existing API-based patient-id lookup in `tools/tests/ui-major-screens.spec.ts`, `/api/patients` route/query limit handling, prescription intake form `patient_id` initialization/fetch behavior, Claude-owned `card-workspace` and `prescription-history` diffs, and focused validation output.
+- files changed: `tools/tests/ui-workflow-flow.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the workflow prefill E2E timed out for 240s waiting for `patient-board-card-link` on a blank `/patients` screen, even though the behavior under test was the prescription intake form's `patient_id` URL prefill contract, not patient board rendering.
+- security risks found: no product code, auth, authorization, RLS, DB, API, patient projection, mutation, audit, export, or PHI handling changed. The helper uses the authenticated local Playwright request context against the existing safe local `ph_os_e2e` test environment.
+- performance issues found: no runtime path changed. The E2E path now avoids a 240s false timeout and the full workflow spec runs in 31.3s.
+- validation commands: baseline full workflow Chromium Playwright; focused workflow prefill Playwright; full workflow Chromium Playwright; scoped ESLint; scoped Prettier check; scoped `git diff --check`; focused Vitest for Claude-owned card-workspace and prescription-history review.
+- validation results: baseline workflow E2E failed `10/11` on the prefill test waiting for `/patients` card hydration. Focused prefill rerun passed `1/1`; full workflow rerun passed `11/11`. Scoped ESLint, Prettier, and diff-check passed for `tools/tests/ui-workflow-flow.spec.ts` plus reviewed Claude files. Claude review focused Vitest passed `33/33`.
+- remaining work: format/check ledgers, drain agmsg, stage only `tools/tests/ui-workflow-flow.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state file, commit the test-only workflow slice, then notify Claude. Do not stage Claude-owned card-workspace or prescription-history files.
+- next action: run targeted ledger/test checks, commit the Codex-owned workflow drift slice, then continue the UX sweep with the next non-overlapping route.
+
 ### 20260621-1558 JST
 
 - current task: stabilize the current patient flow E2E navigation drift while reviewing Claude-owned state-color patches without mixing ownership.

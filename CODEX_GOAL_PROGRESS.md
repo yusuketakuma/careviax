@@ -8740,3 +8740,25 @@ Next loop:
 - Remaining:
   - Commit only `tools/tests/ui-patient-flow.spec.ts` plus ledger entries.
   - Continue the UX sweep after commit with the next non-overlapping high-frequency route.
+
+### Workflow E2E Drift — Prescription Intake URL Contract
+
+- Coordination:
+  - Continued the dashboard-first UX/runtime sweep under `F-UX-WORKFLOW-FLOW-E2E-DRIFT`.
+  - Claude ACKed no-conflict for `tools/tests/ui-workflow-flow.spec.ts` and ledgers while owning separate state-color follow-up paths.
+  - Reviewed and approved Claude-owned S2e SSOT/card-workspace/generic-badge patches without staging those files.
+- Implemented by Codex:
+  - Removed the workflow test's hidden dependency on `/patients` card hydration for the `patient_id` prefill case.
+  - Added an authenticated API helper that reads the first patient via `/api/patients?limit=5&sort=name_kana&order=asc`.
+  - Kept the test's target contract focused on `/prescriptions/new?patient_id=...`: the selected patient detail request returns 200 and the patient search field is prefilled with that patient's name.
+  - Left patient-list rendering coverage in `ui-patient-flow.spec.ts`, where it already passes separately.
+- Validation:
+  - Baseline full `tools/tests/ui-workflow-flow.spec.ts --project=chromium`: failed `10/11`; the prefill test timed out for 240s waiting for `patient-board-card-link` on a white `/patients` screen.
+  - Focused rerun for `prescription intake form pre-fills patient from URL params`: passed, `1/1` in 10.9s.
+  - Full `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-workflow-flow.spec.ts --project=chromium`: passed, `11/11` in 31.3s.
+  - Scoped ESLint for workflow plus Claude-reviewed state-color files: passed.
+  - Scoped Prettier check for workflow plus Claude-reviewed state-color files: passed after formatting `tools/tests/ui-workflow-flow.spec.ts`.
+  - Scoped `git diff --check`: passed.
+- Remaining:
+  - Commit only `tools/tests/ui-workflow-flow.spec.ts` plus ledger entries.
+  - Continue UX sweep with the next non-overlapping route after Claude commits its approved state-color follow-ups.
