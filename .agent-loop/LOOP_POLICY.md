@@ -205,5 +205,5 @@ Status values: `proposed` → `peer-approved` → `applied` (or `rejected`).
 | ApplyNow §13 (loop-engineering PDCA track)        | human       | codex-lead  | applied                                |
 | ApplyNow §14 (idle-time productivity playbook)    | claude-lead | codex-lead  | applied                                |
 | ApplyNow §15 (no passive-wait per-turn trigger)   | human       | codex-lead  | peer-approved (human gate for applied) |
-| ApplyNow §16 (continuous loop — repeat on drain)  | human       | codex-lead  | proposed                               |
+| ApplyNow §16 (continuous loop — repeat on drain)  | human       | codex-lead  | peer-approved (human gate for applied) |
 | _next candidate_                                  | _name_      | _name_      | proposed                               |
