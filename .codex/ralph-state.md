@@ -20,6 +20,19 @@ Backup directory:
 
 ## Iterations
 
+### 20260621-1513 JST
+
+- current task: continue the dashboard-first UX/runtime sweep with the next high-frequency schedule/visits E2E route after all prior changes were committed.
+- files inspected: agmsg inbox/history/ACK messages, current `git status`, `CODEX_GOAL_PROGRESS.md`, `docs/ui-ux-design-guidelines.md`, Next.js server/client component guide, `tools/tests/ui-schedule-visit-report.spec.ts`, `tools/tests/helpers/grouped-visit-fixtures.ts`, Playwright failure contexts for visits today, schedule board, and weekly optimizer, `src/app/(dashboard)/visits/visits-today.tsx`, `src/app/api/visits/today-preparation/route.ts`, `src/app/(dashboard)/schedules/schedule-team-board.tsx`, and `src/app/(dashboard)/schedules/proposals/schedule-weekly-optimizer.tsx`.
+- files changed: `tools/tests/helpers/grouped-visit-fixtures.ts`, `tools/tests/ui-schedule-visit-report.spec.ts`, `CODEX_GOAL_PROGRESS.md`, and this Ralph state entry.
+- bugs found: the `/visits` Playwright path expected today-board action links without ensuring any current-date visit fixtures, so it could render the empty state and miss `カードへ`; the visit detail test no-oped against a stale table selector instead of proving the primary visit-mode transition; schedule board tests still expected a bare `/schedules/proposals` link even though the current flow routes pending proposals to `workspace=dashboard`; weekly optimizer text matching collided with the required validation alert.
+- security risks found: no product code, auth, authorization, RLS, DB schema, patient projection, report content, audit, export, or mutation behavior changed. The E2E helper is guarded by the existing local `ph_os_e2e` / Playwright safety check and updates only deterministic test fixture rows.
+- performance issues found: no runtime code changed. The fixture-backed E2E path removes false empty-state failures and stale locator timeouts from the high-frequency schedule/visits regression suite.
+- validation commands: baseline focused Playwright for `visits workspace exposes card, route, set, and offline guidance`; post-fix focused Playwright for the same test; Playwright `-g "visits page"`; focused Playwright for the two schedule drift tests; full Chromium `tools/tests/ui-schedule-visit-report.spec.ts`; targeted Prettier check; targeted ESLint; targeted `git diff --check`.
+- validation results: baseline visits action-link E2E failed on the no-today-visits empty state. Post-fix focused visits test passed 1/1, visits describe passed 6/6, schedule drift focused rerun passed 2/2, and the full Chromium `ui-schedule-visit-report.spec.ts` passed 20/20. Targeted Prettier, ESLint, and `git diff --check` passed for the two owned E2E files.
+- remaining work: commit only the Codex-owned E2E files and ledgers; do not stage Claude-owned `src/app/(dashboard)/clerk-support/*`.
+- next action: drain agmsg, stage the two E2E files plus ledgers, commit, notify Claude, then continue the next non-overlapping UX route.
+
 ### 20260621-1439 JST
 
 - current task: fix acknowledged test-only UI audit drift in `tools/tests/ui-audit-extensions.spec.ts` after reports patient navigation landed.

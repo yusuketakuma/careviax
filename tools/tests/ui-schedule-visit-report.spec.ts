@@ -1,5 +1,8 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { ensureGroupedVisitFixtures } from './helpers/grouped-visit-fixtures';
+import {
+  ensureGroupedVisitFixtures,
+  ensureTodayVisitPreparationBoardFixtures,
+} from './helpers/grouped-visit-fixtures';
 import {
   attachLocalSession,
   clickAndWaitForStableRoute,
@@ -12,6 +15,17 @@ import { apiPathPattern, fulfillJson, readRouteBody } from './helpers/route-mock
 
 test.setTimeout(240_000);
 test.use({ serviceWorkers: 'block' });
+
+function localDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 async function openScheduleBoard(page: Page) {
   await openStableRoute(page, '/schedules');
@@ -289,7 +303,9 @@ test.describe('schedule page', () => {
     await expect(board.getByTestId('schedule-team-gantt')).toBeVisible({ timeout: 90_000 });
     await expect(board.getByTestId('schedule-pending-proposals')).toBeVisible();
     await expect(board.locator('a[href="/schedules/route-compare"]').first()).toBeVisible();
-    await expect(board.locator('a[href="/schedules/proposals"]').first()).toBeVisible();
+    await expect(
+      board.locator('a[href^="/schedules/proposals?workspace=dashboard"]').first(),
+    ).toBeVisible();
     await expect(page.locator('#planner')).toHaveCount(0);
     await expect(page.locator('#schedule-legacy-tools')).toHaveCount(0);
     await expectNoPageHorizontalOverflow(page);
@@ -408,7 +424,7 @@ test.describe('schedule page', () => {
     await expect(main.getByRole('heading', { name: '週間最適化ビュー' })).toBeVisible({
       timeout: 90_000,
     });
-    await expect(main.getByText('提案対象ケース')).toBeVisible();
+    await expect(main.getByLabel('提案対象ケース')).toBeVisible();
     await expect(main.getByLabel('訪問種別')).toBeVisible();
     await expect(main.getByLabel('優先度')).toBeVisible();
     await expect(main.locator('#weekly-travel-mode')).toBeVisible();
@@ -527,6 +543,7 @@ test.describe('visits page', () => {
   });
 
   test('visits page loads the current preparation workspace', async ({ context }) => {
+    await ensureTodayVisitPreparationBoardFixtures(localDateKey());
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/visits');
 
@@ -566,38 +583,31 @@ test.describe('visits page', () => {
   });
 
   test('visit detail page loads from visits list', async ({ context }) => {
+    await ensureTodayVisitPreparationBoardFixtures(localDateKey());
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/visits');
 
-    // If there are visit records, click the first one
-    const firstVisitLink = page
-      .locator('table tbody tr')
-      .first()
-      .locator('a[href^="/visits/"]')
-      .first();
-    if (await firstVisitLink.isVisible().catch(() => false)) {
-      const href = await firstVisitLink.getAttribute('href');
-      expect(href).toBeTruthy();
-      await clickAndWaitForStableRoute(page, new RegExp(`${href}$`), () =>
-        firstVisitLink.click({ noWaitAfter: true }),
-      );
-      await expect(page).toHaveURL(new RegExp(`${href}$`));
+    const firstVisitLink = page.getByRole('link', { name: '訪問モードを開始' });
+    const firstVisitHref = await firstVisitLink.getAttribute('href');
+    if (!firstVisitHref) throw new Error('Visit mode link did not expose an href');
+    expect(firstVisitHref).toMatch(/^\/visits\/[^/]+\/record$/);
+    const firstVisitUrlPattern = new RegExp(`${escapeRegExp(firstVisitHref)}$`);
 
-      // Visit detail should show SOAP sections
-      const main = page.locator('main');
-      const hasSOAP = await main
-        .getByText(/主観情報|客観情報|薬学的評価|計画・介入/)
-        .first()
-        .isVisible()
-        .catch(() => false);
-      const hasContent = (await main.textContent())?.trim().length ?? 0;
-      expect(hasSOAP || hasContent > 0).toBe(true);
-    }
+    await clickAndWaitForStableRoute(page, firstVisitUrlPattern, () =>
+      firstVisitLink.click({ noWaitAfter: true }),
+    );
+    await expect(page).toHaveURL(firstVisitUrlPattern);
+    await expect(page.getByRole('heading', { name: '訪問記録入力' })).toBeVisible();
+    await expect(page.getByRole('link', { name: '訪問一覧へ戻る' })).toBeVisible();
+    await expect(page.getByRole('region', { name: '訪問前確認' })).toBeVisible({
+      timeout: 45_000,
+    });
 
     expect(errors).toEqual([]);
   });
 
   test('visits workspace exposes card, route, set, and offline guidance', async ({ context }) => {
+    await ensureTodayVisitPreparationBoardFixtures(localDateKey());
     const { page, errors } = await createInstrumentedPage(context);
     await openStableRoute(page, '/visits');
 

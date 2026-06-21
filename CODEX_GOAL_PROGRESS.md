@@ -8694,3 +8694,28 @@ Next loop:
   - `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-audit-extensions.spec.ts`: passed, `21` passed / `21` skipped.
 - Remaining:
   - Commit only the test file and ledger entries.
+
+### Schedule and Visits E2E Drift — Current High-frequency UX
+
+- Coordination:
+  - Continued the dashboard-first UX/runtime goal after the worktree was made clean with `e168954d`.
+  - Drained agmsg before and during the slice. Claude acknowledged the `F-UX-VISITS-TODAY-FIXTURE` lock for `tools/tests/ui-schedule-visit-report.spec.ts`, `tools/tests/helpers/grouped-visit-fixtures.ts`, and ledgers.
+  - Preserved Claude-owned `src/app/(dashboard)/clerk-support/*` work and reviewed/approved its separate S2e patch without staging those files.
+- Implemented by Codex:
+  - Added an E2E helper that reuses the grouped visit fixtures but aligns their `scheduled_date` to the current local date so `/visits` can deterministically render actionable today-board cards.
+  - Converted the formerly weak visits detail test from a table no-op into a real `訪問モードを開始` click-through to `/visits/[id]/record`, then waited for the visit record workspace content.
+  - Updated the visits workspace E2E to prove visible `カードへ`, `ルート詳細`, `セットへ`, and offline guidance when today-board cards exist.
+  - Aligned schedule board locators with current URLs: proposal links now point at `workspace=dashboard`, while the top create/scheduling action remains `workspace=optimizer`.
+  - Tightened the weekly optimizer locator from ambiguous text to the labeled `提案対象ケース` control, avoiding strict-mode collisions with the validation alert.
+- Validation:
+  - Baseline `tools/tests/ui-schedule-visit-report.spec.ts --project=chromium -g "visits workspace exposes card, route, set, and offline guidance"` failed because `/visits` rendered the no-today-visits empty state and no `カードへ` link existed.
+  - Post-fix same focused Playwright test: passed, `1/1`.
+  - `tools/tests/ui-schedule-visit-report.spec.ts --project=chromium -g "visits page"`: passed, `6/6`.
+  - Focused rerun for the two schedule drift tests (`current schedule board exposes...` and `weekly optimizer exposes...`): passed, `2/2`.
+  - Full `DATABASE_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public DIRECT_URL=postgresql://ph_os:ph_os@localhost:5433/ph_os_e2e?schema=public PLAYWRIGHT_REUSE_SERVER=1 PLAYWRIGHT_BASE_URL=http://localhost:3012 NODE_OPTIONS=--max-old-space-size=16384 pnpm exec playwright test --config playwright.local.config.ts tools/tests/ui-schedule-visit-report.spec.ts --project=chromium`: passed, `20/20`.
+  - `pnpm exec prettier --check tools/tests/helpers/grouped-visit-fixtures.ts tools/tests/ui-schedule-visit-report.spec.ts`: passed.
+  - `pnpm exec eslint tools/tests/helpers/grouped-visit-fixtures.ts tools/tests/ui-schedule-visit-report.spec.ts`: passed.
+  - `git diff --check -- tools/tests/helpers/grouped-visit-fixtures.ts tools/tests/ui-schedule-visit-report.spec.ts`: passed.
+- Remaining:
+  - Commit only the two Codex-owned E2E files and ledger entries.
+  - Continue the UX sweep after commit with the next high-frequency route that is not under Claude lock.
