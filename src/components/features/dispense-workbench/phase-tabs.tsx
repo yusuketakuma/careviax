@@ -60,13 +60,13 @@ export function PhaseTabs({ view }: PhaseTabsProps) {
         <div
           style={{
             fontSize: 11,
-            color: '#5a6878',
+            color: 'var(--wb-ink-muted)',
             padding: '0 8px 6px 0',
             alignSelf: 'flex-end',
           }}
         >
           工程：
-          <span style={{ fontWeight: 700, color: '#1b3a63' }}>{view.flowHint}</span>
+          <span style={{ fontWeight: 700, color: 'var(--wb-ink)' }}>{view.flowHint}</span>
         </div>
       </div>
     </nav>

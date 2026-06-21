@@ -41,6 +41,14 @@
   --wb-confirm-fg: var(--primary-foreground);
 
   /*
+   * status bar（暗 primary 塗り）上の強調アクセント（mode=情報青 / online=稼働緑）。
+   * 隣接ラベル（モード/接続）が非色 affordance を担うため装飾的。暗 chrome 上の明アクセントとして
+   * 現値を固定（theme 安定）。
+   */
+  --wb-status-info: #9fd3ff;
+  --wb-status-online: #8fe39a;
+
+  /*
    * F-011 Stage1b（A-prime）: view が返す全色は workbench ローカルの theme 安定トークンで供給する。
    * 外殻 chrome（pane header/status bar/modal header）は Stage1a の adaptive --wb-primary/confirm を維持。
    * データ面（行/セル/state/text/line）は light-first で安定させ、light/dark 双方で AA を保証する
@@ -82,6 +90,16 @@
   --wb-tag-shoni: #a04a6a;
   --wb-tag-shoni-bg: #fbe9f0;
   --wb-tag-shoni-border: #eec4d4;
+  /* 前回処方比較（category）。頓用/頓服とは別意味なので --wb-tag-tonyo とは分離する。 */
+  --wb-compare: #7c43ab;
+  --wb-compare-bg: #f3ecf8;
+  --wb-compare-border: #ddc8ec;
+  /* 訪問持出パケット 完成判定コンテナ（setp 系 workflow セクション。頓服 category ではない）。 */
+  --wb-packet-bg: #f3f0f8;
+  --wb-packet-border: #e2dcea;
+  /* カレンダー外薬リスク（外用/冷所/注射/液剤/別容器も含む総称）。頓用/頓服(--wb-tag-tonyo)に
+     畳むと PRN と誤読されるため専用 token。白地に載るテキスト色＝白地 AA に足る暗 slate-blue。 */
+  --wb-outside-med: oklch(0.45 0.06 265);
 
   /*
    * state solid（A-prime）: workflow state の塗り(fill, 白文字を載せる)兼 文字(ink, 淡 tint/明面上)。
@@ -137,6 +155,18 @@
   --wb-avatar-7: #4a6aa0;
   --wb-avatar-8: #8a6a2a;
 
+  /*
+   * 剤形 fill（drug-form category。logic.ts formOf の bg。白ラベルを載せる固有意味色）。
+   * theme 安定 light、白ラベル AA(4.5:1) を満たす暗さに pin（現 hex 相当を維持）。
+   */
+  --wb-form-tonyo: #9a6a18;
+  --wb-form-gaiyo: #b75a28;
+  --wb-form-capsule: #7b4ba0;
+  --wb-form-powder: #2c7a3d;
+  --wb-form-liquid: #2a7d8f;
+  --wb-form-tablet: #1f4e79;
+  --wb-form-other: #6b7280;
+
   /* 属性チップ回転パレット（装飾・category: bg/border/fg）。 */
   --wb-chip-1-bg: #e8f0fb;
   --wb-chip-1-border: #b9d0ee;
@@ -159,6 +189,10 @@
 :global(.dark) .root {
   --wb-primary-fg: var(--background);
   --wb-confirm-fg: var(--background);
+  /* status bar は dark で --wb-primary-bg が明色化するため、明アクセント(#9fd3ff/#8fe39a)だと
+     AA を割る。暗色(--background)へ切替えてコントラストを確保（隣接ラベルが意味を担う）。 */
+  --wb-status-info: var(--background);
+  --wb-status-online: var(--background);
 }
 
 /* AppShell 配下にマウントする場合のヘッダ控除高（計画 §3・単一変更点） */

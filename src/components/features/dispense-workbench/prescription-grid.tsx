@@ -52,16 +52,16 @@ const COL = {
   note: 220,
 } as const;
 
-const HEADER_BORDER = '1px solid #b6c5d8';
-const CELL_BORDER = '1px solid #e6eaef';
-const TOTAL_BORDER = '1px solid #dde3ea';
+const HEADER_BORDER = '1px solid var(--wb-line)';
+const CELL_BORDER = '1px solid var(--wb-line)';
+const TOTAL_BORDER = '1px solid var(--wb-line)';
 const auditCountInputStyle: CSSProperties = {
   width: 40,
   flex: 'none',
   fontSize: 10.5,
-  color: '#173a63',
-  background: '#fff',
-  border: '1px solid #ebcf96',
+  color: 'var(--wb-ink)',
+  background: 'var(--wb-surface)',
+  border: '1px solid var(--wb-confirm-border)',
   borderRadius: 4,
   padding: '2px 3px',
   textAlign: 'right',
@@ -123,12 +123,14 @@ export function PrescriptionGrid({ view, phase, handlers, isPending }: Prescript
           alignItems: 'center',
           gap: 6,
           padding: '7px 10px',
-          background: '#f4f6f9',
-          borderBottom: '1px solid #d7dde4',
+          background: 'var(--wb-surface-alt)',
+          borderBottom: '1px solid var(--wb-line)',
           flexWrap: 'wrap',
         }}
       >
-        <span style={{ fontSize: 11, color: '#5a6878', fontWeight: 700 }}>調剤区分</span>
+        <span style={{ fontSize: 11, color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
+          調剤区分
+        </span>
         {view.cur.chips.map((c, i) => (
           <span
             key={`${c.label}-${i}`}
@@ -153,9 +155,9 @@ export function PrescriptionGrid({ view, phase, handlers, isPending }: Prescript
             cursor: 'pointer',
             fontSize: 11,
             fontWeight: 700,
-            color: '#7c43ab',
-            background: '#f3ecf8',
-            border: '1px solid #ddc8ec',
+            color: 'var(--wb-compare)',
+            background: 'var(--wb-compare-bg)',
+            border: '1px solid var(--wb-compare-border)',
             borderRadius: 4,
             padding: '3px 10px',
             whiteSpace: 'nowrap',
@@ -173,9 +175,9 @@ export function PrescriptionGrid({ view, phase, handlers, isPending }: Prescript
             cursor: isPending ? 'not-allowed' : 'pointer',
             fontSize: 11,
             fontWeight: 700,
-            color: '#1f6f3d',
-            background: '#eaf6ec',
-            border: '1px solid #bfe0c4',
+            color: 'var(--wb-state-done)',
+            background: 'var(--wb-done-bg)',
+            border: '1px solid var(--wb-done-border)',
             borderRadius: 4,
             padding: '3px 10px',
             whiteSpace: 'nowrap',
@@ -189,9 +191,9 @@ export function PrescriptionGrid({ view, phase, handlers, isPending }: Prescript
         <span
           style={{
             fontSize: 10.5,
-            color: '#2a6b8a',
-            background: '#e6f2f6',
-            border: '1px solid #bcdce6',
+            color: 'var(--wb-tag-reisho)',
+            background: 'var(--wb-tag-reisho-bg)',
+            border: '1px solid var(--wb-tag-reisho-border)',
             borderRadius: 4,
             padding: '3px 9px',
             whiteSpace: 'nowrap',
@@ -202,9 +204,9 @@ export function PrescriptionGrid({ view, phase, handlers, isPending }: Prescript
         <span
           style={{
             fontSize: 11,
-            color: '#8a5a1a',
-            background: '#fdf3df',
-            border: '1px solid #ecd9a8',
+            color: 'var(--wb-state-confirm)',
+            background: 'var(--wb-confirm-bg-warm)',
+            border: '1px solid var(--wb-confirm-border)',
             borderRadius: 4,
             padding: '3px 9px',
             whiteSpace: 'nowrap',
@@ -300,7 +302,7 @@ export function PrescriptionGrid({ view, phase, handlers, isPending }: Prescript
               alignItems: 'center',
               padding: '0 8px',
               borderRight: TOTAL_BORDER,
-              color: '#5a6878',
+              color: 'var(--wb-ink-muted)',
               fontWeight: 400,
               fontSize: 11,
             }}
@@ -340,11 +342,13 @@ export function PrescriptionGrid({ view, phase, handlers, isPending }: Prescript
           alignItems: 'center',
           gap: 12,
           padding: '8px 12px',
-          background: '#eef1f5',
-          borderTop: '1px solid #c6ccd4',
+          background: 'var(--wb-surface-muted)',
+          borderTop: '1px solid var(--wb-line)',
         }}
       >
-        <div style={{ fontSize: 12.5, fontWeight: 700, color: '#243040', whiteSpace: 'nowrap' }}>
+        <div
+          style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--wb-ink)', whiteSpace: 'nowrap' }}
+        >
           {view.progress.label}
         </div>
         <div
@@ -353,9 +357,9 @@ export function PrescriptionGrid({ view, phase, handlers, isPending }: Prescript
             width: 200,
             height: 11,
             borderRadius: 6,
-            background: '#d3dae2',
+            background: 'var(--wb-line)',
             overflow: 'hidden',
-            border: '1px solid #c0c8d1',
+            border: '1px solid var(--wb-line)',
           }}
         >
           <div
@@ -380,9 +384,9 @@ export function PrescriptionGrid({ view, phase, handlers, isPending }: Prescript
             cursor: 'pointer',
             fontSize: 12,
             fontWeight: 700,
-            color: '#2a4a72',
-            background: '#fff',
-            border: '1px solid #9db4d2',
+            color: 'var(--wb-ink)',
+            background: 'var(--wb-surface)',
+            border: '1px solid var(--wb-line)',
             borderRadius: 5,
             padding: '6px 14px',
             whiteSpace: 'nowrap',
@@ -471,13 +475,13 @@ function SectionRow({ row, methodOptions, onMethod, onStart, onDays, onDrop }: S
         style={{
           width: 4,
           height: 14,
-          background: '#3a5e8c',
+          background: 'var(--wb-accent)',
           display: 'inline-block',
           borderRadius: 1,
           flex: 'none',
         }}
       />
-      <span style={{ fontSize: 12, fontWeight: 700, color: '#244268', whiteSpace: 'nowrap' }}>
+      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--wb-ink)', whiteSpace: 'nowrap' }}>
         {row.secLabel}
       </span>
       {row.periodWarning && (
@@ -487,9 +491,9 @@ function SectionRow({ row, methodOptions, onMethod, onStart, onDays, onDrop }: S
           style={{
             fontSize: 10,
             fontWeight: 700,
-            color: '#7b4a14',
-            background: '#fff7e8',
-            border: '1px solid #ebcf96',
+            color: 'var(--wb-state-confirm)',
+            background: 'var(--wb-confirm-bg-pale)',
+            border: '1px solid var(--wb-confirm-border)',
             borderRadius: 4,
             padding: '2px 6px',
             whiteSpace: 'nowrap',
@@ -500,7 +504,9 @@ function SectionRow({ row, methodOptions, onMethod, onStart, onDays, onDrop }: S
       )}
       <span style={{ flex: 1 }} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <span style={{ fontSize: 10.5, color: '#3a5170', fontWeight: 700 }}>調剤方法</span>
+        <span style={{ fontSize: 10.5, color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
+          調剤方法
+        </span>
         <select
           value={row.method}
           onChange={(e) => onMethod(e.target.value)}
@@ -508,9 +514,9 @@ function SectionRow({ row, methodOptions, onMethod, onStart, onDays, onDrop }: S
           style={{
             fontSize: 11,
             fontWeight: 700,
-            color: '#173a63',
-            background: '#fff',
-            border: '1px solid #9db4d2',
+            color: 'var(--wb-ink)',
+            background: 'var(--wb-surface)',
+            border: '1px solid var(--wb-line)',
             borderRadius: 4,
             padding: '2px 4px',
           }}
@@ -523,7 +529,9 @@ function SectionRow({ row, methodOptions, onMethod, onStart, onDays, onDrop }: S
         </select>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <span style={{ fontSize: 10.5, color: '#3a5170', fontWeight: 700 }}>服用開始日</span>
+        <span style={{ fontSize: 10.5, color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
+          服用開始日
+        </span>
         <input
           type="date"
           value={row.start}
@@ -532,9 +540,9 @@ function SectionRow({ row, methodOptions, onMethod, onStart, onDays, onDrop }: S
           aria-describedby={startHelpId}
           style={{
             fontSize: 11,
-            color: '#173a63',
-            background: '#fff',
-            border: '1px solid #9db4d2',
+            color: 'var(--wb-ink)',
+            background: 'var(--wb-surface)',
+            border: '1px solid var(--wb-line)',
             borderRadius: 4,
             padding: '1px 4px',
           }}
@@ -544,7 +552,9 @@ function SectionRow({ row, methodOptions, onMethod, onStart, onDays, onDrop }: S
         </span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <span style={{ fontSize: 10.5, color: '#3a5170', fontWeight: 700 }}>処方日数</span>
+        <span style={{ fontSize: 10.5, color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
+          処方日数
+        </span>
         <input
           type="number"
           min={1}
@@ -556,9 +566,9 @@ function SectionRow({ row, methodOptions, onMethod, onStart, onDays, onDrop }: S
           style={{
             width: 48,
             fontSize: 11,
-            color: '#173a63',
-            background: '#fff',
-            border: '1px solid #9db4d2',
+            color: 'var(--wb-ink)',
+            background: 'var(--wb-surface)',
+            border: '1px solid var(--wb-line)',
             borderRadius: 4,
             padding: '1px 4px',
             textAlign: 'right',
@@ -567,21 +577,25 @@ function SectionRow({ row, methodOptions, onMethod, onStart, onDays, onDrop }: S
         <span id={daysHelpId} className="sr-only">
           1以上の整数で入力してください。
         </span>
-        <span style={{ fontSize: 10.5, color: '#3a5170' }}>日</span>
+        <span style={{ fontSize: 10.5, color: 'var(--wb-ink-muted)' }}>日</span>
       </div>
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           gap: 4,
-          background: '#eaf2fb',
-          border: '1px solid #c4d8ef',
+          background: 'var(--wb-disp-tint-bg)',
+          border: '1px solid var(--wb-tag-ptp-border)',
           borderRadius: 4,
           padding: '2px 8px',
         }}
       >
-        <span style={{ fontSize: 10.5, color: '#3a5170', fontWeight: 700 }}>服用終了日(自動)</span>
-        <span style={{ fontSize: 11.5, fontWeight: 700, color: '#16345a' }}>{row.endDate}</span>
+        <span style={{ fontSize: 10.5, color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
+          服用終了日(自動)
+        </span>
+        <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--wb-ink)' }}>
+          {row.endDate}
+        </span>
       </div>
     </div>
   );
@@ -629,8 +643,8 @@ function DrugRow({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          borderRight: '1px solid #eef1f4',
-          color: '#9aa6b4',
+          borderRight: '1px solid var(--wb-line)',
+          color: 'var(--wb-state-readonly)',
           cursor: 'grab',
           fontSize: 11,
         }}
@@ -684,7 +698,7 @@ function DrugRow({
           alignItems: 'center',
           justifyContent: 'center',
           borderRight: CELL_BORDER,
-          color: '#7a8696',
+          color: 'var(--wb-ink-muted)',
           fontSize: 11,
         }}
       >
@@ -749,7 +763,7 @@ function DrugRow({
             {row.tag}
           </span>
         )}
-        <span style={{ fontWeight: 700, color: '#16263a' }}>{row.name}</span>
+        <span style={{ fontWeight: 700, color: 'var(--wb-ink)' }}>{row.name}</span>
       </div>
       <div
         style={{
@@ -760,7 +774,7 @@ function DrugRow({
           padding: '3px 8px',
           borderRight: CELL_BORDER,
           fontSize: 11.5,
-          color: '#37475c',
+          color: 'var(--wb-ink-muted)',
           lineHeight: 1.2,
         }}
       >
@@ -780,7 +794,7 @@ function DrugRow({
           borderRight: CELL_BORDER,
           fontSize: 10,
           fontWeight: 700,
-          color: '#7b5a2a',
+          color: 'var(--wb-state-confirm)',
           textAlign: 'center',
           lineHeight: 1.1,
         }}
@@ -797,7 +811,7 @@ function DrugRow({
           borderRight: CELL_BORDER,
           fontWeight: 700,
           fontSize: 11.5,
-          color: '#234',
+          color: 'var(--wb-ink)',
         }}
       >
         {row.daily}
@@ -812,7 +826,7 @@ function DrugRow({
           borderRight: CELL_BORDER,
           fontWeight: 700,
           fontSize: 11.5,
-          color: '#2a4060',
+          color: 'var(--wb-ink)',
         }}
       >
         {row.daysLabel}
@@ -833,7 +847,7 @@ function DrugRow({
               fontSize: 9.5,
               fontWeight: 700,
               color: '#fff',
-              background: '#c0392b',
+              background: 'var(--wb-state-blocked)',
               borderRadius: 3,
               padding: '1px 5px',
             }}
@@ -870,9 +884,11 @@ function DrugRow({
                 width: 48,
                 flex: 'none',
                 fontSize: 10.5,
-                color: '#173a63',
-                background: row.actualQuantityDisabled ? '#eef1f5' : '#fff',
-                border: '1px solid #9db4d2',
+                color: 'var(--wb-ink)',
+                background: row.actualQuantityDisabled
+                  ? 'var(--wb-surface-muted)'
+                  : 'var(--wb-surface)',
+                border: '1px solid var(--wb-line)',
                 borderRadius: 4,
                 padding: '2px 3px',
                 textAlign: 'right',
@@ -890,9 +906,11 @@ function DrugRow({
                 cursor: row.quantityConfirmLocked ? 'default' : 'pointer',
                 fontSize: 10,
                 fontWeight: 700,
-                color: row.quantityConfirmed ? '#1f6f3d' : '#7b4a14',
-                background: row.quantityConfirmed ? '#eaf6ec' : '#fff7e8',
-                border: `1px solid ${row.quantityConfirmed ? '#bfe0c4' : '#ebcf96'}`,
+                color: row.quantityConfirmed ? 'var(--wb-state-done)' : 'var(--wb-state-confirm)',
+                background: row.quantityConfirmed
+                  ? 'var(--wb-done-bg)'
+                  : 'var(--wb-confirm-bg-pale)',
+                border: `1px solid ${row.quantityConfirmed ? 'var(--wb-done-border)' : 'var(--wb-confirm-border)'}`,
                 borderRadius: 4,
                 padding: '2px 5px',
                 whiteSpace: 'nowrap',
@@ -912,9 +930,9 @@ function DrugRow({
                   width: 42,
                   flex: 'none',
                   fontSize: 10,
-                  color: '#7b4a14',
-                  background: '#fff7e8',
-                  border: '1px solid #ebcf96',
+                  color: 'var(--wb-state-confirm)',
+                  background: 'var(--wb-confirm-bg-pale)',
+                  border: '1px solid var(--wb-confirm-border)',
                   borderRadius: 4,
                   padding: '2px 3px',
                   font: 'inherit',
@@ -930,9 +948,9 @@ function DrugRow({
                 flex: 'none',
                 fontSize: 10,
                 fontWeight: 700,
-                color: '#7b4a14',
-                background: '#fff7e8',
-                border: '1px solid #ebcf96',
+                color: 'var(--wb-state-confirm)',
+                background: 'var(--wb-confirm-bg-pale)',
+                border: '1px solid var(--wb-confirm-border)',
                 borderRadius: 4,
                 padding: '2px 4px',
                 whiteSpace: 'nowrap',
@@ -989,6 +1007,6 @@ function timingCell(width: number): CSSProperties {
     justifyContent: 'center',
     borderRight: CELL_BORDER,
     fontWeight: 700,
-    color: '#1f3350',
+    color: 'var(--wb-ink)',
   };
 }

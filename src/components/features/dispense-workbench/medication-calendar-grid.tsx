@@ -92,15 +92,15 @@ export function MedicationCalendarGrid({
           alignItems: 'center',
           gap: 8,
           padding: '7px 10px',
-          background: '#fff7ef',
-          borderBottom: '1px solid #f0dcc4',
+          background: 'var(--wb-confirm-bg-warm)',
+          borderBottom: '1px solid var(--wb-confirm-border-warm)',
         }}
       >
         <span
           style={{
             fontSize: 11.5,
             fontWeight: 700,
-            color: '#9a4a18',
+            color: 'var(--wb-state-confirm)',
             whiteSpace: 'nowrap',
           }}
         >
@@ -123,9 +123,9 @@ export function MedicationCalendarGrid({
                 alignItems: 'center',
                 gap: 5,
                 fontSize: 11,
-                color: '#37475c',
-                background: '#fff',
-                border: '1px solid #e6d6c2',
+                color: 'var(--wb-ink-muted)',
+                background: 'var(--wb-surface)',
+                border: '1px solid var(--wb-confirm-border-warm)',
                 borderRadius: 4,
                 padding: '2px 8px',
               }}
@@ -146,7 +146,9 @@ export function MedicationCalendarGrid({
             </span>
           ))}
           {view.changesEmpty && (
-            <span style={{ fontSize: 11, color: '#7a8a9c' }}>今回変更なし（前回と同一処方）</span>
+            <span style={{ fontSize: 11, color: 'var(--wb-ink-muted)' }}>
+              今回変更なし（前回と同一処方）
+            </span>
           )}
         </div>
       </div>
@@ -160,11 +162,13 @@ export function MedicationCalendarGrid({
           gap: 7,
           padding: '7px 10px',
           background: view.calBarBg,
-          borderBottom: '1px solid #d7dde4',
+          borderBottom: '1px solid var(--wb-line)',
           flexWrap: 'wrap',
         }}
       >
-        <span style={{ fontSize: 11, color: '#5a6878', fontWeight: 700 }}>{view.calBarTitle}</span>
+        <span style={{ fontSize: 11, color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
+          {view.calBarTitle}
+        </span>
         {view.setChips.map((c, i) => (
           <span
             key={`${c.label}-${i}`}
@@ -190,7 +194,14 @@ export function MedicationCalendarGrid({
           </span>
         ))}
         <span style={{ flex: 1 }} />
-        <span style={{ fontSize: 11, color: '#3a5170', fontWeight: 700, whiteSpace: 'nowrap' }}>
+        <span
+          style={{
+            fontSize: 11,
+            color: 'var(--wb-ink-muted)',
+            fontWeight: 700,
+            whiteSpace: 'nowrap',
+          }}
+        >
           {view.calBarMeta}
         </span>
       </div>
@@ -213,7 +224,7 @@ export function MedicationCalendarGrid({
                   fontWeight: 700,
                   color: d.color,
                   background: d.bg,
-                  border: '1px solid #cfd7e0',
+                  border: '1px solid var(--wb-line)',
                   borderBottom: 'none',
                   borderRadius: '5px 5px 0 0',
                   margin: '0 1px',
@@ -240,9 +251,9 @@ export function MedicationCalendarGrid({
                   justifyContent: 'center',
                   fontSize: 12,
                   fontWeight: 700,
-                  color: '#274268',
-                  background: '#e7edf4',
-                  border: '1px solid #cfd7e0',
+                  color: 'var(--wb-ink)',
+                  background: 'var(--wb-surface-alt)',
+                  border: '1px solid var(--wb-line)',
                   borderRadius: 5,
                   marginRight: 1,
                 }}
@@ -267,7 +278,7 @@ export function MedicationCalendarGrid({
               gap: 14,
               marginTop: 10,
               fontSize: 10.5,
-              color: '#5a6878',
+              color: 'var(--wb-ink-muted)',
               flexWrap: 'wrap',
             }}
           >
@@ -299,7 +310,7 @@ export function MedicationCalendarGrid({
               style={{
                 fontSize: 11.5,
                 fontWeight: 700,
-                color: '#46566a',
+                color: 'var(--wb-ink-muted)',
                 marginBottom: 6,
                 display: 'flex',
                 alignItems: 'center',
@@ -310,7 +321,7 @@ export function MedicationCalendarGrid({
                 style={{
                   width: 4,
                   height: 12,
-                  background: '#5a7ba6',
+                  background: 'var(--wb-accent)',
                   display: 'inline-block',
                   borderRadius: 1,
                 }}
@@ -325,16 +336,16 @@ export function MedicationCalendarGrid({
                   style={{
                     width: 150,
                     height: 96,
-                    border: '1.5px dashed #b9c2cc',
+                    border: '1.5px dashed var(--wb-line)',
                     borderRadius: 6,
                     background:
-                      'repeating-linear-gradient(135deg,#f3f5f7,#f3f5f7 7px,#eaedf1 7px,#eaedf1 14px)',
+                      'repeating-linear-gradient(135deg,var(--wb-surface-alt),var(--wb-surface-alt) 7px,var(--wb-surface-muted) 7px,var(--wb-surface-muted) 14px)',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: 4,
-                    color: '#8895a4',
+                    color: 'var(--wb-ink-muted)',
                   }}
                 >
                   <span style={{ fontSize: 18 }} aria-hidden="true">
@@ -356,11 +367,13 @@ export function MedicationCalendarGrid({
           alignItems: 'center',
           gap: 12,
           padding: '8px 12px',
-          background: '#eef1f5',
-          borderTop: '1px solid #c6ccd4',
+          background: 'var(--wb-surface-muted)',
+          borderTop: '1px solid var(--wb-line)',
         }}
       >
-        <div style={{ fontSize: 12.5, fontWeight: 700, color: '#243040', whiteSpace: 'nowrap' }}>
+        <div
+          style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--wb-ink)', whiteSpace: 'nowrap' }}
+        >
           {progress.label}
         </div>
         <div
@@ -369,9 +382,9 @@ export function MedicationCalendarGrid({
             width: 170,
             height: 11,
             borderRadius: 6,
-            background: '#d3dae2',
+            background: 'var(--wb-line)',
             overflow: 'hidden',
-            border: '1px solid #c0c8d1',
+            border: '1px solid var(--wb-line)',
           }}
           role="progressbar"
           aria-valuenow={parseInt(progress.pct, 10)}
@@ -416,9 +429,9 @@ export function MedicationCalendarGrid({
             cursor: 'pointer',
             fontSize: 12,
             fontWeight: 700,
-            color: '#2a4a72',
-            background: '#fff',
-            border: '1px solid #9db4d2',
+            color: 'var(--wb-ink)',
+            background: 'var(--wb-surface)',
+            border: '1px solid var(--wb-line)',
             borderRadius: 5,
             padding: '6px 14px',
             whiteSpace: 'nowrap',
@@ -501,8 +514,8 @@ function CalendarCellView({ cell, onSelect }: CalendarCellViewProps) {
           style={{
             fontSize: 9.5,
             fontWeight: 700,
-            color: '#1d6fb8',
-            background: '#e6f0fb',
+            color: 'var(--wb-tag-ptp)',
+            background: 'var(--wb-tag-ptp-bg)',
             borderRadius: 3,
             padding: '1px 4px',
             alignSelf: 'flex-start',

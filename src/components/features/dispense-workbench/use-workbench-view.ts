@@ -900,7 +900,8 @@ export function buildView(args: BuildViewArgs): WorkbenchView {
     RK('曜日・隔日指定', 'var(--wb-state-blocked)');
   if (dr.some((r) => r.funsai)) RK('粉砕・賦形', 'var(--wb-state-confirm)');
   if (dr.some((r) => /PTP/.test(r.note))) RK('追加PTP混在', 'var(--wb-tag-ptp)');
-  if (cal.outside.length) RK('カレンダー外薬', 'var(--wb-tag-tonyo)');
+  // カレンダー外薬は外用/冷所/注射/液剤も含む総称のため頓服色(tonyo)へ畳まず専用 token。
+  if (cal.outside.length) RK('カレンダー外薬', 'var(--wb-outside-med)');
   if (/残薬/.test(sjoin)) RK('残薬調整', 'var(--wb-tag-gaiyo)');
   if (!riskList.length) RK('通常の定時薬', 'var(--wb-state-done)');
 

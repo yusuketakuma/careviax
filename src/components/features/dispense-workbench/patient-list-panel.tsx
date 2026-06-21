@@ -27,9 +27,9 @@ interface PatientListPanelProps {
  * view 側の状態色を変更する場合はここも併せて見直すこと。
  */
 const LEGEND: { label: string; color: string }[] = [
-  { label: '監査済', color: '#8fd07a' },
-  { label: '作業中', color: '#f3b54a' },
-  { label: '未着手', color: '#9aa6b4' },
+  { label: '監査済', color: 'var(--wb-state-done)' },
+  { label: '作業中', color: 'var(--wb-state-confirm)' },
+  { label: '未着手', color: 'var(--wb-state-readonly)' },
 ];
 
 export function PatientListPanel({ view }: PatientListPanelProps) {
@@ -54,11 +54,13 @@ export function PatientListPanel({ view }: PatientListPanelProps) {
           alignItems: 'center',
           gap: '4px',
           padding: '5px 8px',
-          borderBottom: '1px solid #d8dde3',
-          background: '#eef1f4',
+          borderBottom: '1px solid var(--wb-line)',
+          background: 'var(--wb-surface-muted)',
         }}
       >
-        <span style={{ fontSize: '10.5px', color: '#5a6878', fontWeight: 700 }}>並び替え</span>
+        <span style={{ fontSize: '10.5px', color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
+          並び替え
+        </span>
         {view.sortButtons.map((sb) => (
           <button
             key={sb.key}
@@ -107,7 +109,7 @@ export function PatientListPanel({ view }: PatientListPanelProps) {
                 style={{
                   fontSize: '13px',
                   fontWeight: 700,
-                  color: '#1d3047',
+                  color: 'var(--wb-ink)',
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
@@ -118,7 +120,7 @@ export function PatientListPanel({ view }: PatientListPanelProps) {
               <div
                 style={{
                   fontSize: '10px',
-                  color: '#7a8a9c',
+                  color: 'var(--wb-ink-muted)',
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
@@ -128,7 +130,9 @@ export function PatientListPanel({ view }: PatientListPanelProps) {
               </div>
             </div>
             <div style={{ flex: 'none', textAlign: 'right' }}>
-              <div style={{ fontSize: '11px', color: '#48586c', fontWeight: 700 }}>{p.age}</div>
+              <div style={{ fontSize: '11px', color: 'var(--wb-ink-muted)', fontWeight: 700 }}>
+                {p.age}
+              </div>
               <div
                 style={{
                   display: 'inline-block',
@@ -153,16 +157,19 @@ export function PatientListPanel({ view }: PatientListPanelProps) {
         style={{
           flex: 'none',
           padding: '6px 8px',
-          borderTop: '1px solid #d4d9df',
-          background: '#eceff2',
+          borderTop: '1px solid var(--wb-line)',
+          background: 'var(--wb-surface-alt)',
           fontSize: '10px',
-          color: '#5a6878',
+          color: 'var(--wb-ink-muted)',
           lineHeight: 1.5,
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
           {LEGEND.map((l) => (
-            <span key={l.label} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+            <span
+              key={l.label}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}
+            >
               <span
                 aria-hidden="true"
                 style={{

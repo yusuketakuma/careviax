@@ -9,13 +9,34 @@
  *  2. use-workbench-view.ts が参照する全 var(--wb-*) が dispensing-workbench.module.css に定義済。
  */
 
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const DIR = join(process.cwd(), 'src/components/features/dispense-workbench');
 const viewSrc = readFileSync(join(DIR, 'use-workbench-view.ts'), 'utf8');
 const moduleCss = readFileSync(join(DIR, 'dispensing-workbench.module.css'), 'utf8');
+const globalsCss = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8');
+
+/** dispense-workbench の本番ソース全部（テスト除く .ts/.tsx/.css）。 */
+const PRODUCTION_FILES = readdirSync(DIR).filter(
+  (f) => /\.(ts|tsx|css)$/.test(f) && !/\.test\.(ts|tsx)$/.test(f),
+);
+
+/**
+ * F-011 Stage1b-2 で token 化した消費側コンポーネント（色値はインライン style だが
+ * すべて var(--wb-*) 参照に移行済）。白文字 `#fff` のみ許容する。
+ */
+const CONSUMER_FILES = [
+  'right-pane.tsx',
+  'prescription-grid.tsx',
+  'medication-calendar-grid.tsx',
+  'dispensing-workbench.tsx',
+  'patient-list-panel.tsx',
+  'phase-tabs.tsx',
+  'hold-reason-dialog.tsx',
+  'prescription-compare-dialog.tsx',
+] as const;
 
 /** 行コメント(//...)とブロックコメント(slash-star ... star-slash)を除いた active コード。 */
 function stripComments(src: string): string {
@@ -66,6 +87,68 @@ describe('workbench color-token contract (F-011 Stage1b)', () => {
       .filter((token) => !token.startsWith('--wb-'));
     const unknown = [...new Set(globalRefs)].filter((token) => !allow.has(token));
     expect(unknown, `non-allowlisted global tokens: ${unknown.join(', ')}`).toEqual([]);
+  });
+
+  it('consumer components contain no raw chromatic hex literals (white #fff labels allowed)', () => {
+    for (const file of CONSUMER_FILES) {
+      const src = readFileSync(join(DIR, file), 'utf8');
+      // #fff / #ffffff（白文字ラベル）のみ許容し、それ以外の有彩 6 桁 hex は token 化必須。
+      const hits = (src.match(/#[0-9a-fA-F]{6}\b/g) ?? []).filter(
+        (h) => h.toLowerCase() !== '#ffffff',
+      );
+      expect(hits, `${file} has un-tokenized hex: ${hits.join(', ')}`).toEqual([]);
+      // 3 桁の有彩 hex も漏れなく token 化されていること（#fff 白のみ許容）。
+      const short = (src.match(/#[0-9a-fA-F]{3}\b/g) ?? []).filter(
+        (h) => h.toLowerCase() !== '#fff',
+      );
+      expect(short, `${file} has un-tokenized short hex: ${short.join(', ')}`).toEqual([]);
+    }
+  });
+
+  it('every var(--wb-*) referenced in any production source (incl. logic.ts + CSS) is defined', () => {
+    const defined = new Set([...moduleCss.matchAll(/(--wb-[a-z0-9-]+)\s*:/g)].map((m) => m[1]));
+    for (const file of PRODUCTION_FILES) {
+      const src = readFileSync(join(DIR, file), 'utf8');
+      const referenced = new Set(
+        [...src.matchAll(/var\(\s*(--wb-[a-z0-9-]+)\s*\)/g)].map((m) => m[1]),
+      );
+      const missing = [...referenced].filter((token) => !defined.has(token));
+      expect(missing, `${file} references undefined --wb-* tokens: ${missing.join(', ')}`).toEqual(
+        [],
+      );
+    }
+  });
+
+  it('semantic tokens are not collided: compare/packet workflow do not borrow 頓服(tonyo) category tokens', () => {
+    // 前回処方比較ボタンは --wb-compare(category)で、頓用/頓服タグ(--wb-tag-tonyo)を流用しない。
+    const grid = readFileSync(join(DIR, 'prescription-grid.tsx'), 'utf8');
+    const compareBlock = grid.slice(grid.indexOf('onClick={openCompare}'));
+    const compareStyle = compareBlock.slice(0, compareBlock.indexOf('}}'));
+    expect(compareStyle).toContain('var(--wb-compare)');
+    expect(compareStyle, 'compare button must not reuse tonyo tokens').not.toMatch(
+      /--wb-tag-tonyo/,
+    );
+    // 訪問持出パケット 完成判定セクション全体（コンテナ + checkbox/action）も workflow であり
+    // 頓服 category を流用しない。outer style だけでなく section 全域を bounded slice で守る。
+    const rp = readFileSync(join(DIR, 'right-pane.tsx'), 'utf8');
+    const packetStart = rp.indexOf('訪問持出パケット 完成判定');
+    const packetEnd = rp.indexOf('isSeta: セット監査', packetStart);
+    // boundary 健全性（壊れたら EOF まで scan する事故を防ぐ）。
+    expect(packetStart, 'packet section start marker not found').toBeGreaterThanOrEqual(0);
+    expect(packetEnd, 'packet section end marker not after start').toBeGreaterThan(packetStart);
+    const packetSection = rp.slice(packetStart, packetEnd);
+    expect(packetSection).toContain('var(--wb-packet-bg)');
+    // packet checkbox の塗り accent は setp 工程（頓服 category ではない）。heading の setp-strong に
+    // 引っ張られず、checkbox の look() 引数を直接固定する。
+    expect(packetSection).toContain("look(pk.checked, 'var(--wb-phase-setp-strong)')");
+    expect(packetSection, 'visit-carry-packet section must not reuse tonyo tokens').not.toMatch(
+      /--wb-tag-tonyo/,
+    );
+    // カレンダー外薬リスクは外用/冷所/注射/液剤も含む総称のため頓服(tonyo)へ畳まない（専用 token）。
+    expect(viewSrc).toContain("RK('カレンダー外薬', 'var(--wb-outside-med)')");
+    expect(viewSrc, 'カレンダー外薬 must not reuse tonyo').not.toContain(
+      "RK('カレンダー外薬', 'var(--wb-tag-tonyo)')",
+    );
   });
 
   it('change-type colors follow the docs SSOT (追加/変更=info, 解除/中止=readonly), not workflow state', () => {
@@ -179,5 +262,81 @@ describe('workbench color-token AA contrast (A-prime, theme-stable)', () => {
     expect(muted, `--wb-ink-muted on --wb-surface = ${muted.toFixed(2)}:1`).toBeGreaterThanOrEqual(
       4.5,
     );
+    // カレンダー外薬リスクの専用 token もリスト面（白 surface）上のテキストとして AA。
+    const outside = contrast(tokenValue('--wb-outside-med'), tokenValue('--wb-surface'));
+    expect(
+      outside,
+      `--wb-outside-med on --wb-surface = ${outside.toFixed(2)}:1`,
+    ).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+/** module.css の :global(.dark) .root ブロックから token の dark 値を取り出す。 */
+function tokenValueDark(name: string): string {
+  // コメント中の ":global(.dark)" を避け、実セレクタ ":global(.dark) .root" からスライスする。
+  const darkBlock = moduleCss.slice(moduleCss.indexOf(':global(.dark) .root'));
+  const m = darkBlock.match(new RegExp(`${name}\\s*:\\s*([^;]+);`));
+  if (!m) throw new Error(`dark override not found: ${name}`);
+  return m[1].trim();
+}
+
+/**
+ * globals.css から token を解決（dark=true は実 `.dark { ... }` ブロック、false は `:root { ... }`）。
+ * 注: globals.css には `@custom-variant dark (&:is(.dark *));` が actual `.dark {` より前にあるため、
+ * 単純な indexOf('.dark') では :root を含み light 値を誤読する。block body を明示抽出する。
+ */
+function globalVar(name: string, dark: boolean): string {
+  const block = dark
+    ? globalsCss.match(/\n\.dark\s*\{([\s\S]*?)\n\}/)
+    : globalsCss.match(/:root\s*\{([\s\S]*?)\n\}/);
+  if (!block) throw new Error(`globals block not found (dark=${dark})`);
+  const m = block[1].match(new RegExp(`${name}\\s*:\\s*([^;]+);`));
+  if (!m) throw new Error(`global not found: ${name} (dark=${dark})`);
+  return m[1].trim();
+}
+
+describe('workbench form/accent/status contrast (incl. dark status bar)', () => {
+  it('drug-form fills (logic.ts formOf) carry white labels at >= AA 4.5:1', () => {
+    for (const t of [
+      '--wb-form-tonyo',
+      '--wb-form-gaiyo',
+      '--wb-form-capsule',
+      '--wb-form-powder',
+      '--wb-form-liquid',
+      '--wb-form-tablet',
+      '--wb-form-other',
+    ]) {
+      const ratio = contrast(tokenValue(t), WHITE);
+      expect(ratio, `${t} on white = ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('--wb-accent carries a white avatar initial at >= AA 4.5:1', () => {
+    const ratio = contrast(tokenValue('--wb-accent'), WHITE);
+    expect(ratio, `--wb-accent on white = ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('status-bar accents meet AA on the primary bar in BOTH light and dark themes', () => {
+    const primaryLight = globalVar('--primary', false);
+    const primaryDark = globalVar('--primary', true);
+    // regression guard: dark 値が実 .dark ブロック由来（light と異なる）であることを保証する
+    // （@custom-variant dark を誤読して light 値を読むと dark contrast の false positive になる）。
+    expect(primaryDark, 'dark --primary must differ from light').not.toBe(primaryLight);
+    expect(globalVar('--background', true), 'dark --background must differ from light').not.toBe(
+      globalVar('--background', false),
+    );
+    // light: bright accents (#9fd3ff/#8fe39a) on the dark light-mode primary bar.
+    for (const t of ['--wb-status-info', '--wb-status-online']) {
+      const ratio = contrast(tokenValue(t), primaryLight);
+      expect(ratio, `${t} on light primary = ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
+    }
+    // dark: .dark override switches status accents to --background (dark) on the light dark-mode bar.
+    expect(tokenValueDark('--wb-status-info')).toBe('var(--background)');
+    expect(tokenValueDark('--wb-status-online')).toBe('var(--background)');
+    const ratioDark = contrast(globalVar('--background', true), primaryDark);
+    expect(
+      ratioDark,
+      `status(dark=--background) on dark primary = ${ratioDark.toFixed(2)}:1`,
+    ).toBeGreaterThanOrEqual(4.5);
   });
 });
