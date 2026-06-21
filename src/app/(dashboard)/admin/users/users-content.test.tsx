@@ -9,6 +9,8 @@ import { UsersContent } from './users-content';
 setupDomTestEnv();
 
 const mutationMutateMock = vi.hoisted(() => vi.fn());
+const queryErrorKeysMock = vi.hoisted(() => new Set<string>());
+const queryRefetchMock = vi.hoisted(() => vi.fn());
 
 const user = {
   id: 'user_1',
@@ -58,8 +60,10 @@ vi.mock('@tanstack/react-query', () => ({
 
     if (key === 'admin-users') {
       return {
-        data: { data: [user] },
+        data: queryErrorKeysMock.has('admin-users') ? undefined : { data: [user] },
         isLoading: false,
+        isError: queryErrorKeysMock.has('admin-users'),
+        refetch: queryRefetchMock,
       };
     }
 
@@ -67,10 +71,12 @@ vi.mock('@tanstack/react-query', () => ({
       return {
         data: { data: [{ id: 'site_1', name: '本店' }] },
         isLoading: false,
+        isError: false,
+        refetch: queryRefetchMock,
       };
     }
 
-    return { data: { data: [] }, isLoading: false };
+    return { data: { data: [] }, isLoading: false, isError: false, refetch: queryRefetchMock };
   },
   useQueryClient: () => ({
     invalidateQueries: vi.fn(),
@@ -81,11 +87,25 @@ vi.mock('@/components/ui/data-table', () => ({
   DataTable: ({
     columns,
     data,
+    errorMessage,
+    onRetry,
   }: {
     columns: Array<{ id?: string; cell?: (args: { row: { original: unknown } }) => ReactNode }>;
     data: unknown[];
+    errorMessage?: string;
+    onRetry?: () => void;
   }) => (
     <div>
+      {errorMessage ? (
+        <div role="alert">
+          <p>{errorMessage}</p>
+          {onRetry ? (
+            <button type="button" onClick={onRetry}>
+              再読み込み
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {data.map((row, rowIndex) => (
         <div key={rowIndex}>
           {columns.map((column, columnIndex) =>
@@ -109,6 +129,7 @@ vi.mock('sonner', () => ({
 describe('UsersContent', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    queryErrorKeysMock.clear();
     Object.assign(user, defaultUser);
   });
 
@@ -218,5 +239,19 @@ describe('UsersContent', () => {
     expect(specialties.disabled).toBe(true);
     expect(specialties.getAttribute('aria-describedby')).toBe('detail-visit-constraints-role-help');
     expect(screen.getByText('非訪問ロールでは保存時にクリアされます。')).toBeTruthy();
+  });
+
+  it('passes user query failures to DataTable without showing false-zero summaries', () => {
+    queryErrorKeysMock.add('admin-users');
+
+    render(<UsersContent />);
+
+    expect(screen.getByRole('alert').textContent).toContain('ユーザー一覧を取得できませんでした');
+    expect(screen.getByRole('button', { name: '再読み込み' })).toBeTruthy();
+    expect(screen.getAllByText('—')).toHaveLength(4);
+
+    fireEvent.click(screen.getByRole('button', { name: '再読み込み' }));
+
+    expect(queryRefetchMock).toHaveBeenCalled();
   });
 });

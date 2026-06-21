@@ -135,7 +135,7 @@ export function JobsDashboardContent() {
   const [statusFilter, setStatusFilter] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['integration-jobs', orgId],
     queryFn: async () => {
       const res = await fetch('/api/jobs', {
@@ -341,6 +341,7 @@ export function JobsDashboardContent() {
   const partialWarningCount = (data?.data ?? []).filter((e) =>
     Boolean(getJobBulkExportRunSummary(e)),
   ).length;
+  const jobCountsUnavailable = (isLoading || isError) && !data;
 
   return (
     <div className="space-y-4">
@@ -353,7 +354,9 @@ export function JobsDashboardContent() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-semibold">{data?.data.length ?? '—'}</p>
+            <p className="text-2xl font-semibold">
+              {jobCountsUnavailable ? '—' : (data?.data.length ?? '—')}
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -361,7 +364,9 @@ export function JobsDashboardContent() {
             <CardTitle className="text-sm font-medium text-muted-foreground">実行中</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-semibold text-tag-info">{isLoading ? '—' : runningCount}</p>
+            <p className="text-2xl font-semibold text-tag-info">
+              {jobCountsUnavailable ? '—' : runningCount}
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -370,7 +375,7 @@ export function JobsDashboardContent() {
           </CardHeader>
           <CardContent>
             <p className={`text-2xl font-semibold ${failedCount > 0 ? 'text-destructive' : ''}`}>
-              {isLoading ? '—' : failedCount}
+              {jobCountsUnavailable ? '—' : failedCount}
             </p>
           </CardContent>
         </Card>
@@ -382,7 +387,7 @@ export function JobsDashboardContent() {
             <p
               className={`text-2xl font-semibold ${partialWarningCount > 0 ? 'text-state-confirm' : ''}`}
             >
-              {isLoading ? '—' : partialWarningCount}
+              {jobCountsUnavailable ? '—' : partialWarningCount}
             </p>
           </CardContent>
         </Card>
@@ -433,13 +438,17 @@ export function JobsDashboardContent() {
       </Card>
 
       {/* Count */}
-      <p className="text-sm text-muted-foreground">{filteredJobs.length}件</p>
+      <p className="text-sm text-muted-foreground">
+        {jobCountsUnavailable ? '—件' : `${filteredJobs.length}件`}
+      </p>
 
       {/* Table */}
       <DataTable
         columns={columns}
         data={filteredJobs}
         isLoading={isLoading}
+        errorMessage={isError ? 'ジョブ一覧を取得できませんでした' : undefined}
+        onRetry={() => void refetch()}
         caption="IntegrationJob 一覧"
         renderExpandedRow={renderExpandedRow}
         getRowId={(row) => row.job_type}
